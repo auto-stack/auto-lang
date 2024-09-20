@@ -5,16 +5,32 @@ pub struct Pos {
     pub len: usize,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenKind {
-    LParen,
-    RParen,
+
+    // Literals
     Integer,
     Float,
-    True,
-    False,
     Str,
     Ident,
+
+    // Operators
+    LParen,
+    RParen,
+    Semi,
+    Newline,
+    Add,
+    Sub,
+    Mul,
+    Div,
+
+    // Keywords
+    True,
+    False,
+    Nil,
+
+    // EOF
+    EOF,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -60,6 +76,27 @@ impl Token {
     pub fn ident(pos: Pos, text: String) -> Self {
         Token::new(TokenKind::Ident, pos, text)
     }
+
+    pub fn nil(pos: Pos) -> Self {
+        Token::new(TokenKind::Nil, pos, "nil".to_string())
+    }
+
+    pub fn semi(pos: Pos) -> Self {
+        Token::new(TokenKind::Semi, pos, ";".to_string())
+    }
+
+    pub fn newline(pos: Pos) -> Self {
+        Token::new(TokenKind::Newline, pos, "\n".to_string())
+    }
+
+    pub fn add(pos: Pos) -> Self {
+        Token::new(TokenKind::Add, pos, "+".to_string())
+    }
+
+    pub fn eof(pos: Pos) -> Self {
+        Token::new(TokenKind::EOF, pos, "".to_string())
+    }
+
 }
 
 
