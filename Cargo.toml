@@ -1,0 +1,12 @@
+[package]
+name = "acl"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["with-file-history"]
+with-file-history = []
+
+[dependencies]
+clap = { version = "4.5.17", features = ["derive"] }
+rustyline = { version = "14.0.0", features = ["with-file-history"] }
