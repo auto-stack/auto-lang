@@ -36,6 +36,17 @@ impl<'a> Lexer<'a> {
         tok
     }
 
+    pub fn with_equal(&mut self, kind1: TokenKind, kind2: TokenKind, c: char) -> Token {
+        self.chars.next(); // skip c
+        if let Some(&nc) = self.chars.peek() {
+            if nc == '=' {      
+                self.chars.next(); // skip =
+                return Token::new(kind2, self.pos(2), format!("{}{}", c, nc))
+            }
+        }
+        Token::new(kind1, self.pos(1), c.to_string())
+    }
+
     pub fn print(&mut self) {
         println!("--- Tokens ---");
         while let token = self.next() {
@@ -124,7 +135,18 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
+    pub fn skip_whitespace(&mut self) {
+        while let Some(&c) = self.chars.peek() {
+            if c.is_whitespace() {
+                self.chars.next();
+            } else {
+                break;
+            }
+        }
+    }
     pub fn next(&mut self) -> Token {
+        // skip whitespace
+        self.skip_whitespace();
         while let Some(&c) = self.chars.peek() {
             match c {
                 '(' => {
@@ -132,6 +154,12 @@ impl<'a> Lexer<'a> {
                 }
                 ')' => {
                     return self.single(TokenKind::RParen, c);
+                }
+                '[' => {
+                    return self.single(TokenKind::LSquare, c);
+                }
+                ']' => {
+                    return self.single(TokenKind::RSquare, c);
                 }
                 '"' => {
                     return self.str();
@@ -153,6 +181,18 @@ impl<'a> Lexer<'a> {
                 }
                 '/' => {
                     return self.single(TokenKind::Div, c);
+                }
+                '!' => {
+                    return self.with_equal(TokenKind::Not, TokenKind::Neq, c);
+                }
+                '>' => {
+                    return self.with_equal(TokenKind::Gt, TokenKind::Ge, c);
+                }
+                '<' => {
+                    return self.with_equal(TokenKind::Lt, TokenKind::Le, c);
+                }
+                '=' => {
+                    return self.with_equal(TokenKind::Asn, TokenKind::Eq, c);
                 }
                 _ => {
                     if c.is_digit(10) {
