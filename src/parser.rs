@@ -1,109 +1,141 @@
 use crate::token::{Token, TokenKind};
 use crate::ast::{Code, Stmt, Expr, Op};
 use crate::lexer::Lexer;
-use std::iter::Peekable;
 
 pub struct Parser<'a> {
-    lexer: Box<Peekable<Lexer<'a>>>,
+    lexer: Lexer<'a>,
+    cur: Token,
+}
+
+fn binding_power(op: Op) -> (u8, u8) {
+    match op {
+        Op::Add | Op::Sub => (1, 2),
+        Op::Mul | Op::Div => (3, 4),
+    }
 }
 
 impl<'a> Parser<'a> {
     pub fn new(code: &'a str) -> Self {
-        Parser {
-            lexer: Box::new(Lexer::new(code).peekable())
-        }
+        let mut lexer = Lexer::new(code);
+        let cur = lexer.next();
+        Parser { lexer, cur }
     }
 
-    pub fn peek(&mut self) -> Option<&Token> {
-        self.lexer.peek()
+    pub fn peek(&mut self) -> &Token {
+        &self.cur
     }
 
-    pub fn kind(&mut self) -> Option<TokenKind> {
-        self.peek().map(|token| token.kind)
+    pub fn kind(&mut self) -> TokenKind {
+        self.peek().kind
     }
 
     pub fn is_kind(&mut self, kind: TokenKind) -> bool {
-        self.peek().map_or(false, |token| token.kind == kind)
+        self.peek().kind == kind
     }
 
-    pub fn next(&mut self) -> Option<Token> {
-        self.lexer.next()
+    pub fn next(&mut self) -> &Token {
+        self.cur = self.lexer.next();
+        &self.cur
     }
 }
 
 impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Code {
         let mut stmts = Vec::new();
-        while let Some(stmt) = self.parse_stmt() {
-            stmts.push(stmt);
+        while !self.is_kind(TokenKind::EOF) {
+            stmts.push(self.parse_stmt());
         }
         Code { stmts }
     }
 
-    pub fn expr(&mut self) -> Option<Expr> {
-        self.bina()
+    pub fn expr(&mut self) -> Expr {
+        self.expr_pratt(0)
     }
 
-    pub fn op(&mut self) -> Option<Op> {
-        match self.kind() {
-            Some(TokenKind::Add) => { self.next(); Some(Op::Add) },
-            Some(TokenKind::Sub) => { self.next(); Some(Op::Sub) },
-            Some(TokenKind::Mul) => { self.next(); Some(Op::Mul) },
-            Some(TokenKind::Div) => { self.next(); Some(Op::Div) },
-            _ => None,
-        }
-    }
+    // simple Pratt parser
+    pub fn expr_pratt(&mut self, min_power: u8) -> Expr {
+        let mut lhs = self.term();
+        println!("Pratt:{:?}", lhs);
 
-    pub fn bina(&mut self) -> Option<Expr> {
-        if let Some(left) = self.term() {
-            if let Some(op) = self.op() {
-                if let Some(right) = self.term() {
-                    return Some(Expr::Bina(Box::new(left), op, Box::new(right)));
-                }
+        loop {
+            println!("op: {:?}", self.kind());
+            let op = match self.kind() {
+                TokenKind::EOF => break,
+                TokenKind::Add | TokenKind::Sub | TokenKind::Mul | TokenKind::Div => self.op(),
+                _ => panic!("Expected operator"),
+            };
+            let (lpower, rpower) = binding_power(op);
+            println!("lpower: {:?}, rpower: {:?}, min_power: {:?}", lpower, rpower, min_power);
+            if lpower < min_power {
+                break;
             }
-            return Some(left);
+
+            self.next();
+
+            let rhs = self.expr_pratt(rpower);
+            lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
         }
-        None
+
+        lhs
     }
 
-    pub fn group(&mut self) -> Option<Expr> {
+    pub fn op(&mut self) -> Op {
+        match self.kind() {
+            TokenKind::Add => { Op::Add },
+            TokenKind::Sub => { Op::Sub },
+            TokenKind::Mul => { Op::Mul },
+            TokenKind::Div => { Op::Div },
+            _ => panic!("Expected operator"),
+        }
+    }
+
+    pub fn group(&mut self) -> Expr {
         self.next(); // skip (
         let expr = self.expr();
         self.next(); // skip )
         expr
     }
 
-    pub fn term(&mut self) -> Option<Expr> {
+    pub fn term(&mut self) -> Expr {
         if self.is_kind(TokenKind::LParen) {
             return self.group();
         }
-        match self.next() {
-            Some(token) => {
-                match token.kind {
-                    TokenKind::Integer => Some(Expr::Integer(token.text.parse().unwrap())),
-                    TokenKind::Float => Some(Expr::Float(token.text.parse().unwrap())),
-                    TokenKind::True => Some(Expr::Bool(true)),
-                    TokenKind::False => Some(Expr::Bool(false)),
-                    TokenKind::Str => Some(Expr::Str(token.text)),
-                    TokenKind::Ident => Some(Expr::Ident(token.text)),
-                    TokenKind::Nil => Some(Expr::Nil),
-                    _ => None,
-                }
-            },
-            None => None,
-        }
+        let expr = match self.kind() {
+            TokenKind::Integer => Expr::Integer(self.cur.text.parse().unwrap()),
+            TokenKind::Float => Expr::Float(self.cur.text.parse().unwrap()),
+            TokenKind::True => Expr::Bool(true),
+            TokenKind::False => Expr::Bool(false),
+            TokenKind::Str => Expr::Str(self.cur.text.clone()),
+            TokenKind::Ident => Expr::Ident(self.cur.text.clone()),
+            TokenKind::Nil => Expr::Nil,
+            _ => panic!("Expected term"),
+        };
+
+        self.next();
+        expr
     }
 
-    pub fn parse_stmt(&mut self) -> Option<Stmt> {
-        if let Some(expr) = self.expr() {
-            if let Some(token) = self.next() {
-                if token.kind == TokenKind::Newline || token.kind == TokenKind::Semi || token.kind == TokenKind::EOF {
-                    return Some(Stmt::Expr(expr));
-                }
-            } else {
-                return Some(Stmt::Expr(expr));
-            }
+    pub fn parse_stmt(&mut self) -> Stmt {
+        let expr = self.expr();
+        if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
+            self.next();
         }
-        None
+        Stmt::Expr(expr)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parser() {
+        let code = "1+2+3";
+        let mut parser = Parser::new(code);
+        let ast = parser.parse();
+        assert_eq!(ast.to_string(), "(code (stmt (bina (bina (int 1) (op +) (int 2)) (op +) (int 3))))");
+    }
+}
+
+
+

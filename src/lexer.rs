@@ -38,15 +38,22 @@ impl<'a> Lexer<'a> {
 
     pub fn print(&mut self) {
         println!("--- Tokens ---");
-        for token in self.into_iter() {
+        while let token = self.next() {
             println!("  {:?}: '{}' at line {}, position {}",
                 token.kind,
                 token.text,
                 token.pos.line,
                 token.pos.pos
             );
+            if token.kind == TokenKind::EOF {
+                break;
+            }
         }
         println!("--- Tokens End ---");
+    }
+
+    pub fn is_kind(&mut self, kind: TokenKind) -> bool {
+        self.next().kind == kind
     }
 }
 
@@ -116,51 +123,60 @@ impl<'a> Lexer<'a> {
     }
 }
 
-impl<'a> Iterator for Lexer<'a> {
-    type Item = Token;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'a> Lexer<'a> {
+    pub fn next(&mut self) -> Token {
         while let Some(&c) = self.chars.peek() {
             match c {
                 '(' => {
-                    return Some(self.single(TokenKind::LParen, c));
+                    return self.single(TokenKind::LParen, c);
                 }
                 ')' => {
-                    return Some(self.single(TokenKind::RParen, c));
+                    return self.single(TokenKind::RParen, c);
                 }
                 '"' => {
-                    return Some(self.str());
+                    return self.str();
                 }
                 ';' => {
-                    return Some(self.single(TokenKind::Semi, c));
+                    return self.single(TokenKind::Semi, c);
                 }
                 '\n' => {
-                    return Some(self.single(TokenKind::Newline, c));
+                    return self.single(TokenKind::Newline, c);
                 }
                 '+' => {
-                    return Some(self.single(TokenKind::Add, c));
+                    return self.single(TokenKind::Add, c);
                 }
                 '-' => {
-                    return Some(self.single(TokenKind::Sub, c));
+                    return self.single(TokenKind::Sub, c);
                 }
                 '*' => {
-                    return Some(self.single(TokenKind::Mul, c));
+                    return self.single(TokenKind::Mul, c);
                 }
                 '/' => {
-                    return Some(self.single(TokenKind::Div, c));
+                    return self.single(TokenKind::Div, c);
                 }
                 _ => {
                     if c.is_digit(10) {
-                        return Some(self.number());
+                        return self.number();
                     }
 
                     if c.is_alphabetic() {
-                        return Some(self.identifier());
+                        return self.identifier();
                     }
                 }
             }
         }
-        None
+        Token::eof(self.pos(0))
+    }
+
+    fn tokens(&mut self) -> Vec<Token> {
+        let mut tokens = Vec::new();
+        while let token = self.next() {
+            if token.kind == TokenKind::EOF {
+                break;
+            }
+            tokens.push(token);
+        }
+        tokens
     }
 }
 
@@ -171,8 +187,8 @@ mod tests {
     #[test]
     fn test_lexer() {
         let code = "(123)";
-        let lexer = Lexer::new(code);
-        let tokens = lexer.collect::<Vec<Token>>();
+        let mut lexer = Lexer::new(code);
+        let tokens = lexer.tokens();
         assert_eq!(
             tokens,
             vec![
@@ -210,8 +226,8 @@ mod tests {
     #[test]
     fn test_str() {
         let code = "\"Hello, World!\"";
-        let lexer = Lexer::new(code);
-        let tokens = lexer.collect::<Vec<Token>>();
+        let mut lexer = Lexer::new(code);
+        let tokens = lexer.tokens();
         assert_eq!(
             tokens,
             vec![Token {
@@ -221,7 +237,7 @@ mod tests {
                     pos: 0,
                     len: 13
                 },
-                text: "\"Hello, World!\"".to_string()
+                text: "Hello, World!".to_string()
             }]
         );
     }
