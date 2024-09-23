@@ -26,3 +26,14 @@ impl Display for Value {
     }
 }
 
+impl Value {
+    pub fn neg(&self) -> Value {
+        match self {
+            Value::Integer(value) => Value::Integer(-value),
+            Value::Float(value) => Value::Float(-value),
+            _ => Value::Nil,
+        }
+    }
+}
+
+
