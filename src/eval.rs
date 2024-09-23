@@ -55,9 +55,6 @@ impl Evaler {
         }
     }
     
-    
-    
-
     fn eval_bina(&self, left: &Expr, op: &Op, right: &Expr) -> Value {
         let left_value = self.eval_expr(left);
         let right_value = self.eval_expr(right);
@@ -72,6 +69,15 @@ impl Evaler {
         }
     }
 
+    fn eval_una(&self, op: &Op, e: &Expr) -> Value {
+        let value = self.eval_expr(e);
+        match op {
+            Op::Add => value,
+            Op::Sub => value.neg(),
+            _ => Value::Nil,
+        }
+    }
+
     fn eval_expr(&self, expr: &Expr) -> Value {
         match expr {
             Expr::Integer(value) => Value::Integer(*value as i32),
@@ -80,8 +86,11 @@ impl Evaler {
             Expr::Str(value) => Value::Str(value.clone()),
             Expr::Bool(value) => Value::Bool(*value),
             Expr::Ident(value) => Value::Nil,
+            Expr::Unary(op, e) => self.eval_una(op, e),
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
             Expr::Nil => Value::Nil,
         }
     }
 }
+
+

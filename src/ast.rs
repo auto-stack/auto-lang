@@ -61,6 +61,7 @@ pub enum Expr {
     Str(String),
     Ident(String),
     // composite exprs
+    Unary(Op, Box<Expr>),
     Bina(Box<Expr>, Op, Box<Expr>),
     Nil,
 }
@@ -74,6 +75,7 @@ impl fmt::Display for Expr {
             Expr::Str(s) => write!(f, "(\"{}\")", s),
             Expr::Ident(i) => write!(f, "({})", i),
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
+            Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
             Expr::Nil => write!(f, "(nil)"),
         }
     }

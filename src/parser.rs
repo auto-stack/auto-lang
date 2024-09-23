@@ -7,7 +7,14 @@ pub struct Parser<'a> {
     cur: Token,
 }
 
-fn binding_power(op: Op) -> (u8, u8) {
+fn prefix_power(op: Op) -> ((), u8) {
+    match op {
+        Op::Add | Op::Sub => ((), 5),
+        _ => panic!("Invalid prefix operator"),
+    }
+}
+
+fn infix_power(op: Op) -> (u8, u8) {
     match op {
         Op::Add | Op::Sub => (1, 2),
         Op::Mul | Op::Div => (3, 4),
@@ -37,6 +44,14 @@ impl<'a> Parser<'a> {
         self.cur = self.lexer.next();
         &self.cur
     }
+
+    pub fn expect(&mut self, kind: TokenKind) {
+        if self.is_kind(kind) {
+            self.next();
+        } else {
+            panic!("Expected token kind: {:?}", kind);
+        }
+    }
 }
 
 impl<'a> Parser<'a> {
@@ -54,23 +69,41 @@ impl<'a> Parser<'a> {
 
     // simple Pratt parser
     pub fn expr_pratt(&mut self, min_power: u8) -> Expr {
-        let mut lhs = self.term();
-        println!("Pratt:{:?}", lhs);
-
+        let mut lhs = match self.kind() {
+            // unary
+            TokenKind::Add | TokenKind::Sub => {
+                let op = self.op();
+                let (_, power) = prefix_power(op);
+                self.next(); // skip unary op
+                let lhs = self.expr_pratt(power);
+                Expr::Unary(op, Box::new(lhs))
+            }
+            // group
+            TokenKind::LParen => {
+                self.next(); // skip (
+                let lhs = self.expr_pratt(0);
+                println!("kind: {:?}", self.kind());
+                self.expect(TokenKind::RParen); // skip )
+                lhs
+            }
+            // normal
+            _ => self.term(),
+        };
+        println!("lhs: {:?}", lhs);
+        println!("kind: {:?}", self.kind());
         loop {
-            println!("op: {:?}", self.kind());
             let op = match self.kind() {
                 TokenKind::EOF => break,
                 TokenKind::Add | TokenKind::Sub | TokenKind::Mul | TokenKind::Div => self.op(),
-                _ => panic!("Expected operator"),
+                TokenKind::RParen => break,
+                _ => panic!("Expected operator, got {:?}", self.kind()),
             };
-            let (lpower, rpower) = binding_power(op);
-            println!("lpower: {:?}, rpower: {:?}, min_power: {:?}", lpower, rpower, min_power);
+            let (lpower, rpower) = infix_power(op);
             if lpower < min_power {
                 break;
             }
 
-            self.next();
+            self.next(); // skip binary op
 
             let rhs = self.expr_pratt(rpower);
             lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
