@@ -39,6 +39,15 @@ pub enum Op {
     Sub,
     Mul,
     Div,
+    Not,
+    LSquare,
+    Asn,
+    Eq,
+    Neq,
+    Lt,
+    Gt,
+    Le,
+    Ge,
 }
 
 impl fmt::Display for Op {
@@ -48,6 +57,15 @@ impl fmt::Display for Op {
             Op::Sub => write!(f, "(op -)"),
             Op::Mul => write!(f, "(op *)"),
             Op::Div => write!(f, "(op /)"),
+            Op::Not => write!(f, "(op !)"),
+            Op::LSquare => write!(f, "(op [)"),
+            Op::Asn => write!(f, "(op =)"),
+            Op::Eq => write!(f, "(op ==)"),
+            Op::Neq => write!(f, "(op !=)"),
+            Op::Lt => write!(f, "(op <)"),
+            Op::Gt => write!(f, "(op >)"),
+            Op::Le => write!(f, "(op <=)"),
+            Op::Ge => write!(f, "(op >=)"),
         }
     }
 }

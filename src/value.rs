@@ -1,5 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
+use crate::ast::Op;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Integer(i32),
@@ -31,6 +33,49 @@ impl Value {
         match self {
             Value::Integer(value) => Value::Integer(-value),
             Value::Float(value) => Value::Float(-value),
+            _ => Value::Nil,
+        }
+    }
+
+    pub fn not(&self) -> Value {
+        match self {
+            Value::Bool(value) => Value::Bool(!value),
+            Value::Nil => Value::Bool(true),
+            _ => Value::Nil,
+        }
+    }
+
+    pub fn comp(&self, op: &Op, other: &Value) -> Value {
+        match (self, other) {
+            (Value::Integer(a), Value::Integer(b)) => {
+                match op {
+                    Op::Eq => Value::Bool(a == b),
+                    Op::Neq => Value::Bool(a != b),
+                    Op::Lt => Value::Bool(a < b),
+                    Op::Gt => Value::Bool(a > b),
+                    Op::Le => Value::Bool(a <= b),
+                    Op::Ge => Value::Bool(a >= b),
+                    _ => Value::Nil,
+                }
+            }
+            (Value::Float(a), Value::Float(b)) => {
+                match op {
+                    Op::Eq => Value::Bool(float_eq(*a, *b)),
+                    Op::Neq => Value::Bool(!float_eq(*a, *b)),
+                    Op::Lt => Value::Bool(*a < *b),
+                    Op::Gt => Value::Bool(*a > *b),
+                    Op::Le => Value::Bool(*a <= *b),
+                    Op::Ge => Value::Bool(*a >= *b),
+                    _ => Value::Nil,
+                }
+            }
+            (Value::Bool(a), Value::Bool(b)) => {
+                match op {
+                    Op::Eq => Value::Bool(*a == *b),
+                    Op::Neq => Value::Bool(*a != *b),
+                    _ => Value::Nil,
+                }
+            }
             _ => Value::Nil,
         }
     }

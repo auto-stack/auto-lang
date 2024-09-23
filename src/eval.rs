@@ -64,8 +64,8 @@ impl Evaler {
             Op::Sub => self.sub(left_value, right_value),
             Op::Mul => self.mul(left_value, right_value),
             Op::Div => self.div(left_value, right_value),
+            Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => left_value.comp(op, &right_value),
             _ => Value::Nil,
-            // Add more binary operations as needed
         }
     }
 
@@ -74,6 +74,7 @@ impl Evaler {
         match op {
             Op::Add => value,
             Op::Sub => value.neg(),
+            Op::Not => value.not(),
             _ => Value::Nil,
         }
     }

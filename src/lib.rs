@@ -40,6 +40,13 @@ mod tests {
         let result = run(code).expect("Failed to run code");
         assert_eq!(result, "9");
     }
+
+    #[test]
+    fn test_comp() {
+        let code = "1 < 2";
+        let result = run(code).expect("Failed to run code");
+        assert_eq!(result, "true");
+    }
 }
 
 

@@ -17,12 +17,22 @@ pub enum TokenKind {
     // Operators
     LParen,
     RParen,
+    LSquare,
+    RSquare,
     Semi,
     Newline,
     Add,
     Sub,
     Mul,
     Div,
+    Not,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Asn,
+    Eq,
+    Neq,
 
     // Keywords
     True,
