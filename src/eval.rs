@@ -1,4 +1,4 @@
-use crate::ast::{Code, Stmt, Expr, Op};
+use crate::ast::{Code, Stmt, Expr, Op, Branch, Body};
 use crate::value::Value;
 
 pub struct Evaler {
@@ -20,6 +20,7 @@ impl Evaler {
     fn eval_stmt(&self, stmt: &Stmt) -> Value {
         match stmt {
             Stmt::Expr(expr) => self.eval_expr(expr),
+            Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
         }
     }
 
@@ -53,6 +54,27 @@ impl Evaler {
             (Value::Float(left), Value::Float(right)) => Value::Float(left / right),
             _ => Value::Nil,
         }
+    }
+
+    fn eval_body(&self, body: &Body) -> Value {
+        let mut value = Value::Nil;
+        for stmt in body.stmts.iter() {
+            value = self.eval_stmt(stmt);
+        }
+        value
+    }
+
+    fn eval_if(&self, branches: &Vec<Branch>, else_stmt: &Option<Body>) -> Value {
+        for branch in branches.iter() {
+            let cond = self.eval_expr(&branch.cond);
+            if cond.is_true() {
+                return self.eval_body(&branch.body);
+            }
+        }
+        if let Some(else_stmt) = else_stmt {
+            return self.eval_body(else_stmt);
+        }
+        Value::Nil
     }
     
     fn eval_bina(&self, left: &Expr, op: &Op, right: &Expr) -> Value {

@@ -79,6 +79,16 @@ impl Value {
             _ => Value::Nil,
         }
     }
+
+    pub fn is_true(&self) -> bool {
+        match self {
+            Value::Bool(value) => *value,
+            Value::Integer(value) => *value > 0,
+            Value::Float(value) => *value > 0.0,
+            Value::Str(value) => value.len() > 0,
+            _ => false,
+        }
+    }
 }
 
 
