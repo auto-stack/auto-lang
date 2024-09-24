@@ -21,14 +21,52 @@ impl fmt::Display for Code {
 }
 
 #[derive(Debug)]
-pub enum Stmt {
-    Expr(Expr),
+pub struct Branch {
+    pub cond: Expr,
+    pub body: Body,
 }
 
+impl fmt::Display for Branch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(branch {} {})", self.cond, self.body)
+    }
+}
+
+
+#[derive(Debug)]
+pub enum Stmt {
+    Expr(Expr),
+    If(Vec<Branch>, Option<Body>),
+}
+
+#[derive(Debug)]
+pub struct Body {
+    pub stmts: Vec<Stmt>,
+}
+
+impl fmt::Display for Body {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(body ")?;
+        for stmt in self.stmts.iter() {
+            write!(f, "{}", stmt)?;
+        }
+        Ok(())
+    }
+}
 impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Stmt::Expr(expr) => write!(f, "(stmt {})", expr),
+            Stmt::If(branches, else_stmt) => {
+                write!(f, "(if ")?;
+                for branch in branches.iter() {
+                    write!(f, "{}", branch)?;
+                }
+                if let Some(else_stmt) = else_stmt {
+                    write!(f, " (else {})", else_stmt)?;
+                }
+                Ok(())
+            }
         }
     }
 }

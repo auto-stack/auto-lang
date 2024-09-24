@@ -107,11 +107,17 @@ impl<'a> Lexer<'a> {
         Token::str(self.pos(text.len()), text)
     }
 
+    fn keyword_tok(&mut self, kind: TokenKind, text: &str) -> Option<Token> {
+        Some(Token::new(kind, self.pos(text.len()), text.to_string()))
+    }
+
     pub fn keyword(&mut self, text: String) -> Option<Token> {
         match text.as_str() {
-            "true" => Some(Token::true_(self.pos(text.len()))),
-            "false" => Some(Token::false_(self.pos(text.len()))),
-            "nil" => Some(Token::nil(self.pos(text.len()))),
+            "true" => self.keyword_tok(TokenKind::True, &text),
+            "false" => self.keyword_tok(TokenKind::False, &text),
+            "nil" => self.keyword_tok(TokenKind::Nil, &text),
+            "if" => self.keyword_tok(TokenKind::If, &text),
+            "else" => self.keyword_tok(TokenKind::Else, &text),
             _ => None,
         }
     }
@@ -160,6 +166,12 @@ impl<'a> Lexer<'a> {
                 }
                 ']' => {
                     return self.single(TokenKind::RSquare, c);
+                }
+                '{' => {
+                    return self.single(TokenKind::LBrace, c);
+                }
+                '}' => {
+                    return self.single(TokenKind::RBrace, c);
                 }
                 '"' => {
                     return self.str();

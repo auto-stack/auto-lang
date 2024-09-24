@@ -47,6 +47,27 @@ mod tests {
         let result = run(code).expect("Failed to run code");
         assert_eq!(result, "true");
     }
+
+    #[test]
+    fn test_if() {
+        let code = "if true { 1 } else { 2 }";
+        let result = run(code).expect("Failed to run code");
+        assert_eq!(result, "1");
+    }
+
+    #[test]
+    fn test_if_else() {
+        let code = "if false { 1 } else { 2 }";
+        let result = run(code).expect("Failed to run code");
+        assert_eq!(result, "2");
+    }
+
+    #[test]
+    fn test_if_else_if() {
+        let code = "if false { 1 } else if false { 2 } else { 3 }";
+        let result = run(code).expect("Failed to run code");
+        assert_eq!(result, "3");
+    }
 }
 
 
