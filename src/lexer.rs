@@ -118,6 +118,7 @@ impl<'a> Lexer<'a> {
             "nil" => self.keyword_tok(TokenKind::Nil, &text),
             "if" => self.keyword_tok(TokenKind::If, &text),
             "else" => self.keyword_tok(TokenKind::Else, &text),
+            "for" => self.keyword_tok(TokenKind::For, &text),
             _ => None,
         }
     }

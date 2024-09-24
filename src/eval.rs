@@ -21,6 +21,7 @@ impl Evaler {
         match stmt {
             Stmt::Expr(expr) => self.eval_expr(expr),
             Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
+            Stmt::For(cond, body) => self.eval_for(cond, body),
         }
     }
 
@@ -76,7 +77,20 @@ impl Evaler {
         }
         Value::Nil
     }
-    
+
+    fn eval_for(&self, cond: &Expr, body: &Body) -> Value {
+        let mut value = Value::Nil;
+        let mut max_loop = 100;
+        while self.eval_expr(cond).is_true() && max_loop > 0 {
+            value = self.eval_body(body);
+            max_loop -= 1;
+        }
+        if max_loop <= 0 {
+            println!("Warning: for loop max loop reached");
+        }
+        value
+    }
+
     fn eval_bina(&self, left: &Expr, op: &Op, right: &Expr) -> Value {
         let left_value = self.eval_expr(left);
         let right_value = self.eval_expr(right);
