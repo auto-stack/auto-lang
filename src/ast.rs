@@ -32,11 +32,11 @@ impl fmt::Display for Branch {
     }
 }
 
-
 #[derive(Debug)]
 pub enum Stmt {
     Expr(Expr),
     If(Vec<Branch>, Option<Body>),
+    For(Expr, Body),
 }
 
 #[derive(Debug)]
@@ -66,7 +66,8 @@ impl fmt::Display for Stmt {
                     write!(f, " (else {})", else_stmt)?;
                 }
                 Ok(())
-            }
+            },
+            Stmt::For(cond, body) => write!(f, "(for {} {})", cond, body),
         }
     }
 }

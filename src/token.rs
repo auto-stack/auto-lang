@@ -42,6 +42,8 @@ pub enum TokenKind {
     Nil,
     If,
     Else,
+    For,
+
 
     // EOF
     EOF,

@@ -218,6 +218,7 @@ impl<'a> Parser<'a> {
     pub fn parse_stmt(&mut self) -> Stmt {
         match self.kind() {
             TokenKind::If => self.parse_if(),
+            TokenKind::For => self.parse_for(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -256,6 +257,13 @@ impl<'a> Parser<'a> {
         Stmt::If(branches, else_stmt)
     }
 
+    pub fn parse_for(&mut self) -> Stmt {
+        self.next(); // skip for
+        let cond = self.expr();
+        let body = self.body();
+        Stmt::For(cond, body)
+    }
+
     pub fn parse_expr_stmt(&mut self) -> Stmt {
         let expr = self.expr();
         if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
@@ -291,6 +299,14 @@ mod tests {
         let mut parser = Parser::new(code);
         let ast = parser.parse();
         assert_eq!(ast.to_string(), "(code (if (branch (false) (body (stmt (int 1))) (else (body (stmt (int 2))))");
+    }
+
+    #[test]
+    fn test_for() {
+        let code = "for true {1}";
+        let mut parser = Parser::new(code);
+        let ast = parser.parse();
+        assert_eq!(ast.to_string(), "(code (for (true) (body (stmt (int 1))))");
     }
 }
 
