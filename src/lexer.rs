@@ -36,47 +36,40 @@ impl<'a> Lexer<'a> {
         tok
     }
 
+    pub fn peek(&mut self, c: char) -> bool {
+        if let Some(&nc) = self.chars.peek() {
+            if nc == c {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn with_equal(&mut self, kind1: TokenKind, kind2: TokenKind, c: char) -> Token {
         self.chars.next(); // skip c
-        if let Some(&nc) = self.chars.peek() {
-            if nc == '=' {      
-                self.chars.next(); // skip =
-                return Token::new(kind2, self.pos(2), format!("{}{}", c, nc))
-            }
+        if self.peek('=') {
+            self.chars.next(); // skip =
+            return Token::new(kind2, self.pos(2), format!("{}{}", c, '='));
         }
         Token::new(kind1, self.pos(1), c.to_string())
     }
-
-    pub fn print(&mut self) {
-        println!("--- Tokens ---");
-        loop {
-            let token = self.next();
-            println!("  {:?}: '{}' at line {}, position {}",
-                token.kind,
-                token.text,
-                token.pos.line,
-                token.pos.pos
-            );
-            if token.kind == TokenKind::EOF {
-                break;
-            }
-        }
-        println!("--- Tokens End ---");
-    }
-
 }
 
 // Lexer methods for various token types
 impl<'a> Lexer<'a> {
-
     pub fn number(&mut self) -> Token {
         let mut text = String::new();
         let mut has_dot = false;
         while let Some(&c) = self.chars.peek() {
-            if c.is_digit(10) || c == '.' {
+            if c.is_digit(10) {
                 text.push(c);
                 self.chars.next();
             } else if c == '.' {
+                let mut more = self.chars.clone();
+                more.next();
+                if more.peek() == Some(&'.') {
+                    break;
+                }
                 has_dot = true;
                 text.push(c);
                 self.chars.next();
@@ -84,7 +77,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        if has_dot {    
+        if has_dot {
             Token::float(self.pos(text.len()), text)
         } else {
             Token::int(self.pos(text.len()), text)
@@ -107,6 +100,19 @@ impl<'a> Lexer<'a> {
 
     fn keyword_tok(&mut self, kind: TokenKind, text: &str) -> Option<Token> {
         Some(Token::new(kind, self.pos(text.len()), text.to_string()))
+    }
+
+    fn dot(&mut self) -> Token {
+        self.chars.next(); // skip .
+        if self.peek('.') {
+            self.chars.next();
+            if self.peek('=') {
+                self.chars.next();
+                return Token::new(TokenKind::RangeEq, self.pos(3), "..=".to_string());
+            }
+            return Token::new(TokenKind::Range, self.pos(2), "..".to_string());
+        }
+        Token::new(TokenKind::Dot, self.pos(1), ".".to_string())
     }
 
     pub fn keyword(&mut self, text: String) -> Option<Token> {
@@ -209,6 +215,9 @@ impl<'a> Lexer<'a> {
                 '=' => {
                     return self.with_equal(TokenKind::Asn, TokenKind::Eq, c);
                 }
+                '.' => {
+                    return self.dot();
+                }
                 _ => {
                     if c.is_digit(10) {
                         return self.number();
@@ -240,61 +249,37 @@ impl<'a> Lexer<'a> {
 mod tests {
     use super::*;
 
+    fn parse_token_strings(code: &str) -> String {
+        let mut lexer = Lexer::new(code);
+        let tokens = lexer.tokens();
+        tokens.iter().map(|t| t.to_string()).collect::<Vec<String>>().join("")
+    }
+
     #[test]
     fn test_lexer() {
         let code = "(123)";
-        let mut lexer = Lexer::new(code);
-        let tokens = lexer.tokens();
+        let tokens = parse_token_strings(code);
         assert_eq!(
             tokens,
-            vec![
-                Token {
-                    kind: TokenKind::LParen,
-                    pos: Pos {
-                        line: 0,
-                        pos: 0,
-                        len: 1
-                    },
-                    text: "(".to_string()
-                },
-                Token {
-                    kind: TokenKind::Integer,
-                    pos: Pos {
-                        line: 0,
-                        pos: 1,
-                        len: 3
-                    },
-                    text: "123".to_string()
-                },
-                Token {
-                    kind: TokenKind::RParen,
-                    pos: Pos {
-                        line: 0,
-                        pos: 4,
-                        len: 1
-                    },
-                    text: ")".to_string()
-                },
-            ]
+            "<l_paren:(><int:123><r_paren:)>"
         );
     }
 
     #[test]
     fn test_str() {
         let code = "\"Hello, World!\"";
-        let mut lexer = Lexer::new(code);
-        let tokens = lexer.tokens();
+        let tokens = parse_token_strings(code);
         assert_eq!(
             tokens,
-            vec![Token {
-                kind: TokenKind::Str,
-                pos: Pos {
-                    line: 0,
-                    pos: 0,
-                    len: 13
-                },
-                text: "Hello, World!".to_string()
-            }]
+            "<str:Hello, World!>"
         );
+    }
+
+    #[test]
+    fn test_range() {
+        let code = "1..5";
+        let mut lexer = Lexer::new(code);
+        let tokens = lexer.tokens().iter().map(|t| t.to_string()).collect::<Vec<String>>().join("");
+        assert_eq!(tokens, "<int:1><range:..><int:5>");
     }
 }

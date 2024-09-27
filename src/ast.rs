@@ -114,6 +114,8 @@ pub enum Op {
     Gt,
     Le,
     Ge,
+    Range,
+    RangeEq,
 }
 
 impl fmt::Display for Op {
@@ -132,6 +134,8 @@ impl fmt::Display for Op {
             Op::Gt => write!(f, "(op >)"),
             Op::Le => write!(f, "(op <=)"),
             Op::Ge => write!(f, "(op >=)"),
+            Op::Range => write!(f, "(op ..)"),
+            Op::RangeEq => write!(f, "(op ..=)"),
         }
     }
 }

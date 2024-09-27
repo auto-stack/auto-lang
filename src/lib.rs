@@ -110,6 +110,13 @@ mod tests {
         let result = run(code).unwrap();
         assert_eq!(result, "[1, 2, 3]");
     }
+
+    #[test]
+    fn test_range() {
+        let code = "1..5";
+        let result = run(code).unwrap();
+        assert_eq!(result, "1..5");
+    }
 }
 
 

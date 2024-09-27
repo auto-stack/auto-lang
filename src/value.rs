@@ -9,8 +9,11 @@ pub enum Value {
     Bool(bool),
     Str(String),
     Array(Vec<Value>),
+    Range(i32, i32),
+    RangeEq(i32, i32),
     Nil,
     Void,
+    Error(String),
 }
 
 fn float_eq(a: f64, b: f64) -> bool {
@@ -40,6 +43,9 @@ impl Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Void => write!(f, ""),
             Value::Array(value) => print_array(f, value),
+            Value::Range(left, right) => write!(f, "{}..{}", left, right),
+            Value::RangeEq(left, right) => write!(f, "{}..={}", left, right),
+            Value::Error(value) => write!(f, "Error: {}", value),
         }
     }
 }

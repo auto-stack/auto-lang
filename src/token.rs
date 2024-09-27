@@ -1,3 +1,6 @@
+use std::fmt;
+use strum_macros;
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Pos {
     pub line: usize,
@@ -5,11 +8,12 @@ pub struct Pos {
     pub len: usize,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, strum_macros::Display)]
+#[strum(serialize_all = "snake_case")]
 pub enum TokenKind {
 
     // Literals
-    Integer,
+    Int,
     Float,
     Str,
     Ident,
@@ -36,6 +40,9 @@ pub enum TokenKind {
     Asn,
     Eq,
     Neq,
+    Dot, // .
+    Range, // ..
+    RangeEq, // ..= 
 
     // Keywords
     True,
@@ -58,13 +65,19 @@ pub struct Token {
     pub text: String,
 }
 
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<{}:{}>", self.kind, self.text)
+    }
+}
+
 impl Token {
     pub fn new(kind: TokenKind, pos: Pos, text: String) -> Self {
         Token { kind, pos, text }
     }
 
     pub fn int(pos: Pos, text: String) -> Self {
-        Token::new(TokenKind::Integer, pos, text)
+        Token::new(TokenKind::Int, pos, text)
     }
 
     pub fn float(pos: Pos, text: String) -> Self {
