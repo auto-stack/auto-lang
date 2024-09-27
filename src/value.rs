@@ -10,6 +10,7 @@ pub enum Value {
     Str(String),
     Array(Vec<Value>),
     Nil,
+    Void,
 }
 
 fn float_eq(a: f64, b: f64) -> bool {
@@ -37,6 +38,7 @@ impl Display for Value {
             Value::Float(value) => write!(f, "{}", value),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Nil => write!(f, "nil"),
+            Value::Void => write!(f, ""),
             Value::Array(value) => print_array(f, value),
         }
     }

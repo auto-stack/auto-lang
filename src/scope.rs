@@ -60,10 +60,23 @@ impl Universe {
     pub fn get_symbol(&self, name: &str) -> Option<&Meta> {
         self.current_scope().get_symbol(name)
     }
+
+    pub fn exists(&self, name: &str) -> bool {
+        for scope in self.scopes.iter().rev() {
+            if scope.exists(name) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn define(&mut self, name: String) {
+        self.current_scope_mut().put_symbol(name.as_str(), Meta::Var);
+    }
 }
 
 enum Meta {
-    Var(ast::Var),
+    Var, // TODO: Add more info, like type, etc.
 }
 
 pub struct Scope {
@@ -90,5 +103,9 @@ impl Scope {
 
     pub fn get_symbol(&self, name: &str) -> Option<&Meta> {
         self.symbols.get(name)
+    }
+
+    pub fn exists(&self, name: &str) -> bool {
+        self.symbols.contains_key(name)
     }
 }

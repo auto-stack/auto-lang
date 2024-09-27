@@ -1,3 +1,5 @@
+use crate::eval;
+use crate::scope;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 
@@ -7,6 +9,9 @@ pub fn main_loop() -> Result<()> {
     if rl.load_history("history.txt").is_err() {
         println!("No previous history");
     }
+    // initialize evaler
+    let mut scope = scope::Universe::new();
+    let mut evaler = eval::Evaler::new(&mut scope);
     loop {
         let readline = rl.readline(">> ");
         match readline {
@@ -18,7 +23,7 @@ pub fn main_loop() -> Result<()> {
                 if line == "q" || line == "quit" {
                     break;
                 }
-                match crate::run(&line) {
+                match evaler.interpret(line.as_str()) {
                     Ok(result) => println!("{}", result),
                     Err(error) => eprintln!("Error: {}", error),
                 }

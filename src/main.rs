@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     match cli.command {
         Some(Commands::Parse { code}) => {
             println!("Parsing ACL {} to JSON", code);
-            let json = acl::run(&code).unwrap();
+            let json = acl::run(&code)?;
             println!("{}", json);
         }
         Some(Commands::Repl) => {

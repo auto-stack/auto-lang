@@ -1,6 +1,7 @@
 use crate::token::{Token, TokenKind};
 use crate::ast::{Code, Stmt, Expr, Op, Branch, Body, Name, Var};
 use crate::lexer::Lexer;
+use crate::scope::Universe;
 
 pub struct PostfixPrec {
     l: u8,
@@ -17,57 +18,78 @@ pub struct PrefixPrec {
     r: u8,
 }
 
-const PREC_NONE: InfixPrec = InfixPrec { l: 0, r: 0 };
-const PREC_ASN: InfixPrec = InfixPrec { l: 1, r: 2 };
-const PREC_OR: InfixPrec = InfixPrec { l: 3, r: 4 };
-const PREC_AND: InfixPrec = InfixPrec { l: 5, r: 6 };
-const PREC_EQ: InfixPrec = InfixPrec { l: 7, r: 8 };
-const PREC_CMP: InfixPrec = InfixPrec { l: 9, r: 10 };
-const PREC_ADD: InfixPrec = InfixPrec { l: 11, r: 12 };
-const PREC_MUL: InfixPrec = InfixPrec { l: 13, r: 14 };
-const PREC_SIGN: PrefixPrec = PrefixPrec { l: (), r: 15 };
-const PREC_NOT: PrefixPrec = PrefixPrec { l: (), r: 16 };
-const PREC_INDEX: PostfixPrec = PostfixPrec { l: 17, r: () };
-const PREC_CALL: InfixPrec  = InfixPrec { l: 19, r: 20 };
-const PREC_ATOM: InfixPrec = InfixPrec { l: 21, r: 22 };
+const fn prefix_prec(n: u8) -> PrefixPrec {
+    PrefixPrec { l: (), r: 2*n }
+}
+
+const fn postfix_prec(n: u8) -> PostfixPrec {
+    PostfixPrec { l: 2*n, r: () }
+}
+
+const fn infix_prec(n: u8) -> InfixPrec {
+    if n == 0 {
+        InfixPrec { l: 0, r: 0 }
+    } else {
+        InfixPrec { l: 2*n-1, r: 2*n }
+    }
+}
+
+const PREC_ASN: InfixPrec = infix_prec(1);
+const PREC_OR: InfixPrec = infix_prec(2);
+const PREC_AND: InfixPrec = infix_prec(3);
+const PREC_EQ: InfixPrec = infix_prec(4);
+const PREC_CMP: InfixPrec = infix_prec(5);
+const PREC_ADD: InfixPrec = infix_prec(6);
+const PREC_MUL: InfixPrec = infix_prec(7);
+const PREC_SIGN: PrefixPrec = prefix_prec(8);
+const PREC_NOT: PrefixPrec = prefix_prec(9);
+const PREC_INDEX: PostfixPrec = postfix_prec(10);
+const PREC_CALL: InfixPrec  = infix_prec(11);
+const PREC_ATOM: InfixPrec = infix_prec(12);
+
+fn prefix_power(op: Op) -> Result<PrefixPrec, String> {
+    match op {
+        Op::Add | Op::Sub => Ok(PREC_SIGN),
+        Op::Not => Ok(PREC_NOT),
+        _ => return Err(format!("Invalid prefix operator: {}", op)),
+    }
+}
+
+fn postfix_power(op: Op) -> Result<Option<PostfixPrec>, String> {
+    match op {
+        Op::LSquare => Ok(Some(PREC_INDEX)),
+        _ => Ok(None),
+    }
+}
+
+fn infix_power(op: Op) -> Result<InfixPrec, String> {
+    match op {
+        Op::Add | Op::Sub => Ok(PREC_ADD),
+        Op::Mul | Op::Div => Ok(PREC_MUL),
+        Op::Asn => Ok(PREC_ASN),
+        Op::Eq | Op::Neq => Ok(PREC_EQ),
+        Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(PREC_CMP),
+        _ => return Err(format!("Invalid infix operator: {}", op)),
+    }
+}
+
+pub fn parse(code: &str, scope: &mut Universe) -> Result<Code, String> {
+    let mut parser = Parser::new(code, scope);
+    parser.parse()
+}
 
 
 pub struct Parser<'a> {
+    scope: &'a mut Universe,
     lexer: Lexer<'a>,
     cur: Token,
 }
 
-fn prefix_power(op: Op) -> PrefixPrec {
-    match op {
-        Op::Add | Op::Sub => PREC_SIGN,
-        Op::Not => PREC_NOT,
-        _ => panic!("Invalid prefix operator"),
-    }
-}
-
-fn postfix_power(op: Op) -> Option<PostfixPrec> {
-    match op {
-        Op::LSquare => Some(PREC_INDEX),
-        _ => None
-    }
-}
-
-fn infix_power(op: Op) -> InfixPrec {
-    match op {
-        Op::Add | Op::Sub => PREC_ADD,
-        Op::Mul | Op::Div => PREC_MUL,
-        Op::Asn => PREC_ASN,
-        Op::Eq | Op::Neq => PREC_EQ,
-        Op::Lt | Op::Gt | Op::Le | Op::Ge => PREC_CMP,
-        _ => panic!("Invalid infix operator"),
-    }
-}
-
 impl<'a> Parser<'a> {
-    pub fn new(code: &'a str) -> Self {
+    pub fn new(code: &'a str, scope: &'a mut Universe) -> Self {
         let mut lexer = Lexer::new(code);
         let cur = lexer.next();
-        Parser { lexer, cur }
+        Parser { lexer, cur, scope }
     }
 
     pub fn peek(&mut self) -> &Token {
@@ -87,60 +109,54 @@ impl<'a> Parser<'a> {
         &self.cur
     }
 
-    pub fn expect(&mut self, kind: TokenKind) {
+    pub fn expect(&mut self, kind: TokenKind) -> Result<(), String>{
         if self.is_kind(kind) {
             self.next();
+            Ok(())
         } else {
-            panic!("Expected token kind: {:?}, got {:?}", kind, self.kind());
+            Err(format!("Expected token kind: {:?}, got {:?}", kind, self.kind()))
         }
     }
 
-    pub fn expect_any(&mut self, kinds: &[TokenKind]) {
-        if kinds.contains(&self.kind()) {
-            self.next();
-        } else {
-            panic!("Expected token kind: {:?}, got {:?}", kinds, self.kind());
-        }
-    }
 }
 
 impl<'a> Parser<'a> {
-    pub fn parse(&mut self) -> Code {
+    pub fn parse(&mut self) -> Result<Code, String> {
         let mut stmts = Vec::new();
         while !self.is_kind(TokenKind::EOF) {
-            stmts.push(self.parse_stmt());
+            stmts.push(self.parse_stmt()?)
         }
-        Code { stmts }
+        Ok(Code { stmts })
     }
 
-    pub fn expr(&mut self) -> Expr {
+    pub fn expr(&mut self) -> Result<Expr, String> {
         self.expr_pratt(0)
     }
 
     // simple Pratt parser
     // ref: https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
-    pub fn expr_pratt(&mut self, min_power: u8) -> Expr {
+    pub fn expr_pratt(&mut self, min_power: u8) -> Result<Expr, String> {
         // Prefix
         let mut lhs = match self.kind() {
             // unary
             TokenKind::Add | TokenKind::Sub | TokenKind::Not => {
                 let op = self.op();
-                let power = prefix_power(op);
+                let power = prefix_power(op)?;
                 self.next(); // skip unary op
-                let lhs = self.expr_pratt(power.r);
+                let lhs = self.expr_pratt(power.r)?;
                 Expr::Unary(op, Box::new(lhs))
             }
             // group
             TokenKind::LParen => {
                 self.next(); // skip (
-                let lhs = self.expr_pratt(0);
-                self.expect(TokenKind::RParen); // skip )
+                let lhs = self.expr_pratt(0)?;
+                self.expect(TokenKind::RParen)?; // skip )
                 lhs
             }
             // array
-            TokenKind::LSquare => self.array(),
+            TokenKind::LSquare => self.array()?,
             // normal
-            _ => self.atom(),
+            _ => self.atom()?,
         };
         loop {
             let op = match self.kind() {
@@ -151,34 +167,34 @@ impl<'a> Parser<'a> {
                 TokenKind::Eq | TokenKind::Neq | TokenKind::Lt | TokenKind::Gt | TokenKind::Le | TokenKind::Ge => self.op(),
                 TokenKind::RSquare => break,
                 TokenKind::RParen => break,
-                _ => panic!("Expected operator, got {:?}", self.kind()),
+                _ => return Err(format!("Expected operator, got {:?}", self.peek())),
             };
             // Postfix
-            if let Some(power) = postfix_power(op) {
+
+            if let Ok(Some(power)) = postfix_power(op) {
                 if power.l < min_power { break; }
                 self.next(); // skip postfix op
 
                 match op {
                     Op::LSquare => {
-                        let rhs = self.expr_pratt(0);
-                        self.expect(TokenKind::RSquare);
+                        let rhs = self.expr_pratt(0)?;
+                        self.expect(TokenKind::RSquare)?;
                         lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
                         continue;
                     }
-                    _ => panic!("Invalid postfix operator"),
+                    _ => return Err(format!("Invalid postfix operator: {}", op)),
                 }
             }
             // Infix
-            let power = infix_power(op);
+            let power = infix_power(op)?;
             if power.l < min_power {
                 break;
             }
             self.next(); // skip binary op
-            let rhs = self.expr_pratt(power.r);
+            let rhs = self.expr_pratt(power.r)?;
             lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
         }
-
-        lhs
+        Ok(lhs)
     }
 
     pub fn op(&mut self) -> Op {
@@ -200,11 +216,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn group(&mut self) -> Expr {
+    pub fn group(&mut self) -> Result<Expr, String> {
         self.next(); // skip (
-        let expr = self.expr();
-        self.next(); // skip )
-        expr
+        let expr = self.expr()?;
+        self.expect(TokenKind::RParen)?; // skip )
+        Ok(expr)
     }
 
     pub fn sep_array(&mut self) {
@@ -218,18 +234,27 @@ impl<'a> Parser<'a> {
         panic!("Expected array separator, got {:?}", self.kind());
     }
 
-    pub fn array(&mut self) -> Expr {
+    pub fn array(&mut self) -> Result<Expr, String> {
         self.next(); // skip [
         let mut elems = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RSquare) {
-            elems.push(self.expr());
+            elems.push(self.expr()?);
             self.sep_array();
         }
-        self.expect(TokenKind::RSquare); // skip ]
-        Expr::Array(elems)
+        self.expect(TokenKind::RSquare)?; // skip ]
+        Ok(Expr::Array(elems))
+    }
+    
+    pub fn ident(&mut self) -> Result<Expr, String> {
+        let name = self.cur.text.clone();
+        // check for existence
+        if !self.scope.exists(&name) {
+            return Err(format!("Undefined variable: {}", name));
+        }
+        Ok(Expr::Ident(name))
     }
 
-    pub fn atom(&mut self) -> Expr {
+    pub fn atom(&mut self) -> Result<Expr, String> {
         if self.is_kind(TokenKind::LParen) {
             return self.group();
         }
@@ -239,48 +264,49 @@ impl<'a> Parser<'a> {
             TokenKind::True => Expr::Bool(true),
             TokenKind::False => Expr::Bool(false),
             TokenKind::Str => Expr::Str(self.cur.text.clone()),
-            TokenKind::Ident => Expr::Ident(self.cur.text.clone()),
+            TokenKind::Ident => self.ident()?,
             TokenKind::Nil => Expr::Nil,
-            _ => panic!("Expected term, got {:?}", self.kind()),
+            _ => return Err(format!("Expected term, got {:?}", self.kind())),
         };
 
         self.next();
-        expr
+        Ok(expr)
     }
 
     // End of statement
-    pub fn expect_eos(&mut self) {
+    pub fn expect_eos(&mut self) -> Result<(), String> {
         while self.is_kind(TokenKind::Semi) || self.is_kind(TokenKind::Newline) {
             self.next();
         }
+        Ok(())
     }
 
-    pub fn parse_stmt(&mut self) -> Stmt {
+    pub fn parse_stmt(&mut self) -> Result<Stmt, String> {
         let stmt = match self.kind() {
-            TokenKind::If => self.parse_if(),
-            TokenKind::For => self.parse_for(),
-            TokenKind::Var => self.parse_var(),
-            _ => self.parse_expr_stmt(),
+            TokenKind::If => self.parse_if()?,
+            TokenKind::For => self.parse_for()?,
+            TokenKind::Var => self.parse_var()?,
+            _ => self.parse_expr_stmt()?,
         };
-        self.expect_eos();
-        stmt
+        self.expect_eos()?;
+        Ok(stmt)
     }
 
-    pub fn body(&mut self) -> Body {
-        self.expect(TokenKind::LBrace);
+    pub fn body(&mut self) -> Result<Body, String> {
+        self.expect(TokenKind::LBrace)?;
         let mut stmts = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            stmts.push(self.parse_stmt());
+            stmts.push(self.parse_stmt()?);
         }
-        self.expect(TokenKind::RBrace);
-        Body { stmts }
+        self.expect(TokenKind::RBrace)?;
+        Ok(Body { stmts })
     }
 
-    pub fn parse_if_contents(&mut self) -> (Vec<Branch>, Option<Body>) {
+    pub fn parse_if_contents(&mut self) -> Result<(Vec<Branch>, Option<Body>), String> {
         let mut branches = Vec::new();
         self.next(); // skip if
-        let cond = self.expr();
-        let body = self.body();
+        let cond = self.expr()?;
+        let body = self.body()?;
         branches.push(Branch { cond, body });
 
         let mut else_stmt = None;
@@ -289,36 +315,36 @@ impl<'a> Parser<'a> {
             // more branches
             if self.is_kind(TokenKind::If) {
                 self.next(); // skip if
-                let cond = self.expr();
-                let body = self.body();
+                let cond = self.expr()?;
+                let body = self.body()?;
                 branches.push(Branch { cond, body });
             } else {
                 // last else
-                else_stmt = Some(self.body());
+                else_stmt = Some(self.body()?);
             }
         }
-        (branches, else_stmt)
+        Ok((branches, else_stmt))
     }
 
-    pub fn parse_if_expr(&mut self) -> Expr {
-        let (branches, else_stmt) = self.parse_if_contents();
-        Expr::If(branches, else_stmt)
+    pub fn parse_if_expr(&mut self) -> Result<Expr, String> {
+        let (branches, else_stmt) = self.parse_if_contents()?;
+        Ok(Expr::If(branches, else_stmt))
     }
 
-    pub fn parse_if(&mut self) -> Stmt {
-        let (branches, else_stmt) = self.parse_if_contents();
-        Stmt::If(branches, else_stmt)
+    pub fn parse_if(&mut self) -> Result<Stmt, String> {
+        let (branches, else_stmt) = self.parse_if_contents()?;
+        Ok(Stmt::If(branches, else_stmt))
     }
 
-    pub fn parse_for(&mut self) -> Stmt {
+    pub fn parse_for(&mut self) -> Result<Stmt, String> {
         self.next(); // skip for
-        let cond = self.expr();
-        let body = self.body();
-        Stmt::For(cond, body)
+        let cond = self.expr()?;
+        let body = self.body()?;
+        Ok(Stmt::For(cond, body))
     }
 
     // An Expression that can be assigned to a variable
-    pub fn asn_expr(&mut self) -> Expr {
+    pub fn asn_expr(&mut self) -> Result<Expr, String> {
         if self.is_kind(TokenKind::If) {
             self.parse_if_expr()
         } else {
@@ -326,21 +352,23 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_var(&mut self) -> Stmt {
+    pub fn parse_var(&mut self) -> Result<Stmt, String> {
         self.next(); // skip var
         let name = self.cur.text.clone();
-        self.expect(TokenKind::Ident);
-        self.expect(TokenKind::Asn);
-        let expr = self.asn_expr();
-        Stmt::Var(Var { name: Name::new(name), expr })
+        self.expect(TokenKind::Ident)?;
+        self.expect(TokenKind::Asn)?;
+        let expr = self.asn_expr()?;
+        self.scope.define(name.clone());
+        let var = Var { name: Name::new(name), expr };
+        Ok(Stmt::Var(var))
     }
 
-    pub fn parse_expr_stmt(&mut self) -> Stmt {
-        let expr = self.expr();
+    pub fn parse_expr_stmt(&mut self) -> Result<Stmt, String> {
+        let expr = self.expr()?;
         if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
             self.next();
         }
-        Stmt::Expr(expr)
+        Ok(Stmt::Expr(expr))
     }
 }
 
@@ -348,44 +376,51 @@ impl<'a> Parser<'a> {
 mod tests {
     use super::*;
 
+    fn parse_once(code: &str) -> Code {
+        let mut scope = Universe::new();
+        parse(code, &mut scope).unwrap()
+    }
+
     #[test]
     fn test_parser() {
         let code = "1+2+3";
-        let mut parser = Parser::new(code);
-        let ast = parser.parse();
+        let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (stmt (bina (bina (int 1) (op +) (int 2)) (op +) (int 3))))");
     }
 
     #[test]
     fn test_if() {
         let code = "if true {1}";
-        let mut parser = Parser::new(code);
-        let ast = parser.parse();
+        let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (if (branch (true) (body (stmt (int 1))))");
     }
 
     #[test]
     fn test_if_else() {
         let code = "if false {1} else {2}";
-        let mut parser = Parser::new(code);
-        let ast = parser.parse();
+        let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (if (branch (false) (body (stmt (int 1))) (else (body (stmt (int 2))))");
     }
 
     #[test]
     fn test_for() {
         let code = "for true {1}";
-        let mut parser = Parser::new(code);
-        let ast = parser.parse();
+        let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (for (true) (body (stmt (int 1))))");
     }
 
     #[test]
     fn test_var() {
         let code = "var x = 41";
-        let mut parser = Parser::new(code);
-        let ast = parser.parse();
+        let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (var (name x) (int 41)))");
+    }
+
+    #[test]
+    fn test_var_use() {
+        let code = "var x = 41; x+1";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (var (name x) (int 41)) (stmt (bina (x) (op +) (int 1))))");
     }
 }
 

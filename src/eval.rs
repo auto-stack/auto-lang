@@ -1,14 +1,20 @@
 use crate::ast::{Code, Stmt, Expr, Op, Branch, Body, Var};
+use crate::parser;
 use crate::scope;
 use crate::value::Value;
 
-pub struct Evaler {
-    universe: scope::Universe,
+pub struct Evaler<'a> {
+    universe: &'a mut scope::Universe,
 }
 
-impl Evaler {
-    pub fn new() -> Self {
-        Evaler { universe: scope::Universe::new() }
+impl<'a> Evaler<'a> {
+    pub fn new(universe: &'a mut scope::Universe) -> Self {
+        Evaler { universe }
+    }
+
+    pub fn interpret(&mut self, code: &str) -> Result<Value, String> {
+        let ast = parser::parse(code, self.universe)?;
+        Ok(self.eval(&ast))
     }
 
     pub fn eval(&mut self, code: &Code) -> Value {
@@ -97,7 +103,7 @@ impl Evaler {
     fn eval_var(&mut self, var: &Var) -> Value {
         let value = self.eval_expr(&var.expr);
         self.universe.set_local(&var.name.text, value);
-        Value::Nil
+        Value::Void
     }
 
     fn eval_bina(&mut self, left: &Expr, op: &Op, right: &Expr) -> Value {
@@ -117,8 +123,9 @@ impl Evaler {
 
     fn asn(&mut self, left: &Expr, right: Value) -> Value {
         if let Expr::Ident(name) = left {   
+            // check if name exists
             self.universe.set_local(&name, right);
-            Value::Nil
+            Value::Void
         } else {
             panic!("Invalid assignment");
         }
