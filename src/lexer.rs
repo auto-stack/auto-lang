@@ -24,7 +24,7 @@ impl<'a> Lexer<'a> {
         let p = Pos {
             line: self.line,
             pos: self.pos,
-            len: len,
+            len,
         };
         self.pos += len;
         p
@@ -225,7 +225,8 @@ impl<'a> Lexer<'a> {
 
     fn tokens(&mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
-        while let token = self.next() {
+        loop {
+            let token = self.next();
             if token.kind == TokenKind::EOF {
                 break;
             }
