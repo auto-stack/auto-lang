@@ -1,22 +1,4 @@
 #V2
-4+4+1
-q
--1
--2
---1
-q
--1+3
--2+3
--2*4
-q
-a[0]
-q
-true
-!true
-!!true
-q
-2>1
-2>=4
 1+3>2
 q
 1+2
@@ -98,4 +80,22 @@ var c = 10
 a
 c
 a+1..c
+q
+for i in 1..5 {i}
+i
+var n = 0;
+for i in 1..5 { n = n + i }
+n
+for i in 1..=5 { n = n + i }
+n
+var k = [1, 2, 3]
+for z in k {n = n + k}
+z
+k
+n
+var n = 0;
+n
+for z in k {n = n + z}
+z
+n
 q

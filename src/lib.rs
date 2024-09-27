@@ -97,13 +97,6 @@ mod tests {
         assert_eq!(result, "11");
     }
 
-    // #[test]
-    // fn test_for() {
-    //     let code = "var sum = 0; for i in 0..10 { sum = sum + x; x = x + 1 }; sum";
-    //     let result = run(code).unwrap();
-    //     assert_eq!(result, "45");
-    // }
-
     #[test]
     fn teste_array() {
         let code = "[1, 2, 3]";
@@ -116,6 +109,13 @@ mod tests {
         let code = "1..5";
         let result = run(code).unwrap();
         assert_eq!(result, "1..5");
+    }
+
+    #[test]
+    fn test_for() {
+        let code = "var sum = 0; for i in 0..10 { sum = sum + i; i = i + 1 }; sum";
+        let result = run(code).unwrap();
+        assert_eq!(result, "45");
     }
 }
 

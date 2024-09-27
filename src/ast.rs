@@ -61,7 +61,7 @@ pub struct Var {
 pub enum Stmt {
     Expr(Expr),
     If(Vec<Branch>, Option<Body>),
-    For(Expr, Body),
+    For(Name, Expr, Body),
     Var(Var),
 }
 
@@ -93,7 +93,7 @@ impl fmt::Display for Stmt {
                 }
                 Ok(())
             },
-            Stmt::For(cond, body) => write!(f, "(for {} {})", cond, body),
+            Stmt::For(name, expr, body) => write!(f, "(for {} {} {})", name, expr, body),
             Stmt::Var(var) => write!(f, "(var {} {})", var.name, var.expr),
         }
     }
@@ -164,7 +164,7 @@ impl fmt::Display for Expr {
             Expr::Float(v) => write!(f, "(float {})", v),
             Expr::Bool(b) => write!(f, "({})", b),
             Expr::Str(s) => write!(f, "(\"{}\")", s),
-            Expr::Ident(i) => write!(f, "({})", i),
+            Expr::Ident(i) => write!(f, "(name {})", i),
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
             Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
             Expr::Array(elems) => write!(f, "(array {:?})", elems),
