@@ -21,6 +21,7 @@ pub enum TokenKind {
     RSquare,
     LBrace,
     RBrace,
+    Comma,
     Semi,
     Newline,
     Add,
@@ -43,6 +44,7 @@ pub enum TokenKind {
     If,
     Else,
     For,
+    Var,
 
 
     // EOF

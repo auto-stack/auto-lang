@@ -10,3 +10,4 @@ with-file-history = []
 [dependencies]
 clap = { version = "4.5.17", features = ["derive"] }
 rustyline = { version = "14.0.0", features = ["with-file-history"] }
+uuid = "1.6.0"
