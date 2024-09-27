@@ -295,6 +295,11 @@ impl<'a> Parser<'a> {
             self.expr()
         }
     }
+
+    pub fn iterable_expr(&mut self) -> Result<Expr, String> {
+        // TODO: how to check for range/array but reject other cases?
+        self.expr()
+    }
 }
 
 // Statements
@@ -358,10 +363,20 @@ impl<'a> Parser<'a> {
     }
 
     pub fn for_stmt(&mut self) -> Result<Stmt, String> {
-        self.next(); // skip for
-        let cond = self.expr()?;
-        let body = self.body()?;
-        Ok(Stmt::For(cond, body))
+        self.next(); // skip `for`
+        // enumerator
+        if self.is_kind(TokenKind::Ident) {
+            let name = self.cur.text.clone();
+            self.scope.enter_scope();
+            self.scope.define(name.clone());
+            self.next(); // skip name
+            self.expect(TokenKind::In)?;
+            let range = self.iterable_expr()?;
+            let body = self.body()?;
+            self.scope.exit_scope();
+            return Ok(Stmt::For(Name::new(name), range, body));
+        }
+        Err(format!("Expected for loop, got {:?}", self.kind()))
     }
 
     pub fn var_stmt(&mut self) -> Result<Stmt, String> {
@@ -415,13 +430,6 @@ mod tests {
     }
 
     #[test]
-    fn test_for() {
-        let code = "for true {1}";
-        let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (for (true) (body (stmt (int 1))))");
-    }
-
-    #[test]
     fn test_var() {
         let code = "var x = 41";
         let ast = parse_once(code);
@@ -432,7 +440,7 @@ mod tests {
     fn test_var_use() {
         let code = "var x = 41; x+1";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (var (name x) (int 41)) (stmt (bina (x) (op +) (int 1))))");
+        assert_eq!(ast.to_string(), "(code (var (name x) (int 41)) (stmt (bina (name x) (op +) (int 1))))");
     }
 
     #[test]
@@ -440,6 +448,13 @@ mod tests {
         let code = "1..5";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (stmt (bina (int 1) (op ..) (int 5))))");
+    }
+
+    #[test]
+    fn test_for() {
+        let code = "for i in 1..5 {i}";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 1) (op ..) (int 5)) (body (stmt (name i))))");
     }
 }
 

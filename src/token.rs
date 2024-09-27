@@ -52,7 +52,7 @@ pub enum TokenKind {
     Else,
     For,
     Var,
-
+    In,
 
     // EOF
     EOF,

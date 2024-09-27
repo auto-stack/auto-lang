@@ -29,7 +29,7 @@ impl<'a> Evaler<'a> {
         match stmt {
             Stmt::Expr(expr) => self.eval_expr(expr),
             Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
-            Stmt::For(cond, body) => self.eval_for(cond, body),
+            Stmt::For(name, expr, body) => self.eval_for(&name.text, expr, body),
             Stmt::Var(var) => self.eval_var(var),
         }
     }
@@ -87,17 +87,40 @@ impl<'a> Evaler<'a> {
         Value::Nil
     }
 
-    fn eval_for(&mut self, cond: &Expr, body: &Body) -> Value {
-        let mut value = Value::Nil;
+    fn eval_for(&mut self, name: &str, range: &Expr, body: &Body) -> Value {
         let mut max_loop = 100;
-        while self.eval_expr(cond).is_true() && max_loop > 0 {
-            value = self.eval_body(body);
-            max_loop -= 1;
+        let range = self.eval_expr(range);
+        match range {
+            Value::Range(start, end) => {
+                for i in start..end {
+                    self.universe.set_local(&name, Value::Integer(i));
+                    self.eval_body(body);
+                    max_loop -= 1;
+                }
+            },
+            Value::RangeEq(start, end) => {
+                for i in start..=end {
+                    self.universe.set_local(&name, Value::Integer(i));
+                    self.eval_body(body);
+                    max_loop -= 1;
+                }
+            },
+            Value::Array(values) => {
+                for i in 0..values.len() {
+                    self.universe.set_local(&name, values[i].clone());
+                    self.eval_body(body);
+                    max_loop -= 1;
+                }
+            },
+            _ => {
+                return Value::Error(format!("Invalid range {}", range));
+            }
         }
         if max_loop <= 0 {
-            println!("Warning: for loop max loop reached");
+            return Value::Error("Max loop reached".to_string());
+        } else {
+            return Value::Void;
         }
-        value
     }
 
     fn eval_var(&mut self, var: &Var) -> Value {

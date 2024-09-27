@@ -4,7 +4,6 @@ use std::iter::Peekable;
 use std::str::Chars;
 
 pub struct Lexer<'a> {
-    code: &'a str,
     chars: Peekable<Chars<'a>>,
     line: usize,
     pos: usize,
@@ -13,7 +12,6 @@ pub struct Lexer<'a> {
 impl<'a> Lexer<'a> {
     pub fn new(code: &'a str) -> Self {
         Lexer {
-            code,
             chars: code.chars().peekable(),
             line: 0,
             pos: 0,
@@ -98,11 +96,7 @@ impl<'a> Lexer<'a> {
         Token::str(self.pos(text.len()), text)
     }
 
-    fn keyword_tok(&mut self, kind: TokenKind, text: &str) -> Option<Token> {
-        Some(Token::new(kind, self.pos(text.len()), text.to_string()))
-    }
-
-    fn dot(&mut self) -> Token {
+    fn range(&mut self) -> Token {
         self.chars.next(); // skip .
         if self.peek('.') {
             self.chars.next();
@@ -115,6 +109,10 @@ impl<'a> Lexer<'a> {
         Token::new(TokenKind::Dot, self.pos(1), ".".to_string())
     }
 
+    fn keyword_tok(&mut self, kind: TokenKind, text: &str) -> Option<Token> {
+        Some(Token::new(kind, self.pos(text.len()), text.to_string()))
+    }
+
     pub fn keyword(&mut self, text: String) -> Option<Token> {
         match text.as_str() {
             "true" => self.keyword_tok(TokenKind::True, &text),
@@ -124,6 +122,7 @@ impl<'a> Lexer<'a> {
             "else" => self.keyword_tok(TokenKind::Else, &text),
             "for" => self.keyword_tok(TokenKind::For, &text),
             "var" => self.keyword_tok(TokenKind::Var, &text),
+            "in" => self.keyword_tok(TokenKind::In, &text),
             _ => None,
         }
     }
@@ -216,7 +215,7 @@ impl<'a> Lexer<'a> {
                     return self.with_equal(TokenKind::Asn, TokenKind::Eq, c);
                 }
                 '.' => {
-                    return self.dot();
+                    return self.range();
                 }
                 _ => {
                     if c.is_digit(10) {
