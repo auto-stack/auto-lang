@@ -117,6 +117,8 @@ impl<'a> Evaler<'a> {
             Op::Div => self.div(left_value, right_value),
             Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => left_value.comp(op, &right_value),
             Op::Asn => self.asn(left, right_value),
+            Op::Range => self.range(left, right),
+            Op::RangeEq => self.range_eq(left, right),
             _ => Value::Nil,
         }
     }
@@ -128,6 +130,24 @@ impl<'a> Evaler<'a> {
             Value::Void
         } else {
             panic!("Invalid assignment");
+        }
+    }
+
+    fn range(&mut self, left: &Expr, right: &Expr) -> Value {
+        let left_value = self.eval_expr(left);
+        let right_value = self.eval_expr(right);
+        match (&left_value, &right_value) {
+            (Value::Integer(left), Value::Integer(right)) => Value::Range(*left, *right),
+            _ => Value::Error(format!("Invalid range {}..{}", left_value, right_value)),
+        }
+    }
+
+    fn range_eq(&mut self, left: &Expr, right: &Expr) -> Value {
+        let left_value = self.eval_expr(left);
+        let right_value = self.eval_expr(right);
+        match (&left_value, &right_value) {
+            (Value::Integer(left), Value::Integer(right)) => Value::RangeEq(*left, *right),
+            _ => Value::Error(format!("Invalid range {}..={}", left_value, right_value)),
         }
     }
 

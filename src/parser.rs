@@ -39,13 +39,14 @@ const PREC_OR: InfixPrec = infix_prec(2);
 const PREC_AND: InfixPrec = infix_prec(3);
 const PREC_EQ: InfixPrec = infix_prec(4);
 const PREC_CMP: InfixPrec = infix_prec(5);
-const PREC_ADD: InfixPrec = infix_prec(6);
-const PREC_MUL: InfixPrec = infix_prec(7);
-const PREC_SIGN: PrefixPrec = prefix_prec(8);
-const PREC_NOT: PrefixPrec = prefix_prec(9);
-const PREC_INDEX: PostfixPrec = postfix_prec(10);
-const PREC_CALL: InfixPrec  = infix_prec(11);
-const PREC_ATOM: InfixPrec = infix_prec(12);
+const PREC_Range: InfixPrec = infix_prec(6);
+const PREC_ADD: InfixPrec = infix_prec(7);
+const PREC_MUL: InfixPrec = infix_prec(8);
+const PREC_SIGN: PrefixPrec = prefix_prec(9);
+const PREC_NOT: PrefixPrec = prefix_prec(10);
+const PREC_INDEX: PostfixPrec = postfix_prec(11);
+const PREC_CALL: InfixPrec  = infix_prec(12);
+const PREC_ATOM: InfixPrec = infix_prec(13);
 
 fn prefix_power(op: Op) -> Result<PrefixPrec, String> {
     match op {
@@ -69,6 +70,7 @@ fn infix_power(op: Op) -> Result<InfixPrec, String> {
         Op::Asn => Ok(PREC_ASN),
         Op::Eq | Op::Neq => Ok(PREC_EQ),
         Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(PREC_CMP),
+        Op::Range | Op::RangeEq => Ok(PREC_Range),
         _ => return Err(format!("Invalid infix operator: {}", op)),
     }
 }
@@ -124,11 +126,15 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Result<Code, String> {
         let mut stmts = Vec::new();
         while !self.is_kind(TokenKind::EOF) {
-            stmts.push(self.parse_stmt()?)
+            stmts.push(self.stmt()?)
         }
         Ok(Code { stmts })
     }
 
+}
+
+// Expressions
+impl<'a> Parser<'a> {
     pub fn expr(&mut self) -> Result<Expr, String> {
         self.expr_pratt(0)
     }
@@ -162,6 +168,7 @@ impl<'a> Parser<'a> {
             let op = match self.kind() {
                 TokenKind::EOF | TokenKind::Semi | TokenKind::LBrace | TokenKind::RBrace | TokenKind::Comma => break,
                 TokenKind::Add | TokenKind::Sub | TokenKind::Mul | TokenKind::Div | TokenKind::Not => self.op(),
+                TokenKind::Range | TokenKind::RangeEq => self.op(),
                 TokenKind::LSquare => self.op(),
                 TokenKind::Asn => self.op(),
                 TokenKind::Eq | TokenKind::Neq | TokenKind::Lt | TokenKind::Gt | TokenKind::Le | TokenKind::Ge => self.op(),
@@ -212,6 +219,8 @@ impl<'a> Parser<'a> {
             TokenKind::Gt => { Op::Gt },
             TokenKind::Le => { Op::Le },
             TokenKind::Ge => { Op::Ge },
+            TokenKind::Range => { Op::Range },
+            TokenKind::RangeEq => { Op::RangeEq },
             _ => panic!("Expected operator"),
         }
     }
@@ -259,7 +268,7 @@ impl<'a> Parser<'a> {
             return self.group();
         }
         let expr = match self.kind() {
-            TokenKind::Integer => Expr::Integer(self.cur.text.parse().unwrap()),
+            TokenKind::Int => Expr::Integer(self.cur.text.parse().unwrap()),
             TokenKind::Float => Expr::Float(self.cur.text.parse().unwrap()),
             TokenKind::True => Expr::Bool(true),
             TokenKind::False => Expr::Bool(false),
@@ -272,7 +281,24 @@ impl<'a> Parser<'a> {
         self.next();
         Ok(expr)
     }
+    
+    pub fn if_expr(&mut self) -> Result<Expr, String> {
+        let (branches, else_stmt) = self.if_contents()?;
+        Ok(Expr::If(branches, else_stmt))
+    }
 
+    // An Expression that can be assigned to a variable, e.g. right-hand side of an assignment
+    pub fn rhs_expr(&mut self) -> Result<Expr, String> {
+        if self.is_kind(TokenKind::If) {
+            self.if_expr()
+        } else {
+            self.expr()
+        }
+    }
+}
+
+// Statements
+impl<'a> Parser<'a> {
     // End of statement
     pub fn expect_eos(&mut self) -> Result<(), String> {
         while self.is_kind(TokenKind::Semi) || self.is_kind(TokenKind::Newline) {
@@ -281,12 +307,12 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    pub fn parse_stmt(&mut self) -> Result<Stmt, String> {
+    pub fn stmt(&mut self) -> Result<Stmt, String> {
         let stmt = match self.kind() {
-            TokenKind::If => self.parse_if()?,
-            TokenKind::For => self.parse_for()?,
-            TokenKind::Var => self.parse_var()?,
-            _ => self.parse_expr_stmt()?,
+            TokenKind::If => self.if_stmt()?,
+            TokenKind::For => self.for_stmt()?,
+            TokenKind::Var => self.var_stmt()?,
+            _ => self.expr_stmt()?,
         };
         self.expect_eos()?;
         Ok(stmt)
@@ -296,13 +322,13 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LBrace)?;
         let mut stmts = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            stmts.push(self.parse_stmt()?);
+            stmts.push(self.stmt()?);
         }
         self.expect(TokenKind::RBrace)?;
         Ok(Body { stmts })
     }
 
-    pub fn parse_if_contents(&mut self) -> Result<(Vec<Branch>, Option<Body>), String> {
+    pub fn if_contents(&mut self) -> Result<(Vec<Branch>, Option<Body>), String> {
         let mut branches = Vec::new();
         self.next(); // skip if
         let cond = self.expr()?;
@@ -326,44 +352,30 @@ impl<'a> Parser<'a> {
         Ok((branches, else_stmt))
     }
 
-    pub fn parse_if_expr(&mut self) -> Result<Expr, String> {
-        let (branches, else_stmt) = self.parse_if_contents()?;
-        Ok(Expr::If(branches, else_stmt))
-    }
-
-    pub fn parse_if(&mut self) -> Result<Stmt, String> {
-        let (branches, else_stmt) = self.parse_if_contents()?;
+    pub fn if_stmt(&mut self) -> Result<Stmt, String> {
+        let (branches, else_stmt) = self.if_contents()?;
         Ok(Stmt::If(branches, else_stmt))
     }
 
-    pub fn parse_for(&mut self) -> Result<Stmt, String> {
+    pub fn for_stmt(&mut self) -> Result<Stmt, String> {
         self.next(); // skip for
         let cond = self.expr()?;
         let body = self.body()?;
         Ok(Stmt::For(cond, body))
     }
 
-    // An Expression that can be assigned to a variable
-    pub fn asn_expr(&mut self) -> Result<Expr, String> {
-        if self.is_kind(TokenKind::If) {
-            self.parse_if_expr()
-        } else {
-            self.expr()
-        }
-    }
-
-    pub fn parse_var(&mut self) -> Result<Stmt, String> {
+    pub fn var_stmt(&mut self) -> Result<Stmt, String> {
         self.next(); // skip var
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
         self.expect(TokenKind::Asn)?;
-        let expr = self.asn_expr()?;
+        let expr = self.rhs_expr()?;
         self.scope.define(name.clone());
         let var = Var { name: Name::new(name), expr };
         Ok(Stmt::Var(var))
     }
 
-    pub fn parse_expr_stmt(&mut self) -> Result<Stmt, String> {
+    pub fn expr_stmt(&mut self) -> Result<Stmt, String> {
         let expr = self.expr()?;
         if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
             self.next();
@@ -421,6 +433,13 @@ mod tests {
         let code = "var x = 41; x+1";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (var (name x) (int 41)) (stmt (bina (x) (op +) (int 1))))");
+    }
+
+    #[test]
+    fn test_range() {
+        let code = "1..5";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (stmt (bina (int 1) (op ..) (int 5))))");
     }
 }
 
