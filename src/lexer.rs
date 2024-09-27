@@ -49,7 +49,8 @@ impl<'a> Lexer<'a> {
 
     pub fn print(&mut self) {
         println!("--- Tokens ---");
-        while let token = self.next() {
+        loop {
+            let token = self.next();
             println!("  {:?}: '{}' at line {}, position {}",
                 token.kind,
                 token.text,
@@ -63,9 +64,6 @@ impl<'a> Lexer<'a> {
         println!("--- Tokens End ---");
     }
 
-    pub fn is_kind(&mut self, kind: TokenKind) -> bool {
-        self.next().kind == kind
-    }
 }
 
 // Lexer methods for various token types
@@ -119,6 +117,7 @@ impl<'a> Lexer<'a> {
             "if" => self.keyword_tok(TokenKind::If, &text),
             "else" => self.keyword_tok(TokenKind::Else, &text),
             "for" => self.keyword_tok(TokenKind::For, &text),
+            "var" => self.keyword_tok(TokenKind::Var, &text),
             _ => None,
         }
     }
@@ -176,6 +175,9 @@ impl<'a> Lexer<'a> {
                 }
                 '"' => {
                     return self.str();
+                }
+                ',' => {
+                    return self.single(TokenKind::Comma, c);
                 }
                 ';' => {
                     return self.single(TokenKind::Semi, c);

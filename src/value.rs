@@ -8,6 +8,7 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Str(String),
+    Array(Vec<Value>),
     Nil,
 }
 
@@ -16,7 +17,19 @@ fn float_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < epsilon
 }
 
+fn print_array(f: &mut Formatter<'_>, value: &Vec<Value>) -> fmt::Result {
+    write!(f, "[")?;
+    for (i, v) in value.iter().enumerate() {
+        write!(f, "{}", v)?;
+        if i < value.len() - 1 {
+            write!(f, ", ")?;
+        }
+    }
+    write!(f, "]")
+}
+
 impl Display for Value {
+
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Value::Str(value) => write!(f, "{}", value),
@@ -24,6 +37,7 @@ impl Display for Value {
             Value::Float(value) => write!(f, "{}", value),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Nil => write!(f, "nil"),
+            Value::Array(value) => print_array(f, value),
         }
     }
 }

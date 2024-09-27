@@ -33,10 +33,36 @@ impl fmt::Display for Branch {
 }
 
 #[derive(Debug)]
+pub struct Name {
+    pub text: String,
+}
+
+impl Name {
+    pub fn new(text: String) -> Name {
+        Name { text }
+    }
+}
+
+impl fmt::Display for Name {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(name {})", self.text)
+    }
+}
+
+
+#[derive(Debug)]
+pub struct Var {
+    pub name: Name,
+    pub expr: Expr,
+}
+
+
+#[derive(Debug)]
 pub enum Stmt {
     Expr(Expr),
     If(Vec<Branch>, Option<Body>),
     For(Expr, Body),
+    Var(Var),
 }
 
 #[derive(Debug)]
@@ -68,6 +94,7 @@ impl fmt::Display for Stmt {
                 Ok(())
             },
             Stmt::For(cond, body) => write!(f, "(for {} {})", cond, body),
+            Stmt::Var(var) => write!(f, "(var {} {})", var.name, var.expr),
         }
     }
 }
@@ -120,6 +147,9 @@ pub enum Expr {
     // composite exprs
     Unary(Op, Box<Expr>),
     Bina(Box<Expr>, Op, Box<Expr>),
+    Array(Vec<Expr>),
+    // stmt exprs
+    If(Vec<Branch>, Option<Body>),
     Nil,
 }
 
@@ -133,6 +163,8 @@ impl fmt::Display for Expr {
             Expr::Ident(i) => write!(f, "({})", i),
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
             Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
+            Expr::Array(elems) => write!(f, "(array {:?})", elems),
+            Expr::If(branches, else_stmt) => write!(f, "(if {:?} {:?})", branches, else_stmt),
             Expr::Nil => write!(f, "(nil)"),
         }
     }
