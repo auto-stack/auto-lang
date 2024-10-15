@@ -1,4 +1,4 @@
-use crate::ast::{Code, Stmt, Expr, Op, Branch, Body, Var};
+use crate::ast::{Body, Branch, Code, Expr, Fn, Op, Stmt, Var};
 use crate::parser;
 use crate::scope;
 use crate::value::Value;
@@ -31,6 +31,7 @@ impl<'a> Evaler<'a> {
             Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
             Stmt::For(name, expr, body) => self.eval_for(&name.text, expr, body),
             Stmt::Var(var) => self.eval_var(var),
+            Stmt::Fn(fn_decl) => self.eval_fn(fn_decl),
         }
     }
 
@@ -97,21 +98,21 @@ impl<'a> Evaler<'a> {
                     self.eval_body(body);
                     max_loop -= 1;
                 }
-            },
+            }
             Value::RangeEq(start, end) => {
                 for i in start..=end {
                     self.universe.set_local(&name, Value::Integer(i));
                     self.eval_body(body);
                     max_loop -= 1;
                 }
-            },
+            }
             Value::Array(values) => {
                 for i in 0..values.len() {
                     self.universe.set_local(&name, values[i].clone());
                     self.eval_body(body);
                     max_loop -= 1;
                 }
-            },
+            }
             _ => {
                 return Value::Error(format!("Invalid range {}", range));
             }
@@ -129,6 +130,12 @@ impl<'a> Evaler<'a> {
         Value::Void
     }
 
+    fn eval_fn(&mut self, fn_decl: &Fn) -> Value {
+        self.universe
+            .set_global(&fn_decl.name.text, Value::Fn(fn_decl.clone()));
+        Value::Void
+    }
+
     fn eval_bina(&mut self, left: &Expr, op: &Op, right: &Expr) -> Value {
         let left_value = self.eval_expr(left);
         let right_value = self.eval_expr(right);
@@ -138,7 +145,9 @@ impl<'a> Evaler<'a> {
             Op::Sub => self.sub(left_value, right_value),
             Op::Mul => self.mul(left_value, right_value),
             Op::Div => self.div(left_value, right_value),
-            Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => left_value.comp(op, &right_value),
+            Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => {
+                left_value.comp(op, &right_value)
+            }
             Op::Asn => self.asn(left, right_value),
             Op::Range => self.range(left, right),
             Op::RangeEq => self.range_eq(left, right),
@@ -147,7 +156,7 @@ impl<'a> Evaler<'a> {
     }
 
     fn asn(&mut self, left: &Expr, right: Value) -> Value {
-        if let Expr::Ident(name) = left {   
+        if let Expr::Ident(name) = left {
             // check if name exists
             self.universe.set_local(&name, right);
             Value::Void
@@ -196,6 +205,26 @@ impl<'a> Evaler<'a> {
         Value::Array(values)
     }
 
+    fn call(&mut self, name: &Expr, args: &Vec<Expr>) -> Value {
+        let name = self.eval_expr(name);
+        match name {
+            Value::Fn(fn_decl) => self.eval_fn_call(&fn_decl, args),
+            _ => Value::Error(format!("Invalid function call {}", name)),
+        }
+    }
+
+    fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Vec<Expr>) -> Value {
+        self.universe.enter_scope();
+        for (i, arg) in args.iter().enumerate() {
+            let val = self.eval_expr(arg);
+            let name = &fn_decl.params[i].name.text;
+            self.universe.set_local(&name, val);
+        }
+        let result = self.eval_body(&fn_decl.body);
+        self.universe.exit_scope();
+        result
+    }
+
     fn eval_expr(&mut self, expr: &Expr) -> Value {
         match expr {
             Expr::Integer(value) => Value::Integer(*value as i32),
@@ -208,10 +237,8 @@ impl<'a> Evaler<'a> {
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
             Expr::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
             Expr::Array(elems) => self.array(elems),
+            Expr::Call(name, args) => self.call(name, args),
             Expr::Nil => Value::Nil,
         }
     }
 }
-
-
-

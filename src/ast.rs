@@ -20,7 +20,7 @@ impl fmt::Display for Code {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Branch {
     pub cond: Expr,
     pub body: Body,
@@ -32,7 +32,7 @@ impl fmt::Display for Branch {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Name {
     pub text: String,
 }
@@ -50,22 +50,23 @@ impl fmt::Display for Name {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Var {
     pub name: Name,
     pub expr: Expr,
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
     If(Vec<Branch>, Option<Body>),
     For(Name, Expr, Body),
     Var(Var),
+    Fn(Fn),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Body {
     pub stmts: Vec<Stmt>,
 }
@@ -95,6 +96,7 @@ impl fmt::Display for Stmt {
             },
             Stmt::For(name, expr, body) => write!(f, "(for {} {} {})", name, expr, body),
             Stmt::Var(var) => write!(f, "(var {} {})", var.name, var.expr),
+            Stmt::Fn(fn_decl) => write!(f, "(fn {} {:?} {})", fn_decl.name, fn_decl.params, fn_decl.body),
         }
     }
 }
@@ -107,6 +109,7 @@ pub enum Op {
     Div,
     Not,
     LSquare,
+    LParen,
     Asn,
     Eq,
     Neq,
@@ -136,11 +139,12 @@ impl fmt::Display for Op {
             Op::Ge => write!(f, "(op >=)"),
             Op::Range => write!(f, "(op ..)"),
             Op::RangeEq => write!(f, "(op ..=)"),
+            Op::LParen => write!(f, "(op ()"),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     // value exprs
     Integer(i32),
@@ -152,6 +156,7 @@ pub enum Expr {
     Unary(Op, Box<Expr>),
     Bina(Box<Expr>, Op, Box<Expr>),
     Array(Vec<Expr>),
+    Call(/*name*/Box<Expr>, /*args*/Vec<Expr>),
     // stmt exprs
     If(Vec<Branch>, Option<Body>),
     Nil,
@@ -169,8 +174,58 @@ impl fmt::Display for Expr {
             Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
             Expr::Array(elems) => write!(f, "(array {:?})", elems),
             Expr::If(branches, else_stmt) => write!(f, "(if {:?} {:?})", branches, else_stmt),
+            Expr::Call(name, args) => write!(f, "(call {} ({:?}))", name, args),
             Expr::Nil => write!(f, "(nil)"),
         }
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Param {
+    pub name: Name,
+    pub default: Option<Expr>,
+}
+
+impl PartialEq for Param {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl fmt::Display for Param {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(param {} {:?})", self.name, self.default)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Fn {
+    pub name: Name,
+    pub params: Vec<Param>,
+    pub body: Body,
+}
+
+impl PartialEq for Fn {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.params == other.params
+    }
+}
+
+impl fmt::Display for Fn {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(fn {} {:?} {})", self.name, self.params, self.body)
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct FnCall {
+    pub name: Name,
+    pub args: Vec<Expr>,
+}
+
+impl fmt::Display for FnCall {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(fn_call {} {:?})", self.name, self.args)
+    }
+}
