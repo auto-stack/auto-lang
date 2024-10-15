@@ -26,8 +26,9 @@ root: dir
 root_upper: root.upper()
 
 // 字符串
-views: "${root}/views"
-styles: "${dir}/styles"
+views: f"${dir}/views"
+// 可以在配置中查找key
+styles: f"${views}/styles"
 
 // 对象
 attrs: {
@@ -47,16 +48,13 @@ Auto语言的配置文件（Auto Config）后缀名为`.ac`。
 project: "osal"
 version: "v0.0.1"
 
-arg(heap, "heap_5")
-arg(config_inc, "demo")
-
-// Dependencies
+// 依赖项目，可以指定参数
 dep(FreeRTOS, "v0.0.3") {
-    heap: heap
-    config_inc: config_inc
+    heap: "heap_5"
+    config_inc: "demo/inc"
 }
 
-// Libs
+// 本工程中的库
 lib(osal) {
     pac(hsm) {
         skip: ["hsm_test.h", "hsm_test.c"]
@@ -65,12 +63,16 @@ lib(osal) {
     link: FreeRTOS
 }
 
-// Ports
+// 可以输出到不同的平台，指定不同的编译工具链、架构和芯片
 port(windows, cmake, x64, win32, "v1.0.0")
+port(stm32, iar, arm_cortex_m4, f103RE, "v1.0.0")
 
-// Executables
+// 可执行文件
 exe(demo) {
+    // 静态链接
     link: osal
+    // 指定输出文件名
+    outfile: "demo.bin"
 }
 ```
 
@@ -82,25 +84,32 @@ exe(demo) {
 // 脚本模式下内置了常用的库
 print "Hello, world!"
 
-mkdir src
-cd src
+// 下面的命令会自动转化为函数调用：`mkdir("src/app", p=true)`
+mkdir -p src/app
+
+cd src/app
 touch main.rs
 
 // 也可以定义变量和函数
 var ext = ".c"
 fn find_c_files(dir) {
-    let ret = for file in ls(dir) {
-        if (file.endswith(ext)) {
-            yield file
-        }
-    }
-    ret.sort()
+    ls(dir).filter(|f| f.endswith(ext)).sort()
 }
 
-// 可以循环调用
-for f in find_c_files(".") {
-    rename f ".c" ".cc"
+// 可以顺序调用命令
+touch "merged.txt"
+for f in find_c_files("src/app") {
+    cat f >> "merged.txt"
 }
+
+// 可以异步调用多个命令
+let downloads = for f in readlines("remote_files.txt").map(trim) {
+    async curl f"http://database.com/download?file=${f}"
+}
+
+// 可以选择等待所有的文件都下载完成
+await downloads.join()
+
 ```
 
 Auto语言的脚本（Auto Script）文件后缀名为`.as`。
