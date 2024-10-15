@@ -96,7 +96,7 @@ impl fmt::Display for Stmt {
             },
             Stmt::For(name, expr, body) => write!(f, "(for {} {} {})", name, expr, body),
             Stmt::Var(var) => write!(f, "(var {} {})", var.name, var.expr),
-            Stmt::Fn(fn_decl) => write!(f, "(fn {} {:?} {})", fn_decl.name, fn_decl.params, fn_decl.body),
+            Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),
         }
     }
 }
@@ -194,7 +194,12 @@ impl PartialEq for Param {
 
 impl fmt::Display for Param {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(param {} {:?})", self.name, self.default)
+        write!(f, "(param {}", self.name.text)?;
+        if let Some(default) = &self.default {
+            write!(f, "={}", default)?;
+        }
+        write!(f, ")")?;
+        Ok(())
     }
 }
 
@@ -213,7 +218,14 @@ impl PartialEq for Fn {
 
 impl fmt::Display for Fn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(fn {} {:?} {})", self.name, self.params, self.body)
+        write!(f, "(fn {} (params ", self.name)?;
+        for (i, param) in self.params.iter().enumerate() {
+            write!(f, "{}", param)?;
+            if i < self.params.len() - 1 {
+                write!(f, " ")?;
+            }
+        }
+        write!(f, ") {}", self.body)
     }
 }
 

@@ -16,4 +16,4 @@ Cargo.lock
 /target
 
 # hisotry
-history.txt
+.history.txt

@@ -542,7 +542,14 @@ mod tests {
     fn test_fn() {
         let code = "fn add(x, y) { x+y }";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (fn (name add) (params (param x) (param y)) (body (stmt (bina (name x) (op +) (name y)))))");
+        assert_eq!(ast.to_string(), "(code (fn (name add) (params (param x) (param y)) (body (stmt (bina (name x) (op +) (name y))))");
+    }
+
+    #[test]
+    fn test_fn_call() {
+        let code = "add(1, 2)";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (fn_call (name add) (args (int 1) (int 2))))");
     }
 }
 
