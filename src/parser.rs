@@ -547,9 +547,10 @@ mod tests {
 
     #[test]
     fn test_fn_call() {
-        let code = "add(1, 2)";
+        let code = "fn add(x, y) { x+y }; add(1, 2)";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (fn_call (name add) (args (int 1) (int 2))))");
+        let call = ast.stmts[1].clone();
+        assert_eq!(call.to_string(), "(stmt (call (name add) (args (int 1) (int 2)))");
     }
 }
 
