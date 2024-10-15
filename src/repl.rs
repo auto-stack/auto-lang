@@ -6,7 +6,7 @@ use rustyline::{DefaultEditor, Result};
 pub fn main_loop() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
     #[cfg(feature = "with-file-history")]
-    if rl.load_history("history.txt").is_err() {
+    if rl.load_history(".history.txt").is_err() {
         println!("No previous history");
     }
     // initialize evaler
