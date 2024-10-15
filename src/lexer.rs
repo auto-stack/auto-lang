@@ -123,6 +123,7 @@ impl<'a> Lexer<'a> {
             "for" => self.keyword_tok(TokenKind::For, &text),
             "var" => self.keyword_tok(TokenKind::Var, &text),
             "in" => self.keyword_tok(TokenKind::In, &text),
+            "fn" => self.keyword_tok(TokenKind::Fn, &text),
             _ => None,
         }
     }

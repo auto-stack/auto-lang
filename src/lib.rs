@@ -117,6 +117,13 @@ mod tests {
         let result = run(code).unwrap();
         assert_eq!(result, "45");
     }
+
+    #[test]
+    fn test_fn() {
+        let code = "fn add(a, b) { a + b }; add(12, 2)";
+        let result = run(code).unwrap();
+        assert_eq!(result, "14");
+    }
 }
 
 

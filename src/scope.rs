@@ -70,13 +70,14 @@ impl Universe {
         false
     }
 
-    pub fn define(&mut self, name: String) {
-        self.current_scope_mut().put_symbol(name.as_str(), Meta::Var);
+    pub fn define(&mut self, name: String, meta: Meta) {
+        self.current_scope_mut().put_symbol(name.as_str(), meta);
     }
 }
 
-enum Meta {
-    Var, // TODO: Add more info, like type, etc.
+pub enum Meta {
+    Var(ast::Var), // TODO: Add more info, like type, etc.
+    Fn(ast::Fn),
 }
 
 pub struct Scope {

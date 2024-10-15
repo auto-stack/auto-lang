@@ -1,7 +1,8 @@
 use crate::token::{Token, TokenKind};
-use crate::ast::{Code, Stmt, Expr, Op, Branch, Body, Name, Var};
+use crate::ast::{Code, Stmt, Expr, Op, Branch, Body, Name, Var, Fn, Param};
 use crate::lexer::Lexer;
 use crate::scope::Universe;
+use crate::scope::Meta;
 
 pub struct PostfixPrec {
     l: u8,
@@ -44,8 +45,8 @@ const PREC_ADD: InfixPrec = infix_prec(7);
 const PREC_MUL: InfixPrec = infix_prec(8);
 const PREC_SIGN: PrefixPrec = prefix_prec(9);
 const PREC_NOT: PrefixPrec = prefix_prec(10);
-const PREC_INDEX: PostfixPrec = postfix_prec(11);
-const PREC_CALL: InfixPrec  = infix_prec(12);
+const PREC_CALL: PostfixPrec = postfix_prec(11);
+const PREC_INDEX: PostfixPrec = postfix_prec(12);
 const PREC_ATOM: InfixPrec = infix_prec(13);
 
 fn prefix_power(op: Op) -> Result<PrefixPrec, String> {
@@ -59,6 +60,7 @@ fn prefix_power(op: Op) -> Result<PrefixPrec, String> {
 fn postfix_power(op: Op) -> Result<Option<PostfixPrec>, String> {
     match op {
         Op::LSquare => Ok(Some(PREC_INDEX)),
+        Op::LParen => Ok(Some(PREC_CALL)),
         _ => Ok(None),
     }
 }
@@ -120,6 +122,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+
 }
 
 impl<'a> Parser<'a> {
@@ -170,6 +173,7 @@ impl<'a> Parser<'a> {
                 TokenKind::Add | TokenKind::Sub | TokenKind::Mul | TokenKind::Div | TokenKind::Not => self.op(),
                 TokenKind::Range | TokenKind::RangeEq => self.op(),
                 TokenKind::LSquare => self.op(),
+                TokenKind::LParen => self.op(),
                 TokenKind::Asn => self.op(),
                 TokenKind::Eq | TokenKind::Neq | TokenKind::Lt | TokenKind::Gt | TokenKind::Le | TokenKind::Ge => self.op(),
                 TokenKind::RSquare => break,
@@ -187,6 +191,12 @@ impl<'a> Parser<'a> {
                         let rhs = self.expr_pratt(0)?;
                         self.expect(TokenKind::RSquare)?;
                         lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
+                        continue;
+                    }
+                    Op::LParen => {
+                        let args = self.args()?;
+                        self.expect(TokenKind::RParen)?;
+                        lhs = Expr::Call(Box::new(lhs), args);
                         continue;
                     }
                     _ => return Err(format!("Invalid postfix operator: {}", op)),
@@ -211,6 +221,7 @@ impl<'a> Parser<'a> {
             TokenKind::Mul => { Op::Mul },
             TokenKind::Div => { Op::Div },
             TokenKind::LSquare => { Op::LSquare },
+            TokenKind::LParen => { Op::LParen },
             TokenKind::Not => { Op::Not },
             TokenKind::Asn => { Op::Asn },
             TokenKind::Eq => { Op::Eq },
@@ -221,7 +232,7 @@ impl<'a> Parser<'a> {
             TokenKind::Ge => { Op::Ge },
             TokenKind::Range => { Op::Range },
             TokenKind::RangeEq => { Op::RangeEq },
-            _ => panic!("Expected operator"),
+            _ => panic!("Expected operator, got {:?}", self.kind()),
         }
     }
 
@@ -252,6 +263,26 @@ impl<'a> Parser<'a> {
         }
         self.expect(TokenKind::RSquare)?; // skip ]
         Ok(Expr::Array(elems))
+    }
+
+    pub fn sep_args(&mut self) {
+        if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
+            self.next();
+            return;
+        }
+        if self.is_kind(TokenKind::RParen) {
+            return;
+        }
+        panic!("Expected argument separator, got {:?}", self.kind());
+    }
+
+    pub fn args(&mut self) -> Result<Vec<Expr>, String> {
+        let mut args = Vec::new();
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RParen) {
+            args.push(self.expr()?);
+            self.sep_args();
+        }
+        Ok(args)
     }
     
     pub fn ident(&mut self) -> Result<Expr, String> {
@@ -317,6 +348,7 @@ impl<'a> Parser<'a> {
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
             TokenKind::Var => self.var_stmt()?,
+            TokenKind::Fn => self.fn_stmt()?,
             _ => self.expr_stmt()?,
         };
         self.expect_eos()?;
@@ -368,7 +400,8 @@ impl<'a> Parser<'a> {
         if self.is_kind(TokenKind::Ident) {
             let name = self.cur.text.clone();
             self.scope.enter_scope();
-            self.scope.define(name.clone());
+            let meta = Meta::Var(Var { name: Name::new(name.clone()), expr: Expr::Nil });
+            self.scope.define(name.clone(), meta);
             self.next(); // skip name
             self.expect(TokenKind::In)?;
             let range = self.iterable_expr()?;
@@ -385,9 +418,56 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Ident)?;
         self.expect(TokenKind::Asn)?;
         let expr = self.rhs_expr()?;
-        self.scope.define(name.clone());
-        let var = Var { name: Name::new(name), expr };
+        let var = Var { name: Name::new(name.clone()), expr };
+        self.scope.define(name.clone(), Meta::Var(var.clone()));
         Ok(Stmt::Var(var))
+    }
+
+    pub fn fn_stmt(&mut self) -> Result<Stmt, String> {
+        self.next(); // skip fn
+        let name = self.cur.text.clone();
+        self.expect(TokenKind::Ident)?;
+        self.expect(TokenKind::LParen)?;
+        self.scope.enter_scope();
+        let params = self.fn_params()?;
+        self.expect(TokenKind::RParen)?;
+        let body = self.body()?;
+        self.scope.exit_scope();
+        let fn_expr = Fn { name: Name::new(name.clone()), params, body };
+        let fn_stmt = Stmt::Fn(fn_expr.clone());
+        self.scope.define(name.clone(), Meta::Fn(fn_expr));
+        Ok(fn_stmt)
+    }
+
+    pub fn sep_params(&mut self) {
+        if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
+            self.next();
+            return;
+        }
+        if self.is_kind(TokenKind::RParen) {
+            return;
+        }
+        panic!("Expected parameter separator, got {:?}", self.kind());
+    }
+
+    // parse function parameters
+    pub fn fn_params(&mut self) -> Result<Vec<Param>, String> {
+        let mut params = Vec::new();
+        while self.is_kind(TokenKind::Ident) {
+            let name = self.cur.text.clone();
+            self.next(); // skip name
+            let mut default = None;
+            if self.is_kind(TokenKind::Asn) {
+                self.next(); // skip =
+                let expr = self.expr()?;
+                default = Some(expr);
+            }
+            let var = Var { name: Name::new(name.clone()), expr: default.clone().unwrap_or(Expr::Nil) };
+            self.scope.define(name.clone(), Meta::Var(var.clone()));
+            params.push(Param { name: Name::new(name), default });
+            self.sep_params();
+        }
+        Ok(params)
     }
 
     pub fn expr_stmt(&mut self) -> Result<Stmt, String> {
@@ -455,6 +535,14 @@ mod tests {
         let code = "for i in 1..5 {i}";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 1) (op ..) (int 5)) (body (stmt (name i))))");
+    }
+
+
+    #[test]
+    fn test_fn() {
+        let code = "fn add(x, y) { x+y }";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (fn (name add) (params (param x) (param y)) (body (stmt (bina (name x) (op +) (name y)))))");
     }
 }
 
