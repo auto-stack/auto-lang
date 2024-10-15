@@ -162,6 +162,17 @@ pub enum Expr {
     Nil,
 }
 
+fn fmt_call(f: &mut fmt::Formatter, name: &Expr, args: &Vec<Expr>) -> fmt::Result {
+    write!(f, "(call ")?;
+    write!(f, "{}", name)?;
+    write!(f, " (args")?;
+    for arg in args.iter() {
+        write!(f, " {}", arg)?;
+    }
+    write!(f, ")")?;
+    Ok(())
+}
+
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -174,7 +185,7 @@ impl fmt::Display for Expr {
             Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
             Expr::Array(elems) => write!(f, "(array {:?})", elems),
             Expr::If(branches, else_stmt) => write!(f, "(if {:?} {:?})", branches, else_stmt),
-            Expr::Call(name, args) => write!(f, "(call {} ({:?}))", name, args),
+            Expr::Call(name, args) => fmt_call(f, name, args),
             Expr::Nil => write!(f, "(nil)"),
         }
     }
@@ -226,18 +237,5 @@ impl fmt::Display for Fn {
             }
         }
         write!(f, ") {}", self.body)
-    }
-}
-
-
-#[derive(Debug, Clone)]
-pub struct FnCall {
-    pub name: Name,
-    pub args: Vec<Expr>,
-}
-
-impl fmt::Display for FnCall {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(fn_call {} {:?})", self.name, self.args)
     }
 }

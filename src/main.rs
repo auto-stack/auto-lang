@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use acl::repl;
+use auto_lang::repl;
 use std::error::Error;
 
 #[derive(Parser, Debug)]
@@ -11,7 +11,7 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    #[command(about = "Parse ACL to JSON")]
+    #[command(about = "Parse Auto to JSON")]
     Parse { code: String },
     Repl
 }
@@ -22,8 +22,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match cli.command {
         Some(Commands::Parse { code}) => {
-            println!("Parsing ACL {} to JSON", code);
-            let json = acl::run(&code)?;
+            println!("Parsing Auto {} to JSON", code);
+            let json = auto_lang::run(&code)?;
             println!("{}", json);
         }
         Some(Commands::Repl) => {
