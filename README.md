@@ -251,18 +251,18 @@ if a > 0 {
     println("a is negative")
 }
 
-// 循环
-for i in r {
+// 循环访问数组
+for i in [1, 2, 3] {
     println(i)
 }
 
-// 循环
+// 循环一个范围
 for n in 0..5 {
     println(n)
 }
 
-// 带下标循环
-for (i, n) in arr() {
+// 带下标的循环
+for i, n in arr() {
     println(f"arr[{i}] = {n}")
 }
 
@@ -276,12 +276,17 @@ loop {
     i += 1
 }
 
-// 模式匹配
+// 模式匹配，类似switch/match
 when a {
+    // is 用于精确匹配
     is 41 => println("a is 41"),
+    // in 用于范围匹配
     in 0..9 => println("a is a single digit"),
+    // if 用于条件匹配
     if a > 10 => println("a is a big number"),
+    // as 用于类型判断
     as str => println("a is a string"),
+    // 其他情况
     else => println("a is a weired number")
 }
 ```
