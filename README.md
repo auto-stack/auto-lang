@@ -156,9 +156,9 @@ widget counter(id) {
         }
     }
 
-    // 试图，用来描述UI的布局
+    // 视图，用来描述UI的布局
     view {
-        cols(gap=1) {
+        cols {
             button("➕") {
                 on_click: || count += 1
             }
@@ -169,14 +169,11 @@ widget counter(id) {
             icon("🔄") {
                 on_click: || reset()
             }
+            style {gap-2 w-full}
         }
+        // 样式，支持Tailwind CSS语法
+        style {w-24 h-24 border-1 border-color-gray-300}
     }
-
-    // 样式，支持TailwindCSS的语法
-    style {
-        w-24
-        h-24        
-    }   
 }
 ```
 
@@ -536,27 +533,24 @@ node li(id) {
     kids: []div
 }
 
-node ul(id) {
+node ul(id=nil) {
     kids: []li
 }
 
-ul("ul1") {
-    li("li1") {
-        text: "Item 1"
+node label(content) {
+}
+
+ul {
+    li {
+        label("Item 1: ")
         button("btn1") {
             text: "Click me"
             onclick: || println("button clicked")
         }
-        div("div1") {
-            "div1"
-        }
+        div { label("div1")}
     }
-    li("li2") {
-        text: "Item 2"
-    }
-    li("li3") {
-        text: "Item 3"
-    }
+    li { label("Item 2") }
+    li { label("Item 3") }
 }
 ```
 

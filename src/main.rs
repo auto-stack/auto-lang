@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use auto_lang::repl;
+use autolang::repl;
 use std::error::Error;
 
 #[derive(Parser, Debug)]
@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     match cli.command {
         Some(Commands::Parse { code}) => {
             println!("Parsing Auto {} to JSON", code);
-            let json = auto_lang::run(&code)?;
+            let json = autolang::run(&code)?;
             println!("{}", json);
         }
         Some(Commands::Repl) => {
