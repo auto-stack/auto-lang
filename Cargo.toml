@@ -1,7 +1,13 @@
 [package]
-name = "auto_lang"
+name = "autolang"
 version = "0.1.0"
 edition = "2021"
+description = "Auto is a programming language for automations in various scenarios"
+homepage = "https://gitee.com/auto-stack/auto-lang"
+repository = "https://gitee.com/auto-stack/auto-lang"
+readme = "README.md"
+license = "MIT"
+keywords = ["automation", "programming language", "scripting language"]
 
 [features]
 default = ["with-file-history"]
