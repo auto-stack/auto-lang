@@ -7,7 +7,7 @@ homepage = "https://gitee.com/auto-stack/auto-lang"
 repository = "https://gitee.com/auto-stack/auto-lang"
 readme = "README.md"
 license = "MIT"
-keywords = ["automation", "programming language", "scripting language"]
+keywords = ["automation", "language", "scripting"]
 
 [features]
 default = ["with-file-history"]
