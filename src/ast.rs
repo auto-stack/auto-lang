@@ -60,7 +60,7 @@ pub struct Var {
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
-    If(Vec<Branch>, Option<Body>),
+    If(/*multiple branches with condition/body*/Vec<Branch>, /*else*/Option<Body>),
     For(Name, Expr, Body),
     Var(Var),
     Fn(Fn),
@@ -144,6 +144,30 @@ impl fmt::Display for Op {
     }
 }
 
+impl Op {
+    pub fn op(&self) -> &str {
+        match self {
+            Op::Add => "+",
+            Op::Sub => "-",
+            Op::Mul => "*",
+            Op::Div => "/",
+            Op::Not => "!",
+            Op::LSquare => "[",
+            Op::LParen => "(",
+            Op::Asn => "=",
+            Op::Eq => "==",
+            Op::Neq => "!=",
+            Op::Lt => "<",
+            Op::Gt => ">",
+            Op::Le => "<=",
+            Op::Ge => ">=",
+            Op::Range => "..",
+            Op::RangeEq => "..=",
+            Op::LParen => "(",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     // value exprs
@@ -214,11 +238,31 @@ impl fmt::Display for Param {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum Type {
+    Int,
+    Float,
+    Bool,
+    Str,
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Type::Int => write!(f, "int"),
+            Type::Float => write!(f, "float"),
+            Type::Bool => write!(f, "bool"),
+            Type::Str => write!(f, "str"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Fn {
     pub name: Name,
     pub params: Vec<Param>,
     pub body: Body,
+    pub ret: Option<Type>,
 }
 
 impl PartialEq for Fn {
@@ -237,5 +281,11 @@ impl fmt::Display for Fn {
             }
         }
         write!(f, ") {}", self.body)
+    }
+}
+
+impl Fn {
+    pub fn new(name: Name, params: Vec<Param>, body: Body, ret: Option<Type>) -> Fn {
+        Fn { name, params, body, ret}
     }
 }

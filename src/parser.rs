@@ -3,6 +3,7 @@ use crate::ast::{Code, Stmt, Expr, Op, Branch, Body, Name, Var, Fn, Param};
 use crate::lexer::Lexer;
 use crate::scope::Universe;
 use crate::scope::Meta;
+use crate::ast::Type;
 
 pub struct PostfixPrec {
     l: u8,
@@ -433,7 +434,7 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::RParen)?;
         let body = self.body()?;
         self.scope.exit_scope();
-        let fn_expr = Fn { name: Name::new(name.clone()), params, body };
+        let fn_expr = Fn::new(Name::new(name.clone()), params, body, Some(Type::Int));
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         self.scope.define(name.clone(), Meta::Fn(fn_expr));
         Ok(fn_stmt)
