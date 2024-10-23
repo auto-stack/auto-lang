@@ -13,6 +13,7 @@ pub enum Value {
     Range(i32, i32),
     RangeEq(i32, i32),
     Fn(ast::Fn),
+    ExtFn(fn(&Vec<Value>) -> Value),
     Nil,
     Void,
     Error(String),
@@ -49,6 +50,7 @@ impl Display for Value {
             Value::RangeEq(left, right) => write!(f, "{}..={}", left, right),
             Value::Error(value) => write!(f, "Error: {}", value),
             Value::Fn(value) => write!(f, "{}", value),
+            Value::ExtFn(_) => write!(f, "extfn"),
         }
     }
 }

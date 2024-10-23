@@ -1,14 +1,16 @@
 use std::collections::HashMap;
 use crate::value::Value;
 use crate::ast;
-
+use crate::libs;
 pub struct Universe {
     pub scopes: Vec<Scope>,
+    pub builtins: HashMap<String, Value>,
 }
 
 impl Universe {
     pub fn new() -> Universe {
-        Universe { scopes: vec![Scope::new()] }
+        let builtins = libs::builtin::builtins();
+        Universe { scopes: vec![Scope::new()], builtins }
     }
 
     pub fn enter_scope(&mut self) {
@@ -62,12 +64,14 @@ impl Universe {
     }
 
     pub fn exists(&self, name: &str) -> bool {
+        // check for vars
         for scope in self.scopes.iter().rev() {
             if scope.exists(name) {
                 return true;
             }
         }
-        false
+        // check for builtins
+        self.builtins.contains_key(name)
     }
 
     pub fn define(&mut self, name: String, meta: Meta) {
