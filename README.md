@@ -74,7 +74,7 @@ TODO: 直接生成Rust源码。
 use std::str::upper;
 
 // 变量
-var dir = "/home/user/data"
+auto dir = "/home/user/data"
 
 // {key : value}对
 root: dir
@@ -149,7 +149,7 @@ cd src/app
 touch main.rs
 
 // 也可以定义变量和函数
-var ext = ".c"
+auto ext = ".c"
 fn find_c_files(dir) {
     ls(dir).filter(|f| f.endswith(ext)).sort()
 }
@@ -226,7 +226,7 @@ Auto模板的语法风格类似Kotlin，代码组织模式类似于Vue.js。
 widget counter(id) {
     // 数据模型
     model {
-        var count: i32 = 0
+        auto count: i32 = 0
 
         fn reset() {
             count = 0
@@ -263,19 +263,44 @@ TODO：在`Release`模式中，编译器将`counter.a`代码编译成Rust代码�
 
 ## 语法概览
 
-### 变量
+### 存量
+
+在auto语言里，有四种不同类型的“存量”，用来存放与访问数据：
+
+- 定量（`let`）：定量是声明之后就不能再改变的量，但是可以取地址和访问。相当于Rust中的`let`。
+- 变量（`auto`）：这种存量的值可以任意改变，但是类型一旦确定就不能再改变。这其实就是C/C++中的普通变量。在Rust中，这样的变量用`let mut`声明。
+- 常量（`const`）：常量是声明之后就不能再改变的量，但是可以取地址和访问。相当于Rust中的`const`。
+- 幻量（`var`）：幻量是最自由的量，可以任意改变值和类型，一般用于脚本环境，如配置文件、DSL、脚本代码等。
 
 ```rust
-// 变量定义
-var a = 1
-// 指定类型
-var b bool = false
-// 多变量
-var c, d = 2, 3
+// 定量
+let b = 1
+// Error! 定量不能修改
+b = 2
+// 可以用来计算新的存量
+let f = e + 4
+// 定量可以重新声明，但类型不能改变
+let b = b * 2
 
-// 常量定义
+// 变量定义，编译器可以自动推导类型
+auto a = 1
+// 变量的定义可以指定类型
+auto b bool = false
+// 声明多个变量
+auto c, d = 2, 3
+
+// 变量可以修改，也叫“赋值”
+a = 10
+// 甚至可以交换两个变量的值
+c, d = d, c
+
+// 常量定义：常量只能是全局量
 const PI = 3.14
 
+// 幻量：幻量是最自由的量，可以任意改变值和类型，一般用于脚本环境
+var x = 1
+x = "hello"
+x = [x+"1", x+"2", x+"3"] 
 ```
 
 ### 函数
@@ -287,7 +312,7 @@ fn add(a int, b int) int {
 }
 
 // 函数变量（Lambda)
-var my_mul = |a int, b int| a * b
+auto my_mul = |a int, b int| a * b
 
 // 函数作为参数
 fn calc(a int, b int, op fn(int, int) int) int {
@@ -299,25 +324,62 @@ calc(2, 3, add)
 calc(2, 3, my_mul)
 ```
 
+### 引用与指针
+
+在Auto语言中，可以用引用(ref)和指针(ptr)来间接访问数据。
+
+我们一般使用`ref`引用来编程，而`ptr`指针则常用于底层的操作。
+
+
+```rust
+// 引用
+auto a = 1
+auto b = ref a // b的类型是 Ref<int>
+// 此时b和a相当于一个东西，修改b的值，a也会变
+b = 2 
+println(a) // 2
+// 引用通常用在函数参数，这样可以在函数内修改外面的变量
+fn inc(a ref int) {
+    a += 1
+}
+inc(a)
+println(a) // 3
+
+// 指针和ref的区别在于：指针实际就是一个地址，因此需要间接的操作
+auto arr [5]int = [1, 2, 3, 4, 5]
+
+// 注意，指针的直接操作是很危险的，因此要放在sys块中（相当于Rust的unsafe块）
+sys {
+    auto p = ptr x // p的类型是 Ptr<int>
+    println(p.target) // 1
+    p.target += 1 // 间接修改x的值
+    println(x) // 2
+    println(arr) // [2, 2, 3, 4, 5]
+
+    p += 2 // 直接修改地址
+    println(p.target) // 3; 此时p指向的地址已经改变，它从指向arr[0]变成了指向arr[3]
+}
+```
+
 ### 数组
 
 ```rust
 // 数组
-var arr = [1, 2, 3, 4, 5]
+auto arr = [1, 2, 3, 4, 5]
 
 // 下标
 println(arr[0])
 println(arr[-1]) // 最后一个元素
 
 // 切片
-var slice = arr[1..3] // [2, 3]
-var slice1 = arr[..4] // [1, 2, 3, 4]
-var slice2 = arr[3..] // [4, 5]
-var slice3 = arr[..] // [1, 2, 3, 4, 5]
+auto slice = arr[1..3] // [2, 3]
+auto slice1 = arr[..4] // [1, 2, 3, 4]
+auto slice2 = arr[3..] // [4, 5]
+auto slice3 = arr[..] // [1, 2, 3, 4, 5]
 
 // 范围（Range）
-var r = 0..10  // 0 <= r < 10
-var r1 = 0..=10 // 0 <= r <= 10
+auto r = 0..10  // 0 <= r < 10
+auto r1 = 0..=10 // 0 <= r <= 10
 ```
 
 ### 控制流
@@ -333,9 +395,16 @@ if a > 0 {
 }
 
 // 循环访问数组
-for i in [1, 2, 3] {
-    println(i)
+for n in [1, 2, 3] {
+    println(n)
 }
+
+// 循环修改数组的值
+auto arr = [1, 2, 3, 4, 5]
+for ref n in arr {
+    n = n * n
+}
+println(arr) // [1, 4, 9, 16, 25]
 
 // 循环一个范围
 for n in 0..5 {
@@ -348,7 +417,7 @@ for i, n in arr {
 }
 
 // 无限循环
-var i = 0
+auto i = 0
 loop {
     println("loop")
     if i > 10 {
@@ -376,7 +445,7 @@ when a {
 
 ```rust
 // 对象
-var obj = {
+auto obj = {
     name: "John",
     age: 30,
     is_student: false
@@ -424,7 +493,7 @@ enum Scale {
 }
 
 // 枚举变量
-var a = Scale.M
+auto a = Scale.M
 
 // 访问枚举成员
 println(a.name)
@@ -446,7 +515,7 @@ enum Shape union {
 }
 
 // 联合枚举匹配
-var s = get_shape(/*...*/)
+auto s = get_shape(/*...*/)
 when s as Shape {
     is Point(x, y) => println(f"Point($x, $y)")
     is Rect(x, y, w, h) => println(f"Rect($x, $y, $w, $h)")
@@ -454,7 +523,7 @@ when s as Shape {
     else => println("not a shape")
 }
 // 获取联合枚举的数据
-var p = s as Shape::Point
+auto p = s as Shape::Point
 println(p.x, p.y)
 ```
 
@@ -498,11 +567,11 @@ MyInt as Printable {
 // 新建类型的实例
 
 // 直接赋值
-var myint = MyInt{10}
+auto myint = MyInt{10}
 print(myint)
 
 // 类似object的赋值
-var p = Point{x: 1, y: 2}
+auto p = Point{x: 1, y: 2}
 println(p.distance(Point{x: 4, y: 6}))
 
 // 不同的构造函数。注意：`::`表示方法是静态方法，一般用于构造函数。静态方法里不能用`.`来访问实例成员
@@ -517,8 +586,8 @@ Point {
 }
 
 // 使用构造函数
-var p1 = Point::new(1, 2)
-var p2 = Point::stretch(p1, 2.0)
+auto p1 = Point::new(1, 2)
+auto p2 = Point::stretch(p1, 2.0)
 
 // 多个方法的接口
 trait Indexable {
@@ -562,7 +631,7 @@ fn IsArray(t type) bool {
 
 // 这里参数arr的类型只要通过了IsArray(T)的判断，就能够调用，否则报错
 fn add_all(arr if IsArray) {
-    var sum = 0
+    auto sum = 0
     for n in arr {
         sum += n
     }
@@ -572,11 +641,11 @@ fn add_all(arr if IsArray) {
 // OK，因为参数是一个`[]int`数组
 add_all([1, 2, 3, 4, 5])
 
-var d = 15
+auto d = 15
 add_all(d) // Error! d既不是[]int数组，也没有实现Indexable接口
 
 // 由于IntArray实现了Indexable接口，所以可以用于add_all
-var int_array = IntArray::new(1, 2, 3, 4, 5)
+auto int_array = IntArray::new(1, 2, 3, 4, 5)
 add_all(int_array)
 ```
 
@@ -585,7 +654,7 @@ add_all(int_array)
 ```rust
 // 生成器
 fn fib() {
-    var a, b = 0, 1
+    auto a, b = 0, 1
     loop {
         yield b
         a, b = b, a + b
