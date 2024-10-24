@@ -303,6 +303,61 @@ x = "hello"
 x = [x+"1", x+"2", x+"3"] 
 ```
 
+### 数组
+
+```rust
+// 数组
+auto arr = [1, 2, 3, 4, 5]
+
+// 下标
+println(arr[0])
+println(arr[-1]) // 最后一个元素
+
+// 切片
+auto slice = arr[1..3] // [2, 3]
+auto slice1 = arr[..4] // [1, 2, 3, 4]
+auto slice2 = arr[3..] // [4, 5]
+auto slice3 = arr[..] // [1, 2, 3, 4, 5]
+
+// 范围（Range）
+auto r = 0..10  // 0 <= r < 10
+auto r1 = 0..=10 // 0 <= r <= 10
+```
+
+### 对象
+
+```rust
+// 对象
+auto obj = {
+    name: "John",
+    age: 30,
+    is_student: false
+}
+
+// 访问对象成员
+println(obj.name)
+// 成员赋值
+obj.name = "Tom"
+
+// get or else
+println(obj.get_or("name", "Unknown"))
+// get or insert
+println(obj.get_or_insert("name", 10))
+
+// 所有成员
+println(obj.keys())
+println(obj.values())
+println(obj.items())
+
+// 遍历对象
+for k, v in obj {
+    println(f"obj[{k}] = {v}")
+}
+
+// 删除
+obj.remove("name")
+```
+
 ### 函数
 
 ```rust
@@ -324,62 +379,62 @@ calc(2, 3, add)
 calc(2, 3, my_mul)
 ```
 
-### 引用与指针
+### 引用和指针
 
 在Auto语言中，可以用引用(ref)和指针(ptr)来间接访问数据。
 
-我们一般使用`ref`引用来编程，而`ptr`指针则常用于底层的操作。
+引用和指针的主要区别有两个：
 
+1. 引用只是为了方便访问，避免复制（例如函数传参时），因此不能修改原始量的值。而指针可以直接操作原始量，修改它的值。
+2. 指针可以获取地址，甚至进行地址运算。而引用不行。这些操作是系统级的底层代码才需要的，因此需要在`sys`代码块中执行（类似于Rust的`unsafe`块）。
 
 ```rust
 // 引用
-auto a = 1
-auto b = ref a // b的类型是 Ref<int>
-// 此时b和a相当于一个东西，修改b的值，a也会变
-b = 2 
-println(a) // 2
-// 引用通常用在函数参数，这样可以在函数内修改外面的变量
-fn inc(a ref int) {
-    a += 1
+auto a = [0..99999] // 我们用一个很大的数组
+auto b = a // 如果直接新建一个b的值，那么会把a的值拷贝一份
+auto c = ref a // 此时c只是a的一个“参考视图”，它本身并不存数据，也没有拷贝操作。
+b = 2  // Error: 引用不能修改原始量的值
+
+// 引用通常用在函数参数，这样可以函数调用时可以避免拷贝
+fn read_buffer(buf ref Buffer) {
+    for n in buf.data {
+        println(n)
+    }
 }
-inc(a)
-println(a) // 3
 
-// 指针和ref的区别在于：指针实际就是一个地址，因此需要间接的操作
-auto arr [5]int = [1, 2, 3, 4, 5]
+// 指针
 
-// 注意，指针的直接操作是很危险的，因此要放在sys块中（相当于Rust的unsafe块）
-sys {
-    auto p = ptr x // p的类型是 Ptr<int>
-    println(p.target) // 1
-    p.target += 1 // 间接修改x的值
-    println(x) // 2
-    println(arr) // [2, 2, 3, 4, 5]
+// 指针和引用不同的地方在于，因为它和原始量指向同一个地址，因此可以修改原始量的值。
+auto x = 1
+auto p = ptr x
+p += 1 // 间接修改x的值，注意这里和C不一样，不需要*p
+println(x) // 2
 
-    p += 2 // 直接修改地址
-    println(p.target) // 3; 此时p指向的地址已经改变，它从指向arr[0]变成了指向arr[3]
+// 在函数调用时，指针类型的参数，可以修改原始量
+auto m = 10
+fn inc(a ptr int) {
+    a += 10
 }
-```
+inc(m)
+println(m) // 20
 
-### 数组
+// 指针还可以直接进行地址运算
+sys { // 注意：地址运算要放在sys块中
+    auto arr = [1, 2, 3, 4, 5]
+    auto p = ptr arr // p的类型是 Ptr<[5]int>
+    println(p) // [1, 2, 3, 4, 5]
+    p[0] = 101 // 直接修改arr[0]的值
+    println(arr) // [101, 2, 3, 4, 5]
 
-```rust
-// 数组
-auto arr = [1, 2, 3, 4, 5]
+    auto o = p // 记住p的地址
 
-// 下标
-println(arr[0])
-println(arr[-1]) // 最后一个元素
+    p.inc(2) // 地址自增2，此时p指向的是arr[2]
+    println(p) // [3, 4, 5]
 
-// 切片
-auto slice = arr[1..3] // [2, 3]
-auto slice1 = arr[..4] // [1, 2, 3, 4]
-auto slice2 = arr[3..] // [4, 5]
-auto slice3 = arr[..] // [1, 2, 3, 4, 5]
-
-// 范围（Range）
-auto r = 0..10  // 0 <= r < 10
-auto r1 = 0..=10 // 0 <= r <= 10
+    println(o[0]) // 101
+    p.jump(o) // 跳回到o
+    println(p) // [101, 2, 3, 4, 5]
+}
 ```
 
 ### 控制流
@@ -439,40 +494,6 @@ when a {
     // 其他情况
     else => println("a is a weired number")
 }
-```
-
-### 对象
-
-```rust
-// 对象
-auto obj = {
-    name: "John",
-    age: 30,
-    is_student: false
-}
-
-// 访问对象成员
-println(obj.name)
-// 成员赋值
-obj.name = "Tom"
-
-// get or else
-println(obj.get_or("name", "Unknown"))
-// get or insert
-println(obj.get_or_insert("name", 10))
-
-// 所有成员
-println(obj.keys())
-println(obj.values())
-println(obj.items())
-
-// 遍历对象
-for k, v in obj {
-    println(f"obj[{k}] = {v}")
-}
-
-// 删除
-obj.remove("name")
 ```
 
 ### 枚举（TODO）
@@ -548,8 +569,10 @@ type Point {
         sqrt((.x - other.x) ** 2 + (.y - other.y) ** 2)
     }
 }
+```
 
-// 类型判断
+```rust
+// 接口
 trait Printable {
     fn print()
 }
@@ -563,31 +586,6 @@ MyInt as Printable {
         println(.data)
     }
 }
-
-// 新建类型的实例
-
-// 直接赋值
-auto myint = MyInt{10}
-print(myint)
-
-// 类似object的赋值
-auto p = Point{x: 1, y: 2}
-println(p.distance(Point{x: 4, y: 6}))
-
-// 不同的构造函数。注意：`::`表示方法是静态方法，一般用于构造函数。静态方法里不能用`.`来访问实例成员
-Point {
-    pub fn :: new(x int, y int) Point {
-        Point{x, y}
-    }
-
-    pub fn :: stretch(p Point, scale float) Point {
-        Point{x: p.x * scale, y: p.y * scale}
-    }
-}
-
-// 使用构造函数
-auto p1 = Point::new(1, 2)
-auto p2 = Point::stretch(p1, 2.0)
 
 // 多个方法的接口
 trait Indexable {
@@ -617,6 +615,33 @@ type IntArray {
         }
     }
 }
+```
+
+```rust
+// 新建类型的实例
+
+// 直接赋值
+auto myint = MyInt{10}
+print(myint)
+
+// 类似object的赋值
+auto p = Point{x: 1, y: 2}
+println(p.distance(Point{x: 4, y: 6}))
+
+// 不同的构造函数。注意：`::`表示方法是静态方法，一般用于构造函数。静态方法里不能用`.`来访问实例成员
+Point {
+    pub fn :: new(x int, y int) Point {
+        Point{x, y}
+    }
+
+    pub fn :: stretch(p Point, scale float) Point {
+        Point{x: p.x * scale, y: p.y * scale}
+    }
+}
+
+// 使用构造函数
+auto p1 = Point::new(1, 2)
+auto p2 = Point::stretch(p1, 2.0)
 
 // 复杂类型判断，参数为type，且返回bool的函数，可以用来做任意逻辑的类型判断
 fn IsArray(t type) bool {
