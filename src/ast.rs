@@ -112,6 +112,7 @@ pub enum Op {
     Not,
     LSquare,
     LParen,
+    LBrace,
     Asn,
     Eq,
     Neq,
@@ -121,6 +122,7 @@ pub enum Op {
     Ge,
     Range,
     RangeEq,
+    Dot,
 }
 
 impl fmt::Display for Op {
@@ -141,7 +143,9 @@ impl fmt::Display for Op {
             Op::Ge => write!(f, "(op >=)"),
             Op::Range => write!(f, "(op ..)"),
             Op::RangeEq => write!(f, "(op ..=)"),
+            Op::Dot => write!(f, "(op .)"),
             Op::LParen => write!(f, "(op ()"),
+            Op::LBrace => write!(f, "(op {{)"),
         }
     }
 }
@@ -156,6 +160,7 @@ impl Op {
             Op::Not => "!",
             Op::LSquare => "[",
             Op::LParen => "(",
+            Op::LBrace => "{",
             Op::Asn => "=",
             Op::Eq => "==",
             Op::Neq => "!=",
@@ -165,6 +170,7 @@ impl Op {
             Op::Ge => ">=",
             Op::Range => "..",
             Op::RangeEq => "..=",
+            Op::Dot => ".",
         }
     }
 }
@@ -181,12 +187,13 @@ pub enum Expr {
     Unary(Op, Box<Expr>),
     Bina(Box<Expr>, Op, Box<Expr>),
     Array(Vec<Expr>),
+    Object(Vec<(Key, Expr)>),
     Call(/*name*/Box<Expr>, /*args*/Vec<Expr>),
     Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
+    TypeInst(/*name*/Box<Expr>, /*entries*/Vec<(Key, Expr)>),
     // stmt exprs
     If(Vec<Branch>, Option<Body>),
     Nil,
-
 }
 
 fn fmt_call(f: &mut fmt::Formatter, name: &Expr, args: &Vec<Expr>) -> fmt::Result {
@@ -200,6 +207,17 @@ fn fmt_call(f: &mut fmt::Formatter, name: &Expr, args: &Vec<Expr>) -> fmt::Resul
     Ok(())
 }
 
+fn fmt_object(f: &mut fmt::Formatter, pairs: &Vec<(Key, Expr)>) -> fmt::Result {
+    write!(f, "(object ")?;
+    for (i, (k, v)) in pairs.iter().enumerate() {
+        write!(f, "(pair {} {})", k, v)?;
+        if i < pairs.len() - 1 {
+            write!(f, " ")?;
+        }
+    }
+    write!(f, ")")
+}
+
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -211,9 +229,11 @@ impl fmt::Display for Expr {
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
             Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
             Expr::Array(elems) => write!(f, "(array {:?})", elems),
+            Expr::Object(pairs) => fmt_object(f, pairs),
             Expr::If(branches, else_stmt) => write!(f, "(if {:?} {:?})", branches, else_stmt),
             Expr::Call(name, args) => fmt_call(f, name, args),
             Expr::Index(array, index) => write!(f, "(index {} {})", array, index),
+            Expr::TypeInst(name, entries) => write!(f, "(type-inst {} {:?})", name, entries),
             Expr::Nil => write!(f, "(nil)"),
         }
     }
@@ -331,5 +351,30 @@ pub struct Member {
 impl fmt::Display for Member {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(member {} (type {}))", self.name, self.ty)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeInst {
+    pub name: Name,
+    pub entries: Vec<(Key, Expr)>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Key {
+    NamedKey(Name),
+    IntKey(i32),
+    FloatKey(f64),
+    BoolKey(bool),
+}
+
+impl fmt::Display for Key {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Key::NamedKey(name) => write!(f, "{}", name),
+            Key::IntKey(i) => write!(f, "{}", i),
+            Key::FloatKey(v) => write!(f, "{}", v),
+            Key::BoolKey(b) => write!(f, "{}", b),
+        }
     }
 }
