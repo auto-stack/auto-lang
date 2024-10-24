@@ -26,6 +26,10 @@ mod tests {
         let code = "1+2*3";
         let result = run(code).unwrap();
         assert_eq!(result, "7");
+
+        let code = "(2+3.5)*5";
+        let result = run(code).unwrap();
+        assert_eq!(result, "27.5");
     }
 
     #[test]
@@ -104,6 +108,10 @@ mod tests {
         let code = "[1, 2, 3]";
         let result = run(code).unwrap();
         assert_eq!(result, "[1, 2, 3]");
+
+        let code = "var a = [1, 2, 3]; [a[0], a[1], a[2], a[-1], a[-2], a[-3]]";
+        let result = run(code).unwrap();
+        assert_eq!(result, "[1, 2, 3, 3, 2, 1]");
     }
 
     #[test]

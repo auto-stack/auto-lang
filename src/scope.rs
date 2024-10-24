@@ -10,7 +10,16 @@ pub struct Universe {
 impl Universe {
     pub fn new() -> Universe {
         let builtins = libs::builtin::builtins();
-        Universe { scopes: vec![Scope::new()], builtins }
+        let mut uni = Universe { scopes: vec![Scope::new()], builtins };
+        uni.define_sys_types();
+        uni
+    }
+
+    pub fn define_sys_types(&mut self) {
+        self.define("int".to_string(), Meta::Type(ast::Type::Int));
+        self.define("float".to_string(), Meta::Type(ast::Type::Float));
+        self.define("bool".to_string(), Meta::Type(ast::Type::Bool));
+        self.define("str".to_string(), Meta::Type(ast::Type::Str));
     }
 
     pub fn enter_scope(&mut self) {
@@ -88,9 +97,11 @@ impl Universe {
     }
 }
 
+#[derive(Debug)]
 pub enum Meta {
     Var(ast::Var), // TODO: Add more info, like type, etc.
     Fn(ast::Fn),
+    Type(ast::Type),
 }
 
 pub struct Scope {

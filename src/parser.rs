@@ -1,9 +1,8 @@
 use crate::token::{Token, TokenKind};
-use crate::ast::{Code, Stmt, Expr, Op, Branch, Body, Name, Var, Fn, Param};
+use crate::ast::*;
 use crate::lexer::Lexer;
 use crate::scope::Universe;
 use crate::scope::Meta;
-use crate::ast::Type;
 
 pub struct PostfixPrec {
     l: u8,
@@ -292,7 +291,7 @@ impl<'a> Parser<'a> {
         if !self.scope.exists(&name) {
             return Err(format!("Undefined variable: {}", name));
         }
-        Ok(Expr::Ident(name))
+        Ok(Expr::Ident(Name::new(name)))
     }
 
     pub fn atom(&mut self) -> Result<Expr, String> {
@@ -350,6 +349,7 @@ impl<'a> Parser<'a> {
             TokenKind::For => self.for_stmt()?,
             TokenKind::Var => self.var_stmt()?,
             TokenKind::Fn => self.fn_stmt()?,
+            TokenKind::Type => self.type_stmt()?,
             _ => self.expr_stmt()?,
         };
         self.expect_eos()?;
@@ -478,6 +478,53 @@ impl<'a> Parser<'a> {
         }
         Ok(Stmt::Expr(expr))
     }
+
+    pub fn type_stmt(&mut self) -> Result<Stmt, String> {
+        self.next(); // skip type
+        let name = Name::new(self.cur.text.clone());
+        self.expect(TokenKind::Ident)?;
+        self.expect(TokenKind::LBrace)?;
+        // list of members or methods
+        let mut members = Vec::new();
+        let mut methods = Vec::new();
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            if self.is_kind(TokenKind::Fn) {
+                let fn_stmt = self.fn_stmt()?;
+                if let Stmt::Fn(fn_expr) = fn_stmt {
+                    methods.push(fn_expr);
+                }
+            } else {
+                let member = self.type_member()?;
+                members.push(member);
+            }
+            self.expect_eos()?;
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(Stmt::TypeDecl(TypeDecl { name, members, methods }))
+    }
+
+    pub fn type_member(&mut self) -> Result<Member, String> {
+        let name = Name::new(self.cur.text.clone());
+        self.expect(TokenKind::Ident)?;
+        let ty = self.type_expr()?;
+        Ok(Member { name, ty })
+    }
+
+    pub fn type_expr(&mut self) -> Result<Type, String> {
+        let type_name = self.ident()?;
+        self.next();
+        match type_name {
+            Expr::Ident(name) => {  
+                let meta = self.scope.get_symbol(&name.text).ok_or(format!("Undefined type: {}", name.text))?;
+                if let Meta::Type(ty) = meta {
+                    Ok(ty.clone())
+                } else {
+                    Err(format!("Expected type, got {:?}", meta))
+                }
+            }
+            _ => Err(format!("Expected type, got {:?}", type_name)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -552,6 +599,13 @@ mod tests {
         let ast = parse_once(code);
         let call = ast.stmts[1].clone();
         assert_eq!(call.to_string(), "(stmt (call (name add) (args (int 1) (int 2)))");
+    }
+
+    #[test]
+    fn test_type_decl() {
+        let code = "type Point {x int; y int;}";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int)))))");
     }
 }
 
