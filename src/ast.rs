@@ -181,9 +181,11 @@ pub enum Expr {
     Bina(Box<Expr>, Op, Box<Expr>),
     Array(Vec<Expr>),
     Call(/*name*/Box<Expr>, /*args*/Vec<Expr>),
+    Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
     // stmt exprs
     If(Vec<Branch>, Option<Body>),
     Nil,
+
 }
 
 fn fmt_call(f: &mut fmt::Formatter, name: &Expr, args: &Vec<Expr>) -> fmt::Result {
@@ -210,6 +212,7 @@ impl fmt::Display for Expr {
             Expr::Array(elems) => write!(f, "(array {:?})", elems),
             Expr::If(branches, else_stmt) => write!(f, "(if {:?} {:?})", branches, else_stmt),
             Expr::Call(name, args) => fmt_call(f, name, args),
+            Expr::Index(array, index) => write!(f, "(index {} {})", array, index),
             Expr::Nil => write!(f, "(nil)"),
         }
     }
