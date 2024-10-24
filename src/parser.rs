@@ -45,9 +45,10 @@ const PREC_ADD: InfixPrec = infix_prec(7);
 const PREC_MUL: InfixPrec = infix_prec(8);
 const PREC_SIGN: PrefixPrec = prefix_prec(9);
 const PREC_NOT: PrefixPrec = prefix_prec(10);
-const PREC_CALL: PostfixPrec = postfix_prec(11);
-const PREC_INDEX: PostfixPrec = postfix_prec(12);
-const PREC_ATOM: InfixPrec = infix_prec(13);
+const PREC_DOT: InfixPrec = infix_prec(11);
+const PREC_CALL: PostfixPrec = postfix_prec(12);
+const PREC_INDEX: PostfixPrec = postfix_prec(13);
+const PREC_ATOM: InfixPrec = infix_prec(14);
 
 fn prefix_power(op: Op) -> Result<PrefixPrec, String> {
     match op {
@@ -73,6 +74,7 @@ fn infix_power(op: Op) -> Result<InfixPrec, String> {
         Op::Eq | Op::Neq => Ok(PREC_EQ),
         Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(PREC_CMP),
         Op::Range | Op::RangeEq => Ok(PREC_Range),
+        Op::Dot => Ok(PREC_DOT),
         _ => return Err(format!("Invalid infix operator: {}", op)),
     }
 }
@@ -139,7 +141,9 @@ impl<'a> Parser<'a> {
 // Expressions
 impl<'a> Parser<'a> {
     pub fn expr(&mut self) -> Result<Expr, String> {
-        self.expr_pratt(0)
+        let exp = self.expr_pratt(0)?;
+        self.check_symbol(&exp)?;
+        Ok(exp)
     }
 
     // simple Pratt parser
@@ -164,6 +168,8 @@ impl<'a> Parser<'a> {
             }
             // array
             TokenKind::LSquare => self.array()?,
+            // object
+            TokenKind::LBrace => Expr::Object(self.object()?),
             // normal
             _ => self.atom()?,
         };
@@ -171,6 +177,7 @@ impl<'a> Parser<'a> {
             let op = match self.kind() {
                 TokenKind::EOF | TokenKind::Semi | TokenKind::LBrace | TokenKind::RBrace | TokenKind::Comma => break,
                 TokenKind::Add | TokenKind::Sub | TokenKind::Mul | TokenKind::Div | TokenKind::Not => self.op(),
+                TokenKind::Dot => self.op(),
                 TokenKind::Range | TokenKind::RangeEq => self.op(),
                 TokenKind::LSquare => self.op(),
                 TokenKind::LParen => self.op(),
@@ -197,6 +204,11 @@ impl<'a> Parser<'a> {
                         let args = self.args()?;
                         self.expect(TokenKind::RParen)?;
                         lhs = Expr::Call(Box::new(lhs), args);
+                        continue;
+                    }
+                    Op::LBrace => {
+                        let entries = self.object()?;
+                        lhs = Expr::TypeInst(Box::new(lhs), entries);
                         continue;
                     }
                     _ => return Err(format!("Invalid postfix operator: {}", op)),
@@ -232,6 +244,7 @@ impl<'a> Parser<'a> {
             TokenKind::Ge => { Op::Ge },
             TokenKind::Range => { Op::Range },
             TokenKind::RangeEq => { Op::RangeEq },
+            TokenKind::Dot => { Op::Dot },
             _ => panic!("Expected operator, got {:?}", self.kind()),
         }
     }
@@ -284,13 +297,71 @@ impl<'a> Parser<'a> {
         }
         Ok(args)
     }
-    
+
+    pub fn object(&mut self) -> Result<Vec<(Key, Expr)>, String> {
+        self.next(); // skip {
+        let mut entries = Vec::new();
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            entries.push(self.pair()?);
+            self.sep_pair();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(entries)
+    }
+
+    pub fn pair(&mut self) -> Result<(Key, Expr), String> {
+        let key = self.key()?;
+        self.expect(TokenKind::Colon)?;
+        let value = self.expr()?;
+        Ok((key, value))
+    }
+
+    pub fn key(&mut self) -> Result<Key, String> {
+        match self.kind() {
+            TokenKind::Ident => {
+                let name = self.cur.text.clone();
+                self.next();
+                Ok(Key::NamedKey(Name::new(name)))
+            }
+            TokenKind::Int => {
+                let value = self.cur.text.parse().unwrap();
+                self.next();
+                Ok(Key::IntKey(value))
+            }
+            TokenKind::Float => {
+                let value = self.cur.text.parse().unwrap();
+                self.next();
+                Ok(Key::FloatKey(value))
+            }
+            TokenKind::True => {
+                self.next();
+                Ok(Key::BoolKey(true))
+            }
+            TokenKind::False => {
+                self.next();
+                Ok(Key::BoolKey(false))
+            }
+            _ => return Err(format!("Expected key, got {:?}", self.kind())),
+        }
+    }
+
+    pub fn sep_pair(&mut self) {
+        if self.is_kind(TokenKind::Comma) {
+            self.next();
+            return;
+        }
+        if self.is_kind(TokenKind::RBrace) {
+            return;
+        }
+        panic!("Expected pair separator, got {:?}", self.kind());
+    }
+
     pub fn ident(&mut self) -> Result<Expr, String> {
         let name = self.cur.text.clone();
-        // check for existence
-        if !self.scope.exists(&name) {
-            return Err(format!("Undefined variable: {}", name));
-        }
+        // // check for existence
+        // if !self.scope.exists(&name) {
+        //     return Err(format!("Undefined variable: {}", name));
+        // }
         Ok(Expr::Ident(Name::new(name)))
     }
 
@@ -500,7 +571,10 @@ impl<'a> Parser<'a> {
             self.expect_eos()?;
         }
         self.expect(TokenKind::RBrace)?;
-        Ok(Stmt::TypeDecl(TypeDecl { name, members, methods }))
+        let decl = TypeDecl { name: name.clone(), members, methods };
+        // put type in scope
+        self.scope.define(name.text, Meta::Type(Type::User(decl.clone())));
+        Ok(Stmt::TypeDecl(decl))
     }
 
     pub fn type_member(&mut self) -> Result<Member, String> {
@@ -523,6 +597,32 @@ impl<'a> Parser<'a> {
                 }
             }
             _ => Err(format!("Expected type, got {:?}", type_name)),
+        }
+    }
+
+    // TODO: 暂时只检查两种情况：1，简单名称；2，点号表达式最左侧的名称
+    pub fn check_symbol(&mut self, expr: &Expr) -> Result<(), String> {
+        match expr {
+            Expr::Bina(l, op, _) => {
+                match op {
+                    Op::Dot => {
+                        if let Expr::Ident(name) = l.as_ref() {
+                            if !self.scope.exists(&name.text) {
+                                return Err(format!("Undefined variable: {}", name.text));
+                            }
+                        }
+                        Ok(())
+                    }
+                    _ => Ok(()),
+                }
+            }   
+            Expr::Ident(name) => {
+                if !self.scope.exists(&name.text) {
+                    return Err(format!("Undefined variable: {}", name.text));
+                }
+                Ok(())
+            }
+            _ => Ok(()),
         }
     }
 }
@@ -585,6 +685,13 @@ mod tests {
         assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 1) (op ..) (int 5)) (body (stmt (name i))))");
     }
 
+    #[test]
+    fn test_object() {
+        let code = "{x:1, y:2}";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (stmt (object (pair (name x) (int 1)) (pair (name y) (int 2)))))");
+    }
+
 
     #[test]
     fn test_fn() {
@@ -603,9 +710,17 @@ mod tests {
 
     #[test]
     fn test_type_decl() {
-        let code = "type Point {x int; y int;}";
+        let code = "type Point {x int; y int}";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int)))))");
+    }
+
+    #[test]
+    fn test_type_inst() {
+        let code = "type Point {x int; y int}; var p = Point{x:1, y:2}; p.x";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(stmt (bina (name p) (op .) (name x)))");
     }
 }
 

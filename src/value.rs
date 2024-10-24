@@ -10,6 +10,7 @@ pub enum Value {
     Bool(bool),
     Str(String),
     Array(Vec<Value>),
+    Object(Vec<(Value, Value)>),
     Range(i32, i32),
     RangeEq(i32, i32),
     Fn(ast::Fn),
@@ -35,6 +36,17 @@ fn print_array(f: &mut Formatter<'_>, value: &Vec<Value>) -> fmt::Result {
     write!(f, "]")
 }
 
+fn print_object(f: &mut Formatter<'_>, value: &Vec<(Value, Value)>) -> fmt::Result {
+    write!(f, "{{")?;
+    for (i, (k, v)) in value.iter().enumerate() {
+        write!(f, "{}: {}", k, v)?;
+        if i < value.len() - 1 {
+            write!(f, ", ")?;
+        }
+    }
+    write!(f, "}}")
+}
+
 impl Display for Value {
 
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -51,6 +63,7 @@ impl Display for Value {
             Value::Error(value) => write!(f, "Error: {}", value),
             Value::Fn(value) => write!(f, "{}", value),
             Value::ExtFn(_) => write!(f, "extfn"),
+            Value::Object(value) => print_object(f, value),
         }
     }
 }

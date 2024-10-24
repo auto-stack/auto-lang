@@ -32,7 +32,7 @@ impl<'a> Evaler<'a> {
             Stmt::For(name, expr, body) => self.eval_for(&name.text, expr, body),
             Stmt::Var(var) => self.eval_var(var),
             Stmt::Fn(fn_decl) => self.eval_fn(fn_decl),
-            Stmt::TypeDecl(type_decl) => self.eval_type_decl(type_decl),
+            Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
         }
     }
 
@@ -219,6 +219,23 @@ impl<'a> Evaler<'a> {
         Value::Array(values)
     }
 
+    fn object(&mut self, pairs: &Vec<(Key, Expr)>) -> Value {
+        let mut values = Vec::new();
+        for (key, value) in pairs.iter() {
+            values.push((self.eval_key(key), self.eval_expr(value)));
+        }
+        Value::Object(values)
+    }
+
+    fn eval_key(&mut self, key: &Key) -> Value {
+        match key {
+            Key::NamedKey(name) => Value::Str(name.text.clone()),
+            Key::IntKey(value) => Value::Integer(*value),
+            Key::FloatKey(value) => Value::Float(*value),
+            Key::BoolKey(value) => Value::Bool(*value),
+        }
+    }
+
     fn call(&mut self, name: &Expr, args: &Vec<Expr>) -> Value {
         let name = self.eval_expr(name);
         let arg_vals: Vec<Value> = args.iter().map(|arg| self.eval_expr(arg)).collect();
@@ -282,11 +299,17 @@ impl<'a> Evaler<'a> {
             Expr::Array(elems) => self.array(elems),
             Expr::Call(name, args) => self.call(name, args),
             Expr::Index(array, index) => self.index(array, index),
+            Expr::Object(pairs) => self.object(pairs),
+            Expr::TypeInst(name, entries) => self.type_inst(name, entries),
             Expr::Nil => Value::Nil,
         }
     }
 
-    fn eval_type_decl(&mut self, type_decl: &TypeDecl) -> Value {
+    fn type_inst(&mut self, name: &Expr, entries: &Vec<(Key, Expr)>) -> Value {
+        Value::Void
+    }
+
+    fn type_decl(&mut self, type_decl: &TypeDecl) -> Value {
         Value::Void
     }
 }

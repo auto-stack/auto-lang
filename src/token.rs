@@ -19,30 +19,31 @@ pub enum TokenKind {
     Ident,
 
     // Operators
-    LParen,
-    RParen,
-    LSquare,
-    RSquare,
-    LBrace,
-    RBrace,
-    Comma,
-    Semi,
-    Newline,
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Not,
-    Lt,
-    Gt,
-    Le,
-    Ge,
-    Asn,
-    Eq,
-    Neq,
+    LParen, // (
+    RParen, // )
+    LSquare, // [
+    RSquare, // ]
+    LBrace, // {
+    RBrace, // }
+    Comma, // ,
+    Semi, // ;
+    Newline, // \n
+    Add, // +
+    Sub, // -
+    Mul, // *
+    Div, // /
+    Not, // !
+    Lt, // <
+    Gt, // >
+    Le, // <=
+    Ge, // >=
+    Asn, // =
+    Eq, // ==
+    Neq, // !=
     Dot, // .
     Range, // ..
     RangeEq, // ..= 
+    Colon, // :
 
     // Keywords
     True,

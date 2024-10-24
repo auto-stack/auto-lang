@@ -96,7 +96,7 @@ impl<'a> Lexer<'a> {
         Token::str(self.pos(text.len()), text)
     }
 
-    fn range(&mut self) -> Token {
+    fn dot_or_range(&mut self) -> Token {
         self.chars.next(); // skip .
         if self.peek('.') {
             self.chars.next();
@@ -183,6 +183,9 @@ impl<'a> Lexer<'a> {
                 '"' => {
                     return self.str();
                 }
+                ':' => {
+                    return self.single(TokenKind::Colon, c);
+                }
                 ',' => {
                     return self.single(TokenKind::Comma, c);
                 }
@@ -217,7 +220,7 @@ impl<'a> Lexer<'a> {
                     return self.with_equal(TokenKind::Asn, TokenKind::Eq, c);
                 }
                 '.' => {
-                    return self.range();
+                    return self.dot_or_range();
                 }
                 _ => {
                     if c.is_digit(10) {
