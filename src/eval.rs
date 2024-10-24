@@ -194,7 +194,7 @@ impl<'a> Evaler<'a> {
     }
 
     fn lookup(&self, name: &str) -> Value {
-        self.universe.get_local(name)
+        self.universe.lookup_val(name).unwrap_or(Value::Nil)
     }
 
     fn array(&mut self, elems: &Vec<Expr>) -> Value {
@@ -207,8 +207,10 @@ impl<'a> Evaler<'a> {
 
     fn call(&mut self, name: &Expr, args: &Vec<Expr>) -> Value {
         let name = self.eval_expr(name);
+        let arg_vals: Vec<Value> = args.iter().map(|arg| self.eval_expr(arg)).collect();
         match name {
-            Value::Fn(fn_decl) => self.eval_fn_call(&fn_decl, args),
+            Value::Fn(fn_decl) => self.eval_fn_call(&fn_decl, &args),
+            Value::ExtFn(fp) => fp(&arg_vals),
             _ => Value::Error(format!("Invalid function call {}", name)),
         }
     }

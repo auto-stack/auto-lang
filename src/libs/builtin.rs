@@ -9,8 +9,11 @@ pub fn builtins() -> HashMap<String, Value> {
 }
 
 pub fn print(args: &Vec<Value>) -> Value {
-    for arg in args {
-        println!("{}", arg);
+    for (i, arg) in args.iter().enumerate()  {
+        print!("{}", arg);
+        if i < args.len() - 1 {
+            print!(", ");
+        }
     }
     Value::Void
 }
