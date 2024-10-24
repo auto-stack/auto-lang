@@ -77,6 +77,15 @@ impl Universe {
     pub fn define(&mut self, name: String, meta: Meta) {
         self.current_scope_mut().put_symbol(name.as_str(), meta);
     }
+
+    pub fn lookup_val(&self, name: &str) -> Option<Value> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(value) = scope.get_val(name) {
+                return Some(value);
+            }
+        }
+        self.builtins.get(name).cloned()
+    }
 }
 
 pub enum Meta {
