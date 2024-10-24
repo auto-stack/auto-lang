@@ -12,7 +12,62 @@ Auto语言是Soutek公司推出的技术产品Soutek Auto Stack的一部分。
 
 ## 用途
 
-### 1. 作为配置语言，替代JSON/YAML
+### 1. 直接生成C源码
+
+例如，如下两个Auto语言文件：
+
+```rust
+// math.a
+pub fn add(a int, b int) int {
+    a + b
+}
+```
+
+```rust
+// main.a
+use math::add
+
+fn main {
+    println(add(1, 2))
+}
+```
+
+可以生成三个C文件：math.h, math.c和main.c：
+
+```c
+// math.h
+#pragma once
+#include <stdint.h>
+
+int32_t add(int32_t a, int32_t b);
+```
+
+```c
+// math.c
+#include <stdint.h>
+#include "math.h"
+
+int32_t add(int32_t a, int32_t b) {
+    return a + b;
+}
+```
+
+```c
+#include <stdio.h>
+#include <stdint.h>
+#include "math.h"
+
+int main(void) {
+    printf("%d\n", add(1, 2));
+    return 0;
+}
+```
+
+Auto语言的构建器`AutoBuild`可以实现Auto/C语言项目的混合开发。
+
+TODO: 直接生成Rust源码。
+
+### 2. 作为配置语言，替代JSON/YAML
 
 ```rust
 // 标准库
@@ -40,10 +95,12 @@ attrs: {
 ```
 
 Auto语言的配置文件（Auto Config）后缀名为`.ac`。
+经过解析，上述的`.ac`文件可以解析成`JSON`格式，也可以直接提供给C/Rust代码使用。
 
-### 2. 作为构建器
 
-配合Auto Builder，可以实现类似CMake的C/C++工程构建：
+### 3. 作为构建器
+
+`AutoBuild`的配置文件即用Auto配置文件内`build.ac`书写。
 
 ```rust
 project: "osal"
@@ -77,7 +134,7 @@ exe(demo) {
 }
 ```
 
-### 3. 作为脚本
+### 4. 作为脚本
 
 ```rust
 #!auto
@@ -113,10 +170,26 @@ await downloads.join()
 
 ```
 
+Auto语言根据后缀名，采用了不同的“场景”，因此可以支持不同的语法。
+
 Auto语言的脚本（Auto Script）文件后缀名为`.as`。
+在这个场景下，所有一级语句中的函数调用，都可以写成类似`bash`命令的风格。
+
+例如：
+
+```bash
+grep -Hirn TODO .
+```
+
+会被转化为如下函数：
+
+```rust
+grep(key="TODO", dir=".", H=true, i=true, r=true, n=true)
+```
+
 Auto语言提供了一个动态执行环境（Auto Shell），可以用于脚本执行、开发调试等。
 
-### 4. 作为模板
+### 5. 作为模板
 
 ```html
 <html>
@@ -137,12 +210,16 @@ Auto语言提供了一个动态执行环境（Auto Shell），可以用于脚本
 模板可以替代任意形式的文本。
 
 Auto语言的模板（Auto Template）文件后缀名为`.at`。
-Auto模板是Auto Gen代码生成系统的基础。
+Auto模板是`AutoGen`代码生成系统的基础。
 
 ### 5. 作为UI系统的DSL
 
-在Auto UI系统中，Auto模板用来描述UI界面。
-Auto UI模板的语法风格类似Kotlin，组织模式类似于Vue.js。
+`AutoUI`是Auto语言的UI框架，基于`Zed/GPUI`实现。
+可以支持Windows/Linxu/MacOS/Web等多种平台。
+
+其中，Auto模板用来描述UI界面。
+
+Auto模板的语法风格类似Kotlin，代码组织模式类似于Vue.js。
 
 ```rust
 // 定义一个组件
@@ -176,6 +253,13 @@ widget counter(id) {
     }
 }
 ```
+
+上面的Auto代码会被解析成一个动态的`DynamicWidget`对象，可以直接在`AutoUI`中绘制出来。
+
+`AutoUI`支持自动重载，因此修改了`counter.a`文件后，`AutoUI`会自动重绘，不需要重新编译。
+
+TODO：在`Release`模式中，编译器将`counter.a`代码编译成Rust代码，直接和`AutoUI`的库一起打包成可执行的UI界面程序。
+
 
 ## 语法概览
 
@@ -259,7 +343,7 @@ for n in 0..5 {
 }
 
 // 带下标的循环
-for i, n in arr() {
+for i, n in arr {
     println(f"arr[{i}] = {n}")
 }
 
@@ -383,6 +467,19 @@ type MyInt = int
 // 类型组合
 type Num = int | float
 
+// 自定以类型
+type Point {
+    x int
+    y int
+
+    // 方法
+    fn distance(other Point) float {
+        use std::math::sqrt;
+        // 注意：这里的`.x`表示“在当前类型的视野中寻找变量x”，即相当于其他语言的`this.x`或`self.x`
+        sqrt((.x - other.x) ** 2 + (.y - other.y) ** 2)
+    }
+}
+
 // 类型判断
 trait Printable {
     fn print()
@@ -398,29 +495,67 @@ MyInt as Printable {
     }
 }
 
-// 类型判断
+// 新建类型的实例
+
+// 直接赋值
 var myint = MyInt{10}
 print(myint)
 
-trait Indexable {
-    fn get(index int) any
+// 类似object的赋值
+var p = Point{x: 1, y: 2}
+println(p.distance(Point{x: 4, y: 6}))
+
+// 不同的构造函数。注意：`::`表示方法是静态方法，一般用于构造函数。静态方法里不能用`.`来访问实例成员
+Point {
+    pub fn :: new(x int, y int) Point {
+        Point{x, y}
+    }
+
+    pub fn :: stretch(p Point, scale float) Point {
+        Point{x: p.x * scale, y: p.y * scale}
+    }
 }
 
-type MyArray {
-    data []any
+// 使用构造函数
+var p1 = Point::new(1, 2)
+var p2 = Point::stretch(p1, 2.0)
 
-    as Indexable {
-        pub fn get(index int) any {
-            .data[index]
+// 多个方法的接口
+trait Indexable {
+    fn size() int
+    fn get(n int) T
+    fn set(n int, value T)
+}
+
+type IntArray {
+    data []int
+
+    pub fn :: new(data int...) IntArray {
+        IntArray{data: data.pack()}
+    }
+
+    as Indexable<int> {
+        pub fn size() int {
+            .data.len()
+        }
+
+        pub fn get(n int) int {
+            .data[n]
+        }
+
+        pub fn set(n int, value int) {
+            .data[n] = value
         }
     }
 }
 
 // 复杂类型判断，参数为type，且返回bool的函数，可以用来做任意逻辑的类型判断
-fn IsArray(T type) bool {
-    when T {
-        is []E => true
-        as Iterable => true
+fn IsArray(t type) bool {
+    when t {
+        // 数组，其元素类型可以任意
+        is []_ => true
+        // 实现了Iterable接口
+        as Indexable => true
         else => false
     }
 }
@@ -434,32 +569,15 @@ fn add_all(arr if IsArray) {
     return sum
 }
 
+// OK，因为参数是一个`[]int`数组
 add_all([1, 2, 3, 4, 5])
 
 var d = 15
-add_all(d) // Error! d既不是[]int数组，也没有实现Iterable接口
+add_all(d) // Error! d既不是[]int数组，也没有实现Indexable接口
 
-type MySet {
-    data [int]int
-    cur int
-
-    pub static fn new(data int...) MySet {
-        MySet{data: data.pack(), cur: 0}
-    }
-
-    // ...
-
-    as Iterable {
-        pub fn next() int {
-            var n = .data[.cur]
-            .cur += 1
-            return n
-        }
-    }
-}
-
-// MySet实现了Iterable接口，所以可以用于for循环
-add_all(MySet::new(1, 2, 3, 4, 5))
+// 由于IntArray实现了Indexable接口，所以可以用于add_all
+var int_array = IntArray::new(1, 2, 3, 4, 5)
+add_all(int_array)
 ```
 
 ### 生成器（TODO）
