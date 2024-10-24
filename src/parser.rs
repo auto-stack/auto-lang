@@ -191,7 +191,7 @@ impl<'a> Parser<'a> {
                     Op::LSquare => {
                         let rhs = self.expr_pratt(0)?;
                         self.expect(TokenKind::RSquare)?;
-                        lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
+                        lhs = Expr::Index(Box::new(lhs), Box::new(rhs));
                         continue;
                     }
                     Op::LParen => {

@@ -35,7 +35,18 @@ impl<'a> Evaler<'a> {
         }
     }
 
+    fn try_promote(&self, left: Value, right: Value) -> (Value, Value) {
+        match (&left, &right) {
+            (Value::Integer(_), Value::Integer(_)) => (left, right),
+            (Value::Float(_), Value::Float(_)) => (left, right),
+            (Value::Integer(left), Value::Float(_)) => (Value::Float(*left as f64), right),
+            (Value::Float(_), Value::Integer(right)) => (left, Value::Float(*right as f64)),
+            _ => (left, right),
+        }
+    }
+
     fn add(&self, left: Value, right: Value) -> Value {
+        let (left, right) = self.try_promote(left, right);
         match (left, right) {
             (Value::Integer(left), Value::Integer(right)) => Value::Integer(left + right),
             (Value::Float(left), Value::Float(right)) => Value::Float(left + right),
@@ -52,6 +63,7 @@ impl<'a> Evaler<'a> {
     }
 
     fn mul(&self, left: Value, right: Value) -> Value {
+        let (left, right) = self.try_promote(left, right);
         match (left, right) {
             (Value::Integer(left), Value::Integer(right)) => Value::Integer(left * right),
             (Value::Float(left), Value::Float(right)) => Value::Float(left * right),
@@ -60,6 +72,7 @@ impl<'a> Evaler<'a> {
     }
 
     fn div(&self, left: Value, right: Value) -> Value {
+        let (left, right) = self.try_promote(left, right);
         match (left, right) {
             (Value::Integer(left), Value::Integer(right)) => Value::Integer(left / right),
             (Value::Float(left), Value::Float(right)) => Value::Float(left / right),
@@ -227,6 +240,33 @@ impl<'a> Evaler<'a> {
         result
     }
 
+    fn index(&mut self, array: &Expr, index: &Expr) -> Value {
+        let array = self.eval_expr(array);
+        let index_value = self.eval_expr(index);
+        let mut idx = match index_value {
+            Value::Integer(index) => index,
+            // TODO: support negative index
+            // TODO: support range index
+            _ => return Value::Error(format!("Invalid index {}", index_value)),
+        };
+        match array {
+            Value::Array(values) => {
+                let len = values.len();
+                if idx >= len as i32 {
+                    return Value::Error(format!("Index out of bounds {}", idx));
+                }
+                if idx < -(len as i32) {
+                    return Value::Error(format!("Index out of bounds {}", idx));
+                }
+                if idx < 0 {
+                    idx = len as i32 + idx;
+                }
+                values[idx as usize].clone()
+            }
+            _ => Value::Error(format!("Invalid array {}", array)),
+        }
+    }
+
     fn eval_expr(&mut self, expr: &Expr) -> Value {
         match expr {
             Expr::Integer(value) => Value::Integer(*value as i32),
@@ -240,6 +280,7 @@ impl<'a> Evaler<'a> {
             Expr::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
             Expr::Array(elems) => self.array(elems),
             Expr::Call(name, args) => self.call(name, args),
+            Expr::Index(array, index) => self.index(array, index),
             Expr::Nil => Value::Nil,
         }
     }
