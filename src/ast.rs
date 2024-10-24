@@ -64,6 +64,7 @@ pub enum Stmt {
     For(Name, Expr, Body),
     Var(Var),
     Fn(Fn),
+    TypeDecl(TypeDecl),
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +98,7 @@ impl fmt::Display for Stmt {
             Stmt::For(name, expr, body) => write!(f, "(for {} {} {})", name, expr, body),
             Stmt::Var(var) => write!(f, "(var {} {})", var.name, var.expr),
             Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),
+            Stmt::TypeDecl(type_decl) => write!(f, "{}", type_decl),    
         }
     }
 }
@@ -163,7 +165,6 @@ impl Op {
             Op::Ge => ">=",
             Op::Range => "..",
             Op::RangeEq => "..=",
-            Op::LParen => "(",
         }
     }
 }
@@ -175,7 +176,7 @@ pub enum Expr {
     Float(f64),
     Bool(bool),
     Str(String),
-    Ident(String),
+    Ident(Name),
     // composite exprs
     Unary(Op, Box<Expr>),
     Bina(Box<Expr>, Op, Box<Expr>),
@@ -206,7 +207,7 @@ impl fmt::Display for Expr {
             Expr::Float(v) => write!(f, "(float {})", v),
             Expr::Bool(b) => write!(f, "({})", b),
             Expr::Str(s) => write!(f, "(\"{}\")", s),
-            Expr::Ident(i) => write!(f, "(name {})", i),
+            Expr::Ident(n) => write!(f, "(name {})", n.text),
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
             Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
             Expr::Array(elems) => write!(f, "(array {:?})", elems),
@@ -241,12 +242,13 @@ impl fmt::Display for Param {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Type {
     Int,
     Float,
     Bool,
     Str,
+    User(TypeDecl),
 }
 
 impl fmt::Display for Type {
@@ -256,6 +258,7 @@ impl fmt::Display for Type {
             Type::Float => write!(f, "float"),
             Type::Bool => write!(f, "bool"),
             Type::Str => write!(f, "str"),
+            Type::User(type_decl) => write!(f, "{}", type_decl),
         }
     }
 }
@@ -290,5 +293,43 @@ impl fmt::Display for Fn {
 impl Fn {
     pub fn new(name: Name, params: Vec<Param>, body: Body, ret: Option<Type>) -> Fn {
         Fn { name, params, body, ret}
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeDecl {
+    pub name: Name,
+    pub members: Vec<Member>,
+    pub methods: Vec<Fn>,
+}
+
+impl fmt::Display for TypeDecl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(type-decl {} (members ", self.name)?;
+        for (i, member) in self.members.iter().enumerate() {
+            write!(f, "{}", member)?;
+            if i < self.members.len() - 1 {
+                write!(f, " ")?;
+            }
+        }
+        for (i, method) in self.methods.iter().enumerate() {
+            write!(f, "{}", method)?;
+            if i < self.methods.len() - 1 {
+                write!(f, " ")?;
+            }
+        }
+        write!(f, "))")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Member {
+    pub name: Name,
+    pub ty: Type,
+}
+
+impl fmt::Display for Member {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(member {} (type {}))", self.name, self.ty)
     }
 }

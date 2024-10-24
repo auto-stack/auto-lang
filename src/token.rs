@@ -54,6 +54,7 @@ pub enum TokenKind {
     Var,
     In,
     Fn,
+    Type,
 
     // EOF
     EOF,

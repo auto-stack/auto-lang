@@ -124,6 +124,7 @@ impl<'a> Lexer<'a> {
             "var" => self.keyword_tok(TokenKind::Var, &text),
             "in" => self.keyword_tok(TokenKind::In, &text),
             "fn" => self.keyword_tok(TokenKind::Fn, &text),
+            "type" => self.keyword_tok(TokenKind::Type, &text),
             _ => None,
         }
     }

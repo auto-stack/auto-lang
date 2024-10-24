@@ -57,7 +57,7 @@ impl CTranspiler {
                 }
                 Ok(())
             }
-            Expr::Ident(ident) => out.write_all(ident.as_bytes()).to(),
+            Expr::Ident(name) => out.write_all(name.text.as_bytes()).to(),
             Expr::Call(name, args) => self.call(name, args, out),
             _ => Err(format!("unsupported expression: {:?}", expr)),
         }
@@ -65,7 +65,7 @@ impl CTranspiler {
 
     fn fn_decl(&mut self, fn_decl: &Fn, out: &mut impl Write) -> Result<(), String> {
         // return type
-        if let Some(ret) = fn_decl.ret {
+        if let Some(ret) = &fn_decl.ret {
             out.write(format!("{} ", ret).as_bytes()).to()?;
         } else {
             out.write(b"void ").to()?;

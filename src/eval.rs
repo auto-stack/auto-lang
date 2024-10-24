@@ -1,4 +1,4 @@
-use crate::ast::{Body, Branch, Code, Expr, Fn, Op, Stmt, Var};
+use crate::ast::*;
 use crate::parser;
 use crate::scope;
 use crate::value::Value;
@@ -32,6 +32,7 @@ impl<'a> Evaler<'a> {
             Stmt::For(name, expr, body) => self.eval_for(&name.text, expr, body),
             Stmt::Var(var) => self.eval_var(var),
             Stmt::Fn(fn_decl) => self.eval_fn(fn_decl),
+            Stmt::TypeDecl(type_decl) => self.eval_type_decl(type_decl),
         }
     }
 
@@ -171,7 +172,7 @@ impl<'a> Evaler<'a> {
     fn asn(&mut self, left: &Expr, right: Value) -> Value {
         if let Expr::Ident(name) = left {
             // check if name exists
-            self.universe.set_local(&name, right);
+            self.universe.set_local(&name.text, right);
             Value::Void
         } else {
             panic!("Invalid assignment");
@@ -274,7 +275,7 @@ impl<'a> Evaler<'a> {
             // Why not move here?
             Expr::Str(value) => Value::Str(value.clone()),
             Expr::Bool(value) => Value::Bool(*value),
-            Expr::Ident(name) => self.lookup(name),
+            Expr::Ident(name) => self.lookup(&name.text),
             Expr::Unary(op, e) => self.eval_una(op, e),
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
             Expr::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
@@ -283,5 +284,9 @@ impl<'a> Evaler<'a> {
             Expr::Index(array, index) => self.index(array, index),
             Expr::Nil => Value::Nil,
         }
+    }
+
+    fn eval_type_decl(&mut self, type_decl: &TypeDecl) -> Value {
+        Value::Void
     }
 }
