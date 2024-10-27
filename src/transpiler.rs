@@ -45,7 +45,7 @@ impl CTranspiler {
 
     fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> Result<(), String> {
         match expr {
-            Expr::Integer(i) => out.write_all(i.to_string().as_bytes()).to(),
+            Expr::Int(i) => out.write_all(i.to_string().as_bytes()).to(),
             Expr::Bina(lhs, op, rhs) => {
                 match op {
                     Op::Range => self.range(lhs, rhs, out)?,

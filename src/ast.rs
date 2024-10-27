@@ -178,7 +178,7 @@ impl Op {
 #[derive(Debug, Clone)]
 pub enum Expr {
     // value exprs
-    Integer(i32),
+    Int(i32),
     Float(f64),
     Bool(bool),
     Str(String),
@@ -221,7 +221,7 @@ fn fmt_object(f: &mut fmt::Formatter, pairs: &Vec<(Key, Expr)>) -> fmt::Result {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Expr::Integer(i) => write!(f, "(int {})", i),
+            Expr::Int(i) => write!(f, "(int {})", i),
             Expr::Float(v) => write!(f, "(float {})", v),
             Expr::Bool(b) => write!(f, "({})", b),
             Expr::Str(s) => write!(f, "(\"{}\")", s),
@@ -364,7 +364,6 @@ pub struct TypeInst {
 pub enum Key {
     NamedKey(Name),
     IntKey(i32),
-    FloatKey(f64),
     BoolKey(bool),
 }
 
@@ -373,7 +372,6 @@ impl fmt::Display for Key {
         match self {
             Key::NamedKey(name) => write!(f, "{}", name),
             Key::IntKey(i) => write!(f, "{}", i),
-            Key::FloatKey(v) => write!(f, "{}", v),
             Key::BoolKey(b) => write!(f, "{}", b),
         }
     }

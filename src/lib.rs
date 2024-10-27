@@ -134,6 +134,25 @@ mod tests {
         let result = run(code).unwrap();
         assert_eq!(result, "14");
     }
+
+    #[test]
+    fn test_object() {
+        let code = "var a = { name: \"auto\", age: 18 }; a.name";
+        let result = run(code).unwrap();
+        assert_eq!(result, "auto");
+
+        let code = "var a = { name: \"auto\", age: 18 }; a.age";
+        let result = run(code).unwrap();
+        assert_eq!(result, "18");
+
+        let code = "var a = { 1: 2, 3: 4 }; a.3";
+        let result = run(code).unwrap();
+        assert_eq!(result, "4");
+
+        let code = "var a = { true: 2, false: 4 }; a.false";
+        let result = run(code).unwrap();
+        assert_eq!(result, "4");
+    }
 }
 
 
