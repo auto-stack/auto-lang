@@ -1,16 +1,61 @@
 use std::fmt::{self, Display, Formatter};
-
+use std::collections::BTreeMap;
 use crate::ast;
 use crate::ast::Op;
 
+#[derive(Debug, Clone, PartialEq, Hash, Ord, Eq, PartialOrd)]
+pub enum ValueKey {
+    Str(String),
+    Int(i32),
+    Bool(bool),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Obj {
+    values: BTreeMap<ValueKey, Value>,
+}
+
+impl Display for ValueKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ValueKey::Str(s) => write!(f, "{}", s),
+            ValueKey::Int(i) => write!(f, "{}", i),
+            ValueKey::Bool(b) => write!(f, "{}", b),
+        }
+    }
+}
+
+impl Obj {
+    pub fn new() -> Self {
+        Obj { values: BTreeMap::new() }
+    }
+
+    pub fn get(&self, key: &ValueKey) -> Option<Value> {
+        self.values.get(key).cloned()
+    }
+
+    pub fn set(&mut self, key: ValueKey, value: Value) {
+        self.values.insert(key, value);
+    }
+
+    pub fn lookup(&self, name: &str) -> Option<Value> {
+        self.values.iter().find(|(k, _)| match k {
+            ValueKey::Str(s) => s == name,
+            ValueKey::Int(i) => i.to_string() == name,
+            ValueKey::Bool(b) => b.to_string() == name,
+        }).map(|(_, v)| v.clone())
+    }
+}
+
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
-    Integer(i32),
+    Int(i32),
     Float(f64),
     Bool(bool),
     Str(String),
     Array(Vec<Value>),
-    Object(Vec<(Value, Value)>),
+    Object(Obj),
     Range(i32, i32),
     RangeEq(i32, i32),
     Fn(ast::Fn),
@@ -19,6 +64,7 @@ pub enum Value {
     Void,
     Error(String),
 }
+
 
 fn float_eq(a: f64, b: f64) -> bool {
     let epsilon = 0.000001;
@@ -36,11 +82,11 @@ fn print_array(f: &mut Formatter<'_>, value: &Vec<Value>) -> fmt::Result {
     write!(f, "]")
 }
 
-fn print_object(f: &mut Formatter<'_>, value: &Vec<(Value, Value)>) -> fmt::Result {
+fn print_object(f: &mut Formatter<'_>, obj: &Obj) -> fmt::Result {
     write!(f, "{{")?;
-    for (i, (k, v)) in value.iter().enumerate() {
+    for (i, (k, v)) in obj.values.iter().enumerate() {
         write!(f, "{}: {}", k, v)?;
-        if i < value.len() - 1 {
+        if i < obj.values.len() - 1 {
             write!(f, ", ")?;
         }
     }
@@ -52,7 +98,7 @@ impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Value::Str(value) => write!(f, "{}", value),
-            Value::Integer(value) => write!(f, "{}", value),
+            Value::Int(value) => write!(f, "{}", value),
             Value::Float(value) => write!(f, "{}", value),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Nil => write!(f, "nil"),
@@ -71,7 +117,7 @@ impl Display for Value {
 impl Value {
     pub fn neg(&self) -> Value {
         match self {
-            Value::Integer(value) => Value::Integer(-value),
+            Value::Int(value) => Value::Int(-value),
             Value::Float(value) => Value::Float(-value),
             _ => Value::Nil,
         }
@@ -87,7 +133,7 @@ impl Value {
 
     pub fn comp(&self, op: &Op, other: &Value) -> Value {
         match (self, other) {
-            (Value::Integer(a), Value::Integer(b)) => {
+            (Value::Int(a), Value::Int(b)) => {
                 match op {
                     Op::Eq => Value::Bool(a == b),
                     Op::Neq => Value::Bool(a != b),
@@ -123,7 +169,7 @@ impl Value {
     pub fn is_true(&self) -> bool {
         match self {
             Value::Bool(value) => *value,
-            Value::Integer(value) => *value > 0,
+            Value::Int(value) => *value > 0,
             Value::Float(value) => *value > 0.0,
             Value::Str(value) => value.len() > 0,
             _ => false,

@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::parser;
 use crate::scope;
-use crate::value::Value;
+use crate::value::{Value, Obj, ValueKey};
 
 pub struct Evaler<'a> {
     universe: &'a mut scope::Universe,
@@ -38,10 +38,10 @@ impl<'a> Evaler<'a> {
 
     fn try_promote(&self, left: Value, right: Value) -> (Value, Value) {
         match (&left, &right) {
-            (Value::Integer(_), Value::Integer(_)) => (left, right),
+            (Value::Int(_), Value::Int(_)) => (left, right),
             (Value::Float(_), Value::Float(_)) => (left, right),
-            (Value::Integer(left), Value::Float(_)) => (Value::Float(*left as f64), right),
-            (Value::Float(_), Value::Integer(right)) => (left, Value::Float(*right as f64)),
+            (Value::Int(left), Value::Float(_)) => (Value::Float(*left as f64), right),
+            (Value::Float(_), Value::Int(right)) => (left, Value::Float(*right as f64)),
             _ => (left, right),
         }
     }
@@ -49,15 +49,16 @@ impl<'a> Evaler<'a> {
     fn add(&self, left: Value, right: Value) -> Value {
         let (left, right) = self.try_promote(left, right);
         match (left, right) {
-            (Value::Integer(left), Value::Integer(right)) => Value::Integer(left + right),
+            (Value::Int(left), Value::Int(right)) => Value::Int(left + right),
             (Value::Float(left), Value::Float(right)) => Value::Float(left + right),
             _ => Value::Nil,
         }
     }
 
     fn sub(&self, left: Value, right: Value) -> Value {
+        let (left, right) = self.try_promote(left, right);
         match (left, right) {
-            (Value::Integer(left), Value::Integer(right)) => Value::Integer(left - right),
+            (Value::Int(left), Value::Int(right)) => Value::Int(left - right),
             (Value::Float(left), Value::Float(right)) => Value::Float(left - right),
             _ => Value::Nil,
         }
@@ -66,7 +67,7 @@ impl<'a> Evaler<'a> {
     fn mul(&self, left: Value, right: Value) -> Value {
         let (left, right) = self.try_promote(left, right);
         match (left, right) {
-            (Value::Integer(left), Value::Integer(right)) => Value::Integer(left * right),
+            (Value::Int(left), Value::Int(right)) => Value::Int(left * right),
             (Value::Float(left), Value::Float(right)) => Value::Float(left * right),
             _ => Value::Nil,
         }
@@ -75,7 +76,7 @@ impl<'a> Evaler<'a> {
     fn div(&self, left: Value, right: Value) -> Value {
         let (left, right) = self.try_promote(left, right);
         match (left, right) {
-            (Value::Integer(left), Value::Integer(right)) => Value::Integer(left / right),
+            (Value::Int(left), Value::Int(right)) => Value::Int(left / right),
             (Value::Float(left), Value::Float(right)) => Value::Float(left / right),
             _ => Value::Nil,
         }
@@ -108,14 +109,14 @@ impl<'a> Evaler<'a> {
         match range {
             Value::Range(start, end) => {
                 for i in start..end {
-                    self.universe.set_local(&name, Value::Integer(i));
+                    self.universe.set_local(&name, Value::Int(i));
                     self.eval_body(body);
                     max_loop -= 1;
                 }
             }
             Value::RangeEq(start, end) => {
                 for i in start..=end {
-                    self.universe.set_local(&name, Value::Integer(i));
+                    self.universe.set_local(&name, Value::Int(i));
                     self.eval_body(body);
                     max_loop -= 1;
                 }
@@ -165,6 +166,7 @@ impl<'a> Evaler<'a> {
             Op::Asn => self.asn(left, right_value),
             Op::Range => self.range(left, right),
             Op::RangeEq => self.range_eq(left, right),
+            Op::Dot => self.dot(left, right),
             _ => Value::Nil,
         }
     }
@@ -183,7 +185,7 @@ impl<'a> Evaler<'a> {
         let left_value = self.eval_expr(left);
         let right_value = self.eval_expr(right);
         match (&left_value, &right_value) {
-            (Value::Integer(left), Value::Integer(right)) => Value::Range(*left, *right),
+            (Value::Int(left), Value::Int(right)) => Value::Range(*left, *right),
             _ => Value::Error(format!("Invalid range {}..{}", left_value, right_value)),
         }
     }
@@ -192,7 +194,7 @@ impl<'a> Evaler<'a> {
         let left_value = self.eval_expr(left);
         let right_value = self.eval_expr(right);
         match (&left_value, &right_value) {
-            (Value::Integer(left), Value::Integer(right)) => Value::RangeEq(*left, *right),
+            (Value::Int(left), Value::Int(right)) => Value::RangeEq(*left, *right),
             _ => Value::Error(format!("Invalid range {}..={}", left_value, right_value)),
         }
     }
@@ -220,19 +222,18 @@ impl<'a> Evaler<'a> {
     }
 
     fn object(&mut self, pairs: &Vec<(Key, Expr)>) -> Value {
-        let mut values = Vec::new();
+        let mut obj = Obj::new();
         for (key, value) in pairs.iter() {
-            values.push((self.eval_key(key), self.eval_expr(value)));
+            obj.set(self.eval_key(key), self.eval_expr(value));
         }
-        Value::Object(values)
+        Value::Object(obj)
     }
 
-    fn eval_key(&mut self, key: &Key) -> Value {
+    fn eval_key(&mut self, key: &Key) -> ValueKey {
         match key {
-            Key::NamedKey(name) => Value::Str(name.text.clone()),
-            Key::IntKey(value) => Value::Integer(*value),
-            Key::FloatKey(value) => Value::Float(*value),
-            Key::BoolKey(value) => Value::Bool(*value),
+            Key::NamedKey(name) => ValueKey::Str(name.text.clone()),
+            Key::IntKey(value) => ValueKey::Int(*value),
+            Key::BoolKey(value) => ValueKey::Bool(*value),
         }
     }
 
@@ -262,7 +263,7 @@ impl<'a> Evaler<'a> {
         let array = self.eval_expr(array);
         let index_value = self.eval_expr(index);
         let mut idx = match index_value {
-            Value::Integer(index) => index,
+            Value::Int(index) => index,
             // TODO: support negative index
             // TODO: support range index
             _ => return Value::Error(format!("Invalid index {}", index_value)),
@@ -287,8 +288,8 @@ impl<'a> Evaler<'a> {
 
     fn eval_expr(&mut self, expr: &Expr) -> Value {
         match expr {
-            Expr::Integer(value) => Value::Integer(*value as i32),
-            Expr::Float(value) => Value::Float(*value as f64),
+            Expr::Int(value) => Value::Int(*value),
+            Expr::Float(value) => Value::Float(*value),
             // Why not move here?
             Expr::Str(value) => Value::Str(value.clone()),
             Expr::Bool(value) => Value::Bool(*value),
@@ -311,5 +312,19 @@ impl<'a> Evaler<'a> {
 
     fn type_decl(&mut self, type_decl: &TypeDecl) -> Value {
         Value::Void
+    }
+
+    fn dot(&mut self, left: &Expr, right: &Expr) -> Value {
+        let left_value = self.eval_expr(left);
+        let res: Option<Value> = match &left_value {
+            Value::Object(obj) => match right {
+                Expr::Ident(name) => obj.lookup(&name.text),
+                Expr::Int(key) => obj.lookup(&key.to_string()),
+                Expr::Bool(key) => obj.lookup(&key.to_string()),
+                _ => None,
+            }
+            _ => None,
+        };
+        res.unwrap_or(Value::Error(format!("Invalid object {}", left_value)))
     }
 }

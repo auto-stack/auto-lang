@@ -328,11 +328,6 @@ impl<'a> Parser<'a> {
                 self.next();
                 Ok(Key::IntKey(value))
             }
-            TokenKind::Float => {
-                let value = self.cur.text.parse().unwrap();
-                self.next();
-                Ok(Key::FloatKey(value))
-            }
             TokenKind::True => {
                 self.next();
                 Ok(Key::BoolKey(true))
@@ -370,7 +365,7 @@ impl<'a> Parser<'a> {
             return self.group();
         }
         let expr = match self.kind() {
-            TokenKind::Int => Expr::Integer(self.cur.text.parse().unwrap()),
+            TokenKind::Int => Expr::Int(self.cur.text.parse().unwrap()),
             TokenKind::Float => Expr::Float(self.cur.text.parse().unwrap()),
             TokenKind::True => Expr::Bool(true),
             TokenKind::False => Expr::Bool(false),
@@ -690,6 +685,12 @@ mod tests {
         let code = "{x:1, y:2}";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (stmt (object (pair (name x) (int 1)) (pair (name y) (int 2)))))");
+
+
+        let code = "var a = { 1: 2, 3: 4 }; a.1";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(stmt (bina (name a) (op .) (int 1)))");
     }
 
 
