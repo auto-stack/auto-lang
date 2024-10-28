@@ -80,6 +80,7 @@ fn infix_power(op: Op) -> Result<InfixPrec, String> {
 }
 
 pub fn parse(code: &str, scope: &mut Universe) -> Result<Code, String> {
+    println!("parsing code: {}", code);
     let mut parser = Parser::new(code, scope);
     parser.parse()
 }
@@ -131,6 +132,7 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Result<Code, String> {
         let mut stmts = Vec::new();
         while !self.is_kind(TokenKind::EOF) {
+            println!("parsing next stmt: {:?}", self.kind());
             stmts.push(self.stmt()?)
         }
         Ok(Code { stmts })
@@ -674,7 +676,7 @@ impl<'a> Parser<'a> {
             let var = self.var_stmt()?;
             match var {
                 Stmt::Var(var) => {
-                    model.states.push(var);
+                    model.vars.push(var);
                 }
                 _ => return Err(format!("Expected var declaration, got {:?}", var)),
             }
@@ -836,6 +838,13 @@ mod tests {
 
 
     #[test]
+    fn test_lambda() {
+        let code = "var x = || 1 + 2";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (var (name x) (lambda (stmt (bina (int 1) (op +) (int 2)))))");
+    }
+
+    #[test]
     fn test_widget() {
         let code = r#"
         widget counter {
@@ -844,7 +853,7 @@ mod tests {
             }
             view {
                 button("+") {
-                    onclick: count+1
+                    onclick: || count = count + 1
                 }
             }
         }
@@ -856,7 +865,7 @@ mod tests {
                 let model = &widget.model;
                 assert_eq!(model.to_string(), "(model (var (name count) (int 0)))");
                 let view = &widget.view;
-                assert_eq!(view.to_string(), "(view (node (name button) (args (\"+\")) (props (pair (name onclick) (bina (name count) (op +) (int 1))))))");
+                assert_eq!(view.to_string(), "(view (node (name button) (args (\"+\")) (props (pair (name onclick) (lambda (stmt (bina (name count) (op =) (bina (name count) (op +) (int 1))))))))");
             }
             _ => panic!("Expected widget, got {:?}", widget),
         }

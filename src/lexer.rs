@@ -232,6 +232,9 @@ impl<'a> Lexer<'a> {
                 '.' => {
                     return self.dot_or_range();
                 }
+                '|' => {
+                    return self.single(TokenKind::VBar, c);
+                }
                 _ => {
                     if c.is_digit(10) {
                         return self.number();
@@ -240,6 +243,9 @@ impl<'a> Lexer<'a> {
                     if c.is_alphabetic() {
                         return self.identifier();
                     }
+
+                    panic!("unknown character: {}", c);
+                    
                 }
             }
         }
