@@ -18,6 +18,7 @@ pub fn run(code: &str) -> Result<String, String> {
 }
 
 pub fn parse(code: &str) -> Result<ast::Code, String> {
+    println!("parsing code: {}", code);
     let mut scope = scope::Universe::new();
     parser::parse(code, &mut scope)
 }

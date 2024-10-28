@@ -234,9 +234,16 @@ fn fmt_object(f: &mut fmt::Formatter, pairs: &Vec<(Key, Expr)>) -> fmt::Result {
 }
 
 fn fmt_lambda(f: &mut fmt::Formatter, params: &Vec<Param>, body: &Box<Stmt>) -> fmt::Result {
-    write!(f, "(lambda ")?;
-    for (i, param) in params.iter().enumerate() {
-        write!(f, "{}", param)?;
+    write!(f, "(lambda")?;
+    if !params.is_empty() {
+        write!(f, " (params")?;
+        for (i, param) in params.iter().enumerate() {
+            write!(f, "{}", param)?;
+            if i < params.len() - 1 {
+                write!(f, " ")?;
+            }
+        }
+        write!(f, ")")?;
     }
     write!(f, " {}", body)?;
     Ok(())
@@ -456,21 +463,21 @@ impl fmt::Display for Widget {
 
 #[derive(Debug, Clone)]
 pub struct Model {
-    pub states: Vec<Var>,
+    pub vars: Vec<Var>,
 }
 
 impl Default for Model {
     fn default() -> Self {
-        Self { states: Vec::default() }
+        Self { vars: Vec::default() }
     }
 }
 
 impl fmt::Display for Model {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(model")?;
-        for (i, state) in self.states.iter().enumerate() {
+        for (i, state) in self.vars.iter().enumerate() {
             write!(f, " {}", state)?;
-            if i < self.states.len() - 1 {
+            if i < self.vars.len() - 1 {
                 write!(f, " ")?;
             }
         }
