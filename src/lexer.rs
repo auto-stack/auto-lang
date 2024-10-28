@@ -125,7 +125,17 @@ impl<'a> Lexer<'a> {
             "in" => self.keyword_tok(TokenKind::In, &text),
             "fn" => self.keyword_tok(TokenKind::Fn, &text),
             "type" => self.keyword_tok(TokenKind::Type, &text),
-            _ => None,
+            _ => {
+                // AutoUI Keywords
+                // TODO: Add an Option to not check these keywords
+                match text.as_str() {
+                    "widget" => self.keyword_tok(TokenKind::Widget, &text),
+                    "model" => self.keyword_tok(TokenKind::Model, &text),
+                    "view" => self.keyword_tok(TokenKind::View, &text),
+                    "style" => self.keyword_tok(TokenKind::Style, &text),
+                    _ => None,
+                }
+            }
         }
     }
 
