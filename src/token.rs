@@ -44,6 +44,7 @@ pub enum TokenKind {
     Range, // ..
     RangeEq, // ..= 
     Colon, // :
+    VBar, // |
 
     // Keywords
     True,
@@ -56,6 +57,12 @@ pub enum TokenKind {
     In,
     Fn,
     Type,
+
+    // Keywords For AutoUI
+    Widget,
+    Model,
+    View,
+    Style,
 
     // EOF
     EOF,

@@ -1,8 +1,14 @@
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
 #[derive(Debug)]
 pub struct Code {
     pub stmts: Vec<Stmt>,
+}
+
+impl Default for Code {
+    fn default() -> Self {
+        Self { stmts: Vec::default() }
+    }
 }
 
 impl fmt::Display for Code {
@@ -32,7 +38,7 @@ impl fmt::Display for Branch {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Name {
     pub text: String,
 }
@@ -56,6 +62,11 @@ pub struct Var {
     pub expr: Expr,
 }
 
+impl fmt::Display for Var {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(var {} {})", self.name, self.expr)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
@@ -65,6 +76,7 @@ pub enum Stmt {
     Var(Var),
     Fn(Fn),
     TypeDecl(TypeDecl),
+    Widget(Widget),
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +93,7 @@ impl fmt::Display for Body {
         Ok(())
     }
 }
+
 impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -99,6 +112,7 @@ impl fmt::Display for Stmt {
             Stmt::Var(var) => write!(f, "(var {} {})", var.name, var.expr),
             Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),
             Stmt::TypeDecl(type_decl) => write!(f, "{}", type_decl),    
+            Stmt::Widget(widget) => write!(f, "{}", widget),
         }
     }
 }
@@ -191,6 +205,7 @@ pub enum Expr {
     Call(/*name*/Box<Expr>, /*args*/Vec<Expr>),
     Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
     TypeInst(/*name*/Box<Expr>, /*entries*/Vec<(Key, Expr)>),
+    Lambda(/*params*/Vec<Param>, /*body*/Box<Stmt>),
     // stmt exprs
     If(Vec<Branch>, Option<Body>),
     Nil,
@@ -218,6 +233,15 @@ fn fmt_object(f: &mut fmt::Formatter, pairs: &Vec<(Key, Expr)>) -> fmt::Result {
     write!(f, ")")
 }
 
+fn fmt_lambda(f: &mut fmt::Formatter, params: &Vec<Param>, body: &Box<Stmt>) -> fmt::Result {
+    write!(f, "(lambda ")?;
+    for (i, param) in params.iter().enumerate() {
+        write!(f, "{}", param)?;
+    }
+    write!(f, " {}", body)?;
+    Ok(())
+}
+
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -234,6 +258,7 @@ impl fmt::Display for Expr {
             Expr::Call(name, args) => fmt_call(f, name, args),
             Expr::Index(array, index) => write!(f, "(index {} {})", array, index),
             Expr::TypeInst(name, entries) => write!(f, "(type-inst {} {:?})", name, entries),
+            Expr::Lambda(params, body) => fmt_lambda(f, params, body),
             Expr::Nil => write!(f, "(nil)"),
         }
     }
@@ -314,6 +339,7 @@ impl Fn {
     pub fn new(name: Name, params: Vec<Param>, body: Body, ret: Option<Type>) -> Fn {
         Fn { name, params, body, ret}
     }
+
 }
 
 #[derive(Debug, Clone)]
@@ -360,7 +386,7 @@ pub struct TypeInst {
     pub entries: Vec<(Key, Expr)>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum Key {
     NamedKey(Name),
     IntKey(i32),
@@ -374,5 +400,101 @@ impl fmt::Display for Key {
             Key::IntKey(i) => write!(f, "{}", i),
             Key::BoolKey(b) => write!(f, "{}", b),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Node {
+    pub name: Name,
+    pub args: Vec<Expr>,
+    pub props: BTreeMap<Key, Expr>,
+}
+
+impl Node {
+    pub fn new(name: Name) -> Self {
+        Self { name, args: Vec::new(), props: BTreeMap::new() }
+    }
+}   
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(node {} (args", self.name)?;
+        for (i, arg) in self.args.iter().enumerate() {
+            write!(f, " {}", arg)?;
+            if i < self.args.len() - 1 {
+                write!(f, " ")?;
+            }
+        }
+        if !self.props.is_empty() {
+            write!(f, ") (props")?;
+            for (key, expr) in self.props.iter() {
+                write!(f, " (pair {} {})", key, expr)?;
+            }
+        }
+        write!(f, "))")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Widget {
+    pub name: Name,
+    pub model: Model,
+    pub view: View,
+}
+
+impl Widget {
+    pub fn new(name: Name) -> Self {
+        Self { name, model: Model::default(), view: View::default() }
+    }
+}
+
+impl fmt::Display for Widget {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(widget {} {} {})", self.name, self.model, self.view)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Model {
+    pub states: Vec<Var>,
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Self { states: Vec::default() }
+    }
+}
+
+impl fmt::Display for Model {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(model")?;
+        for (i, state) in self.states.iter().enumerate() {
+            write!(f, " {}", state)?;
+            if i < self.states.len() - 1 {
+                write!(f, " ")?;
+            }
+        }
+        write!(f, ")")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct View {
+    pub nodes: BTreeMap<Name, Node>,
+}
+
+impl Default for View {
+    fn default() -> Self {
+        Self { nodes: BTreeMap::new() }
+    }
+}
+
+impl fmt::Display for View {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(view")?;
+        for (name, node) in self.nodes.iter() {
+            write!(f, " {}", node)?;
+        }
+        write!(f, ")")
     }
 }

@@ -170,6 +170,8 @@ impl<'a> Parser<'a> {
             TokenKind::LSquare => self.array()?,
             // object
             TokenKind::LBrace => Expr::Object(self.object()?),
+            // lambda
+            TokenKind::VBar => self.lambda()?,
             // normal
             _ => self.atom()?,
         };
@@ -397,6 +399,14 @@ impl<'a> Parser<'a> {
         // TODO: how to check for range/array but reject other cases?
         self.expr()
     }
+
+    pub fn lambda(&mut self) -> Result<Expr, String> {
+        self.next(); // skip |
+        let params = self.fn_params()?;
+        self.next(); // skip |
+        let body = Box::new(self.stmt()?);
+        Ok(Expr::Lambda(params, body))
+    }
 }
 
 // Statements
@@ -416,6 +426,8 @@ impl<'a> Parser<'a> {
             TokenKind::Var => self.var_stmt()?,
             TokenKind::Fn => self.fn_stmt()?,
             TokenKind::Type => self.type_stmt()?,
+            // AutoUI Stmts
+            TokenKind::Widget => self.widget_stmt()?,
             _ => self.expr_stmt()?,
         };
         self.expect_eos()?;
@@ -620,6 +632,104 @@ impl<'a> Parser<'a> {
             _ => Ok(()),
         }
     }
+
+    pub fn widget_stmt(&mut self) -> Result<Stmt, String> {
+        self.next(); // skip widget
+        let name = self.cur.text.clone();
+        self.expect(TokenKind::Ident)?;
+        let (model, view) = self.widget_body()?;
+        let mut widget = Widget::new(Name::new(name.clone()));
+        widget.model = model;
+        widget.view = view;
+        Ok(Stmt::Widget(widget))
+    }
+
+    pub fn widget_body(&mut self) -> Result<(Model, View), String> {
+        self.expect(TokenKind::LBrace)?;
+        let mut has_content = false;
+        let mut model = Model::default();
+        let mut view = View::default();
+        if self.is_kind(TokenKind::Model) {
+            model = self.model_decl()?;
+            has_content = true;
+        }
+        println!("parse view: {:?}", self.kind());
+        if self.is_kind(TokenKind::View) {
+            view = self.view_decl()?;
+            has_content = true;
+        }
+        if !has_content {
+            return Err("Widget has no model nor view".to_string());
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok((model, view))
+    }
+
+    pub fn model_decl(&mut self) -> Result<Model, String> {
+        self.next(); // skip model
+        self.expect(TokenKind::LBrace)?;
+        let mut model = Model::default();
+        // parse multiple var declarations
+        while self.is_kind(TokenKind::Var) {
+            let var = self.var_stmt()?;
+            match var {
+                Stmt::Var(var) => {
+                    model.states.push(var);
+                }
+                _ => return Err(format!("Expected var declaration, got {:?}", var)),
+            }
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(model)
+    }
+
+    pub fn view_decl(&mut self) -> Result<View, String> {
+        self.next(); // skip view
+        let mut view = View::default();
+        self.expect(TokenKind::LBrace)?;
+        // parse multiple node instances
+        println!("parse view");
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            let node = self.node_instance()?;
+            view.nodes.insert(node.name.clone(), node);
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(view)
+    }
+
+    pub fn node_instance(&mut self) -> Result<Node, String> {
+        if self.is_kind(TokenKind::Ident) {
+            let name = self.ident()?;
+            println!("node name: {}", name);
+            if let Expr::Ident(name) = name {
+                // name
+                let mut node = Node::new(name.clone());
+                println!("node name: {}", &name.text);
+                self.next();
+
+                // args
+                self.expect(TokenKind::LParen)?;
+                let args = self.args()?;
+                self.expect(TokenKind::RParen)?;
+                node.args = args;
+
+                // body
+                if self.is_kind(TokenKind::LBrace) {
+                    self.expect(TokenKind::LBrace)?;
+                    while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+                        let (key, value) = self.pair()?;
+                        node.props.insert(key, value);
+                    }
+                    self.expect(TokenKind::RBrace)?;
+                }
+                Ok(node)
+            } else {
+                Err(format!("Expected node name, got {:?}", name))
+            }
+        } else {
+            Err(format!("Expected node name, got {:?}", self.kind()))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -722,6 +832,34 @@ mod tests {
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
         assert_eq!(last.to_string(), "(stmt (bina (name p) (op .) (name x)))");
+    }
+
+
+    #[test]
+    fn test_widget() {
+        let code = r#"
+        widget counter {
+            model {
+                var count = 0
+            }
+            view {
+                button("+") {
+                    onclick: count+1
+                }
+            }
+        }
+        "#;
+        let ast = parse_once(code);
+        let widget = &ast.stmts[0];
+        match widget { 
+            Stmt::Widget(widget) => {
+                let model = &widget.model;
+                assert_eq!(model.to_string(), "(model (var (name count) (int 0)))");
+                let view = &widget.view;
+                assert_eq!(view.to_string(), "(view (node (name button) (args (\"+\")) (props (pair (name onclick) (bina (name count) (op +) (int 1))))))");
+            }
+            _ => panic!("Expected widget, got {:?}", widget),
+        }
     }
 }
 

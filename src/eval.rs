@@ -33,6 +33,8 @@ impl<'a> Evaler<'a> {
             Stmt::Var(var) => self.eval_var(var),
             Stmt::Fn(fn_decl) => self.eval_fn(fn_decl),
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
+            // TODO: no need to eval widget as it only needs to be translated into UI calls
+            Stmt::Widget(_) => Value::Nil,
         }
     }
 
@@ -302,6 +304,8 @@ impl<'a> Evaler<'a> {
             Expr::Index(array, index) => self.index(array, index),
             Expr::Object(pairs) => self.object(pairs),
             Expr::TypeInst(name, entries) => self.type_inst(name, entries),
+            // TODO: lambda should not be evaluated at site
+            Expr::Lambda(_, _) => Value::Nil,
             Expr::Nil => Value::Nil,
         }
     }

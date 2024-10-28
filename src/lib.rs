@@ -1,6 +1,6 @@
 mod token;
 mod lexer;
-mod ast;
+pub mod ast;
 mod parser;
 mod eval;
 mod value;
@@ -15,6 +15,11 @@ pub fn run(code: &str) -> Result<String, String> {
     let mut evaler = eval::Evaler::new(&mut scope);
     let result = evaler.eval(&ast);
     Ok(result.to_string())
+}
+
+pub fn parse(code: &str) -> Result<ast::Code, String> {
+    let mut scope = scope::Universe::new();
+    parser::parse(code, &mut scope)
 }
 
 #[cfg(test)]
