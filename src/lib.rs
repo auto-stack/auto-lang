@@ -139,6 +139,10 @@ mod tests {
         let code = "fn add(a, b) { a + b }; add(12, 2)";
         let result = run(code).unwrap();
         assert_eq!(result, "14");
+
+        let code = "fn add(a, b) { a + b }; add(a=1, b=2)";
+        let result = run(code).unwrap();
+        assert_eq!(result, "3");
     }
 
     #[test]
@@ -159,6 +163,27 @@ mod tests {
         let result = run(code).unwrap();
         assert_eq!(result, "4");
     }
+
+    #[test]
+    fn test_lambda() {
+        let code = "var add = |a int, b int| a + b; add(1, 2)";
+        let result = run(code).unwrap();
+        assert_eq!(result, "3");
+    }
+
+    #[test]
+    fn test_lambda_with_named_params() {
+        let code = "fn sub(a, b) { a - b }; sub(b=5, a=12)";
+        let result = run(code).unwrap();
+        assert_eq!(result, "7");
+    }
+
+    // #[test]
+    // fn test_type() {
+    //     let code = "type Point { x int, y int }; var p = Point(x=1, y=2); p.x";
+    //     let result = run(code).unwrap();
+    //     assert_eq!(result, "1");
+    // }
 }
 
 

@@ -142,6 +142,7 @@ impl<'a> Evaler<'a> {
     }
 
     fn eval_var(&mut self, var: &Var) -> Value {
+        println!("eval var: {}", var);
         let value = self.eval_expr(&var.expr);
         self.universe.set_local(&var.name.text, value);
         Value::Void
@@ -175,7 +176,7 @@ impl<'a> Evaler<'a> {
 
     fn asn(&mut self, left: &Expr, right: Value) -> Value {
         if let Expr::Ident(name) = left {
-            // check if name exists
+            // TODO: check if name already exists
             self.universe.set_local(&name.text, right);
             Value::Void
         } else {
@@ -239,22 +240,38 @@ impl<'a> Evaler<'a> {
         }
     }
 
-    fn call(&mut self, name: &Expr, args: &Vec<Expr>) -> Value {
-        let name = self.eval_expr(name);
-        let arg_vals: Vec<Value> = args.iter().map(|arg| self.eval_expr(arg)).collect();
+    fn call(&mut self, call: &Call) -> Value {
+        println!("call name: {:?}", call.name);
+        let mut name = self.eval_expr(&call.name);
+        if name == Value::LambdaStub {
+            // Try to lookup lambda in SymbolTable
+            let lambda = self.universe.get_symbol(&call.get_name());
+            if let Some(meta) = lambda {
+                match meta {
+                    scope::Meta::Fn(fn_decl) => name = Value::Fn(fn_decl.clone()),
+                    _ => return Value::Error(format!("Invalid lambda {}", name)),
+                }
+            }
+        }
+        let arg_vals: Vec<Value> = call.args.array.iter().map(|arg| self.eval_expr(arg)).collect();
         match name {
-            Value::Fn(fn_decl) => self.eval_fn_call(&fn_decl, &args),
+            Value::Fn(fn_decl) => self.eval_fn_call(&fn_decl, &call.args),
             Value::ExtFn(fp) => fp(&arg_vals),
             _ => Value::Error(format!("Invalid function call {}", name)),
         }
     }
 
-    fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Vec<Expr>) -> Value {
+    fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
         self.universe.enter_scope();
-        for (i, arg) in args.iter().enumerate() {
+        for (i, arg) in args.array.iter().enumerate() {
             let val = self.eval_expr(arg);
             let name = &fn_decl.params[i].name.text;
             self.universe.set_local(&name, val);
+        }
+        for (name, expr) in args.map.iter() {
+            let val = self.eval_expr(expr);
+            println!("set local {} = {}", name.text, val);
+            self.universe.set_local(&name.text, val);
         }
         let result = self.eval_body(&fn_decl.body);
         self.universe.exit_scope();
@@ -300,12 +317,11 @@ impl<'a> Evaler<'a> {
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
             Expr::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
             Expr::Array(elems) => self.array(elems),
-            Expr::Call(name, args) => self.call(name, args),
+            Expr::Call(call) => self.call(call),
             Expr::Index(array, index) => self.index(array, index),
             Expr::Object(pairs) => self.object(pairs),
             Expr::TypeInst(name, entries) => self.type_inst(name, entries),
-            // TODO: lambda should not be evaluated at site
-            Expr::Lambda(_) => Value::Nil,
+            Expr::Lambda(_) => Value::LambdaStub,
             Expr::Nil => Value::Nil,
         }
     }

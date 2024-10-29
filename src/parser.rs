@@ -177,6 +177,8 @@ impl<'a> Parser<'a> {
             // normal
             _ => self.atom()?,
         };
+        println!("lhs: {:?}", lhs);
+        println!("next kind: {:?}", self.kind());
         loop {
             let op = match self.kind() {
                 TokenKind::EOF | TokenKind::Semi | TokenKind::LBrace | TokenKind::RBrace | TokenKind::Comma => break,
@@ -198,18 +200,21 @@ impl<'a> Parser<'a> {
                 self.next(); // skip postfix op
 
                 match op {
+                    // Index
                     Op::LSquare => {
                         let rhs = self.expr_pratt(0)?;
                         self.expect(TokenKind::RSquare)?;
                         lhs = Expr::Index(Box::new(lhs), Box::new(rhs));
                         continue;
                     }
+                    // Call
                     Op::LParen => {
                         let args = self.args()?;
                         self.expect(TokenKind::RParen)?;
-                        lhs = Expr::Call(Box::new(lhs), args);
+                        lhs = Expr::Call(Call{name: Box::new(lhs), args});
                         continue;
                     }
+                    // Type instantiation
                     Op::LBrace => {
                         let entries = self.object()?;
                         lhs = Expr::TypeInst(Box::new(lhs), entries);
@@ -293,10 +298,27 @@ impl<'a> Parser<'a> {
         panic!("Expected argument separator, got {:?}", self.kind());
     }
 
-    pub fn args(&mut self) -> Result<Vec<Expr>, String> {
-        let mut args = Vec::new();
+    pub fn args(&mut self) -> Result<Args, String> {
+        let mut args = Args::new();
+        let mut is_named_started = false;
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RParen) {
-            args.push(self.expr()?);
+            let expr = self.expr()?;
+            // Check for named argument
+            match expr {
+                Expr::Bina(name, Op::Asn, val) => { // Named argument
+                    is_named_started = true;
+                    match &*name {
+                        Expr::Ident(name) => args.map.push((name.clone(), *val)),
+                        _ => return Err(format!("Expected identifier, got {:?}", name)),
+                    }
+                }
+                _ => {
+                    if is_named_started {
+                        return Err(format!("all positional args should come before named args: {}", expr));
+                    }
+                    args.array.push(expr);
+                }
+            }
             self.sep_args();
         }
         Ok(args)
@@ -405,9 +427,14 @@ impl<'a> Parser<'a> {
     pub fn lambda(&mut self) -> Result<Expr, String> {
         self.next(); // skip |
         let params = self.fn_params()?;
-        self.next(); // skip |
-        let body = self.stmt()?;
-        Ok(Expr::Lambda(Lambda::new(params, Body { stmts: vec![body] })))
+        self.expect(TokenKind::VBar)?; // skip |
+        if self.is_kind(TokenKind::LBrace) {
+            let body = self.body()?;
+            return Ok(Expr::Lambda(Lambda::new(params, body)));
+        } else { // single expression
+            let expr = self.expr()?;
+            return Ok(Expr::Lambda(Lambda::new(params, Body { stmts: vec![Stmt::Expr(expr)] })));
+        }
     }
 }
 
@@ -499,8 +526,16 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Ident)?;
         self.expect(TokenKind::Asn)?;
         let expr = self.rhs_expr()?;
-        let var = Var { name: Name::new(name.clone()), expr };
-        self.scope.define(name.clone(), Meta::Var(var.clone()));
+        match expr.clone() {
+            Expr::Lambda(lambda) => {
+                let fn_decl = lambda.into();
+                self.scope.define(name.clone(), Meta::Fn(fn_decl));
+            }
+            _ => {
+                self.scope.define(name.clone(), Meta::Var(Var { name: Name::new(name.clone()), expr: expr.clone() }));
+            }
+        }
+        let var = Var { name: Name::new(name), expr };
         Ok(Stmt::Var(var))
     }
 
@@ -525,7 +560,7 @@ impl<'a> Parser<'a> {
             self.next();
             return;
         }
-        if self.is_kind(TokenKind::RParen) {
+        if self.is_kind(TokenKind::RParen) || self.is_kind(TokenKind::VBar) {
             return;
         }
         panic!("Expected parameter separator, got {:?}", self.kind());
@@ -535,8 +570,15 @@ impl<'a> Parser<'a> {
     pub fn fn_params(&mut self) -> Result<Vec<Param>, String> {
         let mut params = Vec::new();
         while self.is_kind(TokenKind::Ident) {
+            // param name
             let name = self.cur.text.clone();
             self.next(); // skip name
+            // param type
+            let mut ty = Type::Int;
+            if self.is_kind(TokenKind::Ident) {
+                ty = self.type_name()?;
+            }
+            // default val
             let mut default = None;
             if self.is_kind(TokenKind::Asn) {
                 self.next(); // skip =
@@ -545,10 +587,15 @@ impl<'a> Parser<'a> {
             }
             let var = Var { name: Name::new(name.clone()), expr: default.clone().unwrap_or(Expr::Nil) };
             self.scope.define(name.clone(), Meta::Var(var.clone()));
-            params.push(Param { name: Name::new(name), default });
+            params.push(Param { name: Name::new(name), ty, default });
             self.sep_params();
         }
         Ok(params)
+    }
+
+    pub fn type_name(&mut self) -> Result<Type, String> {
+        let ty = self.type_expr()?;
+        Ok(ty)
     }
 
     pub fn expr_stmt(&mut self) -> Result<Stmt, String> {
@@ -810,7 +857,7 @@ mod tests {
     fn test_fn() {
         let code = "fn add(x, y) { x+y }";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (fn (name add) (params (param x) (param y)) (body (stmt (bina (name x) (op +) (name y))))");
+        assert_eq!(ast.to_string(), "(code (fn (name add) (params (param (name x) (type int)) (param (name y) (type int))) (body (stmt (bina (name x) (op +) (name y))))");
     }
 
     #[test]
@@ -830,7 +877,7 @@ mod tests {
 
     #[test]
     fn test_type_inst() {
-        let code = "type Point {x int; y int}; var p = Point{x:1, y:2}; p.x";
+        let code = "type Point {x int; y int}; var p = Point(x=1, y=2); p.x";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
         assert_eq!(last.to_string(), "(stmt (bina (name p) (op .) (name x)))");
@@ -842,6 +889,13 @@ mod tests {
         let code = "var x = || 1 + 2";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (var (name x) (lambda (body (stmt (bina (int 1) (op +) (int 2)))))");
+    }
+
+    #[test]
+    fn test_lambda_with_params() {
+        let code = "|a int, b int| a + b";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (stmt (lambda (params (param (name a) (type int)) (param (name b) (type int))) (body (stmt (bina (name a) (op +) (name b)))))");
     }
 
     #[test]
@@ -870,6 +924,8 @@ mod tests {
             _ => panic!("Expected widget, got {:?}", widget),
         }
     }
+
+
 }
 
 
