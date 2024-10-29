@@ -58,7 +58,7 @@ impl CTranspiler {
                 Ok(())
             }
             Expr::Ident(name) => out.write_all(name.text.as_bytes()).to(),
-            Expr::Call(name, args) => self.call(name, args, out),
+            Expr::Call(call) => self.call(call, out),
             _ => Err(format!("unsupported expression: {:?}", expr)),
         }
     }
@@ -152,12 +152,20 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn call(&mut self, name: &Expr, args: &Vec<Expr>, out: &mut impl Write) -> Result<(), String> {
-        self.expr(name, out)?;
+    fn call(&mut self, call: &Call, out: &mut impl Write) -> Result<(), String> {
+        self.expr(&call.name, out)?;
         out.write(b"(").to()?;
-        for arg in args {
+        for (i, arg) in call.args.array.iter().enumerate() {
             self.expr(arg, out)?;
+            if i < call.args.array.len() - 1 {
+                out.write(b", ").to()?;
+            }
         }
+        // TODO: support named args in C
+        // Find where a named arg is positioned, and insert default arg values in between
+        // // // for (name, expr) in &call.args.map {
+        // //     self.expr(expr, out)?;
+        // }
         out.write(b")").to()?;
         Ok(())
     }

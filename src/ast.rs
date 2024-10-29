@@ -202,7 +202,7 @@ pub enum Expr {
     Bina(Box<Expr>, Op, Box<Expr>),
     Array(Vec<Expr>),
     Object(Vec<(Key, Expr)>),
-    Call(/*name*/Box<Expr>, /*args*/Vec<Expr>),
+    Call(Call),
     Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
     TypeInst(/*name*/Box<Expr>, /*entries*/Vec<(Key, Expr)>),
     Lambda(Lambda),
@@ -211,12 +211,42 @@ pub enum Expr {
     Nil,
 }
 
-fn fmt_call(f: &mut fmt::Formatter, name: &Expr, args: &Vec<Expr>) -> fmt::Result {
+#[derive(Debug, Clone)]
+pub struct Call {
+    pub name: Box<Expr>,
+    pub args: Args,
+}
+
+impl Call {
+    pub fn get_name(&self) -> String {
+        match &self.name.as_ref() {
+            Expr::Ident(name) => name.text.clone(),
+            _ => panic!("Expected identifier, got {:?}", self.name),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Args {
+    pub array: Vec<Expr>,
+    pub map: Vec<(Name, Expr)>,
+}
+
+impl Args {
+    pub fn new() -> Self {
+        Self { array: Vec::new(), map: Vec::new() }
+    }
+}
+
+fn fmt_call(f: &mut fmt::Formatter, call: &Call) -> fmt::Result {
     write!(f, "(call ")?;
-    write!(f, "{}", name)?;
+    write!(f, "{}", call.name)?;
     write!(f, " (args")?;
-    for arg in args.iter() {
+    for arg in call.args.array.iter() {
         write!(f, " {}", arg)?;
+    }
+    for (name, expr) in call.args.map.iter() {
+        write!(f, " (pair {} {})", name, expr)?;
     }
     write!(f, ")")?;
     Ok(())
@@ -233,22 +263,6 @@ fn fmt_object(f: &mut fmt::Formatter, pairs: &Vec<(Key, Expr)>) -> fmt::Result {
     write!(f, ")")
 }
 
-fn fmt_lambda(f: &mut fmt::Formatter, lambda: &Lambda) -> fmt::Result {
-    write!(f, "(lambda")?;
-    if !lambda.params.is_empty() {
-        write!(f, " (params")?;
-        for (i, param) in lambda.params.iter().enumerate() {
-            write!(f, "{}", param)?;
-            if i < lambda.params.len() - 1 {
-                write!(f, " ")?;
-            }
-        }
-        write!(f, ")")?;
-    }
-    write!(f, " {}", lambda.body)?;
-    Ok(())
-}
-
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -262,10 +276,10 @@ impl fmt::Display for Expr {
             Expr::Array(elems) => write!(f, "(array {:?})", elems),
             Expr::Object(pairs) => fmt_object(f, pairs),
             Expr::If(branches, else_stmt) => write!(f, "(if {:?} {:?})", branches, else_stmt),
-            Expr::Call(name, args) => fmt_call(f, name, args),
+            Expr::Call(call) => fmt_call(f, &call),
             Expr::Index(array, index) => write!(f, "(index {} {})", array, index),
             Expr::TypeInst(name, entries) => write!(f, "(type-inst {} {:?})", name, entries),
-            Expr::Lambda(lambda) => fmt_lambda(f, &lambda),
+            Expr::Lambda(lambda) => write!(f, "{}", lambda),
             Expr::Nil => write!(f, "(nil)"),
         }
     }
@@ -274,6 +288,7 @@ impl fmt::Display for Expr {
 #[derive(Debug, Clone)]
 pub struct Param {
     pub name: Name,
+    pub ty: Type,
     pub default: Option<Expr>,
 }
 
@@ -285,12 +300,11 @@ impl PartialEq for Param {
 
 impl fmt::Display for Param {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(param {}", self.name.text)?;
+        write!(f, "(param {} (type {})", self.name, self.ty)?;
         if let Some(default) = &self.default {
-            write!(f, "={}", default)?;
+            write!(f, " (default {})", default)?;
         }
-        write!(f, ")")?;
-        Ok(())
+        write!(f, ")")
     }
 }
 
@@ -413,24 +427,27 @@ impl fmt::Display for Key {
 #[derive(Debug, Clone)]
 pub struct Node {
     pub name: Name,
-    pub args: Vec<Expr>,
+    pub args: Args,
     pub props: BTreeMap<Key, Expr>,
 }
 
 impl Node {
     pub fn new(name: Name) -> Self {
-        Self { name, args: Vec::new(), props: BTreeMap::new() }
+        Self { name, args: Args::new(), props: BTreeMap::new() }
     }
 }   
 
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(node {} (args", self.name)?;
-        for (i, arg) in self.args.iter().enumerate() {
+        for (i, arg) in self.args.array.iter().enumerate() {
             write!(f, " {}", arg)?;
-            if i < self.args.len() - 1 {
+            if i < self.args.array.len() - 1 {
                 write!(f, " ")?;
             }
+        }
+        for (name, expr) in self.args.map.iter() {
+            write!(f, " (pair {} {})", name, expr)?;
         }
         if !self.props.is_empty() {
             write!(f, ") (props")?;
@@ -512,6 +529,12 @@ pub struct Lambda {
     pub body: Body,
 }
 
+impl Into<Fn> for Lambda {
+    fn into(self) -> Fn {
+        Fn::new(Name::new("lambda".to_string()), self.params, self.body, None)
+    }
+}
+
 impl Lambda {
     pub fn new(params: Vec<Param>, body: Body) -> Self {
         Self { params, body }
@@ -520,12 +543,16 @@ impl Lambda {
 
 impl fmt::Display for Lambda {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(lambda ")?;
-        for (i, param) in self.params.iter().enumerate() {
-            write!(f, "{}", param)?;
-            if i < self.params.len() - 1 {
-                write!(f, " ")?;
+        write!(f, "(lambda")?;
+        if !self.params.is_empty() {    
+            write!(f, " (params ")?;
+            for (i, param) in self.params.iter().enumerate() {
+                write!(f, "{}", param)?;
+                if i < self.params.len() - 1 {
+                    write!(f, " ")?;
+                }
             }
+            write!(f, ")")?;
         }
         write!(f, " {}", self.body)
     }

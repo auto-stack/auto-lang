@@ -61,6 +61,7 @@ pub enum Value {
     Fn(ast::Fn),
     ExtFn(fn(&Vec<Value>) -> Value),
     Nil,
+    LambdaStub,
     Void,
     Error(String),
 }
@@ -110,6 +111,7 @@ impl Display for Value {
             Value::Fn(value) => write!(f, "{}", value),
             Value::ExtFn(_) => write!(f, "extfn"),
             Value::Object(value) => print_object(f, value),
+            Value::LambdaStub => write!(f, "lambda"),
         }
     }
 }
