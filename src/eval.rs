@@ -305,7 +305,7 @@ impl<'a> Evaler<'a> {
             Expr::Object(pairs) => self.object(pairs),
             Expr::TypeInst(name, entries) => self.type_inst(name, entries),
             // TODO: lambda should not be evaluated at site
-            Expr::Lambda(_, _) => Value::Nil,
+            Expr::Lambda(_) => Value::Nil,
             Expr::Nil => Value::Nil,
         }
     }
