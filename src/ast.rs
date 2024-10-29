@@ -205,7 +205,7 @@ pub enum Expr {
     Call(/*name*/Box<Expr>, /*args*/Vec<Expr>),
     Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
     TypeInst(/*name*/Box<Expr>, /*entries*/Vec<(Key, Expr)>),
-    Lambda(/*params*/Vec<Param>, /*body*/Box<Stmt>),
+    Lambda(Lambda),
     // stmt exprs
     If(Vec<Branch>, Option<Body>),
     Nil,
@@ -233,19 +233,19 @@ fn fmt_object(f: &mut fmt::Formatter, pairs: &Vec<(Key, Expr)>) -> fmt::Result {
     write!(f, ")")
 }
 
-fn fmt_lambda(f: &mut fmt::Formatter, params: &Vec<Param>, body: &Box<Stmt>) -> fmt::Result {
+fn fmt_lambda(f: &mut fmt::Formatter, lambda: &Lambda) -> fmt::Result {
     write!(f, "(lambda")?;
-    if !params.is_empty() {
+    if !lambda.params.is_empty() {
         write!(f, " (params")?;
-        for (i, param) in params.iter().enumerate() {
+        for (i, param) in lambda.params.iter().enumerate() {
             write!(f, "{}", param)?;
-            if i < params.len() - 1 {
+            if i < lambda.params.len() - 1 {
                 write!(f, " ")?;
             }
         }
         write!(f, ")")?;
     }
-    write!(f, " {}", body)?;
+    write!(f, " {}", lambda.body)?;
     Ok(())
 }
 
@@ -265,7 +265,7 @@ impl fmt::Display for Expr {
             Expr::Call(name, args) => fmt_call(f, name, args),
             Expr::Index(array, index) => write!(f, "(index {} {})", array, index),
             Expr::TypeInst(name, entries) => write!(f, "(type-inst {} {:?})", name, entries),
-            Expr::Lambda(params, body) => fmt_lambda(f, params, body),
+            Expr::Lambda(lambda) => fmt_lambda(f, &lambda),
             Expr::Nil => write!(f, "(nil)"),
         }
     }
@@ -487,12 +487,12 @@ impl fmt::Display for Model {
 
 #[derive(Debug, Clone)]
 pub struct View {
-    pub nodes: BTreeMap<Name, Node>,
+    pub nodes: Vec<(Name, Node)>,
 }
 
 impl Default for View {
     fn default() -> Self {
-        Self { nodes: BTreeMap::new() }
+        Self { nodes: Vec::new() }
     }
 }
 
@@ -503,5 +503,30 @@ impl fmt::Display for View {
             write!(f, " {}", node)?;
         }
         write!(f, ")")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Lambda {
+    pub params: Vec<Param>,
+    pub body: Body,
+}
+
+impl Lambda {
+    pub fn new(params: Vec<Param>, body: Body) -> Self {
+        Self { params, body }
+    }
+}
+
+impl fmt::Display for Lambda {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(lambda ")?;
+        for (i, param) in self.params.iter().enumerate() {
+            write!(f, "{}", param)?;
+            if i < self.params.len() - 1 {
+                write!(f, " ")?;
+            }
+        }
+        write!(f, " {}", self.body)
     }
 }

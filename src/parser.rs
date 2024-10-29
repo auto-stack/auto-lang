@@ -406,8 +406,8 @@ impl<'a> Parser<'a> {
         self.next(); // skip |
         let params = self.fn_params()?;
         self.next(); // skip |
-        let body = Box::new(self.stmt()?);
-        Ok(Expr::Lambda(params, body))
+        let body = self.stmt()?;
+        Ok(Expr::Lambda(Lambda::new(params, Body { stmts: vec![body] })))
     }
 }
 
@@ -693,7 +693,7 @@ impl<'a> Parser<'a> {
         println!("parse view");
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             let node = self.node_instance()?;
-            view.nodes.insert(node.name.clone(), node);
+            view.nodes.push((node.name.clone(), node));
         }
         self.expect(TokenKind::RBrace)?;
         Ok(view)
@@ -841,7 +841,7 @@ mod tests {
     fn test_lambda() {
         let code = "var x = || 1 + 2";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (var (name x) (lambda (stmt (bina (int 1) (op +) (int 2)))))");
+        assert_eq!(ast.to_string(), "(code (var (name x) (lambda (body (stmt (bina (int 1) (op +) (int 2)))))");
     }
 
     #[test]
@@ -865,7 +865,7 @@ mod tests {
                 let model = &widget.model;
                 assert_eq!(model.to_string(), "(model (var (name count) (int 0)))");
                 let view = &widget.view;
-                assert_eq!(view.to_string(), "(view (node (name button) (args (\"+\")) (props (pair (name onclick) (lambda (stmt (bina (name count) (op =) (bina (name count) (op +) (int 1))))))))");
+                assert_eq!(view.to_string(), "(view (node (name button) (args (\"+\")) (props (pair (name onclick) (lambda (body (stmt (bina (name count) (op =) (bina (name count) (op +) (int 1))))))))");
             }
             _ => panic!("Expected widget, got {:?}", widget),
         }
