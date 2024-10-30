@@ -36,19 +36,20 @@ const fn infix_prec(n: u8) -> InfixPrec {
 }
 
 const PREC_ASN: InfixPrec = infix_prec(1);
-const PREC_OR: InfixPrec = infix_prec(2);
-const PREC_AND: InfixPrec = infix_prec(3);
-const PREC_EQ: InfixPrec = infix_prec(4);
-const PREC_CMP: InfixPrec = infix_prec(5);
-const PREC_Range: InfixPrec = infix_prec(6);
-const PREC_ADD: InfixPrec = infix_prec(7);
-const PREC_MUL: InfixPrec = infix_prec(8);
-const PREC_SIGN: PrefixPrec = prefix_prec(9);
-const PREC_NOT: PrefixPrec = prefix_prec(10);
-const PREC_DOT: InfixPrec = infix_prec(11);
-const PREC_CALL: PostfixPrec = postfix_prec(12);
-const PREC_INDEX: PostfixPrec = postfix_prec(13);
-const PREC_ATOM: InfixPrec = infix_prec(14);
+const PREC_PAIR: PostfixPrec = postfix_prec(2);
+const PREC_OR: InfixPrec = infix_prec(3);
+const PREC_AND: InfixPrec = infix_prec(4);
+const PREC_EQ: InfixPrec = infix_prec(5);
+const PREC_CMP: InfixPrec = infix_prec(6);
+const PREC_Range: InfixPrec = infix_prec(7);
+const PREC_ADD: InfixPrec = infix_prec(8);
+const PREC_MUL: InfixPrec = infix_prec(9);
+const PREC_SIGN: PrefixPrec = prefix_prec(10);
+const PREC_NOT: PrefixPrec = prefix_prec(11);
+const PREC_DOT: InfixPrec = infix_prec(12);
+const PREC_CALL: PostfixPrec = postfix_prec(13);
+const PREC_INDEX: PostfixPrec = postfix_prec(14);
+const PREC_ATOM: InfixPrec = infix_prec(15);
 
 fn prefix_power(op: Op) -> Result<PrefixPrec, String> {
     match op {
@@ -62,6 +63,7 @@ fn postfix_power(op: Op) -> Result<Option<PostfixPrec>, String> {
     match op {
         Op::LSquare => Ok(Some(PREC_INDEX)),
         Op::LParen => Ok(Some(PREC_CALL)),
+        Op::Colon => Ok(Some(PREC_PAIR)),
         _ => Ok(None),
     }
 }
@@ -131,6 +133,7 @@ impl<'a> Parser<'a> {
 impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Result<Code, String> {
         let mut stmts = Vec::new();
+        self.skip_empty_lines();
         while !self.is_kind(TokenKind::EOF) {
             println!("parsing next stmt: {:?}", self.kind());
             stmts.push(self.stmt()?)
@@ -181,9 +184,10 @@ impl<'a> Parser<'a> {
         println!("next kind: {:?}", self.kind());
         loop {
             let op = match self.kind() {
-                TokenKind::EOF | TokenKind::Semi | TokenKind::LBrace | TokenKind::RBrace | TokenKind::Comma => break,
+                TokenKind::EOF | TokenKind::Newline | TokenKind::Semi | TokenKind::LBrace | TokenKind::RBrace | TokenKind::Comma => break,
                 TokenKind::Add | TokenKind::Sub | TokenKind::Mul | TokenKind::Div | TokenKind::Not => self.op(),
                 TokenKind::Dot => self.op(),
+                TokenKind::Colon => self.op(),
                 TokenKind::Range | TokenKind::RangeEq => self.op(),
                 TokenKind::LSquare => self.op(),
                 TokenKind::LParen => self.op(),
@@ -191,7 +195,7 @@ impl<'a> Parser<'a> {
                 TokenKind::Eq | TokenKind::Neq | TokenKind::Lt | TokenKind::Gt | TokenKind::Le | TokenKind::Ge => self.op(),
                 TokenKind::RSquare => break,
                 TokenKind::RParen => break,
-                _ => return Err(format!("Expected operator, got {:?}", self.peek())),
+                _ => return Err(format!("Expected infix operator, got {:?}", self.peek())),
             };
             // Postfix
 
@@ -219,6 +223,18 @@ impl<'a> Parser<'a> {
                         let entries = self.object()?;
                         lhs = Expr::TypeInst(Box::new(lhs), entries);
                         continue;
+                    }
+                    Op::Colon => {
+                        let key = match &lhs {
+                            Expr::Ident(name) => Key::NamedKey(name.clone()),
+                            Expr::Int(i) => Key::IntKey(*i),
+                            Expr::Bool(b) => Key::BoolKey(*b),
+                            _ => return Err(format!("Invalid key: {}", lhs)),
+                        };
+                        let rhs = self.expr()?;
+                        lhs = Expr::Pair(Pair { key, value: Box::new(rhs) });
+                        println!("got pair: {:?}", lhs);
+                        return Ok(lhs);
                     }
                     _ => return Err(format!("Invalid postfix operator: {}", op)),
                 }
@@ -254,6 +270,7 @@ impl<'a> Parser<'a> {
             TokenKind::Range => { Op::Range },
             TokenKind::RangeEq => { Op::RangeEq },
             TokenKind::Dot => { Op::Dot },
+            TokenKind::Colon => { Op::Colon },
             _ => panic!("Expected operator, got {:?}", self.kind()),
         }
     }
@@ -324,7 +341,7 @@ impl<'a> Parser<'a> {
         Ok(args)
     }
 
-    pub fn object(&mut self) -> Result<Vec<(Key, Expr)>, String> {
+    pub fn object(&mut self) -> Result<Vec<Pair>, String> {
         self.next(); // skip {
         let mut entries = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
@@ -335,13 +352,21 @@ impl<'a> Parser<'a> {
         Ok(entries)
     }
 
-    pub fn pair(&mut self) -> Result<(Key, Expr), String> {
+    pub fn pair(&mut self) -> Result<Pair, String> {
         let key = self.key()?;
         self.expect(TokenKind::Colon)?;
         let value = self.expr()?;
-        Ok((key, value))
+        Ok(Pair { key, value: Box::new(value) })
     }
 
+    pub fn is_key(expr: &Expr) -> bool {
+        match expr {
+            Expr::Ident(_) => true,
+            Expr::Int(_) => true,
+            Expr::Bool(_) => true,
+            _ => false,
+        }
+    }
     pub fn key(&mut self) -> Result<Key, String> {
         match self.kind() {
             TokenKind::Ident => {
@@ -463,9 +488,16 @@ impl<'a> Parser<'a> {
         Ok(stmt)
     }
 
+    pub fn skip_empty_lines(&mut self) {
+        while self.is_kind(TokenKind::Newline) {
+            self.next();
+        }
+    }
+
     pub fn body(&mut self) -> Result<Body, String> {
         self.expect(TokenKind::LBrace)?;
         let mut stmts = Vec::new();
+        self.skip_empty_lines();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             stmts.push(self.stmt()?);
         }
@@ -695,6 +727,7 @@ impl<'a> Parser<'a> {
 
     pub fn widget_body(&mut self) -> Result<(Model, View), String> {
         self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
         let mut has_content = false;
         let mut model = Model::default();
         let mut view = View::default();
@@ -702,6 +735,7 @@ impl<'a> Parser<'a> {
             model = self.model_decl()?;
             has_content = true;
         }
+        self.skip_empty_lines();
         println!("parse view: {:?}", self.kind());
         if self.is_kind(TokenKind::View) {
             view = self.view_decl()?;
@@ -710,6 +744,7 @@ impl<'a> Parser<'a> {
         if !has_content {
             return Err("Widget has no model nor view".to_string());
         }
+        self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
         Ok((model, view))
     }
@@ -717,6 +752,7 @@ impl<'a> Parser<'a> {
     pub fn model_decl(&mut self) -> Result<Model, String> {
         self.next(); // skip model
         self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
         let mut model = Model::default();
         // parse multiple var declarations
         while self.is_kind(TokenKind::Var) {
@@ -727,6 +763,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => return Err(format!("Expected var declaration, got {:?}", var)),
             }
+            self.expect_eos()?;
         }
         self.expect(TokenKind::RBrace)?;
         Ok(model)
@@ -735,12 +772,13 @@ impl<'a> Parser<'a> {
     pub fn view_decl(&mut self) -> Result<View, String> {
         self.next(); // skip view
         let mut view = View::default();
-        self.expect(TokenKind::LBrace)?;
+        self.expect(TokenKind::LBrace)?; // skip {
+        self.skip_empty_lines();
         // parse multiple node instances
-        println!("parse view");
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             let node = self.node_instance()?;
             view.nodes.push((node.name.clone(), node));
+            self.expect_eos()?;
         }
         self.expect(TokenKind::RBrace)?;
         Ok(view)
@@ -749,11 +787,9 @@ impl<'a> Parser<'a> {
     pub fn node_instance(&mut self) -> Result<Node, String> {
         if self.is_kind(TokenKind::Ident) {
             let name = self.ident()?;
-            println!("node name: {}", name);
             if let Expr::Ident(name) = name {
                 // name
                 let mut node = Node::new(name.clone());
-                println!("node name: {}", &name.text);
                 self.next();
 
                 // args
@@ -765,9 +801,11 @@ impl<'a> Parser<'a> {
                 // body
                 if self.is_kind(TokenKind::LBrace) {
                     self.expect(TokenKind::LBrace)?;
+                    self.skip_empty_lines();
                     while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-                        let (key, value) = self.pair()?;
-                        node.props.insert(key, value);
+                        let pair = self.pair()?;
+                        node.props.insert(pair.key, pair.value.as_ref().clone());
+                        self.expect_eos()?;
                     }
                     self.expect(TokenKind::RBrace)?;
                 }
@@ -919,10 +957,23 @@ mod tests {
                 let model = &widget.model;
                 assert_eq!(model.to_string(), "(model (var (name count) (int 0)))");
                 let view = &widget.view;
-                assert_eq!(view.to_string(), "(view (node (name button) (args (\"+\")) (props (pair (name onclick) (lambda (body (stmt (bina (name count) (op =) (bina (name count) (op +) (int 1))))))))");
+                assert_eq!(view.to_string(), "(view (node (name button) (args (str \"+\")) (props (pair (name onclick) (lambda (body (stmt (bina (name count) (op =) (bina (name count) (op +) (int 1))))))))");
             }
             _ => panic!("Expected widget, got {:?}", widget),
         }
+    }
+
+
+    #[test]
+    fn test_pair() {
+        let code = r#"
+        id: 1
+        name: "test"
+        version: "0.1.0"
+        "#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(stmt (pair (name version) (str \"0.1.0\")))");
     }
 
 

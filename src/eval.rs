@@ -224,12 +224,18 @@ impl<'a> Evaler<'a> {
         Value::Array(values)
     }
 
-    fn object(&mut self, pairs: &Vec<(Key, Expr)>) -> Value {
+    fn object(&mut self, pairs: &Vec<Pair>) -> Value {
         let mut obj = Obj::new();
-        for (key, value) in pairs.iter() {
-            obj.set(self.eval_key(key), self.eval_expr(value));
+        for pair in pairs.iter() {
+            obj.set(self.eval_key(&pair.key), self.eval_expr(&pair.value));
         }
         Value::Object(obj)
+    }
+
+    fn pair(&mut self, pair: &Pair) -> Value {
+        let key = self.eval_key(&pair.key);
+        let value = self.eval_expr(pair.value.as_ref());
+        Value::Pair(key, Box::new(value))
     }
 
     fn eval_key(&mut self, key: &Key) -> ValueKey {
@@ -319,6 +325,7 @@ impl<'a> Evaler<'a> {
             Expr::Array(elems) => self.array(elems),
             Expr::Call(call) => self.call(call),
             Expr::Index(array, index) => self.index(array, index),
+            Expr::Pair(pair) => self.pair(pair),
             Expr::Object(pairs) => self.object(pairs),
             Expr::TypeInst(name, entries) => self.type_inst(name, entries),
             Expr::Lambda(_) => Value::LambdaStub,
@@ -326,11 +333,11 @@ impl<'a> Evaler<'a> {
         }
     }
 
-    fn type_inst(&mut self, name: &Expr, entries: &Vec<(Key, Expr)>) -> Value {
+    fn type_inst(&mut self, _name: &Expr, _entries: &Vec<Pair>) -> Value {
         Value::Void
     }
 
-    fn type_decl(&mut self, type_decl: &TypeDecl) -> Value {
+    fn type_decl(&mut self, _type_decl: &TypeDecl) -> Value {
         Value::Void
     }
 

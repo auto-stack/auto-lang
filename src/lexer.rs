@@ -160,7 +160,7 @@ impl<'a> Lexer<'a> {
 impl<'a> Lexer<'a> {
     pub fn skip_whitespace(&mut self) {
         while let Some(&c) = self.chars.peek() {
-            if c.is_whitespace() {
+            if c.is_whitespace() && c != '\n' {
                 self.chars.next();
             } else {
                 break;
@@ -263,6 +263,11 @@ impl<'a> Lexer<'a> {
         }
         tokens
     }
+
+    fn tokens_str(&mut self) -> String {
+        let tokens = self.tokens();
+        tokens.iter().map(|t| t.to_string()).collect::<Vec<String>>().join("")
+    }
 }
 
 #[cfg(test)]
@@ -271,8 +276,7 @@ mod tests {
 
     fn parse_token_strings(code: &str) -> String {
         let mut lexer = Lexer::new(code);
-        let tokens = lexer.tokens();
-        tokens.iter().map(|t| t.to_string()).collect::<Vec<String>>().join("")
+        lexer.tokens_str()
     }
 
     #[test]
@@ -281,7 +285,7 @@ mod tests {
         let tokens = parse_token_strings(code);
         assert_eq!(
             tokens,
-            "<l_paren:(><int:123><r_paren:)>"
+            "<(><int:123><)>"
         );
     }
 
@@ -298,8 +302,16 @@ mod tests {
     #[test]
     fn test_range() {
         let code = "1..5";
-        let mut lexer = Lexer::new(code);
-        let tokens = lexer.tokens().iter().map(|t| t.to_string()).collect::<Vec<String>>().join("");
-        assert_eq!(tokens, "<int:1><range:..><int:5>");
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<int:1><..><int:5>");
+    }
+
+
+    #[test]
+    fn test_pair() {
+        let code = r#"a: 3
+        b: 4"#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<ident:a><:><int:3><nl><ident:b><:><int:4>");
     }
 }
