@@ -1,10 +1,10 @@
 use std::collections::HashMap;
-use crate::value::Value;
+use crate::value::{Value, ExtFn};
 
 
 pub fn builtins() -> HashMap<String, Value> {
     let mut builtins = HashMap::new();
-    builtins.insert("print".to_string(), Value::ExtFn(print));
+    builtins.insert("print".to_string(), Value::ExtFn(ExtFn { fun: print }));
     builtins
 }
 
