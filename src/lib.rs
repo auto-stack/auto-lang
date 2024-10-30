@@ -8,6 +8,7 @@ mod scope;
 pub mod transpiler;
 pub mod repl;
 pub mod libs;
+pub mod util;
 
 pub fn run(code: &str) -> Result<String, String> {
     let mut scope = scope::Universe::new();
@@ -129,7 +130,7 @@ mod tests {
 
     #[test]
     fn test_for() {
-        let code = "var sum = 0; for i in 0..10 { sum = sum + i; i = i + 1 }; sum";
+        let code = "var sum = 0; for i in 0..10 { sum = sum + i }; sum";
         let result = run(code).unwrap();
         assert_eq!(result, "45");
     }

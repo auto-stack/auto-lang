@@ -3,6 +3,10 @@ use crate::ast::*;
 use crate::lexer::Lexer;
 use crate::scope::Universe;
 use crate::scope::Meta;
+use crate::error_pos;
+
+type ParseError = String;
+
 
 pub struct PostfixPrec {
     l: u8,
@@ -51,7 +55,7 @@ const PREC_CALL: PostfixPrec = postfix_prec(13);
 const PREC_INDEX: PostfixPrec = postfix_prec(14);
 const PREC_ATOM: InfixPrec = infix_prec(15);
 
-fn prefix_power(op: Op) -> Result<PrefixPrec, String> {
+fn prefix_power(op: Op) -> Result<PrefixPrec, ParseError> {
     match op {
         Op::Add | Op::Sub => Ok(PREC_SIGN),
         Op::Not => Ok(PREC_NOT),
@@ -59,7 +63,7 @@ fn prefix_power(op: Op) -> Result<PrefixPrec, String> {
     }
 }
 
-fn postfix_power(op: Op) -> Result<Option<PostfixPrec>, String> {
+fn postfix_power(op: Op) -> Result<Option<PostfixPrec>, ParseError> {
     match op {
         Op::LSquare => Ok(Some(PREC_INDEX)),
         Op::LParen => Ok(Some(PREC_CALL)),
@@ -68,7 +72,7 @@ fn postfix_power(op: Op) -> Result<Option<PostfixPrec>, String> {
     }
 }
 
-fn infix_power(op: Op) -> Result<InfixPrec, String> {
+fn infix_power(op: Op) -> Result<InfixPrec, ParseError> {
     match op {
         Op::Add | Op::Sub => Ok(PREC_ADD),
         Op::Mul | Op::Div => Ok(PREC_MUL),
@@ -81,8 +85,7 @@ fn infix_power(op: Op) -> Result<InfixPrec, String> {
     }
 }
 
-pub fn parse(code: &str, scope: &mut Universe) -> Result<Code, String> {
-    println!("parsing code: {}", code);
+pub fn parse(code: &str, scope: &mut Universe) -> Result<Code, ParseError> {
     let mut parser = Parser::new(code, scope);
     parser.parse()
 }
@@ -118,12 +121,12 @@ impl<'a> Parser<'a> {
         &self.cur
     }
 
-    pub fn expect(&mut self, kind: TokenKind) -> Result<(), String>{
+    pub fn expect(&mut self, kind: TokenKind) -> Result<(), ParseError>{
         if self.is_kind(kind) {
             self.next();
             Ok(())
         } else {
-            Err(format!("Expected token kind: {:?}, got {:?}", kind, self.kind()))
+            error_pos!("Expected token kind: {:?}, got {:?}", kind, self.cur.text)
         }
     }
 
@@ -131,12 +134,12 @@ impl<'a> Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn parse(&mut self) -> Result<Code, String> {
+    pub fn parse(&mut self) -> Result<Code, ParseError> {
         let mut stmts = Vec::new();
         self.skip_empty_lines();
         while !self.is_kind(TokenKind::EOF) {
-            println!("parsing next stmt: {:?}", self.kind());
-            stmts.push(self.stmt()?)
+            stmts.push(self.stmt()?);
+            self.expect_eos()?; 
         }
         Ok(Code { stmts })
     }
@@ -145,7 +148,7 @@ impl<'a> Parser<'a> {
 
 // Expressions
 impl<'a> Parser<'a> {
-    pub fn expr(&mut self) -> Result<Expr, String> {
+    pub fn expr(&mut self) -> Result<Expr, ParseError> {
         let exp = self.expr_pratt(0)?;
         self.check_symbol(&exp)?;
         Ok(exp)
@@ -153,7 +156,7 @@ impl<'a> Parser<'a> {
 
     // simple Pratt parser
     // ref: https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
-    pub fn expr_pratt(&mut self, min_power: u8) -> Result<Expr, String> {
+    pub fn expr_pratt(&mut self, min_power: u8) -> Result<Expr, ParseError> {
         // Prefix
         let mut lhs = match self.kind() {
             // unary
@@ -180,8 +183,6 @@ impl<'a> Parser<'a> {
             // normal
             _ => self.atom()?,
         };
-        println!("lhs: {:?}", lhs);
-        println!("next kind: {:?}", self.kind());
         loop {
             let op = match self.kind() {
                 TokenKind::EOF | TokenKind::Newline | TokenKind::Semi | TokenKind::LBrace | TokenKind::RBrace | TokenKind::Comma => break,
@@ -201,21 +202,40 @@ impl<'a> Parser<'a> {
 
             if let Ok(Some(power)) = postfix_power(op) {
                 if power.l < min_power { break; }
-                self.next(); // skip postfix op
 
                 match op {
                     // Index
                     Op::LSquare => {
+                        self.next(); // skip [
                         let rhs = self.expr_pratt(0)?;
                         self.expect(TokenKind::RSquare)?;
                         lhs = Expr::Index(Box::new(lhs), Box::new(rhs));
                         continue;
                     }
-                    // Call
+                    // Call or Node Instance
                     Op::LParen => {
-                        let args = self.args()?;
-                        self.expect(TokenKind::RParen)?;
-                        lhs = Expr::Call(Call{name: Box::new(lhs), args});
+                        // check if it's a fn call or node instance
+                        let mut is_call = false;
+                        match &lhs {
+                            Expr::Ident(name) => {
+                                if self.scope.is_fn(&name.text) {
+                                    is_call = true;
+                                }
+                            }
+                            _ => {}
+                        }
+                        if is_call {
+                            let args = self.args()?;
+                            lhs = Expr::Call(Call{name: Box::new(lhs), args});
+                        } else {
+                            match &lhs {
+                                Expr::Ident(name) => {
+                                    let node = self.node_arg_body(name)?;
+                                    lhs = Expr::Node(node);
+                                }
+                                _ => return error_pos!("Expected node name, got {:?}", lhs),
+                            }
+                        }
                         continue;
                     }
                     // Type instantiation
@@ -225,6 +245,7 @@ impl<'a> Parser<'a> {
                         continue;
                     }
                     Op::Colon => {
+                        self.next(); // skip :
                         let key = match &lhs {
                             Expr::Ident(name) => Key::NamedKey(name.clone()),
                             Expr::Int(i) => Key::IntKey(*i),
@@ -233,7 +254,6 @@ impl<'a> Parser<'a> {
                         };
                         let rhs = self.expr()?;
                         lhs = Expr::Pair(Pair { key, value: Box::new(rhs) });
-                        println!("got pair: {:?}", lhs);
                         return Ok(lhs);
                     }
                     _ => return Err(format!("Invalid postfix operator: {}", op)),
@@ -275,7 +295,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn group(&mut self) -> Result<Expr, String> {
+    pub fn group(&mut self) -> Result<Expr, ParseError> {
         self.next(); // skip (
         let expr = self.expr()?;
         self.expect(TokenKind::RParen)?; // skip )
@@ -293,7 +313,7 @@ impl<'a> Parser<'a> {
         panic!("Expected array separator, got {:?}", self.kind());
     }
 
-    pub fn array(&mut self) -> Result<Expr, String> {
+    pub fn array(&mut self) -> Result<Expr, ParseError> {
         self.next(); // skip [
         let mut elems = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RSquare) {
@@ -315,7 +335,8 @@ impl<'a> Parser<'a> {
         panic!("Expected argument separator, got {:?}", self.kind());
     }
 
-    pub fn args(&mut self) -> Result<Args, String> {
+    pub fn args(&mut self) -> Result<Args, ParseError> {
+        self.expect(TokenKind::LParen)?;
         let mut args = Args::new();
         let mut is_named_started = false;
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RParen) {
@@ -338,11 +359,12 @@ impl<'a> Parser<'a> {
             }
             self.sep_args();
         }
+        self.expect(TokenKind::RParen)?;
         Ok(args)
     }
 
-    pub fn object(&mut self) -> Result<Vec<Pair>, String> {
-        self.next(); // skip {
+    pub fn object(&mut self) -> Result<Vec<Pair>, ParseError> {
+        self.expect(TokenKind::LBrace)?;
         let mut entries = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             entries.push(self.pair()?);
@@ -352,7 +374,7 @@ impl<'a> Parser<'a> {
         Ok(entries)
     }
 
-    pub fn pair(&mut self) -> Result<Pair, String> {
+    pub fn pair(&mut self) -> Result<Pair, ParseError> {
         let key = self.key()?;
         self.expect(TokenKind::Colon)?;
         let value = self.expr()?;
@@ -367,7 +389,8 @@ impl<'a> Parser<'a> {
             _ => false,
         }
     }
-    pub fn key(&mut self) -> Result<Key, String> {
+
+    pub fn key(&mut self) -> Result<Key, ParseError> {
         match self.kind() {
             TokenKind::Ident => {
                 let name = self.cur.text.clone();
@@ -387,7 +410,18 @@ impl<'a> Parser<'a> {
                 self.next();
                 Ok(Key::BoolKey(false))
             }
-            _ => return Err(format!("Expected key, got {:?}", self.kind())),
+            TokenKind::Str => {
+                let value = self.cur.text.clone();
+                self.next();
+                Ok(Key::StrKey(value))
+            }
+            // type关键字用作key，应该不冲突
+            TokenKind::Type => {
+                let value = self.cur.text.clone();
+                self.next();
+                Ok(Key::NamedKey(Name::new(value)))
+            }
+            _ => error_pos!("Expected key, got {:?}", self.kind()),
         }
     }
 
@@ -402,7 +436,7 @@ impl<'a> Parser<'a> {
         panic!("Expected pair separator, got {:?}", self.kind());
     }
 
-    pub fn ident(&mut self) -> Result<Expr, String> {
+    pub fn ident(&mut self) -> Result<Expr, ParseError> {
         let name = self.cur.text.clone();
         // // check for existence
         // if !self.scope.exists(&name) {
@@ -411,7 +445,7 @@ impl<'a> Parser<'a> {
         Ok(Expr::Ident(Name::new(name)))
     }
 
-    pub fn atom(&mut self) -> Result<Expr, String> {
+    pub fn atom(&mut self) -> Result<Expr, ParseError> {
         if self.is_kind(TokenKind::LParen) {
             return self.group();
         }
@@ -423,20 +457,22 @@ impl<'a> Parser<'a> {
             TokenKind::Str => Expr::Str(self.cur.text.clone()),
             TokenKind::Ident => self.ident()?,
             TokenKind::Nil => Expr::Nil,
-            _ => return Err(format!("Expected term, got {:?}", self.kind())),
+            _ => {
+                return error_pos!("Expected term, got {:?}", self.kind());
+            }
         };
 
         self.next();
         Ok(expr)
     }
     
-    pub fn if_expr(&mut self) -> Result<Expr, String> {
+    pub fn if_expr(&mut self) -> Result<Expr, ParseError> {
         let (branches, else_stmt) = self.if_contents()?;
         Ok(Expr::If(branches, else_stmt))
     }
 
     // An Expression that can be assigned to a variable, e.g. right-hand side of an assignment
-    pub fn rhs_expr(&mut self) -> Result<Expr, String> {
+    pub fn rhs_expr(&mut self) -> Result<Expr, ParseError> {
         if self.is_kind(TokenKind::If) {
             self.if_expr()
         } else {
@@ -444,12 +480,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn iterable_expr(&mut self) -> Result<Expr, String> {
+    pub fn iterable_expr(&mut self) -> Result<Expr, ParseError> {
         // TODO: how to check for range/array but reject other cases?
         self.expr()
     }
 
-    pub fn lambda(&mut self) -> Result<Expr, String> {
+    pub fn lambda(&mut self) -> Result<Expr, ParseError> {
         self.next(); // skip |
         let params = self.fn_params()?;
         self.expect(TokenKind::VBar)?; // skip |
@@ -466,14 +502,23 @@ impl<'a> Parser<'a> {
 // Statements
 impl<'a> Parser<'a> {
     // End of statement
-    pub fn expect_eos(&mut self) -> Result<(), String> {
+    pub fn expect_eos(&mut self) -> Result<(), ParseError> {
+        let mut has_sep = false;
         while self.is_kind(TokenKind::Semi) || self.is_kind(TokenKind::Newline) {
+            has_sep = true;
             self.next();
         }
-        Ok(())
+        if self.is_kind(TokenKind::EOF) || self.is_kind(TokenKind::RBrace) {
+            return Ok(());
+        }
+        if has_sep {
+            Ok(())
+        } else {
+            error_pos!("Expected end of statement, got {:?}", self.kind())
+        }
     }
 
-    pub fn stmt(&mut self) -> Result<Stmt, String> {
+    pub fn stmt(&mut self) -> Result<Stmt, ParseError> {
         let stmt = match self.kind() {
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
@@ -484,7 +529,6 @@ impl<'a> Parser<'a> {
             TokenKind::Widget => self.widget_stmt()?,
             _ => self.expr_stmt()?,
         };
-        self.expect_eos()?;
         Ok(stmt)
     }
 
@@ -494,18 +538,19 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn body(&mut self) -> Result<Body, String> {
+    pub fn body(&mut self) -> Result<Body, ParseError> {
         self.expect(TokenKind::LBrace)?;
         let mut stmts = Vec::new();
         self.skip_empty_lines();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             stmts.push(self.stmt()?);
+            self.expect_eos()?;
         }
         self.expect(TokenKind::RBrace)?;
         Ok(Body { stmts })
     }
 
-    pub fn if_contents(&mut self) -> Result<(Vec<Branch>, Option<Body>), String> {
+    pub fn if_contents(&mut self) -> Result<(Vec<Branch>, Option<Body>), ParseError> {
         let mut branches = Vec::new();
         self.next(); // skip if
         let cond = self.expr()?;
@@ -529,12 +574,12 @@ impl<'a> Parser<'a> {
         Ok((branches, else_stmt))
     }
 
-    pub fn if_stmt(&mut self) -> Result<Stmt, String> {
+    pub fn if_stmt(&mut self) -> Result<Stmt, ParseError> {
         let (branches, else_stmt) = self.if_contents()?;
         Ok(Stmt::If(branches, else_stmt))
     }
 
-    pub fn for_stmt(&mut self) -> Result<Stmt, String> {
+    pub fn for_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.next(); // skip `for`
         // enumerator
         if self.is_kind(TokenKind::Ident) {
@@ -552,7 +597,7 @@ impl<'a> Parser<'a> {
         Err(format!("Expected for loop, got {:?}", self.kind()))
     }
 
-    pub fn var_stmt(&mut self) -> Result<Stmt, String> {
+    pub fn var_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.next(); // skip var
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
@@ -571,7 +616,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Var(var))
     }
 
-    pub fn fn_stmt(&mut self) -> Result<Stmt, String> {
+    pub fn fn_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.next(); // skip fn
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
@@ -599,7 +644,7 @@ impl<'a> Parser<'a> {
     }
 
     // parse function parameters
-    pub fn fn_params(&mut self) -> Result<Vec<Param>, String> {
+    pub fn fn_params(&mut self) -> Result<Vec<Param>, ParseError> {
         let mut params = Vec::new();
         while self.is_kind(TokenKind::Ident) {
             // param name
@@ -617,28 +662,25 @@ impl<'a> Parser<'a> {
                 let expr = self.expr()?;
                 default = Some(expr);
             }
-            let var = Var { name: Name::new(name.clone()), expr: default.clone().unwrap_or(Expr::Nil) };
-            self.scope.define(name.clone(), Meta::Var(var.clone()));
+            // let var = Var { name: Name::new(name.clone()), expr: default.clone().unwrap_or(Expr::Nil) };
+            // self.scope.define(name.clone(), Meta::Var(var.clone()));
             params.push(Param { name: Name::new(name), ty, default });
             self.sep_params();
         }
         Ok(params)
     }
 
-    pub fn type_name(&mut self) -> Result<Type, String> {
+    pub fn type_name(&mut self) -> Result<Type, ParseError> {
         let ty = self.type_expr()?;
         Ok(ty)
     }
 
-    pub fn expr_stmt(&mut self) -> Result<Stmt, String> {
+    pub fn expr_stmt(&mut self) -> Result<Stmt, ParseError> {
         let expr = self.expr()?;
-        if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
-            self.next();
-        }
         Ok(Stmt::Expr(expr))
     }
 
-    pub fn type_stmt(&mut self) -> Result<Stmt, String> {
+    pub fn type_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.next(); // skip type
         let name = Name::new(self.cur.text.clone());
         self.expect(TokenKind::Ident)?;
@@ -665,14 +707,14 @@ impl<'a> Parser<'a> {
         Ok(Stmt::TypeDecl(decl))
     }
 
-    pub fn type_member(&mut self) -> Result<Member, String> {
+    pub fn type_member(&mut self) -> Result<Member, ParseError> {
         let name = Name::new(self.cur.text.clone());
         self.expect(TokenKind::Ident)?;
         let ty = self.type_expr()?;
         Ok(Member { name, ty })
     }
 
-    pub fn type_expr(&mut self) -> Result<Type, String> {
+    pub fn type_expr(&mut self) -> Result<Type, ParseError> {
         let type_name = self.ident()?;
         self.next();
         match type_name {
@@ -689,7 +731,7 @@ impl<'a> Parser<'a> {
     }
 
     // TODO: 暂时只检查两种情况：1，简单名称；2，点号表达式最左侧的名称
-    pub fn check_symbol(&mut self, expr: &Expr) -> Result<(), String> {
+    pub fn check_symbol(&mut self, expr: &Expr) -> Result<(), ParseError> {
         match expr {
             Expr::Bina(l, op, _) => {
                 match op {
@@ -714,7 +756,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn widget_stmt(&mut self) -> Result<Stmt, String> {
+    pub fn widget_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.next(); // skip widget
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
@@ -725,7 +767,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Widget(widget))
     }
 
-    pub fn widget_body(&mut self) -> Result<(Model, View), String> {
+    pub fn widget_body(&mut self) -> Result<(Model, View), ParseError> {
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
         let mut has_content = false;
@@ -736,7 +778,6 @@ impl<'a> Parser<'a> {
             has_content = true;
         }
         self.skip_empty_lines();
-        println!("parse view: {:?}", self.kind());
         if self.is_kind(TokenKind::View) {
             view = self.view_decl()?;
             has_content = true;
@@ -749,7 +790,7 @@ impl<'a> Parser<'a> {
         Ok((model, view))
     }
 
-    pub fn model_decl(&mut self) -> Result<Model, String> {
+    pub fn model_decl(&mut self) -> Result<Model, ParseError> {
         self.next(); // skip model
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
@@ -769,7 +810,7 @@ impl<'a> Parser<'a> {
         Ok(model)
     }
 
-    pub fn view_decl(&mut self) -> Result<View, String> {
+    pub fn view_decl(&mut self) -> Result<View, ParseError> {
         self.next(); // skip view
         let mut view = View::default();
         self.expect(TokenKind::LBrace)?; // skip {
@@ -784,38 +825,36 @@ impl<'a> Parser<'a> {
         Ok(view)
     }
 
-    pub fn node_instance(&mut self) -> Result<Node, String> {
+    fn node_arg_body(&mut self, name: &Name) -> Result<Node, ParseError> {
+        let mut node = Node::new(name.clone());
+        // args
+        let args = self.args()?;
+        node.args = args;
+
+        // body
+        if self.is_kind(TokenKind::LBrace) {
+            self.expect(TokenKind::LBrace)?;
+            self.skip_empty_lines();
+            while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+                let pair = self.pair()?;
+                node.props.insert(pair.key, pair.value.as_ref().clone());
+                self.expect_eos()?;
+            }
+            self.expect(TokenKind::RBrace)?;
+        }
+        Ok(node)
+    }
+
+    pub fn node_instance(&mut self) -> Result<Node, ParseError> {
         if self.is_kind(TokenKind::Ident) {
             let name = self.ident()?;
             if let Expr::Ident(name) = name {
                 // name
-                let mut node = Node::new(name.clone());
                 self.next();
-
-                // args
-                self.expect(TokenKind::LParen)?;
-                let args = self.args()?;
-                self.expect(TokenKind::RParen)?;
-                node.args = args;
-
-                // body
-                if self.is_kind(TokenKind::LBrace) {
-                    self.expect(TokenKind::LBrace)?;
-                    self.skip_empty_lines();
-                    while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-                        let pair = self.pair()?;
-                        node.props.insert(pair.key, pair.value.as_ref().clone());
-                        self.expect_eos()?;
-                    }
-                    self.expect(TokenKind::RBrace)?;
-                }
-                Ok(node)
-            } else {
-                Err(format!("Expected node name, got {:?}", name))
+                return self.node_arg_body(&name);
             }
-        } else {
-            Err(format!("Expected node name, got {:?}", self.kind()))
         }
+        Err(format!("Expected node name, got {:?}", self.kind()))
     }
 }
 
@@ -875,6 +914,13 @@ mod tests {
         let code = "for i in 1..5 {i}";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 1) (op ..) (int 5)) (body (stmt (name i))))");
+    }
+
+    #[test]
+    fn test_for_with_print() {
+        let code = "for i in 0..10 { print(i); print(i+1) }";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 0) (op ..) (int 10)) (body (stmt (call (name print) (args (name i))) (stmt (call (name print) (args (bina (name i) (op +) (int 1))))))");
     }
 
     #[test]
@@ -976,8 +1022,16 @@ mod tests {
         assert_eq!(last.to_string(), "(stmt (pair (name version) (str \"0.1.0\")))");
     }
 
+    #[test]
+    fn test_node_instance() {
+        let code = r#"button("OK") {
+            border: 1
+            type: "primary"
+        }"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (stmt (node (name button) (args (str \"OK\")) (props (pair (name border) (int 1)) (pair (name type) (str \"primary\"))))))");
+    }
+
 
 }
-
-
 
