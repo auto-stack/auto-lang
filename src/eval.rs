@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::parser;
 use crate::scope;
-use crate::value::{Value, Obj, ValueKey};
+use crate::value::{Value, Obj, ValueKey, ExtFn};
 
 pub struct Evaler<'a> {
     universe: &'a mut scope::Universe,
@@ -263,7 +263,7 @@ impl<'a> Evaler<'a> {
         let arg_vals: Vec<Value> = call.args.array.iter().map(|arg| self.eval_expr(arg)).collect();
         match name {
             Value::Fn(fn_decl) => self.eval_fn_call(&fn_decl, &call.args),
-            Value::ExtFn(fp) => fp(&arg_vals),
+            Value::ExtFn(ExtFn { fun }) => fun(&arg_vals),
             _ => Value::Error(format!("Invalid function call {}", name)),
         }
     }

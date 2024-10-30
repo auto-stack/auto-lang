@@ -9,6 +9,7 @@ pub mod transpiler;
 pub mod repl;
 pub mod libs;
 pub mod util;
+pub mod json;
 
 pub fn run(code: &str) -> Result<String, String> {
     let mut scope = scope::Universe::new();

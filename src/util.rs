@@ -22,6 +22,55 @@ macro_rules! error_pos {
     };
 }
 
+/// Pretty print an s-expression with proper indentation.
+/// 
+/// Example:
+/// ```text
+/// (code
+///   (stmt 
+///     (pair 
+///       (name name) 
+///       (str "hello")))
+///   (stmt 
+///     (pair 
+///       (name version)
+///       (str "0.1.0"))))
+/// ```
+pub fn s_form(text: &str) -> String {
+    let mut result = String::new();
+    let mut indent = 0;
+    let mut in_str = false;
+    
+    for c in text.chars() {
+        match c {
+            '(' if !in_str => {
+                if !result.is_empty() {
+                    result.push('\n');
+                    result.push_str(&"  ".repeat(indent));
+                }
+                result.push(c);
+                indent += 1;
+            }
+            ')' if !in_str => {
+                indent -= 1;
+                result.push(c);
+            }
+            '"' => {
+                in_str = !in_str;
+                result.push(c);
+            }
+            ' ' if !in_str => {
+                // result.push('\n');
+                // result.push_str(&"  ".repeat(indent));
+                result.push(c)
+            }
+            _ => result.push(c)
+        }
+    }
+    result
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -43,5 +92,12 @@ mod tests {
         let err: Result<(), String> = error_pos!("int error {}", "-1");
         let err_line = line!()-1;
         assert_eq!(format!("{}", err.unwrap_err()), format!("int error -1 at util.rs:{}", err_line));
+    }
+
+    #[test]
+    fn test_pretty_print_sexp() {
+        let text = "(code (stmt (pair (name name) (str \"hello\"))) (stmt (pair (name version) (str \"0.1.0\"))) (stmt (node (name exe) (args (str \"hello\")) (props (pair (name dir) (str \"src\")) (pair (name main) (str \"main.c\")))))";
+        let pretty = s_form(text);
+        println!("{}", pretty);
     }
 }

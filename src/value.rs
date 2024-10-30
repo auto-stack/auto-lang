@@ -2,15 +2,16 @@ use std::fmt::{self, Display, Formatter};
 use std::collections::BTreeMap;
 use crate::ast;
 use crate::ast::Op;
+use serde::Serialize;
 
-#[derive(Debug, Clone, PartialEq, Hash, Ord, Eq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Hash, Ord, Eq, PartialOrd, Serialize)]
 pub enum ValueKey {
     Str(String),
     Int(i32),
     Bool(bool),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Obj {
     values: BTreeMap<ValueKey, Value>,
 }
@@ -48,7 +49,7 @@ impl Obj {
 }
 
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Value {
     Int(i32),
     Float(f64),
@@ -60,7 +61,7 @@ pub enum Value {
     Range(i32, i32),
     RangeEq(i32, i32),
     Fn(ast::Fn),
-    ExtFn(fn(&Vec<Value>) -> Value),
+    ExtFn(ExtFn),
     Nil,
     LambdaStub,
     Void,
@@ -182,3 +183,22 @@ impl Value {
 }
 
 
+#[derive(Debug, Clone)]
+pub struct ExtFn {
+    pub fun: fn(&Vec<Value>) -> Value,
+}
+
+impl PartialEq for ExtFn {
+    fn eq(&self, other: &Self) -> bool {
+        self.fun == other.fun
+    }
+}
+
+impl Serialize for ExtFn {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        return serializer.serialize_str("ext-fn");
+    }
+}

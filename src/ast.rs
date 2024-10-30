@@ -1,4 +1,5 @@
 use std::{collections::BTreeMap, fmt};
+use serde::Serialize;
 
 #[derive(Debug)]
 pub struct Code {
@@ -345,6 +346,15 @@ pub struct Fn {
     pub params: Vec<Param>,
     pub body: Body,
     pub ret: Option<Type>,
+}
+
+impl Serialize for Fn {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        return serializer.serialize_str("fn");
+    }
 }
 
 impl PartialEq for Fn {
