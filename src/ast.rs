@@ -87,8 +87,11 @@ pub struct Body {
 impl fmt::Display for Body {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(body ")?;
-        for stmt in self.stmts.iter() {
+        for (i, stmt) in self.stmts.iter().enumerate() {
             write!(f, "{}", stmt)?;
+            if i < self.stmts.len() - 1 {
+                write!(f, " ")?;
+            }
         }
         Ok(())
     }
@@ -207,6 +210,7 @@ pub enum Expr {
     Pair(Pair),
     Object(Vec<Pair>),
     Call(Call),
+    Node(Node),
     Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
     TypeInst(/*name*/Box<Expr>, /*entries*/Vec<Pair>),
     Lambda(Lambda),
@@ -285,6 +289,7 @@ impl fmt::Display for Expr {
             Expr::Index(array, index) => write!(f, "(index {} {})", array, index),
             Expr::TypeInst(name, entries) => fmt_type_inst(f, name, entries),
             Expr::Lambda(lambda) => write!(f, "{}", lambda),
+            Expr::Node(node) => write!(f, "{}", node),
             Expr::Nil => write!(f, "(nil)"),
         }
     }
@@ -429,6 +434,7 @@ pub enum Key {
     NamedKey(Name),
     IntKey(i32),
     BoolKey(bool),
+    StrKey(String),
 }
 
 impl fmt::Display for Key {
@@ -437,6 +443,7 @@ impl fmt::Display for Key {
             Key::NamedKey(name) => write!(f, "{}", name),
             Key::IntKey(i) => write!(f, "{}", i),
             Key::BoolKey(b) => write!(f, "{}", b),
+            Key::StrKey(s) => write!(f, "\"{}\"", s),
         }
     }
 }

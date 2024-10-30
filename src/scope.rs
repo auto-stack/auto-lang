@@ -72,6 +72,11 @@ impl Universe {
         self.current_scope().get_symbol(name)
     }
 
+    pub fn is_fn(&self, name: &str) -> bool {
+        // TODO: check meta if fn
+        self.exists(name)
+    }
+
     pub fn exists(&self, name: &str) -> bool {
         // check for vars
         for scope in self.scopes.iter().rev() {
@@ -80,7 +85,8 @@ impl Universe {
             }
         }
         // check for builtins
-        self.builtins.contains_key(name)
+        let is_builtin = self.builtins.contains_key(name);
+        is_builtin
     }
 
     pub fn define(&mut self, name: String, meta: Meta) {

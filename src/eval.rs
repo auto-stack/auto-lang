@@ -243,6 +243,7 @@ impl<'a> Evaler<'a> {
             Key::NamedKey(name) => ValueKey::Str(name.text.clone()),
             Key::IntKey(value) => ValueKey::Int(*value),
             Key::BoolKey(value) => ValueKey::Bool(*value),
+            Key::StrKey(value) => ValueKey::Str(value.clone()),
         }
     }
 
@@ -329,6 +330,7 @@ impl<'a> Evaler<'a> {
             Expr::Object(pairs) => self.object(pairs),
             Expr::TypeInst(name, entries) => self.type_inst(name, entries),
             Expr::Lambda(_) => Value::LambdaStub,
+            Expr::Node(node) => self.node(node),
             Expr::Nil => Value::Nil,
         }
     }
@@ -353,5 +355,17 @@ impl<'a> Evaler<'a> {
             _ => None,
         };
         res.unwrap_or(Value::Error(format!("Invalid object {}", left_value)))
+    }
+
+    fn node(&mut self, node: &Node) -> Value {
+        let mut obj = Obj::new();
+        for (i, arg) in node.args.array.iter().enumerate() {
+            let name = format!("arg{}", i);
+            obj.set(ValueKey::Str(name), self.eval_expr(arg));
+        }
+        for (key, value) in node.props.iter() {
+            obj.set(self.eval_key(key), self.eval_expr(value));
+        }
+        Value::Object(obj)
     }
 }
