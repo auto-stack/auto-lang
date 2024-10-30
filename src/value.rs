@@ -55,6 +55,7 @@ pub enum Value {
     Bool(bool),
     Str(String),
     Array(Vec<Value>),
+    Pair(ValueKey, Box<Value>),
     Object(Obj),
     Range(i32, i32),
     RangeEq(i32, i32),
@@ -110,6 +111,7 @@ impl Display for Value {
             Value::Error(value) => write!(f, "Error: {}", value),
             Value::Fn(value) => write!(f, "{}", value),
             Value::ExtFn(_) => write!(f, "extfn"),
+            Value::Pair(key, value) => write!(f, "{}: {}", key, value),
             Value::Object(value) => print_object(f, value),
             Value::LambdaStub => write!(f, "lambda"),
         }

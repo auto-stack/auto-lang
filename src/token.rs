@@ -77,7 +77,49 @@ pub struct Token {
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<{}:{}>", self.kind, self.text)
+        match self.kind {
+            TokenKind::Newline => write!(f, "<nl>"),
+            TokenKind::Colon => write!(f, "<:>"),
+            TokenKind::Range => write!(f, "<..>"),
+            TokenKind::RangeEq => write!(f, "<..=>"),
+            TokenKind::Dot => write!(f, "<.>"),
+            TokenKind::Comma => write!(f, "<,>"),
+            TokenKind::Semi => write!(f, "<;>"),
+            TokenKind::LParen => write!(f, "<(>"),
+            TokenKind::RParen => write!(f, "<)>"),
+            TokenKind::LSquare => write!(f, "<[>"),
+            TokenKind::RSquare => write!(f, "<]>"),
+            TokenKind::LBrace => write!(f, "<{{>"),
+            TokenKind::RBrace => write!(f, "<}}>"),
+            TokenKind::Add => write!(f, "<+>"),
+            TokenKind::Sub => write!(f, "<->"),
+            TokenKind::Mul => write!(f, "<*>"),
+            TokenKind::Div => write!(f, "</>"),
+            TokenKind::Not => write!(f, "<!>"),
+            TokenKind::Lt => write!(f, "<lt>"),
+            TokenKind::Gt => write!(f, "<gt>"),
+            TokenKind::Le => write!(f, "<le>"),
+            TokenKind::Ge => write!(f, "<ge>"),
+            TokenKind::Asn => write!(f, "<=>"),
+            TokenKind::Eq => write!(f, "<==>"),
+            TokenKind::Neq => write!(f, "<!=>"),
+            TokenKind::True => write!(f, "<true>"),
+            TokenKind::False => write!(f, "<false>"),
+            TokenKind::Nil => write!(f, "<nil>"),
+            TokenKind::If => write!(f, "<if>"),
+            TokenKind::Else => write!(f, "<else>"),
+            TokenKind::For => write!(f, "<for>"),
+            TokenKind::Var => write!(f, "<var>"),
+            TokenKind::In => write!(f, "<in>"),
+            TokenKind::Fn => write!(f, "<fn>"),
+            TokenKind::Type => write!(f, "<type>"),
+            TokenKind::Widget => write!(f, "<widget>"),
+            TokenKind::Model => write!(f, "<model>"),
+            TokenKind::View => write!(f, "<view>"),
+            TokenKind::Style => write!(f, "<style>"),
+            TokenKind::EOF => write!(f, "<eof>"),
+            _ => write!(f, "<{}:{}>", self.kind, self.text),
+        }
     }
 }
 
