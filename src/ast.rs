@@ -245,6 +245,14 @@ impl Args {
     pub fn new() -> Self {
         Self { array: Vec::new(), map: Vec::new() }
     }
+
+    pub fn get(&self, idx: usize) -> Option<Expr> {
+        self.array.get(idx).cloned()
+    }
+
+    pub fn lookup(&self, name: &str) -> Option<Expr> {
+        self.map.iter().find(|(n, _)| n.text == name).map(|(_, v)| v.clone())
+    }
 }
 
 fn fmt_call(f: &mut fmt::Formatter, call: &Call) -> fmt::Result {
