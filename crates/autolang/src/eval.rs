@@ -1,8 +1,9 @@
 use crate::ast::*;
 use crate::parser;
 use crate::scope;
-use autoval::value::{Value, Op, Obj, ValueKey, ExtFn, Fn as FnVal};
+use autoval::value::{Value, Op, Obj, ValueKey, ExtFn};
 use autoval::value::{add, sub, mul, div, comp};
+use std::rc::Rc;
 use crate::error_pos;
 
 pub struct Evaler<'a> {
@@ -299,7 +300,25 @@ impl<'a> Evaler<'a> {
             // Why not move here?
             Expr::Str(value) => Value::Str(value.clone()),
             Expr::Bool(value) => Value::Bool(*value),
-            Expr::Ident(name) => self.lookup(&name.text),
+            Expr::Ident(name) => {
+                let res = self.lookup(&name.text);
+                if res == Value::Nil {
+                    // try to lookup in meta and builtins
+                    let meta = self.universe.lookup_meta(&name.text);
+                    let res = match meta {
+                        Some(meta) => meta_to_value(&meta),
+                        None => Value::Nil,
+                    };
+                    if res == Value::Nil {
+                        // Try builtin
+                        self.universe.lookup_builtin(&name.text).unwrap_or(Value::Nil)
+                    } else {
+                        res
+                    }
+                } else {
+                    res
+                }
+            },
             Expr::Unary(op, e) => self.eval_una(op, e),
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
             Expr::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
@@ -347,5 +366,14 @@ impl<'a> Evaler<'a> {
             obj.set(self.eval_key(key), self.eval_expr(value));
         }
         Value::Object(obj)
+    }
+}
+
+fn meta_to_value(meta: &Rc<scope::Meta>) -> Value {
+    match meta.as_ref() {
+        scope::Meta::Fn(fun) => Value::Str(format!("<fn {}>", fun.name.text.clone())),
+        scope::Meta::Type(typ) => Value::Str(format!("<type {}>", typ)),
+        scope::Meta::Widget(widget) => Value::Str(format!("<widget {}>", widget.name.text.clone())),
+        _ => Value::Nil,
     }
 }
