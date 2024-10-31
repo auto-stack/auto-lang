@@ -1,7 +1,8 @@
 use std::collections::HashMap;
-use crate::value::Value;
+use autoval::value::Value;
 use crate::ast;
 use crate::libs;
+use std::rc::Rc;
 pub struct Universe {
     pub scopes: Vec<Scope>,
     pub builtins: HashMap<String, Value>,
@@ -16,10 +17,10 @@ impl Universe {
     }
 
     pub fn define_sys_types(&mut self) {
-        self.define("int".to_string(), Meta::Type(ast::Type::Int));
-        self.define("float".to_string(), Meta::Type(ast::Type::Float));
-        self.define("bool".to_string(), Meta::Type(ast::Type::Bool));
-        self.define("str".to_string(), Meta::Type(ast::Type::Str));
+        self.define("int".to_string(), Rc::new(Meta::Type(ast::Type::Int)));
+        self.define("float".to_string(), Rc::new(Meta::Type(ast::Type::Float)));
+        self.define("bool".to_string(), Rc::new(Meta::Type(ast::Type::Bool)));
+        self.define("str".to_string(), Rc::new(Meta::Type(ast::Type::Str)));
     }
 
     pub fn enter_scope(&mut self) {
@@ -64,12 +65,12 @@ impl Universe {
         self.global_scope().get_val(name).unwrap_or(Value::Nil)
     }
 
-    pub fn put_symbol(&mut self, name: &str, meta: Meta) {
+    pub fn put_symbol(&mut self, name: &str, meta: Rc<Meta>) {
         self.current_scope_mut().put_symbol(name, meta);
     }
 
-    pub fn get_symbol(&self, name: &str) -> Option<&Meta> {
-        self.current_scope().get_symbol(name)
+    pub fn get_symbol(&self, name: &str) -> Option<Rc<Meta>> {
+        self.current_scope().get_symbol(name).cloned()
     }
 
     pub fn is_fn(&self, name: &str) -> bool {
@@ -89,7 +90,7 @@ impl Universe {
         is_builtin
     }
 
-    pub fn define(&mut self, name: String, meta: Meta) {
+    pub fn define(&mut self, name: String, meta: Rc<Meta>) {
         self.current_scope_mut().put_symbol(name.as_str(), meta);
     }
 
@@ -101,18 +102,27 @@ impl Universe {
         }
         self.builtins.get(name).cloned()
     }
+
+    pub fn lookup_meta(&self, name: &str) -> Option<Rc<Meta>> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(meta) = scope.get_symbol(name) {
+                return Some(meta.clone());
+            }
+        }
+        None
+    }
 }
 
 #[derive(Debug)]
 pub enum Meta {
-    Var(ast::Var), // TODO: Add more info, like type, etc.
+    Var(ast::Var),
     Fn(ast::Fn),
     Type(ast::Type),
 }
 
 pub struct Scope {
     pub vals: HashMap<String, Value>,
-    pub symbols: HashMap<String, Meta>,
+    pub symbols: HashMap<String, Rc<Meta>>,
 }
 
 impl Scope {
@@ -128,11 +138,11 @@ impl Scope {
         self.vals.get(name).cloned()
     }
 
-    pub fn put_symbol(&mut self, name: &str, meta: Meta) {
+    pub fn put_symbol(&mut self, name: &str, meta: Rc<Meta>) {
         self.symbols.insert(name.to_string(), meta);
     }
 
-    pub fn get_symbol(&self, name: &str) -> Option<&Meta> {
+    pub fn get_symbol(&self, name: &str) -> Option<&Rc<Meta>> {
         self.symbols.get(name)
     }
 

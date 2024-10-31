@@ -3,8 +3,10 @@ use crate::ast::*;
 use crate::lexer::Lexer;
 use crate::scope::Universe;
 use crate::scope::Meta;
+use autoval::value::Op;
 use std::i32;
 use crate::error_pos;
+use std::rc::Rc;
 
 type ParseError = String;
 
@@ -604,7 +606,7 @@ impl<'a> Parser<'a> {
             let name = self.cur.text.clone();
             self.scope.enter_scope();
             let meta = Meta::Var(Var { name: Name::new(name.clone()), expr: Expr::Nil });
-            self.scope.define(name.clone(), meta);
+            self.scope.define(name.clone(), Rc::new(meta));
             self.next(); // skip name
             self.expect(TokenKind::In)?;
             let range = self.iterable_expr()?;
@@ -624,10 +626,10 @@ impl<'a> Parser<'a> {
         match expr.clone() {
             Expr::Lambda(lambda) => {
                 let fn_decl = lambda.into();
-                self.scope.define(name.clone(), Meta::Fn(fn_decl));
+                self.scope.define(name.clone(), Rc::new(Meta::Fn(fn_decl)));
             }
             _ => {
-                self.scope.define(name.clone(), Meta::Var(Var { name: Name::new(name.clone()), expr: expr.clone() }));
+                self.scope.define(name.clone(), Rc::new(Meta::Var(Var { name: Name::new(name.clone()), expr: expr.clone() })));
             }
         }
         let var = Var { name: Name::new(name), expr };
@@ -646,7 +648,7 @@ impl<'a> Parser<'a> {
         self.scope.exit_scope();
         let fn_expr = Fn::new(Name::new(name.clone()), params, body, Some(Type::Int));
         let fn_stmt = Stmt::Fn(fn_expr.clone());
-        self.scope.define(name.clone(), Meta::Fn(fn_expr));
+        self.scope.define(name.clone(), Rc::new(Meta::Fn(fn_expr)));
         Ok(fn_stmt)
     }
 
@@ -721,7 +723,7 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::RBrace)?;
         let decl = TypeDecl { name: name.clone(), members, methods };
         // put type in scope
-        self.scope.define(name.text, Meta::Type(Type::User(decl.clone())));
+        self.scope.define(name.text, Rc::new(Meta::Type(Type::User(decl.clone()))));
         Ok(Stmt::TypeDecl(decl))
     }
 
@@ -738,7 +740,7 @@ impl<'a> Parser<'a> {
         match type_name {
             Expr::Ident(name) => {  
                 let meta = self.scope.get_symbol(&name.text).ok_or(format!("Undefined type: {}", name.text))?;
-                if let Meta::Type(ty) = meta {
+                if let Meta::Type(ty) = meta.as_ref() {
                     Ok(ty.clone())
                 } else {
                     Err(format!("Expected type, got {:?}", meta))

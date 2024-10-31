@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::value::{Value, ExtFn};
+use autoval::value::{Value, ExtFn};
 
 
 pub fn builtins() -> HashMap<String, Value> {
