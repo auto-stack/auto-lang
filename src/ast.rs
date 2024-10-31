@@ -269,6 +269,17 @@ fn fmt_call(f: &mut fmt::Formatter, call: &Call) -> fmt::Result {
     Ok(())
 }
 
+fn fmt_array(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
+    write!(f, "(array ")?;
+    for (i, elem) in elems.iter().enumerate() {
+        write!(f, "{}", elem)?;
+        if i < elems.len() - 1 {
+            write!(f, " ")?;
+        }
+    }
+    write!(f, ")")
+}
+
 fn fmt_object(f: &mut fmt::Formatter, pairs: &Vec<Pair>) -> fmt::Result {
     write!(f, "(object ")?;
     for (i, pair) in pairs.iter().enumerate() {
@@ -290,7 +301,7 @@ impl fmt::Display for Expr {
             Expr::Ident(n) => write!(f, "(name {})", n.text),
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
             Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
-            Expr::Array(elems) => write!(f, "(array {:?})", elems),
+            Expr::Array(elems) => fmt_array(f, elems),
             Expr::Pair(pair) => write!(f, "{}", pair),
             Expr::Object(pairs) => fmt_object(f, pairs),
             Expr::If(branches, else_stmt) => write!(f, "(if {:?} {:?})", branches, else_stmt),

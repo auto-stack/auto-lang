@@ -68,6 +68,18 @@ pub enum Value {
     Error(String),
 }
 
+impl Into<Value> for String {
+    fn into(self) -> Value {
+        Value::Str(self)
+    }
+}
+
+impl Into<Value> for i32 {
+    fn into(self) -> Value {
+        Value::Int(self)
+    }
+}
+
 
 fn float_eq(a: f64, b: f64) -> bool {
     let epsilon = 0.000001;
@@ -179,6 +191,10 @@ impl Value {
             Value::Str(value) => value.len() > 0,
             _ => false,
         }
+    }
+
+    pub fn to_bool(&self) -> bool {
+        self.is_true()
     }
 }
 

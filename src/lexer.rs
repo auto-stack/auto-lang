@@ -58,6 +58,17 @@ impl<'a> Lexer<'a> {
     pub fn number(&mut self) -> Token {
         let mut text = String::new();
         let mut has_dot = false;
+        let mut is_hex = false;
+        if self.peek('0') {
+            text.push('0');
+            self.chars.next();
+
+            if self.peek('x') {
+                text.push('x');
+                self.chars.next();
+                is_hex = true;
+            }
+        }
         while let Some(&c) = self.chars.peek() {
             if c.is_digit(10) {
                 text.push(c);
@@ -69,6 +80,9 @@ impl<'a> Lexer<'a> {
                     break;
                 }
                 has_dot = true;
+                text.push(c);
+                self.chars.next();
+            } else if is_hex && c.is_digit(16) {
                 text.push(c);
                 self.chars.next();
             } else {

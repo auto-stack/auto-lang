@@ -1,8 +1,9 @@
-use crate::token::{Token, TokenKind};
+use crate::token::{Token, TokenKind, Pos};
 use crate::ast::*;
 use crate::lexer::Lexer;
 use crate::scope::Universe;
 use crate::scope::Meta;
+use std::i32;
 use crate::error_pos;
 
 type ParseError = String;
@@ -110,6 +111,10 @@ impl<'a> Parser<'a> {
 
     pub fn kind(&mut self) -> TokenKind {
         self.peek().kind
+    }
+    
+    pub fn pos(&mut self) -> Pos {
+        self.peek().pos
     }
 
     pub fn is_kind(&mut self, kind: TokenKind) -> bool {
@@ -302,23 +307,28 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    pub fn sep_array(&mut self) {
-        if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
+    pub fn sep_array(&mut self) -> Result<(), ParseError> {
+        let mut has_sep = false;
+        while self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
+            has_sep = true;
             self.next();
-            return;
         }
         if self.is_kind(TokenKind::RSquare) {
-            return;
+            return Ok(());
         }
-        panic!("Expected array separator, got {:?}", self.kind());
+        if !has_sep {
+            return error_pos!("Expected array separator, got {:?}", self.kind());
+        }
+        Ok(())
     }
 
     pub fn array(&mut self) -> Result<Expr, ParseError> {
-        self.next(); // skip [
+        self.expect(TokenKind::LSquare)?;
+        self.skip_empty_lines();
         let mut elems = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RSquare) {
             elems.push(self.expr()?);
-            self.sep_array();
+            self.sep_array()?;
         }
         self.expect(TokenKind::RSquare)?; // skip ]
         Ok(Expr::Array(elems))
@@ -450,7 +460,15 @@ impl<'a> Parser<'a> {
             return self.group();
         }
         let expr = match self.kind() {
-            TokenKind::Int => Expr::Int(self.cur.text.parse().unwrap()),
+            TokenKind::Int => {
+                if self.cur.text.starts_with("0x") {
+                    // trim 0x
+                    let trim = &self.cur.text[2..];
+                    Expr::Int(i32::from_str_radix(trim, 16).unwrap())
+                } else {
+                    Expr::Int(self.cur.text.parse().unwrap())
+                }
+            }
             TokenKind::Float => Expr::Float(self.cur.text.parse().unwrap()),
             TokenKind::True => Expr::Bool(true),
             TokenKind::False => Expr::Bool(false),
@@ -458,7 +476,7 @@ impl<'a> Parser<'a> {
             TokenKind::Ident => self.ident()?,
             TokenKind::Nil => Expr::Nil,
             _ => {
-                return error_pos!("Expected term, got {:?}", self.kind());
+                return error_pos!("Expected term, got {:?}, pos: {}", self.kind(), self.pos());
             }
         };
 
@@ -1032,6 +1050,23 @@ mod tests {
         assert_eq!(ast.to_string(), "(code (stmt (node (name button) (args (str \"OK\")) (props (pair (name border) (int 1)) (pair (name type) (str \"primary\"))))))");
     }
 
+    #[test]
+    fn test_array() {
+        let code = r#"[
+            {id: 1, name: "test"},
+            {id: 2, name: "test2"},
+            {id: 3, name: "test3"}
+        ]"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (stmt (array (object (pair (name id) (int 1)) (pair (name name) (str \"test\"))) (object (pair (name id) (int 2)) (pair (name name) (str \"test2\"))) (object (pair (name id) (int 3)) (pair (name name) (str \"test3\"))))))");
+    }
 
+
+    #[test]
+    fn test_hex() {
+        let code = "0x10";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (stmt (int 16)))");
+    }
 }
 
