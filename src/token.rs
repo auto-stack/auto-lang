@@ -1,7 +1,7 @@
 use std::fmt;
 use strum_macros;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Pos {
     pub line: usize,
     pub pos: usize,
@@ -154,4 +154,8 @@ impl Token {
 
 }
 
-
+impl fmt::Display for Pos {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}:{}", self.line, self.pos, self.len)
+    }
+}

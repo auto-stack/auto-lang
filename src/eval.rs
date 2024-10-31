@@ -248,7 +248,6 @@ impl<'a> Evaler<'a> {
     }
 
     fn call(&mut self, call: &Call) -> Value {
-        println!("call name: {:?}", call.name);
         let mut name = self.eval_expr(&call.name);
         if name == Value::LambdaStub {
             // Try to lookup lambda in SymbolTable
