@@ -120,6 +120,10 @@ impl Universe {
         }
         None
     }
+
+    pub fn lookup_builtin(&self, name: &str) -> Option<Value> {
+        self.builtins.get(name).cloned()
+    }
 }
 
 #[derive(Debug)]
