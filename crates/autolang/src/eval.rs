@@ -1,7 +1,9 @@
 use crate::ast::*;
 use crate::parser;
 use crate::scope;
-use crate::value::{Value, Obj, ValueKey, ExtFn};
+use autoval::value::{Value, Op, Obj, ValueKey, ExtFn, Fn as FnVal};
+use autoval::value::{add, sub, mul, div, comp};
+use crate::error_pos;
 
 pub struct Evaler<'a> {
     universe: &'a mut scope::Universe,
@@ -31,56 +33,10 @@ impl<'a> Evaler<'a> {
             Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
             Stmt::For(name, expr, body) => self.eval_for(&name.text, expr, body),
             Stmt::Var(var) => self.eval_var(var),
-            Stmt::Fn(fn_decl) => self.eval_fn(fn_decl),
+            Stmt::Fn(_) => Value::Nil,
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
             // TODO: no need to eval widget as it only needs to be translated into UI calls
             Stmt::Widget(_) => Value::Nil,
-        }
-    }
-
-    fn try_promote(&self, left: Value, right: Value) -> (Value, Value) {
-        match (&left, &right) {
-            (Value::Int(_), Value::Int(_)) => (left, right),
-            (Value::Float(_), Value::Float(_)) => (left, right),
-            (Value::Int(left), Value::Float(_)) => (Value::Float(*left as f64), right),
-            (Value::Float(_), Value::Int(right)) => (left, Value::Float(*right as f64)),
-            _ => (left, right),
-        }
-    }
-
-    fn add(&self, left: Value, right: Value) -> Value {
-        let (left, right) = self.try_promote(left, right);
-        match (left, right) {
-            (Value::Int(left), Value::Int(right)) => Value::Int(left + right),
-            (Value::Float(left), Value::Float(right)) => Value::Float(left + right),
-            _ => Value::Nil,
-        }
-    }
-
-    fn sub(&self, left: Value, right: Value) -> Value {
-        let (left, right) = self.try_promote(left, right);
-        match (left, right) {
-            (Value::Int(left), Value::Int(right)) => Value::Int(left - right),
-            (Value::Float(left), Value::Float(right)) => Value::Float(left - right),
-            _ => Value::Nil,
-        }
-    }
-
-    fn mul(&self, left: Value, right: Value) -> Value {
-        let (left, right) = self.try_promote(left, right);
-        match (left, right) {
-            (Value::Int(left), Value::Int(right)) => Value::Int(left * right),
-            (Value::Float(left), Value::Float(right)) => Value::Float(left * right),
-            _ => Value::Nil,
-        }
-    }
-
-    fn div(&self, left: Value, right: Value) -> Value {
-        let (left, right) = self.try_promote(left, right);
-        match (left, right) {
-            (Value::Int(left), Value::Int(right)) => Value::Int(left / right),
-            (Value::Float(left), Value::Float(right)) => Value::Float(left / right),
-            _ => Value::Nil,
         }
     }
 
@@ -148,23 +104,17 @@ impl<'a> Evaler<'a> {
         Value::Void
     }
 
-    fn eval_fn(&mut self, fn_decl: &Fn) -> Value {
-        self.universe
-            .set_global(&fn_decl.name.text, Value::Fn(fn_decl.clone()));
-        Value::Void
-    }
-
     fn eval_bina(&mut self, left: &Expr, op: &Op, right: &Expr) -> Value {
         let left_value = self.eval_expr(left);
         let right_value = self.eval_expr(right);
 
         match op {
-            Op::Add => self.add(left_value, right_value),
-            Op::Sub => self.sub(left_value, right_value),
-            Op::Mul => self.mul(left_value, right_value),
-            Op::Div => self.div(left_value, right_value),
+            Op::Add => add(left_value, right_value),
+            Op::Sub => sub(left_value, right_value),
+            Op::Mul => mul(left_value, right_value),
+            Op::Div => div(left_value, right_value),
             Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => {
-                left_value.comp(op, &right_value)
+                comp(&left_value, &op, &right_value)
             }
             Op::Asn => self.asn(left, right_value),
             Op::Range => self.range(left, right),
@@ -213,6 +163,7 @@ impl<'a> Evaler<'a> {
     }
 
     fn lookup(&self, name: &str) -> Value {
+        // lookup value
         self.universe.lookup_val(name).unwrap_or(Value::Nil)
     }
 
@@ -248,23 +199,47 @@ impl<'a> Evaler<'a> {
     }
 
     fn call(&mut self, call: &Call) -> Value {
-        let mut name = self.eval_expr(&call.name);
-        if name == Value::LambdaStub {
-            // Try to lookup lambda in SymbolTable
-            let lambda = self.universe.get_symbol(&call.get_name());
-            if let Some(meta) = lambda {
-                match meta {
-                    scope::Meta::Fn(fn_decl) => name = Value::Fn(fn_decl.clone()),
-                    _ => return Value::Error(format!("Invalid lambda {}", name)),
+        println!("call: {}", call.name);
+        let name = self.eval_expr(&call.name);
+        if name != Value::Nil {
+            match name {
+                Value::ExtFn(ExtFn { fun }) => {
+                    let arg_vals: Vec<Value> = call.args.array
+                        .iter().map(|arg| self.eval_expr(arg)).collect();
+                    return fun(&arg_vals);
+                }
+                Value::Lambda => {
+                    // Try to lookup lambda in SymbolTable
+                    let meta = self.universe.lookup_meta(&call.get_name());
+                    if let Some(meta) = meta {
+                        match meta.as_ref() {
+                            scope::Meta::Fn(fn_decl) => {
+                                return self.eval_fn_call(fn_decl, &call.args);
+                            }
+                            _ => {
+                                return Value::Error(format!("Invalid lambda {}", name));
+                            }
+                        }
+                    } else {
+                        return Value::Error(format!("Invalid lambda {}", name));
+                    }
+                }
+                _ => {
+                    return Value::Error(format!("Invalid function call {}", name));
                 }
             }
         }
-        let arg_vals: Vec<Value> = call.args.array.iter().map(|arg| self.eval_expr(arg)).collect();
-        match name {
-            Value::Fn(fn_decl) => self.eval_fn_call(&fn_decl, &call.args),
-            Value::ExtFn(ExtFn { fun }) => fun(&arg_vals),
-            _ => Value::Error(format!("Invalid function call {}", name)),
+        // Lookup Fn meta
+        let meta = self.universe.lookup_meta(&call.get_name());
+        if let Some(meta) = meta {
+            match meta.as_ref() {
+                scope::Meta::Fn(fn_decl) => {
+                    return self.eval_fn_call(fn_decl, &call.args);
+                }
+                _ => return Value::Error(format!("Invalid lambda {}", name)),
+            }
         }
+        Value::Error(format!("Invalid call {}", name))
     }
 
     fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
@@ -276,7 +251,6 @@ impl<'a> Evaler<'a> {
         }
         for (name, expr) in args.map.iter() {
             let val = self.eval_expr(expr);
-            println!("set local {} = {}", name.text, val);
             self.universe.set_local(&name.text, val);
         }
         let result = self.eval_body(&fn_decl.body);
@@ -328,7 +302,7 @@ impl<'a> Evaler<'a> {
             Expr::Pair(pair) => self.pair(pair),
             Expr::Object(pairs) => self.object(pairs),
             Expr::TypeInst(name, entries) => self.type_inst(name, entries),
-            Expr::Lambda(_) => Value::LambdaStub,
+            Expr::Lambda(_) => Value::Lambda,
             Expr::Node(node) => self.node(node),
             Expr::Nil => Value::Nil,
         }

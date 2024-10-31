@@ -1,0 +1,8 @@
+[package]
+name = "auto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { workspace = true }
+autolang = { path = "../autolang" }

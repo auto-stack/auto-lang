@@ -1,0 +1,22 @@
+[package]
+name = "autolang"
+version = "0.1.0"
+edition = "2021"
+description = "Auto is a programming language for automations in various scenarios"
+homepage = "https://gitee.com/auto-stack/auto-lang"
+repository = "https://gitee.com/auto-stack/auto-lang"
+readme = "README.md"
+license = "MIT"
+keywords = ["automation", "language", "scripting"]
+
+[features]
+default = ["with-file-history"]
+with-file-history = []
+
+[dependencies]
+autoval = { workspace = true }
+rustyline = { workspace = true, features = ["with-file-history"] }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true, features = ["derive"] }

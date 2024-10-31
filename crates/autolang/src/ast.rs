@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, fmt};
 use serde::Serialize;
+use autoval::value::Op;
 
 #[derive(Debug)]
 pub struct Code {
@@ -117,81 +118,6 @@ impl fmt::Display for Stmt {
             Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),
             Stmt::TypeDecl(type_decl) => write!(f, "{}", type_decl),    
             Stmt::Widget(widget) => write!(f, "{}", widget),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Op {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Not,
-    LSquare,
-    LParen,
-    LBrace,
-    Asn,
-    Eq,
-    Neq,
-    Lt,
-    Gt,
-    Le,
-    Ge,
-    Range,
-    RangeEq,
-    Dot,
-    Colon,
-}
-
-impl fmt::Display for Op {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Op::Add => write!(f, "(op +)"),
-            Op::Sub => write!(f, "(op -)"),
-            Op::Mul => write!(f, "(op *)"),
-            Op::Div => write!(f, "(op /)"),
-            Op::Not => write!(f, "(op !)"),
-            Op::LSquare => write!(f, "(op [)"),
-            Op::Asn => write!(f, "(op =)"),
-            Op::Eq => write!(f, "(op ==)"),
-            Op::Neq => write!(f, "(op !=)"),
-            Op::Lt => write!(f, "(op <)"),
-            Op::Gt => write!(f, "(op >)"),
-            Op::Le => write!(f, "(op <=)"),
-            Op::Ge => write!(f, "(op >=)"),
-            Op::Range => write!(f, "(op ..)"),
-            Op::RangeEq => write!(f, "(op ..=)"),
-            Op::Dot => write!(f, "(op .)"),
-            Op::LParen => write!(f, "(op ()"),
-            Op::LBrace => write!(f, "(op {{)"),
-            Op::Colon => write!(f, "(op :)"),
-        }
-    }
-}
-
-impl Op {
-    pub fn op(&self) -> &str {
-        match self {
-            Op::Add => "+",
-            Op::Sub => "-",
-            Op::Mul => "*",
-            Op::Div => "/",
-            Op::Not => "!",
-            Op::LSquare => "[",
-            Op::LParen => "(",
-            Op::LBrace => "{",
-            Op::Asn => "=",
-            Op::Eq => "==",
-            Op::Neq => "!=",
-            Op::Lt => "<",
-            Op::Gt => ">",
-            Op::Le => "<=",
-            Op::Ge => ">=",
-            Op::Range => "..",
-            Op::RangeEq => "..=",
-            Op::Dot => ".",
-            Op::Colon => ":",
         }
     }
 }

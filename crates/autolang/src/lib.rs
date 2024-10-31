@@ -3,13 +3,12 @@ mod lexer;
 pub mod ast;
 mod parser;
 mod eval;
-pub mod value;
+// pub mod value;
 mod scope;
 pub mod transpiler;
 pub mod repl;
 pub mod libs;
 pub mod util;
-pub mod json;
 
 pub fn run(code: &str) -> Result<String, String> {
     let mut scope = scope::Universe::new();

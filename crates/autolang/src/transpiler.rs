@@ -1,6 +1,7 @@
 use super::ast::*;
 use std::io;
 use std::io::Write;
+use autoval::value::Op;
 
 pub trait Transpiler {
     fn transpile(&mut self, ast: Code, out: &mut impl Write) -> Result<(), String>;
