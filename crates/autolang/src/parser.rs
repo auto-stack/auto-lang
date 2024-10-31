@@ -784,6 +784,7 @@ impl<'a> Parser<'a> {
         let mut widget = Widget::new(Name::new(name.clone()));
         widget.model = model;
         widget.view = view;
+        self.scope.define(name.clone(), Rc::new(Meta::Widget(widget.clone())));
         Ok(Stmt::Widget(widget))
     }
 

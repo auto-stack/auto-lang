@@ -3,6 +3,59 @@ use crate::scope;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 
+enum CmdResult {
+    Exit,
+    Continue,
+}
+
+fn try_command(line: &str, evaler: &mut eval::Evaler) -> CmdResult {
+    let words = line.split_whitespace().collect::<Vec<&str>>();
+    if words.len() == 0 {
+        return CmdResult::Continue;
+    }
+    let cmd = words[0];
+    match cmd {
+        "help" => {
+            println!("help - show this help");
+            CmdResult::Continue
+        }
+        "q" | "quit" => {
+            CmdResult::Exit
+        }
+        "load" => {
+            if words.len() == 2 {
+                let filename = words[1];
+                match evaler.load_file(filename) {
+                    Ok(_) => CmdResult::Continue,
+                    Err(error) => {
+                        eprintln!("Error: {}", error);
+                        CmdResult::Continue
+                    }
+                }
+            } else {
+                eprintln!("Usage: load <filename>");
+                CmdResult::Continue
+            }
+        }
+        "scope" => {
+            evaler.dump_scope();
+            CmdResult::Continue
+        }
+        _ => {
+            match evaler.interpret(line) {
+                Ok(result) => {
+                    println!("{}", result);
+                    CmdResult::Continue
+                }
+                Err(error) => {
+                    eprintln!("Error: {}", error);
+                    CmdResult::Continue
+                }
+            }
+        }
+    }
+}
+
 pub fn main_loop() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
     #[cfg(feature = "with-file-history")]
@@ -20,12 +73,10 @@ pub fn main_loop() -> Result<()> {
                     println!("Unable to add history");
                     break;
                 }
-                if line == "q" || line == "quit" {
-                    break;
-                }
-                match evaler.interpret(line.as_str()) {
-                    Ok(result) => println!("{}", result),
-                    Err(error) => eprintln!("Error: {}", error),
+                // split first word and check if it's a command
+                match try_command(&line, &mut evaler) {
+                    CmdResult::Exit => break,
+                    CmdResult::Continue => continue,
                 }
             }
             Err(ReadlineError::Interrupted) => {

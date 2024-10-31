@@ -15,5 +15,6 @@ pub fn print(args: &Vec<Value>) -> Value {
             print!(", ");
         }
     }
+    println!();
     Value::Void
 }

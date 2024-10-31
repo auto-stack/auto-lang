@@ -23,6 +23,15 @@ impl Universe {
         self.define("str".to_string(), Rc::new(Meta::Type(ast::Type::Str)));
     }
 
+    pub fn dump(&self) {
+        for scope in self.scopes.iter() {
+            scope.dump();
+        }
+        for (name, meta) in self.builtins.iter() {
+            println!("Builtin: {} = {}", name, meta);
+        }
+    }
+
     pub fn enter_scope(&mut self) {
         self.scopes.push(Scope::new());
     }
@@ -118,6 +127,7 @@ pub enum Meta {
     Var(ast::Var),
     Fn(ast::Fn),
     Type(ast::Type),
+    Widget(ast::Widget),
 }
 
 pub struct Scope {
@@ -128,6 +138,11 @@ pub struct Scope {
 impl Scope {
     pub fn new() -> Scope {
         Scope { vals: HashMap::new(), symbols: HashMap::new() }
+    }
+
+    pub fn dump(&self) {
+        println!("Vals: {:?}", self.vals);
+        println!("Symbols: {:?}", self.symbols);
     }
 
     pub fn set_val(&mut self, name: &str, value: Value) {
