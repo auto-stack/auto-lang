@@ -70,6 +70,20 @@ mod tests {
     }
 
     #[test]
+    fn test_var_assign() {
+        let code = "var a = 1; a = 2; a";
+        let result = run(code).unwrap();
+        assert_eq!(result, "2");
+    }
+
+    #[test]
+    fn test_var_arithmetic() {
+        let code = "var a = 12312; a * 10";
+        let result = run(code).unwrap();
+        assert_eq!(result, "123120");
+    }
+
+    #[test]
     fn test_if() {
         let code = "if true { 1 } else { 2 }";
         let result = run(code).unwrap();

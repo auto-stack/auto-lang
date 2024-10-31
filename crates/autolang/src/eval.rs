@@ -19,12 +19,21 @@ impl<'a> Evaler<'a> {
         Ok(self.eval(&ast))
     }
 
+    pub fn load_file(&mut self, filename: &str) -> Result<Value, String> {
+        let code = std::fs::read_to_string(filename).map_err(|e| format!("Failed to read file: {}", e))?;
+        self.interpret(&code)
+    }
+
     pub fn eval(&mut self, code: &Code) -> Value {
         let mut value = Value::Nil;
         for stmt in code.stmts.iter() {
             value = self.eval_stmt(stmt);
         }
         value
+    }
+
+    pub fn dump_scope(&self) {
+        self.universe.dump();
     }
 
     fn eval_stmt(&mut self, stmt: &Stmt) -> Value {
@@ -98,7 +107,6 @@ impl<'a> Evaler<'a> {
     }
 
     fn eval_var(&mut self, var: &Var) -> Value {
-        println!("eval var: {}", var);
         let value = self.eval_expr(&var.expr);
         self.universe.set_local(&var.name.text, value);
         Value::Void
@@ -199,7 +207,6 @@ impl<'a> Evaler<'a> {
     }
 
     fn call(&mut self, call: &Call) -> Value {
-        println!("call: {}", call.name);
         let name = self.eval_expr(&call.name);
         if name != Value::Nil {
             match name {
