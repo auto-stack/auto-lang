@@ -171,6 +171,9 @@ mod tests {
         let code = "fn add(a, b) { a + b }; add(a=1, b=2)";
         let result = run(code).unwrap();
         assert_eq!(result, "3");
+
+        let code = "fn hi(s) { print(s) }; hi(\"hello\")";
+        let result = run(code).unwrap();
     }
 
     #[test]
