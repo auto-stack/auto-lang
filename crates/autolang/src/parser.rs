@@ -62,7 +62,7 @@ fn prefix_power(op: Op) -> Result<PrefixPrec, ParseError> {
     match op {
         Op::Add | Op::Sub => Ok(PREC_SIGN),
         Op::Not => Ok(PREC_NOT),
-        _ => return Err(format!("Invalid prefix operator: {}", op)),
+        _ => error_pos!("Invalid prefix operator: {}", op),
     }
 }
 
@@ -84,7 +84,7 @@ fn infix_power(op: Op) -> Result<InfixPrec, ParseError> {
         Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(PREC_CMP),
         Op::Range | Op::RangeEq => Ok(PREC_Range),
         Op::Dot => Ok(PREC_DOT),
-        _ => return Err(format!("Invalid infix operator: {}", op)),
+        _ => error_pos!("Invalid infix operator: {}", op),
     }
 }
 
@@ -203,7 +203,9 @@ impl<'a> Parser<'a> {
                 TokenKind::Eq | TokenKind::Neq | TokenKind::Lt | TokenKind::Gt | TokenKind::Le | TokenKind::Ge => self.op(),
                 TokenKind::RSquare => break,
                 TokenKind::RParen => break,
-                _ => return Err(format!("Expected infix operator, got {:?}", self.peek())),
+                _ => {
+                    return error_pos!("Expected infix operator, got {:?}", self.peek());
+                }
             };
             // Postfix
 
@@ -257,13 +259,13 @@ impl<'a> Parser<'a> {
                             Expr::Ident(name) => Key::NamedKey(name.clone()),
                             Expr::Int(i) => Key::IntKey(*i),
                             Expr::Bool(b) => Key::BoolKey(*b),
-                            _ => return Err(format!("Invalid key: {}", lhs)),
+                            _ => return error_pos!("Invalid key: {}", lhs),
                         };
                         let rhs = self.expr()?;
                         lhs = Expr::Pair(Pair { key, value: Box::new(rhs) });
                         return Ok(lhs);
                     }
-                    _ => return Err(format!("Invalid postfix operator: {}", op)),
+                    _ => return error_pos!("Invalid postfix operator: {}", op),
                 }
             }
             // Infix
@@ -359,12 +361,12 @@ impl<'a> Parser<'a> {
                     is_named_started = true;
                     match &*name {
                         Expr::Ident(name) => args.map.push((name.clone(), *val)),
-                        _ => return Err(format!("Expected identifier, got {:?}", name)),
+                        _ => return error_pos!("Expected identifier, got {:?}", name),
                     }
                 }
                 _ => {
                     if is_named_started {
-                        return Err(format!("all positional args should come before named args: {}", expr));
+                        return error_pos!("all positional args should come before named args: {}", expr);
                     }
                     args.array.push(expr);
                 }
@@ -616,7 +618,7 @@ impl<'a> Parser<'a> {
             self.scope.exit_scope();
             return Ok(Stmt::For(Name::new(name), range, body));
         }
-        Err(format!("Expected for loop, got {:?}", self.kind()))
+        error_pos!("Expected for loop, got {:?}", self.kind())
     }
 
     pub fn var_stmt(&mut self) -> Result<Stmt, ParseError> {
@@ -684,8 +686,8 @@ impl<'a> Parser<'a> {
                 let expr = self.expr()?;
                 default = Some(expr);
             }
-            // let var = Var { name: Name::new(name.clone()), expr: default.clone().unwrap_or(Expr::Nil) };
-            // self.scope.define(name.clone(), Meta::Var(var.clone()));
+            let var = Var { name: Name::new(name.clone()), expr: default.clone().unwrap_or(Expr::Nil) };
+            self.scope.define(name.clone(), Rc::new(Meta::Var(var.clone())));
             params.push(Param { name: Name::new(name), ty, default });
             self.sep_params();
         }
@@ -745,10 +747,10 @@ impl<'a> Parser<'a> {
                 if let Meta::Type(ty) = meta.as_ref() {
                     Ok(ty.clone())
                 } else {
-                    Err(format!("Expected type, got {:?}", meta))
+                    error_pos!("Expected type, got {:?}", meta)
                 }
             }
-            _ => Err(format!("Expected type, got {:?}", type_name)),
+            _ => error_pos!("Expected type, got {:?}", type_name),
         }
     }
 
@@ -760,7 +762,7 @@ impl<'a> Parser<'a> {
                     Op::Dot => {
                         if let Expr::Ident(name) = l.as_ref() {
                             if !self.scope.exists(&name.text) {
-                                return Err(format!("Undefined variable: {}", name.text));
+                                return error_pos!("Undefined variable: {}", name.text);
                             }
                         }
                         Ok(())
@@ -770,7 +772,7 @@ impl<'a> Parser<'a> {
             }   
             Expr::Ident(name) => {
                 if !self.scope.exists(&name.text) {
-                    return Err(format!("Undefined variable: {}", name.text));
+                    return error_pos!("Undefined variable: {}", name.text);
                 }
                 Ok(())
             }
@@ -806,7 +808,7 @@ impl<'a> Parser<'a> {
             has_content = true;
         }
         if !has_content {
-            return Err("Widget has no model nor view".to_string());
+            return error_pos!("Widget has no model nor view");
         }
         self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
@@ -825,7 +827,9 @@ impl<'a> Parser<'a> {
                 Stmt::Var(var) => {
                     model.vars.push(var);
                 }
-                _ => return Err(format!("Expected var declaration, got {:?}", var)),
+                _ => {
+                    return error_pos!("Expected var declaration, got {:?}", var);
+                }
             }
             self.expect_eos()?;
         }
@@ -877,7 +881,7 @@ impl<'a> Parser<'a> {
                 return self.node_arg_body(&name);
             }
         }
-        Err(format!("Expected node name, got {:?}", self.kind()))
+        error_pos!("Expected node name, got {:?}", self.kind())
     }
 }
 
