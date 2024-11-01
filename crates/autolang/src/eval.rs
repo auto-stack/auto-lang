@@ -2,6 +2,7 @@ use crate::ast::*;
 use crate::parser;
 use crate::scope;
 use autoval::value::{Value, Op, Obj, ValueKey, ExtFn};
+use autoval::value;
 use autoval::value::{add, sub, mul, div, comp};
 use std::rc::Rc;
 use crate::error_pos;
@@ -45,8 +46,7 @@ impl<'a> Evaler<'a> {
             Stmt::Var(var) => self.eval_var(var),
             Stmt::Fn(_) => Value::Nil,
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
-            // TODO: no need to eval widget as it only needs to be translated into UI calls
-            Stmt::Widget(_) => Value::Nil,
+            Stmt::Widget(widget) => self.eval_widget(widget),
         }
     }
 
@@ -351,6 +351,24 @@ impl<'a> Evaler<'a> {
                 Expr::Bool(key) => obj.lookup(&key.to_string()),
                 _ => None,
             }
+            Value::Widget(widget) => match right {
+                Expr::Ident(name) => {
+                    match name.text.as_str() {
+                        "model" => Some(Value::Model(widget.model.clone())),
+                        "view" => Some(Value::View(widget.view.clone())),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+            Value::Model(model) => match right {
+                Expr::Ident(name) => model.find(&name.text),
+                _ => None,
+            }
+            Value::View(view) => match right {
+                Expr::Ident(name) => view.find(&name.text),
+                _ => None,
+            }
             _ => None,
         };
         res.unwrap_or(Value::Error(format!("Invalid object {}", left_value)))
@@ -366,6 +384,33 @@ impl<'a> Evaler<'a> {
             obj.set(self.eval_key(key), self.eval_expr(value));
         }
         Value::Object(obj)
+    }
+
+    fn eval_widget(&mut self, widget: &Widget) -> Value {
+        let name = &widget.name.text;
+        // model
+        let mut vars = Vec::new();
+        for var in widget.model.vars.iter() {
+            let value = self.eval_expr(&var.expr);
+            vars.push((ValueKey::Str(var.name.text.clone()), value));
+        }
+        let model = value::Model { values: vars };
+        // view
+        let mut nodes = Vec::new();
+        for (_, node) in widget.view.nodes.iter() {
+            nodes.push(self.eval_node(node));
+        }
+        let view = value::View { nodes };
+        let widget_value = value::Widget { name: name.clone(), model, view };
+        let value = Value::Widget(widget_value);
+        self.universe.set_local(name, value.clone());
+        value
+    }
+
+    fn eval_node(&mut self, node: &Node) -> value::Node {
+        let args = node.args.array.iter().map(|arg| self.eval_expr(arg)).collect();
+        let props = node.props.iter().map(|(key, value)| (self.eval_key(key), self.eval_expr(value))).collect();
+        value::Node { name: node.name.text.clone(), args, props }
     }
 }
 

@@ -24,6 +24,10 @@ pub fn parse(code: &str) -> Result<ast::Code, String> {
     parser::parse(code, &mut scope)
 }
 
+pub fn parse_scope(code: &str, scope: &mut scope::Universe) -> Result<ast::Code, String> {
+    parser::parse(code, scope)
+}
+
 pub fn interpret(code: &str) -> Result<String, String> {
     run(code)
 }
@@ -242,6 +246,22 @@ mod tests {
                 { id: 0x85, name: "ControlDTCSetting",  desc: "控制DTC设置" },
             ]
         "#;
+        let result = run(code).unwrap();
+        println!("{}", result);
+    }
+
+
+    #[test]
+    fn test_widget() {
+        let code = r#"
+        widget MyWidget {
+            model { 
+                var a = 1 
+            }
+            view {
+                button("Click me")
+            }
+        }"#;
         let result = run(code).unwrap();
         println!("{}", result);
     }
