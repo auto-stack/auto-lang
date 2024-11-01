@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::parser;
 use crate::scope;
-use autoval::value::{Value, Op, Obj, ValueKey, ExtFn};
+use autoval::value::{Value, Op, Obj, ValueKey, ExtFn, MetaID, Sig};
 use autoval::value;
 use autoval::value::{add, sub, mul, div, comp};
 use std::rc::Rc;
@@ -211,6 +211,14 @@ impl<'a> Evaler<'a> {
         let name = self.eval_expr(&call.name);
         if name != Value::Nil {
             match name {
+                Value::Meta(meta_id) => {
+                    match meta_id {
+                        MetaID::Fn(sig) => {
+                            return self.eval_fn_call_with_sig(&sig, &call.args);
+                        }
+                        _ => {}
+                    }
+                }
                 Value::ExtFn(ExtFn { fun }) => {
                     let arg_vals: Vec<Value> = call.args.array
                         .iter().map(|arg| self.eval_expr(arg)).collect();
@@ -244,10 +252,18 @@ impl<'a> Evaler<'a> {
                 scope::Meta::Fn(fn_decl) => {
                     return self.eval_fn_call(fn_decl, &call.args);
                 }
-                _ => return Value::Error(format!("Invalid lambda {}", name)),
+                _ => return Value::Error(format!("Invalid lambda {}", call.get_name())),
             }
         }
-        Value::Error(format!("Invalid call {}", name))
+        Value::Error(format!("Invalid call {}", call.get_name()))
+    }
+
+    fn eval_fn_call_with_sig(&mut self, sig: &Sig, args: &Args) -> Value {
+        let meta = self.universe.lookup_sig(sig).unwrap();
+        match meta.as_ref() {
+            scope::Meta::Fn(fn_decl) => self.eval_fn_call(fn_decl, args),
+            _ => Value::Error(format!("Invalid function call {}", sig.name)),
+        }
     }
 
     fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
@@ -305,16 +321,11 @@ impl<'a> Evaler<'a> {
                 if res == Value::Nil {
                     // try to lookup in meta and builtins
                     let meta = self.universe.lookup_meta(&name.text);
-                    let res = match meta {
-                        Some(meta) => meta_to_value(&meta),
-                        None => Value::Nil,
-                    };
-                    if res == Value::Nil {
-                        // Try builtin
-                        self.universe.lookup_builtin(&name.text).unwrap_or(Value::Nil)
-                    } else {
-                        res
+                    if let Some(meta) = meta {
+                        return Value::Meta(to_meta_id(&meta));
                     }
+                    // Try builtin
+                    self.universe.lookup_builtin(&name.text).unwrap_or(Value::Nil)
                 } else {
                     res
                 }
@@ -414,11 +425,35 @@ impl<'a> Evaler<'a> {
     }
 }
 
-fn meta_to_value(meta: &Rc<scope::Meta>) -> Value {
+fn to_meta_id(meta: &Rc<scope::Meta>) -> MetaID {
     match meta.as_ref() {
-        scope::Meta::Fn(fun) => Value::Str(format!("<fn {}>", fun.name.text.clone())),
-        scope::Meta::Type(typ) => Value::Str(format!("<type {}>", typ)),
-        scope::Meta::Widget(widget) => Value::Str(format!("<widget {}>", widget.name.text.clone())),
-        _ => Value::Nil,
+        scope::Meta::Fn(fn_decl) => MetaID::Fn(to_value_sig(&fn_decl)),
+        _ => MetaID::Nil,
     }
+}
+
+fn to_value_sig(fn_decl: &Fn) -> Sig {
+    let mut params = Vec::new();
+    for param in fn_decl.params.iter() {
+        params.push(value::Param {
+            name: param.name.text.clone(),
+            ty: Box::new(to_value_type(&param.ty)),
+        });
+    }
+    let ret = to_value_type(&fn_decl.ret.as_ref().unwrap());
+    Sig { name: fn_decl.name.text.clone(), params, ret }
+}
+
+fn to_value_type(ty: &Type) -> value::Type {
+    match ty {
+        Type::Int => value::Type::Int,
+        Type::Float => value::Type::Float,
+        Type::Bool => value::Type::Bool,
+        Type::Str => value::Type::Str,
+        Type::User(type_decl) => value::Type::User(to_value_type_info(type_decl)),
+    }
+}
+
+fn to_value_type_info(type_decl: &TypeDecl) -> value::TypeInfo {
+    value::TypeInfo { name: type_decl.name.text.clone(), members: Vec::new(), methods: Vec::new() }
 }

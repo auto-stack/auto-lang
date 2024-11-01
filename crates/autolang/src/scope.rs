@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use autoval::value::Value;
+use autoval::value::Sig;
 use crate::ast;
 use crate::libs;
 use std::rc::Rc;
@@ -119,6 +120,10 @@ impl Universe {
             }
         }
         None
+    }
+
+    pub fn lookup_sig(&self, sig: &Sig) -> Option<Rc<Meta>> {
+        self.lookup_meta(&sig.name)
     }
 
     pub fn lookup_builtin(&self, name: &str) -> Option<Value> {

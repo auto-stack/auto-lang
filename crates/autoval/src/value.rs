@@ -429,19 +429,17 @@ pub struct Node {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetaID {
-    Widget(String),
     Fn(Sig),
-    ExtFn(Sig),
     Lambda(Sig),
+    Nil,
 }
 
 impl fmt::Display for MetaID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            MetaID::Widget(name) => write!(f, "widget {}", name),
             MetaID::Fn(sig) => write!(f, "fn {}", sig),
-            MetaID::ExtFn(sig) => write!(f, "extfn {}", sig),
             MetaID::Lambda(sig) => write!(f, "lambda {}", sig),
+            MetaID::Nil => write!(f, "nil-meta"),
         }
     }
 }
