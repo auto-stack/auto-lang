@@ -268,6 +268,30 @@ mod tests {
         let result = run(code).unwrap();
         println!("{}", result);
     }
+
+
+    // #[test]
+    // fn test_app() {
+    //     let code = r#"
+    //     widget hello {
+    //         model {
+    //             var name = ""
+    //         }
+
+    //         view {
+    //             text(f"Hello $name")
+    //         }
+    //     }
+
+    //     app() {
+    //         center() {
+    //             hello(name="You")
+    //         }
+    //     }"#;
+
+    //     let result = run(code).unwrap();
+    //     println!("{}", result);
+    // }
 }
 
 

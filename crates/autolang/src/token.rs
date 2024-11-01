@@ -45,6 +45,7 @@ pub enum TokenKind {
     RangeEq, // ..= 
     Colon, // :
     VBar, // |
+    Dollar, // $
 
     // Keywords
     True,
@@ -57,6 +58,11 @@ pub enum TokenKind {
     In,
     Fn,
     Type,
+
+    // Format Str
+    FStrStart,
+    FStrPart,
+    FStrEnd,
 
     // Keywords For AutoUI
     Widget,
@@ -117,6 +123,9 @@ impl fmt::Display for Token {
             TokenKind::Model => write!(f, "<model>"),
             TokenKind::View => write!(f, "<view>"),
             TokenKind::Style => write!(f, "<style>"),
+            TokenKind::Dollar => write!(f, "<$>"),
+            TokenKind::FStrStart => write!(f, "<fstrs:{}>", self.text),
+            TokenKind::FStrEnd => write!(f, "<fstre:{}>", self.text),
             TokenKind::EOF => write!(f, "<eof>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }
@@ -138,6 +147,18 @@ impl Token {
 
     pub fn str(pos: Pos, text: String) -> Self {
         Token::new(TokenKind::Str, pos, text)
+    }
+
+    pub fn fstr_start(pos: Pos, text: String) -> Self {
+        Token::new(TokenKind::FStrStart, pos, text)
+    }
+
+    pub fn fstr_part(pos: Pos, text: String) -> Self {
+        Token::new(TokenKind::FStrPart, pos, text)
+    }
+
+    pub fn fstr_end(pos: Pos, text: String) -> Self {
+        Token::new(TokenKind::FStrEnd, pos, text)
     }
 
     pub fn ident(pos: Pos, text: String) -> Self {
