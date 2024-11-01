@@ -1,4 +1,4 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, write, Display, Formatter};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Hash, Ord, Eq, PartialOrd)]
@@ -55,6 +55,7 @@ pub enum Value {
     Array(Vec<Value>),
     Pair(ValueKey, Box<Value>),
     Object(Obj),
+    Node(Node),
     Range(i32, i32),
     RangeEq(i32, i32),
     Fn(Fn),
@@ -62,6 +63,10 @@ pub enum Value {
     Nil,
     Lambda,
     Void,
+    Widget(Widget),
+    Model(Model),
+    View(View),
+    Meta(MetaID),
     Error(String),
 }
 
@@ -124,6 +129,11 @@ impl Display for Value {
             Value::Lambda => write!(f, "lambda"),
             Value::Pair(key, value) => write!(f, "{}: {}", key, value),
             Value::Object(value) => print_object(f, value),
+            Value::Node(node) => write!(f, "{}", node),
+            Value::Widget(widget) => write!(f, "{}", widget),
+            Value::Meta(meta) => write!(f, "{}", meta),
+            Value::Model(model) => write!(f, "{}", model),
+            Value::View(view) => write!(f, "{}", view),
         }
     }
 }
@@ -229,7 +239,7 @@ pub struct Fn {
 pub struct Sig {
     pub name: String,
     pub params: Vec<Param>,
-    pub ret: Box<Type>,
+    pub ret: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -240,6 +250,7 @@ pub struct Param {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
+    Void,
     Int,
     Float,
     Bool,
@@ -263,6 +274,7 @@ pub struct Member {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Type::Void => write!(f, "void"),
             Type::Int => write!(f, "int"),
             Type::Float => write!(f, "float"),
             Type::Bool => write!(f, "bool"),
@@ -391,6 +403,129 @@ pub fn comp(a: &Value, op: &Op, b: &Value) -> Value {
     a.comp(op, b)
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Widget {
+    pub name: String,
+    pub model: Model,
+    pub view: View,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Model {
+    pub values: Vec<(ValueKey, Value)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct View {
+    pub nodes: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Node {
+    pub name: String,
+    pub args: Vec<Value>,
+    pub props: BTreeMap<ValueKey, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MetaID {
+    Widget(String),
+    Fn(Sig),
+    ExtFn(Sig),
+    Lambda(Sig),
+}
+
+impl fmt::Display for MetaID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MetaID::Widget(name) => write!(f, "widget {}", name),
+            MetaID::Fn(sig) => write!(f, "fn {}", sig),
+            MetaID::ExtFn(sig) => write!(f, "extfn {}", sig),
+            MetaID::Lambda(sig) => write!(f, "lambda {}", sig),
+        }
+    }
+}
+
+impl fmt::Display for Sig {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        for param in &self.params {
+            write!(f, " {}", param)?;
+        }
+        write!(f, " -> {}", self.ret)
+    }
+}
+
+impl fmt::Display for Param {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}: {}", self.name, self.ty)
+    }
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}(", self.name)?;
+        for (i, arg) in self.args.iter().enumerate() {
+            write!(f, "{}", arg)?;
+            if i < self.args.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, ")")?;
+        if !self.props.is_empty() {
+            write!(f, " {{")?;
+            for (key, value) in &self.props {
+                write!(f, " {}: {}", key, value)?;
+            }
+            write!(f, "}}")?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Widget {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "widget {} {{", self.name)?;
+        writeln!(f, "    {}", self.model)?;
+        writeln!(f, "    {}", self.view)?;
+        writeln!(f, "}}")
+    }
+}
+
+impl fmt::Display for Model {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "model {{")?;
+        for (i, (key, value)) in self.values.iter().enumerate() {
+            write!(f, " {} = {}", key, value)?;
+            if i < self.values.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, " }}")
+    }
+}
+
+impl fmt::Display for View {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "view {{")?;
+        for node in &self.nodes {
+            write!(f, " {}", node)?;
+        }
+        write!(f, " }}")
+    }
+}
+
+impl Model {
+    pub fn find(&self, key: &str) -> Option<Value> {
+        self.values.iter().find(|(k, _)| k.to_string() == key).map(|(_, v)| v.clone())
+    }
+}
+
+impl View {
+    pub fn find(&self, key: &str) -> Option<Value> {
+        self.nodes.iter().find(|n| n.name == key).map(|n| Value::Node(n.clone()))
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -406,5 +541,14 @@ mod tests {
 
         let c = add(a, b);
         assert_eq!(c, Value::Float(2.0));
+    }
+
+    #[test]
+    fn test_widget() {
+        let model = Model { values: vec![(ValueKey::Str("a".to_string()), Value::Int(1))], };
+        let node = Node { name: "button".to_string(), args: vec![Value::Str("Hello".to_string())], props: BTreeMap::new() };
+        let view = View { nodes: vec![node] };
+        let widget = Widget { name: "counter".to_string(), model, view };
+        println!("{}", widget);
     }
 }

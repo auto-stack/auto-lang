@@ -33,3 +33,5 @@ widget ServiceTable {
         table(config, data)
     }
 }
+
+ServiceTable

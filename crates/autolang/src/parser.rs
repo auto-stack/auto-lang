@@ -53,9 +53,9 @@ const PREC_ADD: InfixPrec = infix_prec(8);
 const PREC_MUL: InfixPrec = infix_prec(9);
 const PREC_SIGN: PrefixPrec = prefix_prec(10);
 const PREC_NOT: PrefixPrec = prefix_prec(11);
-const PREC_DOT: InfixPrec = infix_prec(12);
-const PREC_CALL: PostfixPrec = postfix_prec(13);
-const PREC_INDEX: PostfixPrec = postfix_prec(14);
+const PREC_CALL: PostfixPrec = postfix_prec(12);
+const PREC_INDEX: PostfixPrec = postfix_prec(13);
+const PREC_DOT: InfixPrec = infix_prec(14);
 const PREC_ATOM: InfixPrec = infix_prec(15);
 
 fn prefix_power(op: Op) -> Result<PrefixPrec, ParseError> {
@@ -476,6 +476,8 @@ impl<'a> Parser<'a> {
             TokenKind::False => Expr::Bool(false),
             TokenKind::Str => Expr::Str(self.cur.text.clone()),
             TokenKind::Ident => self.ident()?,
+            TokenKind::Model => Expr::Ident(Name::new("model".to_string())),
+            TokenKind::View => Expr::Ident(Name::new("view".to_string())),
             TokenKind::Nil => Expr::Nil,
             _ => {
                 return error_pos!("Expected term, got {:?}, pos: {}", self.kind(), self.pos());
@@ -1070,6 +1072,14 @@ mod tests {
         let code = "0x10";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (stmt (int 16)))");
+    }
+
+    #[test]
+    fn test_dot() {
+        let code = "var a = {b: [0, 1, 2]}; a.b[0]";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(stmt (index (bina (name a) (op .) (name b)) (int 0)))");
     }
 }
 
