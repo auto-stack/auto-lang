@@ -1,5 +1,6 @@
 use crate::token::Pos;
 use crate::token::{Token, TokenKind};
+use std::collections::VecDeque;
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -7,6 +8,7 @@ pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
     line: usize,
     pos: usize,
+    buffer: VecDeque<Token>,
 }
 
 impl<'a> Lexer<'a> {
@@ -15,6 +17,7 @@ impl<'a> Lexer<'a> {
             chars: code.chars().peekable(),
             line: 0,
             pos: 0,
+            buffer: VecDeque::new(),
         }
     }
 
@@ -110,6 +113,74 @@ impl<'a> Lexer<'a> {
         Token::str(self.pos(text.len()), text)
     }
 
+    fn fstr(&mut self) -> Token {
+        let mut text = String::new();
+        self.chars.next(); // skip f
+        self.chars.next(); // skip "
+        while let Some(&c) = self.chars.peek() {
+            if c == '"' {
+                self.chars.next();
+                break;
+            }
+            if c == '$' {
+                // lex fstr start
+                let tk = Token::fstr_start(self.pos(text.len()), text.clone());
+                self.buffer.push_back(tk);
+                // lex $
+                let tk = self.single(TokenKind::Dollar, '$');
+                self.buffer.push_back(tk);
+                if let Some(&c) = self.chars.peek() {
+                    if c == '{' {
+                        self.fstr_expr();
+                    } else {
+                        // lex next data
+                        let ident = self.identifier();
+                        self.buffer.push_back(ident);
+                    }
+                }
+                // lex fstr end
+                let fstr_end = self.fstr_end();
+                self.buffer.push_back(fstr_end);
+                break;
+            }
+            text.push(c);
+            self.chars.next();
+        }
+        if self.buffer.is_empty() {
+            Token::str(self.pos(text.len()), text)
+        } else {
+            self.buffer.pop_front().unwrap()
+        }
+    }
+
+    fn fstr_end(&mut self) -> Token {
+        let mut text = String::new();
+        while let Some(&c) = self.chars.peek() {
+            if c == '"' {
+                self.chars.next();
+                break;
+            }
+            text.push(c);
+            self.chars.next();
+        }
+        Token::fstr_end(self.pos(text.len()), text)
+    }
+
+    fn fstr_expr(&mut self) {
+        // push {
+        let tk = self.single(TokenKind::LBrace, '{');
+        self.buffer.push_back(tk);
+        // tokens in the expression
+        loop {
+            let tk = self.next_step();
+            let kind = tk.kind;
+            self.buffer.push_back(tk);
+            if kind == TokenKind::RBrace || kind == TokenKind::EOF {
+                break;
+            }
+        }
+    }
+
     fn dot_or_range(&mut self) -> Token {
         self.chars.next(); // skip .
         if self.peek('.') {
@@ -184,6 +255,14 @@ impl<'a> Lexer<'a> {
     pub fn next(&mut self) -> Token {
         // skip whitespace
         self.skip_whitespace();
+        if !self.buffer.is_empty() {
+            return self.buffer.pop_front().unwrap();
+        }
+        self.next_step()
+    }
+
+    fn next_step(&mut self) -> Token {
+        self.skip_whitespace();
         while let Some(&c) = self.chars.peek() {
             match c {
                 '(' => {
@@ -206,6 +285,17 @@ impl<'a> Lexer<'a> {
                 }
                 '"' => {
                     return self.str();
+                }
+                'f' => {
+                    let mut iter_copy = self.chars.clone();
+                    iter_copy.next();
+                    if let Some(next_char) = iter_copy.peek() {
+                        if *next_char == '"' {
+                            return self.fstr();
+                        } else {
+                            return self.identifier();
+                        }
+                    }
                 }
                 ':' => {
                     return self.single(TokenKind::Colon, c);
@@ -249,6 +339,9 @@ impl<'a> Lexer<'a> {
                 '|' => {
                     return self.single(TokenKind::VBar, c);
                 }
+                '$' => {
+                    return self.single(TokenKind::Dollar, c);
+                }
                 _ => {
                     if c.is_digit(10) {
                         return self.number();
@@ -258,7 +351,7 @@ impl<'a> Lexer<'a> {
                         return self.identifier();
                     }
 
-                    panic!("unknown character: {}", c);
+                    panic!("unknown character: `{}`", c);
                     
                 }
             }
@@ -327,5 +420,19 @@ mod tests {
         b: 4"#;
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<ident:a><:><int:3><nl><ident:b><:><int:4>");
+    }
+
+    #[test]
+    fn test_fstr() {
+        let code = r#"f"hello $you again""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<fstrs:hello ><$><ident:you><fstre: again>");
+    }
+
+    #[test]
+    fn test_fstr_expr() {
+        let code = r#"f"hello ${2 + 1} again""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<fstrs:hello ><$><{><int:2><+><int:1><}><fstre: again>");
     }
 }
