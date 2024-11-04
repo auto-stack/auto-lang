@@ -187,6 +187,8 @@ impl<'a> Parser<'a> {
             TokenKind::LBrace => Expr::Object(self.object()?),
             // lambda
             TokenKind::VBar => self.lambda()?,
+            // fstr
+            TokenKind::FStrStart => self.fstr()?,
             // normal
             _ => self.atom()?,
         };
@@ -489,7 +491,34 @@ impl<'a> Parser<'a> {
         self.next();
         Ok(expr)
     }
-    
+
+    pub fn fstr(&mut self) -> Result<Expr, ParseError> {
+        let mut parts = Vec::new();
+        let start_text = self.cur.text.clone();
+        parts.push(Expr::Str(start_text));
+        self.expect(TokenKind::FStrStart)?;
+        if self.is_kind(TokenKind::Dollar) {
+            self.next(); // skip $
+            if self.is_kind(TokenKind::LBrace) {
+                self.expect(TokenKind::LBrace)?;
+                while !self.is_kind(TokenKind::RBrace) {
+                    let expr = self.expr()?;
+                    parts.push(expr);
+                    self.expect_eos()?;
+                }
+                self.expect(TokenKind::RBrace)?;
+            } else {
+                let ident = self.ident()?;
+                parts.push(ident);
+                self.expect(TokenKind::Ident)?;
+            }
+        }
+        let end_text = self.cur.text.clone();
+        parts.push(Expr::Str(end_text));
+        self.expect(TokenKind::FStrEnd)?;
+        Ok(Expr::FStr(FStr::new(parts)))
+    }
+
     pub fn if_expr(&mut self) -> Result<Expr, ParseError> {
         let (branches, else_stmt) = self.if_contents()?;
         Ok(Expr::If(branches, else_stmt))
@@ -1084,6 +1113,21 @@ mod tests {
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
         assert_eq!(last.to_string(), "(stmt (index (bina (name a) (op .) (name b)) (int 0)))");
+    }
+
+    #[test]
+    fn test_fstr() {
+        let code = r#"f"hello $name"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (stmt (fstr (str \"hello \") (name name) (str \"\"))))");
+    }
+
+    #[test]
+    fn test_fstr_with_expr() {
+        let code = r#"var a = 1; var b = 2; f"a + b = ${a+b}"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(stmt (fstr (str \"a + b = \") (bina (name a) (op +) (name b)) (str \"\")))");
     }
 }
 

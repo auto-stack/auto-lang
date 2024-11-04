@@ -141,6 +141,7 @@ pub enum Expr {
     Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
     TypeInst(/*name*/Box<Expr>, /*entries*/Vec<Pair>),
     Lambda(Lambda),
+    FStr(FStr),
     // stmt exprs
     If(Vec<Branch>, Option<Body>),
     Nil,
@@ -236,6 +237,7 @@ impl fmt::Display for Expr {
             Expr::TypeInst(name, entries) => fmt_type_inst(f, name, entries),
             Expr::Lambda(lambda) => write!(f, "{}", lambda),
             Expr::Node(node) => write!(f, "{}", node),
+            Expr::FStr(fstr) => write!(f, "{}", fstr),
             Expr::Nil => write!(f, "(nil)"),
         }
     }
@@ -545,5 +547,26 @@ impl fmt::Display for Lambda {
             write!(f, ")")?;
         }
         write!(f, " {}", self.body)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FStr {
+    pub parts: Vec<Expr>,
+}
+
+impl FStr {
+    pub fn new(parts: Vec<Expr>) -> Self {
+        Self { parts }
+    }
+}
+
+impl fmt::Display for FStr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(fstr")?;
+        for (i, part) in self.parts.iter().enumerate() {
+            write!(f, " {}", part)?;
+        }
+        write!(f, ")")
     }
 }
