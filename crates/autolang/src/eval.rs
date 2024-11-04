@@ -341,6 +341,7 @@ impl<'a> Evaler<'a> {
             Expr::TypeInst(name, entries) => self.type_inst(name, entries),
             Expr::Lambda(_) => Value::Lambda,
             Expr::Node(node) => self.node(node),
+            Expr::FStr(fstr) => self.fstr(fstr),
             Expr::Nil => Value::Nil,
         }
     }
@@ -422,6 +423,11 @@ impl<'a> Evaler<'a> {
         let args = node.args.array.iter().map(|arg| self.eval_expr(arg)).collect();
         let props = node.props.iter().map(|(key, value)| (self.eval_key(key), self.eval_expr(value))).collect();
         value::Node { name: node.name.text.clone(), args, props }
+    }
+
+    fn fstr(&mut self, fstr: &FStr) -> Value {
+        let parts: Vec<String> = fstr.parts.iter().map(|part| self.eval_expr(part).to_string()).collect();
+        Value::Str(parts.join(""))
     }
 }
 

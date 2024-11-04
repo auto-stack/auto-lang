@@ -269,6 +269,19 @@ mod tests {
         println!("{}", result);
     }
 
+    #[test]
+    fn test_fstr() {
+        let code = r#"var name = "auto"; f"hello $name, now!"#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "hello auto, now!");
+    }
+
+    #[test]
+    fn test_fstr_with_expr() {
+        let code = r#"var a = 1; var b = 2; f"a + b = ${a+b}"#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "a + b = 3");
+    }
 
     // #[test]
     // fn test_app() {
