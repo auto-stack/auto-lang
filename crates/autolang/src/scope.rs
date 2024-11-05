@@ -7,12 +7,13 @@ use std::rc::Rc;
 pub struct Universe {
     pub scopes: Vec<Scope>,
     pub builtins: HashMap<String, Value>,
+    pub widget: Value,
 }
 
 impl Universe {
     pub fn new() -> Universe {
         let builtins = libs::builtin::builtins();
-        let mut uni = Universe { scopes: vec![Scope::new()], builtins };
+        let mut uni = Universe { scopes: vec![Scope::new()], builtins, widget: Value::Nil };
         uni.define_sys_types();
         uni
     }
@@ -137,6 +138,7 @@ pub enum Meta {
     Fn(ast::Fn),
     Type(ast::Type),
     Widget(ast::Widget),
+    View(ast::View),
 }
 
 pub struct Scope {

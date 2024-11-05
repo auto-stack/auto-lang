@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::parser;
 use crate::scope;
+use crate::scope::Meta;
 use autoval::value::{Value, Op, Obj, ValueKey, ExtFn, MetaID, Sig};
 use autoval::value;
 use autoval::value::{add, sub, mul, div, comp};
@@ -136,6 +137,7 @@ impl<'a> Evaler<'a> {
     fn asn(&mut self, left: &Expr, right: Value) -> Value {
         if let Expr::Ident(name) = left {
             // TODO: check if name already exists
+            println!("Setting local: {} to {}", name.text, right);
             self.universe.set_local(&name.text, right);
             Value::Void
         } else {
@@ -266,7 +268,7 @@ impl<'a> Evaler<'a> {
         }
     }
 
-    fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
+    pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
         self.universe.enter_scope();
         for (i, arg) in args.array.iter().enumerate() {
             let val = self.eval_expr(arg);
@@ -280,6 +282,19 @@ impl<'a> Evaler<'a> {
         let result = self.eval_body(&fn_decl.body);
         self.universe.exit_scope();
         result
+    }
+
+    pub fn eval_fn_call_no_enter(&mut self, fn_decl: &Fn, args: &Args) -> Value {
+        for (i, arg) in args.array.iter().enumerate() {
+            let val = self.eval_expr(arg);
+            let name = &fn_decl.params[i].name.text;
+            self.universe.set_local(&name, val);
+        }
+        for (name, expr) in args.map.iter() {
+            let val = self.eval_expr(expr);
+            self.universe.set_local(&name.text, val);
+        }
+        self.eval_body(&fn_decl.body)
     }
 
     fn index(&mut self, array: &Expr, index: &Expr) -> Value {
@@ -309,7 +324,7 @@ impl<'a> Evaler<'a> {
         }
     }
 
-    fn eval_expr(&mut self, expr: &Expr) -> Value {
+    pub fn eval_expr(&mut self, expr: &Expr) -> Value {
         match expr {
             Expr::Int(value) => Value::Int(*value),
             Expr::Float(value) => Value::Float(*value),
@@ -367,7 +382,7 @@ impl<'a> Evaler<'a> {
                 Expr::Ident(name) => {
                     match name.text.as_str() {
                         "model" => Some(Value::Model(widget.model.clone())),
-                        "view" => Some(Value::View(widget.view.clone())),
+                        "view" => Some(Value::Meta(widget.view.clone())),
                         _ => None,
                     }
                 }
@@ -404,18 +419,23 @@ impl<'a> Evaler<'a> {
         let mut vars = Vec::new();
         for var in widget.model.vars.iter() {
             let value = self.eval_expr(&var.expr);
-            vars.push((ValueKey::Str(var.name.text.clone()), value));
+            vars.push((ValueKey::Str(var.name.text.clone()), value.clone()));
+            self.universe.set_local(&var.name.text, value);
         }
         let model = value::Model { values: vars };
         // view
-        let mut nodes = Vec::new();
-        for (_, node) in widget.view.nodes.iter() {
-            nodes.push(self.eval_node(node));
-        }
-        let view = value::View { nodes };
-        let widget_value = value::Widget { name: name.clone(), model, view };
+        let view_meta = self.universe.put_symbol("view_id", Rc::new(Meta::View(widget.view.clone())));
+        let widget_value = value::Widget { name: name.clone(), model, view: MetaID::View("view_id".to_string())};
+
+        // let mut nodes = Vec::new();
+        // for (_, node) in widget.view.nodes.iter() {
+        //     nodes.push(self.eval_node(node));
+        // }
+        // let view = value::View { nodes };
+        // let widget_value = value::Widget { name: name.clone(), model, view };
         let value = Value::Widget(widget_value);
         self.universe.set_local(name, value.clone());
+        self.universe.widget = value.clone();
         value
     }
 

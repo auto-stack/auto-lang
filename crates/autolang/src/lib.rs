@@ -2,13 +2,19 @@ mod token;
 mod lexer;
 pub mod ast;
 mod parser;
-mod eval;
-// pub mod value;
-mod scope;
+pub mod eval;
+pub mod scope;
 pub mod transpiler;
 pub mod repl;
 pub mod libs;
 pub mod util;
+
+use autoval::value::Value;
+
+pub struct InterpretResult {
+    pub scope: scope::Universe,
+    pub result: Value,
+}
 
 pub fn run(code: &str) -> Result<String, String> {
     let mut scope = scope::Universe::new();
@@ -28,8 +34,12 @@ pub fn parse_scope(code: &str, scope: &mut scope::Universe) -> Result<ast::Code,
     parser::parse(code, scope)
 }
 
-pub fn interpret(code: &str) -> Result<String, String> {
-    run(code)
+pub fn interpret(code: &str) -> Result<InterpretResult, String> {
+    let mut scope = scope::Universe::new();
+    let ast = parser::parse(code, &mut scope)?;
+    let mut evaler = eval::Evaler::new(&mut scope);
+    let result = evaler.eval(&ast);
+    Ok(InterpretResult { scope, result })
 }
 
 pub fn interpret_file(path: &str) -> Result<String, String> {
@@ -262,7 +272,7 @@ mod tests {
                 var a = 1 
             }
             view {
-                button("Click me")
+                text(f"Count: $a")
             }
         }"#;
         let result = run(code).unwrap();
