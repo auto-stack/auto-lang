@@ -639,7 +639,7 @@ impl<'a> Parser<'a> {
             let name = self.cur.text.clone();
             self.scope.enter_scope();
             let meta = Meta::Var(Var { name: Name::new(name.clone()), expr: Expr::Nil });
-            self.scope.define(name.clone(), Rc::new(meta));
+            self.scope.define(name.as_str(), Rc::new(meta));
             self.next(); // skip name
             self.expect(TokenKind::In)?;
             let range = self.iterable_expr()?;
@@ -659,10 +659,10 @@ impl<'a> Parser<'a> {
         match expr.clone() {
             Expr::Lambda(lambda) => {
                 let fn_decl = lambda.into();
-                self.scope.define(name.clone(), Rc::new(Meta::Fn(fn_decl)));
+                self.scope.define(name.as_str(), Rc::new(Meta::Fn(fn_decl)));
             }
             _ => {
-                self.scope.define(name.clone(), Rc::new(Meta::Var(Var { name: Name::new(name.clone()), expr: expr.clone() })));
+                self.scope.define(name.as_str(), Rc::new(Meta::Var(Var { name: Name::new(name.clone()), expr: expr.clone() })));
             }
         }
         let var = Var { name: Name::new(name), expr };
@@ -681,7 +681,7 @@ impl<'a> Parser<'a> {
         self.scope.exit_scope();
         let fn_expr = Fn::new(Name::new(name.clone()), params, body, Some(Type::Int));
         let fn_stmt = Stmt::Fn(fn_expr.clone());
-        self.scope.define(name.clone(), Rc::new(Meta::Fn(fn_expr)));
+        self.scope.define(name.as_str(), Rc::new(Meta::Fn(fn_expr)));
         Ok(fn_stmt)
     }
 
@@ -716,7 +716,7 @@ impl<'a> Parser<'a> {
                 default = Some(expr);
             }
             let var = Var { name: Name::new(name.clone()), expr: default.clone().unwrap_or(Expr::Nil) };
-            self.scope.define(name.clone(), Rc::new(Meta::Var(var.clone())));
+            self.scope.define(name.as_str(), Rc::new(Meta::Var(var.clone())));
             params.push(Param { name: Name::new(name), ty, default });
             self.sep_params();
         }
@@ -756,7 +756,7 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::RBrace)?;
         let decl = TypeDecl { name: name.clone(), members, methods };
         // put type in scope
-        self.scope.define(name.text, Rc::new(Meta::Type(Type::User(decl.clone()))));
+        self.scope.define(name.text.as_str(), Rc::new(Meta::Type(Type::User(decl.clone()))));
         Ok(Stmt::TypeDecl(decl))
     }
 
@@ -817,7 +817,7 @@ impl<'a> Parser<'a> {
         let mut widget = Widget::new(Name::new(name.clone()));
         widget.model = model;
         widget.view = view;
-        self.scope.define(name.clone(), Rc::new(Meta::Widget(widget.clone())));
+        self.scope.define(name.as_str(), Rc::new(Meta::Widget(widget.clone())));
         Ok(Stmt::Widget(widget))
     }
 
