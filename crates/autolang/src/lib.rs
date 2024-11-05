@@ -293,6 +293,13 @@ mod tests {
         assert_eq!(result, "a + b = 3");
     }
 
+    #[test]
+    fn test_asn_upper() {
+        let code = "var a = 1; if true { a = 2 }; a";
+        let result = run(code).unwrap();
+        assert_eq!(result, "2");
+    }
+
     // #[test]
     // fn test_app() {
     //     let code = r#"

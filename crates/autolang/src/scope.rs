@@ -19,10 +19,10 @@ impl Universe {
     }
 
     pub fn define_sys_types(&mut self) {
-        self.define("int".to_string(), Rc::new(Meta::Type(ast::Type::Int)));
-        self.define("float".to_string(), Rc::new(Meta::Type(ast::Type::Float)));
-        self.define("bool".to_string(), Rc::new(Meta::Type(ast::Type::Bool)));
-        self.define("str".to_string(), Rc::new(Meta::Type(ast::Type::Str)));
+        self.define("int", Rc::new(Meta::Type(ast::Type::Int)));
+        self.define("float", Rc::new(Meta::Type(ast::Type::Float)));
+        self.define("bool", Rc::new(Meta::Type(ast::Type::Bool)));
+        self.define("str", Rc::new(Meta::Type(ast::Type::Str)));
     }
 
     pub fn dump(&self) {
@@ -64,10 +64,6 @@ impl Universe {
         self.current_scope_mut().set_val(name, value);
     }
 
-    pub fn get_local(&self, name: &str) -> Value {
-        self.current_scope().get_val(name).unwrap_or(Value::Nil)
-    }
-
     pub fn set_global(&mut self, name: &str, value: Value) {
         self.global_scope_mut().set_val(name, value);
     }
@@ -76,7 +72,7 @@ impl Universe {
         self.global_scope().get_val(name).unwrap_or(Value::Nil)
     }
 
-    pub fn put_symbol(&mut self, name: &str, meta: Rc<Meta>) {
+    pub fn define(&mut self, name: &str, meta: Rc<Meta>) {
         self.current_scope_mut().put_symbol(name, meta);
     }
 
@@ -101,9 +97,6 @@ impl Universe {
         is_builtin
     }
 
-    pub fn define(&mut self, name: String, meta: Rc<Meta>) {
-        self.current_scope_mut().put_symbol(name.as_str(), meta);
-    }
 
     pub fn lookup_val(&self, name: &str) -> Option<Value> {
         for scope in self.scopes.iter().rev() {
@@ -112,6 +105,15 @@ impl Universe {
             }
         }
         self.builtins.get(name).cloned()
+    }
+
+    pub fn update_val(&mut self, name: &str, value: Value) {
+        for scope in self.scopes.iter_mut().rev() {
+            if scope.exists(name) {
+                scope.set_val(name, value);
+                return;
+            }
+        }
     }
 
     pub fn lookup_meta(&self, name: &str) -> Option<Rc<Meta>> {

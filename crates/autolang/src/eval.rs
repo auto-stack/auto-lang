@@ -136,9 +136,11 @@ impl<'a> Evaler<'a> {
 
     fn asn(&mut self, left: &Expr, right: Value) -> Value {
         if let Expr::Ident(name) = left {
-            // TODO: check if name already exists
-            println!("Setting local: {} to {}", name.text, right);
-            self.universe.set_local(&name.text, right);
+            if self.universe.exists(&name.text) {
+                self.universe.update_val(&name.text, right);
+            } else {
+                panic!("Invalid assignment, variable {} not found", name.text);
+            }
             Value::Void
         } else {
             panic!("Invalid assignment");
@@ -284,19 +286,6 @@ impl<'a> Evaler<'a> {
         result
     }
 
-    pub fn eval_fn_call_no_enter(&mut self, fn_decl: &Fn, args: &Args) -> Value {
-        for (i, arg) in args.array.iter().enumerate() {
-            let val = self.eval_expr(arg);
-            let name = &fn_decl.params[i].name.text;
-            self.universe.set_local(&name, val);
-        }
-        for (name, expr) in args.map.iter() {
-            let val = self.eval_expr(expr);
-            self.universe.set_local(&name.text, val);
-        }
-        self.eval_body(&fn_decl.body)
-    }
-
     fn index(&mut self, array: &Expr, index: &Expr) -> Value {
         let array = self.eval_expr(array);
         let index_value = self.eval_expr(index);
@@ -424,7 +413,7 @@ impl<'a> Evaler<'a> {
         }
         let model = value::Model { values: vars };
         // view
-        let view_meta = self.universe.put_symbol("view_id", Rc::new(Meta::View(widget.view.clone())));
+        let view_meta = self.universe.define("view_id", Rc::new(Meta::View(widget.view.clone())));
         let widget_value = value::Widget { name: name.clone(), model, view: MetaID::View("view_id".to_string())};
 
         // let mut nodes = Vec::new();
