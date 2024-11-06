@@ -300,6 +300,18 @@ mod tests {
         assert_eq!(result, "2");
     }
 
+    #[test]
+    fn test_nodes() {
+        let code = r#"center {
+            text("Hello")
+            button("OK") {
+                onclick = || print("clicked")
+            }
+        }"#;
+        let result = run(code).unwrap();
+        println!("{}", result);
+    }
+
     // #[test]
     // fn test_app() {
     //     let code = r#"

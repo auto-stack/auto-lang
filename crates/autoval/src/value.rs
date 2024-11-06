@@ -43,6 +43,24 @@ impl Obj {
             ValueKey::Bool(b) => b.to_string() == name,
         }).map(|(_, v)| v.clone())
     }
+
+    pub fn get_or(&self, name: &str, default: Value) -> Value {
+        self.lookup(name).unwrap_or(default)
+    }
+
+    pub fn get_str_or(&self, name: &str, default: &str) -> String {
+        match self.get(&ValueKey::Str(name.to_string())) {
+            Some(Value::Str(s)) => s,
+            _ => default.to_string(),
+        }
+    }
+
+    pub fn get_float_or(&self, name: &str, default: f64) -> f64 {
+        match self.get(&ValueKey::Str(name.to_string())) {
+            Some(Value::Float(f)) => f,
+            _ => default,
+        }
+    }
 }
 
 
