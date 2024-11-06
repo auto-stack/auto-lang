@@ -104,7 +104,9 @@ impl<'a> Parser<'a> {
     pub fn new(code: &'a str, scope: &'a mut Universe) -> Self {
         let mut lexer = Lexer::new(code);
         let cur = lexer.next();
-        Parser { lexer, cur, scope }
+        let mut parser = Parser { lexer, cur, scope };
+        parser.skip_comments();
+        parser
     }
 
     pub fn peek(&mut self) -> &Token {
@@ -123,8 +125,22 @@ impl<'a> Parser<'a> {
         self.peek().kind == kind
     }
 
+    pub fn skip_comments(&mut self) {
+        loop {
+            match self.kind() {
+                TokenKind::CommentLine | TokenKind::CommentStart | TokenKind::CommentContent | TokenKind::CommentEnd => {
+                    self.cur = self.lexer.next();
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+    }
+
     pub fn next(&mut self) -> &Token {
         self.cur = self.lexer.next();
+        self.skip_comments();
         &self.cur
     }
 
@@ -136,8 +152,6 @@ impl<'a> Parser<'a> {
             error_pos!("Expected token kind: {:?}, got {:?}", kind, self.cur.text)
         }
     }
-
-
 }
 
 impl<'a> Parser<'a> {
@@ -1124,10 +1138,12 @@ mod tests {
 
     #[test]
     fn test_array() {
-        let code = r#"[
-            {id: 1, name: "test"},
+        let code = r#"// comment
+        [ // arra
+            {id: 1, name: "test"}, // comment
             {id: 2, name: "test2"},
-            {id: 3, name: "test3"}
+            {id: 3,/*good name*/ name: "test3"} // comment
+            //{id: 4, name: "test4"} // comment out
         ]"#;
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (stmt (array (object (pair (name id) (int 1)) (pair (name name) (str \"test\"))) (object (pair (name id) (int 2)) (pair (name name) (str \"test2\"))) (object (pair (name id) (int 3)) (pair (name name) (str \"test3\"))))))");

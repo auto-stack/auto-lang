@@ -46,6 +46,10 @@ pub enum TokenKind {
     Colon, // :
     VBar, // |
     Dollar, // $
+    CommentLine, // //
+    CommentContent, // any text in comment
+    CommentStart, // /*
+    CommentEnd, // */
 
     // Keywords
     True,
@@ -126,6 +130,10 @@ impl fmt::Display for Token {
             TokenKind::Dollar => write!(f, "<$>"),
             TokenKind::FStrStart => write!(f, "<fstrs:{}>", self.text),
             TokenKind::FStrEnd => write!(f, "<fstre:{}>", self.text),
+            TokenKind::CommentLine => write!(f, "<//>"),
+            TokenKind::CommentContent => write!(f, "<comment:...>"),
+            TokenKind::CommentStart => write!(f, "</*>"),
+            TokenKind::CommentEnd => write!(f, "<*/>"),
             TokenKind::EOF => write!(f, "<eof>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }

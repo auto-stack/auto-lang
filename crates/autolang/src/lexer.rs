@@ -319,7 +319,7 @@ impl<'a> Lexer<'a> {
                     return self.single(TokenKind::Mul, c);
                 }
                 '/' => {
-                    return self.single(TokenKind::Div, c);
+                    return self.slash_or_comment();
                 }
                 '!' => {
                     return self.with_equal(TokenKind::Not, TokenKind::Neq, c);
@@ -374,6 +374,50 @@ impl<'a> Lexer<'a> {
     fn tokens_str(&mut self) -> String {
         let tokens = self.tokens();
         tokens.iter().map(|t| t.to_string()).collect::<Vec<String>>().join("")
+    }
+
+    fn slash_or_comment(&mut self) -> Token {
+        self.chars.next();
+        if self.peek('/') {
+            // //
+            let tok = Token::new(TokenKind::CommentLine, self.pos(2), "//".to_string());
+            // content
+            let mut text = String::new();
+            while let Some(&c) = self.chars.peek() {
+                if c == '\n' {
+                    break;
+                }
+                text.push(c);
+                self.chars.next();
+            }
+            let content = Token::new(TokenKind::CommentContent, self.pos(text.len()), text);
+            self.buffer.push_back(content);
+            tok
+        } else if self.peek('*') {
+            // /*
+            let tok = Token::new(TokenKind::CommentStart, self.pos(2), "/*".to_string());
+            // content
+            let mut text = String::new();
+            while let Some(&c) = self.chars.peek() {
+                if c == '*' {
+                    self.chars.next();
+                    if self.peek('/') {
+                        self.chars.next();
+                        break;
+                    }
+                }
+                text.push(c);
+                self.chars.next();
+            }
+            let content = Token::new(TokenKind::CommentContent, self.pos(text.len()), text);
+            self.buffer.push_back(content);
+            // */
+            let end = Token::new(TokenKind::CommentEnd, self.pos(2), "*/".to_string());
+            self.buffer.push_back(end);
+            tok
+        } else {
+            self.single(TokenKind::Div, '/')
+        }
     }
 }
 
@@ -434,5 +478,13 @@ mod tests {
         let code = r#"f"hello ${2 + 1} again""#;
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<fstrs:hello ><$><{><int:2><+><int:1><}><fstre: again>");
+    }
+
+    #[test]
+    fn test_comment() {
+        let code = r#"// this is a comment
+        /* this is a multi-line comment */"#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<//><comment:...><nl></*><comment:...><*/>");
     }
 }
