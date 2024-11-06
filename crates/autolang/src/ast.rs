@@ -51,6 +51,12 @@ impl Name {
     }
 }
 
+impl Default for Name {
+    fn default() -> Self {
+        Self { text: "".to_string() }
+    }
+}
+
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(name {})", self.text)
@@ -79,11 +85,18 @@ pub enum Stmt {
     Fn(Fn),
     TypeDecl(TypeDecl),
     Widget(Widget),
+    Node(Node),
 }
 
 #[derive(Debug, Clone)]
 pub struct Body {
     pub stmts: Vec<Stmt>,
+}
+
+impl Body {
+    pub fn new() -> Self {
+        Self { stmts: Vec::new() }
+    }
 }
 
 impl fmt::Display for Body {
@@ -118,6 +131,7 @@ impl fmt::Display for Stmt {
             Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),
             Stmt::TypeDecl(type_decl) => write!(f, "{}", type_decl),    
             Stmt::Widget(widget) => write!(f, "{}", widget),
+            Stmt::Node(node) => write!(f, "{}", node),
         }
     }
 }
@@ -137,7 +151,6 @@ pub enum Expr {
     Pair(Pair),
     Object(Vec<Pair>),
     Call(Call),
-    Node(Node),
     Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
     TypeInst(/*name*/Box<Expr>, /*entries*/Vec<Pair>),
     Lambda(Lambda),
@@ -236,7 +249,6 @@ impl fmt::Display for Expr {
             Expr::Index(array, index) => write!(f, "(index {} {})", array, index),
             Expr::TypeInst(name, entries) => fmt_type_inst(f, name, entries),
             Expr::Lambda(lambda) => write!(f, "{}", lambda),
-            Expr::Node(node) => write!(f, "{}", node),
             Expr::FStr(fstr) => write!(f, "{}", fstr),
             Expr::Nil => write!(f, "(nil)"),
         }
@@ -410,33 +422,48 @@ pub struct Node {
     pub name: Name,
     pub args: Args,
     pub props: BTreeMap<Key, Expr>,
+    pub body: Body,
 }
 
 impl Node {
     pub fn new(name: Name) -> Self {
-        Self { name, args: Args::new(), props: BTreeMap::new() }
+        Self { name, args: Args::new(), props: BTreeMap::new(), body: Body::new() }
     }
 }   
 
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(node {} (args", self.name)?;
-        for (i, arg) in self.args.array.iter().enumerate() {
-            write!(f, " {}", arg)?;
-            if i < self.args.array.len() - 1 {
-                write!(f, " ")?;
+        write!(f, "(node {}", self.name)?;
+        if !self.args.array.is_empty() {
+            write!(f, " (args")?;
+            for (i, arg) in self.args.array.iter().enumerate() {
+                write!(f, " {}", arg)?;
+                if i < self.args.array.len() - 1 {
+                    write!(f, " ")?;
+                }
             }
+            if !self.args.map.is_empty() {
+                write!(f, " ")?;
+                for (name, expr) in self.args.map.iter() {
+                    write!(f, " (pair {} {})", name, expr)?;
+                }
+            }
+            write!(f, ")")?;
         }
-        for (name, expr) in self.args.map.iter() {
-            write!(f, " (pair {} {})", name, expr)?;
-        }
+        
         if !self.props.is_empty() {
-            write!(f, ") (props")?;
+            write!(f, " (props")?;
             for (key, expr) in self.props.iter() {
                 write!(f, " (pair {} {})", key, expr)?;
             }
+            write!(f, ")")?;
         }
-        write!(f, "))")
+
+        if !self.body.stmts.is_empty() {
+            write!(f, " {}", self.body)?;
+        }
+
+        write!(f, ")")
     }
 }
 

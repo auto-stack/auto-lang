@@ -192,6 +192,10 @@ impl<'a> Parser<'a> {
             // normal
             _ => self.atom()?,
         };
+        self.expr_pratt_with_left(lhs, min_power)
+    }
+
+    fn expr_pratt_with_left(&mut self, mut lhs: Expr, min_power: u8) -> Result<Expr, ParseError> {
         loop {
             let op = match self.kind() {
                 TokenKind::EOF | TokenKind::Newline | TokenKind::Semi | TokenKind::LBrace | TokenKind::RBrace | TokenKind::Comma => break,
@@ -225,36 +229,11 @@ impl<'a> Parser<'a> {
                     }
                     // Call or Node Instance
                     Op::LParen => {
-                        // check if it's a fn call or node instance
-                        let mut is_call = false;
-                        match &lhs {
-                            Expr::Ident(name) => {
-                                if self.scope.is_fn(&name.text) {
-                                    is_call = true;
-                                }
-                            }
-                            _ => {}
-                        }
-                        if is_call {
-                            let args = self.args()?;
-                            lhs = Expr::Call(Call{name: Box::new(lhs), args});
-                        } else {
-                            match &lhs {
-                                Expr::Ident(name) => {
-                                    let node = self.node_arg_body(name)?;
-                                    lhs = Expr::Node(node);
-                                }
-                                _ => return error_pos!("Expected node name, got {:?}", lhs),
-                            }
-                        }
+                        let args = self.args()?;
+                        lhs = Expr::Call(Call{name: Box::new(lhs), args});
                         continue;
                     }
-                    // Type instantiation
-                    Op::LBrace => {
-                        let entries = self.object()?;
-                        lhs = Expr::TypeInst(Box::new(lhs), entries);
-                        continue;
-                    }
+                    // Pair
                     Op::Colon => {
                         self.next(); // skip :
                         let key = match &lhs {
@@ -290,6 +269,7 @@ impl<'a> Parser<'a> {
             TokenKind::Div => { Op::Div },
             TokenKind::LSquare => { Op::LSquare },
             TokenKind::LParen => { Op::LParen },
+            TokenKind::LBrace => { Op::LBrace },
             TokenKind::Not => { Op::Not },
             TokenKind::Asn => { Op::Asn },
             TokenKind::Eq => { Op::Eq },
@@ -580,6 +560,10 @@ impl<'a> Parser<'a> {
             TokenKind::Type => self.type_stmt()?,
             // AutoUI Stmts
             TokenKind::Widget => self.widget_stmt()?,
+            // Node Instance?
+            TokenKind::Ident => {
+                self.node_stmt()?
+            }
             _ => self.expr_stmt()?,
         };
         Ok(stmt)
@@ -881,11 +865,45 @@ impl<'a> Parser<'a> {
         Ok(view)
     }
 
+    pub fn node_stmt(&mut self) -> Result<Stmt, ParseError> {
+        let ident = self.ident()?;
+        self.next();
+
+        let mut args = Args::new();
+        let mut is_call = false;
+        if self.is_kind(TokenKind::LParen) {
+            args = self.args()?;
+            is_call = true;
+        }
+        if self.is_kind(TokenKind::LBrace) { // node instance
+            let body = self.body()?;
+            match ident {
+                Expr::Ident(name) => {
+                    let mut node = Node::new(name.clone());
+                    node.args = args;
+                    node.body = body;
+                    return Ok(Stmt::Node(node));
+                }
+                _ => {
+                    return error_pos!("Expected node name, got {:?}", ident);
+                }
+            }
+        } else { // call
+            if is_call {
+                return Ok(Stmt::Expr(Expr::Call(Call { name: Box::new(ident), args })));
+            } else {
+                return Ok(Stmt::Expr(self.expr_pratt_with_left(ident, 0)?));
+            }
+        }
+    }
+
     fn node_arg_body(&mut self, name: &Name) -> Result<Node, ParseError> {
         let mut node = Node::new(name.clone());
-        // args
-        let args = self.args()?;
-        node.args = args;
+        if self.is_kind(TokenKind::LParen) {
+            // args
+            let args = self.args()?;
+            node.args = args;
+        }
 
         // body
         if self.is_kind(TokenKind::LBrace) {
@@ -898,6 +916,12 @@ impl<'a> Parser<'a> {
             }
             self.expect(TokenKind::RBrace)?;
         }
+        Ok(node)
+    }
+
+    pub fn node_body(&mut self, name: &Name) -> Result<Node, ParseError> {
+        let mut node = Node::new(name.clone());
+        node.body = self.body()?;
         Ok(node)
     }
 
@@ -1082,11 +1106,21 @@ mod tests {
     fn test_node_instance() {
         let code = r#"button("OK") {
             border: 1
-            type: "primary"
+            kind: "primary"
         }"#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (stmt (node (name button) (args (str \"OK\")) (props (pair (name border) (int 1)) (pair (name type) (str \"primary\"))))))");
+        assert_eq!(ast.to_string(), "(code (node (name button) (args (str \"OK\")) (body (stmt (pair (name border) (int 1))) (stmt (pair (name kind) (str \"primary\")))))");
     }
+
+    #[test]
+    fn test_node_instance_without_args() {
+        let code = r#"center {
+            text("Hello")
+        }"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (node (name center) (body (stmt (call (name text) (args (str \"Hello\")))))");
+    }
+
 
     #[test]
     fn test_array() {
