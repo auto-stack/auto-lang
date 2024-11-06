@@ -48,6 +48,7 @@ impl<'a> Evaler<'a> {
             Stmt::Fn(_) => Value::Nil,
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
             Stmt::Widget(widget) => self.eval_widget(widget),
+            Stmt::Node(node) => self.eval_node(node),
         }
     }
 
@@ -344,7 +345,6 @@ impl<'a> Evaler<'a> {
             Expr::Object(pairs) => self.object(pairs),
             Expr::TypeInst(name, entries) => self.type_inst(name, entries),
             Expr::Lambda(_) => Value::Lambda,
-            Expr::Node(node) => self.node(node),
             Expr::FStr(fstr) => self.fstr(fstr),
             Expr::Nil => Value::Nil,
         }
@@ -390,18 +390,6 @@ impl<'a> Evaler<'a> {
         res.unwrap_or(Value::Error(format!("Invalid object {}", left_value)))
     }
 
-    fn node(&mut self, node: &Node) -> Value {
-        let mut obj = Obj::new();
-        for (i, arg) in node.args.array.iter().enumerate() {
-            let name = format!("arg{}", i);
-            obj.set(ValueKey::Str(name), self.eval_expr(arg));
-        }
-        for (key, value) in node.props.iter() {
-            obj.set(self.eval_key(key), self.eval_expr(value));
-        }
-        Value::Object(obj)
-    }
-
     fn eval_widget(&mut self, widget: &Widget) -> Value {
         let name = &widget.name.text;
         // model
@@ -428,10 +416,10 @@ impl<'a> Evaler<'a> {
         value
     }
 
-    fn eval_node(&mut self, node: &Node) -> value::Node {
+    fn eval_node(&mut self, node: &Node) -> Value {
         let args = node.args.array.iter().map(|arg| self.eval_expr(arg)).collect();
         let props = node.props.iter().map(|(key, value)| (self.eval_key(key), self.eval_expr(value))).collect();
-        value::Node { name: node.name.text.clone(), args, props }
+        Value::Node(value::Node { name: node.name.text.clone(), args, props })
     }
 
     fn fstr(&mut self, fstr: &FStr) -> Value {
