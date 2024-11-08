@@ -100,6 +100,12 @@ impl Into<Value> for i32 {
     }
 }
 
+impl Value {
+    pub fn is_nil(&self) -> bool {
+        matches!(self, Value::Nil)
+    }
+}
+
 
 fn float_eq(a: f64, b: f64) -> bool {
     let epsilon = 0.000001;
@@ -425,8 +431,7 @@ pub fn comp(a: &Value, op: &Op, b: &Value) -> Value {
 pub struct Widget {
     pub name: String,
     pub model: Model,
-    // pub view: View,
-    pub view: MetaID,
+    pub view_id: MetaID,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -434,16 +439,65 @@ pub struct Model {
     pub values: Vec<(ValueKey, Value)>,
 }
 
+impl Model {
+    pub fn new() -> Self {
+        Self { values: vec![] }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct View {
     pub nodes: Vec<Node>,
 }
 
+impl View {
+    pub fn new() -> Self {
+        Self { nodes: vec![] }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
     pub name: String,
-    pub args: Vec<Value>,
+    pub args: Args,
     pub props: BTreeMap<ValueKey, Value>,
+    pub nodes: Vec<Node>,
+}
+
+impl Node {
+    pub fn get_prop(&self, key: &str) -> Value {
+        match self.props.get(&ValueKey::Str(key.to_string())) {
+            Some(value) => value.clone(),
+            None => Value::Nil,
+        }
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Args {
+    pub array: Vec<Value>,
+    pub named: Vec<(ValueKey, Value)>,
+}
+
+impl fmt::Display for Args {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(args")?;
+        for arg in &self.array {
+            write!(f, " {}", arg)?;
+        }
+        Ok(())
+    }
+}
+
+impl Args {
+    pub fn new() -> Self {
+        Self { array: Vec::new(), named: Vec::new() }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.array.is_empty() && self.named.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -484,13 +538,20 @@ impl fmt::Display for Param {
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}(", self.name)?;
-        for (i, arg) in self.args.iter().enumerate() {
+        for (i, arg) in self.args.array.iter().enumerate() {
             write!(f, "{}", arg)?;
-            if i < self.args.len() - 1 {
+            if i < self.args.array.len() - 1 {
                 write!(f, ", ")?;
             }
         }
         write!(f, ")")?;
+        if !self.args.named.is_empty() {
+            write!(f, " {{")?;
+            for (key, value) in &self.args.named {
+                write!(f, " {}: {}", key, value)?;
+            }
+            write!(f, "}}")?;
+        }
         if !self.props.is_empty() {
             write!(f, " {{")?;
             for (key, value) in &self.props {
@@ -506,7 +567,7 @@ impl fmt::Display for Widget {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "widget {} {{", self.name)?;
         writeln!(f, "    {}", self.model)?;
-        writeln!(f, "    {}", self.view)?;
+        writeln!(f, "    {}", self.view_id)?;
         writeln!(f, "}}")
     }
 }
@@ -546,6 +607,7 @@ impl View {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -570,4 +632,5 @@ mod tests {
     //     let widget = Widget { name: "counter".to_string(), model, view };
     //     println!("{}", widget);
     // }
+
 }

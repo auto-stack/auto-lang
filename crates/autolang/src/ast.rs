@@ -431,6 +431,15 @@ impl Node {
     }
 }   
 
+impl Into<Node> for Call {
+    fn into(self) -> Node {
+        let name = Name::new(self.get_name());
+        let mut node = Node::new(name);
+        node.args = self.args;
+        node
+    }
+}
+
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(node {}", self.name)?;

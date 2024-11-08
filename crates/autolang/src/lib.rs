@@ -305,35 +305,38 @@ mod tests {
         let code = r#"center {
             text("Hello")
             button("OK") {
-                onclick = || print("clicked")
+                onclick: || print("clicked")
             }
         }"#;
         let result = run(code).unwrap();
         println!("{}", result);
     }
 
-    // #[test]
-    // fn test_app() {
-    //     let code = r#"
-    //     widget hello {
-    //         model {
-    //             var name = ""
-    //         }
+    #[test]
+    fn test_app() {
+        let code = r#"
+        widget hello {
+            model {
+                var name = ""
+            }
 
-    //         view {
-    //             text(f"Hello $name")
-    //         }
-    //     }
+            view {
+                text(f"Hello $name")
+            }
+        }
 
-    //     app() {
-    //         center() {
-    //             hello(name="You")
-    //         }
-    //     }"#;
+        app {
+            center {
+                hello(name="You")
+            }
+            bottom {
+                text("Bottom")
+            }
+        }"#;
 
-    //     let result = run(code).unwrap();
-    //     println!("{}", result);
-    // }
+        let result = run(code).unwrap();
+        println!("{}", result);
+    }
 }
 
 

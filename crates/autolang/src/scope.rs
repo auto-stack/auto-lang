@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use autoval::value::Value;
 use autoval::value::Sig;
+use autoval::value::MetaID;
 use crate::ast;
 use crate::libs;
 use std::rc::Rc;
@@ -132,6 +133,25 @@ impl Universe {
     pub fn lookup_builtin(&self, name: &str) -> Option<Value> {
         self.builtins.get(name).cloned()
     }
+
+    // TODO: return a RC of view instead of clone
+    pub fn lookup_view(&self, id: &MetaID) -> Option<ast::View> {
+        match id {
+            MetaID::View(viewid) => {
+                let meta = self.get_symbol(viewid);
+                match meta {
+                    Some(meta) => match meta.as_ref() {
+                        Meta::View(view) => Some(view.clone()),
+                        _ => None,
+                    }
+                    None => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+
 }
 
 #[derive(Debug)]

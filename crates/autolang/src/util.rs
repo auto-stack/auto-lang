@@ -36,7 +36,7 @@ macro_rules! error_pos {
 ///       (name version)
 ///       (str "0.1.0"))))
 /// ```
-pub fn s_form(text: &str) -> String {
+pub fn pretty(text: &str) -> String {
     let mut result = String::new();
     let mut indent = 0;
     let mut in_str = false;
@@ -97,7 +97,7 @@ mod tests {
     #[test]
     fn test_pretty_print_sexp() {
         let text = "(code (stmt (pair (name name) (str \"hello\"))) (stmt (pair (name version) (str \"0.1.0\"))) (stmt (node (name exe) (args (str \"hello\")) (props (pair (name dir) (str \"src\")) (pair (name main) (str \"main.c\")))))";
-        let pretty = s_form(text);
+        let pretty = pretty(text);
         println!("{}", pretty);
     }
 }
