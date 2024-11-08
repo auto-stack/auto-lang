@@ -273,6 +273,9 @@ mod tests {
             }
             view {
                 text(f"Count: $a")
+                button("+") {
+                    onclick: || a = a + 1
+                }
             }
         }"#;
         let result = run(code).unwrap();
