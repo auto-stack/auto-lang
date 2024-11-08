@@ -536,13 +536,18 @@ impl<'a> Parser<'a> {
         self.next(); // skip |
         let params = self.fn_params()?;
         self.expect(TokenKind::VBar)?; // skip |
-        if self.is_kind(TokenKind::LBrace) {
+        let id = self.scope.gen_lambda_id();
+        let lambda = if self.is_kind(TokenKind::LBrace) {
             let body = self.body()?;
-            return Ok(Expr::Lambda(Lambda::new(params, body)));
+            Fn::new(Name::new(id.clone()), params, body, None)
         } else { // single expression
             let expr = self.expr()?;
-            return Ok(Expr::Lambda(Lambda::new(params, Body { stmts: vec![Stmt::Expr(expr)] })));
-        }
+            Fn::new(Name::new(id.clone()), params, Body { stmts: vec![Stmt::Expr(expr)] }, None)
+        };
+        // put lambda in scope
+        self.scope.define(id.as_str(), Rc::new(Meta::Fn(lambda.clone())));
+        // TODO: return meta instead?
+        Ok(Expr::Lambda(lambda))
     }
 }
 
@@ -656,8 +661,7 @@ impl<'a> Parser<'a> {
         let expr = self.rhs_expr()?;
         match expr.clone() {
             Expr::Lambda(lambda) => {
-                let fn_decl = lambda.into();
-                self.scope.define(name.as_str(), Rc::new(Meta::Fn(fn_decl)));
+                self.scope.define(name.as_str(), Rc::new(Meta::Ref(lambda.name.clone())));
             }
             _ => {
                 self.scope.define(name.as_str(), Rc::new(Meta::Var(Var { name: Name::new(name.clone()), expr: expr.clone() })));
@@ -923,45 +927,45 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn node_arg_body(&mut self, name: &Name) -> Result<Node, ParseError> {
-        let mut node = Node::new(name.clone());
-        if self.is_kind(TokenKind::LParen) {
-            // args
-            let args = self.args()?;
-            node.args = args;
-        }
+    // fn node_arg_body(&mut self, name: &Name) -> Result<Node, ParseError> {
+    //     let mut node = Node::new(name.clone());
+    //     if self.is_kind(TokenKind::LParen) {
+    //         // args
+    //         let args = self.args()?;
+    //         node.args = args;
+    //     }
 
-        // body
-        if self.is_kind(TokenKind::LBrace) {
-            self.expect(TokenKind::LBrace)?;
-            self.skip_empty_lines();
-            while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-                let pair = self.pair()?;
-                node.props.insert(pair.key, pair.value.as_ref().clone());
-                self.expect_eos()?;
-            }
-            self.expect(TokenKind::RBrace)?;
-        }
-        Ok(node)
-    }
+    //     // body
+    //     if self.is_kind(TokenKind::LBrace) {
+    //         self.expect(TokenKind::LBrace)?;
+    //         self.skip_empty_lines();
+    //         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+    //             let pair = self.pair()?;
+    //             node.props.insert(pair.key, pair.value.as_ref().clone());
+    //             self.expect_eos()?;
+    //         }
+    //         self.expect(TokenKind::RBrace)?;
+    //     }
+    //     Ok(node)
+    // }
 
-    pub fn node_body(&mut self, name: &Name) -> Result<Node, ParseError> {
-        let mut node = Node::new(name.clone());
-        node.body = self.body()?;
-        Ok(node)
-    }
+    // pub fn node_body(&mut self, name: &Name) -> Result<Node, ParseError> {
+    //     let mut node = Node::new(name.clone());
+    //     node.body = self.body()?;
+    //     Ok(node)
+    // }
 
-    pub fn node_instance(&mut self) -> Result<Node, ParseError> {
-        if self.is_kind(TokenKind::Ident) {
-            let name = self.ident()?;
-            if let Expr::Ident(name) = name {
-                // name
-                self.next();
-                return self.node_arg_body(&name);
-            }
-        }
-        error_pos!("Expected node name, got {:?}", self.kind())
-    }
+    // pub fn node_instance(&mut self) -> Result<Node, ParseError> {
+    //     if self.is_kind(TokenKind::Ident) {
+    //         let name = self.ident()?;
+    //         if let Expr::Ident(name) = name {
+    //             // name
+    //             self.next();
+    //             return self.node_arg_body(&name);
+    //         }
+    //     }
+    //     error_pos!("Expected node name, got {:?}", self.kind())
+    // }
 }
 
 #[cfg(test)]
@@ -1078,14 +1082,14 @@ mod tests {
     fn test_lambda() {
         let code = "var x = || 1 + 2";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (var (name x) (lambda (body (stmt (bina (int 1) (op +) (int 2)))))");
+        assert_eq!(ast.to_string(), "(code (var (name x) (fn (name lambda_1) (body (stmt (bina (int 1) (op +) (int 2)))))");
     }
 
     #[test]
     fn test_lambda_with_params() {
         let code = "|a int, b int| a + b";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (stmt (lambda (params (param (name a) (type int)) (param (name b) (type int))) (body (stmt (bina (name a) (op +) (name b)))))");
+        assert_eq!(ast.to_string(), "(code (stmt (fn (name lambda_1) (params (param (name a) (type int)) (param (name b) (type int))) (body (stmt (bina (name a) (op +) (name b)))))");
     }
 
     #[test]
@@ -1109,7 +1113,7 @@ mod tests {
                 let model = &widget.model;
                 assert_eq!(model.to_string(), "(model (var (name count) (int 0)))");
                 let view = &widget.view;
-                assert_eq!(view.to_string(), "(view (node (name button) (args (str \"+\")) (body (stmt (pair (name onclick) (lambda (body (stmt (bina (name count) (op =) (bina (name count) (op +) (int 1))))))))");
+                assert_eq!(view.to_string(), "(view (node (name button) (args (str \"+\")) (body (stmt (pair (name onclick) (fn (name lambda_1) (body (stmt (bina (name count) (op =) (bina (name count) (op +) (int 1))))))))");
             }
             _ => panic!("Expected widget, got {:?}", widget),
         }

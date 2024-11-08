@@ -9,14 +9,20 @@ pub struct Universe {
     pub scopes: Vec<Scope>,
     pub builtins: HashMap<String, Value>,
     pub widget: Value,
+    lambda_counter: usize,
 }
 
 impl Universe {
     pub fn new() -> Universe {
         let builtins = libs::builtin::builtins();
-        let mut uni = Universe { scopes: vec![Scope::new()], builtins, widget: Value::Nil };
+        let mut uni = Universe { scopes: vec![Scope::new()], builtins, widget: Value::Nil, lambda_counter: 0 };
         uni.define_sys_types();
         uni
+    }
+
+    pub fn gen_lambda_id(&mut self) -> String {
+        self.lambda_counter += 1;
+        format!("lambda_{}", self.lambda_counter)
     }
 
     pub fn define_sys_types(&mut self) {
@@ -157,6 +163,7 @@ impl Universe {
 #[derive(Debug)]
 pub enum Meta {
     Var(ast::Var),
+    Ref(ast::Name),
     Fn(ast::Fn),
     Type(ast::Type),
     Widget(ast::Widget),

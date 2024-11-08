@@ -79,7 +79,7 @@ pub enum Value {
     Fn(Fn),
     ExtFn(ExtFn),
     Nil,
-    Lambda,
+    Lambda(String),
     Void,
     Widget(Widget),
     Model(Model),
@@ -150,7 +150,7 @@ impl Display for Value {
             Value::Error(value) => write!(f, "Error: {}", value),
             Value::Fn(_) => write!(f, "fn"),
             Value::ExtFn(_) => write!(f, "extfn"),
-            Value::Lambda => write!(f, "lambda"),
+            Value::Lambda(name) => write!(f, "lambda {}", name),
             Value::Pair(key, value) => write!(f, "{}: {}", key, value),
             Value::Object(value) => print_object(f, value),
             Value::Node(node) => write!(f, "{}", node),
@@ -537,27 +537,33 @@ impl fmt::Display for Param {
 
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}(", self.name)?;
-        for (i, arg) in self.args.array.iter().enumerate() {
-            write!(f, "{}", arg)?;
-            if i < self.args.array.len() - 1 {
-                write!(f, ", ")?;
+        write!(f, "{}", self.name)?;
+        if !self.args.is_empty() {
+            write!(f, "(")?;
+            for (i, arg) in self.args.array.iter().enumerate() {
+                write!(f, "{}", arg)?;
+                if i < self.args.array.len() - 1 {
+                    write!(f, ", ")?;
+                }
             }
-        }
-        write!(f, ")")?;
-        if !self.args.named.is_empty() {
-            write!(f, " {{")?;
             for (key, value) in &self.args.named {
-                write!(f, " {}: {}", key, value)?;
+                write!(f, "{}={}, ", key, value)?;
             }
-            write!(f, "}}")?;
+            write!(f, ")")?;
         }
         if !self.props.is_empty() {
             write!(f, " {{")?;
             for (key, value) in &self.props {
                 write!(f, " {}: {}", key, value)?;
             }
-            write!(f, "}}")?;
+            write!(f, " }}")?;
+        }
+        if !self.nodes.is_empty() {
+            write!(f, " {{")?;
+            for node in &self.nodes {
+                write!(f, " {}; ", node)?;
+            }
+            write!(f, " }}")?;
         }
         Ok(())
     }

@@ -6,6 +6,7 @@ use autoval::value::{Value, Op, Obj, ValueKey, ExtFn, MetaID, Sig};
 use autoval::value;
 use autoval::value::{add, sub, mul, div, comp};
 use std::rc::Rc;
+use std::collections::BTreeMap;
 use crate::error_pos;
 
 pub struct Evaler<'a> {
@@ -231,9 +232,9 @@ impl<'a> Evaler<'a> {
                         .iter().map(|arg| self.eval_expr(arg)).collect();
                     return fun(&arg_vals);
                 }
-                Value::Lambda => {
+                Value::Lambda(name) => {
                     // Try to lookup lambda in SymbolTable
-                    let meta = self.universe.lookup_meta(&call.get_name());
+                    let meta = self.universe.lookup_meta(&name);
                     if let Some(meta) = meta {
                         match meta.as_ref() {
                             scope::Meta::Fn(fn_decl) => {
@@ -353,7 +354,7 @@ impl<'a> Evaler<'a> {
             Expr::Pair(pair) => self.pair(pair),
             Expr::Object(pairs) => self.object(pairs),
             Expr::TypeInst(name, entries) => self.type_inst(name, entries),
-            Expr::Lambda(_) => Value::Lambda,
+            Expr::Lambda(lambda) => Value::Lambda(lambda.name.text.clone()),
             Expr::FStr(fstr) => self.fstr(fstr),
             Expr::Nil => Value::Nil,
         }
@@ -431,12 +432,15 @@ impl<'a> Evaler<'a> {
             (ValueKey::Str(key.text.clone()), self.eval_expr(value))
         }).collect();
         let args = value::Args { array: args_array, named: args_named };
-        let props = node.props.iter().map(|(key, value)| (self.eval_key(key), self.eval_expr(value))).collect();
         let mut nodes = Vec::new();
+        let mut props = BTreeMap::new();
         for stmt in node.body.stmts.iter() {
             let val = self.eval_stmt(stmt);
             match val {
                 Value::Node(node) => nodes.push(node),
+                Value::Pair(key, value) => {
+                    props.insert(key, *value);
+                }
                 _ => {}
             }
         }
