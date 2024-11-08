@@ -153,7 +153,7 @@ pub enum Expr {
     Call(Call),
     Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
     TypeInst(/*name*/Box<Expr>, /*entries*/Vec<Pair>),
-    Lambda(Lambda),
+    Lambda(Fn),
     FStr(FStr),
     // stmt exprs
     If(Vec<Branch>, Option<Body>),
@@ -324,14 +324,18 @@ impl PartialEq for Fn {
 
 impl fmt::Display for Fn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(fn {} (params ", self.name)?;
-        for (i, param) in self.params.iter().enumerate() {
-            write!(f, "{}", param)?;
-            if i < self.params.len() - 1 {
-                write!(f, " ")?;
+        write!(f, "(fn {}", self.name)?;
+        if !self.params.is_empty() {
+            write!(f, " (params ")?;
+            for (i, param) in self.params.iter().enumerate() {
+                write!(f, "{}", param)?;
+                if i < self.params.len() - 1 {
+                    write!(f, " ")?;
+                }
             }
+            write!(f, ")")?;
         }
-        write!(f, ") {}", self.body)
+        write!(f, " {}", self.body)
     }
 }
 
@@ -421,13 +425,13 @@ impl fmt::Display for Key {
 pub struct Node {
     pub name: Name,
     pub args: Args,
-    pub props: BTreeMap<Key, Expr>,
+    // pub props: BTreeMap<Key, Expr>,
     pub body: Body,
 }
 
 impl Node {
     pub fn new(name: Name) -> Self {
-        Self { name, args: Args::new(), props: BTreeMap::new(), body: Body::new() }
+        Self { name, args: Args::new(), body: Body::new() }
     }
 }   
 
@@ -456,14 +460,6 @@ impl fmt::Display for Node {
                 for (name, expr) in self.args.map.iter() {
                     write!(f, " (pair {} {})", name, expr)?;
                 }
-            }
-            write!(f, ")")?;
-        }
-        
-        if !self.props.is_empty() {
-            write!(f, " (props")?;
-            for (key, expr) in self.props.iter() {
-                write!(f, " (pair {} {})", key, expr)?;
             }
             write!(f, ")")?;
         }
@@ -549,41 +545,6 @@ fn fmt_type_inst(f: &mut fmt::Formatter, name: &Box<Expr>, entries: &Vec<Pair>) 
         }
     }
     write!(f, ")")
-}
-
-#[derive(Debug, Clone)]
-pub struct Lambda {
-    pub params: Vec<Param>,
-    pub body: Body,
-}
-
-impl Into<Fn> for Lambda {
-    fn into(self) -> Fn {
-        Fn::new(Name::new("lambda".to_string()), self.params, self.body, None)
-    }
-}
-
-impl Lambda {
-    pub fn new(params: Vec<Param>, body: Body) -> Self {
-        Self { params, body }
-    }
-}
-
-impl fmt::Display for Lambda {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(lambda")?;
-        if !self.params.is_empty() {    
-            write!(f, " (params ")?;
-            for (i, param) in self.params.iter().enumerate() {
-                write!(f, "{}", param)?;
-                if i < self.params.len() - 1 {
-                    write!(f, " ")?;
-                }
-            }
-            write!(f, ")")?;
-        }
-        write!(f, " {}", self.body)
-    }
 }
 
 #[derive(Debug, Clone)]
