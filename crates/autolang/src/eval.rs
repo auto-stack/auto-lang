@@ -221,7 +221,9 @@ impl<'a> Evaler<'a> {
                         MetaID::Fn(sig) => {
                             return self.eval_fn_call_with_sig(&sig, &call.args);
                         }
-                        _ => {}
+                        _ => {
+                            println!("Strange function call {}", meta_id);
+                        }
                     }
                 }
                 Value::ExtFn(ExtFn { fun }) => {
@@ -245,6 +247,10 @@ impl<'a> Evaler<'a> {
                         return Value::Error(format!("Invalid lambda {}", name));
                     }
                 }
+                Value::Widget(_widget) => {
+                    let node: Node = call.clone().into();
+                    return self.eval_node(&node);
+                }
                 _ => {
                     return Value::Error(format!("Invalid function call {}", name));
                 }
@@ -259,8 +265,11 @@ impl<'a> Evaler<'a> {
                 }
                 _ => return Value::Error(format!("Invalid lambda {}", call.get_name())),
             }
+        } else {
+            // convert call to node intance
+            let node: Node = call.clone().into();
+            return self.eval_node(&node);
         }
-        Value::Error(format!("Invalid call {}", call.get_name()))
     }
 
     fn eval_fn_call_with_sig(&mut self, sig: &Sig, args: &Args) -> Value {
@@ -371,7 +380,7 @@ impl<'a> Evaler<'a> {
                 Expr::Ident(name) => {
                     match name.text.as_str() {
                         "model" => Some(Value::Model(widget.model.clone())),
-                        "view" => Some(Value::Meta(widget.view.clone())),
+                        "view" => Some(Value::Meta(widget.view_id.clone())),
                         _ => None,
                     }
                 }
@@ -402,7 +411,7 @@ impl<'a> Evaler<'a> {
         let model = value::Model { values: vars };
         // view
         let view_meta = self.universe.define("view_id", Rc::new(Meta::View(widget.view.clone())));
-        let widget_value = value::Widget { name: name.clone(), model, view: MetaID::View("view_id".to_string())};
+        let widget_value = value::Widget { name: name.clone(), model, view_id: MetaID::View("view_id".to_string())};
 
         // let mut nodes = Vec::new();
         // for (_, node) in widget.view.nodes.iter() {
@@ -417,9 +426,21 @@ impl<'a> Evaler<'a> {
     }
 
     fn eval_node(&mut self, node: &Node) -> Value {
-        let args = node.args.array.iter().map(|arg| self.eval_expr(arg)).collect();
+        let args_array = node.args.array.iter().map(|arg| self.eval_expr(arg)).collect();
+        let args_named = node.args.map.iter().map(|(key, value)| {
+            (ValueKey::Str(key.text.clone()), self.eval_expr(value))
+        }).collect();
+        let args = value::Args { array: args_array, named: args_named };
         let props = node.props.iter().map(|(key, value)| (self.eval_key(key), self.eval_expr(value))).collect();
-        Value::Node(value::Node { name: node.name.text.clone(), args, props })
+        let mut nodes = Vec::new();
+        for stmt in node.body.stmts.iter() {
+            let val = self.eval_stmt(stmt);
+            match val {
+                Value::Node(node) => nodes.push(node),
+                _ => {}
+            }
+        }
+        Value::Node(value::Node { name: node.name.text.clone(), args, props, nodes })
     }
 
     fn fstr(&mut self, fstr: &FStr) -> Value {

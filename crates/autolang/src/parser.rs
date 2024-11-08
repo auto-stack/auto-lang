@@ -871,8 +871,20 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         // parse multiple node instances
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            let node = self.node_instance()?;
-            view.nodes.push((node.name.clone(), node));
+            let node = self.node_stmt()?;
+            match node {
+                Stmt::Node(node) => {
+                    view.nodes.push((node.name.clone(), node));
+                }
+                Stmt::Expr(Expr::Call(call)) => {
+                    // Call to node
+                    let node: Node = call.into();
+                    view.nodes.push((node.name.clone(), node));
+                }
+                _ => {
+                    return error_pos!("Expected node in view body, got {:?}", node);
+                }
+            }
             self.expect_eos()?;
         }
         self.expect(TokenKind::RBrace)?;
@@ -955,7 +967,7 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use crate::util::pretty;
     fn parse_once(code: &str) -> Code {
         let mut scope = Universe::new();
         parse(code, &mut scope).unwrap()
@@ -1097,7 +1109,7 @@ mod tests {
                 let model = &widget.model;
                 assert_eq!(model.to_string(), "(model (var (name count) (int 0)))");
                 let view = &widget.view;
-                assert_eq!(view.to_string(), "(view (node (name button) (args (str \"+\")) (props (pair (name onclick) (lambda (body (stmt (bina (name count) (op =) (bina (name count) (op +) (int 1))))))))");
+                assert_eq!(view.to_string(), "(view (node (name button) (args (str \"+\")) (body (stmt (pair (name onclick) (lambda (body (stmt (bina (name count) (op =) (bina (name count) (op +) (int 1))))))))");
             }
             _ => panic!("Expected widget, got {:?}", widget),
         }
@@ -1178,6 +1190,41 @@ mod tests {
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
         assert_eq!(last.to_string(), "(stmt (fstr (str \"a + b = \") (bina (name a) (op +) (name b)) (str \"\")))");
+    }
+
+    #[test]
+    fn test_node_tree() {
+        let code = r#"
+        center {
+            text("Hello")
+        }
+        "#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (node (name center) (body (stmt (call (name text) (args (str \"Hello\")))))");
+    }
+
+    #[test]
+    fn test_app() {
+        let code = r#"
+        widget hello {
+            model {
+                var name = ""
+            }
+
+            view {
+                text(f"Hello $name")
+            }
+        }
+
+        app {
+            center {
+                hello(name="You")
+            }
+        }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        println!("{}", pretty(&last.to_string()));
+        assert_eq!(last.to_string(), "(node (name app) (body (node (name center) (body (stmt (call (name hello) (args (pair (name name) (str \"You\"))))))");
     }
 }
 

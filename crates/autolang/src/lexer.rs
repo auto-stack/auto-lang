@@ -227,7 +227,7 @@ impl<'a> Lexer<'a> {
     pub fn identifier(&mut self) -> Token {
         let mut text = String::new();
         while let Some(&c) = self.chars.peek() {
-            if c.is_alphabetic() {
+            if c.is_alphabetic() || c == '_' {
                 text.push(c);
                 self.chars.next();
             } else {
