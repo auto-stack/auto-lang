@@ -926,46 +926,6 @@ impl<'a> Parser<'a> {
             }
         }
     }
-
-    // fn node_arg_body(&mut self, name: &Name) -> Result<Node, ParseError> {
-    //     let mut node = Node::new(name.clone());
-    //     if self.is_kind(TokenKind::LParen) {
-    //         // args
-    //         let args = self.args()?;
-    //         node.args = args;
-    //     }
-
-    //     // body
-    //     if self.is_kind(TokenKind::LBrace) {
-    //         self.expect(TokenKind::LBrace)?;
-    //         self.skip_empty_lines();
-    //         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-    //             let pair = self.pair()?;
-    //             node.props.insert(pair.key, pair.value.as_ref().clone());
-    //             self.expect_eos()?;
-    //         }
-    //         self.expect(TokenKind::RBrace)?;
-    //     }
-    //     Ok(node)
-    // }
-
-    // pub fn node_body(&mut self, name: &Name) -> Result<Node, ParseError> {
-    //     let mut node = Node::new(name.clone());
-    //     node.body = self.body()?;
-    //     Ok(node)
-    // }
-
-    // pub fn node_instance(&mut self) -> Result<Node, ParseError> {
-    //     if self.is_kind(TokenKind::Ident) {
-    //         let name = self.ident()?;
-    //         if let Expr::Ident(name) = name {
-    //             // name
-    //             self.next();
-    //             return self.node_arg_body(&name);
-    //         }
-    //     }
-    //     error_pos!("Expected node name, got {:?}", self.kind())
-    // }
 }
 
 #[cfg(test)]

@@ -411,15 +411,9 @@ impl<'a> Evaler<'a> {
         }
         let model = value::Model { values: vars };
         // view
-        let view_meta = self.universe.define("view_id", Rc::new(Meta::View(widget.view.clone())));
-        let widget_value = value::Widget { name: name.clone(), model, view_id: MetaID::View("view_id".to_string())};
-
-        // let mut nodes = Vec::new();
-        // for (_, node) in widget.view.nodes.iter() {
-        //     nodes.push(self.eval_node(node));
-        // }
-        // let view = value::View { nodes };
-        // let widget_value = value::Widget { name: name.clone(), model, view };
+        let view_id = format!("{}.view", name);
+        self.universe.define(&view_id, Rc::new(Meta::View(widget.view.clone())));
+        let widget_value = value::Widget { name: name.clone(), model, view_id: MetaID::View(view_id) };
         let value = Value::Widget(widget_value);
         self.universe.set_local(name, value.clone());
         self.universe.widget = value.clone();
