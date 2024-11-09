@@ -160,7 +160,6 @@ impl Universe {
             }
             MetaID::Body(bodyid) => {
                 let meta = self.lookup_meta(bodyid);
-                println!("lookup_view: {:?}", meta);
                 match meta {
                     Some(meta) => match meta.as_ref() {
                         Meta::Body(body) => Some(Self::body_to_view(body)),
