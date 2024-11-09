@@ -3,6 +3,7 @@ use autoval::value::Value;
 use autoval::value::Sig;
 use autoval::value::MetaID;
 use crate::ast;
+use crate::ast::Call;
 use crate::libs;
 use std::rc::Rc;
 pub struct Universe {
@@ -83,6 +84,10 @@ impl Universe {
         self.current_scope_mut().put_symbol(name, meta);
     }
 
+    pub fn define_global(&mut self, name: &str, meta: Rc<Meta>) {
+        self.global_scope_mut().put_symbol(name, meta);
+    }
+
     pub fn get_symbol(&self, name: &str) -> Option<Rc<Meta>> {
         self.current_scope().get_symbol(name).cloned()
     }
@@ -144,7 +149,7 @@ impl Universe {
     pub fn lookup_view(&self, id: &MetaID) -> Option<ast::View> {
         match id {
             MetaID::View(viewid) => {
-                let meta = self.get_symbol(viewid);
+                let meta = self.lookup_meta(viewid);
                 match meta {
                     Some(meta) => match meta.as_ref() {
                         Meta::View(view) => Some(view.clone()),
@@ -153,8 +158,37 @@ impl Universe {
                     None => None,
                 }
             }
+            MetaID::Body(bodyid) => {
+                let meta = self.lookup_meta(bodyid);
+                println!("lookup_view: {:?}", meta);
+                match meta {
+                    Some(meta) => match meta.as_ref() {
+                        Meta::Body(body) => Some(Self::body_to_view(body)),
+                        _ => None,
+                    }
+                    None => None,
+                }
+            }
             _ => None,
         }
+    }
+
+    pub fn body_to_view(body: &ast::Body) -> ast::View {
+        let mut view = ast::View::default();
+        for stmt in body.stmts.iter() {
+            match stmt {
+                ast::Stmt::Node(node) => {
+                    view.nodes.push((node.name.clone(), node.clone()));
+                }
+                ast::Stmt::Expr(ast::Expr::Call(call)) => {
+                    let call = call.clone();
+                    let node: ast::Node = call.into();
+                    view.nodes.push((node.name.clone(), node));
+                }
+                _ => (),
+            }
+        }
+        view
     }
 
 
@@ -168,6 +202,7 @@ pub enum Meta {
     Type(ast::Type),
     Widget(ast::Widget),
     View(ast::View),
+    Body(ast::Body),
 }
 
 pub struct Scope {
