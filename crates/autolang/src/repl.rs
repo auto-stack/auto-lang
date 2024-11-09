@@ -1,5 +1,7 @@
 use crate::eval;
 use crate::scope;
+use std::rc::Rc;
+use std::cell::RefCell;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 
@@ -63,8 +65,8 @@ pub fn main_loop() -> Result<()> {
         println!("No previous history");
     }
     // initialize evaler
-    let mut scope = scope::Universe::new();
-    let mut evaler = eval::Evaler::new(&mut scope);
+    let scope = Rc::new(RefCell::new(scope::Universe::new()));
+    let mut evaler = eval::Evaler::new(scope);
     loop {
         let readline = rl.readline(">> ");
         match readline {

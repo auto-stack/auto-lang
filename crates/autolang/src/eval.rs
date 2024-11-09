@@ -6,20 +6,38 @@ use autoval::value::{Value, Op, Obj, ValueKey, ExtFn, MetaID, Sig};
 use autoval::value;
 use autoval::value::{add, sub, mul, div, comp};
 use std::rc::Rc;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use crate::error_pos;
 
-pub struct Evaler<'a> {
-    universe: &'a mut scope::Universe,
+pub enum EvalMode {
+    IMMEDIATE,
+    LAZY,
 }
 
-impl<'a> Evaler<'a> {
-    pub fn new(universe: &'a mut scope::Universe) -> Self {
-        Evaler { universe }
+pub struct Evaler {
+    universe: Rc<RefCell<scope::Universe>>,
+    modes: HashMap<String, EvalMode>,
+}
+
+impl Evaler {
+    pub fn new(universe: Rc<RefCell<scope::Universe>>) -> Self {
+        let mut evaler = Evaler { universe, modes: HashMap::new() };
+        evaler.set_mode("center", EvalMode::LAZY);
+        evaler.set_mode("top", EvalMode::LAZY);
+        evaler.set_mode("left", EvalMode::LAZY);
+        evaler.set_mode("right", EvalMode::LAZY);
+        evaler.set_mode("bottom", EvalMode::LAZY);
+        evaler
+    }
+
+    pub fn set_mode(&mut self, name: &str, mode: EvalMode) {
+        self.modes.insert(name.to_string(), mode);
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<Value, String> {
-        let ast = parser::parse(code, self.universe)?;
+        let ast = parser::parse(code, &mut *self.universe.borrow_mut())?;
         Ok(self.eval(&ast))
     }
 
@@ -37,7 +55,7 @@ impl<'a> Evaler<'a> {
     }
 
     pub fn dump_scope(&self) {
-        self.universe.dump();
+        self.universe.borrow().dump();
     }
 
     fn eval_stmt(&mut self, stmt: &Stmt) -> Value {
@@ -80,21 +98,21 @@ impl<'a> Evaler<'a> {
         match range {
             Value::Range(start, end) => {
                 for i in start..end {
-                    self.universe.set_local(&name, Value::Int(i));
+                    self.universe.borrow_mut().set_local(&name, Value::Int(i));
                     self.eval_body(body);
                     max_loop -= 1;
                 }
             }
             Value::RangeEq(start, end) => {
                 for i in start..=end {
-                    self.universe.set_local(&name, Value::Int(i));
+                    self.universe.borrow_mut().set_local(&name, Value::Int(i));
                     self.eval_body(body);
                     max_loop -= 1;
                 }
             }
             Value::Array(values) => {
                 for i in 0..values.len() {
-                    self.universe.set_local(&name, values[i].clone());
+                    self.universe.borrow_mut().set_local(&name, values[i].clone());
                     self.eval_body(body);
                     max_loop -= 1;
                 }
@@ -112,7 +130,7 @@ impl<'a> Evaler<'a> {
 
     fn eval_var(&mut self, var: &Var) -> Value {
         let value = self.eval_expr(&var.expr);
-        self.universe.set_local(&var.name.text, value);
+        self.universe.borrow_mut().set_local(&var.name.text, value);
         Value::Void
     }
 
@@ -138,8 +156,8 @@ impl<'a> Evaler<'a> {
 
     fn asn(&mut self, left: &Expr, right: Value) -> Value {
         if let Expr::Ident(name) = left {
-            if self.universe.exists(&name.text) {
-                self.universe.update_val(&name.text, right);
+            if self.universe.borrow().exists(&name.text) {
+                self.universe.borrow_mut().update_val(&name.text, right);
             } else {
                 panic!("Invalid assignment, variable {} not found", name.text);
             }
@@ -179,7 +197,7 @@ impl<'a> Evaler<'a> {
 
     fn lookup(&self, name: &str) -> Value {
         // lookup value
-        self.universe.lookup_val(name).unwrap_or(Value::Nil)
+        self.universe.borrow().lookup_val(name).unwrap_or(Value::Nil)
     }
 
     fn array(&mut self, elems: &Vec<Expr>) -> Value {
@@ -204,7 +222,7 @@ impl<'a> Evaler<'a> {
         Value::Pair(key, Box::new(value))
     }
 
-    fn eval_key(&mut self, key: &Key) -> ValueKey {
+    fn eval_key(&self, key: &Key) -> ValueKey {
         match key {
             Key::NamedKey(name) => ValueKey::Str(name.text.clone()),
             Key::IntKey(value) => ValueKey::Int(*value),
@@ -234,7 +252,7 @@ impl<'a> Evaler<'a> {
                 }
                 Value::Lambda(name) => {
                     // Try to lookup lambda in SymbolTable
-                    let meta = self.universe.lookup_meta(&name);
+                    let meta = self.universe.borrow().lookup_meta(&name);
                     if let Some(meta) = meta {
                         match meta.as_ref() {
                             scope::Meta::Fn(fn_decl) => {
@@ -258,7 +276,7 @@ impl<'a> Evaler<'a> {
             }
         }
         // Lookup Fn meta
-        let meta = self.universe.lookup_meta(&call.get_name());
+        let meta = self.universe.borrow().lookup_meta(&call.get_name());
         if let Some(meta) = meta {
             match meta.as_ref() {
                 scope::Meta::Fn(fn_decl) => {
@@ -274,7 +292,7 @@ impl<'a> Evaler<'a> {
     }
 
     fn eval_fn_call_with_sig(&mut self, sig: &Sig, args: &Args) -> Value {
-        let meta = self.universe.lookup_sig(sig).unwrap();
+        let meta = self.universe.borrow().lookup_sig(sig).unwrap();
         match meta.as_ref() {
             scope::Meta::Fn(fn_decl) => self.eval_fn_call(fn_decl, args),
             _ => Value::Error(format!("Invalid function call {}", sig.name)),
@@ -282,18 +300,18 @@ impl<'a> Evaler<'a> {
     }
 
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
-        self.universe.enter_scope();
+        self.universe.borrow_mut().enter_scope();
         for (i, arg) in args.array.iter().enumerate() {
             let val = self.eval_expr(arg);
             let name = &fn_decl.params[i].name.text;
-            self.universe.set_local(&name, val);
+            self.universe.borrow_mut().set_local(&name, val);
         }
         for (name, expr) in args.map.iter() {
             let val = self.eval_expr(expr);
-            self.universe.set_local(&name.text, val);
+            self.universe.borrow_mut().set_local(&name.text, val);
         }
         let result = self.eval_body(&fn_decl.body);
-        self.universe.exit_scope();
+        self.universe.borrow_mut().exit_scope();
         result
     }
 
@@ -335,12 +353,12 @@ impl<'a> Evaler<'a> {
                 let res = self.lookup(&name.text);
                 if res == Value::Nil {
                     // try to lookup in meta and builtins
-                    let meta = self.universe.lookup_meta(&name.text);
+                    let meta = self.universe.borrow().lookup_meta(&name.text);
                     if let Some(meta) = meta {
                         return Value::Meta(to_meta_id(&meta));
                     }
                     // Try builtin
-                    self.universe.lookup_builtin(&name.text).unwrap_or(Value::Nil)
+                    self.universe.borrow().lookup_builtin(&name.text).unwrap_or(Value::Nil)
                 } else {
                     res
                 }
@@ -407,16 +425,16 @@ impl<'a> Evaler<'a> {
         for var in widget.model.vars.iter() {
             let value = self.eval_expr(&var.expr);
             vars.push((ValueKey::Str(var.name.text.clone()), value.clone()));
-            self.universe.set_local(&var.name.text, value);
+            self.universe.borrow_mut().set_local(&var.name.text, value);
         }
         let model = value::Model { values: vars };
         // view
         let view_id = format!("{}.view", name);
-        self.universe.define(&view_id, Rc::new(Meta::View(widget.view.clone())));
+        self.universe.borrow_mut().define(&view_id, Rc::new(Meta::View(widget.view.clone())));
         let widget_value = value::Widget { name: name.clone(), model, view_id: MetaID::View(view_id) };
         let value = Value::Widget(widget_value);
-        self.universe.set_local(name, value.clone());
-        self.universe.widget = value.clone();
+        self.universe.borrow_mut().set_local(name, value.clone());
+        self.universe.borrow_mut().widget = value.clone();
         value
     }
 
@@ -428,17 +446,62 @@ impl<'a> Evaler<'a> {
         let args = value::Args { array: args_array, named: args_named };
         let mut nodes = Vec::new();
         let mut props = BTreeMap::new();
-        for stmt in node.body.stmts.iter() {
-            let val = self.eval_stmt(stmt);
-            match val {
-                Value::Node(node) => nodes.push(node),
-                Value::Pair(key, value) => {
-                    props.insert(key, *value);
+        let mut body = MetaID::Nil;
+        let name = &node.name.text;
+        let mode = self.modes.get(name).unwrap_or(&EvalMode::IMMEDIATE);
+        match mode {
+            EvalMode::IMMEDIATE => {
+                for stmt in node.body.stmts.iter() {
+                    let val = self.eval_stmt(stmt);
+                    match val {
+                        Value::Node(node) => nodes.push(node),
+                        Value::Pair(key, value) => {
+                            props.insert(key, *value);
+                        }
+                        _ => {}
+                    }
                 }
-                _ => {}
+            }
+            EvalMode::LAZY => {
+                // push node body to scope meta
+                // TODO: support multiple nodes of same name
+                body = MetaID::Body(name.clone());
+                println!("define global {}", name);
+                self.universe.borrow_mut().define_global(&name, Rc::new(Meta::Body(node.body.clone())));
             }
         }
-        Value::Node(value::Node { name: node.name.text.clone(), args, props, nodes })
+        Value::Node(value::Node { name: node.name.text.clone(), args, props, nodes, body })
+    }
+
+    fn eval_value_node_body(&mut self, node_val: &mut Value) {
+        self.universe.borrow_mut().enter_scope();
+        match node_val {
+            Value::Node(ref mut node) => {
+                let props = &mut node.props;
+                let nodes = &mut node.nodes;
+                let mut stmts = Vec::new();
+                {
+                    let scope = self.universe.borrow();
+                    let meta = scope.lookup_meta(&node.name);
+                    stmts = meta.map(|m| {
+                        match m.as_ref() {
+                            scope::Meta::Body(body) => body.stmts.clone(),
+                            _ => Vec::new(),
+                        }
+                    }).unwrap();
+                }
+                for stmt in stmts.iter() {
+                    let val = self.eval_stmt(stmt);
+                    match val {
+                        Value::Node(node) => {nodes.push(node);},
+                        Value::Pair(key, value) => {props.insert(key, *value);},
+                        _ => {},
+                    }
+                }
+            },
+            _ => {},
+        };
+        self.universe.borrow_mut().exit_scope();
     }
 
     fn fstr(&mut self, fstr: &FStr) -> Value {

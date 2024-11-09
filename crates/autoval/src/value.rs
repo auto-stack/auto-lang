@@ -462,6 +462,7 @@ pub struct Node {
     pub args: Args,
     pub props: BTreeMap<ValueKey, Value>,
     pub nodes: Vec<Node>,
+    pub body: MetaID,
 }
 
 impl Node {
@@ -505,16 +506,18 @@ pub enum MetaID {
     Fn(Sig),
     Lambda(Sig),
     View(String),
+    Body(String),
     Nil,
 }
 
 impl fmt::Display for MetaID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            MetaID::Fn(sig) => write!(f, "fn {}", sig),
-            MetaID::Lambda(sig) => write!(f, "lambda {}", sig),
-            MetaID::View(id) => write!(f, "view {}", id),
-            MetaID::Nil => write!(f, "nil-meta"),
+            MetaID::Fn(sig) => write!(f, "<fn:{}>", sig),
+            MetaID::Lambda(sig) => write!(f, "<lambda:{}>", sig),
+            MetaID::View(id) => write!(f, "<view:{}>", id),
+            MetaID::Body(id) => write!(f, "<body:{}>", id),
+            MetaID::Nil => write!(f, "<meta-nil>"),
         }
     }
 }
@@ -564,6 +567,9 @@ impl fmt::Display for Node {
                 write!(f, " {}; ", node)?;
             }
             write!(f, " }}")?;
+        }
+        if self.body != MetaID::Nil {
+            write!(f, " {}", self.body)?;
         }
         Ok(())
     }

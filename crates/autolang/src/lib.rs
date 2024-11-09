@@ -8,18 +8,15 @@ pub mod transpiler;
 pub mod repl;
 pub mod libs;
 pub mod util;
+pub mod interp;
 
-use autoval::value::Value;
-
-pub struct InterpretResult {
-    pub scope: scope::Universe,
-    pub result: Value,
-}
+use std::rc::Rc;
+use std::cell::RefCell;
 
 pub fn run(code: &str) -> Result<String, String> {
-    let mut scope = scope::Universe::new();
-    let ast = parser::parse(code, &mut scope)?;
-    let mut evaler = eval::Evaler::new(&mut scope);
+    let scope = Rc::new(RefCell::new(scope::Universe::new()));
+    let ast = parser::parse(code, &mut scope.borrow_mut())?;
+    let mut evaler = eval::Evaler::new(scope);
     let result = evaler.eval(&ast);
     Ok(result.to_string())
 }
@@ -34,12 +31,10 @@ pub fn parse_scope(code: &str, scope: &mut scope::Universe) -> Result<ast::Code,
     parser::parse(code, scope)
 }
 
-pub fn interpret(code: &str) -> Result<InterpretResult, String> {
-    let mut scope = scope::Universe::new();
-    let ast = parser::parse(code, &mut scope)?;
-    let mut evaler = eval::Evaler::new(&mut scope);
-    let result = evaler.eval(&ast);
-    Ok(InterpretResult { scope, result })
+pub fn interpret(code: &str) -> Result<interp::Interpreter, String> {
+    let mut interpreter = interp::Interpreter::new();
+    interpreter.interpret(code);
+    Ok(interpreter)
 }
 
 pub fn interpret_file(path: &str) -> Result<String, String> {
@@ -337,8 +332,23 @@ mod tests {
             }
         }"#;
 
-        let result = run(code).unwrap();
-        println!("{}", result);
+        let result = interpret(code);
+        match result {
+            Ok(result) => {
+                match result.result {
+                    autoval::value::Value::Node(app) => {
+                        println!("node: {}", app.to_string());
+                        app.nodes.iter().for_each(|node| {
+                            println!("node: {}", node.to_string());
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            Err(e) => {
+                println!("error: {}", e);
+            }
+        }
     }
 }
 
