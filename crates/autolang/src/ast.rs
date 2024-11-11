@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt};
+use std::fmt;
 use serde::Serialize;
 use autoval::value::Op;
 
