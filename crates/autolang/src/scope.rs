@@ -13,6 +13,12 @@ pub struct Universe {
     lambda_counter: usize,
 }
 
+impl Default for Universe {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Universe {
     pub fn new() -> Universe {
         let builtins = libs::builtin::builtins();
