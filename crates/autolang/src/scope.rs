@@ -94,10 +94,6 @@ impl Universe {
         self.global_scope_mut().put_symbol(name, meta);
     }
 
-    pub fn get_symbol(&self, name: &str) -> Option<Rc<Meta>> {
-        self.current_scope().get_symbol(name).cloned()
-    }
-
     pub fn is_fn(&self, name: &str) -> bool {
         // TODO: check meta if fn
         self.exists(name)

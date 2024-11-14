@@ -177,8 +177,10 @@ mod tests {
         let result = run(code).unwrap();
         assert_eq!(result, "3");
 
-        let code = "fn hi(s) { print(s) }; hi(\"hello\")";
+        let code = "fn hi(s str) { print(s) }; hi(\"hello\")";
         let result = run(code).unwrap();
+        // TODO: capture stdout and assert
+        assert_eq!(result, "");
     }
 
     #[test]

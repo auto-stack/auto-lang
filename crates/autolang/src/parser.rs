@@ -774,7 +774,7 @@ impl<'a> Parser<'a> {
         self.next();
         match type_name {
             Expr::Ident(name) => {  
-                let meta = self.scope.get_symbol(&name.text).ok_or(format!("Undefined type: {}", name.text))?;
+                let meta = self.scope.lookup_meta(&name.text).ok_or(format!("Undefined type: {}", name.text))?;
                 if let Meta::Type(ty) = meta.as_ref() {
                     Ok(ty.clone())
                 } else {
@@ -1012,6 +1012,13 @@ mod tests {
         let code = "fn add(x, y) { x+y }";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (fn (name add) (params (param (name x) (type int)) (param (name y) (type int))) (body (stmt (bina (name x) (op +) (name y))))");
+    }
+
+    #[test]
+    fn test_fn_with_param_type() {
+        let code = "fn say(msg str) { print(msg) }";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (fn (name say) (params (param (name msg) (type str))) (body (stmt (call (name print) (args (name msg))))");
     }
 
     #[test]
