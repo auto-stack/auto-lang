@@ -95,6 +95,10 @@ fn flip_template(template: &str) -> String {
             result.push(format!("`{}`", line));
         }
     }
+    // str.lines() does not include the last empty line
+    if template.ends_with("\n") {
+        result.push("``".to_string());
+    }
     result.join("\n")
 }
 
@@ -282,14 +286,6 @@ mod tests {
         assert_eq!(result, "7");
     }
 
-    // #[test]
-    // fn test_type() {
-    //     let code = "type Point { x int, y int }; var p = Point(x=1, y=2); p.x";
-    //     let result = run(code).unwrap();
-    //     assert_eq!(result, "1");
-    // }
-
-
     #[test]
     fn test_json() {
         let code = r#"
@@ -297,23 +293,11 @@ mod tests {
                 { id: 0x10, name: "DiagnosticSessionControl",  desc: "诊断会话控制" },
                 { id: 0x11, name: "EcuReset",  desc: "电控单元复位" },
                 { id: 0x14, name: "ClearDiagnosticInformation",  desc: "清除诊断信息" },
-                { id: 0x19, name: "ReadDTCInformation",  desc: "读取DTC信息" },
-                { id: 0x22, name: "ReadDataByIdentifier",  desc: "读取数据" },
-                { id: 0x23, name: "ReadMemoryByAddress",  desc: "读取内存" },
-                { id: 0x27, name: "SecurityAccess",  desc: "安全访问" },
-                { id: 0x28, name: "CommunicationControl",  desc: "通信控制 " },
-                { id: 0x2A, name: "ReadDataByPeriodicIdentifier",  desc: "读取数据（周期标识符）" },
-                { id: 0x2C, name: "DynamicallyDefineDataIdentifier",  desc: "动态定义数据标识符" },
-                { id: 0x2E, name: "WriteDataByIdentifier",  desc: "写入数据" },
-                { id: 0x2F, name: "InputOutputControlByIdentifier",  desc: "输入输出控制" },
-                { id: 0x31, name: "RoutineControl",  desc: "例程控制" },
-                { id: 0x3D, name: "WriteMemoryByAddress",  desc: "写入内存" },
-                { id: 0x3E, name: "TesterPresent",  desc: "诊断设备在线" },
-                { id: 0x85, name: "ControlDTCSetting",  desc: "控制DTC设置" },
             ]
+            ServiceInfo[2].name
         "#;
         let result = run(code).unwrap();
-        println!("{}", result);
+        assert_eq!(result, "ClearDiagnosticInformation");
     }
 
 
@@ -412,12 +396,14 @@ mod tests {
 
     #[test]
     fn test_simple_template() {
-        let code = r#"var title = "Students"
-var rows = [
-    { name: "Alice", age: 20 }
-    { name: "Bob", age: 21 }
-    { name: "Charlie", age: 22 }
-]"#;
+        let code = r#"
+            var title = "Students"
+            var rows = [
+                { name: "Alice", age: 20 }
+                { name: "Bob", age: 21 }
+                { name: "Charlie", age: 22 }
+            ]
+        "#;
         let data = interpret(code).unwrap();
         let scope = data.scope.take();
         let template = r#"
@@ -449,7 +435,6 @@ $ }
 </table>"#);
     }
 
-
     #[test]
     fn test_flip_template() {
         let code = r#"#include <stdio.h>
@@ -467,17 +452,17 @@ int main() {
         let result = flip_template(code);
 
         assert_eq!(result, r#"`#include <stdio.h>`
-
+``
 `int main() {`
 `    printf("Hello, $name!\n");`
-
+``
 for i in 0..10 {
 `        printf("i = $i\n");`
 }
-
+``
 `    return 0;`
 `}`
-"#);
+``"#);
     }
 }
 
