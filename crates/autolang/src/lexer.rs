@@ -115,11 +115,15 @@ impl<'a> Lexer<'a> {
 
     fn fstr(&mut self) -> Token {
         let mut text = String::new();
-        self.chars.next(); // skip f
-        self.chars.next(); // skip "
+        if self.peek('`') {
+            self.chars.next(); // skip `
+        } else {
+            self.chars.next(); // skip f
+            self.chars.next(); // skip "
+        }
         while let Some(&c) = self.chars.peek() {
-            if c == '"' {
-                self.chars.next();
+            if c == '"' || c == '`' { // got end
+                self.chars.next(); // skip ending " or `
                 break;
             }
             if c == '$' {
@@ -156,7 +160,7 @@ impl<'a> Lexer<'a> {
     fn fstr_end(&mut self) -> Token {
         let mut text = String::new();
         while let Some(&c) = self.chars.peek() {
-            if c == '"' {
+            if c == '"' || c == '`' {
                 self.chars.next();
                 break;
             }
@@ -342,6 +346,9 @@ impl<'a> Lexer<'a> {
                 '$' => {
                     return self.single(TokenKind::Dollar, c);
                 }
+                '`' => {
+                    return self.fstr();
+                }
                 _ => {
                     if c.is_digit(10) {
                         return self.number();
@@ -478,6 +485,13 @@ mod tests {
         let code = r#"f"hello ${2 + 1} again""#;
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<fstrs:hello ><$><{><int:2><+><int:1><}><fstre: again>");
+    }
+
+    #[test]
+    fn test_tick_str() {
+        let code = r#"`hello $you again`"#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<fstrs:hello ><$><ident:you><fstre: again>");
     }
 
     #[test]

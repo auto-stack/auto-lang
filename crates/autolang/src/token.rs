@@ -46,6 +46,7 @@ pub enum TokenKind {
     Colon, // :
     VBar, // |
     Dollar, // $
+    Backtick, // `
     CommentLine, // //
     CommentContent, // any text in comment
     CommentStart, // /*
@@ -134,6 +135,7 @@ impl fmt::Display for Token {
             TokenKind::CommentContent => write!(f, "<comment:...>"),
             TokenKind::CommentStart => write!(f, "</*>"),
             TokenKind::CommentEnd => write!(f, "<*/>"),
+            TokenKind::Backtick => write!(f, "<`>"),
             TokenKind::EOF => write!(f, "<eof>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }

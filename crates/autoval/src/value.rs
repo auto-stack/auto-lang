@@ -61,6 +61,12 @@ impl Obj {
             _ => default,
         }
     }
+
+    pub fn merge(&mut self, other: Obj) {
+        for (key, value) in other.values {
+            self.set(key, value);
+        }
+    }
 }
 
 

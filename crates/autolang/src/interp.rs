@@ -1,4 +1,4 @@
-use crate::eval::Evaler;
+use crate::eval::{Evaler, EvalMode};
 use crate::scope::Universe;
 use autoval::value::Value;
 use std::rc::Rc;
@@ -20,6 +20,21 @@ impl Interpreter {
             result: Value::Nil 
         };
         interpreter
+    }
+
+    pub fn with_scope(scope: Universe) -> Self {
+        let scope = Rc::new(RefCell::new(scope));
+        let interpreter = Self { 
+            evaler: Evaler::new(scope.clone()),
+            scope, 
+            result: Value::Nil 
+        };
+        interpreter
+    }
+    
+    pub fn wit_eval_mode(mut self, mode: EvalMode) -> Self {
+        self.evaler = self.evaler.with_mode(mode);
+        self
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<(), String> {
