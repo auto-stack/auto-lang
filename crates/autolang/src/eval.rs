@@ -11,29 +11,43 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use crate::error_pos;
 
-pub enum EvalMode {
+pub enum EvalTempo {
     IMMEDIATE,
     LAZY,
 }
 
+pub enum EvalMode {
+    SCRIPT, // normal evaluation
+    CONFIG, // combine every pair/object in the same scope to one object; returns a big object
+    TEMPLATE, // evaluate every statement into a string, and join them with newlines
+}
+
 pub struct Evaler {
     universe: Rc<RefCell<scope::Universe>>,
-    modes: HashMap<String, EvalMode>,
+    // configure whether to evaluate a node immediately or lazily
+    tempo_for_nodes: HashMap<String, EvalTempo>,
+    // evaluation mode
+    mode: EvalMode,
 }
 
 impl Evaler {
     pub fn new(universe: Rc<RefCell<scope::Universe>>) -> Self {
-        let mut evaler = Evaler { universe, modes: HashMap::new() };
-        evaler.set_mode("center", EvalMode::LAZY);
-        evaler.set_mode("top", EvalMode::LAZY);
-        evaler.set_mode("left", EvalMode::LAZY);
-        evaler.set_mode("right", EvalMode::LAZY);
-        evaler.set_mode("bottom", EvalMode::LAZY);
+        let mut evaler = Evaler { universe, tempo_for_nodes: HashMap::new(), mode: EvalMode::SCRIPT };
+        evaler.set_tempo("center", EvalTempo::LAZY);
+        evaler.set_tempo("top", EvalTempo::LAZY);
+        evaler.set_tempo("left", EvalTempo::LAZY);
+        evaler.set_tempo("right", EvalTempo::LAZY);
+        evaler.set_tempo("bottom", EvalTempo::LAZY);
         evaler
     }
 
-    pub fn set_mode(&mut self, name: &str, mode: EvalMode) {
-        self.modes.insert(name.to_string(), mode);
+    pub fn with_mode(mut self, mode: EvalMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    pub fn set_tempo(&mut self, name: &str, tempo: EvalTempo) {
+        self.tempo_for_nodes.insert(name.to_string(), tempo);
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<Value, String> {
@@ -47,11 +61,39 @@ impl Evaler {
     }
 
     pub fn eval(&mut self, code: &Code) -> Value {
-        let mut value = Value::Nil;
-        for stmt in code.stmts.iter() {
-            value = self.eval_stmt(stmt);
+        match self.mode {
+            EvalMode::SCRIPT => {
+                let mut value = Value::Nil;
+                for stmt in code.stmts.iter() {
+                    value = self.eval_stmt(stmt);
+                }
+                value
+            }
+            EvalMode::CONFIG => {
+                let mut obj = Obj::new();
+                for stmt in code.stmts.iter() {
+                    let val = self.eval_stmt(stmt);
+                    match val {
+                        Value::Pair(key, value) => {
+                            obj.set(key, *value);
+                        }
+                        Value::Object(o) => {
+                            obj.merge(o);
+                        }
+                        _ => {}
+                    }
+                }
+                Value::Object(obj)
+            }
+            EvalMode::TEMPLATE => {
+                let mut result = Vec::new();
+                for stmt in code.stmts.iter() {
+                    let val = self.eval_stmt(stmt);
+                    result.push(val.to_string());
+                }
+                Value::Str(result.join("\n"))
+            }
         }
-        value
     }
 
     pub fn dump_scope(&self) {
@@ -72,11 +114,15 @@ impl Evaler {
     }
 
     fn eval_body(&mut self, body: &Body) -> Value {
-        let mut value = Value::Nil;
+        let mut res = Vec::new();
         for stmt in body.stmts.iter() {
-            value = self.eval_stmt(stmt);
+            res.push(self.eval_stmt(stmt));
         }
-        value
+        match self.mode {
+            EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
+            EvalMode::CONFIG => Value::Array(res),
+            EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| v.to_string()).collect::<Vec<String>>().join("\n")),
+        }
     }
 
     fn eval_if(&mut self, branches: &Vec<Branch>, else_stmt: &Option<Body>) -> Value {
@@ -95,25 +141,26 @@ impl Evaler {
     fn eval_for(&mut self, name: &str, range: &Expr, body: &Body) -> Value {
         let mut max_loop = 100;
         let range = self.eval_expr(range);
+        let mut res = Vec::new();
         match range {
             Value::Range(start, end) => {
                 for i in start..end {
                     self.universe.borrow_mut().set_local(&name, Value::Int(i));
-                    self.eval_body(body);
+                    res.push(self.eval_body(body));
                     max_loop -= 1;
                 }
             }
             Value::RangeEq(start, end) => {
                 for i in start..=end {
                     self.universe.borrow_mut().set_local(&name, Value::Int(i));
-                    self.eval_body(body);
+                    res.push(self.eval_body(body));
                     max_loop -= 1;
                 }
             }
             Value::Array(values) => {
                 for i in 0..values.len() {
                     self.universe.borrow_mut().set_local(&name, values[i].clone());
-                    self.eval_body(body);
+                    res.push(self.eval_body(body));
                     max_loop -= 1;
                 }
             }
@@ -124,7 +171,11 @@ impl Evaler {
         if max_loop <= 0 {
             return Value::Error("Max loop reached".to_string());
         } else {
-            return Value::Void;
+            match self.mode {
+                EvalMode::SCRIPT => Value::Void,
+                EvalMode::CONFIG => Value::Array(res),
+                EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| v.to_string()).collect::<Vec<String>>().join("\n")),
+            }
         }
     }
 
@@ -448,9 +499,9 @@ impl Evaler {
         let mut props = BTreeMap::new();
         let mut body = MetaID::Nil;
         let name = &node.name.text;
-        let mode = self.modes.get(name).unwrap_or(&EvalMode::IMMEDIATE);
+        let mode = self.tempo_for_nodes.get(name).unwrap_or(&EvalTempo::IMMEDIATE);
         match mode {
-            EvalMode::IMMEDIATE => {
+            EvalTempo::IMMEDIATE => {
                 for stmt in node.body.stmts.iter() {
                     let val = self.eval_stmt(stmt);
                     match val {
@@ -462,7 +513,7 @@ impl Evaler {
                     }
                 }
             }
-            EvalMode::LAZY => {
+            EvalTempo::LAZY => {
                 // push node body to scope meta
                 // TODO: support multiple nodes of same name
                 body = MetaID::Body(name.clone());

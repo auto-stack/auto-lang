@@ -12,9 +12,13 @@ pub mod interp;
 
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use autoval::value::Value;
+use crate::eval::EvalMode;
+use crate::scope::Universe;
 
 pub fn run(code: &str) -> Result<String, String> {
-    let scope = Rc::new(RefCell::new(scope::Universe::new()));
+    let scope = Rc::new(RefCell::new(Universe::new()));
     let ast = parser::parse(code, &mut scope.borrow_mut())?;
     let mut evaler = eval::Evaler::new(scope);
     let result = evaler.eval(&ast);
@@ -23,11 +27,11 @@ pub fn run(code: &str) -> Result<String, String> {
 
 pub fn parse(code: &str) -> Result<ast::Code, String> {
     println!("parsing code: {}", code);
-    let mut scope = scope::Universe::new();
+    let mut scope = Universe::new();
     parser::parse(code, &mut scope)
 }
 
-pub fn parse_scope(code: &str, scope: &mut scope::Universe) -> Result<ast::Code, String> {
+pub fn parse_scope(code: &str, scope: &mut Universe) -> Result<ast::Code, String> {
     parser::parse(code, scope)
 }
 
@@ -37,9 +41,61 @@ pub fn interpret(code: &str) -> Result<interp::Interpreter, String> {
     Ok(interpreter)
 }
 
+pub fn interpret_with_scope(code: &str, scope: scope::Universe) -> Result<interp::Interpreter, String> {
+    let mut interpreter = interp::Interpreter::with_scope(scope);
+    interpreter.interpret(code);
+    Ok(interpreter)
+}
+
 pub fn interpret_file(path: &str) -> Result<String, String> {
     let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
     run(&code)
+}
+
+pub fn eval_template(template: &str, scope: Universe) -> Result<interp::Interpreter, String> {
+    let mut interpreter = interp::Interpreter::with_scope(scope).wit_eval_mode(EvalMode::TEMPLATE);
+    // flip template
+    let flipped = flip_template(template);
+    println!("flipped: {}", flipped);
+    interpreter.interpret(&flipped)?;
+    Ok(interpreter)
+}
+
+// convert template (ex, a C file with interpolated auto expressions) into an auto source code with C code converted to lines of interpolated strings
+// Example:
+// template:
+// <code>
+// #include <stdio.h>
+// int main() {
+//     printf("Hello, $name!\n");
+//     return 0;
+// }
+// </code>
+// flipped:
+// <code>
+// f`#include <stdio.h>`
+// f`int main() {`
+// f`    printf(\"Hello, $name!\\n\");`
+// f`    return 0;`
+// f`}`
+// </code>
+fn flip_template(template: &str) -> String {
+    let lines = template.lines();
+    let mut result = Vec::new();
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            // NOTE: keep empty lines
+            result.push("``".to_string());
+            continue;
+        }
+        if trimmed.starts_with("$") && !trimmed.starts_with("${") {
+            result.push(format!("{}", &trimmed[1..].trim()));
+        } else {
+            result.push(format!("`{}`", line));
+        }
+    }
+    result.join("\n")
 }
 
 #[cfg(test)]
@@ -351,6 +407,77 @@ mod tests {
                 println!("error: {}", e);
             }
         }
+    }
+
+
+    #[test]
+    fn test_simple_template() {
+        let code = r#"var title = "Students"
+var rows = [
+    { name: "Alice", age: 20 }
+    { name: "Bob", age: 21 }
+    { name: "Charlie", age: 22 }
+]"#;
+        let data = interpret(code).unwrap();
+        let scope = data.scope.take();
+        let template = r#"
+<h1>$title</h1>
+<table>
+$ for row in rows {
+    <tr>
+        <td>${row.name}</td>
+        <td>${row.age}</td>
+    </tr>
+$ }
+</table>"#;
+        let interpreter = eval_template(template, scope).unwrap();
+        assert_eq!(interpreter.result.to_string(), r#"
+<h1>Students</h1>
+<table>
+    <tr>
+        <td>Alice</td>
+        <td>20</td>
+    </tr>
+    <tr>
+        <td>Bob</td>
+        <td>21</td>
+    </tr>
+    <tr>
+        <td>Charlie</td>
+        <td>22</td>
+    </tr>
+</table>"#);
+    }
+
+
+    #[test]
+    fn test_flip_template() {
+        let code = r#"#include <stdio.h>
+
+int main() {
+    printf("Hello, $name!\n");
+
+    $ for i in 0..10 {
+        printf("i = $i\n");
+    $ }
+
+    return 0;
+}
+"#;
+        let result = flip_template(code);
+
+        assert_eq!(result, r#"`#include <stdio.h>`
+
+`int main() {`
+`    printf("Hello, $name!\n");`
+
+for i in 0..10 {
+`        printf("i = $i\n");`
+}
+
+`    return 0;`
+`}`
+"#);
     }
 }
 
