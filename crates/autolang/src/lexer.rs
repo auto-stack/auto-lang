@@ -115,14 +115,16 @@ impl<'a> Lexer<'a> {
 
     fn fstr(&mut self) -> Token {
         let mut text = String::new();
+        let mut endchar = '`';
         if self.peek('`') {
             self.chars.next(); // skip `
         } else {
             self.chars.next(); // skip f
             self.chars.next(); // skip "
+            endchar = '"';
         }
         while let Some(&c) = self.chars.peek() {
-            if c == '"' || c == '`' { // got end
+            if c == endchar { // got end
                 self.chars.next(); // skip ending " or `
                 break;
             }

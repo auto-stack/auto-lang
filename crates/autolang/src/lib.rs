@@ -464,6 +464,45 @@ for i in 0..10 {
 `}`
 ``"#);
     }
+
+    #[test]
+    fn test_eval_template() {
+        let code = r#"
+#include "CanIf_Lcfg.h"
+#include "CanIf_ConfigTypes.h"
+#if defined(USE_CANSM)
+#include "CanSM_CanIf.h"
+#include "CanSM.h"
+#endif
+#if defined(USE_CANTP)
+#include "CanTp.h"
+#include "CanTp_Cbk.h"
+#endif
+#if defined(USE_PDUR)
+#include "PduR_PbCfg.h"
+#include "PduR.h"
+#include "PduR_CanIf.h"
+#endif
+#if defined(USE_CANNM)
+#include "CanNm_Cfg.h"
+#include "CanNm_Cbk.h"
+#endif
+#if defined(USE_OSEKNM)
+#include "OsekNm.h"
+#endif
+#if defined(USE_XCP)
+#include "Xcp.h"
+#include "XcpOnCan_Cbk.h"
+#endif
+
+#if defined(USE_CANPTCNM)
+extern void CanNmPtc_RxIndication(PduIdType CanNmRxPduId,
+      const  PduInfoType *CanNmRxPduPtr);
+#endif
+"#;
+        let scope = Universe::new();
+        let result = eval_template(code, scope).unwrap();
+    }
 }
 
 

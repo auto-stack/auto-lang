@@ -23,17 +23,51 @@ impl Display for ValueKey {
     }
 }
 
+impl Into<ValueKey> for i32 {
+    fn into(self) -> ValueKey {
+        ValueKey::Int(self)
+    }
+}
+
+impl Into<ValueKey> for bool {
+    fn into(self) -> ValueKey {
+        ValueKey::Bool(self)
+    }
+} 
+
+impl Into<ValueKey> for i64 {
+    fn into(self) -> ValueKey {
+        ValueKey::Int(self as i32)
+    }
+}
+
+impl Into<ValueKey> for String {
+    fn into(self) -> ValueKey {
+        ValueKey::Str(self)
+    }
+}
+
+impl Into<ValueKey> for &str {
+    fn into(self) -> ValueKey {
+        ValueKey::Str(self.to_string())
+    }
+}
+
 impl Obj {
     pub fn new() -> Self {
         Obj { values: BTreeMap::new() }
     }
 
-    pub fn get(&self, key: &ValueKey) -> Option<Value> {
-        self.values.get(key).cloned()
+    pub fn get(&self, key: impl Into<ValueKey>) -> Option<Value> {
+        self.values.get(&key.into()).cloned()
     }
 
-    pub fn set(&mut self, key: ValueKey, value: Value) {
-        self.values.insert(key, value);
+    pub fn get_or_nil(&self, key: impl Into<ValueKey>) -> Value {
+        self.get(key).unwrap_or(Value::Nil)
+    }
+
+    pub fn set(&mut self, key: impl Into<ValueKey>, value: Value) {
+        self.values.insert(key.into(), value);
     }
 
     pub fn lookup(&self, name: &str) -> Option<Value> {
@@ -49,17 +83,44 @@ impl Obj {
     }
 
     pub fn get_str_or(&self, name: &str, default: &str) -> String {
-        match self.get(&ValueKey::Str(name.to_string())) {
+        match self.get(ValueKey::Str(name.to_string())) {
             Some(Value::Str(s)) => s,
             _ => default.to_string(),
         }
     }
 
+    pub fn get_str_of(&self, name: &str) -> String {
+        self.get_str_or(name, "")
+    }
+
     pub fn get_float_or(&self, name: &str, default: f64) -> f64 {
-        match self.get(&ValueKey::Str(name.to_string())) {
+        match self.get(ValueKey::Str(name.to_string())) {
             Some(Value::Float(f)) => f,
             _ => default,
         }
+    }
+
+    pub fn get_uint_or(&self, name: &str, default: u32) -> u32 {
+        match self.get(name) {
+            Some(Value::Uint(u)) => u,
+            Some(Value::Int(i)) => if i >= 0 { i as u32 } else { default },
+            _ => default,
+        }
+    }
+
+    pub fn get_uint_of(&self, name: &str) -> u32 {
+        self.get_uint_or(name, 0)
+    }
+
+    pub fn get_bool_or(&self, name: &str, default: bool) -> bool {
+        match self.get(ValueKey::Str(name.to_string())) {
+            Some(Value::Bool(b)) => b,
+            _ => default,
+        }
+    }
+
+    pub fn get_bool_of(&self, name: &str) -> bool {
+        self.get_bool_or(name, false)
     }
 
     pub fn merge(&mut self, other: Obj) {
@@ -73,12 +134,13 @@ impl Obj {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Int(i32),
+    Uint(u32),
     Float(f64),
     Bool(bool),
     Str(String),
     Array(Vec<Value>),
     Pair(ValueKey, Box<Value>),
-    Object(Obj),
+    Obj(Obj),
     Node(Node),
     Range(i32, i32),
     RangeEq(i32, i32),
@@ -103,6 +165,17 @@ impl Into<Value> for String {
 impl Into<Value> for i32 {
     fn into(self) -> Value {
         Value::Int(self)
+    }
+}
+
+// constructors
+impl Value {
+    pub fn array() -> Self {
+        Value::Array(vec![])
+    }
+
+    pub fn obj() -> Self {
+        Value::Obj(Obj::new())
     }
 }
 
@@ -146,6 +219,7 @@ impl Display for Value {
         match self {
             Value::Str(value) => write!(f, "{}", value),
             Value::Int(value) => write!(f, "{}", value),
+            Value::Uint(value) => write!(f, "{}", value),
             Value::Float(value) => write!(f, "{}", value),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Nil => write!(f, "nil"),
@@ -158,7 +232,7 @@ impl Display for Value {
             Value::ExtFn(_) => write!(f, "extfn"),
             Value::Lambda(name) => write!(f, "lambda {}", name),
             Value::Pair(key, value) => write!(f, "{}: {}", key, value),
-            Value::Object(value) => print_object(f, value),
+            Value::Obj(value) => print_object(f, value),
             Value::Node(node) => write!(f, "{}", node),
             Value::Widget(widget) => write!(f, "{}", widget),
             Value::Meta(meta) => write!(f, "{}", meta),
@@ -196,6 +270,8 @@ impl Value {
         match self {
             Value::Int(value) => Value::Int(-value),
             Value::Float(value) => Value::Float(-value),
+            // TODO: check if uint is bigger than i32.MAX
+            Value::Uint(value) => Value::Int(-(*value as i32)),
             _ => Value::Nil,
         }
     }
@@ -211,6 +287,17 @@ impl Value {
     pub fn comp(&self, op: &Op, other: &Value) -> Value {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => {
+                match op {
+                    Op::Eq => Value::Bool(a == b),
+                    Op::Neq => Value::Bool(a != b),
+                    Op::Lt => Value::Bool(a < b),
+                    Op::Gt => Value::Bool(a > b),
+                    Op::Le => Value::Bool(a <= b),
+                    Op::Ge => Value::Bool(a >= b),
+                    _ => Value::Nil,
+                }
+            }
+            (Value::Uint(a), Value::Uint(b)) => {
                 match op {
                     Op::Eq => Value::Bool(a == b),
                     Op::Neq => Value::Bool(a != b),
@@ -247,6 +334,7 @@ impl Value {
         match self {
             Value::Bool(value) => *value,
             Value::Int(value) => *value > 0,
+            Value::Uint(value) => *value > 0,
             Value::Float(value) => *value > 0.0,
             Value::Str(value) => value.len() > 0,
             _ => false,
@@ -255,6 +343,56 @@ impl Value {
 
     pub fn to_bool(&self) -> bool {
         self.is_true()
+    }
+}
+
+
+static OBJ_NIL: Obj = Obj { values: BTreeMap::new() };
+static ARRAY_NIL: Vec<Value> = vec![];
+static STR_NIL: String = String::new();
+
+// Quick Readers
+impl Value {
+    pub fn as_array(&self) -> &Vec<Value> {
+        match self {
+            Value::Array(value) => value,
+            _ => &ARRAY_NIL,
+        }
+    }
+
+    pub fn as_obj(&self) -> &Obj {
+        match self {
+            Value::Obj(ref value) => value,
+            _ => &OBJ_NIL,
+        }
+    }
+
+    pub fn as_string(&self) -> &String {
+        match self {
+            Value::Str(value) => value,
+            _ => &STR_NIL,
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            Value::Str(value) => value.as_str(),
+            _ => "",
+        }
+    }
+
+    pub fn as_bool(&self) -> bool {
+        match self {
+            Value::Bool(value) => *value,
+            _ => false,
+        }
+    }
+
+    pub fn as_uint(&self) -> u32 {
+        match self {
+            Value::Uint(value) => *value,
+            _ => 0,
+        }
     }
 }
 
