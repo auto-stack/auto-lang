@@ -77,13 +77,13 @@ impl Evaler {
                         Value::Pair(key, value) => {
                             obj.set(key, *value);
                         }
-                        Value::Object(o) => {
+                        Value::Obj(o) => {
                             obj.merge(o);
                         }
                         _ => {}
                     }
                 }
-                Value::Object(obj)
+                Value::Obj(obj)
             }
             EvalMode::TEMPLATE => {
                 let mut result = Vec::new();
@@ -264,7 +264,7 @@ impl Evaler {
         for pair in pairs.iter() {
             obj.set(self.eval_key(&pair.key), self.eval_expr(&pair.value));
         }
-        Value::Object(obj)
+        Value::Obj(obj)
     }
 
     fn pair(&mut self, pair: &Pair) -> Value {
@@ -440,7 +440,7 @@ impl Evaler {
     fn dot(&mut self, left: &Expr, right: &Expr) -> Value {
         let left_value = self.eval_expr(left);
         let res: Option<Value> = match &left_value {
-            Value::Object(obj) => match right {
+            Value::Obj(obj) => match right {
                 Expr::Ident(name) => obj.lookup(&name.text),
                 Expr::Int(key) => obj.lookup(&key.to_string()),
                 Expr::Bool(key) => obj.lookup(&key.to_string()),
