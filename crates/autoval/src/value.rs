@@ -534,6 +534,10 @@ fn try_promote(a: Value, b: Value) -> (Value, Value) {
 pub fn add(a: Value, b: Value) -> Value {
     let (a, b) = try_promote(a, b);
     match (a, b) {
+        (Value::Uint(left), Value::Uint(right)) => Value::Uint(left + right),
+        // TODO: promote u32 or i32 to i64
+        (Value::Uint(left), Value::Int(right)) => Value::Int(left as i32 + right),
+        (Value::Int(left), Value::Uint(right)) => Value::Int(left + right as i32),
         (Value::Int(left), Value::Int(right)) => Value::Int(left + right),
         (Value::Float(left), Value::Float(right)) => Value::Float(left + right),
         _ => Value::Nil,

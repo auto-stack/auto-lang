@@ -131,6 +131,7 @@ impl fmt::Display for Token {
             TokenKind::Dollar => write!(f, "<$>"),
             TokenKind::FStrStart => write!(f, "<fstrs:{}>", self.text),
             TokenKind::FStrEnd => write!(f, "<fstre:{}>", self.text),
+            TokenKind::FStrPart => write!(f, "<fstrp:{}>", self.text),
             TokenKind::CommentLine => write!(f, "<//>"),
             TokenKind::CommentContent => write!(f, "<comment:...>"),
             TokenKind::CommentStart => write!(f, "</*>"),

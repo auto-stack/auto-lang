@@ -25,6 +25,14 @@ pub fn run(code: &str) -> Result<String, String> {
     Ok(result.to_string())
 }
 
+pub fn run_with_scope(code: &str, scope: Universe) -> Result<String, String> {
+    let scope = Rc::new(RefCell::new(scope));
+    let ast = parser::parse(code, &mut scope.borrow_mut())?;
+    let mut evaler = eval::Evaler::new(scope);
+    let result = evaler.eval(&ast);
+    Ok(result.to_string())
+}
+
 pub fn parse(code: &str) -> Result<ast::Code, String> {
     println!("parsing code: {}", code);
     let mut scope = Universe::new();
@@ -338,6 +346,15 @@ mod tests {
     }
 
     #[test]
+    fn test_fstr_with_addition() {
+        let code = r#"`const ComTxIPduCalloutType ComTxIPduCallouts[${no_tx_msgs + 1}u]`"#;
+        let mut scope = Universe::new();
+        scope.set_global("no_tx_msgs", Value::Int(9));
+        let result = run_with_scope(code, scope).unwrap();
+        assert_eq!(result, "10u");
+    }
+
+    #[test]
     fn test_asn_upper() {
         let code = "var a = 1; if true { a = 2 }; a";
         let result = run(code).unwrap();
@@ -506,6 +523,26 @@ extern void CanNmPtc_RxIndication(PduIdType CanNmRxPduId,
 "#;
         let scope = Universe::new();
         let result = eval_template(code, scope).unwrap();
+    }
+
+
+    #[test]
+    fn test_for_loop_with_object() {
+        let code = r#"
+        var items = [
+            { name: "Alice", age: 20 }
+            { name: "Bob", age: 21 }
+            { name: "Charlie", age: 22 }
+        ]
+        for n in items {
+            print(`Hi ${n.name}`)   
+        }
+        for i, n in items {
+            print(`${i}, ${n.name}`)
+        }
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "");
     }
 }
 
