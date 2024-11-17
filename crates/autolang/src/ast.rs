@@ -80,12 +80,18 @@ impl fmt::Display for Var {
 pub enum Stmt {
     Expr(Expr),
     If(/*multiple branches with condition/body*/Vec<Branch>, /*else*/Option<Body>),
-    For(Name, Expr, Body),
+    For(Iter, Expr, Body),
     Var(Var),
     Fn(Fn),
     TypeDecl(TypeDecl),
     Widget(Widget),
     Node(Node),
+}
+
+#[derive(Debug, Clone)]
+pub enum Iter {
+    Indexed(/*index*/Name, /*iter*/Name),
+    Named(/*iter*/Name),
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +102,15 @@ pub struct Body {
 impl Body {
     pub fn new() -> Self {
         Self { stmts: Vec::new() }
+    }
+}
+
+impl fmt::Display for Iter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Iter::Indexed(index, iter) => write!(f, "({} {})", index, iter),
+            Iter::Named(iter) => write!(f, "{}", iter),
+        }
     }
 }
 

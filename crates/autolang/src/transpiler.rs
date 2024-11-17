@@ -38,7 +38,7 @@ impl CTranspiler {
             Stmt::Expr(expr) => self.expr(expr, out),
             Stmt::Fn(fn_decl) => self.fn_decl(fn_decl, out),
             Stmt::Var(var) => self.var(var, out),
-            Stmt::For(name, range, body) => self.for_stmt(name, range, body, out),
+            Stmt::For(iter, range, body) => self.for_stmt(iter, range, body, out),
             Stmt::If(branches, otherwise) => self.if_stmt(branches, otherwise, out),
             _ => Err(format!("unsupported statement: {:?}", stmt)),
         }
@@ -117,7 +117,7 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn for_stmt(&mut self, name: &Name, range: &Expr, body: &Body, out: &mut impl Write) -> Result<(), String> {
+    fn for_stmt(&mut self, iter: &Iter, range: &Expr, body: &Body, out: &mut impl Write) -> Result<(), String> {
         out.write(b"for (").to()?;
         self.expr(range, out)?;
         out.write(b")").to()?;

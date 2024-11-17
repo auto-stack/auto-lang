@@ -104,7 +104,7 @@ impl Evaler {
         match stmt {
             Stmt::Expr(expr) => self.eval_expr(expr),
             Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
-            Stmt::For(name, expr, body) => self.eval_for(&name.text, expr, body),
+            Stmt::For(iter, expr, body) => self.eval_for(iter, expr, body),
             Stmt::Var(var) => self.eval_var(var),
             Stmt::Fn(_) => Value::Nil,
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
@@ -138,28 +138,38 @@ impl Evaler {
         Value::Nil
     }
 
-    fn eval_for(&mut self, name: &str, range: &Expr, body: &Body) -> Value {
+    fn eval_iter(&mut self, iter: &Iter, idx: usize, item: Value) {
+        match iter {
+            Iter::Indexed(index, iter) => {
+                self.universe.borrow_mut().set_local(&index.text, Value::Int(idx as i32));
+                self.universe.borrow_mut().set_local(&iter.text, item);
+            },
+            Iter::Named(iter) => self.universe.borrow_mut().set_local(&iter.text, item),
+        }
+    }
+
+    fn eval_for(&mut self, iter: &Iter, range: &Expr, body: &Body) -> Value {
         let mut max_loop = 100;
         let range = self.eval_expr(range);
         let mut res = Vec::new();
         match range {
             Value::Range(start, end) => {
-                for i in start..end {
-                    self.universe.borrow_mut().set_local(&name, Value::Int(i));
+                for (idx, n) in (start..end).enumerate() {
+                    self.eval_iter(iter, idx, Value::Int(n));
                     res.push(self.eval_body(body));
                     max_loop -= 1;
                 }
             }
             Value::RangeEq(start, end) => {
-                for i in start..=end {
-                    self.universe.borrow_mut().set_local(&name, Value::Int(i));
+                for (idx, n) in (start..=end).enumerate() {
+                    self.eval_iter(iter, idx, Value::Int(n));
                     res.push(self.eval_body(body));
                     max_loop -= 1;
                 }
             }
             Value::Array(values) => {
-                for i in 0..values.len() {
-                    self.universe.borrow_mut().set_local(&name, values[i].clone());
+                for (idx, item) in values.iter().enumerate() {
+                    self.eval_iter(iter, idx, item.clone());
                     res.push(self.eval_body(body));
                     max_loop -= 1;
                 }

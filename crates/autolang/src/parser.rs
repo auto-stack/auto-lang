@@ -644,11 +644,20 @@ impl<'a> Parser<'a> {
             let meta = Meta::Var(Var { name: Name::new(name.clone()), expr: Expr::Nil });
             self.scope.define(name.as_str(), Rc::new(meta));
             self.next(); // skip name
+            let mut iter = Iter::Named(Name::new(name.clone()));
+            if self.is_kind(TokenKind::Comma) {
+                self.next(); // skip ,
+                let iter_name = self.cur.text.clone();
+                let meta_iter = Meta::Var(Var { name: Name::new(iter_name.clone()), expr: Expr::Nil });
+                self.scope.define(iter_name.as_str(), Rc::new(meta_iter));
+                self.next(); // skip iter name
+                iter = Iter::Indexed(Name::new(name.clone()), Name::new(iter_name.clone()));
+            }
             self.expect(TokenKind::In)?;
             let range = self.iterable_expr()?;
             let body = self.body()?;
             self.scope.exit_scope();
-            return Ok(Stmt::For(Name::new(name), range, body));
+            return Ok(Stmt::For(iter, range, body));
         }
         error_pos!("Expected for loop, got {:?}", self.kind())
     }
@@ -984,6 +993,10 @@ mod tests {
         let code = "for i in 1..5 {i}";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 1) (op ..) (int 5)) (body (stmt (name i))))");
+
+        let code = "for i, x in 1..5 {x}";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (for ((name i) (name x)) (bina (int 1) (op ..) (int 5)) (body (stmt (name x))))");
     }
 
     #[test]
