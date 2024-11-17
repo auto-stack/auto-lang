@@ -225,6 +225,10 @@ mod tests {
         let code = "var sum = 0; for i in 0..10 { sum = sum + i }; sum";
         let result = run(code).unwrap();
         assert_eq!(result, "45");
+
+        let code = "var arr = [1, 2, 3]; var sum = 0; for i, x in arr { sum = sum + x + i }; sum";
+        let result = run(code).unwrap();
+        assert_eq!(result, "9");
     }
 
     #[test]
