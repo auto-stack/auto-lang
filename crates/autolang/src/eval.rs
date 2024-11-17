@@ -142,6 +142,7 @@ impl Evaler {
         match iter {
             Iter::Indexed(index, iter) => {
                 self.universe.borrow_mut().set_local(&index.text, Value::Int(idx as i32));
+                // println!("set index {}, iter: {}, item: {}", index.text, iter.text, item.clone());
                 self.universe.borrow_mut().set_local(&iter.text, item);
             },
             Iter::Named(iter) => self.universe.borrow_mut().set_local(&iter.text, item),
@@ -149,7 +150,7 @@ impl Evaler {
     }
 
     fn eval_for(&mut self, iter: &Iter, range: &Expr, body: &Body) -> Value {
-        let mut max_loop = 100;
+        let mut max_loop = 1000;
         let range = self.eval_expr(range);
         let mut res = Vec::new();
         match range {
@@ -476,7 +477,7 @@ impl Evaler {
             }
             _ => None,
         };
-        res.unwrap_or(Value::Error(format!("Invalid object {}", left_value)))
+        res.unwrap_or(Value::Error(format!("Invalid key {} in object {}", right, left_value)))
     }
 
     fn eval_widget(&mut self, widget: &Widget) -> Value {
@@ -566,7 +567,13 @@ impl Evaler {
     }
 
     fn fstr(&mut self, fstr: &FStr) -> Value {
-        let parts: Vec<String> = fstr.parts.iter().map(|part| self.eval_expr(part).to_string()).collect();
+        let parts: Vec<String> = fstr.parts.iter().map(|part| {
+            let val = self.eval_expr(part);
+            match val {
+                Value::Str(s) => s,
+                _ => val.to_string(),
+            }
+        }).collect();
         Value::Str(parts.join(""))
     }
 }

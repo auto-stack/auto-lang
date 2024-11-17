@@ -487,28 +487,36 @@ impl<'a> Parser<'a> {
     }
 
     pub fn fstr(&mut self) -> Result<Expr, ParseError> {
-        let mut parts = Vec::new();
-        let start_text = self.cur.text.clone();
-        parts.push(Expr::Str(start_text));
+        // skip fstrs (e.g. ` or f")
         self.expect(TokenKind::FStrStart)?;
-        if self.is_kind(TokenKind::Dollar) {
-            self.next(); // skip $
-            if self.is_kind(TokenKind::LBrace) {
-                self.expect(TokenKind::LBrace)?;
-                while !self.is_kind(TokenKind::RBrace) {
-                    let expr = self.expr()?;
-                    parts.push(expr);
-                    self.expect_eos()?;
+
+        // parse fstr parts or interpolated exprs
+        let mut parts = Vec::new();
+        while !self.is_kind(TokenKind::FStrEnd) {
+            // $ expressions
+            if self.is_kind(TokenKind::Dollar) {
+                self.next(); // skip $
+                if self.is_kind(TokenKind::LBrace) {
+                    self.expect(TokenKind::LBrace)?;
+                    // NOTE: allow only one expression in a ${} block
+                    if !self.is_kind(TokenKind::RBrace) {
+                        let expr = self.rhs_expr()?;
+                        parts.push(expr);
+                        // self.expect_eos()?;
+                    }
+                    self.expect(TokenKind::RBrace)?;
+                } else {
+                    let ident = self.ident()?;
+                    parts.push(ident);
+                    self.expect(TokenKind::Ident)?;
                 }
-                self.expect(TokenKind::RBrace)?;
             } else {
-                let ident = self.ident()?;
-                parts.push(ident);
-                self.expect(TokenKind::Ident)?;
+                // normal text parts
+                let text = self.cur.text.clone();
+                parts.push(Expr::Str(text));
+                self.next();
             }
         }
-        let end_text = self.cur.text.clone();
-        parts.push(Expr::Str(end_text));
         self.expect(TokenKind::FStrEnd)?;
         Ok(Expr::FStr(FStr::new(parts)))
     }
@@ -1165,7 +1173,15 @@ mod tests {
     fn test_fstr() {
         let code = r#"f"hello $name"#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (stmt (fstr (str \"hello \") (name name) (str \"\"))))");
+        assert_eq!(ast.to_string(), "(code (stmt (fstr (str \"hello \") (name name))))");
+    }
+
+    #[test]
+    fn test_fstr_multi() {
+        let code = r#"var name = "haha"; var age = 18; `hello $name ${age}`"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(stmt (fstr (str \"hello \") (name name) (str \" \") (name age)))");
     }
 
     #[test]

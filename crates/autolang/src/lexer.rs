@@ -114,24 +114,33 @@ impl<'a> Lexer<'a> {
     }
 
     fn fstr(&mut self) -> Token {
-        let mut text = String::new();
         let mut endchar = '`';
         if self.peek('`') {
-            self.chars.next(); // skip `
+            let tk = self.single(TokenKind::FStrStart, '`');
+            self.buffer.push_back(tk);
         } else {
+            let tk = Token::fstr_part(self.pos(2), "f\"".to_string());
+            self.buffer.push_back(tk);
+            endchar = '"';
             self.chars.next(); // skip f
             self.chars.next(); // skip "
-            endchar = '"';
         }
+        let mut text = String::new();
         while let Some(&c) = self.chars.peek() {
             if c == endchar { // got end
-                self.chars.next(); // skip ending " or `
+                if !text.is_empty() {
+                    let tk = Token::fstr_part(self.pos(text.len()), text);
+                    self.buffer.push_back(tk);
+                }
+                let tk = self.single(TokenKind::FStrEnd, endchar);
+                self.buffer.push_back(tk);
                 break;
             }
             if c == '$' {
                 // lex fstr start
-                let tk = Token::fstr_start(self.pos(text.len()), text.clone());
+                let tk = Token::fstr_part(self.pos(text.len()), text.clone());
                 self.buffer.push_back(tk);
+                text.clear();
                 // lex $
                 let tk = self.single(TokenKind::Dollar, '$');
                 self.buffer.push_back(tk);
@@ -144,32 +153,12 @@ impl<'a> Lexer<'a> {
                         self.buffer.push_back(ident);
                     }
                 }
-                // lex fstr end
-                let fstr_end = self.fstr_end();
-                self.buffer.push_back(fstr_end);
-                break;
-            }
-            text.push(c);
-            self.chars.next();
-        }
-        if self.buffer.is_empty() {
-            Token::str(self.pos(text.len()), text)
-        } else {
-            self.buffer.pop_front().unwrap()
-        }
-    }
-
-    fn fstr_end(&mut self) -> Token {
-        let mut text = String::new();
-        while let Some(&c) = self.chars.peek() {
-            if c == '"' || c == '`' {
+            } else {
+                text.push(c);
                 self.chars.next();
-                break;
             }
-            text.push(c);
-            self.chars.next();
         }
-        Token::fstr_end(self.pos(text.len()), text)
+        self.buffer.pop_front().unwrap()
     }
 
     fn fstr_expr(&mut self) {
@@ -185,6 +174,10 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+        // if self.peek('}') {
+            // let tk = self.single(TokenKind::RBrace, '}');
+            // self.buffer.push_back(tk);
+        // }
     }
 
     fn dot_or_range(&mut self) -> Token {
@@ -502,5 +495,12 @@ mod tests {
         /* this is a multi-line comment */"#;
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<//><comment:...><nl></*><comment:...><*/>");
+    }
+
+    #[test]
+    fn test_fstr_multi() {
+        let code = r#"`hello $name ${age}`"#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<fstrs:`><fstrp:hello ><$><ident:name><fstrp: ><$><{><ident:age><}><fstre:`>");
     }
 }

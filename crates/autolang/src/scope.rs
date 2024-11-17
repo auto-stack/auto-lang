@@ -100,12 +100,13 @@ impl Universe {
     }
 
     pub fn exists(&self, name: &str) -> bool {
-        // check for vars
+        // check for symbols
         for scope in self.scopes.iter().rev() {
             if scope.exists(name) {
                 return true;
             }
         }
+
         // check for builtins
         let is_builtin = self.builtins.contains_key(name);
         is_builtin
@@ -238,6 +239,6 @@ impl Scope {
     }
 
     pub fn exists(&self, name: &str) -> bool {
-        self.symbols.contains_key(name)
+        self.symbols.contains_key(name) || self.vals.contains_key(name)
     }
 }
