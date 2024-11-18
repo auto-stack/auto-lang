@@ -80,12 +80,27 @@ impl fmt::Display for Var {
 pub enum Stmt {
     Expr(Expr),
     If(/*multiple branches with condition/body*/Vec<Branch>, /*else*/Option<Body>),
-    For(Iter, Expr, Body),
+    For(For),
     Var(Var),
     Fn(Fn),
     TypeDecl(TypeDecl),
     Widget(Widget),
     Node(Node),
+}
+
+#[derive(Debug, Clone)]
+pub struct For {
+    pub iter: Iter,
+    pub range: Expr,
+    pub body: Body,
+    pub new_line: bool,
+    // TODO: maybe we could put mid block here
+}
+
+impl fmt::Display for For {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(for {} {} {})", self.iter, self.range, self.body)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -97,11 +112,16 @@ pub enum Iter {
 #[derive(Debug, Clone)]
 pub struct Body {
     pub stmts: Vec<Stmt>,
+    pub has_new_line: bool,
 }
 
 impl Body {
     pub fn new() -> Self {
-        Self { stmts: Vec::new() }
+        Self { stmts: Vec::new(), has_new_line: false }
+    }
+
+    pub fn single_expr(expr: Expr) -> Self {
+        Self { stmts: vec![Stmt::Expr(expr)], has_new_line: false }
     }
 }
 
@@ -141,7 +161,7 @@ impl fmt::Display for Stmt {
                 }
                 Ok(())
             },
-            Stmt::For(name, expr, body) => write!(f, "(for {} {} {})", name, expr, body),
+            Stmt::For(for_stmt) => write!(f, "{}", for_stmt),
             Stmt::Var(var) => write!(f, "(var {} {})", var.name, var.expr),
             Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),
             Stmt::TypeDecl(type_decl) => write!(f, "{}", type_decl),    

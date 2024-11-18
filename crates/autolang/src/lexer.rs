@@ -119,11 +119,11 @@ impl<'a> Lexer<'a> {
             let tk = self.single(TokenKind::FStrStart, '`');
             self.buffer.push_back(tk);
         } else {
-            let tk = Token::fstr_part(self.pos(2), "f\"".to_string());
-            self.buffer.push_back(tk);
             endchar = '"';
             self.chars.next(); // skip f
             self.chars.next(); // skip "
+            let tk = Token::new(TokenKind::FStrStart, self.pos(2), "f\"".to_string());
+            self.buffer.push_back(tk);
         }
         let mut text = String::new();
         while let Some(&c) = self.chars.peek() {
@@ -137,7 +137,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
             if c == '$' {
-                // lex fstr start
+                // text until $ is a string part
                 let tk = Token::fstr_part(self.pos(text.len()), text.clone());
                 self.buffer.push_back(tk);
                 text.clear();
@@ -472,21 +472,21 @@ mod tests {
     fn test_fstr() {
         let code = r#"f"hello $you again""#;
         let tokens = parse_token_strings(code);
-        assert_eq!(tokens, "<fstrs:hello ><$><ident:you><fstre: again>");
+        assert_eq!(tokens, "<fstrs><fstrp:hello ><$><ident:you><fstrp: again><fstre>");
     }
 
     #[test]
     fn test_fstr_expr() {
         let code = r#"f"hello ${2 + 1} again""#;
         let tokens = parse_token_strings(code);
-        assert_eq!(tokens, "<fstrs:hello ><$><{><int:2><+><int:1><}><fstre: again>");
+        assert_eq!(tokens, "<fstrs><fstrp:hello ><$><{><int:2><+><int:1><}><fstrp: again><fstre>");
     }
 
     #[test]
     fn test_tick_str() {
         let code = r#"`hello $you again`"#;
         let tokens = parse_token_strings(code);
-        assert_eq!(tokens, "<fstrs:hello ><$><ident:you><fstre: again>");
+        assert_eq!(tokens, "<fstrs><fstrp:hello ><$><ident:you><fstrp: again><fstre>");
     }
 
     #[test]
@@ -501,6 +501,13 @@ mod tests {
     fn test_fstr_multi() {
         let code = r#"`hello $name ${age}`"#;
         let tokens = parse_token_strings(code);
-        assert_eq!(tokens, "<fstrs:`><fstrp:hello ><$><ident:name><fstrp: ><$><{><ident:age><}><fstre:`>");
+        assert_eq!(tokens, "<fstrs><fstrp:hello ><$><ident:name><fstrp: ><$><{><ident:age><}><fstre>");
+    }
+
+    #[test]
+    fn test_fstr_f() {
+        let code = r#"f"hello $name""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<fstrs><fstrp:hello ><$><ident:name><fstre>");
     }
 }

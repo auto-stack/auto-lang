@@ -98,7 +98,8 @@ fn flip_template(template: &str) -> String {
             continue;
         }
         if trimmed.starts_with("$") && !trimmed.starts_with("${") {
-            result.push(format!("{}", &trimmed[1..].trim()));
+            let code = &trimmed[1..].trim();
+            result.push(format!("{}", code));
         } else {
             result.push(format!("`{}`", line));
         }
@@ -112,6 +113,8 @@ fn flip_template(template: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use ast::Key;
+
     use super::*;
 
     #[test]
@@ -240,6 +243,25 @@ mod tests {
     }
 
     #[test]
+    fn test_for_with_mid() {
+        let code = r#"$ for i in 0..10 { `$i`; mid(",") }"#;
+        let scope = Universe::new();
+        let result = eval_template(code, scope).unwrap();
+        assert_eq!(result.result.to_string(), "0,1,2,3,4,5,6,7,8,9");
+    }
+
+    #[test]
+    fn test_for_with_mid_and_newline() {
+        let code = r#"
+$ for i in 0..10 { 
+    ${i}${mid(",")}
+$ }"#;
+        let scope = Universe::new();
+        let result = eval_template(code, scope).unwrap();
+        assert_eq!(result.result.to_string(), "\n    0,\n    1,\n    2,\n    3,\n    4,\n    5,\n    6,\n    7,\n    8,\n    9");
+    }
+
+    #[test]
     fn test_fn() {
         let code = "fn add(a, b) { a + b }; add(12, 2)";
         let result = run(code).unwrap();
@@ -333,25 +355,25 @@ mod tests {
 
     #[test]
     fn test_fstr() {
-        let code = r#"var name = "auto"; f"hello $name, now!"#;
+        let code = r#"var name = "auto"; f"hello $name, now!""#;
         let result = run(code).unwrap();
         assert_eq!(result, "hello auto, now!");
     }
 
     #[test]
     fn test_fstr_with_expr() {
-        let code = r#"var a = 1; var b = 2; f"a + b = ${a+b}"#;
+        let code = r#"var a = 1; var b = 2; f"a + b = ${a+b}""#;
         let result = run(code).unwrap();
         assert_eq!(result, "a + b = 3");
     }
 
     #[test]
     fn test_fstr_with_addition() {
-        let code = r#"`const ComTxIPduCalloutType ComTxIPduCallouts[${no_tx_msgs + 1}u]`"#;
+        let code = r#"`[${no_tx_msgs + 1}u]`"#;
         let mut scope = Universe::new();
         scope.set_global("no_tx_msgs", Value::Int(9));
         let result = run_with_scope(code, scope).unwrap();
-        assert_eq!(result, "10u");
+        assert_eq!(result, "[10u]");
     }
 
     #[test]
@@ -487,42 +509,62 @@ for i in 0..10 {
     }
 
     #[test]
+    fn test_flip_template_with_multiple_lines() {
+        let template = r#"
+$ for row in rows {
+{
+    name: ${row.name},
+    age: ${row.age},
+}${mid(",")}
+$ }
+"#;
+        let result = flip_template(template);
+        assert_eq!(result, r#"``
+for row in rows {
+`{`
+`    name: ${row.name},`
+`    age: ${row.age},`
+`}${mid(",")}`
+}
+``"#);
+    }
+
+
+    #[test]
     fn test_eval_template() {
         let code = r#"
-#include "CanIf_Lcfg.h"
-#include "CanIf_ConfigTypes.h"
-#if defined(USE_CANSM)
-#include "CanSM_CanIf.h"
-#include "CanSM.h"
-#endif
-#if defined(USE_CANTP)
-#include "CanTp.h"
-#include "CanTp_Cbk.h"
-#endif
-#if defined(USE_PDUR)
-#include "PduR_PbCfg.h"
-#include "PduR.h"
-#include "PduR_CanIf.h"
-#endif
-#if defined(USE_CANNM)
-#include "CanNm_Cfg.h"
-#include "CanNm_Cbk.h"
-#endif
-#if defined(USE_OSEKNM)
-#include "OsekNm.h"
-#endif
-#if defined(USE_XCP)
-#include "Xcp.h"
-#include "XcpOnCan_Cbk.h"
-#endif
-
-#if defined(USE_CANPTCNM)
-extern void CanNmPtc_RxIndication(PduIdType CanNmRxPduId,
-      const  PduInfoType *CanNmRxPduPtr);
-#endif
+        var rows = [
+            { name: "Alice", age: 20 }
+            { name: "Bob", age: 21 }
+            { name: "Charlie", age: 22 }
+        ]
+        "#;
+        let interpreter = interpret(code).unwrap();
+        let scope = interpreter.scope.take();
+        let template = r#"
+$ for row in rows {
+{
+    name: ${row.name},
+    age: ${row.age},
+}${mid(",")}
+$ }
 "#;
-        let scope = Universe::new();
-        let result = eval_template(code, scope).unwrap();
+        let result = eval_template(template, scope).unwrap();
+        let expected = r#"
+{
+    name: Alice,
+    age: 20,
+},
+{
+    name: Bob,
+    age: 21,
+},
+{
+    name: Charlie,
+    age: 22,
+}
+"#;
+        assert_eq!(result.result.to_string(), expected);
     }
 
 
@@ -534,11 +576,8 @@ extern void CanNmPtc_RxIndication(PduIdType CanNmRxPduId,
             { name: "Bob", age: 21 }
             { name: "Charlie", age: 22 }
         ]
-        for n in items {
-            print(`Hi ${n.name}`)   
-        }
-        for i, n in items {
-            print(`${i}, ${n.name}`)
+        for item in items {
+            print(f"Hi ${item.name}")
         }
         "#;
         let result = run(code).unwrap();
