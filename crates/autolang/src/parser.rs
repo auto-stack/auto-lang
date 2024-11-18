@@ -486,17 +486,19 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
+    /// 解析fstr
+    /// fstr: [FStrSart, (FStrParts | ${Expr} | $Ident)*, FStrEnd]
     pub fn fstr(&mut self) -> Result<Expr, ParseError> {
         // skip fstrs (e.g. ` or f")
         self.expect(TokenKind::FStrStart)?;
 
         // parse fstr parts or interpolated exprs
         let mut parts = Vec::new();
-        while !self.is_kind(TokenKind::FStrEnd) {
+        while !(self.is_kind(TokenKind::FStrEnd) || self.is_kind(TokenKind::EOF)) {
             // $ expressions
             if self.is_kind(TokenKind::Dollar) {
                 self.next(); // skip $
-                if self.is_kind(TokenKind::LBrace) {
+                if self.is_kind(TokenKind::LBrace) { // ${Expr}
                     self.expect(TokenKind::LBrace)?;
                     // NOTE: allow only one expression in a ${} block
                     if !self.is_kind(TokenKind::RBrace) {
@@ -505,7 +507,7 @@ impl<'a> Parser<'a> {
                         // self.expect_eos()?;
                     }
                     self.expect(TokenKind::RBrace)?;
-                } else {
+                } else { // $Ident
                     let ident = self.ident()?;
                     parts.push(ident);
                     self.expect(TokenKind::Ident)?;
@@ -550,7 +552,7 @@ impl<'a> Parser<'a> {
             Fn::new(Name::new(id.clone()), params, body, None)
         } else { // single expression
             let expr = self.expr()?;
-            Fn::new(Name::new(id.clone()), params, Body { stmts: vec![Stmt::Expr(expr)] }, None)
+            Fn::new(Name::new(id.clone()), params, Body::single_expr(expr), None)
         };
         // put lambda in scope
         self.scope.define(id.as_str(), Rc::new(Meta::Fn(lambda.clone())));
@@ -596,22 +598,26 @@ impl<'a> Parser<'a> {
         Ok(stmt)
     }
 
-    pub fn skip_empty_lines(&mut self) {
+    pub fn skip_empty_lines(&mut self) -> usize {
+        let mut count = 0;
         while self.is_kind(TokenKind::Newline) {
+            count += 1;
             self.next();
         }
+        count
     }
 
     pub fn body(&mut self) -> Result<Body, ParseError> {
         self.expect(TokenKind::LBrace)?;
         let mut stmts = Vec::new();
-        self.skip_empty_lines();
+        let new_lines = self.skip_empty_lines();
+        let has_new_line = new_lines > 0;
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             stmts.push(self.stmt()?);
             self.expect_eos()?;
         }
         self.expect(TokenKind::RBrace)?;
-        Ok(Body { stmts })
+        Ok(Body { stmts, has_new_line })
     }
 
     pub fn if_contents(&mut self) -> Result<(Vec<Branch>, Option<Body>), ParseError> {
@@ -664,8 +670,9 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::In)?;
             let range = self.iterable_expr()?;
             let body = self.body()?;
+            let has_new_line = body.has_new_line;
             self.scope.exit_scope();
-            return Ok(Stmt::For(iter, range, body));
+            return Ok(Stmt::For(For { iter, range, body, new_line: has_new_line }));
         }
         error_pos!("Expected for loop, got {:?}", self.kind())
     }
@@ -1015,6 +1022,13 @@ mod tests {
     }
 
     #[test]
+    fn test_for_with_mid() {
+        let code = r#"for i in 0..10 { print(i); mid(",") }"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 0) (op ..) (int 10)) (body (stmt (call (name print) (args (name i))) (stmt (call (name mid) (args (str \",\")))))");
+    }
+
+    #[test]
     fn test_object() {
         let code = "{x:1, y:2}";
         let ast = parse_once(code);
@@ -1171,7 +1185,7 @@ mod tests {
 
     #[test]
     fn test_fstr() {
-        let code = r#"f"hello $name"#;
+        let code = r#"f"hello $name""#;
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (stmt (fstr (str \"hello \") (name name))))");
     }
@@ -1186,10 +1200,10 @@ mod tests {
 
     #[test]
     fn test_fstr_with_expr() {
-        let code = r#"var a = 1; var b = 2; f"a + b = ${a+b}"#;
+        let code = r#"var a = 1; var b = 2; f"a + b = ${a+b}""#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(stmt (fstr (str \"a + b = \") (bina (name a) (op +) (name b)) (str \"\")))");
+        assert_eq!(last.to_string(), "(stmt (fstr (str \"a + b = \") (bina (name a) (op +) (name b))))");
     }
 
     #[test]

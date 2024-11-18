@@ -104,7 +104,7 @@ impl Evaler {
         match stmt {
             Stmt::Expr(expr) => self.eval_expr(expr),
             Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
-            Stmt::For(iter, expr, body) => self.eval_for(iter, expr, body),
+            Stmt::For(for_stmt) => self.eval_for(for_stmt),
             Stmt::Var(var) => self.eval_var(var),
             Stmt::Fn(_) => Value::Nil,
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
@@ -122,6 +122,20 @@ impl Evaler {
             EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
             EvalMode::CONFIG => Value::Array(res),
             EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| v.to_string()).collect::<Vec<String>>().join("\n")),
+        }
+    }
+
+    fn eval_loop_body(&mut self, body: &Body, is_mid: bool, is_new_line: bool) -> Value {
+        self.universe.borrow_mut().set_local("is_mid", Value::Bool(is_mid));
+        let mut res = Vec::new();
+        let sep = if is_new_line { "\n" } else { "" };
+        for stmt in body.stmts.iter() {
+            res.push(self.eval_stmt(stmt));
+        }
+        match self.mode {
+            EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
+            EvalMode::CONFIG => Value::Array(res),
+            EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| v.to_string()).collect::<Vec<String>>().join(sep)),
         }
     }
 
@@ -149,29 +163,47 @@ impl Evaler {
         }
     }
 
-    fn eval_for(&mut self, iter: &Iter, range: &Expr, body: &Body) -> Value {
+    fn eval_for(&mut self, for_stmt: &For) -> Value {
+        let iter = &for_stmt.iter;
+        let body = &for_stmt.body;
         let mut max_loop = 1000;
-        let range = self.eval_expr(range);
+        let range = self.eval_expr(&for_stmt.range);
         let mut res = Vec::new();
+        let mut is_mid = true;
+        let is_new_line = for_stmt.new_line;
+        let sep = if for_stmt.new_line { "\n" } else { "" };
+        self.universe.borrow_mut().enter_scope();
         match range {
             Value::Range(start, end) => {
+                let len = (end - start) as usize;
                 for (idx, n) in (start..end).enumerate() {
+                    if idx == len - 1 {
+                        is_mid = false;
+                    }
                     self.eval_iter(iter, idx, Value::Int(n));
-                    res.push(self.eval_body(body));
+                    res.push(self.eval_loop_body(body, is_mid, is_new_line));
                     max_loop -= 1;
                 }
             }
             Value::RangeEq(start, end) => {
+                let len = (end - start) as usize;
                 for (idx, n) in (start..=end).enumerate() {
+                    if idx == len - 1 {
+                        is_mid = false;
+                    }
                     self.eval_iter(iter, idx, Value::Int(n));
-                    res.push(self.eval_body(body));
+                    res.push(self.eval_loop_body(body, is_mid, is_new_line));
                     max_loop -= 1;
                 }
             }
             Value::Array(values) => {
+                let len = values.len();
                 for (idx, item) in values.iter().enumerate() {
+                    if idx == len - 1 {
+                        is_mid = false;
+                    }
                     self.eval_iter(iter, idx, item.clone());
-                    res.push(self.eval_body(body));
+                    res.push(self.eval_loop_body(body, is_mid, is_new_line));
                     max_loop -= 1;
                 }
             }
@@ -179,13 +211,14 @@ impl Evaler {
                 return Value::Error(format!("Invalid range {}", range));
             }
         }
+        self.universe.borrow_mut().exit_scope();
         if max_loop <= 0 {
             return Value::Error("Max loop reached".to_string());
         } else {
             match self.mode {
                 EvalMode::SCRIPT => Value::Void,
                 EvalMode::CONFIG => Value::Array(res),
-                EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| v.to_string()).collect::<Vec<String>>().join("\n")),
+                EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| v.to_string()).collect::<Vec<String>>().join(sep)),
             }
         }
     }
@@ -500,6 +533,25 @@ impl Evaler {
         value
     }
 
+    fn eval_mid(&mut self, node: &Node) -> Value {
+        let is_mid = self.universe.borrow().lookup_val("is_mid").unwrap_or(Value::Bool(false)).as_bool();
+        let args = &node.args.array;
+        let mut res = "".to_string();
+        if args.len() >= 1 {
+            if is_mid { // mid 
+                let mid = self.eval_expr(&args[0]);
+                res = mid.to_string();
+            }
+        }
+        if args.len() >= 2 {
+            if !is_mid { // last
+                let last = self.eval_expr(&args[1]);
+                res = last.to_string();
+            }
+        }
+        Value::Str(res)
+    }
+
     fn eval_node(&mut self, node: &Node) -> Value {
         let args_array = node.args.array.iter().map(|arg| self.eval_expr(arg)).collect();
         let args_named = node.args.map.iter().map(|(key, value)| {
@@ -510,6 +562,9 @@ impl Evaler {
         let mut props = BTreeMap::new();
         let mut body = MetaID::Nil;
         let name = &node.name.text;
+        if name == "mid" {
+            return self.eval_mid(&node);
+        }
         let mode = self.tempo_for_nodes.get(name).unwrap_or(&EvalTempo::IMMEDIATE);
         match mode {
             EvalTempo::IMMEDIATE => {
