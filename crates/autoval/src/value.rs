@@ -53,6 +53,78 @@ impl Into<ValueKey> for &str {
     }
 }
 
+impl From<Obj> for Value {
+    fn from(obj: Obj) -> Value {
+        Value::Obj(obj)
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Value {
+        Value::Str(s)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(b: bool) -> Value {
+        Value::Bool(b)
+    }
+}
+
+impl From<u8> for Value {
+    fn from(u: u8) -> Value {
+        Value::Uint(u as u32)
+    }
+}
+
+impl From<i32> for Value {
+    fn from(i: i32) -> Value {
+        Value::Int(i)
+    }
+}
+
+impl From<u32> for Value {
+    fn from(u: u32) -> Value {
+        Value::Uint(u)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(f: f64) -> Value {
+        Value::Float(f)
+    }
+}
+
+impl From<i64> for Value {
+    fn from(i: i64) -> Value {
+        Value::Int(i as i32)
+    }
+}
+
+impl From<u64> for Value {
+    fn from(u: u64) -> Value {
+        Value::Uint(u as u32)
+    }
+}   
+
+impl From<f32> for Value {
+    fn from(f: f32) -> Value {
+        Value::Float(f as f64)
+    }
+}
+
+impl From<Vec<Value>> for Value {
+    fn from(v: Vec<Value>) -> Value {
+        Value::Array(v)
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Value {
+        Value::Str(s.to_string())
+    }
+}
+
 impl Obj {
     pub fn new() -> Self {
         Obj { values: BTreeMap::new() }
@@ -66,8 +138,8 @@ impl Obj {
         self.get(key).unwrap_or(Value::Nil)
     }
 
-    pub fn set(&mut self, key: impl Into<ValueKey>, value: Value) {
-        self.values.insert(key.into(), value);
+    pub fn set(&mut self, key: impl Into<ValueKey>, value: impl Into<Value>) {
+        self.values.insert(key.into(), value.into());
     }
 
     pub fn lookup(&self, name: &str) -> Option<Value> {
@@ -130,6 +202,11 @@ impl Obj {
     }
 }
 
+impl Display for Obj {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        print_object(f, self)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -154,18 +231,6 @@ pub enum Value {
     View(View),
     Meta(MetaID),
     Error(String),
-}
-
-impl Into<Value> for String {
-    fn into(self) -> Value {
-        Value::Str(self)
-    }
-}
-
-impl Into<Value> for i32 {
-    fn into(self) -> Value {
-        Value::Int(self)
-    }
 }
 
 // constructors
