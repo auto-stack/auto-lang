@@ -1,5 +1,6 @@
 use std::fmt::{self, write, Display, Formatter};
 use std::collections::BTreeMap;
+use crate::types::{Type, TypeInfo};
 
 #[derive(Debug, Clone, PartialEq, Hash, Ord, Eq, PartialOrd)]
 pub enum ValueKey {
@@ -230,6 +231,7 @@ pub enum Value {
     Model(Model),
     View(View),
     Meta(MetaID),
+    Method(Method),
     Error(String),
 }
 
@@ -302,6 +304,7 @@ impl Display for Value {
             Value::Widget(widget) => write!(f, "{}", widget),
             Value::Meta(meta) => write!(f, "{}", meta),
             Value::Model(model) => write!(f, "{}", model),
+            Value::Method(method) => write!(f, "{}", method),
             Value::View(view) => write!(f, "{}", view),
         }
     }
@@ -418,6 +421,21 @@ static STR_NIL: String = String::new();
 
 // Quick Readers
 impl Value {
+    pub fn str(&self) -> String {
+        format!("{}", self)
+    }
+
+    pub fn v_str(&self) -> Value {
+        Value::Str(self.str())
+    }
+
+    pub fn v_up(&self) -> Value {
+        match self {
+            Value::Str(s) => Value::Str(s.to_uppercase()),
+            _ => Value::Nil,
+        }
+    }
+
     pub fn as_array(&self) -> &Vec<Value> {
         match self {
             Value::Array(value) => value,
@@ -479,48 +497,6 @@ pub struct Sig {
 pub struct Param {
     pub name: String,
     pub ty: Box<Type>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Type {
-    Void,
-    Int,
-    Float,
-    Bool,
-    Str,
-    User(TypeInfo),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypeInfo {
-    pub name: String,
-    pub members: Vec<Member>,
-    pub methods: Vec<Fn>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Member {
-    pub name: String,
-    pub ty: Box<Type>,
-}
-
-impl fmt::Display for Type {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Type::Void => write!(f, "void"),
-            Type::Int => write!(f, "int"),
-            Type::Float => write!(f, "float"),
-            Type::Bool => write!(f, "bool"),
-            Type::Str => write!(f, "str"),
-            Type::User(type_info) => write!(f, "{}", type_info),
-        }
-    }
-}
-
-impl fmt::Display for TypeInfo {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -720,7 +696,20 @@ pub enum MetaID {
     Lambda(Sig),
     View(String),
     Body(String),
+    Method(MethodMeta),
     Nil,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MethodMeta {
+    pub name: String,
+    pub ty: Type,
+}
+
+impl fmt::Display for MethodMeta {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}::{}", self.ty, self.name)
+    }
 }
 
 impl fmt::Display for MetaID {
@@ -731,6 +720,7 @@ impl fmt::Display for MetaID {
             MetaID::View(id) => write!(f, "<view:{}>", id),
             MetaID::Body(id) => write!(f, "<body:{}>", id),
             MetaID::Nil => write!(f, "<meta-nil>"),
+            MetaID::Method(method) => write!(f, "<method:{}>", method),
         }
     }
 }
@@ -829,6 +819,24 @@ impl Model {
 impl View {
     pub fn find(&self, key: &str) -> Option<Value> {
         self.nodes.iter().find(|n| n.name == key).map(|n| Value::Node(n.clone()))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Method {
+    pub name: String,
+    pub target: Box<Value>,
+}
+
+impl fmt::Display for Method {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}.{}", self.target, self.name)
+    }
+}
+
+impl Method {
+    pub fn new(target: Value, name: String) -> Self {
+        Self { target: Box::new(target), name }
     }
 }
 

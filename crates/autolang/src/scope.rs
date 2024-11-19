@@ -1,14 +1,17 @@
 use std::collections::HashMap;
-use autoval::value::Value;
-use autoval::value::Sig;
-use autoval::value::MetaID;
+use autoval::Value;
+use autoval::Sig;
+use autoval::MetaID;
 use crate::ast;
 use crate::ast::Call;
 use crate::libs;
 use std::rc::Rc;
+use autoval::TypeInfoStore;
+
 pub struct Universe {
     pub scopes: Vec<Scope>,
     pub builtins: HashMap<String, Value>,
+    pub types: TypeInfoStore,
     pub widget: Value,
     lambda_counter: usize,
 }
@@ -22,7 +25,7 @@ impl Default for Universe {
 impl Universe {
     pub fn new() -> Universe {
         let builtins = libs::builtin::builtins();
-        let mut uni = Universe { scopes: vec![Scope::new()], builtins, widget: Value::Nil, lambda_counter: 0 };
+        let mut uni = Universe { scopes: vec![Scope::new()], builtins, types: TypeInfoStore::new(), widget: Value::Nil, lambda_counter: 0 };
         uni.define_sys_types();
         uni
     }

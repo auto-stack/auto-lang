@@ -1,3 +1,5 @@
-pub mod value;
+mod value;
+mod types;
 
 pub use value::*;
+pub use types::*;

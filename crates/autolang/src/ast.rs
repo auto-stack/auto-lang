@@ -1,6 +1,6 @@
 use std::fmt;
 use serde::Serialize;
-use autoval::value::Op;
+use autoval::Op;
 
 #[derive(Debug)]
 pub struct Code {
@@ -227,6 +227,21 @@ impl Args {
 
     pub fn lookup(&self, name: &str) -> Option<Expr> {
         self.map.iter().find(|(n, _)| n.text == name).map(|(_, v)| v.clone())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.array.is_empty() && self.map.is_empty()
+    }
+}
+
+impl fmt::Display for Args {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(args")?;
+        fmt_array(f, &self.array)?;
+        for (name, expr) in self.map.iter() {
+            write!(f, " (pair {} {})", name, expr)?;
+        }
+        write!(f, ")")
     }
 }
 
