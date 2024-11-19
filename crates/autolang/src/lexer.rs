@@ -79,8 +79,16 @@ impl<'a> Lexer<'a> {
             } else if c == '.' {
                 let mut more = self.chars.clone();
                 more.next();
-                if more.peek() == Some(&'.') {
-                    break;
+                match more.peek() {
+                    Some(c) => {
+                        // floats that ends with a dot (like "10.") is not allowed because we want methods on int like `10.str()`
+                        if !c.is_digit(10) {
+                            break;
+                        }
+                    }
+                    _ => {
+                        break;
+                    }
                 }
                 has_dot = true;
                 text.push(c);

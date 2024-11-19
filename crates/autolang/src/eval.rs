@@ -2,13 +2,14 @@ use crate::ast::*;
 use crate::parser;
 use crate::scope;
 use crate::scope::Meta;
-use autoval::value::{Value, Op, Obj, ValueKey, ExtFn, MetaID, Sig};
-use autoval::value;
-use autoval::value::{add, sub, mul, div, comp};
+use autoval::{Value, Op, Obj, ValueKey, ExtFn, MetaID, Sig, Method, Type};
+use autoval;
+use autoval::{add, sub, mul, div, comp};
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use crate::ast;
 use crate::error_pos;
 
 pub enum EvalTempo {
@@ -365,6 +366,9 @@ impl Evaler {
                     let node: Node = call.clone().into();
                     return self.eval_node(&node);
                 }
+                Value::Method(method) => {
+                    return self.eval_method(&method, &call.args);
+                }
                 _ => {
                     return Value::Error(format!("Invalid function call {}", name));
                 }
@@ -384,6 +388,28 @@ impl Evaler {
             let node: Node = call.clone().into();
             return self.eval_node(&node);
         }
+    }
+
+    pub fn eval_method(&mut self, method: &Method, args: &Args) -> Value {
+        println!("lookup method {} on {}", method.name, method.target);
+        let target = &method.target;
+        let name = &method.name;
+        // methods for Any
+        match target.as_ref() {
+            Value::Str(_) => {
+                let method = self.universe.borrow().types.lookup_method(Type::Str, name.clone());
+                if let Some(method) = method {
+                    return method(&target);
+                }
+            }
+            _ => {
+                let method = self.universe.borrow().types.lookup_method(Type::Any, name.clone());
+                if let Some(method) = method {
+                    return method(&target);
+                }
+            }
+        }
+        Value::Error(format!("Invalid method {} on {}", name, target))
     }
 
     fn eval_fn_call_with_sig(&mut self, sig: &Sig, args: &Args) -> Value {
@@ -508,9 +534,22 @@ impl Evaler {
                 Expr::Ident(name) => view.find(&name.text),
                 _ => None,
             }
-            _ => None,
+            _ => {
+                // try to lookup method
+                match right {
+                    Expr::Ident(name) => {
+                        // TODO: too long
+                        if self.universe.borrow().types.lookup_method_for_value(&left_value, name.text.clone()).is_some() {
+                            Some(Value::Method(Method::new(left_value.clone(), name.text.clone())))
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            }
         };
-        res.unwrap_or(Value::Error(format!("Invalid key {} in object {}", right, left_value)))
+        res.unwrap_or(Value::Error(format!("Invalid dot expression {}.{}", left_value, right)))
     }
 
     fn eval_widget(&mut self, widget: &Widget) -> Value {
@@ -522,11 +561,11 @@ impl Evaler {
             vars.push((ValueKey::Str(var.name.text.clone()), value.clone()));
             self.universe.borrow_mut().set_local(&var.name.text, value);
         }
-        let model = value::Model { values: vars };
+        let model = autoval::Model { values: vars };
         // view
         let view_id = format!("{}.view", name);
         self.universe.borrow_mut().define(&view_id, Rc::new(Meta::View(widget.view.clone())));
-        let widget_value = value::Widget { name: name.clone(), model, view_id: MetaID::View(view_id) };
+        let widget_value = autoval::Widget { name: name.clone(), model, view_id: MetaID::View(view_id) };
         let value = Value::Widget(widget_value);
         self.universe.borrow_mut().set_local(name, value.clone());
         self.universe.borrow_mut().widget = value.clone();
@@ -557,7 +596,7 @@ impl Evaler {
         let args_named = node.args.map.iter().map(|(key, value)| {
             (ValueKey::Str(key.text.clone()), self.eval_expr(value))
         }).collect();
-        let args = value::Args { array: args_array, named: args_named };
+        let args = autoval::Args { array: args_array, named: args_named };
         let mut nodes = Vec::new();
         let mut props = BTreeMap::new();
         let mut body = MetaID::Nil;
@@ -587,7 +626,7 @@ impl Evaler {
                 self.universe.borrow_mut().define_global(&name, Rc::new(Meta::Body(node.body.clone())));
             }
         }
-        Value::Node(value::Node { name: node.name.text.clone(), args, props, nodes, body })
+        Value::Node(autoval::Node { name: node.name.text.clone(), args, props, nodes, body })
     }
 
     fn eval_value_node_body(&mut self, node_val: &mut Value) {
@@ -643,7 +682,7 @@ fn to_meta_id(meta: &Rc<scope::Meta>) -> MetaID {
 fn to_value_sig(fn_decl: &Fn) -> Sig {
     let mut params = Vec::new();
     for param in fn_decl.params.iter() {
-        params.push(value::Param {
+        params.push(autoval::Param {
             name: param.name.text.clone(),
             ty: Box::new(to_value_type(&param.ty)),
         });
@@ -652,16 +691,12 @@ fn to_value_sig(fn_decl: &Fn) -> Sig {
     Sig { name: fn_decl.name.text.clone(), params, ret }
 }
 
-fn to_value_type(ty: &Type) -> value::Type {
+fn to_value_type(ty: &ast::Type) -> autoval::Type {
     match ty {
-        Type::Int => value::Type::Int,
-        Type::Float => value::Type::Float,
-        Type::Bool => value::Type::Bool,
-        Type::Str => value::Type::Str,
-        Type::User(type_decl) => value::Type::User(to_value_type_info(type_decl)),
+        ast::Type::Int => autoval::Type::Int,
+        ast::Type::Float => autoval::Type::Float,
+        ast::Type::Bool => autoval::Type::Bool,
+        ast::Type::Str => autoval::Type::Str,
+        ast::Type::User(type_decl) => autoval::Type::User(type_decl.name.text.clone()),
     }
-}
-
-fn to_value_type_info(type_decl: &TypeDecl) -> value::TypeInfo {
-    value::TypeInfo { name: type_decl.name.text.clone(), members: Vec::new(), methods: Vec::new() }
 }

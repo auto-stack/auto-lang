@@ -13,7 +13,7 @@ pub mod interp;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use autoval::value::Value;
+use autoval::Value;
 use crate::eval::EvalMode;
 use crate::scope::Universe;
 
@@ -421,7 +421,7 @@ $ }"#;
         match result {
             Ok(result) => {
                 match result.result {
-                    autoval::value::Value::Node(app) => {
+                    autoval::Value::Node(app) => {
                         println!("node: {}", app.to_string());
                         app.nodes.iter().for_each(|node| {
                             println!("node: {}", node.to_string());
@@ -582,6 +582,18 @@ $ }
         "#;
         let result = run(code).unwrap();
         assert_eq!(result, "");
+    }
+
+
+    #[test]
+    fn test_to_string() {
+        let code = r#"1.str()"#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "1");
+
+        let code = r#""hello".up()"#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "HELLO");
     }
 }
 

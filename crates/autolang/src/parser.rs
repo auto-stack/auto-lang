@@ -3,7 +3,7 @@ use crate::ast::*;
 use crate::lexer::Lexer;
 use crate::scope::Universe;
 use crate::scope::Meta;
-use autoval::value::Op;
+use autoval::Op;
 use std::i32;
 use crate::error_pos;
 use std::rc::Rc;
