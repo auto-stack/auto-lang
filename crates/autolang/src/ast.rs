@@ -180,6 +180,7 @@ pub enum Expr {
     Str(String),
     Ident(Name),
     // composite exprs
+    Ref(Name),
     Unary(Op, Box<Expr>),
     Bina(Box<Expr>, Op, Box<Expr>),
     Array(Vec<Expr>),
@@ -289,6 +290,7 @@ impl fmt::Display for Expr {
             Expr::Bool(b) => write!(f, "({})", b),
             Expr::Str(s) => write!(f, "(str \"{}\")", s),
             Expr::Ident(n) => write!(f, "(name {})", n.text),
+            Expr::Ref(n) => write!(f, "(ref {})", n.text),
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
             Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
             Expr::Array(elems) => fmt_array(f, elems),

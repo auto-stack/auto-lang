@@ -63,6 +63,7 @@ pub enum TokenKind {
     In,
     Fn,
     Type,
+    Ref,
 
     // Format Str
     FStrStart,
@@ -137,6 +138,7 @@ impl fmt::Display for Token {
             TokenKind::CommentStart => write!(f, "</*>"),
             TokenKind::CommentEnd => write!(f, "<*/>"),
             TokenKind::Backtick => write!(f, "<`>"),
+            TokenKind::Ref => write!(f, "<ref>"),
             TokenKind::EOF => write!(f, "<eof>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }

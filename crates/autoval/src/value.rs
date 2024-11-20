@@ -233,6 +233,7 @@ pub enum Value {
     Meta(MetaID),
     Method(Method),
     Args(Args),
+    Ref(String),
     Error(String),
 }
 
@@ -299,7 +300,7 @@ impl Display for Value {
             Value::Fn(_) => write!(f, "fn"),
             Value::ExtFn(_) => write!(f, "extfn"),
             Value::Lambda(name) => write!(f, "lambda {}", name),
-            Value::Pair(key, value) => write!(f, "{}: {}", key, value),
+            Value::Pair(key, value) => write!(f, "{} : {}", key, value),
             Value::Obj(value) => print_object(f, value),
             Value::Node(node) => write!(f, "{}", node),
             Value::Widget(widget) => write!(f, "{}", widget),
@@ -308,6 +309,7 @@ impl Display for Value {
             Value::Method(method) => write!(f, "{}", method),
             Value::Args(args) => write!(f, "{}", args),
             Value::View(view) => write!(f, "{}", view),
+            Value::Ref(target) => write!(f, "(ref {})", target),
         }
     }
 }
