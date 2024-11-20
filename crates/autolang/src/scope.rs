@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use autoval::Value;
+use autoval::{Value, Args};
 use autoval::Sig;
 use autoval::MetaID;
 use crate::ast;
 use crate::ast::Call;
 use crate::libs;
 use std::rc::Rc;
-use autoval::TypeInfoStore;
+use autoval::{TypeInfoStore, ExtFn};
 
 pub struct Universe {
     pub scopes: Vec<Scope>,
@@ -83,6 +83,10 @@ impl Universe {
 
     pub fn set_global(&mut self, name: &str, value: Value) {
         self.global_scope_mut().set_val(name, value);
+    }
+
+    pub fn add_global_fn(&mut self, name: &str, f: fn(&Args) -> Value) {
+        self.global_scope_mut().set_val(name, Value::ExtFn(ExtFn { fun: f }));
     }
 
     pub fn get_global(&self, name: &str) -> Value {

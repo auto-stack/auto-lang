@@ -232,6 +232,7 @@ pub enum Value {
     View(View),
     Meta(MetaID),
     Method(Method),
+    Args(Args),
     Error(String),
 }
 
@@ -305,6 +306,7 @@ impl Display for Value {
             Value::Meta(meta) => write!(f, "{}", meta),
             Value::Model(model) => write!(f, "{}", model),
             Value::Method(method) => write!(f, "{}", method),
+            Value::Args(args) => write!(f, "{}", args),
             Value::View(view) => write!(f, "{}", view),
         }
     }
@@ -501,7 +503,7 @@ pub struct Param {
 
 #[derive(Debug, Clone)]
 pub struct ExtFn {
-    pub fun: fn(&Vec<Value>) -> Value,
+    pub fun: fn(&Args) -> Value,
 }
 
 impl PartialEq for ExtFn {
