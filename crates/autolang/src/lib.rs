@@ -13,7 +13,7 @@ pub mod interp;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use autoval::Value;
+use autoval::{Value, Args};
 use crate::eval::EvalMode;
 use crate::scope::Universe;
 
@@ -113,6 +113,7 @@ fn flip_template(template: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
     use ast::Key;
 
     use super::*;
@@ -594,6 +595,19 @@ $ }
         let code = r#""hello".up()"#;
         let result = run(code).unwrap();
         assert_eq!(result, "HELLO");
+    }
+
+    #[test]
+    fn test_insert_global_fn() {
+        fn myjoin(arg: &Args) -> Value {
+            Value::Str(arg.array.iter().map(|v| v.to_string()).collect::<Vec<String>>().join("::"))
+        }
+
+        let mut scope = Universe::new();
+        scope.add_global_fn("myjoin", myjoin);
+        let code = "myjoin(1, 2, 3)";
+        let result = run_with_scope(code, scope).unwrap();
+        assert_eq!(result, "1::2::3");
     }
 }
 

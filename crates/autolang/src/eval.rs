@@ -327,6 +327,17 @@ impl Evaler {
         }
     }
 
+    fn eval_args(&mut self, args: &ast::Args) -> autoval::Args {
+        let array: Vec<Value> = args.array.iter().map(|arg| self.eval_expr(arg)).collect();
+        let mut named: Vec<(ValueKey, Value)> = Vec::new();
+        for (key, value) in args.map.iter() {
+            let key_val = ValueKey::Str(key.text.clone());
+            let value_val = self.eval_expr(value);
+            named.push((key_val, value_val));
+        }
+        autoval::Args { array, named }
+    }
+
     fn call(&mut self, call: &Call) -> Value {
         let name = self.eval_expr(&call.name);
         if name != Value::Nil {
@@ -342,9 +353,8 @@ impl Evaler {
                     }
                 }
                 Value::ExtFn(ExtFn { fun }) => {
-                    let arg_vals: Vec<Value> = call.args.array
-                        .iter().map(|arg| self.eval_expr(arg)).collect();
-                    return fun(&arg_vals);
+                    let args_val = self.eval_args(&call.args);
+                    return fun(&args_val);
                 }
                 Value::Lambda(name) => {
                     // Try to lookup lambda in SymbolTable
