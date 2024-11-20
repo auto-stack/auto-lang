@@ -252,10 +252,23 @@ impl Evaler {
 
     fn asn(&mut self, left: &Expr, right: Value) -> Value {
         if let Expr::Ident(name) = left {
-            if self.universe.borrow().exists(&name.text) {
-                self.universe.borrow_mut().update_val(&name.text, right);
-            } else {
-                panic!("Invalid assignment, variable {} not found", name.text);
+            // check ref
+            let val = self.lookup(&name.text);
+            match val {
+                Value::Ref(target) => {
+                    if self.universe.borrow().exists(&target) {
+                        self.universe.borrow_mut().update_val(&target, right);
+                    } else {
+                        panic!("Invalid assignment, variable (ref {} -> {}) not found", name.text, target);
+                    }
+                }
+                _ => {
+                    if self.universe.borrow().exists(&name.text) {
+                        self.universe.borrow_mut().update_val(&name.text, right);
+                    } else {
+                        panic!("Invalid assignment, variable {} not found", name.text);
+                    }
+                }
             }
             Value::Void
         } else {
@@ -401,7 +414,6 @@ impl Evaler {
     }
 
     pub fn eval_method(&mut self, method: &Method, args: &Args) -> Value {
-        println!("lookup method {} on {}", method.name, method.target);
         let target = &method.target;
         let name = &method.name;
         // methods for Any
@@ -482,16 +494,21 @@ impl Evaler {
             Expr::Bool(value) => Value::Bool(*value),
             Expr::Ident(name) => {
                 let res = self.lookup(&name.text);
-                if res == Value::Nil {
-                    // try to lookup in meta and builtins
-                    let meta = self.universe.borrow().lookup_meta(&name.text);
-                    if let Some(meta) = meta {
-                        return Value::Meta(to_meta_id(&meta));
+                match res {
+                    Value::Ref(target) => {
+                        let target_val = self.eval_expr(&Expr::Ident(Name::new(target)));
+                        target_val
                     }
-                    // Try builtin
-                    self.universe.borrow().lookup_builtin(&name.text).unwrap_or(Value::Nil)
-                } else {
-                    res
+                    Value::Nil => {
+                        // try to lookup in meta and builtins
+                        let meta = self.universe.borrow().lookup_meta(&name.text);
+                        if let Some(meta) = meta {
+                            return Value::Meta(to_meta_id(&meta));
+                        }
+                        // Try builtin
+                        self.universe.borrow().lookup_builtin(&name.text).unwrap_or(Value::Nil)
+                    }
+                    _ => res,
                 }
             },
             Expr::Unary(op, e) => self.eval_una(op, e),
@@ -505,6 +522,7 @@ impl Evaler {
             Expr::TypeInst(name, entries) => self.type_inst(name, entries),
             Expr::Lambda(lambda) => Value::Lambda(lambda.name.text.clone()),
             Expr::FStr(fstr) => self.fstr(fstr),
+            Expr::Ref(name) => Value::Ref(name.text.clone()),
             Expr::Nil => Value::Nil,
         }
     }

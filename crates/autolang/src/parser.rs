@@ -5,6 +5,7 @@ use crate::scope::Universe;
 use crate::scope::Meta;
 use autoval::Op;
 use std::i32;
+use std::path::Prefix;
 use crate::error_pos;
 use std::rc::Rc;
 
@@ -51,12 +52,13 @@ const PREC_CMP: InfixPrec = infix_prec(6);
 const PREC_Range: InfixPrec = infix_prec(7);
 const PREC_ADD: InfixPrec = infix_prec(8);
 const PREC_MUL: InfixPrec = infix_prec(9);
-const PREC_SIGN: PrefixPrec = prefix_prec(10);
-const PREC_NOT: PrefixPrec = prefix_prec(11);
-const PREC_CALL: PostfixPrec = postfix_prec(12);
-const PREC_INDEX: PostfixPrec = postfix_prec(13);
-const PREC_DOT: InfixPrec = infix_prec(14);
-const PREC_ATOM: InfixPrec = infix_prec(15);
+const PREC_REF: PrefixPrec = prefix_prec(10);
+const PREC_SIGN: PrefixPrec = prefix_prec(11);
+const PREC_NOT: PrefixPrec = prefix_prec(12);
+const PREC_CALL: PostfixPrec = postfix_prec(13);
+const PREC_INDEX: PostfixPrec = postfix_prec(14);
+const PREC_DOT: InfixPrec = infix_prec(15);
+const PREC_ATOM: InfixPrec = infix_prec(16);
 
 fn prefix_power(op: Op) -> Result<PrefixPrec, ParseError> {
     match op {
@@ -201,6 +203,13 @@ impl<'a> Parser<'a> {
             TokenKind::LBrace => Expr::Object(self.object()?),
             // lambda
             TokenKind::VBar => self.lambda()?,
+            // ref
+            TokenKind::Ref => {
+                self.next(); // skip ref
+                let name = self.cur.text.clone();
+                self.next(); // skip name
+                Expr::Ref(Name::new(name))
+            }
             // fstr
             TokenKind::FStrStart => self.fstr()?,
             // normal
@@ -1240,5 +1249,12 @@ mod tests {
         println!("{}", pretty(&last.to_string()));
         assert_eq!(last.to_string(), "(node (name app) (body (node (name center) (body (stmt (call (name hello) (args (pair (name name) (str \"You\"))))))");
     }
+
+    #[test]
+    fn test_ref() {
+        let code = "var a = 1; var b = ref a; b";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (var (name a) (int 1)) (var (name b) (ref a)) (stmt (name b)))");
+    }   
 }
 
