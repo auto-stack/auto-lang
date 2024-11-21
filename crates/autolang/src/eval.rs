@@ -492,6 +492,10 @@ impl Evaler {
             // Why not move here?
             Expr::Str(value) => Value::Str(value.clone()),
             Expr::Bool(value) => Value::Bool(*value),
+            Expr::Ref(target) => {
+                let target_val = self.eval_expr(&Expr::Ident(target.clone()));
+                target_val
+            }
             Expr::Ident(name) => {
                 let res = self.lookup(&name.text);
                 match res {
