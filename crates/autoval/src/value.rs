@@ -14,6 +14,15 @@ pub struct Obj {
     values: BTreeMap<ValueKey, Value>,
 }
 
+impl IntoIterator for Obj {
+    type Item = (ValueKey, Value);
+    type IntoIter = std::collections::btree_map::IntoIter<ValueKey, Value>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.values.into_iter()
+    }
+}
+
 impl Display for ValueKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -196,6 +205,17 @@ impl Obj {
         self.get_bool_or(name, false)
     }
 
+    pub fn get_array_or(&self, name: &str, default: &Vec<Value>) -> Vec<Value> {
+        match self.get(ValueKey::Str(name.to_string())) {
+            Some(Value::Array(a)) => a,
+            _ => default.clone(),
+        }
+    }
+
+    pub fn get_array_of(&self, name: &str) -> Vec<Value> {
+        self.get_array_or(name, &vec![])
+    }
+
     pub fn merge(&mut self, other: Obj) {
         for (key, value) in other.values {
             self.set(key, value);
@@ -241,6 +261,10 @@ pub enum Value {
 impl Value {
     pub fn array() -> Self {
         Value::Array(vec![])
+    }
+
+    pub fn str_array(values: Vec<impl Into<String>>) -> Self {
+        Value::Array(values.into_iter().map(|s| Value::Str(s.into())).collect())
     }
 
     pub fn obj() -> Self {
@@ -687,6 +711,10 @@ impl fmt::Display for Args {
 impl Args {
     pub fn new() -> Self {
         Self { array: Vec::new(), named: Vec::new() }
+    }
+
+    pub fn array(values: Vec<impl Into<Value>>) -> Self {
+        Self { array: values.into_iter().map(|v| v.into()).collect(), named: Vec::new() }
     }
 
     pub fn is_empty(&self) -> bool {
