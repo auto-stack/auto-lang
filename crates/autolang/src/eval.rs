@@ -225,7 +225,10 @@ impl Evaler {
     }
 
     fn eval_var(&mut self, var: &Var) -> Value {
-        let value = self.eval_expr(&var.expr);
+        let value = match &var.expr {
+            Expr::Ref(target) => Value::Ref(target.text.clone()),
+            _ => self.eval_expr(&var.expr),
+        };
         self.universe.borrow_mut().set_local(&var.name.text, value);
         Value::Void
     }
@@ -256,6 +259,7 @@ impl Evaler {
             let val = self.lookup(&name.text);
             match val {
                 Value::Ref(target) => {
+                    println!("ref: {}", target);
                     if self.universe.borrow().exists(&target) {
                         self.universe.borrow_mut().update_val(&target, right);
                     } else {
@@ -263,6 +267,7 @@ impl Evaler {
                     }
                 }
                 _ => {
+                    println!("not ref: {}, {}", name.text, val);
                     if self.universe.borrow().exists(&name.text) {
                         self.universe.borrow_mut().update_val(&name.text, right);
                     } else {
