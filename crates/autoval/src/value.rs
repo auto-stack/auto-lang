@@ -502,6 +502,15 @@ impl Value {
     pub fn as_uint(&self) -> u32 {
         match self {
             Value::Uint(value) => *value,
+            Value::Int(value) => *value as u32,
+            _ => 0,
+        }
+    }
+
+    pub fn as_int(&self) -> i32 {
+        match self {
+            Value::Int(value) => *value,
+            Value::Uint(value) => *value as i32,
             _ => 0,
         }
     }
