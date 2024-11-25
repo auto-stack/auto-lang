@@ -101,7 +101,7 @@ impl Evaler {
         self.universe.borrow().dump();
     }
 
-    fn eval_stmt(&mut self, stmt: &Stmt) -> Value {
+    pub fn eval_stmt(&mut self, stmt: &Stmt) -> Value {
         match stmt {
             Stmt::Expr(expr) => self.eval_expr(expr),
             Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
@@ -641,8 +641,8 @@ impl Evaler {
         if name == "mid" {
             return self.eval_mid(&node);
         }
-        let mode = self.tempo_for_nodes.get(name).unwrap_or(&EvalTempo::IMMEDIATE);
-        match mode {
+        let tempo = self.tempo_for_nodes.get(name).unwrap_or(&EvalTempo::IMMEDIATE);
+        match tempo {
             EvalTempo::IMMEDIATE => {
                 for stmt in node.body.stmts.iter() {
                     let val = self.eval_stmt(stmt);
