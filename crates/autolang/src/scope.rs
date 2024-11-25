@@ -7,10 +7,12 @@ use crate::ast::Call;
 use crate::libs;
 use std::rc::Rc;
 use autoval::{TypeInfoStore, ExtFn};
+use std::any::Any;
 
 pub struct Universe {
     pub scopes: Vec<Scope>,
     pub builtins: HashMap<String, Value>,
+    pub evn_vals: HashMap<String, Box<dyn Any>>,
     pub types: TypeInfoStore,
     pub widget: Value,
     lambda_counter: usize,
@@ -25,7 +27,7 @@ impl Default for Universe {
 impl Universe {
     pub fn new() -> Universe {
         let builtins = libs::builtin::builtins();
-        let mut uni = Universe { scopes: vec![Scope::new()], builtins, types: TypeInfoStore::new(), widget: Value::Nil, lambda_counter: 0 };
+        let mut uni = Universe { scopes: vec![Scope::new()], builtins, evn_vals: HashMap::new(), types: TypeInfoStore::new(), widget: Value::Nil, lambda_counter: 0 };
         uni.define_sys_types();
         uni
     }
@@ -95,6 +97,14 @@ impl Universe {
 
     pub fn define(&mut self, name: &str, meta: Rc<Meta>) {
         self.current_scope_mut().put_symbol(name, meta);
+    }
+
+    pub fn define_env(&mut self, name: &str, val: Box<dyn Any>) {
+        self.evn_vals.insert(name.to_string(), val);
+    }
+
+    pub fn get_env(&self, name: &str) -> Option<&Box<dyn Any>> {
+        self.evn_vals.get(name)
     }
 
     pub fn define_global(&mut self, name: &str, meta: Rc<Meta>) {

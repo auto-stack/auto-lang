@@ -79,7 +79,7 @@ impl Evaler {
                             obj.set(key, *value);
                         }
                         Value::Obj(o) => {
-                            obj.merge(o);
+                            obj.merge(&o);
                         }
                         _ => {}
                     }
