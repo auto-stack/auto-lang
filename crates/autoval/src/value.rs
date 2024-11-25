@@ -144,6 +144,10 @@ impl Obj {
         self.values.get(&key.into()).cloned()
     }
 
+    pub fn get_mut(&mut self, key: impl Into<ValueKey>) -> Option<&mut Value> {
+        self.values.get_mut(&key.into())
+    }
+
     pub fn get_or_nil(&self, key: impl Into<ValueKey>) -> Value {
         self.get(key).unwrap_or(Value::Nil)
     }
@@ -216,9 +220,9 @@ impl Obj {
         self.get_array_or(name, &vec![])
     }
 
-    pub fn merge(&mut self, other: Obj) {
-        for (key, value) in other.values {
-            self.set(key, value);
+    pub fn merge(&mut self, other: &Obj) {
+        for (key, value) in &other.values {
+            self.set(key.clone(), value.clone());
         }
     }
 }
@@ -477,7 +481,7 @@ impl Value {
             _ => &OBJ_NIL,
         }
     }
-
+    
     pub fn as_string(&self) -> &String {
         match self {
             Value::Str(value) => value,
