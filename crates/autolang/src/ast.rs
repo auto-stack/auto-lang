@@ -570,11 +570,12 @@ impl fmt::Display for Model {
 #[derive(Debug, Clone)]
 pub struct View {
     pub nodes: Vec<(Name, Node)>,
+    pub body: Body,
 }
 
 impl Default for View {
     fn default() -> Self {
-        Self { nodes: Vec::new() }
+        Self { nodes: Vec::new(), body: Body::new() }
     }
 }
 

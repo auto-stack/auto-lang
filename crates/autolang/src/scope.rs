@@ -184,6 +184,7 @@ impl Universe {
 
     pub fn body_to_view(body: &ast::Body) -> ast::View {
         let mut view = ast::View::default();
+        // view.body = body.clone();
         for stmt in body.stmts.iter() {
             match stmt {
                 ast::Stmt::Node(node) => {
