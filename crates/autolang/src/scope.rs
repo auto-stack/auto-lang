@@ -139,6 +139,15 @@ impl Universe {
         self.builtins.get(name).cloned()
     }
 
+    pub fn lookup_val_mut(&mut self, name: &str) -> Option<&mut Value> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(value) = scope.get_val_mut(name) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
     pub fn update_val(&mut self, name: &str, value: Value) {
         for scope in self.scopes.iter_mut().rev() {
             if scope.exists(name) {
@@ -246,6 +255,10 @@ impl Scope {
 
     pub fn get_val(&self, name: &str) -> Option<Value> {
         self.vals.get(name).cloned()
+    }
+
+    pub fn get_val_mut(&mut self, name: &str) -> Option<&mut Value> {
+        self.vals.get_mut(name)
     }
 
     pub fn put_symbol(&mut self, name: &str, meta: Rc<Meta>) {

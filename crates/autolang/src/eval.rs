@@ -67,6 +67,9 @@ impl Evaler {
                 let mut value = Value::Nil;
                 for stmt in code.stmts.iter() {
                     value = self.eval_stmt(stmt);
+                    if value.is_error() {
+                        panic!("Error: {}", value);
+                    }
                 }
                 value
             }
@@ -274,30 +277,46 @@ impl Evaler {
     }
 
     fn asn(&mut self, left: &Expr, right: Value) -> Value {
-        if let Expr::Ident(name) = left {
-            // check ref
-            let val = self.lookup(&name.text);
-            match val {
-                Value::Ref(target) => {
-                    println!("ref: {}", target);
-                    if self.universe.borrow().exists(&target) {
-                        self.universe.borrow_mut().update_val(&target, right);
-                    } else {
-                        panic!("Invalid assignment, variable (ref {} -> {}) not found", name.text, target);
+        match left {
+            Expr::Ident(name) => {
+                // check ref
+                let val = self.lookup(&name.text);
+                match val {
+                    Value::Ref(target) => {
+                        println!("ref: {}", target);
+                        if self.universe.borrow().exists(&target) {
+                            self.universe.borrow_mut().update_val(&target, right);
+                        } else {
+                            panic!("Invalid assignment, variable (ref {} -> {}) not found", name.text, target);
+                        }
+                    }
+                    _ => {
+                        println!("not ref: {}, {}", name.text, val);
+                        if self.universe.borrow().exists(&name.text) {
+                            self.universe.borrow_mut().update_val(&name.text, right);
+                        } else {
+                            panic!("Invalid assignment, variable {} not found", name.text);
+                        }
                     }
                 }
-                _ => {
-                    println!("not ref: {}, {}", name.text, val);
-                    if self.universe.borrow().exists(&name.text) {
-                        self.universe.borrow_mut().update_val(&name.text, right);
-                    } else {
-                        panic!("Invalid assignment, variable {} not found", name.text);
+                Value::Void
+            },
+            Expr::Bina(left, op, right) => {
+                if matches!(op, Op::Dot) {
+                    match left.as_ref() {
+                        Expr::Ident(name) => {
+                            // TODO: support dot assignment 
+                            Value::Error(format!("Dot assignment not implemented yet {}", left))
+                        }
+                        _ => {
+                            Value::Error(format!("Invalid assignment {}", left))
+                        }
                     }
+                } else {
+                    Value::Error(format!("Invalid assignment {}", left))
                 }
             }
-            Value::Void
-        } else {
-            panic!("Invalid assignment");
+            _ => Value::Error(format!("Invalid assignment {}", left)),
         }
     }
 

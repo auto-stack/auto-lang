@@ -310,6 +310,10 @@ impl Value {
             _ => format!("{}", self),
         }
     }
+
+    pub fn is_error(&self) -> bool {
+        matches!(self, Value::Error(_))
+    }
 }
 
 impl Value {
