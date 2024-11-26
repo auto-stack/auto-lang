@@ -90,7 +90,10 @@ impl Evaler {
                 let mut result = Vec::new();
                 for stmt in code.stmts.iter() {
                     let val = self.eval_stmt(stmt);
-                    result.push(val.to_string());
+                    match val {
+                        Value::Str(s) => result.push(s),
+                        _ => result.push(val.to_string()),
+                    }
                 }
                 Value::Str(result.join("\n"))
             }
@@ -122,7 +125,14 @@ impl Evaler {
         match self.mode {
             EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
             EvalMode::CONFIG => Value::Array(res),
-            EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| v.to_string()).collect::<Vec<String>>().join("\n")),
+            EvalMode::TEMPLATE => {
+                Value::Str(res.iter().map(|v| {
+                    match v {
+                        Value::Str(s) => s.clone(),
+                        _ => v.to_string(),
+                    }
+                }).collect::<Vec<String>>().join("\n"))
+            }
         }
     }
 
@@ -136,7 +146,12 @@ impl Evaler {
         match self.mode {
             EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
             EvalMode::CONFIG => Value::Array(res),
-            EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| v.to_string()).collect::<Vec<String>>().join(sep)),
+            EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| {
+                match v {
+                    Value::Str(s) => s.clone(),
+                    _ => v.to_string(),
+                }
+            }).collect::<Vec<String>>().join(sep))
         }
     }
 
@@ -219,7 +234,12 @@ impl Evaler {
             match self.mode {
                 EvalMode::SCRIPT => Value::Void,
                 EvalMode::CONFIG => Value::Array(res),
-                EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| v.to_string()).collect::<Vec<String>>().join(sep)),
+                EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| {
+                    match v {
+                        Value::Str(s) => s.clone(),
+                        _ => v.to_string(),
+                    }
+                }).collect::<Vec<String>>().join(sep))
             }
         }
     }
@@ -370,9 +390,9 @@ impl Evaler {
                         }
                     }
                 }
-                Value::ExtFn(ExtFn { fun }) => {
+                Value::ExtFn(extfn) => {
                     let args_val = self.eval_args(&call.args);
-                    return fun(&args_val);
+                    return (extfn.fun)(&args_val);
                 }
                 Value::Lambda(name) => {
                     // Try to lookup lambda in SymbolTable
@@ -612,20 +632,20 @@ impl Evaler {
     fn eval_mid(&mut self, node: &Node) -> Value {
         let is_mid = self.universe.borrow().lookup_val("is_mid").unwrap_or(Value::Bool(false)).as_bool();
         let args = &node.args.array;
-        let mut res = "".to_string();
+        let mut res = Value::Str("".to_string());
         if args.len() >= 1 {
             if is_mid { // mid 
                 let mid = self.eval_expr(&args[0]);
-                res = mid.to_string();
+                res = mid;
             }
         }
         if args.len() >= 2 {
             if !is_mid { // last
                 let last = self.eval_expr(&args[1]);
-                res = last.to_string();
+                res = last;
             }
         }
-        Value::Str(res)
+        res
     }
 
     fn eval_node(&mut self, node: &Node) -> Value {
