@@ -4,7 +4,8 @@ use autoval::{Value, ExtFn, Args};
 
 pub fn builtins() -> HashMap<String, Value> {
     let mut builtins = HashMap::new();
-    builtins.insert("print".to_string(), Value::ExtFn(ExtFn { fun: print }));
+    let name = "print".to_string();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: print, name }));
     builtins
 }
 

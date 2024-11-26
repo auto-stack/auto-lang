@@ -22,7 +22,7 @@ pub fn run(code: &str) -> Result<String, String> {
     let ast = parser::parse(code, &mut scope.borrow_mut())?;
     let mut evaler = eval::Evaler::new(scope);
     let result = evaler.eval(&ast);
-    Ok(result.to_string())
+    Ok(result.repr())
 }
 
 pub fn run_with_scope(code: &str, scope: Universe) -> Result<String, String> {
@@ -30,7 +30,7 @@ pub fn run_with_scope(code: &str, scope: Universe) -> Result<String, String> {
     let ast = parser::parse(code, &mut scope.borrow_mut())?;
     let mut evaler = eval::Evaler::new(scope);
     let result = evaler.eval(&ast);
-    Ok(result.to_string())
+    Ok(result.repr())
 }
 
 pub fn parse(code: &str) -> Result<ast::Code, String> {
@@ -55,9 +55,16 @@ pub fn interpret_with_scope(code: &str, scope: scope::Universe) -> Result<interp
     Ok(interpreter)
 }
 
-pub fn interpret_file(path: &str) -> Result<String, String> {
+pub fn run_file(path: &str) -> Result<String, String> {
     let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
     run(&code)
+}
+
+pub fn interpret_file(path: &str) -> interp::Interpreter {
+    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e)).unwrap();
+    let mut interpreter = interp::Interpreter::new();
+    interpreter.interpret(&code).unwrap();
+    interpreter
 }
 
 pub fn eval_template(template: &str, scope: Universe) -> Result<interp::Interpreter, String> {
@@ -248,7 +255,7 @@ mod tests {
         let code = r#"$ for i in 0..10 { `$i`; mid(",") }"#;
         let scope = Universe::new();
         let result = eval_template(code, scope).unwrap();
-        assert_eq!(result.result.to_string(), "0,1,2,3,4,5,6,7,8,9");
+        assert_eq!(result.result.repr(), "0,1,2,3,4,5,6,7,8,9");
     }
 
     #[test]
@@ -259,7 +266,12 @@ $ for i in 0..10 {
 $ }"#;
         let scope = Universe::new();
         let result = eval_template(code, scope).unwrap();
-        assert_eq!(result.result.to_string(), "\n    0,\n    1,\n    2,\n    3,\n    4,\n    5,\n    6,\n    7,\n    8,\n    9");
+        let expected = "\n    0,\n    1,\n    2,\n    3,\n    4,\n    5,\n    6,\n    7,\n    8,\n    9";
+        if let Value::Str(s) = result.result {
+            assert_eq!(s, expected);
+        } else {
+            assert_eq!(result.result.to_string(), expected);
+        }
     }
 
     #[test]
@@ -275,7 +287,7 @@ $ }"#;
         let code = "fn hi(s str) { print(s) }; hi(\"hello\")";
         let result = run(code).unwrap();
         // TODO: capture stdout and assert
-        assert_eq!(result, "");
+        assert_eq!(result, "void");
     }
 
     #[test]
@@ -461,7 +473,7 @@ $ for row in rows {
 $ }
 </table>"#;
         let interpreter = eval_template(template, scope).unwrap();
-        assert_eq!(interpreter.result.to_string(), r#"
+        assert_eq!(interpreter.result.repr(), r#"
 <h1>Students</h1>
 <table>
     <tr>
@@ -565,7 +577,7 @@ $ }
     age: 22,
 }
 "#;
-        assert_eq!(result.result.to_string(), expected);
+        assert_eq!(result.result.repr(), expected);
     }
 
 
@@ -582,7 +594,7 @@ $ }
         }
         "#;
         let result = run(code).unwrap();
-        assert_eq!(result, "");
+        assert_eq!(result, "void");
     }
 
 

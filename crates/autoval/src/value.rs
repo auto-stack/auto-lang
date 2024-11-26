@@ -123,9 +123,15 @@ impl From<f32> for Value {
     }
 }
 
-impl From<Vec<Value>> for Value {
-    fn from(v: Vec<Value>) -> Value {
-        Value::Array(v)
+// impl From<Vec<Value>> for Value {
+//     fn from(v: Vec<Value>) -> Value {
+//         Value::Array(v)
+//     }
+// }
+
+impl<T> From<Vec<T>> for Value where T: Into<Value> {
+    fn from(v: Vec<T>) -> Value {
+        Value::Array(v.into_iter().map(|v| v.into()).collect())
     }
 }
 
@@ -138,6 +144,25 @@ impl From<&str> for Value {
 impl Obj {
     pub fn new() -> Self {
         Obj { values: BTreeMap::new() }
+    }
+
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    pub fn keys(&self) -> Vec<ValueKey> {
+        self.values.keys().cloned().collect()
+    }
+
+    pub fn key_names(&self) -> Vec<String> {
+        self.values.keys().map(|k| match k {
+            ValueKey::Str(s) => s.clone(),
+            _ => k.to_string(),
+        }).collect()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
     }
 
     pub fn get(&self, key: impl Into<ValueKey>) -> Option<Value> {
@@ -225,6 +250,10 @@ impl Obj {
             self.set(key.clone(), value.clone());
         }
     }
+
+    pub fn remove(&mut self, key: impl Into<ValueKey>) {
+        self.values.remove(&key.into());
+    }
 }
 
 impl Display for Obj {
@@ -274,6 +303,13 @@ impl Value {
     pub fn obj() -> Self {
         Value::Obj(Obj::new())
     }
+
+    pub fn repr(&self) -> String {
+        match self {
+            Value::Str(s) => format!("{}", s),
+            _ => format!("{}", self),
+        }
+    }
 }
 
 impl Value {
@@ -314,19 +350,19 @@ impl Display for Value {
 
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Value::Str(value) => write!(f, "{}", value),
+            Value::Str(value) => write!(f, "\"{}\"", value),
             Value::Int(value) => write!(f, "{}", value),
             Value::Uint(value) => write!(f, "{}", value),
             Value::Float(value) => write!(f, "{}", value),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Nil => write!(f, "nil"),
-            Value::Void => write!(f, ""),
+            Value::Void => write!(f, "void"),
             Value::Array(value) => print_array(f, value),
             Value::Range(left, right) => write!(f, "{}..{}", left, right),
             Value::RangeEq(left, right) => write!(f, "{}..={}", left, right),
-            Value::Error(value) => write!(f, "Error: {}", value),
-            Value::Fn(_) => write!(f, "fn"),
-            Value::ExtFn(_) => write!(f, "extfn"),
+            Value::Error(value) => write!(f, "<Error: {}>", value),
+            Value::Fn(fun) => write!(f, "fn {}", fun.sig.name),
+            Value::ExtFn(fun) => write!(f, "<extfn {}>", fun.name),
             Value::Lambda(name) => write!(f, "lambda {}", name),
             Value::Pair(key, value) => write!(f, "{} : {}", key, value),
             Value::Obj(value) => print_object(f, value),
@@ -542,12 +578,13 @@ pub struct Param {
 
 #[derive(Debug, Clone)]
 pub struct ExtFn {
+    pub name: String,
     pub fun: fn(&Args) -> Value,
 }
 
 impl PartialEq for ExtFn {
     fn eq(&self, other: &Self) -> bool {
-        self.fun == other.fun
+        self.name == other.name && self.fun == other.fun
     }
 }
 
@@ -910,5 +947,27 @@ mod tests {
     //     let widget = Widget { name: "counter".to_string(), model, view };
     //     println!("{}", widget);
     // }
+
+    #[test]
+    fn test_modify_obj() {
+        let mut obj = Obj::new();
+        let mut s1 = Obj::new();
+        s1.set("timeout", 1000);
+        let mut s2 = Obj::new();
+        s2.set("timeout", 2000);
+        let mut s3 = Obj::new();
+        s3.set("timeout", 3000);
+        obj.set("a", Value::from(vec![s1, s2, s3]));
+        if let Some(Value::Array(a)) = obj.get_mut("a") {
+            for s in a.iter_mut() {
+                if let Value::Obj(o) = s {
+                    if let Some(Value::Int(timeout)) = o.get_mut("timeout") {
+                        *timeout += 1000;
+                    }
+                }
+            }
+        }
+        assert_eq!(obj.get_array_of("a")[2].as_obj().get_uint_of("timeout"), 4000);
+    }
 
 }

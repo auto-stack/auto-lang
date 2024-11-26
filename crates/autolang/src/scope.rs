@@ -88,7 +88,7 @@ impl Universe {
     }
 
     pub fn add_global_fn(&mut self, name: &str, f: fn(&Args) -> Value) {
-        self.global_scope_mut().set_val(name, Value::ExtFn(ExtFn { fun: f }));
+        self.global_scope_mut().set_val(name, Value::ExtFn(ExtFn { fun: f, name: name.to_string() }));
     }
 
     pub fn get_global(&self, name: &str) -> Value {

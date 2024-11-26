@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         Some(Commands::Run { path }) => {
             println!("Running Auto {} ", path);
-            let result = autolang::interpret_file(&path)?;
+            let result = autolang::run_file(&path)?;
             println!("{}", result);
         }
         Some(Commands::Repl) => {

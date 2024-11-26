@@ -143,7 +143,7 @@ mod tests {
         let method = store.lookup_method(Type::Any, "str".to_string()).unwrap();
         let v = Value::Array(vec![Value::Int(1), Value::Int(2)]);
         let res = method(&v);
-        let s = res.str();
+        let s = res.repr();
         assert_eq!(s, "[1, 2]");
     }
 
