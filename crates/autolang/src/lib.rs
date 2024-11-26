@@ -643,6 +643,13 @@ $ }
         assert_eq!(result, "{a: [4, 5, 6], b: [4, 5, 6]}");
     }
 
+    #[test]
+    fn test_obj_set() {
+        let code = "var a = { name: \"Alice\" }; a.name = \"Bob\"; a.name";
+        // let result = run(code).unwrap();
+        // assert_eq!(result, "Bob");
+    }
+
 }
 
 
