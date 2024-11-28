@@ -6,7 +6,7 @@ use crate::ast;
 use crate::ast::Call;
 use crate::libs;
 use std::rc::Rc;
-use autoval::{TypeInfoStore, ExtFn};
+use autoval::{TypeInfoStore, ExtFn, Obj};
 use std::any::Any;
 
 pub struct Universe {
@@ -137,6 +137,32 @@ impl Universe {
             }
         }
         self.builtins.get(name).cloned()
+    }
+
+    pub fn update_obj(&mut self, name: &str, f: impl FnOnce(&mut Obj)) {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(value) = scope.get_val_mut(name) {
+                if let Value::Obj(o) = value {
+                    f(o);
+                    return;
+                }
+            }
+        }
+    }
+
+    pub fn update_array(&mut self, name: &str, idx: Value, val: Value) {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(value) = scope.get_val_mut(name) {
+                if let Value::Array(a) = value {
+                    match idx {
+                        Value::Int(i) => a[i as usize] = val,
+                        Value::Uint(i) => a[i as usize] = val,
+                        _ => {}
+                    }
+                    return;
+                }
+            }
+        }
     }
 
     pub fn lookup_val_mut(&mut self, name: &str) -> Option<&mut Value> {

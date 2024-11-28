@@ -646,8 +646,15 @@ $ }
     #[test]
     fn test_obj_set() {
         let code = "var a = { name: \"Alice\" }; a.name = \"Bob\"; a.name";
-        // let result = run(code).unwrap();
-        // assert_eq!(result, "Bob");
+        let result = run(code).unwrap();
+        assert_eq!(result, "Bob");
+    }
+
+    #[test]
+    fn test_array_update() {
+        let code = "var a = [1, 2, 3]; a[0] = 4; a";
+        let result = run(code).unwrap();
+        assert_eq!(result, "[4, 2, 3]");
     }
 
 }
