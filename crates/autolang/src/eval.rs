@@ -276,16 +276,16 @@ impl Evaler {
         }
     }
 
-    fn asn(&mut self, left: &Expr, right: Value) -> Value {
+    fn asn(&mut self, left: &Expr, val: Value) -> Value {
         match left {
             Expr::Ident(name) => {
                 // check ref
-                let val = self.lookup(&name.text);
-                match val {
+                let left_val = self.lookup(&name.text);
+                match left_val {
                     Value::Ref(target) => {
                         println!("ref: {}", target);
                         if self.universe.borrow().exists(&target) {
-                            self.universe.borrow_mut().update_val(&target, right);
+                            self.universe.borrow_mut().update_val(&target, val);
                         } else {
                             panic!("Invalid assignment, variable (ref {} -> {}) not found", name.text, target);
                         }
@@ -293,7 +293,7 @@ impl Evaler {
                     _ => {
                         println!("not ref: {}, {}", name.text, val);
                         if self.universe.borrow().exists(&name.text) {
-                            self.universe.borrow_mut().update_val(&name.text, right);
+                            self.universe.borrow_mut().update_val(&name.text, val);
                         } else {
                             panic!("Invalid assignment, variable {} not found", name.text);
                         }
@@ -302,22 +302,49 @@ impl Evaler {
                 Value::Void
             },
             Expr::Bina(left, op, right) => {
-                if matches!(op, Op::Dot) {
-                    match left.as_ref() {
-                        Expr::Ident(name) => {
-                            // TODO: support dot assignment 
-                            Value::Error(format!("Dot assignment not implemented yet {}", left))
-                        }
-                        _ => {
-                            Value::Error(format!("Invalid assignment {}", left))
+                match op {
+                    Op::Dot => { // a.b = expr
+                        match left.as_ref() {
+                            Expr::Ident(name) => {
+                                // find object `left`
+                                let obj = self.update_obj(&name.text, move |o| {
+                                    match right.as_ref() {
+                                        Expr::Ident(rname) => o.set(rname.text.clone(), val),
+                                        _ => {}
+                                    }
+                                });
+                                Value::Void
+                            }
+                            _ => {
+                                Value::Error(format!("Invalid assignment {}", left))
+                            }
                         }
                     }
-                } else {
-                    Value::Error(format!("Invalid assignment {}", left))
+                    _ => Value::Error(format!("Invalid bina target of asn {} = {}", left, val)),
                 }
             }
-            _ => Value::Error(format!("Invalid assignment {}", left)),
+            Expr::Index(array, index) => {
+                match array.as_ref() {
+                    Expr::Ident(name) => {
+                        let idx = self.eval_expr(index);
+                        self.update_array(&name.text, idx, val);
+                        Value::Void
+                    }
+                    _ => Value::Error(format!("Invalid target of asn index {} = {}", left, val)),
+                }
+            }
+            _ => Value::Error(format!("Invalid target of asn {} = {}", left, val)),
         }
+    }
+
+    fn update_obj(&mut self, name: &str, f: impl FnOnce(&mut Obj)) -> Value {
+        self.universe.borrow_mut().update_obj(name, f);
+        Value::Void
+    }
+
+    fn update_array(&mut self, name: &str, idx: Value, val: Value) -> Value {
+        self.universe.borrow_mut().update_array(name, idx, val);
+        Value::Void
     }
 
     fn range(&mut self, left: &Expr, right: &Expr) -> Value {
