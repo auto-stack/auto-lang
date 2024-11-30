@@ -39,7 +39,7 @@ impl CTranspiler {
         match stmt {
             Stmt::Expr(expr) => self.expr(expr, out),
             Stmt::Fn(fn_decl) => self.fn_decl(fn_decl, out),
-            Stmt::Store(store_decl) => self.store_decl(store_decl, out),
+            Stmt::Store(store) => self.store(store, out),
             Stmt::For(for_stmt) => self.for_stmt(for_stmt, out),
             Stmt::If(branches, otherwise) => self.if_stmt(branches, otherwise, out),
             _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt)),
@@ -118,21 +118,21 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn store_decl(&mut self, store_decl: &Store, out: &mut impl Write) -> Result<(), String> {
-        if matches!(store_decl.kind, StoreKind::Var) {
-            return Err(format!("C Transpiler: unsupported store kind: {:?}", store_decl.kind));
+    fn store(&mut self, store: &Store, out: &mut impl Write) -> Result<(), String> {
+        if matches!(store.kind, StoreKind::Var) {
+            return Err(format!("C Transpiler: unsupported store kind: {:?}", store.kind));
         }
-        match &store_decl.ty {
+        match &store.ty {
             Type::Array(array_type) => {
                 let elem_type = &array_type.elem;
                 let len = array_type.len;
-                out.write(format!("{} {}[{}] = ", elem_type, store_decl.name.text, len).as_bytes()).to()?;
+                out.write(format!("{} {}[{}] = ", elem_type, store.name.text, len).as_bytes()).to()?;
             }
             _ => {
-                out.write(format!("{} {} = ", store_decl.ty, store_decl.name.text).as_bytes()).to()?;
+                out.write(format!("{} {} = ", store.ty, store.name.text).as_bytes()).to()?;
             }
         }
-        self.expr(&store_decl.expr, out)?;
+        self.expr(&store.expr, out)?;
         out.write(b";").to()?;
         Ok(())
     }

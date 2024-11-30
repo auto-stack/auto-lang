@@ -615,9 +615,9 @@ impl<'a> Parser<'a> {
         let stmt = match self.kind() {
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
-            TokenKind::Var => self.store_decl_stmt()?,
-            TokenKind::Let => self.store_decl_stmt()?,
-            TokenKind::Mut => self.store_decl_stmt()?,
+            TokenKind::Var => self.store_stmt()?,
+            TokenKind::Let => self.store_stmt()?,
+            TokenKind::Mut => self.store_stmt()?,
             TokenKind::Fn => self.fn_stmt()?,
             TokenKind::Type => self.type_stmt()?,
             // AutoUI Stmts
@@ -710,7 +710,7 @@ impl<'a> Parser<'a> {
         error_pos!("Expected for loop, got {:?}", self.kind())
     }
 
-    pub fn store_decl_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn store_stmt(&mut self) -> Result<Stmt, ParseError> {
         // store kind: var/let/mut
         let store_kind = self.store_kind()?;
         self.next(); // skip var/let/mut
@@ -967,7 +967,7 @@ impl<'a> Parser<'a> {
         let mut model = Model::default();
         // parse multiple var declarations
         while self.is_kind(TokenKind::Var) {
-            let store = self.store_decl_stmt()?;
+            let store = self.store_stmt()?;
             match store {
                 Stmt::Store(store) => {
                     model.vars.push(store);

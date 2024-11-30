@@ -186,7 +186,7 @@ impl fmt::Display for Stmt {
                 Ok(())
             },
             Stmt::For(for_stmt) => write!(f, "{}", for_stmt),
-            Stmt::Store(store_decl) => write!(f, "{}", store_decl),
+            Stmt::Store(store) => write!(f, "{}", store),
             Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),
             Stmt::TypeDecl(type_decl) => write!(f, "{}", type_decl),    
             Stmt::Widget(widget) => write!(f, "{}", widget),

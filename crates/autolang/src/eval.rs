@@ -112,7 +112,7 @@ impl Evaler {
             Stmt::Expr(expr) => self.eval_expr(expr),
             Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
             Stmt::For(for_stmt) => self.eval_for(for_stmt),
-            Stmt::Store(store_decl) => self.eval_store(store_decl),
+            Stmt::Store(store) => self.eval_store(store),
             Stmt::Fn(_) => Value::Nil,
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
             Stmt::Widget(widget) => self.eval_widget(widget),
@@ -247,13 +247,13 @@ impl Evaler {
         }
     }
 
-    fn eval_store(&mut self, store_decl: &Store) -> Value {
-        let value = match &store_decl.expr {
+    fn eval_store(&mut self, store: &Store) -> Value {
+        let value = match &store.expr {
             Expr::Ref(target) => Value::Ref(target.text.clone()),
-            _ => self.eval_expr(&store_decl.expr),
+            _ => self.eval_expr(&store.expr),
         };
-        self.universe.borrow_mut().define(store_decl.name.text.as_str(), Rc::new(scope::Meta::Store(store_decl.clone())));
-        self.universe.borrow_mut().set_local_val(&store_decl.name.text, value);
+        self.universe.borrow_mut().define(store.name.text.as_str(), Rc::new(scope::Meta::Store(store.clone())));
+        self.universe.borrow_mut().set_local_val(&store.name.text, value);
         Value::Void
     }
 
