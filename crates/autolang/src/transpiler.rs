@@ -1,7 +1,9 @@
 use super::ast::*;
 use std::io;
 use std::io::Write;
-use autoval::Op;
+use autoval::{Op, Value};
+use crate::parser;
+use crate::scope;
 
 pub trait Transpiler {
     fn transpile(&mut self, ast: Code, out: &mut impl Write) -> Result<(), String>;
@@ -37,10 +39,10 @@ impl CTranspiler {
         match stmt {
             Stmt::Expr(expr) => self.expr(expr, out),
             Stmt::Fn(fn_decl) => self.fn_decl(fn_decl, out),
-            Stmt::Var(var) => self.var(var, out),
+            Stmt::Store(store_decl) => self.store_decl(store_decl, out),
             Stmt::For(for_stmt) => self.for_stmt(for_stmt, out),
             Stmt::If(branches, otherwise) => self.if_stmt(branches, otherwise, out),
-            _ => Err(format!("unsupported statement: {:?}", stmt)),
+            _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt)),
         }
     }
 
@@ -58,9 +60,15 @@ impl CTranspiler {
                 }
                 Ok(())
             }
+            Expr::Unary(op, expr) => {
+                out.write(format!("{}", op.op()).as_bytes()).to()?;
+                self.expr(expr, out)?;
+                Ok(())
+            }
             Expr::Ident(name) => out.write_all(name.text.as_bytes()).to(),
             Expr::Call(call) => self.call(call, out),
-            _ => Err(format!("unsupported expression: {:?}", expr)),
+            Expr::Array(array) => self.array(array, out), 
+            _ => Err(format!("C Transpiler: unsupported expression: {}", expr)),
         }
     }
 
@@ -83,14 +91,14 @@ impl CTranspiler {
             .collect::<Vec<_>>()
             .join(", ");
         out.write(params.as_bytes()).to()?;
-        out.write(b")").to()?;
+        out.write(b") ").to()?;
         // body
         self.body(&fn_decl.body, out, true)?;
         Ok(())
     }
 
     fn body(&mut self, body: &Body, out: &mut impl Write, has_return: bool) -> Result<(), String> {
-        out.write(b" {\n").to()?;
+        out.write(b"{\n").to()?;
         self.indent();
         for (i, stmt) in body.stmts.iter().enumerate() {
             self.print_indent(out)?;
@@ -106,13 +114,25 @@ impl CTranspiler {
             }
         }
         self.dedent();
-        out.write(b"}\n").to()?;
+        out.write(b"}").to()?;
         Ok(())
     }
 
-    fn var(&mut self, var: &Var, out: &mut impl Write) -> Result<(), String> {
-        out.write(format!("int {} = ", var.name.text).as_bytes()).to()?;
-        self.expr(&var.expr, out)?;
+    fn store_decl(&mut self, store_decl: &Store, out: &mut impl Write) -> Result<(), String> {
+        if matches!(store_decl.kind, StoreKind::Var) {
+            return Err(format!("C Transpiler: unsupported store kind: {:?}", store_decl.kind));
+        }
+        match &store_decl.ty {
+            Type::Array(array_type) => {
+                let elem_type = &array_type.elem;
+                let len = array_type.len;
+                out.write(format!("{} {}[{}] = ", elem_type, store_decl.name.text, len).as_bytes()).to()?;
+            }
+            _ => {
+                out.write(format!("{} {} = ", store_decl.ty, store_decl.name.text).as_bytes()).to()?;
+            }
+        }
+        self.expr(&store_decl.expr, out)?;
         out.write(b";").to()?;
         Ok(())
     }
@@ -120,7 +140,7 @@ impl CTranspiler {
     fn for_stmt(&mut self, for_stmt: &For, out: &mut impl Write) -> Result<(), String> {
         out.write(b"for (").to()?;
         self.expr(&for_stmt.range, out)?;
-        out.write(b")").to()?;
+        out.write(b") ").to()?;
         self.body(&for_stmt.body, out, false)?;
         Ok(())
     }
@@ -140,7 +160,7 @@ impl CTranspiler {
         for (i, branch) in branches.iter().enumerate() {
             out.write(b"(").to()?;
             self.expr(&branch.cond, out)?;
-            out.write(b")").to()?;
+            out.write(b") ").to()?;
             self.body(&branch.body, out, false)?;
             if i < branches.len() - 1 {
                 out.write(b" else ").to()?;
@@ -170,6 +190,18 @@ impl CTranspiler {
         out.write(b")").to()?;
         Ok(())
     }
+
+    fn array(&mut self, array: &Vec<Expr>, out: &mut impl Write) -> Result<(), String> {
+        out.write(b"{").to()?;
+        for (i, expr) in array.iter().enumerate() {
+            self.expr(expr, out)?;
+            if i < array.len() - 1 {
+                out.write(b", ").to()?;
+            }
+        }
+        out.write(b"}").to()?;
+        Ok(())
+    }
 }
 
 impl Transpiler for CTranspiler {
@@ -179,11 +211,9 @@ impl Transpiler for CTranspiler {
         // main function?
 
         // statements
-        for (i, stmt) in ast.stmts.iter().enumerate()    {
+        for stmt in ast.stmts.iter() {
             self.stmt(stmt, out)?;
-            if i < ast.stmts.len() - 1 {
-                out.write(b"\n").to()?;
-            }
+            out.write(b"\n").to()?;
         }
 
         Ok(())
@@ -209,79 +239,88 @@ impl ToStrError for Result<usize, io::Error> {
     }
 }
 
+pub fn transpile_c(code: &str) -> Result<String, String> {
+    let mut transpiler = CTranspiler::new();
+    let mut scope = scope::Universe::new();
+    let ast = parser::parse(code, &mut scope)?;
+    let mut out = Vec::new();
+    transpiler.transpile(ast, &mut out)?;
+    Ok(String::from_utf8(out).unwrap())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser;
-    use crate::scope;
 
     #[test]
     fn test_c() {
-        let mut transpiler = CTranspiler::new();
         let code = "41";
-        let mut scope = scope::Universe::new();
-        let ast = parser::parse(code, &mut scope).unwrap();
-        let mut out = Vec::new();
-        transpiler.transpile(ast, &mut out).unwrap();
-        println!("{}", String::from_utf8(out).unwrap());
+        let out = transpile_c(code).unwrap();
+        assert_eq!(out, "41\n");
     }
 
     #[test]
     fn test_c_fn() {
-        let mut transpiler = CTranspiler::new();
         let code = "fn add(x, y) { x+y }";
-        let mut scope = scope::Universe::new();
-        let ast = parser::parse(code, &mut scope).unwrap();
-        let mut out = Vec::new();
-        transpiler.transpile(ast, &mut out).unwrap();
+        let out = transpile_c(code).unwrap();
         let expected = r#"int add(int x, int y) {
     return x + y;
 }
 "#;
-        assert_eq!(String::from_utf8(out).unwrap(), expected);
+        assert_eq!(out, expected);
     }
 
 
     #[test]
-    fn test_c_var() {
-        let mut transpiler = CTranspiler::new();
-        let code = "var x = 41";
-        let mut scope = scope::Universe::new();
-        let ast = parser::parse(code, &mut scope).unwrap();
-        let mut out = Vec::new();
-        transpiler.transpile(ast, &mut out).unwrap();
-        let expected = "int x = 41;";
-        assert_eq!(String::from_utf8(out).unwrap(), expected);
+    fn test_c_let() {
+        let code = "let x = 41";
+        let out = transpile_c(code).unwrap();
+        let expected = "int x = 41;\n";
+        assert_eq!(out, expected);
     }
 
     #[test]
     fn test_c_for() {
-        let mut transpiler = CTranspiler::new();
         let code = "for i in 1..5 { print(i) }";
-        let mut scope = scope::Universe::new();
-        let ast = parser::parse(code, &mut scope).unwrap();
-        let mut out = Vec::new();
-        transpiler.transpile(ast, &mut out).unwrap();
+        let out = transpile_c(code).unwrap();
         let expected = r#"for (int i = 1; i < 5; i++) {
     print(i);
 }
 "#;
-        assert_eq!(String::from_utf8(out).unwrap(), expected);
+        assert_eq!(out, expected);
     }
 
     #[test]
     fn test_c_if() {
-        let mut transpiler = CTranspiler::new();
-        let code = "var x = 41; if x > 0 { print(x) }";
-        let mut scope = scope::Universe::new();
-        let ast = parser::parse(code, &mut scope).unwrap();
-        let mut out = Vec::new();
-        transpiler.transpile(ast, &mut out).unwrap();
+        let code = "let x = 41; if x > 0 { print(x) }";
+        let out = transpile_c(code).unwrap();
         let expected = r#"int x = 41;
 if (x > 0) {
     print(x);
 }
 "#;
-        assert_eq!(String::from_utf8(out).unwrap(), expected);
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn test_c_if_else() {
+        let code = "let x = 41; if x > 0 { print(x) } else { print(-x) }";
+        let out = transpile_c(code).unwrap();
+        let expected = r#"int x = 41;
+if (x > 0) {
+    print(x);
+} else {
+    print(-x);
+}
+"#;
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn test_c_array() {
+        let code = "let x = [1, 2, 3]";
+        let out = transpile_c(code).unwrap();
+        let expected = "int x[3] = {1, 2, 3};\n";
+        assert_eq!(out, expected);
     }
 }

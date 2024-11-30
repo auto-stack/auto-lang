@@ -218,6 +218,8 @@ impl<'a> Lexer<'a> {
             "fn" => self.keyword_tok(TokenKind::Fn, &text),
             "type" => self.keyword_tok(TokenKind::Type, &text),
             "ref" => self.keyword_tok(TokenKind::Ref, &text),
+            "let" => self.keyword_tok(TokenKind::Let, &text),
+            "mut" => self.keyword_tok(TokenKind::Mut, &text),
             _ => {
                 // AutoUI Keywords
                 // TODO: Add an Option to not check these keywords

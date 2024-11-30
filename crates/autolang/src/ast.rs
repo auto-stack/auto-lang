@@ -63,6 +63,30 @@ impl fmt::Display for Name {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum StoreKind {
+    Let,
+    Mut,
+    Var,
+}
+
+#[derive(Debug, Clone)]
+pub struct Store {
+    pub kind: StoreKind,
+    pub name: Name,
+    pub ty: Type,
+    pub expr: Expr,
+}
+
+impl fmt::Display for Store {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.kind {
+            StoreKind::Let => write!(f, "(let {} (type {}) {})", self.name, self.ty, self.expr),
+            StoreKind::Mut => write!(f, "(mut {} (type {}) {})", self.name, self.ty, self.expr),
+            StoreKind::Var => write!(f, "(var {} {})", self.name, self.expr),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Var {
@@ -81,7 +105,7 @@ pub enum Stmt {
     Expr(Expr),
     If(/*multiple branches with condition/body*/Vec<Branch>, /*else*/Option<Body>),
     For(For),
-    Var(Var),
+    Store(Store),
     Fn(Fn),
     TypeDecl(TypeDecl),
     Widget(Widget),
@@ -162,7 +186,7 @@ impl fmt::Display for Stmt {
                 Ok(())
             },
             Stmt::For(for_stmt) => write!(f, "{}", for_stmt),
-            Stmt::Var(var) => write!(f, "(var {} {})", var.name, var.expr),
+            Stmt::Store(store_decl) => write!(f, "{}", store_decl),
             Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),
             Stmt::TypeDecl(type_decl) => write!(f, "{}", type_decl),    
             Stmt::Widget(widget) => write!(f, "{}", widget),
@@ -336,7 +360,21 @@ pub enum Type {
     Float,
     Bool,
     Str,
+    Array(ArrayType),
     User(TypeDecl),
+    Unknown,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayType {
+    pub elem: Box<Type>,
+    pub len: usize,
+}
+
+impl fmt::Display for ArrayType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(array-type (elem {}) (len {}))", &self.elem, self.len)
+    }
 }
 
 impl fmt::Display for Type {
@@ -346,7 +384,9 @@ impl fmt::Display for Type {
             Type::Float => write!(f, "float"),
             Type::Bool => write!(f, "bool"),
             Type::Str => write!(f, "str"),
+            Type::Array(array_type) => write!(f, "{}", array_type),
             Type::User(type_decl) => write!(f, "{}", type_decl),
+            Type::Unknown => write!(f, "unknown"),
         }
     }
 }
@@ -545,7 +585,7 @@ impl fmt::Display for Widget {
 
 #[derive(Debug, Clone)]
 pub struct Model {
-    pub vars: Vec<Var>,
+    pub vars: Vec<Store>,
 }
 
 impl Default for Model {

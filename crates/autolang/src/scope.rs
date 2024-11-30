@@ -79,7 +79,7 @@ impl Universe {
         self.scopes.first_mut().expect("No global scope left")
     }
 
-    pub fn set_local(&mut self, name: &str, value: Value) {
+    pub fn set_local_val(&mut self, name: &str, value: Value) {
         self.current_scope_mut().set_val(name, value);
     }
 
@@ -251,6 +251,7 @@ impl Universe {
 
 #[derive(Debug)]
 pub enum Meta {
+    Store(ast::Store),
     Var(ast::Var),
     Ref(ast::Name),
     Fn(ast::Fn),
