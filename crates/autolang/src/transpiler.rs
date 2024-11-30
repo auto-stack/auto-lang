@@ -11,11 +11,14 @@ pub trait Transpiler {
 
 pub struct CTranspiler {
     indent: usize,
+    includes: Vec<u8>,
+    main: Vec<u8>,
+    decls: Vec<u8>,
 }
 
 impl CTranspiler {
     fn new() -> Self {
-        Self { indent: 0 }
+        Self { indent: 0, includes: Vec::new(), main: Vec::new(), decls: Vec::new() }
     }
 
     fn indent(&mut self) {
@@ -35,11 +38,24 @@ impl CTranspiler {
 }
 
 impl CTranspiler {
+
+    pub fn code(&mut self, code: &Code, out: &mut impl Write) -> Result<(), String> {
+        for stmt in code.stmts.iter() {
+            self.stmt(stmt, out)?;
+            out.write(b"\n").to()?;
+        }
+        Ok(())
+    }
+
+    fn eos(&mut self, out: &mut impl Write) -> Result<(), String> {
+        out.write(b";").to()
+    }
+
     fn stmt(&mut self, stmt: &Stmt, out: &mut impl Write) -> Result<(), String> {
         match stmt {
-            Stmt::Expr(expr) => self.expr(expr, out),
+            Stmt::Expr(expr) => {self.expr(expr, out)?; self.eos(out)},
+            Stmt::Store(store) => {self.store(store, out)?; self.eos(out)},
             Stmt::Fn(fn_decl) => self.fn_decl(fn_decl, out),
-            Stmt::Store(store) => self.store(store, out),
             Stmt::For(for_stmt) => self.for_stmt(for_stmt, out),
             Stmt::If(branches, otherwise) => self.if_stmt(branches, otherwise, out),
             _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt)),
@@ -104,13 +120,13 @@ impl CTranspiler {
             self.print_indent(out)?;
             if i < body.stmts.len() - 1 {
                 self.stmt(stmt, out)?;
-                out.write(b";\n").to()?;
+                out.write(b"\n").to()?;
             } else {
                 if has_return {
                     out.write(b"return ").to()?;
                 }
                 self.stmt(stmt, out)?;
-                out.write(b";\n").to()?;
+                out.write(b"\n").to()?;
             }
         }
         self.dedent();
@@ -133,7 +149,6 @@ impl CTranspiler {
             }
         }
         self.expr(&store.expr, out)?;
-        out.write(b";").to()?;
         Ok(())
     }
 
@@ -202,19 +217,65 @@ impl CTranspiler {
         out.write(b"}").to()?;
         Ok(())
     }
+
+    fn is_returnable(&self, stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Expr(_) => true,
+            _ => false,
+        }
+    }
 }
 
 impl Transpiler for CTranspiler {
     fn transpile(&mut self, ast: Code, out: &mut impl Write) -> Result<(), String> {
-        // includes
+        // Split stmts into decls and main
+        // TODO: handle potential includes when needed
+        let mut decls: Vec<Stmt> = Vec::new();
+        let mut main: Vec<Stmt> = Vec::new();
 
-        // main function?
+        for stmt in ast.stmts.into_iter() {
+            match stmt {
+                Stmt::Fn(_) => decls.push(stmt),
+                Stmt::Store(_) => decls.push(stmt),
+                Stmt::For(_) => main.push(stmt),
+                Stmt::If(_, _) => main.push(stmt),
+                Stmt::Expr(_) => main.push(stmt),
+                _ => {}
+            }
+        }
 
-        // statements
-        for stmt in ast.stmts.iter() {
-            self.stmt(stmt, out)?;
+        // TODO: Includes
+
+        // Decls
+        for decl in decls.iter() {
+            self.stmt(decl, out)?;
+        }
+        if !decls.is_empty() {
             out.write(b"\n").to()?;
         }
+
+        // Main
+        out.write(b"int main(void) {\n").to()?;
+        self.indent();
+        for (i, stmt) in main.iter().enumerate() {
+            self.print_indent(out)?;
+            if i < main.len() - 1 {
+                self.stmt(stmt, out)?;
+                out.write(b"\n").to()?;
+            } else {
+                if self.is_returnable(stmt) {
+                    out.write(b"return ").to()?;
+                    self.stmt(stmt, out)?;
+                    out.write(b"\n").to()?;
+                } else {
+                    self.stmt(stmt, out)?;
+                    out.write(b"\n").to()?;
+                    out.write(b"return 0;\n").to()?;
+                }
+            }
+        }
+        self.dedent();
+        out.write(b"}\n").to()?;
 
         Ok(())
     }
@@ -239,6 +300,15 @@ impl ToStrError for Result<usize, io::Error> {
     }
 }
 
+pub fn code_to_c(code: &str) -> Result<String, String> {
+    let mut transpiler = CTranspiler::new();
+    let mut scope = scope::Universe::new();
+    let ast = parser::parse(code, &mut scope)?;
+    let mut out = Vec::new();
+    transpiler.code(&ast, &mut out)?;
+    Ok(String::from_utf8(out).unwrap())
+}
+
 pub fn transpile_c(code: &str) -> Result<String, String> {
     let mut transpiler = CTranspiler::new();
     let mut scope = scope::Universe::new();
@@ -247,6 +317,7 @@ pub fn transpile_c(code: &str) -> Result<String, String> {
     transpiler.transpile(ast, &mut out)?;
     Ok(String::from_utf8(out).unwrap())
 }
+ 
 
 #[cfg(test)]
 mod tests {
@@ -255,14 +326,14 @@ mod tests {
     #[test]
     fn test_c() {
         let code = "41";
-        let out = transpile_c(code).unwrap();
-        assert_eq!(out, "41\n");
+        let out = code_to_c(code).unwrap();
+        assert_eq!(out, "41;\n");
     }
 
     #[test]
     fn test_c_fn() {
         let code = "fn add(x, y) { x+y }";
-        let out = transpile_c(code).unwrap();
+        let out = code_to_c(code).unwrap();
         let expected = r#"int add(int x, int y) {
     return x + y;
 }
@@ -274,7 +345,7 @@ mod tests {
     #[test]
     fn test_c_let() {
         let code = "let x = 41";
-        let out = transpile_c(code).unwrap();
+        let out = code_to_c(code).unwrap();
         let expected = "int x = 41;\n";
         assert_eq!(out, expected);
     }
@@ -282,7 +353,7 @@ mod tests {
     #[test]
     fn test_c_for() {
         let code = "for i in 1..5 { print(i) }";
-        let out = transpile_c(code).unwrap();
+        let out = code_to_c(code).unwrap();
         let expected = r#"for (int i = 1; i < 5; i++) {
     print(i);
 }
@@ -293,7 +364,7 @@ mod tests {
     #[test]
     fn test_c_if() {
         let code = "let x = 41; if x > 0 { print(x) }";
-        let out = transpile_c(code).unwrap();
+        let out = code_to_c(code).unwrap();
         let expected = r#"int x = 41;
 if (x > 0) {
     print(x);
@@ -305,7 +376,7 @@ if (x > 0) {
     #[test]
     fn test_c_if_else() {
         let code = "let x = 41; if x > 0 { print(x) } else { print(-x) }";
-        let out = transpile_c(code).unwrap();
+        let out = code_to_c(code).unwrap();
         let expected = r#"int x = 41;
 if (x > 0) {
     print(x);
@@ -319,8 +390,28 @@ if (x > 0) {
     #[test]
     fn test_c_array() {
         let code = "let x = [1, 2, 3]";
-        let out = transpile_c(code).unwrap();
+        let out = code_to_c(code).unwrap();
         let expected = "int x[3] = {1, 2, 3};\n";
         assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn test_c_mut_assign() {
+        let code = "mut x = 41; x = 42";
+        let out = code_to_c(code).unwrap();
+        let expected = "int x = 41;\nx = 42;\n";
+        assert_eq!(out, expected);
+    }
+
+
+    #[test]
+    fn test_c_return_42() {
+        let code = r#"42"#;
+        let ccode = transpile_c(code).unwrap();
+        let expected = r#"int main(void) {
+    return 42;
+}
+"#;
+        assert_eq!(ccode, expected);
     }
 }
