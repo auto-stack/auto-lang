@@ -278,10 +278,32 @@ impl<'a> Parser<'a> {
                 break;
             }
             self.next(); // skip binary op
+            // Check for whether assignment is allowed
+            match op {
+                Op::Asn => {
+                    self.check_asn(&lhs)?;
+                }
+                _ => {}
+            }
             let rhs = self.expr_pratt(power.r)?;
             lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
         }
         Ok(lhs)
+    }
+
+    fn check_asn(&mut self, lhs: &Expr) -> Result<(), ParseError> {
+        match lhs {
+            Expr::Ident(name) => {
+                let meta = self.scope.lookup_meta(name.text.as_str());
+                if let Some(Meta::Store(store)) = meta.as_deref() {
+                    if matches!(store.kind, StoreKind::Let) {
+                        return error_pos!("Syntax error: Assignment not allowed for let store: {}", store.name);
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     pub fn op(&mut self) -> Op {
@@ -1029,6 +1051,11 @@ mod tests {
         parse(code, &mut scope).unwrap()
     }
 
+    fn parse_with_err(code: &str) -> Result<Code, ParseError> {
+        let mut scope = Universe::new();
+        parse(code, &mut scope)
+    }
+
     #[test]
     fn test_parser() {
         let code = "1+2+3";
@@ -1060,8 +1087,10 @@ mod tests {
     #[test]
     fn test_let_asn() {
         let code = "let x = 1; x = 2";
-        let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (let (name x) (type int) (int 1)) (stmt (bina (name x) (op =) (int 2))))");
+        let res = parse_with_err(code);
+        let expected = "Syntax error: Assignment not allowed for let store:";
+        let res_err = res.err().unwrap();
+        assert!(res_err.to_string().contains(expected));
     }
 
     #[test]

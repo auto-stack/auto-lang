@@ -673,8 +673,8 @@ $ }
     #[test]
     fn test_let_asn() {
         let code = "let x = 41; x = 10; x";
-        let result = run(code).unwrap();
-        assert_eq!(result, "10");
+        let result = run(code);
+        assert!(result.is_err());
     }
 
     #[test]
