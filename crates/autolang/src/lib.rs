@@ -76,6 +76,12 @@ pub fn eval_template(template: &str, scope: Universe) -> Result<interp::Interpre
     Ok(interpreter)
 }
 
+pub fn eval_config(code: &str) -> Result<interp::Interpreter, String> {
+    let mut interpreter = interp::Interpreter::new().wit_eval_mode(EvalMode::CONFIG);
+    interpreter.interpret(code)?;
+    Ok(interpreter)
+}
+
 // convert template (ex, a C file with interpolated auto expressions) into an auto source code with C code converted to lines of interpolated strings
 // Example:
 // template:
@@ -657,6 +663,26 @@ $ }
         assert_eq!(result, "[4, 2, 3]");
     }
 
+    #[test]
+    fn test_let() {
+        let code = "let x = 41; x";
+        let result = run(code).unwrap();
+        assert_eq!(result, "41");
+    }
+
+    #[test]
+    fn test_let_asn() {
+        let code = "let x = 41; x = 10; x";
+        let result = run(code).unwrap();
+        assert_eq!(result, "10");
+    }
+
+    #[test]
+    fn test_mut() {
+        let code = "let x = 41; mut x = 10; x";
+        let result = run(code).unwrap();
+        assert_eq!(result, "10");
+    }
 }
 
 

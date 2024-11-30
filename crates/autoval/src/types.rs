@@ -10,6 +10,7 @@ pub enum Type {
     Float,
     Bool,
     Str,
+    Array,
     User(String),
 }
 
@@ -75,6 +76,7 @@ impl TypeInfoStore {
             Type::Float => self.types.get("float").unwrap(),
             Type::Bool => self.types.get("bool").unwrap(),
             Type::Str => self.types.get("str").unwrap(),
+            Type::Array => self.types.get("array").unwrap(),
             Type::User(name) => self.types.get(name.as_str()).unwrap(),
         }
     }
@@ -119,6 +121,7 @@ impl fmt::Display for Type {
             Type::Float => write!(f, "float"),
             Type::Bool => write!(f, "bool"),
             Type::Str => write!(f, "str"),
+            Type::Array => write!(f, "array"),
             Type::User(name) => write!(f, "{}", name),
         }
     }

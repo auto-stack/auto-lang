@@ -593,7 +593,9 @@ impl<'a> Parser<'a> {
         let stmt = match self.kind() {
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
-            TokenKind::Var => self.var_stmt()?,
+            TokenKind::Var => self.store_decl_stmt()?,
+            TokenKind::Let => self.store_decl_stmt()?,
+            TokenKind::Mut => self.store_decl_stmt()?,
             TokenKind::Fn => self.fn_stmt()?,
             TokenKind::Type => self.type_stmt()?,
             // AutoUI Stmts
@@ -686,22 +688,79 @@ impl<'a> Parser<'a> {
         error_pos!("Expected for loop, got {:?}", self.kind())
     }
 
-    pub fn var_stmt(&mut self) -> Result<Stmt, ParseError> {
-        self.next(); // skip var
+    pub fn store_decl_stmt(&mut self) -> Result<Stmt, ParseError> {
+        // store kind: var/let/mut
+        let store_kind = self.store_kind()?;
+        self.next(); // skip var/let/mut
+        // identifier name
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
-        self.expect(TokenKind::Asn)?;
-        let expr = self.rhs_expr()?;
-        match expr.clone() {
-            Expr::Lambda(lambda) => {
-                self.scope.define(name.as_str(), Rc::new(Meta::Ref(lambda.name.clone())));
-            }
-            _ => {
-                self.scope.define(name.as_str(), Rc::new(Meta::Var(Var { name: Name::new(name.clone()), expr: expr.clone() })));
-            }
+
+        // type (optional)
+        let mut ty = Type::Unknown;
+        if self.is_kind(TokenKind::Ident) {
+            ty = self.type_name()?;
+            self.next();
         }
-        let var = Var { name: Name::new(name), expr };
-        Ok(Stmt::Var(var))
+
+        // =
+        self.expect(TokenKind::Asn)?;
+
+
+        // inital value: expression
+        let expr = self.rhs_expr()?;
+        // TODO: check type compatibility
+        if matches!(ty, Type::Unknown) {
+            ty = self.find_expr_type(&expr)?;
+        }
+        
+        let store = Store { kind: store_kind, name: Name::new(name.clone()), ty, expr: expr.clone() };
+        if let Expr::Lambda(lambda) = &expr {
+            self.scope.define(name.as_str(), Rc::new(Meta::Ref(lambda.name.clone())));
+        } else {
+            self.scope.define(name.as_str(), Rc::new(Meta::Store(store.clone())));
+        }
+        
+        Ok(Stmt::Store(store))
+    }
+
+    pub fn find_expr_type(&mut self, expr: &Expr) -> Result<Type, ParseError> {
+        let mut ty = Type::Unknown;
+        match &expr {
+            Expr::Int(_) => {
+                ty = Type::Int;
+            }
+            Expr::Float(_) => {
+                ty = Type::Float;
+            }
+            Expr::Bool(_) => {
+                ty = Type::Bool;
+            }
+            Expr::Str(_) => {
+                ty = Type::Str;
+            }
+            Expr::Array(arr) => {
+                // check first element
+                if arr.len() > 0 {
+                    let first = &arr[0];
+                    let elem_ty = self.find_expr_type(first)?;
+                    ty = Type::Array(ArrayType { elem: Box::new(elem_ty), len: arr.len() });
+                } else {
+                    ty = Type::Array(ArrayType { elem: Box::new(Type::Unknown), len: 0 });
+                }
+            }
+            _ => {}
+        }
+        Ok(ty)
+    }
+
+    pub fn store_kind(&mut self) -> Result<StoreKind, ParseError> {
+        match self.kind() {
+            TokenKind::Var => Ok(StoreKind::Var),
+            TokenKind::Let => Ok(StoreKind::Let),
+            TokenKind::Mut => Ok(StoreKind::Mut),
+            _ => error_pos!("Expected store kind, got {:?}", self.kind()),
+        }
     }
 
     pub fn fn_stmt(&mut self) -> Result<Stmt, ParseError> {
@@ -886,13 +945,13 @@ impl<'a> Parser<'a> {
         let mut model = Model::default();
         // parse multiple var declarations
         while self.is_kind(TokenKind::Var) {
-            let var = self.var_stmt()?;
-            match var {
-                Stmt::Var(var) => {
-                    model.vars.push(var);
+            let store = self.store_decl_stmt()?;
+            match store {
+                Stmt::Store(store) => {
+                    model.vars.push(store);
                 }
                 _ => {
-                    return error_pos!("Expected var declaration, got {:?}", var);
+                    return error_pos!("Expected store declaration, got {:?}", store);
                 }
             }
             self.expect_eos()?;
@@ -992,6 +1051,20 @@ mod tests {
     }
 
     #[test]
+    fn test_let() {
+        let code = "let x = 1";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (let (name x) (type int) (int 1)))");
+    }
+
+    #[test]
+    fn test_let_asn() {
+        let code = "let x = 1; x = 2";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (let (name x) (type int) (int 1)) (stmt (bina (name x) (op =) (int 2))))");
+    }
+
+    #[test]
     fn test_var() {
         let code = "var x = 41";
         let ast = parse_once(code);
@@ -999,10 +1072,10 @@ mod tests {
     }
 
     #[test]
-    fn test_var_use() {
-        let code = "var x = 41; x+1";
+    fn test_store_use() {
+        let code = "let x = 41; x+1";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (var (name x) (int 41)) (stmt (bina (name x) (op +) (int 1))))");
+        assert_eq!(ast.to_string(), "(code (let (name x) (type int) (int 41)) (stmt (bina (name x) (op +) (int 1))))");
     }
 
     #[test]

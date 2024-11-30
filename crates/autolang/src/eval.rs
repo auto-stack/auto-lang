@@ -112,7 +112,7 @@ impl Evaler {
             Stmt::Expr(expr) => self.eval_expr(expr),
             Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
             Stmt::For(for_stmt) => self.eval_for(for_stmt),
-            Stmt::Var(var) => self.eval_var(var),
+            Stmt::Store(store_decl) => self.eval_store(store_decl),
             Stmt::Fn(_) => Value::Nil,
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
             Stmt::Widget(widget) => self.eval_widget(widget),
@@ -140,7 +140,7 @@ impl Evaler {
     }
 
     fn eval_loop_body(&mut self, body: &Body, is_mid: bool, is_new_line: bool) -> Value {
-        self.universe.borrow_mut().set_local("is_mid", Value::Bool(is_mid));
+        self.universe.borrow_mut().set_local_val("is_mid", Value::Bool(is_mid));
         let mut res = Vec::new();
         let sep = if is_new_line { "\n" } else { "" };
         for stmt in body.stmts.iter() {
@@ -174,11 +174,11 @@ impl Evaler {
     fn eval_iter(&mut self, iter: &Iter, idx: usize, item: Value) {
         match iter {
             Iter::Indexed(index, iter) => {
-                self.universe.borrow_mut().set_local(&index.text, Value::Int(idx as i32));
+                self.universe.borrow_mut().set_local_val(&index.text, Value::Int(idx as i32));
                 // println!("set index {}, iter: {}, item: {}", index.text, iter.text, item.clone());
-                self.universe.borrow_mut().set_local(&iter.text, item);
+                self.universe.borrow_mut().set_local_val(&iter.text, item);
             },
-            Iter::Named(iter) => self.universe.borrow_mut().set_local(&iter.text, item),
+            Iter::Named(iter) => self.universe.borrow_mut().set_local_val(&iter.text, item),
         }
     }
 
@@ -247,12 +247,13 @@ impl Evaler {
         }
     }
 
-    fn eval_var(&mut self, var: &Var) -> Value {
-        let value = match &var.expr {
+    fn eval_store(&mut self, store_decl: &Store) -> Value {
+        let value = match &store_decl.expr {
             Expr::Ref(target) => Value::Ref(target.text.clone()),
-            _ => self.eval_expr(&var.expr),
+            _ => self.eval_expr(&store_decl.expr),
         };
-        self.universe.borrow_mut().set_local(&var.name.text, value);
+        self.universe.borrow_mut().define(store_decl.name.text.as_str(), Rc::new(scope::Meta::Store(store_decl.clone())));
+        self.universe.borrow_mut().set_local_val(&store_decl.name.text, value);
         Value::Void
     }
 
@@ -518,11 +519,11 @@ impl Evaler {
         for (i, arg) in args.array.iter().enumerate() {
             let val = self.eval_expr(arg);
             let name = &fn_decl.params[i].name.text;
-            self.universe.borrow_mut().set_local(&name, val);
+            self.universe.borrow_mut().set_local_val(&name, val);
         }
         for (name, expr) in args.map.iter() {
             let val = self.eval_expr(expr);
-            self.universe.borrow_mut().set_local(&name.text, val);
+            self.universe.borrow_mut().set_local_val(&name.text, val);
         }
         let result = self.eval_body(&fn_decl.body);
         self.universe.borrow_mut().exit_scope();
@@ -662,7 +663,7 @@ impl Evaler {
         for var in widget.model.vars.iter() {
             let value = self.eval_expr(&var.expr);
             vars.push((ValueKey::Str(var.name.text.clone()), value.clone()));
-            self.universe.borrow_mut().set_local(&var.name.text, value);
+            self.universe.borrow_mut().set_local_val(&var.name.text, value);
         }
         let model = autoval::Model { values: vars };
         // view
@@ -670,7 +671,7 @@ impl Evaler {
         self.universe.borrow_mut().define(&view_id, Rc::new(Meta::View(widget.view.clone())));
         let widget_value = autoval::Widget { name: name.clone(), model, view_id: MetaID::View(view_id) };
         let value = Value::Widget(widget_value);
-        self.universe.borrow_mut().set_local(name, value.clone());
+        self.universe.borrow_mut().set_local_val(name, value.clone());
         self.universe.borrow_mut().widget = value.clone();
         value
     }
@@ -800,6 +801,8 @@ fn to_value_type(ty: &ast::Type) -> autoval::Type {
         ast::Type::Float => autoval::Type::Float,
         ast::Type::Bool => autoval::Type::Bool,
         ast::Type::Str => autoval::Type::Str,
+        ast::Type::Array(_) => autoval::Type::Array,
         ast::Type::User(type_decl) => autoval::Type::User(type_decl.name.text.clone()),
+        ast::Type::Unknown => autoval::Type::Any,
     }
 }

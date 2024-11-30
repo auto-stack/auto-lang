@@ -64,6 +64,8 @@ pub enum TokenKind {
     Fn,
     Type,
     Ref,
+    Let,
+    Mut,
 
     // Format Str
     FStrStart,
@@ -122,6 +124,8 @@ impl fmt::Display for Token {
             TokenKind::Else => write!(f, "<else>"),
             TokenKind::For => write!(f, "<for>"),
             TokenKind::Var => write!(f, "<var>"),
+            TokenKind::Let => write!(f, "<let>"),
+            TokenKind::Mut => write!(f, "<mut>"),
             TokenKind::In => write!(f, "<in>"),
             TokenKind::Fn => write!(f, "<fn>"),
             TokenKind::Type => write!(f, "<type>"),
