@@ -249,6 +249,7 @@ impl Transpiler for CTranspiler {
         // Decls
         for decl in decls.iter() {
             self.stmt(decl, out)?;
+            out.write(b"\n").to()?;
         }
         if !decls.is_empty() {
             out.write(b"\n").to()?;
@@ -410,6 +411,22 @@ if (x > 0) {
         let ccode = transpile_c(code).unwrap();
         let expected = r#"int main(void) {
     return 42;
+}
+"#;
+        assert_eq!(ccode, expected);
+    }
+
+    #[test]
+    fn test_math() {
+        let code = r#"fn add(x int, y int) { x+y }
+add(1, 2)"#;
+        let ccode = transpile_c(code).unwrap();
+        let expected = r#"int add(int x, int y) {
+    return x + y;
+}
+
+int main(void) {
+    return add(1, 2);
 }
 "#;
         assert_eq!(ccode, expected);
