@@ -1186,7 +1186,9 @@ mod tests {
     fn test_type_inst() {
         let code = "type Point {x int; y int}; var p = Point(x=1, y=2); p.x";
         let ast = parse_once(code);
+        let mid = ast.stmts[1].clone();
         let last = ast.stmts.last().unwrap();
+        assert_eq!(mid.to_string(), "(var (name p) (call (name Point) (args (pair (name x) (int 1)) (pair (name y) (int 2))))");
         assert_eq!(last.to_string(), "(stmt (bina (name p) (op .) (name x)))");
     }
 
@@ -1358,5 +1360,14 @@ mod tests {
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (var (name a) (int 1)) (var (name b) (ref a)) (stmt (name b)))");
     }   
+
+
+    #[test]
+    fn test_type_instance_obj() {
+        let code = "type A { x int; y int }; A(x=1, y=2)";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(stmt (call (name A) (args (pair (name x) (int 1)) (pair (name y) (int 2))))");
+    }
 }
 

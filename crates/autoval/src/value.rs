@@ -285,6 +285,7 @@ pub enum Value {
     View(View),
     Meta(MetaID),
     Method(Method),
+    Instance(Instance),
     Args(Args),
     Ref(String),
     Error(String),
@@ -378,6 +379,7 @@ impl Display for Value {
             Value::Args(args) => write!(f, "{}", args),
             Value::View(view) => write!(f, "{}", view),
             Value::Ref(target) => write!(f, "(ref {})", target),
+            Value::Instance(instance) => write!(f, "{}", instance),
         }
     }
 }
@@ -777,9 +779,23 @@ impl Args {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Instance {
+    pub ty: Type,
+    pub fields: Obj,
+}
+
+impl fmt::Display for Instance {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}{}", self.ty, self.fields)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum MetaID {
     Fn(Sig),
     Lambda(Sig),
+    Type(String),
     View(String),
     Body(String),
     Method(MethodMeta),
@@ -807,6 +823,7 @@ impl fmt::Display for MetaID {
             MetaID::Body(id) => write!(f, "<body:{}>", id),
             MetaID::Nil => write!(f, "<meta-nil>"),
             MetaID::Method(method) => write!(f, "<method:{}>", method),
+            MetaID::Type(id) => write!(f, "<type:{}>", id),
         }
     }
 }

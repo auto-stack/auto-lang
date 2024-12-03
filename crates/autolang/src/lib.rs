@@ -683,6 +683,27 @@ $ }
         let result = run(code).unwrap();
         assert_eq!(result, "10");
     }
+
+    #[test]
+    fn test_type_decl() {
+        let code = "type Point { x int; y int }; let p = Point(x=1, y=2); p";
+        let mut interpreter = interpret(code).unwrap();
+        assert_eq!(interpreter.result.repr(), "Point{x: 1, y: 2}");
+
+        let code = "p.x";
+        let result = interpreter.eval(code);
+        assert_eq!(result.repr(), "1");
+    }
+
+    #[test]
+    fn test_deep_type() {
+        let code = "type A { x int; y int }; type B { a A; b int }";
+        let mut interpreter = interpret(code).unwrap();
+        let code = "var v = B(a=A(x=1, y=2), b=3); v.a.y";
+        let result = interpreter.eval(code);
+        assert_eq!(result.repr(), "2");
+    }
+
 }
 
 
