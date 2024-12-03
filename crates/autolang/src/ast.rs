@@ -212,7 +212,6 @@ pub enum Expr {
     Object(Vec<Pair>),
     Call(Call),
     Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
-    TypeInst(/*name*/Box<Expr>, /*entries*/Vec<Pair>),
     Lambda(Fn),
     FStr(FStr),
     // stmt exprs
@@ -323,7 +322,6 @@ impl fmt::Display for Expr {
             Expr::If(branches, else_stmt) => write!(f, "(if {:?} {:?})", branches, else_stmt),
             Expr::Call(call) => fmt_call(f, &call),
             Expr::Index(array, index) => write!(f, "(index {} {})", array, index),
-            Expr::TypeInst(name, entries) => fmt_type_inst(f, name, entries),
             Expr::Lambda(lambda) => write!(f, "{}", lambda),
             Expr::FStr(fstr) => write!(f, "{}", fstr),
             Expr::Nil => write!(f, "(nil)"),
@@ -363,6 +361,15 @@ pub enum Type {
     Array(ArrayType),
     User(TypeDecl),
     Unknown,
+}
+
+impl Type {
+    pub fn unique_name(&self) -> String {
+        match self {
+            Type::User(type_decl) => type_decl.name.text.clone(),
+            _ => "".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

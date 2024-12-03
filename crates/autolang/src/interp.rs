@@ -43,4 +43,11 @@ impl Interpreter {
         self.result = result;
         Ok(())
     }
+
+    pub fn eval(&mut self, code: &str) -> Value {
+        match self.interpret(code) {
+            Ok(_) => self.result.clone(),
+            Err(e) => Value::Error(e),
+        }
+    }
 }

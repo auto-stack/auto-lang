@@ -432,6 +432,9 @@ impl Evaler {
                         MetaID::Fn(sig) => {
                             return self.eval_fn_call_with_sig(&sig, &call.args);
                         }
+                        MetaID::Type(name) => {
+                            return self.eval_type_new(&name, &call.args);
+                        }
                         _ => {
                             println!("Strange function call {}", meta_id);
                         }
@@ -483,6 +486,57 @@ impl Evaler {
             let node: Node = call.clone().into();
             return self.eval_node(&node);
         }
+    }
+
+    pub fn eval_type_new(&mut self, name: &str, args: &Args) -> Value {
+        let meta = self.universe.borrow().lookup_meta(name);
+        if let Some(meta) = meta {
+            match meta.as_ref() {
+                scope::Meta::Type(ty) => {
+                    match ty {
+                        ast::Type::User(type_decl) => {
+                            let instance = self.eval_instance(type_decl, args);
+                            return instance;
+                        }
+                        _ => Value::Error(format!("Invalid type instance of {}", name)),
+                    }
+                }
+                _ => Value::Error(format!("Invalid type {}", name)),
+            }
+        } else {
+            return Value::Error(format!("Invalid type {}", name));
+        }
+    }
+
+    fn eval_instance(&mut self, type_decl: &TypeDecl, args: &Args) -> Value {
+        let ty = self.eval_type(&type_decl);
+        let fields = self.eval_fields(&type_decl.members, args);
+        Value::Instance(autoval::Instance { ty, fields })
+    }
+
+    fn eval_type(&mut self, type_decl: &TypeDecl) -> Type {
+        Type::User(type_decl.name.text.clone())
+    }
+
+    fn eval_fields(&mut self, members: &Vec<Member>, args: &Args) -> Obj {
+        let mut fields = Obj::new();
+        for (i, member) in members.iter().enumerate() {
+            // try to get arg by index
+            if i < args.array.len() {
+                let arg_exp = &args.array[i];
+                let arg_val = self.eval_expr(arg_exp);
+                fields.set(member.name.text.clone(), arg_val);
+            } else {
+                let name = &member.name.text;
+                for (key, arg) in args.map.iter() {
+                    if &key.text == name {
+                        let arg_val = self.eval_expr(arg);
+                        fields.set(member.name.text.clone(), arg_val);
+                    }
+                }
+            }
+        }
+        fields
     }
 
     pub fn eval_method(&mut self, method: &Method, args: &Args) -> Value {
@@ -595,16 +649,10 @@ impl Evaler {
             Expr::Index(array, index) => self.index(array, index),
             Expr::Pair(pair) => self.pair(pair),
             Expr::Object(pairs) => self.object(pairs),
-            Expr::TypeInst(name, entries) => self.type_inst(name, entries),
             Expr::Lambda(lambda) => Value::Lambda(lambda.name.text.clone()),
             Expr::FStr(fstr) => self.fstr(fstr),
-            Expr::Ref(name) => Value::Ref(name.text.clone()),
             Expr::Nil => Value::Nil,
         }
-    }
-
-    fn type_inst(&mut self, _name: &Expr, _entries: &Vec<Pair>) -> Value {
-        Value::Void
     }
 
     fn type_decl(&mut self, _type_decl: &TypeDecl) -> Value {
@@ -636,6 +684,10 @@ impl Evaler {
             }
             Value::View(view) => match right {
                 Expr::Ident(name) => view.find(&name.text),
+                _ => None,
+            }
+            Value::Instance(instance) => match right {
+                Expr::Ident(name) => instance.fields.lookup(&name.text),
                 _ => None,
             }
             _ => {
@@ -779,6 +831,7 @@ impl Evaler {
 fn to_meta_id(meta: &Rc<scope::Meta>) -> MetaID {
     match meta.as_ref() {
         scope::Meta::Fn(fn_decl) => MetaID::Fn(to_value_sig(&fn_decl)),
+        scope::Meta::Type(type_decl) => MetaID::Type(type_decl.unique_name()),
         _ => MetaID::Nil,
     }
 }
