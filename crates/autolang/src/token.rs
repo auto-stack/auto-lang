@@ -66,6 +66,7 @@ pub enum TokenKind {
     Ref,
     Let,
     Mut,
+    Has,
 
     // Format Str
     FStrStart,

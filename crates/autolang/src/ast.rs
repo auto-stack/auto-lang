@@ -452,20 +452,31 @@ impl Fn {
 #[derive(Debug, Clone)]
 pub struct TypeDecl {
     pub name: Name,
+    pub has: Vec<Type>,
     pub members: Vec<Member>,
     pub methods: Vec<Fn>,
 }
 
 impl fmt::Display for TypeDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(type-decl {} (members ", self.name)?;
-        for (i, member) in self.members.iter().enumerate() {
-            write!(f, "{}", member)?;
-            if i < self.members.len() - 1 {
-                write!(f, " ")?;
+        write!(f, "(type-decl {}", self.name)?;
+        if !self.has.is_empty() {
+            write!(f, " (has ")?;
+            for h in self.has.iter() {
+                write!(f, "(type {})", h.unique_name())?;
             }
+            write!(f, ")")?;
         }
-        write!(f, ")")?;
+        if !self.members.is_empty() {
+            write!(f, " (members ")?;
+            for (i, member) in self.members.iter().enumerate() {
+                write!(f, "{}", member)?;
+                if i < self.members.len() - 1 {
+                    write!(f, " ")?;
+                }
+            }
+            write!(f, ")")?;
+        }
         if !self.methods.is_empty() {
             write!(f, " (methods ")?;
         }
