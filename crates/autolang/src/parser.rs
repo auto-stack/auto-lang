@@ -406,6 +406,7 @@ impl<'a> Parser<'a> {
 
     pub fn object(&mut self) -> Result<Vec<Pair>, ParseError> {
         self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
         let mut entries = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             entries.push(self.pair()?);
@@ -620,6 +621,7 @@ impl<'a> Parser<'a> {
             TokenKind::Mut => self.store_stmt()?,
             TokenKind::Fn => self.fn_stmt("")?,
             TokenKind::Type => self.type_stmt()?,
+            TokenKind::LBrace => Stmt::Block(self.body()?),
             // AutoUI Stmts
             TokenKind::Widget => self.widget_stmt()?,
             // Node Instance?
@@ -646,7 +648,8 @@ impl<'a> Parser<'a> {
         let new_lines = self.skip_empty_lines();
         let has_new_line = new_lines > 0;
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            stmts.push(self.stmt()?);
+            let stmt = self.stmt()?;
+            stmts.push(stmt);
             self.expect_eos()?;
         }
         self.expect(TokenKind::RBrace)?;
@@ -859,8 +862,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn expr_stmt(&mut self) -> Result<Stmt, ParseError> {
-        let expr = self.expr()?;
-        Ok(Stmt::Expr(expr))
+        Ok(Stmt::Expr(self.expr()?))
     }
 
     pub fn type_stmt(&mut self) -> Result<Stmt, ParseError> {
@@ -1060,9 +1062,11 @@ impl<'a> Parser<'a> {
             }
         } else { // call
             if is_call {
-                return Ok(Stmt::Expr(Expr::Call(Call { name: Box::new(ident), args })));
+                let expr = Expr::Call(Call { name: Box::new(ident), args });
+                Ok(Stmt::Expr(expr))
             } else {
-                return Ok(Stmt::Expr(self.expr_pratt_with_left(ident, 0)?));
+                let expr = self.expr_pratt_with_left(ident, 0)?;
+                Ok(Stmt::Expr(expr))
             }
         }
     }
@@ -1167,9 +1171,9 @@ mod tests {
 
     #[test]
     fn test_object() {
-        let code = "{x:1, y:2}";
+        let code = "let o = {x:1, y:2}";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (object (pair (name x) (int 1)) (pair (name y) (int 2))))");
+        assert_eq!(ast.to_string(), "(code (let (name o) (object (pair (name x) (int 1)) (pair (name y) (int 2)))))");
 
 
         let code = "var a = { 1: 2, 3: 4 }; a.1";

@@ -1,0 +1,26 @@
+// object
+var o = {
+    a: 1
+    b: 2
+}
+
+// object with interperse statements
+var o = {
+    if true {
+        b: 2
+    }
+    a: 1
+    print("test")
+    c: 3
+}
+
+// block with asn
+var b = {
+    print("do this")
+    print("do that")
+    // last result is return value
+    x: 2
+}
+
+
+var arr = [if x {1, 2, 3, 4} else {-1, -2, -3, -4}, 5, 6]

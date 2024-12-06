@@ -112,6 +112,7 @@ impl Evaler {
             Stmt::Expr(expr) => self.eval_expr(expr),
             Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
             Stmt::For(for_stmt) => self.eval_for(for_stmt),
+            Stmt::Block(body) => self.eval_body(body),
             Stmt::Store(store) => self.eval_store(store),
             Stmt::Fn(_) => Value::Nil,
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
@@ -121,11 +122,12 @@ impl Evaler {
     }
 
     fn eval_body(&mut self, body: &Body) -> Value {
+        self.enter_scope();
         let mut res = Vec::new();
         for stmt in body.stmts.iter() {
             res.push(self.eval_stmt(stmt));
         }
-        match self.mode {
+        let res = match self.mode {
             EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
             EvalMode::CONFIG => Value::Array(res),
             EvalMode::TEMPLATE => {
@@ -136,7 +138,9 @@ impl Evaler {
                     }
                 }).collect::<Vec<String>>().join("\n"))
             }
-        }
+        };
+        self.exit_scope();
+        res
     }
 
     fn eval_loop_body(&mut self, body: &Body, is_mid: bool, is_new_line: bool) -> Value {
@@ -684,6 +688,7 @@ impl Evaler {
             Expr::Index(array, index) => self.index(array, index),
             Expr::Pair(pair) => self.pair(pair),
             Expr::Object(pairs) => self.object(pairs),
+            Expr::Block(body) => self.eval_body(body),
             Expr::Lambda(lambda) => Value::Lambda(lambda.name.text.clone()),
             Expr::FStr(fstr) => self.fstr(fstr),
             Expr::Nil => Value::Nil,
