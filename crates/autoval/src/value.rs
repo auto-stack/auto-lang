@@ -359,7 +359,7 @@ impl Display for Value {
             Value::Str(value) => write!(f, "\"{}\"", value),
             Value::Int(value) => write!(f, "{}", value),
             Value::Uint(value) => write!(f, "{}", value),
-            Value::Byte(value) => write!(f, "{}", value),
+            Value::Byte(value) => write!(f, "0x{:X}", value),
             Value::Float(value) => write!(f, "{}", value),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Nil => write!(f, "nil"),
