@@ -716,4 +716,16 @@ $ }
         let result = interpreter.eval(code);
         assert_eq!(result.repr(), "25");
     }
+
+    // #[test]
+    // fn test_simple_block() {
+    //     let code = r#"let a = {
+    //         print("hello")
+    //         41
+    //     }
+    //     a
+    //     "#;
+    //     let result = run(code).unwrap();
+    //     assert_eq!(result, "41");
+    // }
 }

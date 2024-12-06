@@ -867,6 +867,17 @@ impl<'a> Parser<'a> {
         self.next(); // skip type
         let name = Name::new(self.cur.text.clone());
         self.expect(TokenKind::Ident)?;
+        let mut has = Vec::new();
+        if self.is_kind(TokenKind::Has) {
+            self.next(); // skip has
+            while !self.is_kind(TokenKind::LBrace) {
+                if !has.is_empty() {
+                    self.expect(TokenKind::Colon)?; // skip ,
+                }
+                let typ = self.type_name()?;
+                has.push(typ);
+            }
+        }
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
         // list of members or methods
@@ -885,7 +896,7 @@ impl<'a> Parser<'a> {
             self.expect_eos()?;
         }
         self.expect(TokenKind::RBrace)?;
-        let decl = TypeDecl { name: name.clone(), members, methods };
+        let decl = TypeDecl { name: name.clone(), has, members, methods };
         // put type in scope
         self.scope.define(name.text.as_str(), Rc::new(Meta::Type(Type::User(decl.clone()))));
         Ok(Stmt::TypeDecl(decl))
@@ -1417,5 +1428,19 @@ mod tests {
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
         assert_eq!(last.to_string(), "(type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int))) (methods (fn (name absquare) (ret int) (body (bina (bina (name x) (op *) (name x)) (op +) (bina (name y) (op *) (name y)))))");
+    }
+
+    #[test]
+    fn test_type_composition() {
+        let code = r#"
+        type Wing {
+            fn fly() {}
+        }
+        type Duck has Wing {
+        }
+        "#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(type-decl (name Duck) (has (type Wing)))");
     }
 }
