@@ -174,7 +174,7 @@ impl fmt::Display for Body {
 impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Stmt::Expr(expr) => write!(f, "(stmt {})", expr),
+            Stmt::Expr(expr) => write!(f, "{}", expr),
             Stmt::If(branches, else_stmt) => {
                 write!(f, "(if ")?;
                 for branch in branches.iter() {

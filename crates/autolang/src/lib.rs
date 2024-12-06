@@ -126,9 +126,6 @@ fn flip_template(template: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-
-    use ast::Key;
-
     use super::*;
 
     #[test]
@@ -286,7 +283,7 @@ $ }"#;
         let result = run(code).unwrap();
         assert_eq!(result, "14");
 
-        let code = "fn add(a, b) { a + b }; add(a=1, b=2)";
+        let code = "fn add(a, b) { a + b }; add(a:1, b:2)";
         let result = run(code).unwrap();
         assert_eq!(result, "3");
 
@@ -334,7 +331,7 @@ $ }"#;
 
     #[test]
     fn test_lambda_with_named_params() {
-        let code = "fn sub(a, b) { a - b }; sub(b=5, a=12)";
+        let code = "let sub = |a, b| a - b; sub(b:5, a:12)";
         let result = run(code).unwrap();
         assert_eq!(result, "7");
     }
@@ -686,7 +683,7 @@ $ }
 
     #[test]
     fn test_type_decl() {
-        let code = "type Point { x int; y int }; let p = Point(x=1, y=2); p";
+        let code = "type Point { x int; y int }; let p = Point(x:1, y:2); p";
         let mut interpreter = interpret(code).unwrap();
         assert_eq!(interpreter.result.repr(), "Point{x: 1, y: 2}");
 
@@ -699,7 +696,7 @@ $ }
     fn test_deep_type() {
         let code = "type A { x int; y int }; type B { a A; b int }";
         let mut interpreter = interpret(code).unwrap();
-        let code = "var v = B(a=A(x=1, y=2), b=3); v.a.y";
+        let code = "var v = B(a: A(x:1, y:2), b:3); v.a.y";
         let result = interpreter.eval(code);
         assert_eq!(result.repr(), "2");
     }
