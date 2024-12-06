@@ -379,22 +379,22 @@ impl<'a> Parser<'a> {
     pub fn args(&mut self) -> Result<Args, ParseError> {
         self.expect(TokenKind::LParen)?;
         let mut args = Args::new();
-        let mut is_named_started = false;
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RParen) {
             let expr = self.expr()?;
             // Check for named argument
             match expr {
-                Expr::Bina(name, Op::Asn, val) => { // Named argument
-                    is_named_started = true;
-                    match &*name {
-                        Expr::Ident(name) => args.map.push((name.clone(), *val)),
-                        _ => return error_pos!("Expected identifier, got {:?}", name),
+                Expr::Pair(p) => {
+                    let k = p.key;
+                    match k {
+                        Key::NamedKey(name) => {
+                            args.map.push((name, *p.value));
+                        }
+                        _ => {
+                            return error_pos!("named args should have named key instead of {}", &k);
+                        }
                     }
                 }
                 _ => {
-                    if is_named_started {
-                        return error_pos!("all positional args should come before named args: {}", expr);
-                    }
                     args.array.push(expr);
                 }
             }
@@ -1075,21 +1075,21 @@ mod tests {
     fn test_parser() {
         let code = "1+2+3";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (stmt (bina (bina (int 1) (op +) (int 2)) (op +) (int 3))))");
+        assert_eq!(ast.to_string(), "(code (bina (bina (int 1) (op +) (int 2)) (op +) (int 3)))");
     }
 
     #[test]
     fn test_if() {
         let code = "if true {1}";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (if (branch (true) (body (stmt (int 1))))");
+        assert_eq!(ast.to_string(), "(code (if (branch (true) (body (int 1)))");
     }
 
     #[test]
     fn test_if_else() {
         let code = "if false {1} else {2}";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (if (branch (false) (body (stmt (int 1))) (else (body (stmt (int 2))))");
+        assert_eq!(ast.to_string(), "(code (if (branch (false) (body (int 1)) (else (body (int 2)))");
     }
 
     #[test]
@@ -1119,52 +1119,52 @@ mod tests {
     fn test_store_use() {
         let code = "let x = 41; x+1";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (let (name x) (type int) (int 41)) (stmt (bina (name x) (op +) (int 1))))");
+        assert_eq!(ast.to_string(), "(code (let (name x) (type int) (int 41)) (bina (name x) (op +) (int 1)))");
     }
 
     #[test]
     fn test_range() {
         let code = "1..5";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (stmt (bina (int 1) (op ..) (int 5))))");
+        assert_eq!(ast.to_string(), "(code (bina (int 1) (op ..) (int 5)))");
     }
 
     #[test]
     fn test_for() {
         let code = "for i in 1..5 {i}";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 1) (op ..) (int 5)) (body (stmt (name i))))");
+        assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 1) (op ..) (int 5)) (body (name i)))");
 
         let code = "for i, x in 1..5 {x}";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (for ((name i) (name x)) (bina (int 1) (op ..) (int 5)) (body (stmt (name x))))");
+        assert_eq!(ast.to_string(), "(code (for ((name i) (name x)) (bina (int 1) (op ..) (int 5)) (body (name x)))");
     }
 
     #[test]
     fn test_for_with_print() {
         let code = "for i in 0..10 { print(i); print(i+1) }";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 0) (op ..) (int 10)) (body (stmt (call (name print) (args (name i))) (stmt (call (name print) (args (bina (name i) (op +) (int 1))))))");
+        assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 0) (op ..) (int 10)) (body (call (name print) (args (name i)) (call (name print) (args (bina (name i) (op +) (int 1)))))");
     }
 
     #[test]
     fn test_for_with_mid() {
         let code = r#"for i in 0..10 { print(i); mid(",") }"#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 0) (op ..) (int 10)) (body (stmt (call (name print) (args (name i))) (stmt (call (name mid) (args (str \",\")))))");
+        assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 0) (op ..) (int 10)) (body (call (name print) (args (name i)) (call (name mid) (args (str \",\"))))");
     }
 
     #[test]
     fn test_object() {
         let code = "{x:1, y:2}";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (stmt (object (pair (name x) (int 1)) (pair (name y) (int 2)))))");
+        assert_eq!(ast.to_string(), "(code (object (pair (name x) (int 1)) (pair (name y) (int 2))))");
 
 
         let code = "var a = { 1: 2, 3: 4 }; a.1";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(stmt (bina (name a) (op .) (int 1)))");
+        assert_eq!(last.to_string(), "(bina (name a) (op .) (int 1))");
     }
 
 
@@ -1172,21 +1172,29 @@ mod tests {
     fn test_fn() {
         let code = "fn add(x, y) { x+y }";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (fn (name add) (params (param (name x) (type int)) (param (name y) (type int))) (body (stmt (bina (name x) (op +) (name y))))");
+        assert_eq!(ast.to_string(), "(code (fn (name add) (params (param (name x) (type int)) (param (name y) (type int))) (body (bina (name x) (op +) (name y)))");
     }
 
     #[test]
     fn test_fn_with_ret_type() {
         let code = r#"fn add(x, y) int { x+y }"#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (fn (name add) (params (param (name x) (type int)) (param (name y) (type int))) (ret int) (body (stmt (bina (name x) (op +) (name y))))");
+        assert_eq!(ast.to_string(), "(code (fn (name add) (params (param (name x) (type int)) (param (name y) (type int))) (ret int) (body (bina (name x) (op +) (name y)))");
     }
 
     #[test]
     fn test_fn_with_param_type() {
         let code = "fn say(msg str) { print(msg) }";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (fn (name say) (params (param (name msg) (type str))) (body (stmt (call (name print) (args (name msg))))");
+        assert_eq!(ast.to_string(), "(code (fn (name say) (params (param (name msg) (type str))) (body (call (name print) (args (name msg)))");
+    }
+
+    #[test]
+    fn test_fn_with_named_args() {
+        let code = "fn add(a int, b int) int { a + b }; add(a:1, b:2)";
+        let ast = parse_once(code);
+        let last = ast.stmts[1].clone();
+        assert_eq!(last.to_string(), "(call (name add) (args (pair (name a) (int 1)) (pair (name b) (int 2)))");
     }
 
     #[test]
@@ -1194,7 +1202,7 @@ mod tests {
         let code = "fn add(x, y) { x+y }; add(1, 2)";
         let ast = parse_once(code);
         let call = ast.stmts[1].clone();
-        assert_eq!(call.to_string(), "(stmt (call (name add) (args (int 1) (int 2)))");
+        assert_eq!(call.to_string(), "(call (name add) (args (int 1) (int 2))");
     }
 
     #[test]
@@ -1206,12 +1214,12 @@ mod tests {
 
     #[test]
     fn test_type_inst() {
-        let code = "type Point {x int; y int}; var p = Point(x=1, y=2); p.x";
+        let code = "type Point {x int; y int}; var p = Point(x:1, y:2); p.x";
         let ast = parse_once(code);
         let mid = ast.stmts[1].clone();
         let last = ast.stmts.last().unwrap();
         assert_eq!(mid.to_string(), "(var (name p) (call (name Point) (args (pair (name x) (int 1)) (pair (name y) (int 2))))");
-        assert_eq!(last.to_string(), "(stmt (bina (name p) (op .) (name x)))");
+        assert_eq!(last.to_string(), "(bina (name p) (op .) (name x))");
     }
 
 
@@ -1219,14 +1227,14 @@ mod tests {
     fn test_lambda() {
         let code = "var x = || 1 + 2";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (var (name x) (fn (name lambda_1) (body (stmt (bina (int 1) (op +) (int 2)))))");
+        assert_eq!(ast.to_string(), "(code (var (name x) (fn (name lambda_1) (body (bina (int 1) (op +) (int 2))))");
     }
 
     #[test]
     fn test_lambda_with_params() {
         let code = "|a int, b int| a + b";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (stmt (fn (name lambda_1) (params (param (name a) (type int)) (param (name b) (type int))) (body (stmt (bina (name a) (op +) (name b)))))");
+        assert_eq!(ast.to_string(), "(code (fn (name lambda_1) (params (param (name a) (type int)) (param (name b) (type int))) (body (bina (name a) (op +) (name b)))");
     }
 
     #[test]
@@ -1250,7 +1258,7 @@ mod tests {
                 let model = &widget.model;
                 assert_eq!(model.to_string(), "(model (var (name count) (int 0)))");
                 let view = &widget.view;
-                assert_eq!(view.to_string(), "(view (node (name button) (args (str \"+\")) (body (stmt (pair (name onclick) (fn (name lambda_1) (body (stmt (bina (name count) (op =) (bina (name count) (op +) (int 1))))))))");
+                assert_eq!(view.to_string(), "(view (node (name button) (args (str \"+\")) (body (pair (name onclick) (fn (name lambda_1) (body (bina (name count) (op =) (bina (name count) (op +) (int 1))))))");
             }
             _ => panic!("Expected widget, got {:?}", widget),
         }
@@ -1266,7 +1274,7 @@ mod tests {
         "#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(stmt (pair (name version) (str \"0.1.0\")))");
+        assert_eq!(last.to_string(), "(pair (name version) (str \"0.1.0\"))");
     }
 
     #[test]
@@ -1276,7 +1284,7 @@ mod tests {
             kind: "primary"
         }"#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (node (name button) (args (str \"OK\")) (body (stmt (pair (name border) (int 1))) (stmt (pair (name kind) (str \"primary\")))))");
+        assert_eq!(ast.to_string(), "(code (node (name button) (args (str \"OK\")) (body (pair (name border) (int 1)) (pair (name kind) (str \"primary\"))))");
     }
 
     #[test]
@@ -1285,7 +1293,7 @@ mod tests {
             text("Hello")
         }"#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (node (name center) (body (stmt (call (name text) (args (str \"Hello\")))))");
+        assert_eq!(ast.to_string(), "(code (node (name center) (body (call (name text) (args (str \"Hello\"))))");
     }
 
 
@@ -1299,7 +1307,7 @@ mod tests {
             //{id: 4, name: "test4"} // comment out
         ]"#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (stmt (array (object (pair (name id) (int 1)) (pair (name name) (str \"test\"))) (object (pair (name id) (int 2)) (pair (name name) (str \"test2\"))) (object (pair (name id) (int 3)) (pair (name name) (str \"test3\"))))))");
+        assert_eq!(ast.to_string(), "(code (array (object (pair (name id) (int 1)) (pair (name name) (str \"test\"))) (object (pair (name id) (int 2)) (pair (name name) (str \"test2\"))) (object (pair (name id) (int 3)) (pair (name name) (str \"test3\")))))");
     }
 
 
@@ -1307,7 +1315,7 @@ mod tests {
     fn test_hex() {
         let code = "0x10";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (stmt (int 16)))");
+        assert_eq!(ast.to_string(), "(code (int 16))");
     }
 
     #[test]
@@ -1315,14 +1323,14 @@ mod tests {
         let code = "var a = {b: [0, 1, 2]}; a.b[0]";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(stmt (index (bina (name a) (op .) (name b)) (int 0)))");
+        assert_eq!(last.to_string(), "(index (bina (name a) (op .) (name b)) (int 0))");
     }
 
     #[test]
     fn test_fstr() {
         let code = r#"f"hello $name""#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (stmt (fstr (str \"hello \") (name name))))");
+        assert_eq!(ast.to_string(), "(code (fstr (str \"hello \") (name name)))");
     }
 
     #[test]
@@ -1330,7 +1338,7 @@ mod tests {
         let code = r#"var name = "haha"; var age = 18; `hello $name ${age}`"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(stmt (fstr (str \"hello \") (name name) (str \" \") (name age)))");
+        assert_eq!(last.to_string(), "(fstr (str \"hello \") (name name) (str \" \") (name age))");
     }
 
     #[test]
@@ -1338,7 +1346,7 @@ mod tests {
         let code = r#"var a = 1; var b = 2; f"a + b = ${a+b}""#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(stmt (fstr (str \"a + b = \") (bina (name a) (op +) (name b))))");
+        assert_eq!(last.to_string(), "(fstr (str \"a + b = \") (bina (name a) (op +) (name b)))");
     }
 
     #[test]
@@ -1349,7 +1357,7 @@ mod tests {
         }
         "#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (node (name center) (body (stmt (call (name text) (args (str \"Hello\")))))");
+        assert_eq!(ast.to_string(), "(code (node (name center) (body (call (name text) (args (str \"Hello\"))))");
     }
 
     #[test]
@@ -1367,20 +1375,20 @@ mod tests {
 
         app {
             center {
-                hello(name="You")
+                hello(name:"You")
             }
         }"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
         println!("{}", pretty(&last.to_string()));
-        assert_eq!(last.to_string(), "(node (name app) (body (node (name center) (body (stmt (call (name hello) (args (pair (name name) (str \"You\"))))))");
+        assert_eq!(last.to_string(), "(node (name app) (body (node (name center) (body (call (name hello) (args (pair (name name) (str \"You\")))))");
     }
 
     #[test]
     fn test_ref() {
         let code = "var a = 1; var b = ref a; b";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (var (name a) (int 1)) (var (name b) (ref a)) (stmt (name b)))");
+        assert_eq!(ast.to_string(), "(code (var (name a) (int 1)) (var (name b) (ref a)) (name b))");
     }
 
 
@@ -1390,10 +1398,10 @@ mod tests {
             x int
             y int
         }
-        A(x=1, y=2)"#;
+        A(x:1, y:2)"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(stmt (call (name A) (args (pair (name x) (int 1)) (pair (name y) (int 2))))");
+        assert_eq!(last.to_string(), "(call (name A) (args (pair (name x) (int 1)) (pair (name y) (int 2)))");
     }
 
     #[test]
@@ -1408,6 +1416,6 @@ mod tests {
         }"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int))) (methods (fn (name absquare) (ret int) (body (stmt (bina (bina (name x) (op *) (name x)) (op +) (bina (name y) (op *) (name y))))))");
+        assert_eq!(last.to_string(), "(type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int))) (methods (fn (name absquare) (ret int) (body (bina (bina (name x) (op *) (name x)) (op +) (bina (name y) (op *) (name y)))))");
     }
 }
