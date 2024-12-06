@@ -80,9 +80,14 @@ pub struct Store {
 
 impl fmt::Display for Store {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ty_str = if matches!(self.ty, Type::Unknown) {
+            " ".to_string()
+        } else {
+            format!(" (type {}) ", self.ty)
+        };
         match self.kind {
-            StoreKind::Let => write!(f, "(let {} (type {}) {})", self.name, self.ty, self.expr),
-            StoreKind::Mut => write!(f, "(mut {} (type {}) {})", self.name, self.ty, self.expr),
+            StoreKind::Let => write!(f, "(let {}{}{})", self.name, ty_str, self.expr),
+            StoreKind::Mut => write!(f, "(mut {}{}{})", self.name, ty_str, self.expr),
             StoreKind::Var => write!(f, "(var {} {})", self.name, self.expr),
         }
     }
@@ -106,6 +111,7 @@ pub enum Stmt {
     If(/*multiple branches with condition/body*/Vec<Branch>, /*else*/Option<Body>),
     For(For),
     Store(Store),
+    Block(Body),
     Fn(Fn),
     TypeDecl(TypeDecl),
     Widget(Widget),
@@ -186,6 +192,7 @@ impl fmt::Display for Stmt {
                 Ok(())
             },
             Stmt::For(for_stmt) => write!(f, "{}", for_stmt),
+            Stmt::Block(body) => write!(f, "{}", body),
             Stmt::Store(store) => write!(f, "{}", store),
             Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),
             Stmt::TypeDecl(type_decl) => write!(f, "{}", type_decl),    
@@ -209,6 +216,7 @@ pub enum Expr {
     Bina(Box<Expr>, Op, Box<Expr>),
     Array(Vec<Expr>),
     Pair(Pair),
+    Block(Body),
     Object(Vec<Pair>),
     Call(Call),
     Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
@@ -283,6 +291,14 @@ fn fmt_call(f: &mut fmt::Formatter, call: &Call) -> fmt::Result {
     Ok(())
 }
 
+fn fmt_list(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
+    write!(f, "(list")?;
+    for elem in elems.iter() {
+        write!(f, " {}", elem)?;
+    }
+    write!(f, ")")
+}
+
 fn fmt_array(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
     write!(f, "(array ")?;
     for (i, elem) in elems.iter().enumerate() {
@@ -305,6 +321,10 @@ fn fmt_object(f: &mut fmt::Formatter, pairs: &Vec<Pair>) -> fmt::Result {
     write!(f, ")")
 }
 
+fn fmt_block(f: &mut fmt::Formatter, body: &Body) -> fmt::Result {
+    write!(f, "{}", body)
+}
+
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -319,6 +339,7 @@ impl fmt::Display for Expr {
             Expr::Array(elems) => fmt_array(f, elems),
             Expr::Pair(pair) => write!(f, "{}", pair),
             Expr::Object(pairs) => fmt_object(f, pairs),
+            Expr::Block(body) => fmt_block(f, body),
             Expr::If(branches, else_stmt) => write!(f, "(if {:?} {:?})", branches, else_stmt),
             Expr::Call(call) => fmt_call(f, &call),
             Expr::Index(array, index) => write!(f, "(index {} {})", array, index),

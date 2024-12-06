@@ -641,7 +641,7 @@ $ }
 
     #[test]
     fn test_ref_array() {
-        let code = "var a = [1, 2, 3]; var b = ref a; b = [4, 5, 6]; {a: a, b: b}";
+        let code = "var a = [1, 2, 3]; var b = ref a; b = [4, 5, 6]; var c = {a: a, b: b}; c";
         let result = run(code).unwrap();
         assert_eq!(result, "{a: [4, 5, 6], b: [4, 5, 6]}");
     }
@@ -717,15 +717,16 @@ $ }
         assert_eq!(result.repr(), "25");
     }
 
-    // #[test]
-    // fn test_simple_block() {
-    //     let code = r#"let a = {
-    //         print("hello")
-    //         41
-    //     }
-    //     a
-    //     "#;
-    //     let result = run(code).unwrap();
-    //     assert_eq!(result, "41");
-    // }
+    #[test]
+    fn test_simple_block() {
+        let code = r#"
+        let a = 10;
+        {
+            let a = 20;
+        }
+        a
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "10");
+    }
 }
