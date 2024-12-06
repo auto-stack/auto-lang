@@ -118,7 +118,7 @@ impl<'a> Parser<'a> {
     pub fn kind(&mut self) -> TokenKind {
         self.peek().kind
     }
-    
+
     pub fn pos(&mut self) -> Pos {
         self.peek().pos
     }
@@ -162,7 +162,7 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         while !self.is_kind(TokenKind::EOF) {
             stmts.push(self.stmt()?);
-            self.expect_eos()?; 
+            self.expect_eos()?;
         }
         Ok(Code { stmts })
     }
@@ -580,10 +580,10 @@ impl<'a> Parser<'a> {
         let id = self.scope.gen_lambda_id();
         let lambda = if self.is_kind(TokenKind::LBrace) {
             let body = self.body()?;
-            Fn::new(Name::new(id.clone()), params, body, None)
+            Fn::new(Name::new(id.clone()), None, params, body, Type::Unknown)
         } else { // single expression
             let expr = self.expr()?;
-            Fn::new(Name::new(id.clone()), params, Body::single_expr(expr), None)
+            Fn::new(Name::new(id.clone()), None, params, Body::single_expr(expr), Type::Unknown)
         };
         // put lambda in scope
         self.scope.define(id.as_str(), Rc::new(Meta::Fn(lambda.clone())));
@@ -618,7 +618,7 @@ impl<'a> Parser<'a> {
             TokenKind::Var => self.store_stmt()?,
             TokenKind::Let => self.store_stmt()?,
             TokenKind::Mut => self.store_stmt()?,
-            TokenKind::Fn => self.fn_stmt()?,
+            TokenKind::Fn => self.fn_stmt("")?,
             TokenKind::Type => self.type_stmt()?,
             // AutoUI Stmts
             TokenKind::Widget => self.widget_stmt()?,
@@ -735,14 +735,14 @@ impl<'a> Parser<'a> {
         if matches!(ty, Type::Unknown) {
             ty = self.find_expr_type(&expr)?;
         }
-        
+
         let store = Store { kind: store_kind, name: Name::new(name.clone()), ty, expr: expr.clone() };
         if let Expr::Lambda(lambda) = &expr {
             self.scope.define(name.as_str(), Rc::new(Meta::Ref(lambda.name.clone())));
         } else {
             self.scope.define(name.as_str(), Rc::new(Meta::Store(store.clone())));
         }
-        
+
         Ok(Stmt::Store(store))
     }
 
@@ -785,7 +785,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn fn_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn fn_stmt(&mut self, parent_name: &str) -> Result<Stmt, ParseError> {
         self.next(); // skip fn
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
@@ -793,11 +793,25 @@ impl<'a> Parser<'a> {
         self.scope.enter_scope();
         let params = self.fn_params()?;
         self.expect(TokenKind::RParen)?;
+        let mut ret_type = Type::Unknown;
+        if self.is_kind(TokenKind::Ident) {
+            ret_type = self.type_name()?;
+        }
         let body = self.body()?;
         self.scope.exit_scope();
-        let fn_expr = Fn::new(Name::new(name.clone()), params, body, Some(Type::Int));
+        let parent = if parent_name.is_empty() {
+            None
+        } else {
+            Some(Name::new(parent_name.to_string()))
+        };
+        let fn_expr = Fn::new(Name::new(name.clone()), parent, params, body, ret_type);
         let fn_stmt = Stmt::Fn(fn_expr.clone());
-        self.scope.define(name.as_str(), Rc::new(Meta::Fn(fn_expr)));
+        let unique_name = if parent_name.is_empty() {
+            name
+        } else {
+            format!("{}::{}", parent_name, name)
+        };
+        self.scope.define(unique_name.as_str(), Rc::new(Meta::Fn(fn_expr)));
         Ok(fn_stmt)
     }
 
@@ -854,12 +868,13 @@ impl<'a> Parser<'a> {
         let name = Name::new(self.cur.text.clone());
         self.expect(TokenKind::Ident)?;
         self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
         // list of members or methods
         let mut members = Vec::new();
         let mut methods = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             if self.is_kind(TokenKind::Fn) {
-                let fn_stmt = self.fn_stmt()?;
+                let fn_stmt = self.fn_stmt(&name.text)?;
                 if let Stmt::Fn(fn_expr) = fn_stmt {
                     methods.push(fn_expr);
                 }
@@ -887,7 +902,7 @@ impl<'a> Parser<'a> {
         let type_name = self.ident()?;
         self.next();
         match type_name {
-            Expr::Ident(name) => {  
+            Expr::Ident(name) => {
                 let meta = self.scope.lookup_meta(&name.text).ok_or(format!("Undefined type: {}", name.text))?;
                 if let Meta::Type(ty) = meta.as_ref() {
                     Ok(ty.clone())
@@ -914,7 +929,7 @@ impl<'a> Parser<'a> {
                     }
                     _ => Ok(()),
                 }
-            }   
+            }
             Expr::Ident(name) => {
                 if !self.scope.exists(&name.text) {
                     return error_pos!("Undefined variable: {}", name.text);
@@ -1161,6 +1176,13 @@ mod tests {
     }
 
     #[test]
+    fn test_fn_with_ret_type() {
+        let code = r#"fn add(x, y) int { x+y }"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (fn (name add) (params (param (name x) (type int)) (param (name y) (type int))) (ret int) (body (stmt (bina (name x) (op +) (name y))))");
+    }
+
+    #[test]
     fn test_fn_with_param_type() {
         let code = "fn say(msg str) { print(msg) }";
         let ast = parse_once(code);
@@ -1223,7 +1245,7 @@ mod tests {
         "#;
         let ast = parse_once(code);
         let widget = &ast.stmts[0];
-        match widget { 
+        match widget {
             Stmt::Widget(widget) => {
                 let model = &widget.model;
                 assert_eq!(model.to_string(), "(model (var (name count) (int 0)))");
@@ -1359,15 +1381,33 @@ mod tests {
         let code = "var a = 1; var b = ref a; b";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (var (name a) (int 1)) (var (name b) (ref a)) (stmt (name b)))");
-    }   
+    }
 
 
     #[test]
     fn test_type_instance_obj() {
-        let code = "type A { x int; y int }; A(x=1, y=2)";
+        let code = r#"type A {
+            x int
+            y int
+        }
+        A(x=1, y=2)"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
         assert_eq!(last.to_string(), "(stmt (call (name A) (args (pair (name x) (int 1)) (pair (name y) (int 2))))");
     }
-}
 
+    #[test]
+    fn test_type_with_method() {
+        let code = r#"type Point {
+            x int
+            y int
+
+            fn absquare() int {
+                x * x + y * y
+            }
+        }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int))) (methods (fn (name absquare) (ret int) (body (stmt (bina (bina (name x) (op *) (name x)) (op +) (bina (name y) (op *) (name y))))))");
+    }
+}

@@ -45,13 +45,13 @@ pub fn parse_scope(code: &str, scope: &mut Universe) -> Result<ast::Code, String
 
 pub fn interpret(code: &str) -> Result<interp::Interpreter, String> {
     let mut interpreter = interp::Interpreter::new();
-    interpreter.interpret(code);
+    interpreter.interpret(code)?;
     Ok(interpreter)
 }
 
 pub fn interpret_with_scope(code: &str, scope: scope::Universe) -> Result<interp::Interpreter, String> {
     let mut interpreter = interp::Interpreter::with_scope(scope);
-    interpreter.interpret(code);
+    interpreter.interpret(code)?;
     Ok(interpreter)
 }
 
@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn test_for_with_mid_and_newline() {
         let code = r#"
-$ for i in 0..10 { 
+$ for i in 0..10 {
     ${i}${mid(",")}
 $ }"#;
         let scope = Universe::new();
@@ -358,8 +358,8 @@ $ }"#;
     fn test_widget() {
         let code = r#"
         widget MyWidget {
-            model { 
-                var a = 1 
+            model {
+                var a = 1
             }
             view {
                 text(f"Count: $a")
@@ -704,6 +704,19 @@ $ }
         assert_eq!(result.repr(), "2");
     }
 
+    #[test]
+    fn test_type_with_method() {
+        let code = r#"type Point {
+            x int
+            y int
+
+            fn absolute_square() int {
+                x * x + y * y
+            }
+        }"#;
+        let mut interpreter = interpret(code).unwrap();
+        let code = "var p = Point(3, 4); p.absolute_square()";
+        let result = interpreter.eval(code);
+        assert_eq!(result.repr(), "25");
+    }
 }
-
-

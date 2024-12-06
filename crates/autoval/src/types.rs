@@ -14,6 +14,15 @@ pub enum Type {
     User(String),
 }
 
+impl Type {
+    pub fn name(&self) -> String {
+        match self {
+            Type::User(name) => name.clone(),
+            _ => format!("{:?}", self).to_lowercase(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeInfo {
     pub name: String,

@@ -401,9 +401,10 @@ impl fmt::Display for Type {
 #[derive(Debug, Clone)]
 pub struct Fn {
     pub name: Name,
+    pub parent: Option<Name>, // for method
     pub params: Vec<Param>,
     pub body: Body,
-    pub ret: Option<Type>,
+    pub ret: Type,
 }
 
 impl Serialize for Fn {
@@ -434,13 +435,16 @@ impl fmt::Display for Fn {
             }
             write!(f, ")")?;
         }
+        if !matches!(self.ret, Type::Unknown) {
+            write!(f, " (ret {})", self.ret)?;
+        }
         write!(f, " {}", self.body)
     }
 }
 
 impl Fn {
-    pub fn new(name: Name, params: Vec<Param>, body: Body, ret: Option<Type>) -> Fn {
-        Fn { name, params, body, ret}
+    pub fn new(name: Name, parent: Option<Name>, params: Vec<Param>, body: Body, ret: Type) -> Fn {
+        Fn { name, parent, params, body, ret }
     }
 
 }
@@ -461,13 +465,20 @@ impl fmt::Display for TypeDecl {
                 write!(f, " ")?;
             }
         }
+        write!(f, ")")?;
+        if !self.methods.is_empty() {
+            write!(f, " (methods ")?;
+        }
         for (i, method) in self.methods.iter().enumerate() {
             write!(f, "{}", method)?;
             if i < self.methods.len() - 1 {
                 write!(f, " ")?;
             }
         }
-        write!(f, "))")
+        if !self.methods.is_empty() {
+            write!(f, ")")?;
+        }
+        write!(f, ")")
     }
 }
 
