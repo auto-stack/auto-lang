@@ -6,6 +6,7 @@ use std::fmt;
 pub enum Type {
     Any,
     Void,
+    Byte,
     Int,
     Float,
     Bool,
@@ -43,6 +44,7 @@ impl TypeInfoStore {
     pub fn new() -> Self {
         let mut types = HashMap::new();
         types.insert("void".to_string(), type_info_void());
+        types.insert("byte".to_string(), type_info_byte());
         types.insert("int".to_string(), type_info_int());
         types.insert("float".to_string(), type_info_float());
         types.insert("bool".to_string(), type_info_bool());
@@ -81,6 +83,7 @@ impl TypeInfoStore {
         match typ {
             Type::Any => &self.any,
             Type::Void => self.types.get("void").unwrap(),
+            Type::Byte => self.types.get("byte").unwrap(),
             Type::Int => self.types.get("int").unwrap(),
             Type::Float => self.types.get("float").unwrap(),
             Type::Bool => self.types.get("bool").unwrap(),
@@ -100,6 +103,10 @@ fn type_info_any() -> TypeInfo {
 
 fn type_info_void() -> TypeInfo {
     TypeInfo { name: "void".to_string(), methods: HashMap::new() }
+}
+
+fn type_info_byte() -> TypeInfo {
+    TypeInfo { name: "byte".to_string(), methods: HashMap::new() }
 }
 
 fn type_info_int() -> TypeInfo {
@@ -126,6 +133,7 @@ impl fmt::Display for Type {
         match self {
             Type::Any => write!(f, "any"),
             Type::Void => write!(f, "void"),
+            Type::Byte => write!(f, "byte"),
             Type::Int => write!(f, "int"),
             Type::Float => write!(f, "float"),
             Type::Bool => write!(f, "bool"),

@@ -264,6 +264,7 @@ impl Display for Obj {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    Byte(u8),
     Int(i32),
     Uint(u32),
     Float(f64),
@@ -358,6 +359,7 @@ impl Display for Value {
             Value::Str(value) => write!(f, "\"{}\"", value),
             Value::Int(value) => write!(f, "{}", value),
             Value::Uint(value) => write!(f, "{}", value),
+            Value::Byte(value) => write!(f, "{}", value),
             Value::Float(value) => write!(f, "{}", value),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Nil => write!(f, "nil"),
@@ -414,6 +416,8 @@ impl Value {
             Value::Float(value) => Value::Float(-value),
             // TODO: check if uint is bigger than i32.MAX
             Value::Uint(value) => Value::Int(-(*value as i32)),
+            // TODO: add signed byte
+            Value::Byte(value) => Value::Int(-(*value as i32)),
             _ => Value::Nil,
         }
     }
@@ -468,6 +472,17 @@ impl Value {
                     _ => Value::Nil,
                 }
             }
+            (Value::Byte(a), Value::Byte(b)) => {
+                match op {
+                    Op::Eq => Value::Bool(a == b),
+                    Op::Neq => Value::Bool(a != b),
+                    Op::Lt => Value::Bool(a < b),
+                    Op::Gt => Value::Bool(a > b),
+                    Op::Le => Value::Bool(a <= b),
+                    Op::Ge => Value::Bool(a >= b),
+                    _ => Value::Nil,
+                }
+            }
             _ => Value::Nil,
         }
     }
@@ -479,6 +494,7 @@ impl Value {
             Value::Uint(value) => *value > 0,
             Value::Float(value) => *value > 0.0,
             Value::Str(value) => value.len() > 0,
+            Value::Byte(value) => *value > 0,
             _ => false,
         }
     }
@@ -557,6 +573,13 @@ impl Value {
         match self {
             Value::Int(value) => *value,
             Value::Uint(value) => *value as i32,
+            _ => 0,
+        }
+    }
+
+    pub fn as_byte(&self) -> u8 {
+        match self {
+            Value::Byte(value) => *value,
             _ => 0,
         }
     }
@@ -648,10 +671,10 @@ impl Op {
 
 fn try_promote(a: Value, b: Value) -> (Value, Value) {
     match (&a, &b) {
-        (Value::Int(_), Value::Int(_)) => (a, b),
-        (Value::Float(_), Value::Float(_)) => (a, b),
         (Value::Int(a), Value::Float(_)) => (Value::Float(*a as f64), b),
         (Value::Float(_), Value::Int(b)) => (a, Value::Float(*b as f64)),
+        (Value::Byte(a), Value::Uint(b)) => (Value::Uint(*a as u32), Value::Uint(*b as u32)),
+        (Value::Uint(a), Value::Byte(b)) => (Value::Uint(*a as u32), Value::Uint(*b as u32)),
         _ => (a, b),
     }
 }
@@ -664,6 +687,8 @@ pub fn add(a: Value, b: Value) -> Value {
         (Value::Uint(left), Value::Int(right)) => Value::Int(left as i32 + right),
         (Value::Int(left), Value::Uint(right)) => Value::Int(left + right as i32),
         (Value::Int(left), Value::Int(right)) => Value::Int(left + right),
+        // TODO: what if sum is bigger than u8?
+        (Value::Byte(left), Value::Byte(right)) => Value::Byte(left + right),
         (Value::Float(left), Value::Float(right)) => Value::Float(left + right),
         _ => Value::Nil,
     }
@@ -674,6 +699,8 @@ pub fn sub(a: Value, b: Value) -> Value {
     match (a, b) {
         (Value::Int(left), Value::Int(right)) => Value::Int(left - right),
         (Value::Float(left), Value::Float(right)) => Value::Float(left - right),
+        // TODO: what if diff is negative?
+        (Value::Byte(left), Value::Byte(right)) => Value::Byte(left - right),
         _ => Value::Nil,
     }
 }
@@ -683,15 +710,22 @@ pub fn mul(a: Value, b: Value) -> Value {
     match (a, b) {
         (Value::Int(left), Value::Int(right)) => Value::Int(left * right),
         (Value::Float(left), Value::Float(right)) => Value::Float(left * right),
+        // TODO: what if product is bigger than u8?
+        (Value::Byte(left), Value::Byte(right)) => Value::Byte(left * right),
         _ => Value::Nil,
     }
 }
 
 pub fn div(a: Value, b: Value) -> Value {
     let (a, b) = try_promote(a, b);
+    if b == Value::Int(0) {
+        // TODO: Value::Infinity?
+        return Value::Nil;
+    }
     match (a, b) {
         (Value::Int(left), Value::Int(right)) => Value::Int(left / right),
         (Value::Float(left), Value::Float(right)) => Value::Float(left / right),
+        (Value::Byte(left), Value::Byte(right)) => Value::Byte(left / right),
         _ => Value::Nil,
     }
 }

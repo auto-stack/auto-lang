@@ -43,6 +43,7 @@ impl Universe {
         self.define("float", Rc::new(Meta::Type(ast::Type::Float)));
         self.define("bool", Rc::new(Meta::Type(ast::Type::Bool)));
         self.define("str", Rc::new(Meta::Type(ast::Type::Str)));
+        self.define("byte", Rc::new(Meta::Type(ast::Type::Byte)));
     }
 
     pub fn dump(&self) {
