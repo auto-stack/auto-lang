@@ -252,10 +252,14 @@ impl Evaler {
     }
 
     fn eval_store(&mut self, store: &Store) -> Value {
-        let value = match &store.expr {
+        let mut value = match &store.expr {
             Expr::Ref(target) => Value::Ref(target.text.clone()),
             _ => self.eval_expr(&store.expr),
         };
+        // TODO: add general type coercion in assignment
+        if matches!(store.ty, ast::Type::Byte) && matches!(value, Value::Int(_)) {
+            value = Value::Byte(value.as_int() as u8);
+        }
         self.universe.borrow_mut().define(store.name.text.as_str(), Rc::new(scope::Meta::Store(store.clone())));
         self.universe.borrow_mut().set_local_val(&store.name.text, value);
         Value::Void
@@ -651,6 +655,7 @@ impl Evaler {
 
     pub fn eval_expr(&mut self, expr: &Expr) -> Value {
         match expr {
+            Expr::Byte(value) => Value::Byte(*value),
             Expr::Int(value) => Value::Int(*value),
             Expr::Float(value) => Value::Float(*value),
             // Why not move here?

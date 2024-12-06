@@ -206,6 +206,7 @@ impl fmt::Display for Stmt {
 pub enum Expr {
     // value exprs
     Int(i32),
+    Byte(u8),
     Float(f64),
     Bool(bool),
     Str(String),
@@ -328,6 +329,7 @@ fn fmt_block(f: &mut fmt::Formatter, body: &Body) -> fmt::Result {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Expr::Byte(b) => write!(f, "(byte {})", b),
             Expr::Int(i) => write!(f, "(int {})", i),
             Expr::Float(v) => write!(f, "(float {})", v),
             Expr::Bool(b) => write!(f, "({})", b),

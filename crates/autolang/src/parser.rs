@@ -496,9 +496,11 @@ impl<'a> Parser<'a> {
                 if self.cur.text.starts_with("0x") {
                     // trim 0x
                     let trim = &self.cur.text[2..];
-                    Expr::Int(i32::from_str_radix(trim, 16).unwrap())
+                    let val = i32::from_str_radix(trim, 16).unwrap();
+                    Expr::Int(val)
                 } else {
-                    Expr::Int(self.cur.text.parse().unwrap())
+                    let val = self.cur.text.parse::<i32>().unwrap();
+                    Expr::Int(val)
                 }
             }
             TokenKind::Float => Expr::Float(self.cur.text.parse().unwrap()),

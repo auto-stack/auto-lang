@@ -732,8 +732,13 @@ $ }
 
     #[test]
     fn test_byte() {
-        let code = "let a byte = 100; a";
+        let code = "let a byte = 255; a";
         let result = run(code).unwrap();
-        assert_eq!(result, "100");
+        assert_eq!(result, "0xFF");
+
+        // promote byte to int
+        let code = "let a int = 0xFF; a";
+        let result = run(code).unwrap();
+        assert_eq!(result, "255");
     }
 }
