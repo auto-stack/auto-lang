@@ -729,4 +729,11 @@ $ }
         let result = run(code).unwrap();
         assert_eq!(result, "10");
     }
+
+    #[test]
+    fn test_byte() {
+        let code = "let a byte = 100; a";
+        let result = run(code).unwrap();
+        assert_eq!(result, "100");
+    }
 }

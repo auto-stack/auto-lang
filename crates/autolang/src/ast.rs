@@ -375,6 +375,7 @@ impl fmt::Display for Param {
 
 #[derive(Debug, Clone)]
 pub enum Type {
+    Byte,
     Int,
     Float,
     Bool,
@@ -408,6 +409,7 @@ impl fmt::Display for ArrayType {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Type::Byte => write!(f, "byte"),
             Type::Int => write!(f, "int"),
             Type::Float => write!(f, "float"),
             Type::Bool => write!(f, "bool"),

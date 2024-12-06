@@ -912,6 +912,7 @@ fn to_value_sig(fn_decl: &Fn) -> Sig {
 
 fn to_value_type(ty: &ast::Type) -> autoval::Type {
     match ty {
+        ast::Type::Byte => autoval::Type::Byte,
         ast::Type::Int => autoval::Type::Int,
         ast::Type::Float => autoval::Type::Float,
         ast::Type::Bool => autoval::Type::Bool,

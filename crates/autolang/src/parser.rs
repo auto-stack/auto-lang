@@ -725,7 +725,6 @@ impl<'a> Parser<'a> {
         let mut ty = Type::Unknown;
         if self.is_kind(TokenKind::Ident) {
             ty = self.type_name()?;
-            self.next();
         }
 
         // =
