@@ -39,6 +39,7 @@ impl Interpreter {
 
     pub fn interpret(&mut self, code: &str) -> Result<(), String> {
         let ast = parser::parse(code, &mut *self.scope.borrow_mut())?;
+        println!("ast: {}", ast);
         let result = self.evaler.eval(&ast);
         self.result = result;
         Ok(())

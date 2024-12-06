@@ -90,8 +90,8 @@ impl CTranspiler {
 
     fn fn_decl(&mut self, fn_decl: &Fn, out: &mut impl Write) -> Result<(), String> {
         // return type
-        if let Some(ret) = &fn_decl.ret {
-            out.write(format!("{} ", ret).as_bytes()).to()?;
+        if !matches!(fn_decl.ret, Type::Unknown) {
+            out.write(format!("{} ", fn_decl.ret).as_bytes()).to()?;
         } else {
             out.write(b"void ").to()?;
         }

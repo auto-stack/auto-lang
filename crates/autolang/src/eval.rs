@@ -425,6 +425,7 @@ impl Evaler {
 
     fn call(&mut self, call: &Call) -> Value {
         let name = self.eval_expr(&call.name);
+
         if name != Value::Nil {
             match name {
                 Value::Meta(meta_id) => {
@@ -483,6 +484,7 @@ impl Evaler {
             }
         } else {
             // convert call to node intance
+            println!("call {} not found, try to eval node", call.get_name());
             let node: Node = call.clone().into();
             return self.eval_node(&node);
         }
@@ -631,6 +633,7 @@ impl Evaler {
                     }
                     Value::Nil => {
                         // try to lookup in meta and builtins
+                        println!("lookup {}", name.text);
                         let meta = self.universe.borrow().lookup_meta(&name.text);
                         if let Some(meta) = meta {
                             return Value::Meta(to_meta_id(&meta));
@@ -687,7 +690,30 @@ impl Evaler {
                 _ => None,
             }
             Value::Instance(instance) => match right {
-                Expr::Ident(name) => instance.fields.lookup(&name.text),
+                Expr::Ident(name) => {
+                    let f = instance.fields.lookup(&name.text);
+                    match f {
+                        Some(v) => Some(v),
+                        None => { // not a field, try method
+                            let typ = instance.ty.name();
+                            let combined_name = format!("{}.{}", typ, name.text);
+                            println!("lookup method {}", combined_name);
+                            let method = self.universe.borrow().lookup_meta(&combined_name);
+                            if let Some(meta) = method {
+                                match meta.as_ref() {
+                                    scope::Meta::Fn(fn_decl) => {
+                                        // TODO: find method, insert scope of the instance (for use as this), and eval the method
+                                        // Some(Value::Method(Method::new(instance.ty, name.text.clone()))),
+                                        None
+                                    }
+                                    _ => None,
+                                }
+                            } else {
+                                None
+                            }
+                        }
+                    }
+                }
                 _ => None,
             }
             _ => {
@@ -844,7 +870,7 @@ fn to_value_sig(fn_decl: &Fn) -> Sig {
             ty: Box::new(to_value_type(&param.ty)),
         });
     }
-    let ret = to_value_type(&fn_decl.ret.as_ref().unwrap());
+    let ret = to_value_type(&fn_decl.ret);
     Sig { name: fn_decl.name.text.clone(), params, ret }
 }
 
