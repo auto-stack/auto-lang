@@ -8,6 +8,7 @@ use crate::libs;
 use std::rc::Rc;
 use autoval::{TypeInfoStore, ExtFn, Obj};
 use std::any::Any;
+use std::fmt;
 
 pub struct Universe {
     pub scopes: Vec<Scope>,
@@ -81,6 +82,16 @@ impl Universe {
 
     pub fn set_local_val(&mut self, name: &str, value: Value) {
         self.current_scope_mut().set_val(name, value);
+    }
+
+    pub fn set_local_obj(&mut self, obj: &Obj) {
+        // TODO: too much clone
+        for key in obj.keys() {
+            let val = obj.get(key.clone());
+            if let Some(v) = val {
+                self.current_scope_mut().set_val(key.to_string().as_str(), v);
+            }
+        }
     }
 
     pub fn set_global(&mut self, name: &str, value: Value) {
@@ -259,6 +270,22 @@ pub enum Meta {
     Widget(ast::Widget),
     View(ast::View),
     Body(ast::Body),
+}
+
+impl fmt::Display for Meta {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Meta::Store(_) => write!(f, "STORE"),
+            Meta::Var(_) => write!(f, "VAR"),
+            Meta::Ref(_) => write!(f, "REF"),
+            Meta::Fn(_) => write!(f, "FN"),
+            Meta::Type(_) => write!(f, "TYPE"),
+            Meta::Widget(_) => write!(f, "Widget"),
+            Meta::View(_) => write!(f, "VIEW"),
+            Meta::Body(_) => write!(f, "BoDY"),
+        }
+    }
 }
 
 pub struct Scope {

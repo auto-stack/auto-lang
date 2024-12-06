@@ -544,12 +544,34 @@ impl Evaler {
     pub fn eval_method(&mut self, method: &Method, args: &Args) -> Value {
         let target = &method.target;
         let name = &method.name;
+        println!("eval_method: {}", name);
         // methods for Any
         match target.as_ref() {
-            Value::Str(_) => {
+            Value::Str(s) => {
                 let method = self.universe.borrow().types.lookup_method(Type::Str, name.clone());
                 if let Some(method) = method {
                     return method(&target);
+                } else {
+                    println!("wrong method?: {}", s);
+                }
+            }
+            Value::Instance(inst) => { 
+                let method = self.universe.borrow().lookup_meta(&method.name);
+                if let Some(meta) = method {
+                    match meta.as_ref() {
+                        Meta::Fn(fn_decl) => {
+                            self.enter_scope();
+                            self.universe.borrow_mut().set_local_obj(&inst.fields);
+                            let res = self.eval_fn_call(fn_decl, args);
+                            println!("method call res: {}", res);
+                            self.exit_scope();
+                            return res;
+                        }
+                        _ => {
+                            return Value::Error(format!("wrong meta for method: {}", meta));
+                        }
+                    }
+
                 }
             }
             _ => {
@@ -570,8 +592,18 @@ impl Evaler {
         }
     }
 
-    pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
+    #[inline]
+    fn enter_scope(&mut self) {
         self.universe.borrow_mut().enter_scope();
+    }
+
+    #[inline]
+    fn exit_scope(&mut self) {
+        self.universe.borrow_mut().exit_scope();
+    }
+
+    pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
+        self.enter_scope();
         for (i, arg) in args.array.iter().enumerate() {
             let val = self.eval_expr(arg);
             let name = &fn_decl.params[i].name.text;
@@ -582,7 +614,7 @@ impl Evaler {
             self.universe.borrow_mut().set_local_val(&name.text, val);
         }
         let result = self.eval_body(&fn_decl.body);
-        self.universe.borrow_mut().exit_scope();
+        self.exit_scope();
         result
     }
 
@@ -696,17 +728,16 @@ impl Evaler {
                         Some(v) => Some(v),
                         None => { // not a field, try method
                             let typ = instance.ty.name();
-                            let combined_name = format!("{}.{}", typ, name.text);
-                            println!("lookup method {}", combined_name);
+                            let combined_name = format!("{}::{}", typ, name.text);
                             let method = self.universe.borrow().lookup_meta(&combined_name);
                             if let Some(meta) = method {
                                 match meta.as_ref() {
-                                    scope::Meta::Fn(fn_decl) => {
-                                        // TODO: find method, insert scope of the instance (for use as this), and eval the method
-                                        // Some(Value::Method(Method::new(instance.ty, name.text.clone()))),
+                                    scope::Meta::Fn(_) => {
+                                        Some(Value::Method(Method::new(left_value.clone(), combined_name)))
+                                    }
+                                    _ =>  {
                                         None
                                     }
-                                    _ => None,
                                 }
                             } else {
                                 None

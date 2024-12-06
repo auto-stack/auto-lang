@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn test_c_fn() {
-        let code = "fn add(x, y) { x+y }";
+        let code = "fn add(x, y) int { x+y }";
         let out = code_to_c(code).unwrap();
         let expected = r#"int add(int x, int y) {
     return x + y;
@@ -418,7 +418,7 @@ if (x > 0) {
 
     #[test]
     fn test_math() {
-        let code = r#"fn add(x int, y int) { x+y }
+        let code = r#"fn add(x int, y int) int { x+y }
 add(1, 2)"#;
         let ccode = transpile_c(code).unwrap();
         let expected = r#"int add(int x, int y) {

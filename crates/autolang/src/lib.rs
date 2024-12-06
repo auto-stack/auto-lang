@@ -710,12 +710,12 @@ $ }
             x int
             y int
 
-            fn absolute_square() int {
+            fn absquare() int {
                 x * x + y * y
             }
         }"#;
         let mut interpreter = interpret(code).unwrap();
-        let code = "var p = Point(3, 4); p.absolute_square()";
+        let code = "var p = Point(3, 4); p.absquare()";
         let result = interpreter.eval(code);
         assert_eq!(result.repr(), "25");
     }
