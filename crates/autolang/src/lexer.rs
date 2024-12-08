@@ -100,10 +100,17 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+        
         if has_dot {
             Token::float(self.pos(text.len()), text)
         } else {
-            Token::int(self.pos(text.len()), text)
+            // check trailing character
+            if self.peek('u') {
+                self.next(); // skip u
+                Token::uint(self.pos(text.len()), text)
+            } else {
+                Token::int(self.pos(text.len()), text)
+            }
         }
     }
 
@@ -521,5 +528,12 @@ mod tests {
         let code = r#"f"hello $name""#;
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<fstrs><fstrp:hello ><$><ident:name><fstre>");
+    }
+
+    #[test]
+    fn test_uint() {
+        let code = "125u";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<uint:125>");
     }
 }

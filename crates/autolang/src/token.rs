@@ -14,6 +14,7 @@ pub enum TokenKind {
 
     // Literals
     Int,
+    Uint,
     Float,
     Str,
     Ident,
@@ -157,6 +158,10 @@ impl Token {
 
     pub fn int(pos: Pos, text: String) -> Self {
         Token::new(TokenKind::Int, pos, text)
+    }
+
+    pub fn uint(pos: Pos, text: String) -> Self {
+        Token::new(TokenKind::Uint, pos, text)
     }
 
     pub fn float(pos: Pos, text: String) -> Self {

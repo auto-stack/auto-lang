@@ -358,7 +358,7 @@ impl Display for Value {
         match self {
             Value::Str(value) => write!(f, "\"{}\"", value),
             Value::Int(value) => write!(f, "{}", value),
-            Value::Uint(value) => write!(f, "{}", value),
+            Value::Uint(value) => write!(f, "{}u", value),
             Value::Byte(value) => write!(f, "0x{:X}", value),
             Value::Float(value) => write!(f, "{}", value),
             Value::Bool(value) => write!(f, "{}", value),
@@ -671,8 +671,10 @@ impl Op {
 
 fn try_promote(a: Value, b: Value) -> (Value, Value) {
     match (&a, &b) {
+        // int => float
         (Value::Int(a), Value::Float(_)) => (Value::Float(*a as f64), b),
         (Value::Float(_), Value::Int(b)) => (a, Value::Float(*b as f64)),
+        // byte => uint
         (Value::Byte(a), Value::Uint(b)) => (Value::Uint(*a as u32), Value::Uint(*b as u32)),
         (Value::Uint(a), Value::Byte(b)) => (Value::Uint(*a as u32), Value::Uint(*b as u32)),
         _ => (a, b),
@@ -683,13 +685,14 @@ pub fn add(a: Value, b: Value) -> Value {
     let (a, b) = try_promote(a, b);
     match (a, b) {
         (Value::Uint(left), Value::Uint(right)) => Value::Uint(left + right),
-        // TODO: promote u32 or i32 to i64
-        (Value::Uint(left), Value::Int(right)) => Value::Int(left as i32 + right),
-        (Value::Int(left), Value::Uint(right)) => Value::Int(left + right as i32),
         (Value::Int(left), Value::Int(right)) => Value::Int(left + right),
-        // TODO: what if sum is bigger than u8?
         (Value::Byte(left), Value::Byte(right)) => Value::Byte(left + right),
         (Value::Float(left), Value::Float(right)) => Value::Float(left + right),
+        // TODO: promote u32 or i32 to i64/u64
+        // Current policy: convert rhs to lhs type if possible
+        (Value::Uint(left), Value::Int(right)) => Value::Uint(left + right as u32),
+        (Value::Int(left), Value::Uint(right)) => Value::Int(left + right as i32),
+        // TODO: what if sum is bigger than u8?
         _ => Value::Nil,
     }
 }

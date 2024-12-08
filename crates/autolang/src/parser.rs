@@ -492,6 +492,17 @@ impl<'a> Parser<'a> {
             return self.group();
         }
         let expr = match self.kind() {
+            TokenKind::Uint => {
+                if self.cur.text.starts_with("0x") {
+                    // trim 0x
+                    let trim = &self.cur.text[2..];
+                    let val = u32::from_str_radix(trim, 16).unwrap();
+                    Expr::Uint(val)
+                } else {
+                    let val = self.cur.text.parse::<u32>().unwrap();
+                    Expr::Uint(val)
+                }
+            }
             TokenKind::Int => {
                 if self.cur.text.starts_with("0x") {
                     // trim 0x
