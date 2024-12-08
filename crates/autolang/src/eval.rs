@@ -553,7 +553,6 @@ impl Evaler {
     pub fn eval_method(&mut self, method: &Method, args: &Args) -> Value {
         let target = &method.target;
         let name = &method.name;
-        println!("eval_method: {}", name);
         // methods for Any
         match target.as_ref() {
             Value::Str(s) => {
@@ -572,7 +571,6 @@ impl Evaler {
                             self.enter_scope();
                             self.universe.borrow_mut().set_local_obj(&inst.fields);
                             let res = self.eval_fn_call(fn_decl, args);
-                            println!("method call res: {}", res);
                             self.exit_scope();
                             return res;
                         }
@@ -676,7 +674,6 @@ impl Evaler {
                     }
                     Value::Nil => {
                         // try to lookup in meta and builtins
-                        println!("lookup {}", name.text);
                         let meta = self.universe.borrow().lookup_meta(&name.text);
                         if let Some(meta) = meta {
                             return Value::Meta(to_meta_id(&meta));
