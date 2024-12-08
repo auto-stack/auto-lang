@@ -129,6 +129,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_unit() {
+        let code = "1u+2u";
+        let result = run(code).unwrap();
+        assert_eq!(result, "3u");
+
+        let code = "25u+123";
+        let result = run(code).unwrap();
+        assert_eq!(result, "148u");
+    }
+
+    #[test]
     fn test_arithmetic() {
         let code = "1+2*3";
         let result = run(code).unwrap();

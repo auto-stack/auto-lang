@@ -206,6 +206,7 @@ impl fmt::Display for Stmt {
 pub enum Expr {
     // value exprs
     Int(i32),
+    Uint(u32),
     Byte(u8),
     Float(f64),
     Bool(bool),
@@ -331,6 +332,7 @@ impl fmt::Display for Expr {
         match self {
             Expr::Byte(b) => write!(f, "(byte {})", b),
             Expr::Int(i) => write!(f, "(int {})", i),
+            Expr::Uint(u) => write!(f, "(uint {})", u),
             Expr::Float(v) => write!(f, "(float {})", v),
             Expr::Bool(b) => write!(f, "({})", b),
             Expr::Str(s) => write!(f, "(str \"{}\")", s),

@@ -257,6 +257,7 @@ impl Evaler {
             _ => self.eval_expr(&store.expr),
         };
         // TODO: add general type coercion in assignment
+        // int -> byte
         if matches!(store.ty, ast::Type::Byte) && matches!(value, Value::Int(_)) {
             value = Value::Byte(value.as_int() as u8);
         }
@@ -656,6 +657,7 @@ impl Evaler {
     pub fn eval_expr(&mut self, expr: &Expr) -> Value {
         match expr {
             Expr::Byte(value) => Value::Byte(*value),
+            Expr::Uint(value) => Value::Uint(*value),
             Expr::Int(value) => Value::Int(*value),
             Expr::Float(value) => Value::Float(*value),
             // Why not move here?
