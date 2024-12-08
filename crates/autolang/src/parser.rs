@@ -164,9 +164,42 @@ impl<'a> Parser<'a> {
             stmts.push(self.stmt()?);
             self.expect_eos()?;
         }
+        stmts = self.convert_last_block(stmts)?;
         Ok(Code { stmts })
     }
 
+    fn convert_last_block(&mut self, mut stmts: Vec<Stmt>) -> Result<Vec<Stmt>, ParseError> {
+        let last = stmts.last();
+        if let Some(st) = last {
+            match st {
+                Stmt::Block(body) => {
+                    let obj = self.body_to_obj(body)?;
+                    stmts.pop();
+                    stmts.push(Stmt::Expr(Expr::Object(obj)))
+                }
+                _ => {}
+            }
+        }
+        Ok(stmts)
+    }
+
+    fn body_to_obj(&mut self, body: &Body) -> Result<Vec<Pair>, ParseError> {
+        let mut pairs = Vec::new();
+        for stmt in body.stmts.iter() {
+            match stmt {
+                Stmt::Expr(expr) => {
+                    match expr {
+                        Expr::Pair(p) => {
+                            pairs.push(p.clone());
+                        }
+                        _ => return error_pos!("Last block must be an object!")
+                    }
+                }
+                _ => return error_pos!("Last block must be an object!")
+            }
+        }
+        Ok(pairs)
+    }
 }
 
 // Expressions
@@ -611,7 +644,8 @@ impl<'a> Parser<'a> {
     // End of statement
     pub fn expect_eos(&mut self) -> Result<(), ParseError> {
         let mut has_sep = false;
-        while self.is_kind(TokenKind::Semi) || self.is_kind(TokenKind::Newline) {
+        while self.is_kind(TokenKind::Semi) || self.is_kind(TokenKind::Newline)
+                || self.is_kind(TokenKind::Comma) {
             has_sep = true;
             self.next();
         }
@@ -665,6 +699,7 @@ impl<'a> Parser<'a> {
             stmts.push(stmt);
             self.expect_eos()?;
         }
+        stmts = self.convert_last_block(stmts)?;
         self.expect(TokenKind::RBrace)?;
         Ok(Body { stmts, has_new_line })
     }
@@ -1479,6 +1514,6 @@ mod tests {
         "#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(type-decl (name Duck) (has (type Wing)))");
+        assert_eq!(last.to_string(), "(type-decl (name Duck) (has (type Wing)) (methods (fn (name fly) (body ))");
     }
 }

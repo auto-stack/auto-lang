@@ -768,4 +768,24 @@ $ }
         "#;
         let result = run(code).unwrap();
     }
+
+    #[test]
+    fn test_last_block_or_object() {
+        let code = r#"
+        {
+            a: 1
+            b: 2
+        }"#;
+
+        let result = run(code).unwrap();
+        assert_eq!(result, "{a: 1, b: 2}");
+
+        let code = r#"
+        if true {
+            {a:1, b:2}
+        }
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "{a: 1, b: 2}");
+    }
 }
