@@ -910,6 +910,28 @@ impl<'a> Parser<'a> {
             self.expect_eos()?;
         }
         self.expect(TokenKind::RBrace)?;
+        // add members and methods of compose types
+        for comp in has.iter() {
+            match comp {
+                Type::User(decl) => {
+                    for m in decl.members.iter() {
+                        members.push(m.clone());
+                    }
+                    for meth in decl.methods.iter() {
+                        // change meth's parent to self
+                        let mut compose_meth = meth.clone();
+                        compose_meth.parent = Some(name.clone());
+                        // register this method as Self::method
+                        let unique_name = format!("{}::{}", &name.text, &compose_meth.name.text);
+                        self.scope.define(unique_name.as_str(), Rc::new(Meta::Fn(compose_meth.clone())));
+                        methods.push(compose_meth);
+                    }
+                }
+                _ => {
+                    // System Types not supported for Compose yet
+                }
+            }
+        }
         let decl = TypeDecl { name: name.clone(), has, members, methods };
         // put type in scope
         self.scope.define(name.text.as_str(), Rc::new(Meta::Type(Type::User(decl.clone()))));

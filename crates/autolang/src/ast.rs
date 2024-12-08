@@ -427,6 +427,7 @@ impl fmt::Display for Type {
 
 #[derive(Debug, Clone)]
 pub struct Fn {
+    // TODO: add FnKind to differ Fn/Lambda/Method?
     pub name: Name,
     pub parent: Option<Name>, // for method
     pub params: Vec<Param>,

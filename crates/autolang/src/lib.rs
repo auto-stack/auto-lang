@@ -752,4 +752,20 @@ $ }
         let result = run(code).unwrap();
         assert_eq!(result, "255");
     }
+
+    #[test]
+    fn test_type_compose() {
+        let code = r#"
+        type Wing {
+            fn fly() {print("flap!flap!")}
+        }
+        type Duck has Wing {
+        }
+        var wing = Wing()
+        wing.fly()
+        var duck = Duck()
+        duck.fly()
+        "#;
+        let result = run(code).unwrap();
+    }
 }
