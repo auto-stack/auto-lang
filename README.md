@@ -1,16 +1,26 @@
 # Auto编程语言
 
-Auto编程语言（Auto Lang）有如下特点：
+![icon](docs/icon.png)
 
-- 设计目标：自动化
-- 类型：类C
-- 生态：C/C++/Rust
-- 实现语言：Rust
+Auto编程语言（Auto Lang）是一门以自动化为目标的编程语言。
+
+- “灵活多变”：Auto语言有多套语法，根据使用的场景灵活适配。Auto语言既可以当作脚本动态解释执行，也可以转译成C/Rust静态编译。
+- “简洁高效”：当作脚本使用时，和Python一样易用；当作静态代码时和C/Rust一样高效。
+- “麻雀虽小，五脏俱全”：Auto语言生态配备了如下工具：
+    - 标准库：基于Rust，提供面向CPU/GPU/SOC的标准库；基于C，提供面向MCU的嵌入式标准库。
+    - AutoMan：代码构建和包管理器；可以生成Auto/C或Auto/Rust的混合工程。
+    - AutoUI：基于Rust/GPUI实现的跨平台UI框架，风格类似于Jetpack Compose/Vue.js。现在支持Windows/Linux，未来会扩展到Web/鸿蒙。
+    - AutoGen：基于模板和AST的代码生成功能，可以生成多种配置文件、C和Rust的代码。
+    - AutoIDE：TODO：基于Zed/GPUI，以Auto语言为基础的插件系统，做成一套平台的IDE。
 
 Auto语言是Soutek公司推出的技术产品Soutek Auto Stack的一部分。
 
 
 ## 用途
+
+Auto语言有如下几种不同的语法形式，适用于不同的场景：
+
+1. AutoConfig。
 
 ### 1. 直接生成C源码
 

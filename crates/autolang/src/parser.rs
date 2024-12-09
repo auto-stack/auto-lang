@@ -503,6 +503,7 @@ impl<'a> Parser<'a> {
     pub fn sep_pair(&mut self) {
         if self.is_kind(TokenKind::Comma) {
             self.next();
+            self.skip_empty_lines();
             return;
         }
         if self.is_kind(TokenKind::RBrace) {
@@ -1194,9 +1195,9 @@ mod tests {
 
     #[test]
     fn test_var() {
-        let code = "var x = 41";
+        let code = "var x1 = 41";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (var (name x) (int 41)))");
+        assert_eq!(ast.to_string(), "(code (var (name x1) (int 41)))");
     }
 
     #[test]
