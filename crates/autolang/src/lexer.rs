@@ -244,8 +244,17 @@ impl<'a> Lexer<'a> {
 
     pub fn identifier(&mut self) -> Token {
         let mut text = String::new();
+        // 第1个字符，必须是字母或下划线
+        if let Some(&c) = self.chars.peek() {
+            if !c.is_alphabetic() && c != '_' {
+                panic!("identifier must start with a letter or underscore");
+            } else {
+                text.push(c);
+                self.chars.next();
+            }
+        }
         while let Some(&c) = self.chars.peek() {
-            if c.is_alphabetic() || c == '_' {
+            if c.is_alphabetic() || c == '_' || c.is_digit(10) {
                 text.push(c);
                 self.chars.next();
             } else {
