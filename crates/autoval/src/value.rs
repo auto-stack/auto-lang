@@ -290,6 +290,7 @@ pub enum Value {
     Args(Args),
     Ref(String),
     Error(String),
+    Grid(Grid),
 }
 
 // constructors
@@ -382,6 +383,7 @@ impl Display for Value {
             Value::View(view) => write!(f, "{}", view),
             Value::Ref(target) => write!(f, "(ref {})", target),
             Value::Instance(instance) => write!(f, "{}", instance),
+            Value::Grid(grid) => write!(f, "{}", grid),
         }
     }
 }
@@ -980,6 +982,38 @@ impl Method {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Grid {
+    pub head: Vec<(ValueKey, Value)>,
+    pub data: Vec<Vec<Value>>,
+}
+
+impl fmt::Display for Grid {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "grid")?;
+        write!(f, "(")?;
+        for (key, value) in &self.head {
+            write!(f, "{}:{}", key, value)?;
+            write!(f, ",")?;
+        }
+        write!(f, ")")?;
+        write!(f, " {{")?;
+        for (i, row) in self.data.iter().enumerate() {
+            write!(f, "[")?;
+            for (j, cell) in row.iter().enumerate() {   
+                write!(f, "{}", cell)?;
+                if j < row.len() - 1 {
+                    write!(f, ", ")?;
+                }
+            }
+            write!(f, "]")?;
+            if i < self.data.len() - 1 {
+                write!(f, ";")?;
+            }
+        }
+        write!(f, "}}")
+    }
+}
 
 #[cfg(test)]
 mod tests {

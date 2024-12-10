@@ -232,6 +232,7 @@ impl<'a> Lexer<'a> {
                 // AutoUI Keywords
                 // TODO: Add an Option to not check these keywords
                 match text.as_str() {
+                    "grid" => self.keyword_tok(TokenKind::Grid, &text),
                     "widget" => self.keyword_tok(TokenKind::Widget, &text),
                     "model" => self.keyword_tok(TokenKind::Model, &text),
                     "view" => self.keyword_tok(TokenKind::View, &text),

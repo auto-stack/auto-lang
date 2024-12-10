@@ -224,6 +224,7 @@ pub enum Expr {
     Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
     Lambda(Fn),
     FStr(FStr),
+    Grid(Grid),
     // stmt exprs
     If(Vec<Branch>, Option<Body>),
     Nil,
@@ -349,6 +350,7 @@ impl fmt::Display for Expr {
             Expr::Index(array, index) => write!(f, "(index {} {})", array, index),
             Expr::Lambda(lambda) => write!(f, "{}", lambda),
             Expr::FStr(fstr) => write!(f, "{}", fstr),
+            Expr::Grid(grid) => write!(f, "{}", grid),
             Expr::Nil => write!(f, "(nil)"),
         }
     }
@@ -713,6 +715,40 @@ impl fmt::Display for FStr {
         write!(f, "(fstr")?;
         for (i, part) in self.parts.iter().enumerate() {
             write!(f, " {}", part)?;
+        }
+        write!(f, ")")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Grid {
+    pub head: Args,
+    pub data: Vec<Vec<Expr>>,
+}
+
+impl fmt::Display for Grid {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(grid")?;
+        if !self.head.is_empty() {
+            write!(f, " (head")?;
+            for (key, val) in self.head.map.iter() {
+                write!(f, " (pair {} {})", key, val)?;
+            }
+            write!(f, ")")?;
+        }
+        if !self.data.is_empty() {
+            write!(f, " (data")?;
+            for (i, row) in self.data.iter().enumerate() {
+                write!(f, " (row ")?;
+                for (j, cell) in row.iter().enumerate() {
+                    write!(f, "{}", cell)?;
+                    if j < row.len() - 1 {
+                        write!(f, " ")?;
+                    }
+                }
+                write!(f, ")")?;
+            }
+            write!(f, ")")?;
         }
         write!(f, ")")
     }

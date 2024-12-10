@@ -245,6 +245,8 @@ impl<'a> Parser<'a> {
             }
             // fstr
             TokenKind::FStrStart => self.fstr()?,
+            // grid
+            TokenKind::Grid => Expr::Grid(self.grid()?),
             // normal
             _ => self.atom()?,
         };
@@ -1140,6 +1142,26 @@ impl<'a> Parser<'a> {
             }
         }
     }
+
+    pub fn grid(&mut self) -> Result<Grid, ParseError> {
+        self.next(); // skip grid
+        // args
+        let mut data = Vec::new();
+        let args = self.args()?;
+        // data
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            let row = self.array()?;
+            if let Expr::Array(array) = row {
+                data.push(array);
+            }
+            self.expect_eos()?;
+        }
+        self.expect(TokenKind::RBrace)?;
+        let grid = Grid { head: args, data };
+        Ok(grid)
+    }
 }
 
 #[cfg(test)]
@@ -1516,5 +1538,17 @@ mod tests {
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
         assert_eq!(last.to_string(), "(type-decl (name Duck) (has (type Wing)) (methods (fn (name fly) (body ))");
+    }
+
+    #[test]
+    fn test_grid() {
+        let code = r#"
+        grid(a:"first", b:"second", c:"third") {
+            [1, 2, 3]
+            [4, 5, 6]
+            [7, 8, 9]
+        }"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (grid (head (pair (name a) (str \"first\")) (pair (name b) (str \"second\")) (pair (name c) (str \"third\"))) (data (row (int 1) (int 2) (int 3)) (row (int 4) (int 5) (int 6)) (row (int 7) (int 8) (int 9)))))");
     }
 }

@@ -695,6 +695,7 @@ impl Evaler {
             Expr::Block(body) => self.eval_body(body),
             Expr::Lambda(lambda) => Value::Lambda(lambda.name.text.clone()),
             Expr::FStr(fstr) => self.fstr(fstr),
+            Expr::Grid(grid) => self.grid(grid),
             Expr::Nil => Value::Nil,
         }
     }
@@ -891,6 +892,20 @@ impl Evaler {
             }
         }).collect();
         Value::Str(parts.join(""))
+    }
+
+    fn grid(&mut self, grid: &Grid) -> Value {
+        // head
+        let mut head = Vec::new();
+        let mut data = Vec::new();
+        for (key, value) in grid.head.map.iter() {
+            head.push((ValueKey::Str(key.text.clone()), self.eval_expr(value)));
+        }
+        for row in grid.data.iter() {
+            let row_data = row.iter().map(|elem| self.eval_expr(elem)).collect();
+            data.push(row_data);
+        }
+        Value::Grid(autoval::Grid { head, data })
     }
 }
 
