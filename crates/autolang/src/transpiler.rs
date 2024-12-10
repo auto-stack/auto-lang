@@ -191,9 +191,9 @@ impl CTranspiler {
     fn call(&mut self, call: &Call, out: &mut impl Write) -> Result<(), String> {
         self.expr(&call.name, out)?;
         out.write(b"(").to()?;
-        for (i, arg) in call.args.array.iter().enumerate() {
-            self.expr(arg, out)?;
-            if i < call.args.array.len() - 1 {
+        for (i, arg) in call.args.args.iter().enumerate() {
+            self.arg(arg, out)?;
+            if i < call.args.args.len() - 1 {
                 out.write(b", ").to()?;
             }
         }
@@ -203,6 +203,21 @@ impl CTranspiler {
         // //     self.expr(expr, out)?;
         // }
         out.write(b")").to()?;
+        Ok(())
+    }
+
+    fn arg(&mut self, arg: &Arg, out: &mut impl Write) -> Result<(), String> {
+        match arg {
+            Arg::Name(name) => self.str(name.text.as_str(), out),
+            Arg::Pair(_, expr) => self.expr(expr, out),
+            Arg::Pos(expr) => self.expr(expr, out),
+        }
+    }
+
+    fn str(&mut self, s: &str, out: &mut impl Write) -> Result<(), String> {
+        out.write(b"\"").to()?;
+        out.write(s.as_bytes()).to()?;
+        out.write(b"\"").to()?;
         Ok(())
     }
 

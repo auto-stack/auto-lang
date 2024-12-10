@@ -173,7 +173,7 @@ impl fmt::Display for Body {
                 write!(f, " ")?;
             }
         }
-        Ok(())
+        write!(f, ")")
     }
 }
 
@@ -189,7 +189,7 @@ impl fmt::Display for Stmt {
                 if let Some(else_stmt) = else_stmt {
                     write!(f, " (else {})", else_stmt)?;
                 }
-                Ok(())
+                write!(f, ")")
             },
             Stmt::For(for_stmt) => write!(f, "{}", for_stmt),
             Stmt::Block(body) => write!(f, "{}", body),
@@ -247,59 +247,81 @@ impl Call {
 
 #[derive(Debug, Clone)]
 pub struct Args {
-    pub array: Vec<Expr>,
-    pub map: Vec<(Name, Expr)>,
+    // pub array: Vec<Expr>,
+    // pub map: Vec<(Name, Expr)>,
+    pub args: Vec<Arg>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Arg {
+    Pos(Expr),
+    Name(Name),
+    Pair(Name, Expr),
 }
 
 impl Args {
     pub fn new() -> Self {
-        Self { array: Vec::new(), map: Vec::new() }
+        Self { args: Vec::new() }
     }
 
-    pub fn get(&self, idx: usize) -> Option<Expr> {
-        self.array.get(idx).cloned()
+    pub fn get(&self, idx: usize) -> Option<Arg> {
+        self.args.get(idx).cloned()
     }
 
-    pub fn lookup(&self, name: &str) -> Option<Expr> {
-        self.map.iter().find(|(n, _)| n.text == name).map(|(_, v)| v.clone())
+    pub fn lookup(&self, name: &str) -> Option<Arg> {
+        for arg in self.args.iter() {
+            match arg {
+                Arg::Name(n) => {
+                    if n.text == name {
+                        return Some(arg.clone());
+                    }
+                }
+                Arg::Pair(n, _) => {
+                    if n.text == name {
+                        return Some(arg.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 
     pub fn is_empty(&self) -> bool {
-        self.array.is_empty() && self.map.is_empty()
+        self.args.is_empty()
     }
 }
 
 impl fmt::Display for Args {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(args")?;
-        fmt_array(f, &self.array)?;
-        for (name, expr) in self.map.iter() {
-            write!(f, " (pair {} {})", name, expr)?;
+        if !self.args.is_empty() {
+            for arg in self.args.iter() {
+                write!(f, " {}", arg)?;
+            }
         }
         write!(f, ")")
+    }
+}
+
+impl fmt::Display for Arg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Arg::Pos(expr) => write!(f, "{}", expr),
+            Arg::Name(name) => write!(f, "{}", name),
+            Arg::Pair(name, expr) => write!(f, "(pair {} {})", name, expr),
+        }
     }
 }
 
 fn fmt_call(f: &mut fmt::Formatter, call: &Call) -> fmt::Result {
     write!(f, "(call ")?;
     write!(f, "{}", call.name)?;
-    write!(f, " (args")?;
-    for arg in call.args.array.iter() {
-        write!(f, " {}", arg)?;
-    }
-    for (name, expr) in call.args.map.iter() {
-        write!(f, " (pair {} {})", name, expr)?;
+    if !call.args.is_empty() {
+        write!(f, " {}", call.args)?;
     }
     write!(f, ")")?;
     Ok(())
-}
-
-fn fmt_list(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
-    write!(f, "(list")?;
-    for elem in elems.iter() {
-        write!(f, " {}", elem)?;
-    }
-    write!(f, ")")
 }
 
 fn fmt_array(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
@@ -468,7 +490,8 @@ impl fmt::Display for Fn {
         if !matches!(self.ret, Type::Unknown) {
             write!(f, " (ret {})", self.ret)?;
         }
-        write!(f, " {}", self.body)
+        write!(f, " {}", self.body)?;
+        write!(f, ")")
     }
 }
 
@@ -598,21 +621,8 @@ impl Into<Node> for Call {
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(node {}", self.name)?;
-        if !self.args.array.is_empty() {
-            write!(f, " (args")?;
-            for (i, arg) in self.args.array.iter().enumerate() {
-                write!(f, " {}", arg)?;
-                if i < self.args.array.len() - 1 {
-                    write!(f, " ")?;
-                }
-            }
-            if !self.args.map.is_empty() {
-                write!(f, " ")?;
-                for (name, expr) in self.args.map.iter() {
-                    write!(f, " (pair {} {})", name, expr)?;
-                }
-            }
-            write!(f, ")")?;
+        if !self.args.is_empty() {
+            write!(f, " {}", self.args)?;
         }
 
         if !self.body.stmts.is_empty() {
@@ -731,14 +741,14 @@ impl fmt::Display for Grid {
         write!(f, "(grid")?;
         if !self.head.is_empty() {
             write!(f, " (head")?;
-            for (key, val) in self.head.map.iter() {
-                write!(f, " (pair {} {})", key, val)?;
+            for arg in self.head.args.iter() {
+                write!(f, " {}", arg)?;
             }
             write!(f, ")")?;
         }
         if !self.data.is_empty() {
             write!(f, " (data")?;
-            for (i, row) in self.data.iter().enumerate() {
+            for row in self.data.iter() {
                 write!(f, " (row ")?;
                 for (j, cell) in row.iter().enumerate() {
                     write!(f, "{}", cell)?;
