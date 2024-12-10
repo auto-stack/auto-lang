@@ -812,6 +812,10 @@ impl Args {
         Self { array: values.into_iter().map(|v| v.into()).collect(), named: Vec::new() }
     }
 
+    pub fn add_named(&mut self, name: &str, value: Value) {
+        self.named.push((name.into(), value));
+    }
+
     pub fn is_empty(&self) -> bool {
         self.array.is_empty() && self.named.is_empty()
     }
@@ -986,6 +990,12 @@ impl Method {
 pub struct Grid {
     pub head: Vec<(ValueKey, Value)>,
     pub data: Vec<Vec<Value>>,
+}
+
+impl Default for Grid {
+    fn default() -> Self {
+        Self { head: vec![], data: vec![] }
+    }
 }
 
 impl fmt::Display for Grid {

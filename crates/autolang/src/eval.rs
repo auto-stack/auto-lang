@@ -609,16 +609,30 @@ impl Evaler {
         self.universe.borrow_mut().exit_scope();
     }
 
+    fn eval_arg(&mut self, arg: &Arg, i: usize, params: &Vec<Param>) {
+        match arg {
+            Arg::Pair(name, expr) => {
+                let val = self.eval_expr(expr);
+                let name = &name.text;
+                self.universe.borrow_mut().set_local_val(&name, val.clone());
+            }
+            Arg::Pos(expr) => {
+                let val = self.eval_expr(expr);
+                let name = &params[i].name.text;   
+                self.universe.borrow_mut().set_local_val(&name, val.clone());
+            }
+            Arg::Name(name) => {
+                let name = &name.text;
+                let val = Value::Str(name.clone());
+                self.universe.borrow_mut().set_local_val(&name, val.clone());
+            }
+        }
+    }
+
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
         self.enter_scope();
-        for (i, arg) in args.array.iter().enumerate() {
-            let val = self.eval_expr(arg);
-            let name = &fn_decl.params[i].name.text;
-            self.universe.borrow_mut().set_local_val(&name, val);
-        }
-        for (name, expr) in args.map.iter() {
-            let val = self.eval_expr(expr);
-            self.universe.borrow_mut().set_local_val(&name.text, val);
+        for (i, arg) in args.args.iter().enumerate() {
+            self.eval_arg(arg, i, &fn_decl.params);
         }
         let result = self.eval_body(&fn_decl.body);
         self.exit_scope();
@@ -814,12 +828,25 @@ impl Evaler {
         res
     }
 
+    fn eval_arg(&mut self, arg: &ast::Arg) -> Value {
+        match arg {
+            ast::Arg::Name(name) => Value::Str(name.text.clone()),
+            ast::Arg::Pair(_, expr) => self.eval_expr(expr),
+            ast::Arg::Pos(expr) => self.eval_expr(expr),
+        }
+    }
+
+    fn eval_args(&mut self, args: &ast::Args) -> autoval::Args {
+        let mut res = autoval::Args::new();
+        for arg in args.args.iter().enumerate() {
+            let val = self.eval_arg(arg);
+            res.array.push(val);
+        }
+        res
+    }
+
     fn eval_node(&mut self, node: &Node) -> Value {
-        let args_array = node.args.array.iter().map(|arg| self.eval_expr(arg)).collect();
-        let args_named = node.args.map.iter().map(|(key, value)| {
-            (ValueKey::Str(key.text.clone()), self.eval_expr(value))
-        }).collect();
-        let args = autoval::Args { array: args_array, named: args_named };
+        let args = self.eval_args(&node.args);
         let mut nodes = Vec::new();
         let mut props = BTreeMap::new();
         let mut body = MetaID::Nil;
@@ -898,8 +925,23 @@ impl Evaler {
         // head
         let mut head = Vec::new();
         let mut data = Vec::new();
-        for (key, value) in grid.head.map.iter() {
-            head.push((ValueKey::Str(key.text.clone()), self.eval_expr(value)));
+        for arg in grid.head.args.iter() {
+            match arg {
+                Arg::Pair(name, value) => {
+                    head.push((ValueKey::Str(name.text.clone()), self.eval_expr(value)));
+                }
+                Arg::Pos(value) => {
+                    match value {
+                        Expr::Str(value) => {
+                            head.push((ValueKey::Str(value.clone()), Value::Str(value.clone())));
+                        }
+                        _ => {}
+                    }
+                }
+                Arg::Name(name) => {
+                    head.push((ValueKey::Str(name.text.clone()), Value::Str(name.text.clone())));
+                }
+            }
         }
         for row in grid.data.iter() {
             let row_data = row.iter().map(|elem| self.eval_expr(elem)).collect();
