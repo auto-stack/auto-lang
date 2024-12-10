@@ -20,7 +20,12 @@ Auto语言是Soutek公司推出的技术产品Soutek Auto Stack的一部分。
 
 Auto语言有如下几种不同的语法形式，适用于不同的场景：
 
-1. AutoConfig。
+1. AutoLang - 静态的Auto语言，可以转译成C/Rust执行。
+2. AutoScript - 动态解释脚本，可以嵌入Rust或C项目作为脚本使用。
+3. AutoConfig - 强化版的JSON，可以用于各种需要配置文件或者DSL的场景。
+4. AutoShell - 集成了类似Bash的命令行语法，可以作为跨平台的Shell脚本。
+
+Auto语言可以用于如下场景：
 
 ### 1. 直接生成C源码
 
@@ -75,8 +80,6 @@ int main(void) {
 
 Auto语言的构建器`AutoBuild`可以实现Auto/C语言项目的混合开发。
 
-TODO: 直接生成Rust源码。
-
 ### 2. 作为配置语言，替代JSON/YAML
 
 ```rust
@@ -104,8 +107,7 @@ attrs: {
 }
 ```
 
-Auto语言的配置文件（Auto Config）后缀名为`.ac`。
-经过解析，上述的`.ac`文件可以解析成`JSON`格式，也可以直接提供给C/Rust代码使用。
+AutoConfig可以转化为JSON格式，也可以直接用解释器来访问使用。
 
 
 ### 3. 作为构建器
@@ -144,7 +146,7 @@ exe(demo) {
 }
 ```
 
-### 4. 作为脚本
+### 4. 作为Shell脚本
 
 ```rust
 #!auto
@@ -222,7 +224,7 @@ Auto语言提供了一个动态执行环境（Auto Shell），可以用于脚本
 Auto语言的模板（Auto Template）文件后缀名为`.at`。
 Auto模板是`AutoGen`代码生成系统的基础。
 
-### 5. 作为UI系统的DSL
+### 6. 作为UI系统的DSL
 
 `AutoUI`是Auto语言的UI框架，基于`Zed/GPUI`实现。
 可以支持Windows/Linxu/MacOS/Web等多种平台。
@@ -367,6 +369,38 @@ for k, v in obj {
 // 删除
 obj.remove("name")
 ```
+
+### Grid
+
+Grid是Auto语言的二维数组，可以用于表格数据。
+Grid可以扩展为类似DataFrame/Tensor的多维结构，用来和Python交互，进行AI相关的开发。
+
+```rust
+// 定义一个Grid
+let grid = grid(a:"first", b:"second", c:"third") {
+    [1, 2, 3]
+    [4, 5, 6]
+    [7, 8, 9]
+}
+
+// 转化为JSON
+var json = grid.to_json()
+
+// 相当于
+var grid = {
+    "cols": [
+        {id: "a", name: "first"},
+        {id: "b", name: "second"},
+        {id: "c", name: "third"},
+    ],
+    "data": [
+        {"a": 1, "b": 2, "c": 3},
+        {"a": 4, "b": 5, "c": 6},
+        {"a": 7, "b": 8, "c": 9},
+    ]
+}
+```
+
 
 ### 函数
 
@@ -645,7 +679,7 @@ mut p = s as Shape::Point
 println(p.x, p.y)
 ```
 
-### 类型（TODO）
+### 类型
 
 ```rust
 // 类型别名
@@ -669,8 +703,45 @@ type Point {
 ```
 
 ```rust
-// 接口
-trait Printable {
+// 新建类型的实例
+
+// 默认构造函数
+mut myint = MyInt(10)
+print(myint)
+
+// 命名构造函数
+mut p = Point(x:1, y:2)
+println(p.distance(Point(x:4, y:6)))
+
+// 自定义构造函数。注意：`::`表示方法是静态方法，一般用于构造函数。静态方法里不能用`.`来访问实例成员
+Point {
+    pub :: fn new(x int, y int) Point {
+        Point{x, y}
+    }
+
+    pub :: fn stretch(p Point, scale float) Point {
+        Point{x: p.x * scale, y: p.y * scale}
+    }
+}
+
+// 使用自定义构造函数
+mut p1 = Point::new(1, 2)
+mut p2 = Point::stretch(p1, 2.0)
+```
+
+
+### 规标（Spec）
+
+Auto语言扩展了Rust的接口（trait）概念，可以支持更多的模式匹配。
+在Auto语言中，用来匹配类型的结构，被称为一个“规标”（Spec）。
+
+Auto的规标有三类：
+
+1. 接口（Interface Spec）：和Rust的trait类似，可以判断某个类型是否符合规标所声明的方法。
+
+```rust
+// Interface Spec
+spec Printable {
     fn print()
 }
 
@@ -684,17 +755,17 @@ MyInt as Printable {
     }
 }
 
-// 多个方法的接口
-trait Indexable {
-    fn size() int
-    fn get(n int) T
-    fn set(n int, value T)
+// 多个方法的接口规标
+spec Indexable<T> {
+    fn size() usize
+    fn get(n usize) T
+    fn set(n usize, value T)
 }
 
 type IntArray {
     data []int
 
-    pub fn :: new(data int...) IntArray {
+    pub :: fn new(data int...) IntArray {
         IntArray{data: data.pack()}
     }
 
@@ -714,31 +785,32 @@ type IntArray {
 }
 ```
 
+2. 表达式规标（Expr Spec）：类似于TypeScript的联合类型。
+
 ```rust
-// 新建类型的实例
+// 表达式规标
 
-// 直接赋值
-mut myint = MyInt{10}
-print(myint)
+spec Number = int | uint | byte | float
 
-// 类似object的赋值
-mut p = Point{x: 1, y: 2}
-println(p.distance(Point{x: 4, y: 6}))
-
-// 不同的构造函数。注意：`::`表示方法是静态方法，一般用于构造函数。静态方法里不能用`.`来访问实例成员
-Point {
-    pub fn :: new(x int, y int) Point {
-        Point{x, y}
-    }
-
-    pub fn :: stretch(p Point, scale float) Point {
-        Point{x: p.x * scale, y: p.y * scale}
-    }
+// 使用表达式规标
+fn add(a Number, b Number) Number {
+    a + b
 }
 
-// 使用构造函数
-mut p1 = Point::new(1, 2)
-mut p2 = Point::stretch(p1, 2.0)
+add(1, 2) // OK
+add(1, 2.0) // OK
+add(1, "2") // Error!
+
+// 如果名字太长，也可以这么写：
+fn <T = Number> add(a T, b T) T {
+    a + b
+}
+```
+
+
+3. 判别式规标（Predicate Spec或Function Spec）：调用一个编译期函数，如果返回true，则表示类型判定通过。
+
+```rust
 
 // 复杂类型判断，参数为type，且返回bool的函数，可以用来做任意逻辑的类型判断
 fn IsArray(t type) bool {
