@@ -788,4 +788,15 @@ $ }
         let result = run(code).unwrap();
         assert_eq!(result, "{a: 1, b: 2}");
     }
+
+    #[test]
+    fn test_grid() {
+        let code = r#"grid(a:"first", b:"second", c:"third") {
+            [1, 2, 3]
+            [4, 5, 6]
+            [7, 8, 9]
+        }"#;
+        let result = run(code).unwrap();
+        assert_eq!(result, r#"grid(a:"first",b:"second",c:"third",) {[1, 2, 3];[4, 5, 6];[7, 8, 9]}"#);
+    }
 }

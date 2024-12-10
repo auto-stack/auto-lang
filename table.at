@@ -33,3 +33,10 @@ widget ServiceTable {
         table(config, data)
     }
 }
+
+// table data
+table (id:"ID", name:"Name", desc:"Desc") {
+    [0x10, "DiagnosticSessionControl",   "诊断会话控制"]
+    [0x11, "EcuReset",                   "电控单元复位"]
+    [0x14, "ClearDiagnosticInformation", "清除诊断信息"]
+}

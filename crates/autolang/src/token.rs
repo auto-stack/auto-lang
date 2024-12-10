@@ -69,10 +69,14 @@ pub enum TokenKind {
     Mut,
     Has,
 
+
     // Format Str
     FStrStart,
     FStrPart,
     FStrEnd,
+
+    // Keywords For AutoData
+    Grid,
 
     // Keywords For AutoUI
     Widget,
