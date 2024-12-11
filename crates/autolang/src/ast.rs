@@ -274,6 +274,9 @@ impl Args {
         Self { args: Vec::new() }
     }
 
+    pub fn len(&self) -> usize {
+        self.args.len()
+    }
     pub fn get(&self, idx: usize) -> Option<Arg> {
         self.args.get(idx).cloned()
     }
