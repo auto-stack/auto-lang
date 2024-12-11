@@ -1575,5 +1575,23 @@ mod tests {
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (grid (head (name a) (name b) (name c)) (data (row (int 1) (int 2) (int 3)) (row (int 4) (int 5) (int 6)) (row (int 7) (int 8) (int 9)))))");
     }
+
+    #[test]
+    fn test_grid_with_colconfig() {
+        let code = r#"
+        let cols = [
+            {id: "a", title: "A"},
+            {id: "b", title: "B"},
+            {id: "c", title: "C"},
+        ]
+        grid(cols) {
+            [1, 2, 3]
+            [4, 5, 6]
+            [7, 8, 9]
+        }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(grid (head (name cols)) (data (row (int 1) (int 2) (int 3)) (row (int 4) (int 5) (int 6)) (row (int 7) (int 8) (int 9))))");
+    }
 }
 

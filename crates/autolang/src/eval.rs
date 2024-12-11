@@ -925,21 +925,62 @@ impl Evaler {
         // head
         let mut head = Vec::new();
         let mut data = Vec::new();
-        for arg in grid.head.args.iter() {
-            match arg {
-                Arg::Pair(name, value) => {
-                    head.push((ValueKey::Str(name.text.clone()), self.eval_expr(value)));
-                }
-                Arg::Pos(value) => {
-                    match value {
-                        Expr::Str(value) => {
-                            head.push((ValueKey::Str(value.clone()), Value::Str(value.clone())));
+        if grid.head.len() == 1 {
+            let expr = &grid.head.args[0].get_expr();
+            match expr {
+                Expr::Array(array) => {
+                    for elem in array.iter() {
+                        if let Expr::Object(pairs) = elem {
+                            for p in pairs.iter() {
+                                match p.key.to_string().as_str() {
+                                    "id" => {
+                                        let id = self.eval_expr(&p.value);
+                                        head.push((ValueKey::Str("id".to_string()), id));
+                                    }
+                                    k => {
+                                        head.push((ValueKey::Str(k.to_string()), self.eval_expr(&p.value)));
+                                    }
+                                }
+                            }
                         }
-                        _ => {}
                     }
                 }
-                Arg::Name(name) => {
-                    head.push((ValueKey::Str(name.text.clone()), Value::Str(name.text.clone())));
+                Expr::Ident(_) => {
+                    let val = self.eval_expr(expr);
+                    if let Value::Array(array) = val {
+                        for elem in array.into_iter() {
+                            if let Value::Obj(obj) = &elem {
+                                let id = obj.get_str("id");
+                                match id {
+                                    Some(id) => {
+                                        head.push((ValueKey::Str(id.to_string()), elem));
+                                    }
+                                    None => {}
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if head.len() == 0 {
+            for arg in grid.head.args.iter() {
+                match arg {
+                    Arg::Pair(name, value) => {
+                        head.push((ValueKey::Str(name.text.clone()), self.eval_expr(value)));
+                    }
+                    Arg::Pos(value) => {
+                        match value {
+                            Expr::Str(value) => {
+                                head.push((ValueKey::Str(value.clone()), Value::Str(value.clone())));
+                            }
+                            _ => {}
+                        }
+                    }
+                    Arg::Name(name) => {
+                        head.push((ValueKey::Str(name.text.clone()), Value::Str(name.text.clone())));
+                    }
                 }
             }
         }

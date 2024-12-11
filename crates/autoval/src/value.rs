@@ -193,6 +193,13 @@ impl Obj {
         self.lookup(name).unwrap_or(default)
     }
 
+    pub fn get_str(&self, name: &str) -> Option<String> {
+        match self.get(ValueKey::Str(name.to_string())) {
+            Some(Value::Str(s)) => Some(s),
+            _ => None,
+        }
+    }
+
     pub fn get_str_or(&self, name: &str, default: &str) -> String {
         match self.get(ValueKey::Str(name.to_string())) {
             Some(Value::Str(s)) => s,
@@ -253,6 +260,10 @@ impl Obj {
 
     pub fn remove(&mut self, key: impl Into<ValueKey>) {
         self.values.remove(&key.into());
+    }
+
+    pub fn pretty(&self, max_indent: usize) -> String {
+        pretty(format!("{}", self).as_str(), max_indent)
     }
 }
 
@@ -584,6 +595,10 @@ impl Value {
             Value::Byte(value) => *value,
             _ => 0,
         }
+    }
+
+    pub fn pretty(&self, max_indent: usize) -> String {
+        pretty(format!("{}", self).as_str(), max_indent)
     }
 }
 
@@ -1044,6 +1059,77 @@ impl fmt::Display for Grid {
     }
 }
 
+pub fn pretty(text: &str, max_indent: usize) -> String {
+    let mut result = String::new();
+    let mut indent = 0;
+    let mut level = 0;
+    let mut in_str = false;
+    let tab = "    ";
+    
+    for c in text.chars() {
+        match c {
+            ' ' if !in_str => {
+                if level > max_indent {
+                    result.push(c);
+                }
+            }
+            ':' if !in_str => {
+                result.push(c);
+                result.push(' ');
+            }
+            '{' | '[' if !in_str => {
+                if indent < max_indent {
+                    result.push(c);
+                    result.push('\n');
+                    indent += 1;
+                    result.push_str(&tab.repeat(indent));
+                } else {
+                    result.push(c);
+                }
+                level += 1;
+            }
+            '}' | ']' if !in_str => {
+                if indent == max_indent {
+                    if level <= max_indent {
+                        result.push('\n');
+                        indent -= 1;
+                        result.push_str(&tab.repeat(indent));
+                    }
+                } else if indent < max_indent && indent > 0 {
+                    result.push('\n');
+                    indent -= 1;
+                    result.push_str(&tab.repeat(indent));
+                } 
+                result.push(c);
+                level -= 1;
+            }
+            ',' if !in_str => {
+                if indent == max_indent {
+                    if level <= max_indent {
+                        result.push(c);
+                        result.push('\n');
+                        result.push_str(&tab.repeat(indent));
+                    } else {
+                        result.push(c);
+                    }
+                } else if indent < max_indent {
+                    result.push(c);
+                    result.push('\n');
+                    result.push_str(&tab.repeat(indent));
+                } else {
+                    result.push(c);
+                }
+            }
+            '"' => {
+                in_str = !in_str;
+                result.push(c);
+            }
+            _ => result.push(c)
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1089,6 +1175,13 @@ mod tests {
             }
         }
         assert_eq!(obj.get_array_of("a")[2].as_obj().get_uint_of("timeout"), 4000);
+    }
+
+    #[test]
+    fn test_pretty() {
+        let text = r#"{"a":[[1, 2, 3], [4, 5, 6]], "b":[[7, 8, 9], [10, 11, 12]], "c":[[13, 14, 15], [16, 17, 18]]}"#;
+        let pretty = pretty(text, 2);
+        println!("{}", pretty);
     }
 
 }
