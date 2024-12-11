@@ -421,17 +421,6 @@ impl Evaler {
         }
     }
 
-    fn eval_args(&mut self, args: &ast::Args) -> autoval::Args {
-        let array: Vec<Value> = args.array.iter().map(|arg| self.eval_expr(arg)).collect();
-        let mut named: Vec<(ValueKey, Value)> = Vec::new();
-        for (key, value) in args.map.iter() {
-            let key_val = ValueKey::Str(key.text.clone());
-            let value_val = self.eval_expr(value);
-            named.push((key_val, value_val));
-        }
-        autoval::Args { array, named }
-    }
-
     fn call(&mut self, call: &Call) -> Value {
         let name = self.eval_expr(&call.name);
 
@@ -530,22 +519,33 @@ impl Evaler {
     }
 
     fn eval_fields(&mut self, members: &Vec<Member>, args: &Args) -> Obj {
+        // TODO: remove unnecessary clone
         let mut fields = Obj::new();
-        for (i, member) in members.iter().enumerate() {
-            // try to get arg by index
-            if i < args.array.len() {
-                let arg_exp = &args.array[i];
-                let arg_val = self.eval_expr(arg_exp);
-                fields.set(member.name.text.clone(), arg_val);
-            } else {
-                let name = &member.name.text;
-                for (key, arg) in args.map.iter() {
-                    if &key.text == name {
-                        let arg_val = self.eval_expr(arg);
-                        fields.set(member.name.text.clone(), arg_val);
+        for (j, arg) in args.args.iter().enumerate() {
+            let val_arg = self.eval_arg(arg);
+            match val_arg {
+                autoval::Arg::Pair(key, val) => {
+                    for member in members.iter() {
+                        if key.to_string() == member.name.text {
+                            fields.set(member.name.text.clone(), val.clone());
+                        }
+                    }
+                }
+                autoval::Arg::Pos(value) => {
+                    if j < members.len() {
+                        let member = &members[j];
+                        fields.set(member.name.text.clone(), value);
+                    }
+                }
+                autoval::Arg::Name(name) => {
+                    for member in members.iter() {
+                        if name == member.name.text {
+                            fields.set(member.name.text.clone(), Value::Str(name.clone()));
+                        }
                     }
                 }
             }
+            
         }
         fields
     }
@@ -609,7 +609,7 @@ impl Evaler {
         self.universe.borrow_mut().exit_scope();
     }
 
-    fn eval_arg(&mut self, arg: &Arg, i: usize, params: &Vec<Param>) {
+    fn eval_fn_arg(&mut self, arg: &Arg, i: usize, params: &Vec<Param>) {
         match arg {
             Arg::Pair(name, expr) => {
                 let val = self.eval_expr(expr);
@@ -632,7 +632,7 @@ impl Evaler {
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
         self.enter_scope();
         for (i, arg) in args.args.iter().enumerate() {
-            self.eval_arg(arg, i, &fn_decl.params);
+            self.eval_fn_arg(arg, i, &fn_decl.params);
         }
         let result = self.eval_body(&fn_decl.body);
         self.exit_scope();
@@ -811,36 +811,36 @@ impl Evaler {
 
     fn eval_mid(&mut self, node: &Node) -> Value {
         let is_mid = self.universe.borrow().lookup_val("is_mid").unwrap_or(Value::Bool(false)).as_bool();
-        let args = &node.args.array;
+        let args = &node.args.args;
         let mut res = Value::Str("".to_string());
         if args.len() >= 1 {
             if is_mid { // mid 
-                let mid = self.eval_expr(&args[0]);
+                let mid = self.eval_expr(&args[0].get_expr());
                 res = mid;
             }
         }
         if args.len() >= 2 {
             if !is_mid { // last
-                let last = self.eval_expr(&args[1]);
+                let last = self.eval_expr(&args[1].get_expr());
                 res = last;
             }
         }
         res
     }
 
-    fn eval_arg(&mut self, arg: &ast::Arg) -> Value {
+    fn eval_arg(&mut self, arg: &ast::Arg) -> autoval::Arg {
         match arg {
-            ast::Arg::Name(name) => Value::Str(name.text.clone()),
-            ast::Arg::Pair(_, expr) => self.eval_expr(expr),
-            ast::Arg::Pos(expr) => self.eval_expr(expr),
+            ast::Arg::Name(name) => autoval::Arg::Name(name.text.clone()),
+            ast::Arg::Pair(name, expr) => autoval::Arg::Pair(ValueKey::Str(name.text.clone()), self.eval_expr(expr)),
+            ast::Arg::Pos(expr) => autoval::Arg::Pos(self.eval_expr(expr)),
         }
     }
 
     fn eval_args(&mut self, args: &ast::Args) -> autoval::Args {
         let mut res = autoval::Args::new();
-        for arg in args.args.iter().enumerate() {
+        for arg in args.args.iter() {
             let val = self.eval_arg(arg);
-            res.array.push(val);
+            res.args.push(val);
         }
         res
     }

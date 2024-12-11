@@ -626,7 +626,7 @@ $ }
     #[test]
     fn test_insert_global_fn() {
         fn myjoin(arg: &Args) -> Value {
-            Value::Str(arg.array.iter().map(|v| v.to_string()).collect::<Vec<String>>().join("::"))
+            Value::Str(arg.args.iter().map(|v| v.to_string()).collect::<Vec<String>>().join("::"))
         }
 
         let mut scope = Universe::new();
@@ -791,11 +791,13 @@ $ }
 
     #[test]
     fn test_grid() {
-        let code = r#"grid(a:"first", b:"second", c:"third") {
+        let code = r#"var g = grid(a:"first", b:"second", c:"third") {
             [1, 2, 3]
             [4, 5, 6]
             [7, 8, 9]
-        }"#;
+        }
+        ref g
+        "#;
         let result = run(code).unwrap();
         assert_eq!(result, r#"grid(a:"first",b:"second",c:"third",) {[1, 2, 3];[4, 5, 6];[7, 8, 9]}"#);
     }

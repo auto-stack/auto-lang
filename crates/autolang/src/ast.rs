@@ -259,6 +259,16 @@ pub enum Arg {
     Pair(Name, Expr),
 }
 
+impl Arg {
+    pub fn get_expr(&self) -> Expr {
+        match self {
+            Arg::Pos(expr) => expr.clone(),
+            Arg::Name(name) => Expr::Str(name.text.clone()),
+            Arg::Pair(_, expr) => expr.clone(),
+        }
+    }
+}
+
 impl Args {
     pub fn new() -> Self {
         Self { args: Vec::new() }
