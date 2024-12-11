@@ -786,38 +786,67 @@ impl Node {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Arg {
+    Pos(Value),
+    Pair(ValueKey, Value),
+    Name(String),
+}
+
+impl Arg {
+    pub fn get_val(&self) -> Value {
+        match self {
+            Arg::Pos(value) => value.clone(),
+            Arg::Pair(_, value) => value.clone(),
+            Arg::Name(name) => Value::Str(name.clone()),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Args {
-    pub array: Vec<Value>,
-    pub named: Vec<(ValueKey, Value)>,
+    pub args: Vec<Arg>,
 }
 
 impl fmt::Display for Args {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(args")?;
-        for arg in &self.array {
+        for arg in &self.args {
             write!(f, " {}", arg)?;
         }
         Ok(())
     }
 }
 
+impl fmt::Display for Arg {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Arg::Pos(value) => write!(f, "{}", value),
+            Arg::Pair(key, value) => write!(f, "{}:{}", key, value),
+            Arg::Name(name) => write!(f, "{}:{}", name, name),
+        }
+    }
+}
+
 impl Args {
     pub fn new() -> Self {
-        Self { array: Vec::new(), named: Vec::new() }
+        Self { args: Vec::new() }
+    }
+
+    pub fn get_val(&self, index: usize) -> Value {
+        self.args.get(index).map(|arg| arg.get_val()).unwrap_or(Value::Nil)
     }
 
     pub fn array(values: Vec<impl Into<Value>>) -> Self {
-        Self { array: values.into_iter().map(|v| v.into()).collect(), named: Vec::new() }
+        Self { args: values.into_iter().map(|v| Arg::Pos(v.into())).collect() }
     }
 
-    pub fn add_named(&mut self, name: &str, value: Value) {
-        self.named.push((name.into(), value));
+    pub fn add_pair(&mut self, name: &str, value: Value) {
+        self.args.push(Arg::Pair(name.into(), value));
     }
 
     pub fn is_empty(&self) -> bool {
-        self.array.is_empty() && self.named.is_empty()
+        self.args.is_empty()
     }
 }
 
@@ -891,17 +920,7 @@ impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)?;
         if !self.args.is_empty() {
-            write!(f, "(")?;
-            for (i, arg) in self.args.array.iter().enumerate() {
-                write!(f, "{}", arg)?;
-                if i < self.args.array.len() - 1 {
-                    write!(f, ", ")?;
-                }
-            }
-            for (key, value) in &self.args.named {
-                write!(f, "{}={}, ", key, value)?;
-            }
-            write!(f, ")")?;
+            write!(f, " {}", self.args)?;
         }
         if !self.props.is_empty() {
             write!(f, " {{")?;
