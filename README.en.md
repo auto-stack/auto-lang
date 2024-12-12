@@ -4,9 +4,9 @@
 
 AutoLang is a programming language designed for automation and flexibility.
 
-- Automation: AutoLang is designed for automation of many development tasks.
+- **Automation**: AutoLang is designed for automation of many development tasks.
 
-- Flexible：AutoLang supports multiple syntaxes, each tailored to a particular scenario.
+- **Flexible**：AutoLang supports multiple syntaxes, each tailored to a particular scenario.
     - AutoLang: AutoLang itself is a static/dynamic mixed language, and can be transpiled to C and Rust.
     - AutoScript: AutoLang can be used as a dynamic scripting language, and be embedded into Rust/C projects as a scripting engine.
     - AutoConfig: AutoLang is a superset of JSON, and can be used as a dynamic configuration language.
@@ -14,11 +14,11 @@ AutoLang is a programming language designed for automation and flexibility.
     - AutoShell: AutoLang can be used as a cross-platform shell script.
     - Auto2C: AutoLang can be transpiled to C, and work with C in a mixed project managed by AutoMan.
 
-- Simplicity&Efficiency:
+- **Simplicity**&**Efficiency**:
     - As a scripting language, AutoLang provides simplicity and ease of use on par with Python.
     - As a static language, AutoLang is transpiled to C and Rust, providing similar performance to C and Rust.
 
-- Fullstack：AutoLang is part of AutoStack, a fullstack platform for development.
+- **Fullstack**：AutoLang is part of AutoStack, a fullstack platform for development.
     - Standard Library: A customizable standard library that supports BareMetal, RTOS and Linux/Windows/MacOS/Web.
     - Builder&Package Manager: AutoMan is a builder that supports Auto/C/Rust mixed projects. It's configured with AutoConfig.
     - UI Framework: AutoUI is a cross-platform UI framework based on Rust/GPUI, similar to Jetpack Compose. It now supports Windows/Linux/Mac, and will be extended to Web, Bevy and HarmonyOS.
