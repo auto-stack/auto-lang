@@ -95,7 +95,7 @@ impl Universe {
         }
     }
 
-    pub fn set_global(&mut self, name: &str, value: Value) {
+    pub fn set_global(&mut self, name: impl Into<String>, value: Value) {
         self.global_scope_mut().set_val(name, value);
     }
 
@@ -304,8 +304,8 @@ impl Scope {
         println!("Symbols: {:?}", self.symbols);
     }
 
-    pub fn set_val(&mut self, name: &str, value: Value) {
-        self.vals.insert(name.to_string(), value);
+    pub fn set_val(&mut self, name: impl Into<String>, value: Value) {
+        self.vals.insert(name.into(), value);
     }
 
     pub fn get_val(&self, name: &str) -> Option<Value> {
