@@ -1,6 +1,7 @@
 use std::fmt::{self, write, Display, Formatter};
 use std::collections::BTreeMap;
 use crate::types::{Type, TypeInfo};
+use std::collections::btree_map::{Iter, IntoIter};
 
 #[derive(Debug, Clone, PartialEq, Hash, Ord, Eq, PartialOrd)]
 pub enum ValueKey {
@@ -16,10 +17,16 @@ pub struct Obj {
 
 impl IntoIterator for Obj {
     type Item = (ValueKey, Value);
-    type IntoIter = std::collections::btree_map::IntoIter<ValueKey, Value>;
+    type IntoIter = IntoIter<ValueKey, Value>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.values.into_iter()
+    }
+}
+
+impl Obj {
+    pub fn iter(&self) -> Iter<ValueKey, Value> {
+        self.values.iter()
     }
 }
 
@@ -1029,6 +1036,21 @@ pub struct Grid {
 impl Default for Grid {
     fn default() -> Self {
         Self { head: vec![], data: vec![] }
+    }
+}
+
+impl Grid {
+    pub fn to_array_of_objects(&self) -> Value {
+        let colids = self.head.iter().map(|(_, col)| col.as_obj().get_str_of("id")).collect::<Vec<_>>();
+        let mut result = Vec::new();
+        for row in self.data.iter() {
+            let mut obj = Obj::new();
+            for (j, cell) in row.iter().enumerate() {
+                obj.set(colids[j].clone(), cell.clone());
+            }
+            result.push(Value::Obj(obj));
+        }
+        Value::Array(result)
     }
 }
 
