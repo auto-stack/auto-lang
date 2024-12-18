@@ -12,10 +12,46 @@ pub mod interp;
 
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::collections::HashMap;
-use autoval::{Value, Args};
 use crate::eval::EvalMode;
 use crate::scope::Universe;
+use std::path::Path;
+use autoval::{Value, Obj};
+
+pub struct AutoConfig {
+    pub code: String,
+    pub obj: Obj,
+    pub interpreter: interp::Interpreter,
+}
+
+impl AutoConfig {
+    pub fn new(code: String, obj: Obj) -> Self {
+        Self {
+            code,
+            obj,
+            interpreter: interp::Interpreter::new().wit_eval_mode(EvalMode::CONFIG),
+        }
+    }
+
+    pub fn from_file(path: &Path) -> Result<Self, String> {
+        let content = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
+        let mut interpreter = eval_config(&content)?;
+        let result = interpreter.result;
+        interpreter.result = Value::Nil;
+        if let Value::Obj(obj) = result {
+            Ok(Self {
+                code: content,
+                obj: obj.clone(),
+                interpreter: interpreter,
+            })
+        } else {
+            Err(format!("Invalid config result: {}", result.repr()))
+        }
+    }
+
+    pub fn name(&self) -> String {
+        "TODO".to_string()
+    }
+}
 
 pub fn run(code: &str) -> Result<String, String> {
     let scope = Rc::new(RefCell::new(Universe::new()));
@@ -137,6 +173,18 @@ mod tests {
         let code = "25u+123";
         let result = run(code).unwrap();
         assert_eq!(result, "148u");
+    }
+
+    #[test]
+    fn test_byte() {
+        let code = "let a byte = 255; a";
+        let result = run(code).unwrap();
+        assert_eq!(result, "0xFF");
+
+        // promote byte to int
+        let code = "let a int = 0xFF; a";
+        let result = run(code).unwrap();
+        assert_eq!(result, "255");
     }
 
     #[test]
@@ -625,7 +673,7 @@ $ }
 
     #[test]
     fn test_insert_global_fn() {
-        fn myjoin(arg: &Args) -> Value {
+        fn myjoin(arg: &autoval::Args) -> Value {
             Value::Str(arg.args.iter().map(|v| v.to_string()).collect::<Vec<String>>().join("::"))
         }
 
@@ -742,18 +790,6 @@ $ }
     }
 
     #[test]
-    fn test_byte() {
-        let code = "let a byte = 255; a";
-        let result = run(code).unwrap();
-        assert_eq!(result, "0xFF");
-
-        // promote byte to int
-        let code = "let a int = 0xFF; a";
-        let result = run(code).unwrap();
-        assert_eq!(result, "255");
-    }
-
-    #[test]
     fn test_type_compose() {
         let code = r#"
         type Wing {
@@ -800,5 +836,20 @@ $ }
         "#;
         let result = run(code).unwrap();
         assert_eq!(result, r#"grid(a:"first",b:"second",c:"third",) {[1, 2, 3];[4, 5, 6];[7, 8, 9]}"#);
+    }
+
+    #[test]
+    fn test_config() {
+        let code = r#"
+name: "hello"
+version: "0.1.0"
+
+exe(hello) {
+    dir: "src"
+    main: "main.c"
+}"#;
+        let interp = eval_config(code).unwrap();
+        let result = interp.result;
+        assert_eq!(result.repr(), r#"name: "hello", version: "0.1.0", exe(hello) {dir: "src", main: "main.c"}"#);
     }
 }
