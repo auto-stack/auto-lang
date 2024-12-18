@@ -33,13 +33,7 @@ pub struct Evaler {
 
 impl Evaler {
     pub fn new(universe: Rc<RefCell<scope::Universe>>) -> Self {
-        let mut evaler = Evaler { universe, tempo_for_nodes: HashMap::new(), mode: EvalMode::SCRIPT };
-        evaler.set_tempo("center", EvalTempo::LAZY);
-        evaler.set_tempo("top", EvalTempo::LAZY);
-        evaler.set_tempo("left", EvalTempo::LAZY);
-        evaler.set_tempo("right", EvalTempo::LAZY);
-        evaler.set_tempo("bottom", EvalTempo::LAZY);
-        evaler
+        Evaler { universe, tempo_for_nodes: HashMap::new(), mode: EvalMode::SCRIPT }
     }
 
     pub fn with_mode(mut self, mode: EvalMode) -> Self {
@@ -121,6 +115,17 @@ impl Evaler {
         }
     }
 
+    fn collect_body(&mut self, vals: Vec<Value>) -> Obj {
+        let mut obj = Obj::new();
+        for val in vals.into_iter() {
+            match val {
+                Value::Pair(key, value) => obj.set(key, *value),
+                _ => {}
+            }
+        }
+        obj
+    }
+
     fn eval_body(&mut self, body: &Body) -> Value {
         self.enter_scope();
         let mut res = Vec::new();
@@ -129,7 +134,7 @@ impl Evaler {
         }
         let res = match self.mode {
             EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
-            EvalMode::CONFIG => Value::Array(res),
+            EvalMode::CONFIG => Value::Obj(self.collect_body(res)),
             EvalMode::TEMPLATE => {
                 Value::Str(res.iter().map(|v| {
                     match v {
@@ -152,7 +157,7 @@ impl Evaler {
         }
         match self.mode {
             EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
-            EvalMode::CONFIG => Value::Array(res),
+            EvalMode::CONFIG => Value::Obj(self.collect_body(res)),
             EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| {
                 match v {
                     Value::Str(s) => s.clone(),
@@ -848,7 +853,6 @@ impl Evaler {
     fn eval_node(&mut self, node: &Node) -> Value {
         let args = self.eval_args(&node.args);
         let mut nodes = Vec::new();
-        let mut props = BTreeMap::new();
         let mut body = MetaID::Nil;
         let name = &node.name.text;
         if name == "mid" {
@@ -857,16 +861,8 @@ impl Evaler {
         let tempo = self.tempo_for_nodes.get(name).unwrap_or(&EvalTempo::IMMEDIATE);
         match tempo {
             EvalTempo::IMMEDIATE => {
-                for stmt in node.body.stmts.iter() {
-                    let val = self.eval_stmt(stmt);
-                    match val {
-                        Value::Node(node) => nodes.push(node),
-                        Value::Pair(key, value) => {
-                            props.insert(key, *value);
-                        }
-                        _ => {}
-                    }
-                }
+                // put args into scope
+                let body = self.eval_body(&node.body);
             }
             EvalTempo::LAZY => {
                 // push node body to scope meta

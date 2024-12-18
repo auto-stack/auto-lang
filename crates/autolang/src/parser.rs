@@ -1593,5 +1593,19 @@ mod tests {
         let last = ast.stmts.last().unwrap();
         assert_eq!(last.to_string(), "(grid (head (name cols)) (data (row (int 1) (int 2) (int 3)) (row (int 4) (int 5) (int 6)) (row (int 7) (int 8) (int 9))))");
     }
+
+    #[test]
+    fn test_config() {
+        let code = r#"
+name: "hello"
+version: "0.1.0"
+
+exe(hello) {
+    dir: "src"
+    main: "main.c"
+}"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (pair (name name) (str \"hello\")) (pair (name version) (str \"0.1.0\")) (node (name exe) (args (name hello)) (body (pair (name dir) (str \"src\")) (pair (name main) (str \"main.c\")))))");
+    }   
 }
 
