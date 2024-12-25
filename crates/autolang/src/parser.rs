@@ -427,10 +427,10 @@ impl<'a> Parser<'a> {
             } else {
                 self.expr()?
             };
-            match expr {
+            match &expr {
                 // Named args
                 Expr::Pair(p) => {
-                    let k = p.key;
+                    let k = p.key.clone();
                     match k {
                         Key::NamedKey(name) => {
                             args.args.push(Arg::Pair(name.clone(), (*p.value).clone()));
@@ -442,9 +442,20 @@ impl<'a> Parser<'a> {
                     }
                 }
                 // Positional args
+                Expr::Ident(name) => {
+                    // name arg without value
+                    let name = name.text.clone();
+                    match self.scope.lookup_meta(&name) {
+                        Some(_) => {
+                            args.args.push(Arg::Pos(expr.clone()));
+                        }
+                        None => {
+                            args.args.push(Arg::Name(Name::new(name)));
+                        }
+                    }
+                }
                 _ => {
                     args.args.push(Arg::Pos(expr.clone()));
-                    // args.array.push(expr);
                 }
             }
             self.sep_args();
