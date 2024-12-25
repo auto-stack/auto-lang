@@ -800,11 +800,27 @@ pub struct Node {
 }
 
 impl Node {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self { name: name.into(), args: Args::new(), props: BTreeMap::new(), nodes: vec![], body: MetaID::Nil }
+    }
+
     pub fn get_prop(&self, key: &str) -> Value {
         match self.props.get(&ValueKey::Str(key.to_string())) {
             Some(value) => value.clone(),
             None => Value::Nil,
         }
+    }
+
+    pub fn set_prop(&mut self, key: impl Into<ValueKey>, value: Value) {
+        self.props.insert(key.into(), value);
+    }
+
+    pub fn merge_obj(&mut self, obj: Obj) {
+        self.props.extend(obj.into_iter());
+    }
+
+    pub fn add_sub(&mut self, node: Node) {
+        self.nodes.push(node);
     }
 }
 
@@ -832,11 +848,17 @@ pub struct Args {
 
 impl fmt::Display for Args {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(args")?;
-        for arg in &self.args {
-            write!(f, " {}", arg)?;
+        if self.args.is_empty() {
+            return Ok(());
         }
-        Ok(())
+        write!(f, "(")?;
+        for (i, arg) in self.args.iter().enumerate() {
+            write!(f, "{}", arg)?;
+            if i < self.args.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, ")")
     }
 }
 
@@ -845,7 +867,7 @@ impl fmt::Display for Arg {
         match self {
             Arg::Pos(value) => write!(f, "{}", value),
             Arg::Pair(key, value) => write!(f, "{}:{}", key, value),
-            Arg::Name(name) => write!(f, "{}:{}", name, name),
+            Arg::Name(name) => write!(f, "{}", name),
         }
     }
 }
@@ -946,17 +968,23 @@ impl fmt::Display for Node {
         }
         if !self.props.is_empty() {
             write!(f, " {{")?;
-            for (key, value) in &self.props {
-                write!(f, " {}: {}", key, value)?;
+            for (i, (key, value)) in self.props.iter().enumerate() {
+                write!(f, "{}: {}", key, value)?;
+                if i < self.props.len() - 1 {
+                    write!(f, ", ")?;
+                }
             }
-            write!(f, " }}")?;
+            write!(f, "}}")?;
         }
         if !self.nodes.is_empty() {
-            write!(f, " {{")?;
-            for node in &self.nodes {
-                write!(f, " {}; ", node)?;
+            write!(f, " [")?;
+            for (i, node) in self.nodes.iter().enumerate() {
+                write!(f, "{}", node)?;
+                if i < self.nodes.len() - 1 {
+                    write!(f, "; ")?;
+                }
             }
-            write!(f, " }}")?;
+            write!(f, "]")?;
         }
         if self.body != MetaID::Nil {
             write!(f, " {}", self.body)?;

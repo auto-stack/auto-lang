@@ -68,20 +68,23 @@ impl Evaler {
                 value
             }
             EvalMode::CONFIG => {
-                let mut obj = Obj::new();
+                let mut node = autoval::Node::new("root");
                 for stmt in code.stmts.iter() {
                     let val = self.eval_stmt(stmt);
                     match val {
                         Value::Pair(key, value) => {
-                            obj.set(key, *value);
+                            node.set_prop(key, *value);
                         }
                         Value::Obj(o) => {
-                            obj.merge(&o);
+                            node.merge_obj(o);
+                        }
+                        Value::Node(n) => {
+                            node.add_sub(n);
                         }
                         _ => {}
                     }
                 }
-                Value::Obj(obj)
+                Value::Node(node)
             }
             EvalMode::TEMPLATE => {
                 let mut result = Vec::new();
@@ -835,7 +838,9 @@ impl Evaler {
 
     fn eval_arg(&mut self, arg: &ast::Arg) -> autoval::Arg {
         match arg {
-            ast::Arg::Name(name) => autoval::Arg::Name(name.text.clone()),
+            ast::Arg::Name(name) => {
+                autoval::Arg::Name(name.text.clone())
+            }
             ast::Arg::Pair(name, expr) => autoval::Arg::Pair(ValueKey::Str(name.text.clone()), self.eval_expr(expr)),
             ast::Arg::Pos(expr) => autoval::Arg::Pos(self.eval_expr(expr)),
         }
@@ -850,19 +855,29 @@ impl Evaler {
         res
     }
 
+    // TODO: should node only be used in config mode?
     fn eval_node(&mut self, node: &Node) -> Value {
         let args = self.eval_args(&node.args);
         let mut nodes = Vec::new();
+        let mut props = BTreeMap::new();
         let mut body = MetaID::Nil;
         let name = &node.name.text;
         if name == "mid" {
             return self.eval_mid(&node);
         }
         let tempo = self.tempo_for_nodes.get(name).unwrap_or(&EvalTempo::IMMEDIATE);
+
         match tempo {
             EvalTempo::IMMEDIATE => {
-                // put args into scope
-                let body = self.eval_body(&node.body);
+                // eval each stmts in body and extract props and sub nodes
+                for stmt in node.body.stmts.iter() {
+                    let val = self.eval_stmt(stmt);
+                    match val {
+                        Value::Pair(key, value) => {props.insert(key, *value);},
+                        Value::Node(node) => {nodes.push(node);},
+                        _ => {},
+                    }
+                }
             }
             EvalTempo::LAZY => {
                 // push node body to scope meta
