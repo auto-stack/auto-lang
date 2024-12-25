@@ -607,6 +607,10 @@ impl Value {
     pub fn pretty(&self, max_indent: usize) -> String {
         pretty(format!("{}", self).as_str(), max_indent)
     }
+
+    pub fn to_string(&self) -> String {
+        format!("{}", self)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -802,6 +806,14 @@ pub struct Node {
 impl Node {
     pub fn new(name: impl Into<String>) -> Self {
         Self { name: name.into(), args: Args::new(), props: BTreeMap::new(), nodes: vec![], body: MetaID::Nil }
+    }
+
+    pub fn title(&self) -> String {
+        if self.args.is_empty() {
+            self.name.clone()
+        } else {
+            format!("{}({})", self.name, self.args.args[0])
+        }
     }
 
     pub fn get_prop(&self, key: &str) -> Value {

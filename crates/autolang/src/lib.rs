@@ -9,49 +9,12 @@ pub mod repl;
 pub mod libs;
 pub mod util;
 pub mod interp;
+pub mod config;
 
 use std::rc::Rc;
 use std::cell::RefCell;
 use crate::eval::EvalMode;
 use crate::scope::Universe;
-use std::path::Path;
-use autoval::{Value, Obj};
-
-pub struct AutoConfig {
-    pub code: String,
-    pub obj: Obj,
-    pub interpreter: interp::Interpreter,
-}
-
-impl AutoConfig {
-    pub fn new(code: String, obj: Obj) -> Self {
-        Self {
-            code,
-            obj,
-            interpreter: interp::Interpreter::new().wit_eval_mode(EvalMode::CONFIG),
-        }
-    }
-
-    pub fn from_file(path: &Path) -> Result<Self, String> {
-        let content = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
-        let mut interpreter = eval_config(&content)?;
-        let result = interpreter.result;
-        interpreter.result = Value::Nil;
-        if let Value::Obj(obj) = result {
-            Ok(Self {
-                code: content,
-                obj: obj.clone(),
-                interpreter: interpreter,
-            })
-        } else {
-            Err(format!("Invalid config result: {}", result.repr()))
-        }
-    }
-
-    pub fn name(&self) -> String {
-        "TODO".to_string()
-    }
-}
 
 pub fn run(code: &str) -> Result<String, String> {
     let scope = Rc::new(RefCell::new(Universe::new()));
@@ -163,6 +126,7 @@ fn flip_template(template: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use autoval::Value;
 
     #[test]
     fn test_unit() {
