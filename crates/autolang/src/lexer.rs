@@ -228,6 +228,7 @@ impl<'a> Lexer<'a> {
             "let" => self.keyword_tok(TokenKind::Let, &text),
             "mut" => self.keyword_tok(TokenKind::Mut, &text),
             "has" => self.keyword_tok(TokenKind::Has, &text),
+            "use" => self.keyword_tok(TokenKind::Use, &text),
             _ => {
                 // AutoUI Keywords
                 // TODO: Add an Option to not check these keywords
@@ -450,6 +451,7 @@ impl<'a> Lexer<'a> {
             self.single(TokenKind::Div, '/')
         }
     }
+
 }
 
 #[cfg(test)]
@@ -545,5 +547,12 @@ mod tests {
         let code = "125u";
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<uint:125>");
+    }
+
+    #[test]
+    fn test_path() {
+        let code = "a.b.c: x, y";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<ident:a><.><ident:b><.><ident:c><:><ident:x><,><ident:y>");
     }
 }

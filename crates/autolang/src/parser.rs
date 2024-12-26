@@ -690,6 +690,7 @@ impl<'a> Parser<'a> {
 
     pub fn stmt(&mut self) -> Result<Stmt, ParseError> {
         let stmt = match self.kind() {
+            TokenKind::Use => self.use_stmt()?,
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
             TokenKind::Var => self.store_stmt()?,
@@ -707,6 +708,49 @@ impl<'a> Parser<'a> {
             _ => self.expr_stmt()?,
         };
         Ok(stmt)
+    }
+
+    fn expect_ident_str(&mut self) -> Result<String, ParseError> {
+        if self.is_kind(TokenKind::Ident) {
+            let name = self.cur.text.clone();
+            self.next(); // skip name
+            Ok(name)
+        } else {
+            error_pos!("Expected identifier, got {:?}", self.kind())
+        }
+    }
+
+    pub fn use_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.next(); // skip use
+        let mut paths = Vec::new();
+        let mut items = Vec::new();
+        let name = self.expect_ident_str()?;
+        paths.push(name);
+        while self.is_kind(TokenKind::Dot) {
+            self.next(); // skip .
+            let name = self.expect_ident_str()?;
+            paths.push(name);
+        }
+        // end of path, next should be a colon (for items) or end-of-statement
+        if self.is_kind(TokenKind::Colon) {
+            self.next(); // skip :
+            // parse items
+            if self.is_kind(TokenKind::Ident) {
+                let name = self.expect_ident_str()?;
+                items.push(name);
+            } else {
+                return error_pos!("Expected identifier, got {:?}", self.kind());
+            }
+            while self.is_kind(TokenKind::Comma) {
+                self.next(); // skip ,
+                let name = self.expect_ident_str()?;
+                items.push(name);
+            }
+        }
+        if items.is_empty() && !paths.is_empty() {
+            items.push(paths.pop().unwrap());
+        }
+        Ok(Stmt::Use(Use { paths, items }))
     }
 
     pub fn skip_empty_lines(&mut self) -> usize {
@@ -1618,5 +1662,11 @@ exe(hello) {
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (pair (name name) (str \"hello\")) (pair (name version) (str \"0.1.0\")) (node (name exe) (args (name hello)) (body (pair (name dir) (str \"src\")) (pair (name main) (str \"main.c\")))))");
     }   
-}
 
+    #[test]
+    fn test_use() {
+        let code = "use std.math.square; square(16)";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (use (path std.math) (items square)) (call (name square) (args (int 16))))");
+    }
+}

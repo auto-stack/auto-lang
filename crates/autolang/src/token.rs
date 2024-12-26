@@ -68,6 +68,7 @@ pub enum TokenKind {
     Let,
     Mut,
     Has,
+    Use,
 
 
     // Format Str
