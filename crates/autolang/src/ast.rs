@@ -29,6 +29,23 @@ impl fmt::Display for Code {
 }
 
 #[derive(Debug, Clone)]
+pub struct Use {
+    pub paths: Vec<String>,
+    pub items: Vec<String>,
+}
+
+impl fmt::Display for Use {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(use ")?;
+        write!(f, "(path {})", self.paths.join("."))?;
+        if !self.items.is_empty() {
+            write!(f, " (items {})", self.items.join(","))?;
+        }
+        write!(f, ")")
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Branch {
     pub cond: Expr,
     pub body: Body,
@@ -116,6 +133,7 @@ pub enum Stmt {
     TypeDecl(TypeDecl),
     Widget(Widget),
     Node(Node),
+    Use(Use),
 }
 
 #[derive(Debug, Clone)]
@@ -180,6 +198,7 @@ impl fmt::Display for Body {
 impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Stmt::Use(use_stmt) => write!(f, "{}", use_stmt),
             Stmt::Expr(expr) => write!(f, "{}", expr),
             Stmt::If(branches, else_stmt) => {
                 write!(f, "(if ")?;

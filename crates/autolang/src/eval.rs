@@ -106,6 +106,7 @@ impl Evaler {
 
     pub fn eval_stmt(&mut self, stmt: &Stmt) -> Value {
         match stmt {
+            Stmt::Use(use_stmt) => self.eval_use(use_stmt),
             Stmt::Expr(expr) => self.eval_expr(expr),
             Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
             Stmt::For(for_stmt) => self.eval_for(for_stmt),
@@ -116,6 +117,10 @@ impl Evaler {
             Stmt::Widget(widget) => self.eval_widget(widget),
             Stmt::Node(node) => self.eval_node(node),
         }
+    }
+
+    fn eval_use(&mut self, use_stmt: &Use) -> Value {
+        Value::Void
     }
 
     fn collect_body(&mut self, vals: Vec<Value>) -> Obj {
