@@ -816,4 +816,15 @@ exe(hello) {
         let result = interp.result;
         assert_eq!(result.repr(), r#"root {name: "hello", version: "0.1.0"} [exe (hello) {dir: "src", main: "main.c"}]"#);
     }
+
+    #[test]
+    fn test_std() {
+        let code = r#"
+use std.math: square
+
+square(5)
+"#;
+        let result = run(code).unwrap();
+        //assert_eq!(result, "25");
+    }
 }

@@ -1,3 +1,4 @@
-fn square(x: int) -> int {
+fn square(x int) int {
     x * x
 }
+
