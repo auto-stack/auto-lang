@@ -119,8 +119,9 @@ impl Evaler {
         }
     }
 
-    fn eval_use(&mut self, use_stmt: &Use) -> Value {
-        Value::Void
+    fn eval_use(&mut self, use_: &Use) -> Value {
+        println!("Got use {}", use_);
+        Value::Int(25)
     }
 
     fn collect_body(&mut self, vals: Vec<Value>) -> Obj {
@@ -818,7 +819,7 @@ impl Evaler {
         let widget_value = autoval::Widget { name: name.clone(), model, view_id: MetaID::View(view_id) };
         let value = Value::Widget(widget_value);
         self.universe.borrow_mut().set_local_val(name, value.clone());
-        self.universe.borrow_mut().widget = value.clone();
+        // self.universe.borrow_mut().widget = value.clone();
         value
     }
 
