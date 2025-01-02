@@ -3,22 +3,41 @@ use autoval::{Value, Args};
 use autoval::Sig;
 use autoval::MetaID;
 use crate::ast;
-use crate::ast::Call;
 use crate::libs;
 use std::rc::Rc;
 use autoval::{TypeInfoStore, ExtFn, Obj};
 use std::any::Any;
 use std::fmt;
 
+const SID_PATH_GLOBAL: &str = "::";
+
 pub enum ScopeKind {
+    Global,
     Mod,
     Type,
     Fn,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+// TODO: Sid should be a Sharable object, with cheap cloning, like SharedString
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Sid {
     path: String,
+}
+
+impl From<String> for Sid {
+    fn from(value: String) -> Self {
+        Self {
+            path: value
+        }
+    }
+}
+
+impl From<&str> for Sid {
+    fn from(value: &str) -> Self {
+        Self {
+            path: value.to_string()
+        }
+    }
 }
 
 impl Sid {
@@ -28,14 +47,34 @@ impl Sid {
         }
     }
 
+    pub fn kid_of(parent: &Sid, name: impl Into<String>) -> Self {
+        Self {
+            path: format!("{}.{}", parent.path, name.into())
+        }
+    }
+
+    pub fn global(name: impl Into<String>) -> Self {
+        Self {
+            path: format!("{}.{}", SID_PATH_GLOBAL, name.into())
+        }
+    }
+
     pub fn parent(&self) -> Self {
         let parent_path = if let Some(pos) = self.path.rfind('.') {
             &self.path[0..pos]
         } else {
-            ""
+            SID_PATH_GLOBAL
         };
         Self {
             path: parent_path.to_string()
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        if let Some(pos) = self.path.rfind('.') {
+            &self.path[pos+1..]
+        } else {
+            self.path.as_str()
         }
     }
 }
@@ -50,15 +89,20 @@ pub struct Scope {
 }
 
 impl Scope {
-    pub fn new(kind: ScopeKind, path: impl Into<String>) -> Self {
+    pub fn new(kind: ScopeKind, sid: Sid) -> Self {
+        let parent = sid.parent();
         Self {
             kind,
-            sid: Sid{path:path.into()},
-            parent: Sid{path:"".to_string()},
+            sid,
+            parent,
             kids: Vec::new(),
             symbols: HashMap::new(),
             vals: HashMap::new(),
         }
+    }
+
+    pub fn is_global(&self) -> bool {
+        return matches!(self.kind, ScopeKind::Global)
     }
 
     pub fn dump(&self) {
@@ -91,14 +135,20 @@ impl Scope {
     }
 }
 
+pub enum ScopeSpot {
+    Global,  // Global Scope
+    Mid(Sid), // One of the named scopes: mod/type/fn
+    Local, // Unnamed local scopes: e.g. in a if/else block
+}
+
 pub struct Universe {
-    pub scopes: HashMap<String, Scope>, // sid -> scope
+    pub scopes: HashMap<Sid, Scope>, // sid -> scope
     pub stack: Vec<StackedScope>,
     pub env_vals: HashMap<String, Box<dyn Any>>,
     pub builtins: HashMap<String, Value>, // Value of builtin functions
     pub types: TypeInfoStore,
     lambda_counter: usize,
-    cur_path: Vec<String>,
+    cur_spot: ScopeSpot,
 }
 
 impl Default for Universe {
@@ -110,14 +160,17 @@ impl Default for Universe {
 impl Universe {
     pub fn new() -> Self {
         let builtins = libs::builtin::builtins();
+        let mut scopes = HashMap::new();
+        let global_sid = Sid::new(SID_PATH_GLOBAL);
+        scopes.insert(global_sid.clone(), Scope::new(ScopeKind::Global, global_sid.clone()));
         let mut uni = Self {
-            scopes: HashMap::new(),
+            scopes,
             stack: vec![StackedScope::new()],
             env_vals: HashMap::new(),
             builtins, 
             types: TypeInfoStore::new(), 
             lambda_counter: 0,
-            cur_path: vec!["root".to_string()],
+            cur_spot: ScopeSpot::Global,
         };
         uni.define_sys_types();
         uni
@@ -145,8 +198,83 @@ impl Universe {
         self.define("byte", Rc::new(Meta::Type(ast::Type::Byte)));
     }
 
+    pub fn enter_mod(&mut self, name: impl Into<String>) {
+        match &self.cur_spot {
+            ScopeSpot::Global => {
+                // Create a new scope under global
+                let sid = Sid::global(name);
+                let new_scope = Scope::new(ScopeKind::Mod, sid.clone());
+                self.scopes.insert(sid.clone(), new_scope);
+                self.cur_spot = ScopeSpot::Mid(sid);
+            }
+            ScopeSpot::Mid(cur_sid) => {
+                let sid = Sid::kid_of(cur_sid, name);
+                let new_scope = Scope::new(ScopeKind::Mod, sid.clone());
+                self.scopes.insert(sid.clone(), new_scope);
+                self.cur_spot = ScopeSpot::Mid(sid);
+            }
+            ScopeSpot::Local => {
+                panic!("No mod in local scope spot!");
+            }
+        }
+    }
+
+    pub fn enter_fn(&mut self, name: impl Into<String>) {
+        match &self.cur_spot {
+            ScopeSpot::Global => {
+                // Create a new scope under global
+                let sid = Sid::global(name);
+                let new_scope = Scope::new(ScopeKind::Fn, sid.clone());
+                self.scopes.insert(sid.clone(), new_scope);
+                self.cur_spot = ScopeSpot::Mid(sid);
+            }
+            ScopeSpot::Mid(cur_sid) => {
+                let sid = Sid::kid_of(cur_sid, name);
+                let new_scope = Scope::new(ScopeKind::Fn, sid.clone());
+                self.scopes.insert(sid.clone(), new_scope);
+                self.cur_spot = ScopeSpot::Mid(sid);
+            }
+            ScopeSpot::Local => {
+                panic!("No fn in local scope spot!");
+            }
+        }
+    }
+
+    pub fn enter_type(&mut self, name: impl Into<String>) {
+        match &self.cur_spot {
+            ScopeSpot::Global => {
+                // Create a new scope under global
+                let sid = Sid::global(name);
+                let new_scope = Scope::new(ScopeKind::Type, sid.clone());
+                self.scopes.insert(sid.clone(), new_scope);
+                self.cur_spot = ScopeSpot::Mid(sid);
+            }
+            ScopeSpot::Mid(cur_sid) => {
+                let sid = Sid::kid_of(cur_sid, name);
+                let new_scope = Scope::new(ScopeKind::Type, sid.clone());
+                self.scopes.insert(sid.clone(), new_scope);
+                self.cur_spot = ScopeSpot::Mid(sid);
+            }
+            ScopeSpot::Local => {
+                panic!("No type in local scope spot!");
+            }
+        }
+    }
+
     pub fn enter_scope(&mut self) {
         self.stack.push(StackedScope::new());
+    }
+
+    pub fn exit_mod(&mut self) {
+
+    }
+
+    pub fn exit_fn(&mut self) {
+
+    }
+
+    pub fn exit_type(&mut self) {
+
     }
 
     pub fn exit_scope(&mut self) {
@@ -425,5 +553,8 @@ mod tests {
     fn test_sid() {
         let sid = Sid::new("std.math");
         assert_eq!(sid.parent(), Sid::new("std"));
+
+        assert_eq!(sid.name(), "math");
     }
+
 }
