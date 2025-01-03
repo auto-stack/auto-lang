@@ -9,19 +9,38 @@ use autoval::{TypeInfoStore, ExtFn, Obj};
 use std::any::Any;
 use std::fmt;
 
-const SID_PATH_GLOBAL: &str = "::";
+const SID_PATH_GLOBAL: &str = "#";
 
 pub enum ScopeKind {
     Global,
     Mod,
     Type,
     Fn,
+    Block,
+}
+
+impl fmt::Display for ScopeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ScopeKind::Global => write!(f, "GlobalScope"),
+            ScopeKind::Mod => write!(f, "ModScope"),
+            ScopeKind::Type => write!(f, "TypeScope"),
+            ScopeKind::Fn => write!(f, "FnScope"),
+            ScopeKind::Block => write!(f, "BlockScope"),
+        }
+    }
 }
 
 // TODO: Sid should be a Sharable object, with cheap cloning, like SharedString
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Sid {
     path: String,
+}
+
+impl fmt::Display for Sid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.path)
+    }
 }
 
 impl From<String> for Sid {
@@ -53,20 +72,23 @@ impl Sid {
         }
     }
 
-    pub fn global(name: impl Into<String>) -> Self {
+    pub fn top(name: impl Into<String>) -> Self {
         Self {
             path: format!("{}.{}", SID_PATH_GLOBAL, name.into())
         }
     }
 
-    pub fn parent(&self) -> Self {
-        let parent_path = if let Some(pos) = self.path.rfind('.') {
-            &self.path[0..pos]
-        } else {
-            SID_PATH_GLOBAL
-        };
+    pub fn global() -> Self {
         Self {
-            path: parent_path.to_string()
+            path: SID_PATH_GLOBAL.to_string()
+        }
+    }
+
+    pub fn parent(&self) -> Option<Self> {
+        if let Some(pos) = self.path.rfind('.') {
+            Some(Self { path: self.path[0..pos].to_string() })
+        } else {
+            None
         }
     }
 
@@ -77,12 +99,16 @@ impl Sid {
             self.path.as_str()
         }
     }
+
+    pub fn is_global(&self) -> bool {
+        self.path == SID_PATH_GLOBAL
+    }
 }
 
 pub struct Scope {
     pub kind: ScopeKind,
     pub sid: Sid, // TODO: should use SharedString?
-    pub parent: Sid, // sid to parent
+    pub parent: Option<Sid>, // sid to parent
     pub kids: Vec<Sid>,
     pub symbols: HashMap<String, Rc<Meta>>,
     pub vals: HashMap<String, Value>,
@@ -126,8 +152,8 @@ impl Scope {
         self.symbols.insert(name.to_string(), meta);
     }
 
-    pub fn get_symbol(&self, name: &str) -> Option<&Rc<Meta>> {
-        self.symbols.get(name)
+    pub fn get_symbol(&self, name: &str) -> Option<Rc<Meta>> {
+        self.symbols.get(name).cloned()
     }
 
     pub fn exists(&self, name: &str) -> bool {
@@ -135,20 +161,14 @@ impl Scope {
     }
 }
 
-pub enum ScopeSpot {
-    Global,  // Global Scope
-    Mid(Sid), // One of the named scopes: mod/type/fn
-    Local, // Unnamed local scopes: e.g. in a if/else block
-}
-
 pub struct Universe {
     pub scopes: HashMap<Sid, Scope>, // sid -> scope
-    pub stack: Vec<StackedScope>,
+    // pub stack: Vec<StackedScope>,
     pub env_vals: HashMap<String, Box<dyn Any>>,
     pub builtins: HashMap<String, Value>, // Value of builtin functions
     pub types: TypeInfoStore,
     lambda_counter: usize,
-    cur_spot: ScopeSpot,
+    cur_spot: Sid,
 }
 
 impl Default for Universe {
@@ -161,28 +181,43 @@ impl Universe {
     pub fn new() -> Self {
         let builtins = libs::builtin::builtins();
         let mut scopes = HashMap::new();
-        let global_sid = Sid::new(SID_PATH_GLOBAL);
+        let global_sid = Sid::global();
         scopes.insert(global_sid.clone(), Scope::new(ScopeKind::Global, global_sid.clone()));
         let mut uni = Self {
             scopes,
-            stack: vec![StackedScope::new()],
+            // stack: vec![StackedScope::new()],
             env_vals: HashMap::new(),
             builtins, 
             types: TypeInfoStore::new(), 
             lambda_counter: 0,
-            cur_spot: ScopeSpot::Global,
+            cur_spot: global_sid.clone(),
         };
         uni.define_sys_types();
         uni
     }
 
     pub fn dump(&self) {
-        for scope in self.stack.iter() {
-            scope.dump();
-        }
+        // for scope in self.stack.iter() {
+        //     scope.dump();
+        // }
         for (name, meta) in self.builtins.iter() {
             println!("Builtin: {} = {}", name, meta);
         }
+    }
+
+    pub fn chart(&self) -> String {
+        let mut chart = String::new();
+        for (sid, scope) in self.scopes.iter() {
+            if let Some(parent) = &scope.parent {
+                chart.push_str(&format!("{} -> {}\n", sid, parent));
+            } else {
+                chart.push_str(&format!("{} -> {}\n", sid, "Global"));
+            }
+        }
+        // for (i, scope) in self.stack.iter().enumerate() {
+        //     chart.push_str(&format!("{}: {}\n", i, scope.dump()));
+        // }
+        chart
     }
 
     pub fn gen_lambda_id(&mut self) -> String {
@@ -198,105 +233,78 @@ impl Universe {
         self.define("byte", Rc::new(Meta::Type(ast::Type::Byte)));
     }
 
+    fn enter_named_scope(&mut self, name: impl Into<String>, kind: ScopeKind) {
+        // Create a new scope under Global
+        let new_sid = Sid::kid_of(&self.cur_spot, name);
+        let new_scope = Scope::new(kind, new_sid.clone());
+        self.cur_scope_mut().kids.push(new_sid.clone());
+        self.scopes.insert(new_sid.clone(), new_scope);
+        self.cur_spot = new_sid;
+    }
+
     pub fn enter_mod(&mut self, name: impl Into<String>) {
-        match &self.cur_spot {
-            ScopeSpot::Global => {
-                // Create a new scope under global
-                let sid = Sid::global(name);
-                let new_scope = Scope::new(ScopeKind::Mod, sid.clone());
-                self.scopes.insert(sid.clone(), new_scope);
-                self.cur_spot = ScopeSpot::Mid(sid);
-            }
-            ScopeSpot::Mid(cur_sid) => {
-                let sid = Sid::kid_of(cur_sid, name);
-                let new_scope = Scope::new(ScopeKind::Mod, sid.clone());
-                self.scopes.insert(sid.clone(), new_scope);
-                self.cur_spot = ScopeSpot::Mid(sid);
-            }
-            ScopeSpot::Local => {
-                panic!("No mod in local scope spot!");
-            }
-        }
+        self.enter_named_scope(name, ScopeKind::Mod);
     }
 
     pub fn enter_fn(&mut self, name: impl Into<String>) {
-        match &self.cur_spot {
-            ScopeSpot::Global => {
-                // Create a new scope under global
-                let sid = Sid::global(name);
-                let new_scope = Scope::new(ScopeKind::Fn, sid.clone());
-                self.scopes.insert(sid.clone(), new_scope);
-                self.cur_spot = ScopeSpot::Mid(sid);
-            }
-            ScopeSpot::Mid(cur_sid) => {
-                let sid = Sid::kid_of(cur_sid, name);
-                let new_scope = Scope::new(ScopeKind::Fn, sid.clone());
-                self.scopes.insert(sid.clone(), new_scope);
-                self.cur_spot = ScopeSpot::Mid(sid);
-            }
-            ScopeSpot::Local => {
-                panic!("No fn in local scope spot!");
-            }
-        }
+        self.enter_named_scope(name, ScopeKind::Fn);
     }
 
     pub fn enter_type(&mut self, name: impl Into<String>) {
-        match &self.cur_spot {
-            ScopeSpot::Global => {
-                // Create a new scope under global
-                let sid = Sid::global(name);
-                let new_scope = Scope::new(ScopeKind::Type, sid.clone());
-                self.scopes.insert(sid.clone(), new_scope);
-                self.cur_spot = ScopeSpot::Mid(sid);
-            }
-            ScopeSpot::Mid(cur_sid) => {
-                let sid = Sid::kid_of(cur_sid, name);
-                let new_scope = Scope::new(ScopeKind::Type, sid.clone());
-                self.scopes.insert(sid.clone(), new_scope);
-                self.cur_spot = ScopeSpot::Mid(sid);
-            }
-            ScopeSpot::Local => {
-                panic!("No type in local scope spot!");
-            }
-        }
+        self.enter_named_scope(name, ScopeKind::Type);
+    }
+    
+    pub fn cur_scope(&self) -> &Scope {
+        self.scopes.get(&self.cur_spot).unwrap()
+    }
+
+    pub fn cur_scope_mut(&mut self) -> &mut Scope {
+        self.scopes.get_mut(&self.cur_spot).unwrap()
     }
 
     pub fn enter_scope(&mut self) {
-        self.stack.push(StackedScope::new());
+        let name = format!("block_{}", self.cur_scope().kids.len());
+        self.enter_named_scope(name, ScopeKind::Block);
     }
 
     pub fn exit_mod(&mut self) {
-
+        self.exit_scope();
     }
 
     pub fn exit_fn(&mut self) {
-
+        self.exit_scope();
     }
 
     pub fn exit_type(&mut self) {
-
+        self.exit_scope();
     }
 
     pub fn exit_scope(&mut self) {
-        if self.stack.len() > 1 {
-            self.stack.pop();
+        let parent_sid = self.cur_spot.parent();
+        if let Some(parent) = parent_sid {
+            self.cur_spot = parent;
+        } else {
+            println!("No parent scope to exit!");
         }
     }
 
-    pub fn current_scope(&self) -> &StackedScope {
-        self.stack.last().expect("No scope left")
+    pub fn current_scope(&self) -> &Scope {
+        self.scopes.get(&self.cur_spot).expect("No scope left")
     }
 
-    pub fn current_scope_mut(&mut self) -> &mut StackedScope {
-        self.stack.last_mut().expect("No scope left")
+    pub fn current_scope_mut(&mut self) -> &mut Scope {
+        self.scopes.get_mut(&self.cur_spot).expect("No scope left")
     }
 
-    pub fn global_scope(&self) -> &StackedScope {
-        self.stack.first().expect("No global scope left")
+    pub fn global_scope(&self) -> &Scope {
+        let sid_global = Sid::new(SID_PATH_GLOBAL);
+        self.scopes.get(&sid_global).expect("No global scope left")
     }
 
-    pub fn global_scope_mut(&mut self) -> &mut StackedScope {
-        self.stack.first_mut().expect("No global scope left")
+    pub fn global_scope_mut(&mut self) -> &mut Scope {
+        // TODO: use lazy static
+        let sid_global = Sid::new(SID_PATH_GLOBAL);
+        self.scopes.get_mut(&sid_global).expect("No global scope left")
     }
 
     pub fn set_local_val(&mut self, name: &str, value: Value) {
@@ -346,80 +354,117 @@ impl Universe {
         self.exists(name)
     }
 
-    pub fn exists(&self, name: &str) -> bool {
-        // check for symbols
-        for scope in self.stack.iter().rev() {
-            if scope.exists(name) {
-                return true;
-            }
+    fn exists_recurse(&self, name: &str, sid: &Sid) -> bool {
+        if self.scopes.get(sid).unwrap().exists(name) {
+            return true;
         }
+        if let Some(parent) = sid.parent() {
+            return self.exists_recurse(name, &parent);
+        }
+        false
+    }
 
+    pub fn exists(&self, name: &str) -> bool {
+        if self.exists_recurse(name, &self.cur_spot) {
+            return true;
+        }
         // check for builtins
         let is_builtin = self.builtins.contains_key(name);
         is_builtin
     }
 
+    fn lookup_val_recurse(&self, name: &str, sid: &Sid) -> Option<Value> {
+        if let Some(scope) = self.scopes.get(sid) {
+            return scope.get_val(name);
+        }
+        if let Some(parent) = sid.parent() {
+            return self.lookup_val_recurse(name, &parent);
+        }
+        None
+    }
 
     pub fn lookup_val(&self, name: &str) -> Option<Value> {
-        for scope in self.stack.iter().rev() {
-            if let Some(value) = scope.get_val(name) {
-                return Some(value);
-            }
+        if let Some(val) = self.lookup_val_recurse(name, &self.cur_spot) {
+            return Some(val);
         }
         self.builtins.get(name).cloned()
     }
 
+    fn update_obj_recurse(&mut self, name: &str, f: impl FnOnce(&mut Obj)) {
+        if let Some(value) = self.lookup_val_mut(name) {
+            if let Value::Obj(o) = value {
+                f(o);
+                return;
+            }
+        }
+    }
+
     pub fn update_obj(&mut self, name: &str, f: impl FnOnce(&mut Obj)) {
-        for scope in self.stack.iter_mut().rev() {
-            if let Some(value) = scope.get_val_mut(name) {
-                if let Value::Obj(o) = value {
-                    f(o);
-                    return;
+        self.update_obj_recurse(name, f);
+    }
+
+    fn update_array_recurse(&mut self, name: &str, idx: Value, val: Value, sid: &Sid) {
+        if let Some(value) = self.lookup_val_mut(name) {
+            if let Value::Array(a) = value {
+                match idx {
+                    Value::Int(i) => a[i as usize] = val,
+                    Value::Uint(i) => a[i as usize] = val,
+                    _ => {}
                 }
             }
         }
     }
 
     pub fn update_array(&mut self, name: &str, idx: Value, val: Value) {
-        for scope in self.stack.iter_mut().rev() {
-            if let Some(value) = scope.get_val_mut(name) {
-                if let Value::Array(a) = value {
-                    match idx {
-                        Value::Int(i) => a[i as usize] = val,
-                        Value::Uint(i) => a[i as usize] = val,
-                        _ => {}
-                    }
-                    return;
-                }
+        let sid = self.cur_spot.clone();
+        self.update_array_recurse(name, idx, val, &sid);
+    }
+
+    fn lookup_val_mut_recurse(&mut self, name: &str, sid: &Sid) -> Option<&mut Value> {
+        if !self.scopes.contains_key(sid) {
+            if let Some(parent) = sid.parent() {
+                return self.lookup_val_mut_recurse(name, &parent);
             }
         }
+        if let Some(scope) = self.scopes.get_mut(sid) {
+            return scope.get_val_mut(name);
+        }
+        None
     }
 
     pub fn lookup_val_mut(&mut self, name: &str) -> Option<&mut Value> {
-        for scope in self.stack.iter_mut().rev() {
-            if let Some(value) = scope.get_val_mut(name) {
-                return Some(value);
-            }
+        let sid = self.cur_spot.clone();
+        self.lookup_val_mut_recurse(name, &sid)
+    }
+
+    fn update_val_recurse(&mut self, name: &str, value: Value, sid: &Sid) {
+        if let Some(scope) = self.scopes.get_mut(sid) {
+            scope.set_val(name, value);
+            return;
         }
-        None
+        if let Some(parent) = sid.parent() {
+            self.update_val_recurse(name, value, &parent);
+        }
     }
 
     pub fn update_val(&mut self, name: &str, value: Value) {
-        for scope in self.stack.iter_mut().rev() {
-            if scope.exists(name) {
-                scope.set_val(name, value);
-                return;
-            }
+        let sid = self.cur_spot.clone();
+        self.update_val_recurse(name, value, &sid);
+    }
+
+    fn lookup_meta_recurse(&self, name: &str, sid: &Sid) -> Option<Rc<Meta>> {
+        if let Some(scope) = self.scopes.get(sid) {
+            return scope.get_symbol(name);
         }
+        if let Some(parent) = sid.parent() {
+            return self.lookup_meta_recurse(name, &parent);
+        }
+        None
     }
 
     pub fn lookup_meta(&self, name: &str) -> Option<Rc<Meta>> {
-        for scope in self.stack.iter().rev() {
-            if let Some(meta) = scope.get_symbol(name) {
-                return Some(meta.clone());
-            }
-        }
-        None
+        let sid = self.cur_spot.clone();
+        self.lookup_meta_recurse(name, &sid)
     }
 
     pub fn lookup_sig(&self, sig: &Sig) -> Option<Rc<Meta>> {
@@ -515,9 +560,11 @@ impl StackedScope {
         StackedScope { vals: HashMap::new(), symbols: HashMap::new() }
     }
 
-    pub fn dump(&self) {
-        println!("Vals: {:?}", self.vals);
-        println!("Symbols: {:?}", self.symbols);
+    pub fn dump(&self) -> String {
+        let mut chart = String::new();
+        chart.push_str(&format!("Vals: {:?}\n", self.vals));
+        chart.push_str(&format!("Symbols: {:?}\n", self.symbols));
+        chart
     }
 
     pub fn set_val(&mut self, name: impl Into<String>, value: Value) {
@@ -552,9 +599,25 @@ mod tests {
     #[test]
     fn test_sid() {
         let sid = Sid::new("std.math");
-        assert_eq!(sid.parent(), Sid::new("std"));
+        assert_eq!(sid.parent().unwrap(), Sid::new("std"));
 
         assert_eq!(sid.name(), "math");
     }
 
+    #[test]
+    fn test_universe() {
+        let mut uni = Universe::new();
+        uni.enter_mod("std");
+        println!("{}", uni.cur_spot);
+        uni.enter_fn("math");
+        println!("{}", uni.cur_spot);
+        uni.enter_type("int");
+        println!("{}", uni.cur_spot);
+        uni.enter_scope();
+        println!("{}", uni.cur_spot);
+        // uni.exit_scope();
+        // uni.exit_scope();
+        // uni.exit_scope();
+        println!("{}", uni.chart());
+    }
 }

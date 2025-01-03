@@ -913,7 +913,7 @@ impl<'a> Parser<'a> {
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
         self.expect(TokenKind::LParen)?;
-        self.scope.enter_scope();
+        self.scope.enter_fn(name.clone());
         let params = self.fn_params()?;
         self.expect(TokenKind::RParen)?;
         let mut ret_type = Type::Unknown;
@@ -986,12 +986,14 @@ impl<'a> Parser<'a> {
     }
 
     pub fn type_stmt(&mut self) -> Result<Stmt, ParseError> {
-        self.next(); // skip type
+        // TODO: deal with scope
+        self.next(); // skip `type` keyword
         let name = Name::new(self.cur.text.clone());
         self.expect(TokenKind::Ident)?;
+        // deal with `has` keyword
         let mut has = Vec::new();
         if self.is_kind(TokenKind::Has) {
-            self.next(); // skip has
+            self.next(); // skip `has` keyword
             while !self.is_kind(TokenKind::LBrace) {
                 if !has.is_empty() {
                     self.expect(TokenKind::Colon)?; // skip ,
@@ -1000,6 +1002,7 @@ impl<'a> Parser<'a> {
                 has.push(typ);
             }
         }
+        // type body
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
         // list of members or methods
