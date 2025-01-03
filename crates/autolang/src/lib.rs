@@ -33,7 +33,6 @@ pub fn run_with_scope(code: &str, scope: Universe) -> Result<String, String> {
 }
 
 pub fn parse(code: &str) -> Result<ast::Code, String> {
-    println!("parsing code: {}", code);
     let mut scope = Universe::new();
     parser::parse(code, &mut scope)
 }
