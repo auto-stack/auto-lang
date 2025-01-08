@@ -122,6 +122,12 @@ impl fmt::Display for Var {
     }
 }
 
+impl Var {
+    pub fn new(name: Name, expr: Expr) -> Self {
+        Self { name, expr }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
