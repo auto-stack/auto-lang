@@ -526,6 +526,18 @@ impl Universe {
         }
         view
     }
+
+    pub fn define_var(&mut self, name: &str, expr: ast::Expr) {
+        // Add meta to current scope
+        let ast_name = ast::Name::new(name.to_string());
+        let store = ast::Store {
+            kind: ast::StoreKind::Var,
+            name: ast_name,
+            ty: ast::Type::Int,
+            expr: expr,
+        };
+        self.define(name, Rc::new(Meta::Store(store)));
+    }
 }
 
 #[derive(Debug)]
@@ -629,5 +641,31 @@ mod tests {
         assert_eq!(uni.cur_spot, Sid::new("std"));
         uni.exit_scope();
         assert_eq!(uni.cur_spot, *SID_PATH_GLOBAL);
+    }
+
+    #[test]
+    fn test_scope_define_and_lookup() {
+        let mut uni = Universe::new();
+        uni.enter_mod("std");
+        uni.enter_mod("math");
+        let val_expr = ast::Expr::Int(32);
+        uni.define_var("a", val_expr);
+        let meta = uni.lookup_meta("a");
+        // TODO: Meta destructureing is a mess
+        if let Some(meta) = meta {
+            match meta.as_ref() {
+                Meta::Store(store) =>  {
+                    if let ast::Expr::Int(32) = store.expr {
+                        assert!(true);
+                    } else {
+                        assert!(false);
+                    }
+                }
+                _ => panic!("Meta is not a store"),
+            }
+        } else {
+            panic!("Meta not found");
+        }
+        
     }
 }
