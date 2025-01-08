@@ -8,8 +8,10 @@ use std::rc::Rc;
 use autoval::{TypeInfoStore, ExtFn, Obj};
 use std::any::Any;
 use std::fmt;
+use std::sync::LazyLock;
+use ecow::EcoString as AutoStr;
 
-const SID_PATH_GLOBAL: &str = "#";
+static SID_PATH_GLOBAL: LazyLock<Sid> = LazyLock::new(|| Sid::new(""));
 
 pub enum ScopeKind {
     Global,
@@ -34,7 +36,7 @@ impl fmt::Display for ScopeKind {
 // TODO: Sid should be a Sharable object, with cheap cloning, like SharedString
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Sid {
-    path: String,
+    path: AutoStr,
 }
 
 impl fmt::Display for Sid {
@@ -46,6 +48,14 @@ impl fmt::Display for Sid {
 impl From<String> for Sid {
     fn from(value: String) -> Self {
         Self {
+            path: AutoStr::from(value)
+        }
+    }
+}
+
+impl From<AutoStr> for Sid {
+    fn from(value: AutoStr) -> Self {
+        Self {
             path: value
         }
     }
@@ -54,7 +64,7 @@ impl From<String> for Sid {
 impl From<&str> for Sid {
     fn from(value: &str) -> Self {
         Self {
-            path: value.to_string()
+            path: AutoStr::from(value)
         }
     }
 }
@@ -62,46 +72,46 @@ impl From<&str> for Sid {
 impl Sid {
     pub fn new(path: impl Into<String>) -> Self {
         Self {
-            path: path.into()
+            path: AutoStr::from(path.into())
         }
     }
 
     pub fn kid_of(parent: &Sid, name: impl Into<String>) -> Self {
         Self {
-            path: format!("{}.{}", parent.path, name.into())
+            path: if parent.is_global() {
+                AutoStr::from(name.into())
+            } else {
+                AutoStr::from(format!("{}.{}", parent.path, name.into()))
+            }
         }
     }
 
     pub fn top(name: impl Into<String>) -> Self {
         Self {
-            path: format!("{}.{}", SID_PATH_GLOBAL, name.into())
-        }
-    }
-
-    pub fn global() -> Self {
-        Self {
-            path: SID_PATH_GLOBAL.to_string()
+            path: AutoStr::from(name.into())
         }
     }
 
     pub fn parent(&self) -> Option<Self> {
         if let Some(pos) = self.path.rfind('.') {
-            Some(Self { path: self.path[0..pos].to_string() })
-        } else {
+            Some(Self { path: AutoStr::from(self.path[0..pos].to_string()) })
+        } else if self.path == SID_PATH_GLOBAL.path {
             None
+        } else {
+            Some(SID_PATH_GLOBAL.clone())
         }
     }
 
-    pub fn name(&self) -> &str {
+    pub fn name(&self) -> AutoStr {
         if let Some(pos) = self.path.rfind('.') {
-            &self.path[pos+1..]
+            self.path[pos+1..].into()
         } else {
-            self.path.as_str()
+            self.path.clone()
         }
     }
 
     pub fn is_global(&self) -> bool {
-        self.path == SID_PATH_GLOBAL
+        self.path == ""
     }
 }
 
@@ -181,8 +191,7 @@ impl Universe {
     pub fn new() -> Self {
         let builtins = libs::builtin::builtins();
         let mut scopes = HashMap::new();
-        let global_sid = Sid::global();
-        scopes.insert(global_sid.clone(), Scope::new(ScopeKind::Global, global_sid.clone()));
+        scopes.insert(SID_PATH_GLOBAL.clone(), Scope::new(ScopeKind::Global, SID_PATH_GLOBAL.clone()));
         let mut uni = Self {
             scopes,
             // stack: vec![StackedScope::new()],
@@ -190,7 +199,7 @@ impl Universe {
             builtins, 
             types: TypeInfoStore::new(), 
             lambda_counter: 0,
-            cur_spot: global_sid.clone(),
+            cur_spot: SID_PATH_GLOBAL.clone(),
         };
         uni.define_sys_types();
         uni
@@ -297,14 +306,11 @@ impl Universe {
     }
 
     pub fn global_scope(&self) -> &Scope {
-        let sid_global = Sid::new(SID_PATH_GLOBAL);
-        self.scopes.get(&sid_global).expect("No global scope left")
+        self.scopes.get(&SID_PATH_GLOBAL).expect("No global scope left")
     }
 
     pub fn global_scope_mut(&mut self) -> &mut Scope {
-        // TODO: use lazy static
-        let sid_global = Sid::new(SID_PATH_GLOBAL);
-        self.scopes.get_mut(&sid_global).expect("No global scope left")
+        self.scopes.get_mut(&SID_PATH_GLOBAL).expect("No global scope left")
     }
 
     pub fn set_local_val(&mut self, name: &str, value: Value) {
@@ -605,19 +611,23 @@ mod tests {
     }
 
     #[test]
-    fn test_universe() {
+    fn test_scope_enter_and_exit() {
         let mut uni = Universe::new();
         uni.enter_mod("std");
-        println!("{}", uni.cur_spot);
+        assert_eq!(uni.cur_spot, Sid::new("std"));
         uni.enter_fn("math");
-        println!("{}", uni.cur_spot);
-        uni.enter_type("int");
-        println!("{}", uni.cur_spot);
+        assert_eq!(uni.cur_spot, Sid::new("std.math"));
+        uni.enter_type("Matrix");
+        assert_eq!(uni.cur_spot, Sid::new("std.math.Matrix"));
         uni.enter_scope();
-        println!("{}", uni.cur_spot);
-        // uni.exit_scope();
-        // uni.exit_scope();
-        // uni.exit_scope();
-        println!("{}", uni.chart());
+        assert_eq!(uni.cur_spot, Sid::new("std.math.Matrix.block_0"));
+        uni.exit_scope();
+        assert_eq!(uni.cur_spot, Sid::new("std.math.Matrix"));
+        uni.exit_scope();
+        assert_eq!(uni.cur_spot, Sid::new("std.math"));
+        uni.exit_scope();
+        assert_eq!(uni.cur_spot, Sid::new("std"));
+        uni.exit_scope();
+        assert_eq!(uni.cur_spot, *SID_PATH_GLOBAL);
     }
 }
