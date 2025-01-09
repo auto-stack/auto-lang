@@ -460,7 +460,9 @@ impl Universe {
 
     fn lookup_meta_recurse(&self, name: &str, sid: &Sid) -> Option<Rc<Meta>> {
         if let Some(scope) = self.scopes.get(sid) {
-            return scope.get_symbol(name);
+            if let Some(meta) = scope.get_symbol(name) {
+                return Some(meta);
+            }
         }
         if let Some(parent) = sid.parent() {
             return self.lookup_meta_recurse(name, &parent);
@@ -650,22 +652,17 @@ mod tests {
         uni.enter_mod("math");
         let val_expr = ast::Expr::Int(32);
         uni.define_var("a", val_expr);
+        uni.enter_fn("add");
         let meta = uni.lookup_meta("a");
         // TODO: Meta destructureing is a mess
+        let mut succ = false;
         if let Some(meta) = meta {
-            match meta.as_ref() {
-                Meta::Store(store) =>  {
-                    if let ast::Expr::Int(32) = store.expr {
-                        assert!(true);
-                    } else {
-                        assert!(false);
-                    }
+            if let Meta::Store(store) = meta.as_ref() {
+                if let ast::Expr::Int(32) = store.expr {
+                    succ = true;
                 }
-                _ => panic!("Meta is not a store"),
             }
-        } else {
-            panic!("Meta not found");
         }
-        
+        assert!(succ);
     }
 }
