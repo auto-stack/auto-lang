@@ -8,6 +8,8 @@ use std::i32;
 use crate::error_pos;
 use std::rc::Rc;
 use std::cell::RefCell;
+use crate::interp::Interpreter;
+use autoval::AutoStr;
 
 type ParseError = String;
 
@@ -90,10 +92,10 @@ fn infix_power(op: Op) -> Result<InfixPrec, ParseError> {
     }
 }
 
-pub fn parse(code: &str, scope: Rc<RefCell<Universe>>) -> Result<Code, ParseError> {
-    let mut parser = Parser::new(code, scope);
-    parser.parse()
-}
+// pub fn parse(code: &str, scope: Rc<RefCell<Universe>>, interpreter: &'a Interpreter) -> Result<Code, ParseError> {
+    // let mut parser = Parser::new(code, scope, interpreter);
+    // parser.parse()
+// }
 
 
 pub struct Parser<'a> {
@@ -106,7 +108,7 @@ impl<'a> Parser<'a> {
     pub fn new(code: &'a str, scope: Rc<RefCell<Universe>>) -> Self {
         let mut lexer = Lexer::new(code);
         let cur = lexer.next();
-        let mut parser = Parser { lexer, cur, scope };
+        let mut parser = Parser { scope, lexer, cur };
         parser.skip_comments();
         parser
     }
@@ -782,7 +784,6 @@ impl<'a> Parser<'a> {
     }
 
     fn import(&mut self, path: String) {
-        
     }
 
     pub fn skip_empty_lines(&mut self) -> usize {
@@ -1313,12 +1314,14 @@ mod tests {
     use crate::util::pretty;
     fn parse_once(code: &str) -> Code {
         let scope = Rc::new(RefCell::new(Universe::new()));
-        parse(code, scope).unwrap()
+        let mut parser = Parser::new(code, scope);
+        parser.parse().unwrap()
     }
 
     fn parse_with_err(code: &str) -> Result<Code, ParseError> {
         let scope = Rc::new(RefCell::new(Universe::new()));
-        parse(code, scope)
+        let mut parser = Parser::new(code, scope);
+        parser.parse()
     }
 
     #[test]

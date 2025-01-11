@@ -1,0 +1,1 @@
+pub use ecow::EcoString as AutoStr;
