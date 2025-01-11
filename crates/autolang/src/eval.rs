@@ -292,7 +292,7 @@ impl Evaler {
             Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => {
                 comp(&left_value, &op, &right_value)
             }
-            Op::Asn => self.asn(left, right_value),
+            Op::Asn => self.eval_asn(left, right_value),
             Op::Range => self.range(left, right),
             Op::RangeEq => self.range_eq(left, right),
             Op::Dot => self.dot(left, right),
@@ -300,7 +300,7 @@ impl Evaler {
         }
     }
 
-    fn asn(&mut self, left: &Expr, val: Value) -> Value {
+    fn eval_asn(&mut self, left: &Expr, val: Value) -> Value {
         match left {
             Expr::Ident(name) => {
                 // check ref
@@ -315,7 +315,6 @@ impl Evaler {
                         }
                     }
                     _ => {
-                        println!("not ref: {}, {}", name.text, val);
                         if self.universe.borrow().exists(&name.text) {
                             self.universe.borrow_mut().update_val(&name.text, val);
                         } else {
@@ -435,68 +434,71 @@ impl Evaler {
         }
     }
 
-    fn call(&mut self, call: &Call) -> Value {
+    // TODO: 需要整理一下，逻辑比较乱
+    fn eval_call(&mut self, call: &Call) -> Value {
         let name = self.eval_expr(&call.name);
+        if name == Value::Nil {
+            return Value::Error(format!("Invalid function name to call {}", call.name));
+        }
 
-        if name != Value::Nil {
-            match name {
-                Value::Meta(meta_id) => {
-                    match meta_id {
-                        MetaID::Fn(sig) => {
-                            return self.eval_fn_call_with_sig(&sig, &call.args);
-                        }
-                        MetaID::Type(name) => {
-                            return self.eval_type_new(&name, &call.args);
-                        }
-                        _ => {
-                            println!("Strange function call {}", meta_id);
-                        }
+        match name {
+            Value::Meta(meta_id) => {
+                match meta_id {
+                    MetaID::Fn(sig) => {
+                        return self.eval_fn_call_with_sig(&sig, &call.args);
                     }
-                }
-                Value::ExtFn(extfn) => {
-                    let args_val = self.eval_args(&call.args);
-                    return (extfn.fun)(&args_val);
-                }
-                Value::Lambda(name) => {
-                    // Try to lookup lambda in SymbolTable
-                    let meta = self.universe.borrow().lookup_meta(&name);
-                    if let Some(meta) = meta {
-                        match meta.as_ref() {
-                            scope::Meta::Fn(fn_decl) => {
-                                return self.eval_fn_call(fn_decl, &call.args);
-                            }
-                            _ => {
-                                return Value::Error(format!("Invalid lambda {}", name));
-                            }
-                        }
-                    } else {
-                        return Value::Error(format!("Invalid lambda {}", name));
+                    MetaID::Type(name) => {
+                        return self.eval_type_new(&name, &call.args);
                     }
-                }
-                Value::Widget(_widget) => {
-                    let node: Node = call.clone().into();
-                    return self.eval_node(&node);
-                }
-                Value::Method(method) => {
-                    return self.eval_method(&method, &call.args);
-                }
-                _ => {
-                    return Value::Error(format!("Invalid function call {}", name));
+                    _ => {
+                        println!("Strange function call {}", meta_id);
+                    }
                 }
             }
+            Value::ExtFn(extfn) => {
+                let args_val = self.eval_args(&call.args);
+                return (extfn.fun)(&args_val);
+            }
+            Value::Lambda(name) => {
+                // Try to lookup lambda in SymbolTable
+                let meta = self.universe.borrow().lookup_meta(&name);
+                if let Some(meta) = meta {
+                    match meta.as_ref() {
+                        scope::Meta::Fn(fn_decl) => {
+                            return self.eval_fn_call(fn_decl, &call.args);
+                        }
+                        _ => {
+                            return Value::Error(format!("Invalid lambda {}", name));
+                        }
+                    }
+                } else {
+                    return Value::Error(format!("Invalid lambda {}", name));
+                }
+            }
+            Value::Widget(_widget) => {
+                let node: Node = call.clone().into();
+                return self.eval_node(&node);
+            }
+            Value::Method(method) => {
+                return self.eval_method(&method, &call.args);
+            }
+            _ => {
+                return Value::Error(format!("Invalid function call {}", name));
+            }
         }
+        
         // Lookup Fn meta
-        let meta = self.universe.borrow().lookup_meta(&call.get_name());
+        let meta = self.universe.borrow().lookup_meta(&call.get_name_text());
         if let Some(meta) = meta {
             match meta.as_ref() {
                 scope::Meta::Fn(fn_decl) => {
                     return self.eval_fn_call(fn_decl, &call.args);
                 }
-                _ => return Value::Error(format!("Invalid lambda {}", call.get_name())),
+                _ => return Value::Error(format!("Invalid lambda {}", call.get_name_text())),
             }
         } else {
             // convert call to node intance
-            println!("call {} not found, try to eval node", call.get_name());
+            println!("call {} not found, try to eval node", call.get_name_text());
             let node: Node = call.clone().into();
             return self.eval_node(&node);
         }
@@ -644,7 +646,9 @@ impl Evaler {
     }
 
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
+        // TODO: 需不需要一个单独的 enter_call()
         self.enter_scope();
+        println!("enter call scope {}", self.universe.borrow().current_scope().sid);
         for (i, arg) in args.args.iter().enumerate() {
             self.eval_fn_arg(arg, i, &fn_decl.params);
         }
@@ -716,7 +720,8 @@ impl Evaler {
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
             Expr::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
             Expr::Array(elems) => self.array(elems),
-            Expr::Call(call) => self.call(call),
+            Expr::Call(call) => self.eval_call(call),
+            Expr::Node(node) => self.eval_node(node),
             Expr::Index(array, index) => self.index(array, index),
             Expr::Pair(pair) => self.pair(pair),
             Expr::Object(pairs) => self.object(pairs),
@@ -837,6 +842,12 @@ impl Evaler {
             if !is_mid { // last
                 let last = self.eval_expr(&args[1].get_expr());
                 res = last;
+            }
+        }
+        if is_mid && node.body.stmts.len() != 0 {
+            for stmt in node.body.stmts.iter() {
+                let val = self.eval_stmt(stmt);
+                res = val;
             }
         }
         res

@@ -361,8 +361,10 @@ impl Universe {
     }
 
     fn exists_recurse(&self, name: &str, sid: &Sid) -> bool {
-        if self.scopes.get(sid).unwrap().exists(name) {
-            return true;
+        if let Some(scope) = self.scopes.get(sid) {
+            if scope.exists(name) {
+                return true;
+            }
         }
         if let Some(parent) = sid.parent() {
             return self.exists_recurse(name, &parent);
@@ -381,7 +383,10 @@ impl Universe {
 
     fn lookup_val_recurse(&self, name: &str, sid: &Sid) -> Option<Value> {
         if let Some(scope) = self.scopes.get(sid) {
-            return scope.get_val(name);
+            let val = scope.get_val(name);
+            if let Some(val) = val {
+                return Some(val);
+            }
         }
         if let Some(parent) = sid.parent() {
             return self.lookup_val_recurse(name, &parent);
@@ -445,8 +450,10 @@ impl Universe {
 
     fn update_val_recurse(&mut self, name: &str, value: Value, sid: &Sid) {
         if let Some(scope) = self.scopes.get_mut(sid) {
-            scope.set_val(name, value);
-            return;
+            if scope.exists(name) {
+                scope.set_val(name, value);
+                return;
+            }
         }
         if let Some(parent) = sid.parent() {
             self.update_val_recurse(name, value, &parent);
@@ -552,6 +559,7 @@ pub enum Meta {
     Widget(ast::Widget),
     View(ast::View),
     Body(ast::Body),
+    Use(String),
 }
 
 impl fmt::Display for Meta {
@@ -566,6 +574,7 @@ impl fmt::Display for Meta {
             Meta::Widget(_) => write!(f, "Widget"),
             Meta::View(_) => write!(f, "VIEW"),
             Meta::Body(_) => write!(f, "BoDY"),
+            Meta::Use(name) => write!(f, "USE {}", name),
         }
     }
 }
@@ -664,5 +673,9 @@ mod tests {
             }
         }
         assert!(succ);
+
+        uni.set_local_val("x", Value::Int(12));
+        let val = uni.lookup_val("x");
+        assert_eq!(val, Some(Value::Int(12)));
     }
 }
