@@ -7,6 +7,7 @@ use autoval::Op;
 use std::i32;
 use crate::error_pos;
 use std::rc::Rc;
+use std::cell::RefCell;
 
 type ParseError = String;
 
@@ -89,20 +90,20 @@ fn infix_power(op: Op) -> Result<InfixPrec, ParseError> {
     }
 }
 
-pub fn parse(code: &str, scope: &mut Universe) -> Result<Code, ParseError> {
+pub fn parse(code: &str, scope: Rc<RefCell<Universe>>) -> Result<Code, ParseError> {
     let mut parser = Parser::new(code, scope);
     parser.parse()
 }
 
 
 pub struct Parser<'a> {
-    scope: &'a mut Universe,
+    pub scope: Rc<RefCell<Universe>>,
     lexer: Lexer<'a>,
     cur: Token,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(code: &'a str, scope: &'a mut Universe) -> Self {
+    pub fn new(code: &'a str, scope: Rc<RefCell<Universe>>) -> Self {
         let mut lexer = Lexer::new(code);
         let cur = lexer.next();
         let mut parser = Parser { lexer, cur, scope };
@@ -152,6 +153,26 @@ impl<'a> Parser<'a> {
         } else {
             error_pos!("Expected token kind: {:?}, got {:?}", kind, self.cur.text)
         }
+    }
+
+    fn define(&mut self, name: &str, meta: Meta) {
+        self.scope.borrow_mut().define(name, Rc::new(meta));
+    }
+
+    fn exists(&mut self, name: &str) -> bool {
+        self.scope.borrow().exists(name)
+    }
+
+    fn exit_scope(&mut self) {
+        self.scope.borrow_mut().exit_scope();
+    }
+
+    fn enter_scope(&mut self) {
+        self.scope.borrow_mut().enter_scope();
+    }
+
+    fn lookup_meta(&mut self, name: &str) -> Option<Rc<Meta>> {
+        self.scope.borrow().lookup_meta(name)
     }
 }
 
@@ -328,7 +349,7 @@ impl<'a> Parser<'a> {
     fn check_asn(&mut self, lhs: &Expr) -> Result<(), ParseError> {
         match lhs {
             Expr::Ident(name) => {
-                let meta = self.scope.lookup_meta(name.text.as_str());
+                let meta = self.lookup_meta(name.text.as_str());
                 if let Some(Meta::Store(store)) = meta.as_deref() {
                     if matches!(store.kind, StoreKind::Let) {
                         return error_pos!("Syntax error: Assignment not allowed for let store: {}", store.name);
@@ -444,7 +465,7 @@ impl<'a> Parser<'a> {
                 Expr::Ident(name) => {
                     // name arg without value
                     let name = name.text.clone();
-                    match self.scope.lookup_meta(&name) {
+                    match self.lookup_meta(&name) {
                         Some(_) => {
                             args.args.push(Arg::Pos(expr.clone()));
                         }
@@ -542,7 +563,7 @@ impl<'a> Parser<'a> {
     pub fn ident(&mut self) -> Result<Expr, ParseError> {
         let name = self.cur.text.clone();
         // // check for existence
-        // if !self.scope.exists(&name) {
+        // if !self.exists(&name) {
         //     return Err(format!("Undefined variable: {}", name));
         // }
         Ok(Expr::Ident(Name::new(name)))
@@ -652,7 +673,7 @@ impl<'a> Parser<'a> {
         self.next(); // skip |
         let params = self.fn_params()?;
         self.expect(TokenKind::VBar)?; // skip |
-        let id = self.scope.gen_lambda_id();
+        let id = self.scope.borrow_mut().gen_lambda_id();
         let lambda = if self.is_kind(TokenKind::LBrace) {
             let body = self.body()?;
             Fn::new(Name::new(id.clone()), None, params, body, Type::Unknown)
@@ -661,7 +682,7 @@ impl<'a> Parser<'a> {
             Fn::new(Name::new(id.clone()), None, params, Body::single_expr(expr), Type::Unknown)
         };
         // put lambda in scope
-        self.scope.define(id.as_str(), Rc::new(Meta::Fn(lambda.clone())));
+        self.define(id.as_str(), Meta::Fn(lambda.clone()));
         // TODO: return meta instead?
         Ok(Expr::Lambda(lambda))
     }
@@ -750,11 +771,18 @@ impl<'a> Parser<'a> {
         if items.is_empty() && !paths.is_empty() {
             items.push(paths.pop().unwrap());
         }
+        // import path into universe
+        let path = paths.join(".");
+        self.import(path);
         // Push imported names into scope
         for name in items.iter() {
-            self.scope.define(name.as_str(), Rc::new(Meta::Use(name.clone())));
+            self.define(name.as_str(), Meta::Use(name.clone()));
         }
         Ok(Stmt::Use(Use { paths, items }))
+    }
+
+    fn import(&mut self, path: String) {
+        
     }
 
     pub fn skip_empty_lines(&mut self) -> usize {
@@ -815,16 +843,16 @@ impl<'a> Parser<'a> {
         // enumerator
         if self.is_kind(TokenKind::Ident) {
             let name = self.cur.text.clone();
-            self.scope.enter_scope();
+            self.enter_scope();
             let meta = Meta::Var(Var { name: Name::new(name.clone()), expr: Expr::Nil });
-            self.scope.define(name.as_str(), Rc::new(meta));
+            self.define(name.as_str(), meta);
             self.next(); // skip name
             let mut iter = Iter::Named(Name::new(name.clone()));
             if self.is_kind(TokenKind::Comma) {
                 self.next(); // skip ,
                 let iter_name = self.cur.text.clone();
                 let meta_iter = Meta::Var(Var { name: Name::new(iter_name.clone()), expr: Expr::Nil });
-                self.scope.define(iter_name.as_str(), Rc::new(meta_iter));
+                self.define(iter_name.as_str(), meta_iter);
                 self.next(); // skip iter name
                 iter = Iter::Indexed(Name::new(name.clone()), Name::new(iter_name.clone()));
             }
@@ -832,7 +860,7 @@ impl<'a> Parser<'a> {
             let range = self.iterable_expr()?;
             let body = self.body()?;
             let has_new_line = body.has_new_line;
-            self.scope.exit_scope();
+            self.exit_scope();
             return Ok(Stmt::For(For { iter, range, body, new_line: has_new_line }));
         }
         error_pos!("Expected for loop, got {:?}", self.kind())
@@ -865,9 +893,9 @@ impl<'a> Parser<'a> {
 
         let store = Store { kind: store_kind, name: Name::new(name.clone()), ty, expr: expr.clone() };
         if let Expr::Lambda(lambda) = &expr {
-            self.scope.define(name.as_str(), Rc::new(Meta::Ref(lambda.name.clone())));
+            self.define(name.as_str(), Meta::Ref(lambda.name.clone()));
         } else {
-            self.scope.define(name.as_str(), Rc::new(Meta::Store(store.clone())));
+            self.define(name.as_str(), Meta::Store(store.clone()));
         }
 
         Ok(Stmt::Store(store))
@@ -920,7 +948,7 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Ident)?;
 
         // enter function scope
-        self.scope.enter_fn(name.clone());
+        self.scope.borrow_mut().enter_fn(name.clone());
 
         // parse function parameters
         self.expect(TokenKind::LParen)?;
@@ -937,7 +965,7 @@ impl<'a> Parser<'a> {
         let body = self.body()?;
 
         // exit function scope
-        self.scope.exit_scope();
+        self.exit_scope();
 
         // parent name for method?
         let parent = if parent_name.is_empty() {
@@ -954,7 +982,7 @@ impl<'a> Parser<'a> {
         };
 
         // define function in scope
-        self.scope.define(unique_name.as_str(), Rc::new(Meta::Fn(fn_expr)));
+        self.define(unique_name.as_str(), Meta::Fn(fn_expr));
         Ok(fn_stmt)
     }
 
@@ -991,7 +1019,7 @@ impl<'a> Parser<'a> {
             // define param in current scope (currently in fn scope)
             let var = Var { name: Name::new(name.clone()), expr: default.clone().unwrap_or(Expr::Nil) };
             // TODO: should we consider Meta::Param instead of Meta::Var?
-            self.scope.define(name.as_str(), Rc::new(Meta::Var(var.clone())));
+            self.define(name.as_str(), Meta::Var(var.clone()));
             params.push(Param { name: Name::new(name), ty, default });
             self.sep_params();
         }
@@ -1056,7 +1084,7 @@ impl<'a> Parser<'a> {
                         compose_meth.parent = Some(name.clone());
                         // register this method as Self::method
                         let unique_name = format!("{}::{}", &name.text, &compose_meth.name.text);
-                        self.scope.define(unique_name.as_str(), Rc::new(Meta::Fn(compose_meth.clone())));
+                        self.define(unique_name.as_str(), Meta::Fn(compose_meth.clone()));
                         methods.push(compose_meth);
                     }
                 }
@@ -1067,7 +1095,7 @@ impl<'a> Parser<'a> {
         }
         let decl = TypeDecl { name: name.clone(), has, members, methods };
         // put type in scope
-        self.scope.define(name.text.as_str(), Rc::new(Meta::Type(Type::User(decl.clone()))));
+        self.define(name.text.as_str(), Meta::Type(Type::User(decl.clone())));
         Ok(Stmt::TypeDecl(decl))
     }
 
@@ -1083,7 +1111,7 @@ impl<'a> Parser<'a> {
         self.next();
         match type_name {
             Expr::Ident(name) => {
-                let meta = self.scope.lookup_meta(&name.text).ok_or(format!("Undefined type: {}", name.text))?;
+                let meta = self.lookup_meta(&name.text).ok_or(format!("Undefined type: {}", name.text))?;
                 if let Meta::Type(ty) = meta.as_ref() {
                     Ok(ty.clone())
                 } else {
@@ -1104,7 +1132,7 @@ impl<'a> Parser<'a> {
                 match op {
                     Op::Dot => {
                         if let Expr::Ident(name) = l.as_ref() {
-                            if !self.scope.exists(&name.text) {
+                            if !self.exists(&name.text) {
                                 return error_pos!("Undefined variable: {}", name.text);
                             }
                         }
@@ -1114,14 +1142,14 @@ impl<'a> Parser<'a> {
                 }
             }
             Expr::Ident(name) => {
-                if !self.scope.exists(&name.text) {
+                if !self.exists(&name.text) {
                     return error_pos!("Undefined variable: {}", name.text);
                 }
                 Ok(expr)
             }
             Expr::Call(call) => {
                 if let Expr::Ident(name) = call.name.as_ref() {
-                    if !self.scope.exists(&name.text) {
+                    if !self.exists(&name.text) {
                         // 表示是一个节点实例
                         let node = Node::from(call.clone());
                         return Ok(Expr::Node(node));
@@ -1141,7 +1169,7 @@ impl<'a> Parser<'a> {
         let mut widget = Widget::new(Name::new(name.clone()));
         widget.model = model;
         widget.view = view;
-        self.scope.define(name.as_str(), Rc::new(Meta::Widget(widget.clone())));
+        self.define(name.as_str(), Meta::Widget(widget.clone()));
         Ok(Stmt::Widget(widget))
     }
 
@@ -1284,13 +1312,13 @@ mod tests {
     use super::*;
     use crate::util::pretty;
     fn parse_once(code: &str) -> Code {
-        let mut scope = Universe::new();
-        parse(code, &mut scope).unwrap()
+        let scope = Rc::new(RefCell::new(Universe::new()));
+        parse(code, scope).unwrap()
     }
 
     fn parse_with_err(code: &str) -> Result<Code, ParseError> {
-        let mut scope = Universe::new();
-        parse(code, &mut scope)
+        let scope = Rc::new(RefCell::new(Universe::new()));
+        parse(code, scope)
     }
 
     #[test]

@@ -18,7 +18,7 @@ use crate::scope::Universe;
 
 pub fn run(code: &str) -> Result<String, String> {
     let scope = Rc::new(RefCell::new(Universe::new()));
-    let ast = parser::parse(code, &mut scope.borrow_mut())?;
+    let ast = parser::parse(code, scope.clone())?;
     let mut evaler = eval::Evaler::new(scope);
     let result = evaler.eval(&ast);
     Ok(result.repr())
@@ -26,20 +26,17 @@ pub fn run(code: &str) -> Result<String, String> {
 
 pub fn run_with_scope(code: &str, scope: Universe) -> Result<String, String> {
     let scope = Rc::new(RefCell::new(scope));
-    let ast = parser::parse(code, &mut scope.borrow_mut())?;
+    let ast = parser::parse(code, scope.clone())?;
     let mut evaler = eval::Evaler::new(scope);
     let result = evaler.eval(&ast);
     Ok(result.repr())
 }
 
 pub fn parse(code: &str) -> Result<ast::Code, String> {
-    let mut scope = Universe::new();
-    parser::parse(code, &mut scope)
+    let scope = Rc::new(RefCell::new(Universe::new()));
+    parser::parse(code, scope.clone())
 }
 
-pub fn parse_scope(code: &str, scope: &mut Universe) -> Result<ast::Code, String> {
-    parser::parse(code, scope)
-}
 
 pub fn interpret(code: &str) -> Result<interp::Interpreter, String> {
     let mut interpreter = interp::Interpreter::new();
@@ -824,7 +821,7 @@ use std.math: square
 square(5)
 "#;
         // let result = run(code).unwrap();
-        //assert_eq!(result, "25");
+        // assert_eq!(result, "25");
     }
 
 

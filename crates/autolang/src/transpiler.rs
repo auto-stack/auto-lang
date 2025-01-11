@@ -4,7 +4,8 @@ use std::io::Write;
 use autoval::{Op, Value};
 use crate::parser;
 use crate::scope;
-
+use std::rc::Rc;
+use std::cell::RefCell;
 pub trait Transpiler {
     fn transpile(&mut self, ast: Code, out: &mut impl Write) -> Result<(), String>;
 }
@@ -318,8 +319,8 @@ impl ToStrError for Result<usize, io::Error> {
 
 pub fn code_to_c(code: &str) -> Result<String, String> {
     let mut transpiler = CTranspiler::new();
-    let mut scope = scope::Universe::new();
-    let ast = parser::parse(code, &mut scope)?;
+    let scope = Rc::new(RefCell::new(scope::Universe::new()));
+    let ast = parser::parse(code, scope)?;
     let mut out = Vec::new();
     transpiler.code(&ast, &mut out)?;
     Ok(String::from_utf8(out).unwrap())
@@ -327,8 +328,8 @@ pub fn code_to_c(code: &str) -> Result<String, String> {
 
 pub fn transpile_c(code: &str) -> Result<String, String> {
     let mut transpiler = CTranspiler::new();
-    let mut scope = scope::Universe::new();
-    let ast = parser::parse(code, &mut scope)?;
+    let scope = Rc::new(RefCell::new(scope::Universe::new()));
+    let ast = parser::parse(code, scope)?;
     let mut out = Vec::new();
     transpiler.transpile(ast, &mut out)?;
     Ok(String::from_utf8(out).unwrap())

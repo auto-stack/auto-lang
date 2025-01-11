@@ -46,7 +46,7 @@ impl Evaler {
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<Value, String> {
-        let ast = parser::parse(code, &mut *self.universe.borrow_mut())?;
+        let ast = parser::parse(code, self.universe.clone())?;
         Ok(self.eval(&ast))
     }
 
