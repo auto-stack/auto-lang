@@ -5,7 +5,6 @@ use crate::scope::Universe;
 use crate::scope::Meta;
 use autoval::Op;
 use std::i32;
-use std::path::Prefix;
 use crate::error_pos;
 use std::rc::Rc;
 
@@ -14,7 +13,7 @@ type ParseError = String;
 
 pub struct PostfixPrec {
     l: u8,
-    r: (),
+    _r: (),
 }
 
 pub struct InfixPrec {
@@ -23,16 +22,16 @@ pub struct InfixPrec {
 }
 
 pub struct PrefixPrec {
-    l: (),
+    _l: (),
     r: u8,
 }
 
 const fn prefix_prec(n: u8) -> PrefixPrec {
-    PrefixPrec { l: (), r: 2*n }
+    PrefixPrec { _l: (), r: 2*n }
 }
 
 const fn postfix_prec(n: u8) -> PostfixPrec {
-    PostfixPrec { l: 2*n, r: () }
+    PostfixPrec { l: 2*n, _r: () }
 }
 
 const fn infix_prec(n: u8) -> InfixPrec {
@@ -45,20 +44,20 @@ const fn infix_prec(n: u8) -> InfixPrec {
 
 const PREC_ASN: InfixPrec = infix_prec(1);
 const PREC_PAIR: PostfixPrec = postfix_prec(2);
-const PREC_OR: InfixPrec = infix_prec(3);
-const PREC_AND: InfixPrec = infix_prec(4);
+const _PREC_OR: InfixPrec = infix_prec(3);
+const _PREC_AND: InfixPrec = infix_prec(4);
 const PREC_EQ: InfixPrec = infix_prec(5);
 const PREC_CMP: InfixPrec = infix_prec(6);
-const PREC_Range: InfixPrec = infix_prec(7);
+const PREC_RANGE: InfixPrec = infix_prec(7);
 const PREC_ADD: InfixPrec = infix_prec(8);
 const PREC_MUL: InfixPrec = infix_prec(9);
-const PREC_REF: PrefixPrec = prefix_prec(10);
+const _PREC_REF: PrefixPrec = prefix_prec(10);
 const PREC_SIGN: PrefixPrec = prefix_prec(11);
 const PREC_NOT: PrefixPrec = prefix_prec(12);
 const PREC_CALL: PostfixPrec = postfix_prec(13);
 const PREC_INDEX: PostfixPrec = postfix_prec(14);
 const PREC_DOT: InfixPrec = infix_prec(15);
-const PREC_ATOM: InfixPrec = infix_prec(16);
+const _PREC_ATOM: InfixPrec = infix_prec(16);
 
 fn prefix_power(op: Op) -> Result<PrefixPrec, ParseError> {
     match op {
@@ -84,7 +83,7 @@ fn infix_power(op: Op) -> Result<InfixPrec, ParseError> {
         Op::Asn => Ok(PREC_ASN),
         Op::Eq | Op::Neq => Ok(PREC_EQ),
         Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(PREC_CMP),
-        Op::Range | Op::RangeEq => Ok(PREC_Range),
+        Op::Range | Op::RangeEq => Ok(PREC_RANGE),
         Op::Dot => Ok(PREC_DOT),
         _ => error_pos!("Invalid infix operator: {}", op),
     }
@@ -205,8 +204,8 @@ impl<'a> Parser<'a> {
 // Expressions
 impl<'a> Parser<'a> {
     pub fn expr(&mut self) -> Result<Expr, ParseError> {
-        let exp = self.expr_pratt(0)?;
-        self.check_symbol(&exp)?;
+        let mut exp = self.expr_pratt(0)?;
+        exp = self.check_symbol(exp)?;
         Ok(exp)
     }
 
@@ -214,7 +213,7 @@ impl<'a> Parser<'a> {
     // ref: https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
     pub fn expr_pratt(&mut self, min_power: u8) -> Result<Expr, ParseError> {
         // Prefix
-        let mut lhs = match self.kind() {
+        let lhs = match self.kind() {
             // unary
             TokenKind::Add | TokenKind::Sub | TokenKind::Not => {
                 let op = self.op();
@@ -703,8 +702,9 @@ impl<'a> Parser<'a> {
             TokenKind::Widget => self.widget_stmt()?,
             // Node Instance?
             TokenKind::Ident => {
-                self.node_stmt()?
+                self.node_or_call_stmt()?
             }
+            // Otherwise, try to parse as an expression
             _ => self.expr_stmt()?,
         };
         Ok(stmt)
@@ -749,6 +749,10 @@ impl<'a> Parser<'a> {
         }
         if items.is_empty() && !paths.is_empty() {
             items.push(paths.pop().unwrap());
+        }
+        // Push imported names into scope
+        for name in items.iter() {
+            self.scope.define(name.as_str(), Rc::new(Meta::Use(name.clone())));
         }
         Ok(Stmt::Use(Use { paths, items }))
     }
@@ -908,20 +912,34 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // Function Declaration
     pub fn fn_stmt(&mut self, parent_name: &str) -> Result<Stmt, ParseError> {
-        self.next(); // skip fn
+        self.next(); // skip keyword `fn`
+        // parse function name
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
-        self.expect(TokenKind::LParen)?;
+
+        // enter function scope
         self.scope.enter_fn(name.clone());
+
+        // parse function parameters
+        self.expect(TokenKind::LParen)?;
         let params = self.fn_params()?;
         self.expect(TokenKind::RParen)?;
+
+        // parse return type
         let mut ret_type = Type::Unknown;
         if self.is_kind(TokenKind::Ident) {
             ret_type = self.type_name()?;
         }
+
+        // parse function body
         let body = self.body()?;
+
+        // exit function scope
         self.scope.exit_scope();
+
+        // parent name for method?
         let parent = if parent_name.is_empty() {
             None
         } else {
@@ -934,6 +952,8 @@ impl<'a> Parser<'a> {
         } else {
             format!("{}::{}", parent_name, name)
         };
+
+        // define function in scope
         self.scope.define(unique_name.as_str(), Rc::new(Meta::Fn(fn_expr)));
         Ok(fn_stmt)
     }
@@ -968,7 +988,9 @@ impl<'a> Parser<'a> {
                 let expr = self.expr()?;
                 default = Some(expr);
             }
+            // define param in current scope (currently in fn scope)
             let var = Var { name: Name::new(name.clone()), expr: default.clone().unwrap_or(Expr::Nil) };
+            // TODO: should we consider Meta::Param instead of Meta::Var?
             self.scope.define(name.as_str(), Rc::new(Meta::Var(var.clone())));
             params.push(Param { name: Name::new(name), ty, default });
             self.sep_params();
@@ -1072,9 +1094,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // TODO: 暂时只检查两种情况：1，简单名称；2，点号表达式最左侧的名称
-    pub fn check_symbol(&mut self, expr: &Expr) -> Result<(), ParseError> {
-        match expr {
+    // TODO: 暂时只检查3种情况：
+    // 1，简单名称；
+    // 2，点号表达式最左侧的名称
+    // 3, 函数调用，如果函数名不存在，表示是一个节点实例
+    pub fn check_symbol(&mut self, expr: Expr) -> Result<Expr, ParseError> {
+        match &expr {
             Expr::Bina(l, op, _) => {
                 match op {
                     Op::Dot => {
@@ -1083,18 +1108,28 @@ impl<'a> Parser<'a> {
                                 return error_pos!("Undefined variable: {}", name.text);
                             }
                         }
-                        Ok(())
+                        Ok(expr)
                     }
-                    _ => Ok(()),
+                    _ => Ok(expr),
                 }
             }
             Expr::Ident(name) => {
                 if !self.scope.exists(&name.text) {
                     return error_pos!("Undefined variable: {}", name.text);
                 }
-                Ok(())
+                Ok(expr)
             }
-            _ => Ok(()),
+            Expr::Call(call) => {
+                if let Expr::Ident(name) = call.name.as_ref() {
+                    if !self.scope.exists(&name.text) {
+                        // 表示是一个节点实例
+                        let node = Node::from(call.clone());
+                        return Ok(Expr::Node(node));
+                    }
+                }
+                Ok(expr)
+            }
+            _ => Ok(expr),
         }
     }
 
@@ -1162,7 +1197,7 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         // parse multiple node instances
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            let node = self.node_stmt()?;
+            let node = self.node_or_call_stmt()?;
             match node {
                 Stmt::Node(node) => {
                     view.nodes.push((node.name.clone(), node));
@@ -1182,16 +1217,19 @@ impl<'a> Parser<'a> {
         Ok(view)
     }
 
-    pub fn node_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn node_or_call_stmt(&mut self) -> Result<Stmt, ParseError> {
         let ident = self.ident()?;
         self.next();
 
         let mut args = Args::new();
         let mut is_call = false;
+        // If has paren, maybe a call or node instance
         if self.is_kind(TokenKind::LParen) {
             args = self.args()?;
             is_call = true;
         }
+
+        // If has brace, must be a node instance
         if self.is_kind(TokenKind::LBrace) { // node instance
             let body = self.body()?;
             match ident {
@@ -1205,11 +1243,15 @@ impl<'a> Parser<'a> {
                     return error_pos!("Expected node name, got {:?}", ident);
                 }
             }
-        } else { // call
+        } else { // call or node instance
             if is_call {
-                let expr = Expr::Call(Call { name: Box::new(ident), args });
+                let mut expr = Expr::Call(Call { name: Box::new(ident), args });
+                expr = self.check_symbol(expr)?;
+                if let Expr::Node(node) = expr {
+                    return Ok(Stmt::Node(node));
+                }
                 Ok(Stmt::Expr(expr))
-            } else {
+            } else { // Something else with an starting Ident
                 let expr = self.expr_pratt_with_left(ident, 0)?;
                 Ok(Stmt::Expr(expr))
             }
@@ -1332,10 +1374,18 @@ mod tests {
 
     #[test]
     fn test_for_with_mid() {
-        let code = r#"for i in 0..10 { print(i); mid(",") }"#;
+        let code = r#"for i in 0..10 { print(i); mid{ print(",") } }"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(for (name i) (bina (int 0) (op ..) (int 10)) (body (call (name print) (args (name i))) (call (name mid) (args (str \",\")))))");
+        assert_eq!(last.to_string(), "(for (name i) (bina (int 0) (op ..) (int 10)) (body (call (name print) (args (name i))) (node (name mid) (body (call (name print) (args (str \",\")))))))");
+    }
+
+    #[test]
+    fn test_for_with_mid_call() {
+        let code = r#"for i in 0..10 { `$i`; mid(",") }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(for (name i) (bina (int 0) (op ..) (int 10)) (body (fstr (str \"\") (name i)) (node (name mid) (args (str \",\")))))");
     }
 
     #[test]
@@ -1482,7 +1532,7 @@ mod tests {
         }"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(node (name center) (body (call (name text) (args (str \"Hello\")))))");
+        assert_eq!(last.to_string(), "(node (name center) (body (node (name text) (args (str \"Hello\")))))");
     }
 
 
@@ -1546,7 +1596,7 @@ mod tests {
         }
         "#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (node (name center) (body (call (name text) (args (str \"Hello\"))))))");
+        assert_eq!(ast.to_string(), "(code (node (name center) (body (node (name text) (args (str \"Hello\"))))))");
     }
 
     #[test]

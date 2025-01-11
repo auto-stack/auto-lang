@@ -43,3 +43,15 @@ std/io:println("hello")
 
 std.io.println("hello")
 
+
+// for with mid
+
+for i in 0..10 {
+    print(i)
+    mid { print(",") }
+}
+
+for i in 0..10 {
+    print(i)
+}
+

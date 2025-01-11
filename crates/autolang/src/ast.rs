@@ -246,6 +246,7 @@ pub enum Expr {
     Block(Body),
     Object(Vec<Pair>),
     Call(Call),
+    Node(Node),
     Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
     Lambda(Fn),
     FStr(FStr),
@@ -262,7 +263,7 @@ pub struct Call {
 }
 
 impl Call {
-    pub fn get_name(&self) -> String {
+    pub fn get_name_text(&self) -> String {
         match &self.name.as_ref() {
             Expr::Ident(name) => name.text.clone(),
             _ => panic!("Expected identifier, got {:?}", self.name),
@@ -407,6 +408,7 @@ impl fmt::Display for Expr {
             Expr::Block(body) => fmt_block(f, body),
             Expr::If(branches, else_stmt) => write!(f, "(if {:?} {:?})", branches, else_stmt),
             Expr::Call(call) => fmt_call(f, &call),
+            Expr::Node(node) => write!(f, "{}", node),
             Expr::Index(array, index) => write!(f, "(index {} {})", array, index),
             Expr::Lambda(lambda) => write!(f, "{}", lambda),
             Expr::FStr(fstr) => write!(f, "{}", fstr),
@@ -647,11 +649,11 @@ impl Node {
     }
 }   
 
-impl Into<Node> for Call {
-    fn into(self) -> Node {
-        let name = Name::new(self.get_name());
+impl From<Call> for Node {
+    fn from(call: Call) -> Self {
+        let name = Name::new(call.get_name_text());
         let mut node = Node::new(name);
-        node.args = self.args;
+        node.args = call.args;
         node
     }
 }
