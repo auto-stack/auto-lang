@@ -15,26 +15,24 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use crate::eval::EvalMode;
 use crate::scope::Universe;
+use crate::parser::Parser;
 
 pub fn run(code: &str) -> Result<String, String> {
-    let scope = Rc::new(RefCell::new(Universe::new()));
-    let ast = parser::parse(code, scope.clone())?;
-    let mut evaler = eval::Evaler::new(scope);
-    let result = evaler.eval(&ast);
-    Ok(result.repr())
+    let mut interpreter = interp::Interpreter::new();
+    interpreter.interpret(code)?;
+    Ok(interpreter.result.repr())
 }
 
 pub fn run_with_scope(code: &str, scope: Universe) -> Result<String, String> {
-    let scope = Rc::new(RefCell::new(scope));
-    let ast = parser::parse(code, scope.clone())?;
-    let mut evaler = eval::Evaler::new(scope);
-    let result = evaler.eval(&ast);
-    Ok(result.repr())
+    let mut interpreter = interp::Interpreter::with_scope(scope);
+    interpreter.interpret(code)?;
+    Ok(interpreter.result.repr())
 }
 
 pub fn parse(code: &str) -> Result<ast::Code, String> {
     let scope = Rc::new(RefCell::new(Universe::new()));
-    parser::parse(code, scope.clone())
+    let mut parser = Parser::new(code, scope.clone());
+    parser.parse()
 }
 
 
@@ -820,8 +818,8 @@ use std.math: square
 
 square(5)
 "#;
-        // let result = run(code).unwrap();
-        // assert_eq!(result, "25");
+        let result = run(code).unwrap();
+        assert_eq!(result, "25");
     }
 
 

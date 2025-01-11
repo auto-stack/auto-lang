@@ -763,7 +763,7 @@ impl FStr {
 impl fmt::Display for FStr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(fstr")?;
-        for (i, part) in self.parts.iter().enumerate() {
+        for part in self.parts.iter() {
             write!(f, " {}", part)?;
         }
         write!(f, ")")

@@ -45,16 +45,6 @@ impl Evaler {
         self.tempo_for_nodes.insert(name.to_string(), tempo);
     }
 
-    pub fn interpret(&mut self, code: &str) -> Result<Value, String> {
-        let ast = parser::parse(code, self.universe.clone())?;
-        Ok(self.eval(&ast))
-    }
-
-    pub fn load_file(&mut self, filename: &str) -> Result<Value, String> {
-        let code = std::fs::read_to_string(filename).map_err(|e| format!("Failed to read file: {}", e))?;
-        self.interpret(&code)
-    }
-
     pub fn eval(&mut self, code: &Code) -> Value {
         match self.mode {
             EvalMode::SCRIPT => {

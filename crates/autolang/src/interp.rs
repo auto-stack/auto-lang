@@ -1,9 +1,14 @@
 use crate::eval::{Evaler, EvalMode};
+use crate::parser::Parser;
 use crate::scope::Universe;
-use autoval::Value;
+use autoval::{Value, AutoStr};
 use std::rc::Rc;
 use std::cell::RefCell;
-use crate::parser;
+
+pub struct Importer {
+    pub path: AutoStr,
+    pub scope: Rc<RefCell<Universe>>,
+}
 
 pub struct Interpreter {
     pub evaler: Evaler,
@@ -37,12 +42,25 @@ impl Interpreter {
         self
     }
 
+    pub fn import(&mut self, path: AutoStr) -> Result<(), String> {
+        println!("import: {}", path);
+        Ok(())
+    }
+
     pub fn interpret(&mut self, code: &str) -> Result<(), String> {
-        let ast = parser::parse(code, self.scope.clone())?;
+        let mut parser = Parser::new(code, self.scope.clone());
+        let ast = parser.parse()?;
         let result = self.evaler.eval(&ast);
         self.result = result;
         Ok(())
     }
+
+    pub fn load_file(&mut self, filename: &str) -> Result<Value, String> {
+        let code = std::fs::read_to_string(filename).map_err(|e| format!("Failed to read file: {}", e))?;
+        self.interpret(&code)?;
+        Ok(self.result.clone())
+    }
+
 
     pub fn eval(&mut self, code: &str) -> Value {
         match self.interpret(code) {

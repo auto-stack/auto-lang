@@ -1,11 +1,12 @@
 use super::ast::*;
 use std::io;
 use std::io::Write;
-use autoval::{Op, Value};
-use crate::parser;
+use autoval::Op;
+use crate::parser::Parser;
 use crate::scope;
 use std::rc::Rc;
 use std::cell::RefCell;
+use crate::interp;
 pub trait Transpiler {
     fn transpile(&mut self, ast: Code, out: &mut impl Write) -> Result<(), String>;
 }
@@ -320,17 +321,19 @@ impl ToStrError for Result<usize, io::Error> {
 pub fn code_to_c(code: &str) -> Result<String, String> {
     let mut transpiler = CTranspiler::new();
     let scope = Rc::new(RefCell::new(scope::Universe::new()));
-    let ast = parser::parse(code, scope)?;
+    let mut parser = Parser::new(code, scope);
+    let ast = parser.parse()?;
     let mut out = Vec::new();
     transpiler.code(&ast, &mut out)?;
     Ok(String::from_utf8(out).unwrap())
 }
 
 pub fn transpile_c(code: &str) -> Result<String, String> {
-    let mut transpiler = CTranspiler::new();
     let scope = Rc::new(RefCell::new(scope::Universe::new()));
-    let ast = parser::parse(code, scope)?;
+    let mut parser = Parser::new(code, scope);
+    let ast = parser.parse()?;
     let mut out = Vec::new();
+    let mut transpiler = CTranspiler::new();
     transpiler.transpile(ast, &mut out)?;
     Ok(String::from_utf8(out).unwrap())
 }

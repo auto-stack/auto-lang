@@ -1,7 +1,4 @@
-use crate::eval;
-use crate::scope;
-use std::rc::Rc;
-use std::cell::RefCell;
+use crate::interp;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 
@@ -10,7 +7,7 @@ enum CmdResult {
     Continue,
 }
 
-fn try_command(line: &str, evaler: &mut eval::Evaler) -> CmdResult {
+fn try_command(line: &str, interpreter: &mut interp::Interpreter) -> CmdResult {
     let words = line.split_whitespace().collect::<Vec<&str>>();
     if words.len() == 0 {
         return CmdResult::Continue;
@@ -27,7 +24,7 @@ fn try_command(line: &str, evaler: &mut eval::Evaler) -> CmdResult {
         "load" => {
             if words.len() == 2 {
                 let filename = words[1];
-                match evaler.load_file(filename) {
+                match interpreter.interpret(filename) {
                     Ok(_) => CmdResult::Continue,
                     Err(error) => {
                         eprintln!("Error: {}", error);
@@ -40,13 +37,13 @@ fn try_command(line: &str, evaler: &mut eval::Evaler) -> CmdResult {
             }
         }
         "scope" => {
-            evaler.dump_scope();
+            // interpreter.dump_scope();
             CmdResult::Continue
         }
         _ => {
-            match evaler.interpret(line) {
-                Ok(result) => {
-                    println!("{}", result);
+            match interpreter.interpret(line) {
+                Ok(_) => {
+                    println!("{}", interpreter.result);
                     CmdResult::Continue
                 }
                 Err(error) => {
@@ -64,9 +61,8 @@ pub fn main_loop() -> Result<()> {
     if rl.load_history(".history.txt").is_err() {
         println!("No previous history");
     }
-    // initialize evaler
-    let scope = Rc::new(RefCell::new(scope::Universe::new()));
-    let mut evaler = eval::Evaler::new(scope);
+    // initialize interpreter
+    let mut interpreter = interp::Interpreter::new();
     loop {
         let readline = rl.readline(">> ");
         match readline {
@@ -76,7 +72,7 @@ pub fn main_loop() -> Result<()> {
                     break;
                 }
                 // split first word and check if it's a command
-                match try_command(&line, &mut evaler) {
+                match try_command(&line, &mut interpreter) {
                     CmdResult::Exit => break,
                     CmdResult::Continue => continue,
                 }
