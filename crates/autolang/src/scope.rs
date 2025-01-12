@@ -6,6 +6,7 @@ use crate::ast;
 use crate::libs;
 use std::rc::Rc;
 use autoval::{TypeInfoStore, ExtFn, Obj};
+use crate::parser::Parser;
 use std::any::Any;
 use std::fmt;
 use std::sync::LazyLock;
@@ -173,6 +174,7 @@ impl Scope {
 
 pub struct Universe {
     pub scopes: HashMap<Sid, Scope>, // sid -> scope
+    pub asts: HashMap<Sid, ast::Code>, // sid -> ast
     // pub stack: Vec<StackedScope>,
     pub env_vals: HashMap<String, Box<dyn Any>>,
     pub builtins: HashMap<String, Value>, // Value of builtin functions
@@ -194,6 +196,7 @@ impl Universe {
         scopes.insert(SID_PATH_GLOBAL.clone(), Scope::new(ScopeKind::Global, SID_PATH_GLOBAL.clone()));
         let mut uni = Self {
             scopes,
+            asts: HashMap::new(),
             // stack: vec![StackedScope::new()],
             env_vals: HashMap::new(),
             builtins, 
@@ -482,6 +485,11 @@ impl Universe {
         self.lookup_meta_recurse(name, &sid)
     }
 
+    pub fn lookup(&self, name: &str, path: AutoStr) -> Option<Rc<Meta>> {
+        let sid = Sid::new(path);
+        self.lookup_meta_recurse(name, &sid)
+    }
+
     pub fn lookup_sig(&self, sig: &Sig) -> Option<Rc<Meta>> {
         self.lookup_meta(&sig.name)
     }
@@ -546,6 +554,11 @@ impl Universe {
             expr: expr,
         };
         self.define(name, Rc::new(Meta::Store(store)));
+    }
+
+    pub fn import(&mut self, path: AutoStr, ast: ast::Code) {
+        let sid = Sid::new(path.as_str());
+        self.asts.insert(sid, ast);
     }
 }
 
