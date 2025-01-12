@@ -10,6 +10,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use crate::interp::Interpreter;
 use autoval::AutoStr;
+use std::path::Path;
 
 type ParseError = String;
 
@@ -159,6 +160,10 @@ impl<'a> Parser<'a> {
 
     fn define(&mut self, name: &str, meta: Meta) {
         self.scope.borrow_mut().define(name, Rc::new(meta));
+    }
+
+    fn define_rc(&mut self, name: &str, meta: Rc<Meta>) {
+        self.scope.borrow_mut().define(name, meta);
     }
 
     fn exists(&mut self, name: &str) -> bool {
@@ -773,17 +778,53 @@ impl<'a> Parser<'a> {
         if items.is_empty() && !paths.is_empty() {
             items.push(paths.pop().unwrap());
         }
-        // import path into universe
-        let path = paths.join(".");
-        self.import(path);
-        // Push imported names into scope
-        for name in items.iter() {
-            self.define(name.as_str(), Meta::Use(name.clone()));
-        }
-        Ok(Stmt::Use(Use { paths, items }))
+        // import the path into scope
+        let uses = Use { paths, items };
+        self.import(&uses)?;
+        Ok(Stmt::Use(uses))
     }
 
-    fn import(&mut self, path: String) {
+    // Import a path from `use` statement
+    // TODO: clean up code
+    // TODO: search path from System Env, Default Locations and etc.
+    pub fn import(&mut self, uses: &Use) -> Result<(), ParseError> {
+        let path = uses.paths.join(".");
+        // locate file from path
+        let base_path = std::env::current_dir().unwrap();
+        let base_path = base_path.as_path();
+        let std_path = base_path.parent().unwrap();
+        let std_path = std_path.parent().unwrap();
+        let std_path = std_path.join("std");
+        // println!("std_path: {}", std_path.display());
+        if !path.starts_with("std.") {
+            return error_pos!("Invalid import path: {}", path);
+        }
+        let path = path.replace("std.", "");
+        // println!("path: {}", path);
+        let file_path = std_path.join(Path::new(path.as_str()));
+        // println!("file_path: {}", file_path.display());
+        let dir = file_path.parent().unwrap();
+        let name = file_path.file_name().unwrap();
+        if !dir.exists() {
+            return error_pos!("Invalid import path: {}", path);
+        }
+        // Read file
+        let file_path = dir.join(name.to_str().unwrap().to_string() + ".at");
+        let file_content = std::fs::read_to_string(file_path).unwrap();
+
+        let mut new_parser = Parser::new(file_content.as_str(), self.scope.clone());
+        let ast = new_parser.parse().unwrap();
+        let path: AutoStr = path.into();
+        self.scope.borrow_mut().import(path.clone(), ast);
+        // Define items in scope
+        for item in uses.items.iter() {
+            // lookup item's meta from its mod
+            let meta = self.scope.borrow().lookup(item.as_str(), path.clone()).unwrap();
+            // println!("meta: {:?}", meta);
+            // define iten with its name in current scope
+            self.define_rc(item.as_str(), meta);
+        }
+        Ok(())
     }
 
     pub fn skip_empty_lines(&mut self) -> usize {
@@ -1752,5 +1793,14 @@ exe(hello) {
         let code = "use std.math.square; square(16)";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (use (path std.math) (items square)) (call (name square) (args (int 16))))");
+    }
+
+    #[test]
+    fn test_import() {
+        let code = "use std.math.square";
+        let scope = Universe::new();
+        let mut parser = Parser::new(&code, Rc::new(RefCell::new(scope)));
+        let ast = parser.parse().unwrap();
+        assert_eq!(ast.to_string(), "(code (use (path std.math) (items square)))");
     }
 }
