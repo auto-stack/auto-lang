@@ -2,44 +2,44 @@
 
 ![icon](docs/icon.png)
 
-Auto编程语言（Auto Lang）是一门以自动化为目标的编程语言。
+Auto编程语言（Auto Lang）是一门以“**万物自动化**”为目标的通用编程语言。
 
-- “灵活多变”：Auto语言有多套语法，根据使用的场景灵活适配。Auto语言既可以当作脚本动态解释执行，也可以转译成C/Rust静态编译。
-- “简洁高效”：当作脚本使用时，和Python一样易用；当作静态代码时和C/Rust一样高效。
-- “麻雀虽小，五脏俱全”：Auto语言生态配备了如下工具：
-    - 标准库：基于Rust，提供面向CPU/GPU/SOC的标准库；基于C，提供面向MCU的嵌入式标准库。
-    - AutoMan：代码构建和包管理器；可以生成Auto/C或Auto/Rust的混合工程。
-    - AutoUI：基于Rust/GPUI实现的跨平台UI框架，风格类似于Jetpack Compose/Vue.js。现在支持Windows/Linux，未来会扩展到Web/鸿蒙。
-    - AutoGen：基于模板和AST的代码生成功能，可以生成多种配置文件、C和Rust的代码。
-    - AutoIDE：TODO：基于Zed/GPUI，以Auto语言为基础的插件系统，做成一套平台的IDE。
+- **灵活多变**：Auto语言有多套语法，能够灵活适配各种使用场景。
+    - *AutoLang*：静态的Auto语言，可以转译成C/Rust执行。
+    - *AutoConfig*：作为可编程配置语言，可以替代JSON和YAML。
+    - *AutoScript*：作为脚本语言，可以动态解释执行
+    - *AutoIR*：高阶中间语言和字节码，可以用于代码生成和快速解释执行。
+    - *AutoTemplate*：作为模板语言，可以生成任意形式的结构化文本。
+    - *AutoShell*：作为Shell脚本语言，可以用于快速开发和调试。
+- **简洁高效**：当作脚本使用时，和Python一样易用；当作静态代码时和C/Rust一样高效。
+- **生态完备**：Auto语言生态配备了如下工具：
+    - *AutoVM*：Auto语言的解释器，可以解释执行AutoIR和AutoScript。可以动态调用Rust/C/Python/Javascript/WASM等语言实现的库。
+    - *AutoCompiler*：将AutoIR编译成C/Rust/Python/Javascript/WASM等语言。
+    - *AutoLib*：Auto语言的标准库，跨平台、跨语言、跨生态。
+    - *AutoMan*：作为构建器和包管理器，可以管理Auto/C/Rust的混合工程。
+    - *AutoUI*：基于Rust/GPUI实现的跨平台UI框架，风格类似于Jetpack Compose/Vue.js。现在支持Windows/Linux，未来会扩展到Web/鸿蒙。
+    - *AutoGen*：基于模板和AST的代码生成功能，可以生成多种配置文件、C和Rust的代码。
+    - *AutoIDE*：TODO：基于Zed/GPUI，以Auto语言为基础的插件系统，做成一套平台的IDE。
 
-Auto语言是Soutek公司推出的技术产品Soutek Auto Stack的一部分。
-
+Auto语言是Soutek公司推出的技术产品Soutek AutoStack的开源版本。
 
 ## 用途
 
-Auto语言有如下几种不同的语法形式，适用于不同的场景：
-
-1. AutoLang - 静态的Auto语言，可以转译成C/Rust执行。
-2. AutoScript - 动态解释脚本，可以嵌入Rust或C项目作为脚本使用。
-3. AutoConfig - 强化版的JSON，可以用于各种需要配置文件或者DSL的场景。
-4. AutoShell - 集成了类似Bash的命令行语法，可以作为跨平台的Shell脚本。
-
 Auto语言可以用于如下场景：
 
-### 1. 直接生成C源码
+### 1. AutoLang生成C源码
 
-例如，如下两个Auto语言文件：
+例如，如下两个AutoLang语言文件：
 
 ```rust
-// math.a
+// math.at
 pub fn add(a int, b int) int {
     a + b
 }
 ```
 
 ```rust
-// main.a
+// main.at
 use math::add
 
 fn main {
@@ -78,41 +78,148 @@ int main(void) {
 }
 ```
 
-Auto语言的构建器`AutoBuild`可以实现Auto/C语言项目的混合开发。
-
-### 2. 作为配置语言，替代JSON/YAML
+### 2. AutoConfig，可以转换成JSON或YAML
 
 ```rust
-// 标准库
-use std::str::upper;
+// 可以调用标准库
+use auto.fs: list, join, is_dir;
 
 // 变量
-mut dir = "/home/user/data"
+mut dir = "~/code/auto"
 
-// {key : value}对
+// {key : value}对，这是配置数据的一部分
 root: dir
 // 函数调用
-root_upper: root.upper()
+src: dir.join("src")
 
-// 字符串
-views: f"${dir}/views"
-// 可以在配置中查找key
-styles: f"${views}/styles"
+// 字符串拼接，$表示变量查找
+assets: `$dir/assets`
+// 字符串拼接，#表示在配置中查找key
+styles: `#assets/styles`
+
+// 数组
+docs: ["README.md", "LICENSE"]
+
+// 所有的子目录
+subs: dir.list().filter(is_dir)
 
 // 对象
-attrs: {
-    prefix: "auto"
-    // 数组
-    excludes: [".git", ".auto"]
+project: {
+    name: "auto"
+    skip: [".git", ".auto"]
 }
 ```
 
-AutoConfig可以转化为JSON格式，也可以直接用解释器来访问使用。
+上面的配置对应的JSON文件如下：
 
+```json
+{
+    "dir": "/home/user/data",
+    "src": "/home/user/data/src",
+    "assets": "/home/user/data/assets",
+    "styles": "/home/user/data/assets/styles",
+    "docs": ["README.md", "LICENSE"],
+    "subs": ["/home/user/data/src/app", "/home/user/data/src/lib"],
+    "project": {
+        "name": "auto",
+        "skip": [".git", ".auto"]
+    }
+}
+```
 
-### 3. 作为构建器
+为了更方便得生成类XML/YAML的树状结构，AutoConfig提供了*节点*（Node）的概念。
+节点和数组、对象结合起来，形成AutoConfig的树状结构。
 
-`AutoBuild`的配置文件即用Auto配置文件内`build.ac`书写。
+```rust
+parent(k1: v1, k2: v2) {
+    kid(k1: v1) {
+        // more kids
+    }
+
+    kid(k2: v2) {
+        // more kids
+    }
+}
+```
+
+这和XML的语法结构是一一对应的，相当于：
+
+```xml
+<parent k1="v1" k2="v2">
+    <kid k1="v1" />
+    <kid k2="v2" />
+</parent>
+```
+
+例如，下面的配置文件表示一张成绩表：
+
+```rust
+class(name: "三3班", count: 55) {
+    student(name: "张三", age: 18) {
+        score(subject: "语文", score: 80) {}
+        score(subject: "数学", score: 90) {}
+        score(subject: "英语", score: 85) {}
+    }
+
+    student(name: "李四", age: 19) {
+        score(subject: "语文", score: 85) {}
+        score(subject: "数学", score: 95) {}
+        score(subject: "英语", score: 80) {}
+    }
+
+    student(name: "王五", age: 20) {
+        score(subject: "语文", score: 85) {}
+        score(subject: "数学", score: 95) {}
+        score(subject: "英语", score: 80) {}
+    }
+}
+```
+
+对应的XML如下：
+
+```xml
+<class name="三3班" count="55">
+    <student name="张三" age="18">
+        <score subject="语文" score="80" />
+        <score subject="数学" score="90" />
+        <score subject="英语" score="85" />
+    </student>
+    <student name="李四" age="19">
+        <score subject="语文" score="85" />
+        <score subject="数学" score="95" />
+        <score subject="英语" score="80" />
+    </student>
+</class>
+```
+
+乍一看大家可能会觉得，“这和直接写XML有什么区别”？
+但是一旦数据多起来，AutoConfig的可编程的优势就能体现了：
+
+```rust
+
+// 调用函数获取学生信息
+let class_info = fetch_class_scores("三3班")
+
+class(name: class_info.name, count: class_info.count) {
+    for s in class_info.students {
+        student(name: s.name, age: s.age) {
+            for score in s.scores {
+                score(subject: score.subject, score: score.score) {}
+            }
+        }
+    }
+}
+```
+
+这种基于节点的格式，非常适合用来描述UI等树状配置。
+和XML、YAML不同，AutoConfig是可编程的，因此要更加灵活强大。
+
+### 3. AutoConfig，作为构建器AutoMan的配置文件
+
+`AutoMan`是Auto语言的构建工具，支持编译、依赖包管理和Auto/C混合编程。
+`AutoMan`可以看作是CMake的替代品。
+
+`AutoMan`的配置文件一般叫做`pac.at`，用来描述一个工程包。
 
 ```rust
 project: "osal"
@@ -146,7 +253,7 @@ exe(demo) {
 }
 ```
 
-### 4. 作为Shell脚本
+### 4. AutoShell，类似Bash的Shell脚本语言
 
 ```rust
 #!auto
@@ -201,7 +308,9 @@ grep(key="TODO", dir=".", H=true, i=true, r=true, n=true)
 
 Auto语言提供了一个动态执行环境（Auto Shell），可以用于脚本执行、开发调试等。
 
-### 5. 作为模板
+### 5. AutoTemplate，可以生成任意格式文本的模板语言
+
+类似于Python的`Jinja2`模板。
 
 ```html
 <html>
@@ -219,19 +328,14 @@ Auto语言提供了一个动态执行环境（Auto Shell），可以用于脚本
 </html>
 ```
 
-模板可以替代任意形式的文本。
+AutoTemplate是`AutoGen`代码生成系统的基础。
 
-Auto语言的模板（Auto Template）文件后缀名为`.at`。
-Auto模板是`AutoGen`代码生成系统的基础。
-
-### 6. 作为UI系统的DSL
+### 6. AutoUI，用AutoScript来描述UI界面
 
 `AutoUI`是Auto语言的UI框架，基于`Zed/GPUI`实现。
 可以支持Windows/Linxu/MacOS/Web等多种平台。
 
-其中，Auto模板用来描述UI界面。
-
-Auto模板的语法风格类似Kotlin，代码组织模式类似于Vue.js。
+AutoUI的语法风格类似Kotlin，代码组织模式类似于Vue.js。
 
 ```rust
 // 定义一个组件
@@ -268,9 +372,9 @@ widget counter(id) {
 
 上面的Auto代码会被解析成一个动态的`DynamicWidget`对象，可以直接在`AutoUI`中绘制出来。
 
-`AutoUI`支持自动重载，因此修改了`counter.a`文件后，`AutoUI`会自动重绘，不需要重新编译。
+`AutoUI`支持自动重载，因此修改了`counter.at`文件后，`AutoUI`会自动重绘，不需要重新编译。
 
-TODO：在`Release`模式中，编译器将`counter.a`代码编译成Rust代码，直接和`AutoUI`的库一起打包成可执行的UI界面程序。
+TODO：在`Release`模式中，编译器将`counter.at`代码编译成Rust代码，直接和`AutoUI`的库一起打包成可执行的UI界面程序。
 
 
 ## 语法概览
