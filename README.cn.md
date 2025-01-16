@@ -372,6 +372,10 @@ widget counter(id) {
 
 上面的Auto代码会被解析成一个动态的`DynamicWidget`对象，可以直接在`AutoUI`中绘制出来。
 
+下面是生成的UI界面：
+
+![Counter](https://foruda.gitee.com/images/1730021021429704035/4625e3ce_142056.png)
+
 `AutoUI`支持自动重载，因此修改了`counter.at`文件后，`AutoUI`会自动重绘，不需要重新编译。
 
 TODO：在`Release`模式中，编译器将`counter.at`代码编译成Rust代码，直接和`AutoUI`的库一起打包成可执行的UI界面程序。
