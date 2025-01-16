@@ -816,11 +816,10 @@ exe(hello) {
         let code = r#"
 use std.math: square
 
-square(5)
+square(15)
 "#;
         let result = run(code).unwrap();
-        assert_eq!(result, "25");
+        assert_eq!(result, "225");
     }
-
 
 }
