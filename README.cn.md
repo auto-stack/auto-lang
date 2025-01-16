@@ -42,7 +42,7 @@ pub fn add(a int, b int) int {
 
 ```rust
 // main.at
-use math::add
+use math.add
 
 fn main {
     println(add(1, 2))
@@ -235,10 +235,11 @@ dep(FreeRTOS, "v0.0.3") {
 
 // 本工程中的库
 lib(osal) {
+    // 子目录
     pac(hsm) {
         skip: ["hsm_test.h", "hsm_test.c"]
     }
-    pac(log)
+    pac(log) {}
     link: FreeRTOS
 }
 
@@ -816,10 +817,10 @@ mut a = Scale.M
 println(a.name)
 
 // 枚举匹配
-when a {
-    is Scale::S => println("a is small")
-    is Scale::M => println("a is medium")
-    is Scale::L => println("a is large")
+when a as Scale {
+    is S => println("a is small")
+    is M => println("a is medium")
+    is L => println("a is large")
     else => println("a is not a Scale")
 }
 
@@ -840,7 +841,7 @@ when s as Shape {
     else => println("not a shape")
 }
 // 获取联合枚举的数据
-mut p = s as Shape::Point
+mut p = s as Shape.Point
 println(p.x, p.y)
 ```
 
@@ -860,7 +861,7 @@ type Point {
 
     // 方法
     fn distance(other Point) float {
-        use std::math::sqrt;
+        use std.math.sqrt;
         // 注意：这里的`.x`表示“在当前类型的视野中寻找变量x”，即相当于其他语言的`this.x`或`self.x`
         sqrt((.x - other.x) ** 2 + (.y - other.y) ** 2)
     }
@@ -878,20 +879,20 @@ print(myint)
 mut p = Point(x:1, y:2)
 println(p.distance(Point(x:4, y:6)))
 
-// 自定义构造函数。注意：`::`表示方法是静态方法，一般用于构造函数。静态方法里不能用`.`来访问实例成员
+// 自定义构造函数。注意：`static`表示方法是静态方法，一般用于构造函数。静态方法里不能用`.`来访问实例成员
 Point {
-    pub :: fn new(x int, y int) Point {
+    pub static fn new(x int, y int) Point {
         Point{x, y}
     }
 
-    pub :: fn stretch(p Point, scale float) Point {
+    pub static fn stretch(p Point, scale float) Point {
         Point{x: p.x * scale, y: p.y * scale}
     }
 }
 
 // 使用自定义构造函数
-mut p1 = Point::new(1, 2)
-mut p2 = Point::stretch(p1, 2.0)
+mut p1 = Point.new(1, 2)
+mut p2 = Point.stretch(p1, 2.0)
 ```
 
 
@@ -930,7 +931,7 @@ spec Indexable<T> {
 type IntArray {
     data []int
 
-    pub :: fn new(data int...) IntArray {
+    pub static fn new(data int...) IntArray {
         IntArray{data: data.pack()}
     }
 
@@ -1004,7 +1005,7 @@ mut d = 15
 add_all(d) // Error! d既不是[]int数组，也没有实现Indexable接口
 
 // 由于IntArray实现了Indexable接口，所以可以用于add_all
-mut int_array = IntArray::new(1, 2, 3, 4, 5)
+mut int_array = IntArray.new(1, 2, 3, 4, 5)
 add_all(int_array)
 ```
 
@@ -1055,8 +1056,8 @@ println(results)
 ### 节点
 
 ```rust
-// 节点
-node button(id) {
+// 节点配置，可以提前指定节点的属性对应的类型，如果配置，也可以按照默认配置使用
+node button(name str) {
     text str
     scale Scale
     onclick fn()
@@ -1070,33 +1071,17 @@ button("btn1") {
 }
 
 // 多层节点
-node div(id) {
-    kids: []any
-}
-
-node li(id) {
-    text str
-    kids: []div
-}
-
-node ul(id=nil) {
-    kids: []li
-}
-
-node label(content) {
-}
-
 ul {
     li {
-        label("Item 1: ")
+        label("Item 1: ") {}
         button("btn1") {
             text: "Click me"
             onclick: || println("button clicked")
         }
-        div { label("div1")}
+        div { label("div1") {} }
     }
-    li { label("Item 2") }
-    li { label("Item 3") }
+    li { label("Item 2") {} }
+    li { label("Item 3") {} }
 }
 ```
 
