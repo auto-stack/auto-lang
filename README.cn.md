@@ -338,34 +338,26 @@ AutoTemplate是`AutoGen`代码生成系统的基础。
 AutoUI的语法风格类似Kotlin，代码组织模式类似于Vue.js。
 
 ```rust
-// 定义一个组件
-widget counter(id) {
+// 一个组件
+widget counter {
     // 数据模型
     model {
-        var count: i32 = 0
-
-        fn reset() {
-            count = 0
-        }
+        var count = 0
     }
-
     // 视图，用来描述UI的布局
     view {
-        cols {
-            button("➕") {
-                on_click: || count += 1
+        col {
+            button("+") {
+                onclick: || count = count + 1
             }
-            text(f"Count: {count}")
-            button("➖") {
-                on_click: || count -= 1
+            text(f"Count: $count")
+            button("-") {
+                onclick: || count = count - 1
             }
-            icon("🔄") {
-                on_click: || reset()
+            button("reset") {
+                onclick: || count = 0
             }
-            style {gap-2 w-full}
         }
-        // 样式，支持Tailwind CSS语法
-        style {w-24 h-24 border-1 border-color-gray-300}
     }
 }
 ```
