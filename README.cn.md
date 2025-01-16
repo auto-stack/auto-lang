@@ -4,6 +4,7 @@
 
 Auto编程语言（Auto Lang）是一门以“**万物自动化**”为目标的通用编程语言。
 
+- **简洁高效**：当作脚本使用时，和Python一样易用；当作静态代码时和C/Rust一样高效。
 - **灵活多变**：Auto语言有多套语法，能够灵活适配各种使用场景。
     - *AutoLang*：静态的Auto语言，可以转译成C/Rust执行。
     - *AutoConfig*：作为可编程配置语言，可以替代JSON和YAML。
@@ -11,9 +12,10 @@ Auto编程语言（Auto Lang）是一门以“**万物自动化**”为目标的
     - *AutoIR*：高阶中间语言和字节码，可以用于代码生成和快速解释执行。
     - *AutoTemplate*：作为模板语言，可以生成任意形式的结构化文本。
     - *AutoShell*：作为Shell脚本语言，可以用于快速开发和调试。
-- **简洁高效**：当作脚本使用时，和Python一样易用；当作静态代码时和C/Rust一样高效。
-- **生态完备**：Auto语言生态配备了如下工具：
-    - *AutoVM*：Auto语言的解释器，可以解释执行AutoIR和AutoScript。可以动态调用Rust/C/Python/Javascript/WASM等语言实现的库。
+- **跨越生态**：
+    - Auto语言可以调用C/Rust/Python/Javascript的功能，并在同一个运行环境中混合使用。
+- **周边完备**：Auto语言生态配备了如下工具：
+    - *AutoVM*：Auto语言的解释器，可以解释执行AutoIR和AutoScript。
     - *AutoCompiler*：将AutoIR编译成C/Rust/Python/Javascript/WASM等语言。
     - *AutoLib*：Auto语言的标准库，跨平台、跨语言、跨生态。
     - *AutoMan*：作为构建器和包管理器，可以管理Auto/C/Rust的混合工程。
@@ -193,15 +195,15 @@ class(name: "三3班", count: 55) {
 ```
 
 乍一看大家可能会觉得，“这和直接写XML有什么区别”？
-但是一旦数据多起来，AutoConfig的可编程的优势就能体现了：
+一旦数据多起来，AutoConfig的可编程优势就体现出来了：
 
 ```rust
 
 // 调用函数获取学生信息
-let class_info = fetch_class_scores("三3班")
+let info = fetch_class_scores("三3班")
 
-class(name: class_info.name, count: class_info.count) {
-    for s in class_info.students {
+class(name: info.name, count: info.count) {
+    for s in info.students {
         student(name: s.name, age: s.age) {
             for score in s.scores {
                 score(subject: score.subject, score: score.score) {}
@@ -241,8 +243,8 @@ lib(osal) {
 }
 
 // 可以输出到不同的平台，指定不同的编译工具链、架构和芯片
-port(windows, cmake, x64, win32, "v1.0.0")
-port(stm32, iar, arm_cortex_m4, f103RE, "v1.0.0")
+port(windows, cmake, x64, win32, "v1.0.0") {}
+port(stm32, iar, arm_cortex_m4, f103RE, "v1.0.0") {}
 
 // 可执行文件
 exe(demo) {
@@ -322,7 +324,7 @@ Auto语言提供了一个动态执行环境（Auto Shell），可以用于脚本
     <ul>
     $ for n in 1..10 {
         <li>Item $n</li>
-    }
+    $ }
     </ul>
 </body>
 </html>
@@ -477,30 +479,92 @@ Grid可以扩展为类似DataFrame/Tensor的多维结构，用来和Python交互
 
 ```rust
 // 定义一个Grid
-let grid = grid(a:"first", b:"second", c:"third") {
+let data = grid {
     [1, 2, 3]
     [4, 5, 6]
     [7, 8, 9]
 }
 
 // 转化为JSON
-var json = grid.to_json()
+var json = data.to_json()
+```
 
-// 相当于
-var grid = {
-    "cols": [
-        {id: "a", name: "first"},
-        {id: "b", name: "second"},
-        {id: "c", name: "third"},
-    ],
+生成的JSON如下：
+
+```JSON
+{
     "data": [
-        {"a": 1, "b": 2, "c": 3},
-        {"a": 4, "b": 5, "c": 6},
-        {"a": 7, "b": 8, "c": 9},
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9]
     ]
 }
 ```
 
+这样搞看起来似乎没什么区别，但grid提供了比JSON更多的功能：
+
+```rust
+// 获取grid的信息
+println(data.shape()) // (3, 3)
+println(data.width()) // 3
+println(data.height()) // 3
+
+// 按行访问
+println(data[0]) // [1, 2, 3]
+println(data[1]) // [4, 5, 6]
+println(data[2]) // [7, 8, 9]
+// 或者
+println(data.row(0)) // [1, 2, 3]
+println(data.row(1)) // [4, 5, 6]
+println(data.row(2)) // [7, 8, 9]
+
+// 按列访问
+println(data(0)) // [1, 4, 7]
+println(data(1)) // [2, 5, 8]
+println(data(2)) // [3, 6, 9]
+// 或者
+println(data.col(0)) // [1, 4, 7]
+println(data.col(1)) // [2, 5, 8]
+println(data.col(2)) // [3, 6, 9]
+
+// 矩阵转换
+let transposed = data.transpose()
+// 其他矩阵操作
+let sum = data.sum()
+let mean = data.mean()
+let std = data.std()
+let min = data.min()
+let max = data.max()
+```
+
+除了这些操作之外，Grid还支持更丰富的行列信息配置：
+
+```rust
+let data = grid("a", "b", "c") {
+    [1, 2, 3]
+    [4, 5, 6]
+    [7, 8, 9]
+}
+
+// 转换成JSON数组时，可以指定命名形式，即每行数据都是一个对象：
+
+let json = data.to_json(named:true)
+```
+
+得到如下JSON：
+
+```JSON
+{
+    "grid": {
+        "cols": ["a", "b", "c"],
+        "rows": [
+            {"a": 1, "b": 2, "c": 3},
+            {"a": 4, "b": 5, "c": 6},
+            {"a": 7, "b": 8, "c": 9}
+        ]
+    }
+}
+```
 
 ### 函数
 
@@ -514,13 +578,14 @@ fn add(a int, b int) int {
 let mul = |a int, b int| a * b
 
 // 函数作为参数
-fn calc(op |int, int| int, a int, b int) int {
+fn calc(a int, b int, op |int, int| int) int {
     op(a, b)
 }
 
 // 函数调用
-calc(add, 2, 3)
-calc(mul, 2, 3)
+calc(2, 3, add)
+calc(4, 5, mul)
+calc(6, 7, |a, b| a / b)
 ```
 
 ### 数值的传递
