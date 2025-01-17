@@ -256,9 +256,31 @@ exe(demo) {
 }
 ```
 
-### 4. AutoShell，类似Bash的Shell脚本语言
+### 4. AutoShell
+
+AutoShell是类似Bash的Shell脚本语言，
+与普通的AutoScript唯一的区别，就是添加了对Shell命令调用格式的支持：
+
+```bash
+mkdir -p src/app
+```
+
+相当于AutoScript中的如下代码：
 
 ```rust
+mkdir("src/app", p=true)
+```
+
+这样设计有4个好处：
+
+1. 用户可以使用熟悉的命令行风格调用命令，又可以保留AutoScript的强大编程能力
+2. 跨平台：不论是在Windows的PowerShell中，还是Linux的Bash中，都可以执行相同的AutoShell脚本
+3. AutoShell可以和其他的Auto程序无缝集成
+
+下面是AutoShell的一些用法展示：
+
+```rust
+// Auto的Shell模式
 #!auto
 
 // 脚本模式下内置了常用的库
@@ -267,6 +289,7 @@ print "Hello, world!"
 // 下面的命令会自动转化为函数调用：`mkdir("src/app", p=true)`
 mkdir -p src/app
 
+// 更多的命令
 cd src/app
 touch main.rs
 
@@ -290,6 +313,12 @@ let downloads = for f in readlines("remote_files.txt").map(trim) {
 // 可以选择等待所有的文件都下载完成
 await downloads.join()
 
+// 如果是AutoShell没有支持的命令，也可以调用底层真正的shell程序：
+// NOTE: 这个模式下，语法就不是跨平台的了，因此需要做平台判断
+when sys.shell() {
+    is sys.POWERSHELL = > shell("del -Force -Recurse ./logs")
+    is sys.BASH = > shell("rm -rf ./logs")
+}
 ```
 
 Auto语言根据后缀名，采用了不同的“场景”，因此可以支持不同的语法。
@@ -896,33 +925,41 @@ mut p2 = Point.stretch(p1, 2.0)
 ```
 
 
-### 规标（Spec）
+### 特征（Spec）
 
 Auto语言扩展了Rust的接口（trait）概念，可以支持更多的模式匹配。
-在Auto语言中，用来匹配类型的结构，被称为一个“规标”（Spec）。
+在Auto语言中，这种用来判断类型特征的结构，被称为一个类型的特征（Spec）。
 
-Auto的规标有三类：
+Auto的特征有三类：
 
-1. 接口（Interface Spec）：和Rust的trait类似，可以判断某个类型是否符合规标所声明的方法。
+1. 接口（Interface Spec）：类似于Java的Interface和Rust的trait，可以通过类型支持的方法列表来判别。
 
 ```rust
-// Interface Spec
-spec Printable {
+// 接口特征 Interface Spec
+spec Printer {
+    // 符合Printable特征的类型，必须有print方法
     fn print()
 }
 
+// 自定义的类型
 type MyInt {
     data int
-}
 
-MyInt as Printable {
+    // 直接实现接口的方法
     pub fn print() {
         println(.data)
     }
 }
 
-// 多个方法的接口规标
-spec Indexable<T> {
+// 也可以通过扩展类型方法来实现
+ext MyInt {
+    pub fn print() {
+        println(.data)
+    }
+}
+
+// 接口可以包含多个方法
+spec Indexer<T> {
     fn size() usize
     fn get(n usize) T
     fn set(n usize, value T)
@@ -935,30 +972,29 @@ type IntArray {
         IntArray{data: data.pack()}
     }
 
-    as Indexable<int> {
-        pub fn size() int {
-            .data.len()
-        }
+    // 实现Indexer接口
+    pub fn size() int {
+        .data.len()
+    }
 
-        pub fn get(n int) int {
-            .data[n]
-        }
+    pub fn get(n int) int {
+        .data[n]
+    }
 
-        pub fn set(n int, value int) {
-            .data[n] = value
-        }
+    pub fn set(n int, value int) {
+        .data[n] = value
     }
 }
 ```
 
-2. 表达式规标（Expr Spec）：类似于TypeScript的联合类型。
+2. 表达式特征（Expression Spec）：类似于TypeScript的联合类型。
 
 ```rust
-// 表达式规标
+// 表达式特征
 
 spec Number = int | uint | byte | float
 
-// 使用表达式规标
+// 使用表达式特征
 fn add(a Number, b Number) Number {
     a + b
 }
@@ -973,24 +1009,46 @@ fn <T = Number> add(a T, b T) T {
 }
 ```
 
-
-3. 判别式规标（Predicate Spec或Function Spec）：调用一个编译期函数，如果返回true，则表示类型判定通过。
+表达式特征还可以用来实现类型别名：
 
 ```rust
+spec MyInt = int
+```
 
-// 复杂类型判断，参数为type，且返回bool的函数，可以用来做任意逻辑的类型判断
-fn IsArray(t type) bool {
+此时，MyInt就等价于int，可以用于任何需要int的地方。
+对于C/C++语言程序员，这就相当于一个宏。
+
+
+3. 判别函数特征（Predicate Spec或Function Spec）：在编译期调用一个判别函数，如果返回true，则表示类型判定通过。
+
+用于类型特征的判别函数，其参数是`type`类型，返回值是`bool`类型。
+
+```rust
+fn predicate(t type) bool {
+    // ...
+    true
+}
+```
+
+例如，下面的`IsArray`函数用来判别是不是可以线性迭代：
+
+```rust
+// 判别函数
+fn IsIterable(t type) bool {
     when t {
-        // 数组，其元素类型可以任意
-        is []_ => true
-        // 实现了Iterable接口
-        as Indexable => true
+        // 是一个数组，其元素类型可以任意
+        is []any => true
+        // 或者有next()方法
+        if t.has_method("next") => true
+        // 或者实现了Indexer接口
+        is Indexer => true
         else => false
     }
 }
 
 // 这里参数arr的类型只要通过了IsArray(T)的判断，就能够调用，否则报错
-fn add_all(arr if IsArray) {
+// 注意：这里使用了`if`表达式，表示在编译期调用判别函数
+fn add_all(arr if IsIterable) {
     mut sum = 0
     for n in arr {
         sum += n
@@ -998,15 +1056,17 @@ fn add_all(arr if IsArray) {
     return sum
 }
 
-// OK，因为参数是一个`[]int`数组
-add_all([1, 2, 3, 4, 5])
+let arr = [1, 2, 3, 4, 5]
+// OK，因为arr是一个`[]int`数组
+add_all(arr)
 
-mut d = 15
-add_all(d) // Error! d既不是[]int数组，也没有实现Indexable接口
+mut my_arr = IntArray.new(1, 2, 3, 4, 5)
+// OK，因为my_arr实现了Indexer接口
+add_all(my_arr)
 
-// 由于IntArray实现了Indexable接口，所以可以用于add_all
-mut int_array = IntArray.new(1, 2, 3, 4, 5)
-add_all(int_array)
+mut d = "hello"
+// Error! d既不是[]int数组，也没有实现Indexer接口
+add_all(d)
 ```
 
 ### 生成器（TODO）
