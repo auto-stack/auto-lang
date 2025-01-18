@@ -548,6 +548,20 @@ impl Value {
         }
     }
 
+    pub fn v_lower(&self) -> Value {
+        match self {
+            Value::Str(s) => Value::Str(s.to_lowercase()),
+            _ => Value::Nil,
+        }
+    }
+
+    pub fn v_len(&self) -> Value {
+        match self {
+            Value::Str(s) => Value::Int(s.len() as i32),
+            _ => Value::Nil,
+        }
+    }
+
     pub fn as_array(&self) -> &Vec<Value> {
         match self {
             Value::Array(value) => value,
