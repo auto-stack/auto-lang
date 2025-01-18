@@ -287,6 +287,7 @@ pub enum Value {
     Uint(u32),
     Float(f64),
     Bool(bool),
+    Char(char),
     Str(String),
     Array(Vec<Value>),
     Pair(ValueKey, Box<Value>),
@@ -375,6 +376,7 @@ impl Display for Value {
 
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Value::Char(value) => write!(f, "'{}'", value),
             Value::Str(value) => write!(f, "\"{}\"", value),
             Value::Int(value) => write!(f, "{}", value),
             Value::Uint(value) => write!(f, "{}u", value),

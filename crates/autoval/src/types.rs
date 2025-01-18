@@ -10,6 +10,7 @@ pub enum Type {
     Int,
     Float,
     Bool,
+    Char,
     Str,
     Array,
     User(String),
@@ -49,6 +50,7 @@ impl TypeInfoStore {
         types.insert("float".to_string(), type_info_float());
         types.insert("bool".to_string(), type_info_bool());
         types.insert("str".to_string(), type_info_str());
+        types.insert("char".to_string(), type_info_char());
         Self { types, any: type_info_any() }
     }
 
@@ -88,6 +90,7 @@ impl TypeInfoStore {
             Type::Float => self.types.get("float").unwrap(),
             Type::Bool => self.types.get("bool").unwrap(),
             Type::Str => self.types.get("str").unwrap(),
+            Type::Char => self.types.get("char").unwrap(),
             Type::Array => self.types.get("array").unwrap(),
             Type::User(name) => self.types.get(name.as_str()).unwrap(),
         }
@@ -127,6 +130,10 @@ fn type_info_str() -> TypeInfo {
     TypeInfo { name: "str".to_string(), methods }
 }
 
+fn type_info_char() -> TypeInfo {
+    TypeInfo { name: "char".to_string(), methods: HashMap::new() }
+}
+
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -138,6 +145,7 @@ impl fmt::Display for Type {
             Type::Float => write!(f, "float"),
             Type::Bool => write!(f, "bool"),
             Type::Str => write!(f, "str"),
+            Type::Char => write!(f, "char"),
             Type::Array => write!(f, "array"),
             Type::User(name) => write!(f, "{}", name),
         }

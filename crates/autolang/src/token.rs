@@ -17,6 +17,7 @@ pub enum TokenKind {
     Uint,
     Float,
     Str,
+    Char,
     Ident,
 
     // Operators
@@ -151,6 +152,7 @@ impl fmt::Display for Token {
             TokenKind::Backtick => write!(f, "<`>"),
             TokenKind::Ref => write!(f, "<ref>"),
             TokenKind::EOF => write!(f, "<eof>"),
+            TokenKind::Char => write!(f, "<'{}'>", self.text),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }
     }
@@ -171,6 +173,10 @@ impl Token {
 
     pub fn float(pos: Pos, text: String) -> Self {
         Token::new(TokenKind::Float, pos, text)
+    }
+
+    pub fn char(pos: Pos, text: String) -> Self {
+        Token::new(TokenKind::Char, pos, text)
     }
 
     pub fn str(pos: Pos, text: String) -> Self {
