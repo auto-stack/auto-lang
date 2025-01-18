@@ -670,6 +670,13 @@ impl Evaler {
                 }
                 values[idx as usize].clone()
             }
+            Value::Str(s) => {
+                let idx = idx as usize;
+                if idx >= s.len() {
+                    return Value::Error(format!("Index out of bounds {}", idx));
+                }
+                Value::Char(s.chars().nth(idx).unwrap())
+            }
             _ => Value::Error(format!("Invalid array {}", array)),
         }
     }

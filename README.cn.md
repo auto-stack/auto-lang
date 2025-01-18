@@ -5,15 +5,15 @@
 Auto编程语言（Auto Lang）是一门以“**万物自动化**”为目标的通用编程语言。
 
 - **简洁高效**：当作脚本使用时，和Python一样易用；当作静态代码时和C/Rust一样高效。
-- **灵活多变**：Auto语言有多套语法，能够灵活适配各种使用场景。
+- **灵活多变**：Auto语言有多套语法，能够灵活适配各种使用场景，甚至混合使用。
     - *AutoLang*：静态的Auto语言，可以转译成C/Rust执行。
     - *AutoConfig*：作为可编程配置语言，可以替代JSON和YAML。
     - *AutoScript*：作为脚本语言，可以动态解释执行
     - *AutoIR*：高阶中间语言和字节码，可以用于代码生成和快速解释执行。
     - *AutoTemplate*：作为模板语言，可以生成任意形式的结构化文本。
     - *AutoShell*：作为Shell脚本语言，可以用于快速开发和调试。
-- **跨越生态**：
-    - Auto语言可以调用C/Rust/Python/Javascript的功能，并在同一个运行环境中混合使用。
+- **生态融合**：
+    - Auto语言可以调用C/Rust/Python/Javascript的功能，并在融合在同一个运行环境中使用。
 - **周边完备**：Auto语言生态配备了如下工具：
     - *AutoVM*：Auto语言的解释器，可以解释执行AutoIR和AutoScript。
     - *AutoCompiler*：将AutoIR编译成C/Rust/Python/Javascript/WASM等语言。
@@ -84,7 +84,7 @@ int main(void) {
 
 ```rust
 // 可以调用标准库
-use auto.fs: list, join, is_dir;
+use std.fs: list, join, is_dir
 
 // 变量
 mut dir = "~/code/auto"

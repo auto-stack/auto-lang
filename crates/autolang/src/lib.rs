@@ -822,4 +822,13 @@ square(15)
         assert_eq!(result, "225");
     }
 
+    #[test]
+    fn test_str_index() {
+        let code = r#"let a = "hello"
+        a[1]
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "'e'");
+    }
+
 }
