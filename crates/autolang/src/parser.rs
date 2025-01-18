@@ -607,6 +607,7 @@ impl<'a> Parser<'a> {
             TokenKind::True => Expr::Bool(true),
             TokenKind::False => Expr::Bool(false),
             TokenKind::Str => Expr::Str(self.cur.text.clone()),
+            TokenKind::Char => Expr::Char(self.cur.text.chars().nth(0).unwrap()),
             TokenKind::Ident => self.ident()?,
             TokenKind::Model => Expr::Ident(Name::new("model".to_string())),
             TokenKind::View => Expr::Ident(Name::new("view".to_string())),
@@ -1802,5 +1803,12 @@ exe(hello) {
         let mut parser = Parser::new(&code, Rc::new(RefCell::new(scope)));
         let ast = parser.parse().unwrap();
         assert_eq!(ast.to_string(), "(code (use (path std.math) (items square)))");
+    }
+
+    #[test]
+    fn test_char() {
+        let code = r#"'a'"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (char 'a'))");
     }
 }

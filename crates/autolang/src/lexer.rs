@@ -114,6 +114,22 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn char(&mut self) -> Token {
+        self.chars.next(); // skip '
+        if let Some(&c) = self.chars.peek() {
+            let tok = Token::char(self.pos(1), c.to_string());
+            self.chars.next(); // skip char
+            if self.peek('\'') {
+                self.chars.next(); // skip '
+            } else {
+                panic!("char must be ended by a '");
+            }
+            tok
+        } else {
+            panic!("char must be followed by a character");
+        }
+    }
+
     pub fn str(&mut self) -> Token {
         let mut text = String::new();
         self.chars.next();
@@ -311,6 +327,9 @@ impl<'a> Lexer<'a> {
                 }
                 '}' => {
                     return self.single(TokenKind::RBrace, c);
+                }
+                '\'' => {
+                    return self.char();
                 }
                 '"' => {
                     return self.str();
@@ -554,5 +573,19 @@ mod tests {
         let code = "a.b.c: x, y";
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<ident:a><.><ident:b><.><ident:c><:><ident:x><,><ident:y>");
+    }
+
+    #[test]
+    fn test_str_1() {
+        let code = r#""Hello""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<str:Hello>");
+    }
+
+    #[test]
+    fn test_char() {
+        let code = r#"'a'"#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<'a'>");
     }
 }

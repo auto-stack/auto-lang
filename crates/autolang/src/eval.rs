@@ -681,6 +681,7 @@ impl Evaler {
             Expr::Int(value) => Value::Int(*value),
             Expr::Float(value) => Value::Float(*value),
             // Why not move here?
+            Expr::Char(value) => Value::Char(*value),
             Expr::Str(value) => Value::Str(value.clone()),
             Expr::Bool(value) => Value::Bool(*value),
             Expr::Ref(target) => {
@@ -1036,6 +1037,7 @@ fn to_value_type(ty: &ast::Type) -> autoval::Type {
         ast::Type::Int => autoval::Type::Int,
         ast::Type::Float => autoval::Type::Float,
         ast::Type::Bool => autoval::Type::Bool,
+        ast::Type::Char => autoval::Type::Char,
         ast::Type::Str => autoval::Type::Str,
         ast::Type::Array(_) => autoval::Type::Array,
         ast::Type::User(type_decl) => autoval::Type::User(type_decl.name.text.clone()),

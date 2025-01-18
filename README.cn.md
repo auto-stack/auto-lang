@@ -883,7 +883,7 @@ type MyInt = int
 // 类型组合
 type Num = int | float
 
-// 自定以类型
+// 自定义类型
 type Point {
     x int
     y int
@@ -891,11 +891,52 @@ type Point {
     // 方法
     fn distance(other Point) float {
         use std.math.sqrt;
-        // 注意：这里的`.x`表示“在当前类型的视野中寻找变量x”，即相当于其他语言的`this.x`或`self.x`
-        sqrt((.x - other.x) ** 2 + (.y - other.y) ** 2)
+        // 这里的`x`相当于其他语言的`this.x`
+        sqrt((x - other.x) ** 2 + (y - other.y) ** 2)
     }
 }
 ```
+
+在类型的方法中，对象实例的成员，如上面例子里的`x`和`y`，可以直接访问。这是因为Auto语言在方法调用时，会把对象实例的视野也加入到方法的视野中。
+
+假如实例成员的名称和参数或者局部存量名字冲突，则可以使用`.x`来区分。
+此时`.x`表示成员，即相当于`this.x`或`self.x`；
+而`x`则表示参数或普通存量。
+
+例如：
+
+```rust
+// 自定义类型
+type Point {
+    x int
+    y int
+
+    // 方法
+    fn move(x int, y int) int {
+        .x = x
+        .y = y
+    }
+}
+```
+
+如果想要直接使用实例自身，则可以用`self`表示。
+
+```rust
+type Node {
+    parent *Node
+    kids []*Node
+
+    pub fn mut add(mut kid *Node) {
+        kid.parent = &self
+        .kids.add(kid)
+    }
+}
+```
+
+注意方法中的两个`mut`：
+
+- `fn`与方法名之间的`mut`表示要修改实例自身
+- 参数前的`mut`表示要修改这个参数
 
 ```rust
 // 新建类型的实例
@@ -922,6 +963,50 @@ Point {
 // 使用自定义构造函数
 mut p1 = Point.new(1, 2)
 mut p2 = Point.stretch(p1, 2.0)
+```
+
+除了在类型内部定义方法，我们还可以在外部给类型“扩展”新的方法。
+扩展方法的关键字是`ext`，即`extends`
+
+```rust
+type Point {
+    pub x int
+    pub y int
+}
+
+ext Point {
+    pub fn to_str() str {
+        `Point($x, $y)`
+    }
+}
+```
+
+注意，和内部方法不同，扩展方法只能访问`Point`中公开的成员，
+因此我们上面的例子给`x`和`y`添加了`pub`修饰。
+
+如果需要访问私有的变量，那么直接把方法定义在类型内部即可。
+
+扩展方法的用处是可以给第三方库定义好的类型，
+甚至系统类型添加新的功能。
+
+例如，如果要给系统的字符串类型`str`添加一个新功能：
+
+```rust
+ext str {
+    pub fn shape_shift() {
+        for c in self {
+            if c.is_up() {
+                c.lower()
+            } else {
+                c.upper()
+            }
+        }
+    }
+}
+
+let s = "HellO"
+let t = s.shape_shift()
+assert_eq(t, "hELLo")
 ```
 
 
@@ -974,15 +1059,15 @@ type IntArray {
 
     // 实现Indexer接口
     pub fn size() int {
-        .data.len()
+        data.len()
     }
 
     pub fn get(n int) int {
-        .data[n]
+        data[n]
     }
 
     pub fn set(n int, value int) {
-        .data[n] = value
+        data[n] = value
     }
 }
 ```
