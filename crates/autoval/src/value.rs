@@ -2,6 +2,7 @@ use std::fmt::{self, write, Display, Formatter};
 use std::collections::BTreeMap;
 use crate::types::{Type, TypeInfo};
 use std::collections::btree_map::{Iter, IntoIter};
+use crate::AutoStr;
 
 #[derive(Debug, Clone, PartialEq, Hash, Ord, Eq, PartialOrd)]
 pub enum ValueKey {
@@ -541,7 +542,7 @@ impl Value {
         Value::Str(self.str())
     }
 
-    pub fn v_up(&self) -> Value {
+    pub fn v_upper(&self) -> Value {
         match self {
             Value::Str(s) => Value::Str(s.to_uppercase()),
             _ => Value::Nil,
@@ -626,6 +627,13 @@ impl Value {
 
     pub fn to_string(&self) -> String {
         format!("{}", self)
+    }
+
+    pub fn auto_str(&self) -> AutoStr {
+        match self {
+            Value::Str(s) => AutoStr::from(s.clone()),
+            _ => AutoStr::from(self.to_string()),
+        }
     }
 }
 
@@ -865,6 +873,14 @@ impl Arg {
             Arg::Pos(value) => value.clone(),
             Arg::Pair(_, value) => value.clone(),
             Arg::Name(name) => Value::Str(name.clone()),
+        }
+    }
+
+    pub fn auto_str(&self) -> AutoStr {
+        match self {
+            Arg::Pos(value) => value.auto_str(),
+            Arg::Pair(_, value) => value.auto_str(),
+            Arg::Name(name) => AutoStr::from(name.clone()),
         }
     }
 }

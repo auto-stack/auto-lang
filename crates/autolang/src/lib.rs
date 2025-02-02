@@ -831,4 +831,13 @@ square(15)
         assert_eq!(result, "'e'");
     }
 
+
+    #[test]
+    fn test_methods_in_template() {
+        let code = r#"<div>${name.upper()}</div>"#;
+        let mut scope = Universe::new();
+        scope.set_global("name", Value::Str("hello".to_string()));
+        let result = eval_template(code, scope).unwrap();
+        assert_eq!(result.result.repr(), "<div>HELLO</div>");
+    }
 }
