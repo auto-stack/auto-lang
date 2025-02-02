@@ -1,4 +1,4 @@
-use autoval::{Node, Value};
+use autoval::{Node, Value, AutoStr};
 use crate::eval::EvalMode;
 use crate::interp;
 use std::path::Path;
@@ -10,23 +10,20 @@ pub struct AutoConfig {
 }
 
 impl AutoConfig {
-    pub fn new(code: String, root: Node) -> Self {
-        Self {
-            code,
-            root,
-            interpreter: interp::Interpreter::new().wit_eval_mode(EvalMode::CONFIG),
-        }
-    }
-
     pub fn from_file(path: &Path) -> Result<Self, String> {
         let content = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
-        let mut interpreter = eval_config(&content)?;
+        Self::from_code(content)
+    }
+    
+    pub fn from_code(code: impl Into<String>) -> Result<Self, String> {
+        let code = code.into();
+        let mut interpreter = eval_config(&code)?;
         let result = interpreter.result;
         interpreter.result = Value::Nil;
         if let Value::Node(root) = result {
             Ok(Self {
-                code: content,
-                root: root.clone(),
+                code: code,
+                root: root,
                 interpreter: interpreter,
             })
         } else {
@@ -34,12 +31,12 @@ impl AutoConfig {
         }
     }
 
-    pub fn name(&self) -> String {
-        self.root.get_prop("name").to_string()
+    pub fn name(&self) -> AutoStr {
+        self.root.get_prop("name").auto_str()
     }
 
-    pub fn version(&self) -> String {
-        self.root.get_prop("version").to_string()
+    pub fn version(&self) -> AutoStr {
+        self.root.get_prop("version").auto_str()
     }
 
     pub fn list_target_names(&self) -> Vec<String> {

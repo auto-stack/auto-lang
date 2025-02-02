@@ -126,7 +126,7 @@ fn type_info_bool() -> TypeInfo {
 
 fn type_info_str() -> TypeInfo {
     let mut methods: HashMap<String, ValueMethod> = HashMap::new();
-    methods.insert("up".to_string(), Value::v_up);
+    methods.insert("upper".to_string(), Value::v_upper);
     methods.insert("lower".to_string(), Value::v_lower);
     methods.insert("len".to_string(), Value::v_len);
     TypeInfo { name: "str".to_string(), methods }
