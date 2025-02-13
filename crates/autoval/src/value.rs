@@ -26,6 +26,8 @@ impl IntoIterator for Obj {
 }
 
 impl Obj {
+    pub const EMPTY: Self = Self { values: BTreeMap::new() };
+
     pub fn iter(&self) -> Iter<ValueKey, Value> {
         self.values.iter()
     }
@@ -528,9 +530,16 @@ impl Value {
 }
 
 
-static OBJ_NIL: Obj = Obj { values: BTreeMap::new() };
+static OBJ_NIL: Obj = Obj::EMPTY;
 static ARRAY_NIL: Vec<Value> = vec![];
 static STR_NIL: String = String::new();
+static NODE_NIL: Node = Node {
+    name: String::new(),
+    args: Args::EMPTY,
+    props: Obj::EMPTY,
+    nodes: vec![],
+    body: MetaID::Nil,
+};
 
 // Quick Readers
 impl Value {
@@ -618,6 +627,13 @@ impl Value {
         match self {
             Value::Byte(value) => *value,
             _ => 0,
+        }
+    }
+
+    pub fn as_node(&self) -> &Node {
+        match self {
+            Value::Node(value) => value,
+            _ => &NODE_NIL,
         }
     }
 
@@ -822,14 +838,14 @@ impl View {
 pub struct Node {
     pub name: String,
     pub args: Args,
-    pub props: BTreeMap<ValueKey, Value>,
+    pub props: Obj,
     pub nodes: Vec<Node>,
     pub body: MetaID,
 }
 
 impl Node {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into(), args: Args::new(), props: BTreeMap::new(), nodes: vec![], body: MetaID::Nil }
+        Self { name: name.into(), args: Args::new(), props: Obj::new(), nodes: vec![], body: MetaID::Nil }
     }
 
     pub fn title(&self) -> String {
@@ -841,18 +857,18 @@ impl Node {
     }
 
     pub fn get_prop(&self, key: &str) -> Value {
-        match self.props.get(&ValueKey::Str(key.to_string())) {
+        match self.props.get(key) {
             Some(value) => value.clone(),
             None => Value::Nil,
         }
     }
 
     pub fn set_prop(&mut self, key: impl Into<ValueKey>, value: Value) {
-        self.props.insert(key.into(), value);
+        self.props.set(key.into(), value);
     }
 
     pub fn merge_obj(&mut self, obj: Obj) {
-        self.props.extend(obj.into_iter());
+        self.props.merge(&obj);
     }
 
     pub fn add_sub(&mut self, node: Node) {
@@ -920,6 +936,8 @@ impl Args {
     pub fn new() -> Self {
         Self { args: Vec::new() }
     }
+
+    pub const EMPTY: Self = Self { args: vec![] };
 
     pub fn get_val(&self, index: usize) -> Value {
         self.args.get(index).map(|arg| arg.get_val()).unwrap_or(Value::Nil)

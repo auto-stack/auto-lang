@@ -16,6 +16,7 @@ use std::cell::RefCell;
 use crate::eval::EvalMode;
 use crate::scope::Universe;
 use crate::parser::Parser;
+use autoval::ValueKey;
 
 pub fn run(code: &str) -> Result<String, String> {
     let mut interpreter = interp::Interpreter::new();
@@ -417,6 +418,21 @@ $ }"#;
     }
 
     #[test]
+    fn test_node_props() {
+        let code = r#"
+            parent("parent") {
+                size: 10
+                kid("kid1")
+            }
+        "#;
+        let interp = eval_config(code).unwrap();
+        let config = interp.result.as_node();
+        let parent = &config.nodes[0];
+        let size = parent.props.get_uint_of("size");
+        assert_eq!(size, 10);
+    }
+
+    #[test]
     fn test_nodes() {
         let code = r#"center {
             text("Hello")
@@ -624,7 +640,7 @@ $ }
         let result = run(code).unwrap();
         assert_eq!(result, "1");
 
-        let code = r#""hello".up()"#;
+        let code = r#""hello".upper()"#;
         let result = run(code).unwrap();
         assert_eq!(result, "HELLO");
     }

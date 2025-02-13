@@ -178,9 +178,9 @@ mod tests {
     }
 
     #[test]
-    fn test_up_method() {
+    fn test_upper_method() {
         let store = TypeInfoStore::new();
-        let method = store.lookup_method(Type::Str, "up".to_string()).unwrap();
+        let method = store.lookup_method(Type::Str, "upper".to_string()).unwrap();
         let v = Value::Str("hello".to_string());
         let res = method(&v);
         assert_eq!(res, Value::Str("HELLO".to_string()));

@@ -874,7 +874,7 @@ impl Evaler {
     fn eval_node(&mut self, node: &Node) -> Value {
         let args = self.eval_args(&node.args);
         let mut nodes = Vec::new();
-        let mut props = BTreeMap::new();
+        let mut props = Obj::new();
         let mut body = MetaID::Nil;
         let name = &node.name.text;
         if name == "mid" {
@@ -888,7 +888,7 @@ impl Evaler {
                 for stmt in node.body.stmts.iter() {
                     let val = self.eval_stmt(stmt);
                     match val {
-                        Value::Pair(key, value) => {props.insert(key, *value);},
+                        Value::Pair(key, value) => {props.set(key, *value);},
                         Value::Node(node) => {nodes.push(node);},
                         _ => {},
                     }
@@ -926,7 +926,7 @@ impl Evaler {
                     let val = self.eval_stmt(stmt);
                     match val {
                         Value::Node(node) => {nodes.push(node);},
-                        Value::Pair(key, value) => {props.insert(key, *value);},
+                        Value::Pair(key, value) => {props.set(key, *value);},
                         _ => {},
                     }
                 }
