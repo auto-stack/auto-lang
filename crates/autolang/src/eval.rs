@@ -822,7 +822,7 @@ impl Evaler {
         let widget_value = autoval::Widget { name: name.clone(), model, view_id: MetaID::View(view_id) };
         let value = Value::Widget(widget_value);
         self.universe.borrow_mut().set_local_val(name, value.clone());
-        // self.universe.borrow_mut().widget = value.clone();
+        self.universe.borrow_mut().widget = value.clone();
         value
     }
 

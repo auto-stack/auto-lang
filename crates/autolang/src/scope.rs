@@ -181,6 +181,7 @@ pub struct Universe {
     pub types: TypeInfoStore,
     lambda_counter: usize,
     cur_spot: Sid,
+    pub widget: Value,
 }
 
 impl Default for Universe {
@@ -203,6 +204,7 @@ impl Universe {
             types: TypeInfoStore::new(), 
             lambda_counter: 0,
             cur_spot: SID_PATH_GLOBAL.clone(),
+            widget: Value::Nil,
         };
         uni.define_sys_types();
         uni
@@ -559,6 +561,10 @@ impl Universe {
     pub fn import(&mut self, path: AutoStr, ast: ast::Code) {
         let sid = Sid::new(path.as_str());
         self.asts.insert(sid, ast);
+    }
+
+    pub fn widget(&self) -> Value {
+        self.widget.clone()
     }
 }
 
