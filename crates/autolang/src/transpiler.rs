@@ -191,8 +191,18 @@ impl CTranspiler {
     }
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> Result<(), String> {
-        self.expr(&call.name, out)?;
-        out.write(b"(").to()?;
+        if let Expr::Ident(name) = &call.name.as_ref() {
+            if name.text == "print" {
+                // TODO: check type of the args and format accordingly
+                out.write(b"printf(\"%d\", ").to()?;
+            } else {
+                self.expr(&call.name, out)?;
+                out.write(b"(").to()?;
+            }
+        } else {
+            self.expr(&call.name, out)?;
+            out.write(b"(").to()?;
+        }
         for (i, arg) in call.args.args.iter().enumerate() {
             self.arg(arg, out)?;
             if i < call.args.args.len() - 1 {
@@ -237,7 +247,15 @@ impl CTranspiler {
 
     fn is_returnable(&self, stmt: &Stmt) -> bool {
         match stmt {
-            Stmt::Expr(_) => true,
+            Stmt::Expr(expr) => {
+                match expr {
+                    Expr::Call(call) => {
+                        println!("is_returnable: false");
+                        false
+                    }
+                    _ => true,
+                }
+            }
             _ => false,
         }
     }
@@ -261,7 +279,8 @@ impl Transpiler for CTranspiler {
             }
         }
 
-        // TODO: Includes
+        // TODO: Includes on demand
+        out.write(b"#include <stdio.h>\n\n").to()?;
 
         // Decls
         for decl in decls.iter() {
@@ -273,6 +292,10 @@ impl Transpiler for CTranspiler {
         }
 
         // Main
+        // TODO: check wether auto code already has a main function
+        if main.is_empty() {
+            return Ok(());
+        }
         out.write(b"int main(void) {\n").to()?;
         self.indent();
         for (i, stmt) in main.iter().enumerate() {
@@ -288,6 +311,7 @@ impl Transpiler for CTranspiler {
                 } else {
                     self.stmt(stmt, out)?;
                     out.write(b"\n").to()?;
+                    self.print_indent(out)?;
                     out.write(b"return 0;\n").to()?;
                 }
             }
@@ -318,7 +342,7 @@ impl ToStrError for Result<usize, io::Error> {
     }
 }
 
-pub fn code_to_c(code: &str) -> Result<String, String> {
+pub fn transpile_part(code: &str) -> Result<String, String> {
     let mut transpiler = CTranspiler::new();
     let scope = Rc::new(RefCell::new(scope::Universe::new()));
     let mut parser = Parser::new(code, scope);
@@ -328,6 +352,7 @@ pub fn code_to_c(code: &str) -> Result<String, String> {
     Ok(String::from_utf8(out).unwrap())
 }
 
+// Transpile the code into a whole C program
 pub fn transpile_c(code: &str) -> Result<String, String> {
     let scope = Rc::new(RefCell::new(scope::Universe::new()));
     let mut parser = Parser::new(code, scope);
@@ -346,14 +371,14 @@ mod tests {
     #[test]
     fn test_c() {
         let code = "41";
-        let out = code_to_c(code).unwrap();
+        let out = transpile_part(code).unwrap();
         assert_eq!(out, "41;\n");
     }
 
     #[test]
     fn test_c_fn() {
         let code = "fn add(x, y) int { x+y }";
-        let out = code_to_c(code).unwrap();
+        let out = transpile_part(code).unwrap();
         let expected = r#"int add(int x, int y) {
     return x + y;
 }
@@ -365,7 +390,7 @@ mod tests {
     #[test]
     fn test_c_let() {
         let code = "let x = 41";
-        let out = code_to_c(code).unwrap();
+        let out = transpile_part(code).unwrap();
         let expected = "int x = 41;\n";
         assert_eq!(out, expected);
     }
@@ -373,7 +398,7 @@ mod tests {
     #[test]
     fn test_c_for() {
         let code = "for i in 1..5 { print(i) }";
-        let out = code_to_c(code).unwrap();
+        let out = transpile_part(code).unwrap();
         let expected = r#"for (int i = 1; i < 5; i++) {
     print(i);
 }
@@ -384,7 +409,7 @@ mod tests {
     #[test]
     fn test_c_if() {
         let code = "let x = 41; if x > 0 { print(x) }";
-        let out = code_to_c(code).unwrap();
+        let out = transpile_part(code).unwrap();
         let expected = r#"int x = 41;
 if (x > 0) {
     print(x);
@@ -396,7 +421,7 @@ if (x > 0) {
     #[test]
     fn test_c_if_else() {
         let code = "let x = 41; if x > 0 { print(x) } else { print(-x) }";
-        let out = code_to_c(code).unwrap();
+        let out = transpile_part(code).unwrap();
         let expected = r#"int x = 41;
 if (x > 0) {
     print(x);
@@ -410,7 +435,7 @@ if (x > 0) {
     #[test]
     fn test_c_array() {
         let code = "let x = [1, 2, 3]";
-        let out = code_to_c(code).unwrap();
+        let out = transpile_part(code).unwrap();
         let expected = "int x[3] = {1, 2, 3};\n";
         assert_eq!(out, expected);
     }
@@ -418,7 +443,7 @@ if (x > 0) {
     #[test]
     fn test_c_mut_assign() {
         let code = "mut x = 41; x = 42";
-        let out = code_to_c(code).unwrap();
+        let out = transpile_part(code).unwrap();
         let expected = "int x = 41;\nx = 42;\n";
         assert_eq!(out, expected);
     }
