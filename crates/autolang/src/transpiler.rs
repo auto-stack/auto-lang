@@ -2,11 +2,13 @@ use super::ast::*;
 use std::io;
 use std::io::Write;
 use autoval::Op;
+use autoval::AutoStr;
 use crate::parser::Parser;
 use crate::scope;
 use std::rc::Rc;
 use std::cell::RefCell;
 use crate::interp;
+
 pub trait Transpiler {
     fn transpile(&mut self, ast: Code, out: &mut impl Write) -> Result<(), String>;
 }
@@ -16,11 +18,13 @@ pub struct CTranspiler {
     includes: Vec<u8>,
     main: Vec<u8>,
     decls: Vec<u8>,
+    header: Vec<u8>,
+    name: AutoStr,
 }
 
 impl CTranspiler {
-    fn new() -> Self {
-        Self { indent: 0, includes: Vec::new(), main: Vec::new(), decls: Vec::new() }
+    fn new(name: AutoStr) -> Self {
+        Self { indent: 0, includes: Vec::new(), main: Vec::new(), decls: Vec::new(), header: Vec::new(), name }
     }
 
     fn indent(&mut self) {
@@ -91,6 +95,20 @@ impl CTranspiler {
     }
 
     fn fn_decl(&mut self, fn_decl: &Fn, out: &mut impl Write) -> Result<(), String> {
+        // header
+        let mut header = Vec::new();
+        self.fn_sig(&fn_decl, &mut header)?;
+        self.header.extend(header);
+        self.header.write(b";\n").to()?;
+
+        // source
+        self.fn_sig(&fn_decl, out)?;
+        out.write(b" ").to()?;
+        self.body(&fn_decl.body, out, true)?;
+        Ok(())
+    }
+
+    fn fn_sig(&mut self, fn_decl: &Fn, out: &mut impl Write) -> Result<(), String> {
         // return type
         if !matches!(fn_decl.ret, Type::Unknown) {
             out.write(format!("{} ", fn_decl.ret).as_bytes()).to()?;
@@ -109,9 +127,8 @@ impl CTranspiler {
             .collect::<Vec<_>>()
             .join(", ");
         out.write(params.as_bytes()).to()?;
-        out.write(b") ").to()?;
-        // body
-        self.body(&fn_decl.body, out, true)?;
+        out.write(b")").to()?;
+
         Ok(())
     }
 
@@ -250,8 +267,12 @@ impl CTranspiler {
             Stmt::Expr(expr) => {
                 match expr {
                     Expr::Call(call) => {
-                        println!("is_returnable: false");
-                        false
+                        if let Expr::Ident(name) = &call.name.as_ref() {
+                            if name.text == "print" {
+                                return false;
+                            }
+                        }
+                        true
                     }
                     _ => true,
                 }
@@ -274,13 +295,36 @@ impl Transpiler for CTranspiler {
                 Stmt::Store(_) => decls.push(stmt),
                 Stmt::For(_) => main.push(stmt),
                 Stmt::If(_, _) => main.push(stmt),
-                Stmt::Expr(_) => main.push(stmt),
+                Stmt::Expr(ref expr) => {
+                    match expr {
+                        Expr::Call(call) => {
+                            if let Expr::Ident(name) = &call.name.as_ref() {
+                                if name.text == "print" {
+                                    self.includes.write(b"#include <stdio.h>\n");
+                                }
+                            }
+                        }
+                        _ => { }
+                    }
+                    main.push(stmt);
+                }
                 _ => {}
             }
         }
 
+        // write header guards
+        let upper = self.name.to_uppercase();
+        let name_bytes = upper.as_bytes();
+        self.header.write(b"#ifndef ").to()?;
+        self.header.write(name_bytes).to()?;
+        self.header.write(b"_H\n#define ").to()?;
+        self.header.write(name_bytes).to()?;
+        self.header.write(b"_H\n\n").to()?;
+
         // TODO: Includes on demand
-        out.write(b"#include <stdio.h>\n\n").to()?;
+        if !self.includes.is_empty() {
+            out.write(&self.includes).to()?;
+        }
 
         // Decls
         for decl in decls.iter() {
@@ -293,32 +337,33 @@ impl Transpiler for CTranspiler {
 
         // Main
         // TODO: check wether auto code already has a main function
-        if main.is_empty() {
-            return Ok(());
-        }
-        out.write(b"int main(void) {\n").to()?;
-        self.indent();
-        for (i, stmt) in main.iter().enumerate() {
-            self.print_indent(out)?;
-            if i < main.len() - 1 {
-                self.stmt(stmt, out)?;
-                out.write(b"\n").to()?;
-            } else {
-                if self.is_returnable(stmt) {
-                    out.write(b"return ").to()?;
+        if !main.is_empty() {
+            out.write(b"int main(void) {\n").to()?;
+            self.indent();
+            for (i, stmt) in main.iter().enumerate() {
+                self.print_indent(out)?;
+                if i < main.len() - 1 {
                     self.stmt(stmt, out)?;
                     out.write(b"\n").to()?;
                 } else {
-                    self.stmt(stmt, out)?;
-                    out.write(b"\n").to()?;
-                    self.print_indent(out)?;
-                    out.write(b"return 0;\n").to()?;
+                    if self.is_returnable(stmt) {
+                        out.write(b"return ").to()?;
+                        self.stmt(stmt, out)?;
+                        out.write(b"\n").to()?;
+                    } else {
+                        self.stmt(stmt, out)?;
+                        out.write(b"\n").to()?;
+                        self.print_indent(out)?;
+                        out.write(b"return 0;\n").to()?;
+                    }
                 }
             }
+            self.dedent();
+            out.write(b"}\n").to()?;
         }
-        self.dedent();
-        out.write(b"}\n").to()?;
 
+        // header guard end
+        self.header.write(b"\n#endif\n\n").to()?;
         Ok(())
     }
 }
@@ -343,7 +388,7 @@ impl ToStrError for Result<usize, io::Error> {
 }
 
 pub fn transpile_part(code: &str) -> Result<String, String> {
-    let mut transpiler = CTranspiler::new();
+    let mut transpiler = CTranspiler::new("part".into());
     let scope = Rc::new(RefCell::new(scope::Universe::new()));
     let mut parser = Parser::new(code, scope);
     let ast = parser.parse()?;
@@ -352,15 +397,24 @@ pub fn transpile_part(code: &str) -> Result<String, String> {
     Ok(String::from_utf8(out).unwrap())
 }
 
+pub struct CCode {
+    pub source: Vec<u8>,
+    pub header: Vec<u8>,
+}
+
 // Transpile the code into a whole C program
-pub fn transpile_c(code: &str) -> Result<String, String> {
+pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> Result<CCode, String> {
     let scope = Rc::new(RefCell::new(scope::Universe::new()));
     let mut parser = Parser::new(code, scope);
     let ast = parser.parse()?;
     let mut out = Vec::new();
-    let mut transpiler = CTranspiler::new();
+    let mut transpiler = CTranspiler::new(name.into());
     transpiler.transpile(ast, &mut out)?;
-    Ok(String::from_utf8(out).unwrap())
+    let header = transpiler.header;
+    Ok(CCode {
+        source: out,
+        header
+    })
 }
  
 
@@ -452,19 +506,19 @@ if (x > 0) {
     #[test]
     fn test_c_return_42() {
         let code = r#"42"#;
-        let ccode = transpile_c(code).unwrap();
+        let ccode = transpile_c("test", code).unwrap();
         let expected = r#"int main(void) {
     return 42;
 }
 "#;
-        assert_eq!(ccode, expected);
+        assert_eq!(ccode.source, expected.as_bytes());
     }
 
     #[test]
     fn test_math() {
         let code = r#"fn add(x int, y int) int { x+y }
 add(1, 2)"#;
-        let ccode = transpile_c(code).unwrap();
+        let ccode = transpile_c("test", code).unwrap();
         let expected = r#"int add(int x, int y) {
     return x + y;
 }
@@ -473,6 +527,15 @@ int main(void) {
     return add(1, 2);
 }
 "#;
-        assert_eq!(ccode, expected);
+        let expected_header = r#"#ifndef TEST_H
+#define TEST_H
+
+int add(int x, int y);
+
+#endif
+
+"#;
+        assert_eq!(String::from_utf8(ccode.source).unwrap(), expected);
+        assert_eq!(String::from_utf8(ccode.header).unwrap(), expected_header);
     }
 }
