@@ -160,6 +160,10 @@ impl Obj {
         self.values.len()
     }
 
+    pub fn has(&self, key: impl Into<ValueKey>) -> bool {
+        self.values.contains_key(&key.into())
+    }
+
     pub fn keys(&self) -> Vec<ValueKey> {
         self.values.keys().cloned().collect()
     }
@@ -260,6 +264,10 @@ impl Obj {
 
     pub fn get_array_of(&self, name: &str) -> Vec<Value> {
         self.get_array_or(name, &vec![])
+    }
+
+    pub fn get_array_of_str(&self, name: &str) -> Vec<AutoStr> {
+        self.get_array_of(name).iter().map(|v| v.auto_str()).collect()
     }
 
     pub fn merge(&mut self, other: &Obj) {
@@ -854,6 +862,10 @@ impl Node {
         } else {
             format!("{}({})", self.name, self.args.args[0])
         }
+    }
+
+    pub fn has_prop(&self, key: &str) -> bool {
+        self.props.has(key)
     }
 
     pub fn get_prop(&self, key: &str) -> Value {
