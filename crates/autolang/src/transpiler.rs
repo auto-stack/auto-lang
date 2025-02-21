@@ -88,6 +88,7 @@ impl CTranspiler {
                 Ok(())
             }
             Expr::Ident(name) => out.write_all(name.text.as_bytes()).to(),
+            Expr::Str(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::Call(call) => self.call(call, out),
             Expr::Array(array) => self.array(array, out), 
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr)),
@@ -211,7 +212,26 @@ impl CTranspiler {
         if let Expr::Ident(name) = &call.name.as_ref() {
             if name.text == "print" {
                 // TODO: check type of the args and format accordingly
-                out.write(b"printf(\"%d\", ").to()?;
+                // get number and type of args
+                let num_args = call.args.args.len();
+                let mut arg_types = Vec::new();
+                for arg in call.args.args.iter() {
+                    match arg {
+                        Arg::Pos(expr) => {
+                            match expr {
+                                Expr::Int(_) => arg_types.push("%d"),
+                                Expr::Str(_) => arg_types.push("%s"),
+                                Expr::Float(_) => arg_types.push("%f"),
+                                _ => {}
+                            }
+                        }
+                        _ => {
+                            // TODO: implement identifier args and named args
+                        }
+                    }
+                }
+                let fmt = format!("printf(\"{}\", ", arg_types.join(" "));
+                out.write(fmt.as_bytes()).to()?;
             } else {
                 self.expr(&call.name, out)?;
                 out.write(b"(").to()?;
