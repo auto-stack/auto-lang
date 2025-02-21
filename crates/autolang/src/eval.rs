@@ -705,6 +705,7 @@ impl Evaler {
                     Value::Nil => {
                         // try to lookup in meta and builtins
                         let meta = self.universe.borrow().lookup_meta(&name.text);
+                        println!("lookup {} = {:?}", name.text, meta);
                         if let Some(meta) = meta {
                             return Value::Meta(to_meta_id(&meta));
                         }
@@ -885,14 +886,28 @@ impl Evaler {
         match tempo {
             EvalTempo::IMMEDIATE => {
                 // eval each stmts in body and extract props and sub nodes
+                self.enter_scope();
+                // put args as local values
+                for arg in args.args.iter() {
+                    match arg {
+                        autoval::Arg::Pair(name, value) => {
+                            self.universe.borrow_mut().set_local_val(&name.to_string().as_str(), value.clone());
+                        }
+                        _ => {}
+                    }
+                }
                 for stmt in node.body.stmts.iter() {
                     let val = self.eval_stmt(stmt);
                     match val {
-                        Value::Pair(key, value) => {props.set(key, *value);},
+                        Value::Pair(key, value) => {
+                            self.universe.borrow_mut().set_local_val(&key.to_string(), *value.clone());
+                            props.set(key, *value);
+                        },
                         Value::Node(node) => {nodes.push(node);},
                         _ => {},
                     }
                 }
+                self.exit_scope();
             }
             EvalTempo::LAZY => {
                 // push node body to scope meta

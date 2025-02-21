@@ -571,6 +571,7 @@ impl Universe {
 #[derive(Debug)]
 pub enum Meta {
     Store(ast::Store),
+    Pair(ast::Pair),
     Var(ast::Var),
     Ref(ast::Name),
     Fn(ast::Fn),
@@ -586,6 +587,7 @@ impl fmt::Display for Meta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Meta::Store(_) => write!(f, "STORE"),
+            Meta::Pair(_) => write!(f, "PAIR"),
             Meta::Var(_) => write!(f, "VAR"),
             Meta::Ref(_) => write!(f, "REF"),
             Meta::Fn(_) => write!(f, "FN"),

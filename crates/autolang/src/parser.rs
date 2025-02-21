@@ -837,19 +837,38 @@ impl<'a> Parser<'a> {
         count
     }
 
-    pub fn body(&mut self) -> Result<Body, ParseError> {
+    fn parse_body(&mut self, is_node: bool) -> Result<Body, ParseError> {
         self.expect(TokenKind::LBrace)?;
+        self.enter_scope();
         let mut stmts = Vec::new();
         let new_lines = self.skip_empty_lines();
         let has_new_line = new_lines > 0;
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             let stmt = self.stmt()?;
+            if is_node {
+                if let Stmt::Expr(Expr::Pair(Pair { key, value })) = &stmt {
+                    // define as a property
+                    self.define(
+                        key.to_string().as_str(), 
+                        Meta::Pair(Pair { key: key.clone(), value: value.clone() })
+                    );
+                }
+            }
             stmts.push(stmt);
             self.expect_eos()?;
         }
         stmts = self.convert_last_block(stmts)?;
+        self.exit_scope();
         self.expect(TokenKind::RBrace)?;
         Ok(Body { stmts, has_new_line })
+    }
+
+    pub fn node_body(&mut self) -> Result<Body, ParseError> {
+        self.parse_body(true)
+    }
+
+    pub fn body(&mut self) -> Result<Body, ParseError> {
+        self.parse_body(false)
     }
 
     pub fn if_contents(&mut self) -> Result<(Vec<Branch>, Option<Body>), ParseError> {
@@ -1288,21 +1307,36 @@ impl<'a> Parser<'a> {
         Ok(view)
     }
 
+    // 节点实例和函数调用有类似语法：
+    // 1. hello(x, y)， 这个是函数调用
+    // 2. hello(), 这个是参数为空的函数调用
+    // 3. hello(x, y) { ... }， 这个是节点实例
+    // 4. hello() { ... }， 这个是参数为空的节点实例
+    // 5. hello {...}，当参数为空时，可以省略()。但不能省略{}，否则和函数调用就冲突了。
+    // 6. hello(x, y) {}, 这个是子节点为空的节点实例
+    // 7. hello(){}， 这个是参数为空，子节点也为空的节点实例
+    // 8. hello {}， 上面的()也可以省略。
     pub fn node_or_call_stmt(&mut self) -> Result<Stmt, ParseError> {
         let ident = self.ident()?;
         self.next();
 
         let mut args = Args::new();
-        let mut is_call = false;
+        let mut has_paren = false;
         // If has paren, maybe a call or node instance
         if self.is_kind(TokenKind::LParen) {
             args = self.args()?;
-            is_call = true;
+            has_paren = true;
         }
 
         // If has brace, must be a node instance
         if self.is_kind(TokenKind::LBrace) { // node instance
-            let body = self.body()?;
+            // with node instance, pair args also defines as properties
+            for arg in &args.args {
+                if let Arg::Pair(name, value) = arg {
+                    self.define(name.text.as_str(), Meta::Pair(Pair { key: Key::NamedKey(name.clone()), value: Box::new(value.clone()) }));
+                }
+            }
+            let body = self.node_body()?;
             match ident {
                 Expr::Ident(name) => {
                     let mut node = Node::new(name.clone());
@@ -1314,15 +1348,15 @@ impl<'a> Parser<'a> {
                     return error_pos!("Expected node name, got {:?}", ident);
                 }
             }
-        } else { // call or node instance
-            if is_call {
+        } else { // no brace, might be a call or simple expression
+            if has_paren { // call
                 let mut expr = Expr::Call(Call { name: Box::new(ident), args });
                 expr = self.check_symbol(expr)?;
                 if let Expr::Node(node) = expr {
                     return Ok(Stmt::Node(node));
                 }
                 Ok(Stmt::Expr(expr))
-            } else { // Something else with an starting Ident
+            } else { // Something else with a starting Ident
                 let expr = self.expr_pratt_with_left(ident, 0)?;
                 Ok(Stmt::Expr(expr))
             }
