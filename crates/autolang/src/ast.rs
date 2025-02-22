@@ -63,8 +63,8 @@ pub struct Name {
 }
 
 impl Name {
-    pub fn new(text: String) -> Name {
-        Name { text }
+    pub fn new(text: impl Into<String>) -> Name {
+        Name { text: text.into() }
     }
 }
 
@@ -635,6 +635,16 @@ impl fmt::Display for Key {
             Key::IntKey(i) => write!(f, "{}", i),
             Key::BoolKey(b) => write!(f, "{}", b),
             Key::StrKey(s) => write!(f, "\"{}\"", s),
+        }
+    }
+}
+
+impl Key {
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            Key::NamedKey(name) => Some(&name.text),
+            Key::StrKey(s) => Some(s),
+            _ => None,
         }
     }
 }

@@ -14,9 +14,8 @@ pub mod config;
 use std::rc::Rc;
 use std::cell::RefCell;
 use crate::eval::EvalMode;
-use crate::scope::Universe;
+use crate::scope::{Universe, Meta};
 use crate::parser::Parser;
-use autoval::ValueKey;
 
 pub fn run(code: &str) -> Result<String, String> {
     let mut interpreter = interp::Interpreter::new();
@@ -71,7 +70,9 @@ pub fn eval_template(template: &str, scope: Universe) -> Result<interp::Interpre
 }
 
 pub fn eval_config(code: &str) -> Result<interp::Interpreter, String> {
-    let mut interpreter = interp::Interpreter::new().wit_eval_mode(EvalMode::CONFIG);
+    let mut scope = Universe::new();
+    scope.define_global("root", Rc::new(Meta::Node(ast::Node::new(ast::Name::new("root")))));
+    let mut interpreter = interp::Interpreter::with_scope(scope).wit_eval_mode(EvalMode::CONFIG);
     interpreter.interpret(code)?;
     Ok(interpreter)
 }

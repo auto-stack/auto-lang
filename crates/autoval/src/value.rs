@@ -11,6 +11,15 @@ pub enum ValueKey {
     Bool(bool),
 }
 
+impl ValueKey {
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            ValueKey::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Obj {
     values: BTreeMap<ValueKey, Value>,
@@ -642,6 +651,13 @@ impl Value {
         match self {
             Value::Node(value) => value,
             _ => &NODE_NIL,
+        }
+    }
+
+    pub fn update_node(&mut self, f: impl FnOnce(&mut Node)) {
+        match self {
+            Value::Node(value) => f(value),
+            _ => {},
         }
     }
 

@@ -63,6 +63,11 @@ impl Evaler {
                     let val = self.eval_stmt(stmt);
                     match val {
                         Value::Pair(key, value) => {
+                            // first level pairs are viewed as variable declarations
+                            // TODO: this should only happen in a Config scenario   
+                            if let Some(name) = key.name() {
+                                self.universe.borrow_mut().set_local_val(name, *value.clone());
+                            }
                             node.set_prop(key, *value);
                         }
                         Value::Obj(o) => {
@@ -743,6 +748,16 @@ impl Evaler {
                 Expr::Ident(name) => obj.lookup(&name.text),
                 Expr::Int(key) => obj.lookup(&key.to_string()),
                 Expr::Bool(key) => obj.lookup(&key.to_string()),
+                _ => None,
+            }
+            Value::Node(node) => match right {
+                Expr::Ident(name) => {
+                    let v = node.get_prop(&name.text);
+                    match v {
+                        Value::Nil => None,
+                        _ => Some(v),
+                    }
+                }
                 _ => None,
             }
             Value::Widget(widget) => match right {

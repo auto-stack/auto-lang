@@ -188,7 +188,15 @@ impl<'a> Parser<'a> {
         let mut stmts = Vec::new();
         self.skip_empty_lines();
         while !self.is_kind(TokenKind::EOF) {
-            stmts.push(self.stmt()?);
+            let stmt = self.stmt()?;
+            // First level pairs are viewed as variable declarations
+            // TODO: this should only happen in a Config scenario
+            if let Stmt::Expr(Expr::Pair(Pair { key, value })) = &stmt {
+                if let Some(name) = key.name() {
+                    self.define(name, Meta::Store(Store { name: Name::new(name), kind: StoreKind::Var, ty: Type::Unknown, expr: *value.clone() }));
+                }
+            }
+            stmts.push(stmt);
             self.expect_eos()?;
         }
         stmts = self.convert_last_block(stmts)?;

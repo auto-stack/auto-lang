@@ -5,6 +5,7 @@ use autoval::MetaID;
 use crate::ast;
 use crate::libs;
 use std::rc::Rc;
+use std::cell::RefCell;
 use autoval::{TypeInfoStore, ExtFn, Obj};
 use crate::parser::Parser;
 use std::any::Any;
@@ -177,6 +178,7 @@ pub struct Universe {
     pub asts: HashMap<Sid, ast::Code>, // sid -> ast
     // pub stack: Vec<StackedScope>,
     pub env_vals: HashMap<String, Box<dyn Any>>,
+    pub shared_vals: HashMap<String, Rc<RefCell<Value>>>,
     pub builtins: HashMap<String, Value>, // Value of builtin functions
     pub types: TypeInfoStore,
     lambda_counter: usize,
@@ -200,6 +202,7 @@ impl Universe {
             asts: HashMap::new(),
             // stack: vec![StackedScope::new()],
             env_vals: HashMap::new(),
+            shared_vals: HashMap::new(),
             builtins, 
             types: TypeInfoStore::new(), 
             lambda_counter: 0,
@@ -332,6 +335,14 @@ impl Universe {
         }
     }
 
+    pub fn set_shared(&mut self, name: &str, value: Rc<RefCell<Value>>) {
+        self.shared_vals.insert(name.to_string(), value);
+    }
+
+    pub fn get_shared(&self, name: &str) -> Option<Rc<RefCell<Value>>> {
+        self.shared_vals.get(name).cloned()
+    }
+
     pub fn set_global(&mut self, name: impl Into<String>, value: Value) {
         self.global_scope_mut().set_val(name, value);
     }
@@ -402,6 +413,10 @@ impl Universe {
     pub fn lookup_val(&self, name: &str) -> Option<Value> {
         if let Some(val) = self.lookup_val_recurse(name, &self.cur_spot) {
             return Some(val);
+        }
+        let shared = self.shared_vals.get(name);
+        if let Some(shared) = shared {
+            return Some(shared.borrow().clone());
         }
         self.builtins.get(name).cloned()
     }
@@ -580,6 +595,7 @@ pub enum Meta {
     View(ast::View),
     Body(ast::Body),
     Use(String),
+    Node(ast::Node),
 }
 
 impl fmt::Display for Meta {
@@ -595,6 +611,7 @@ impl fmt::Display for Meta {
             Meta::Widget(_) => write!(f, "Widget"),
             Meta::View(_) => write!(f, "VIEW"),
             Meta::Body(_) => write!(f, "BoDY"),
+            Meta::Node(_) => write!(f, "NODE"),
             Meta::Use(name) => write!(f, "USE {}", name),
         }
     }
