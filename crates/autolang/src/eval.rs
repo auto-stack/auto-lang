@@ -65,10 +65,17 @@ impl Evaler {
                         Value::Pair(key, value) => {
                             // first level pairs are viewed as variable declarations
                             // TODO: this should only happen in a Config scenario   
+                            let mut value = *value;
                             if let Some(name) = key.name() {
-                                self.universe.borrow_mut().set_local_val(name, *value.clone());
+                                let mut scope = self.universe.borrow_mut();
+                                if scope.has_arg(name) {
+                                    let arg_val = scope.get_arg(name);
+                                    println!("replacing value of {} from {} to {}", name, value, arg_val);
+                                    value = arg_val;
+                                }
+                                scope.set_local_val(name, value.clone());
                             }
-                            node.set_prop(key, *value);
+                            node.set_prop(key, value);
                         }
                         Value::Obj(o) => {
                             node.merge_obj(o);

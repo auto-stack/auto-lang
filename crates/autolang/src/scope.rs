@@ -181,6 +181,7 @@ pub struct Universe {
     pub shared_vals: HashMap<String, Rc<RefCell<Value>>>,
     pub builtins: HashMap<String, Value>, // Value of builtin functions
     pub types: TypeInfoStore,
+    pub args: Obj,
     lambda_counter: usize,
     cur_spot: Sid,
     pub widget: Value,
@@ -208,9 +209,22 @@ impl Universe {
             lambda_counter: 0,
             cur_spot: SID_PATH_GLOBAL.clone(),
             widget: Value::Nil,
+            args: Obj::new(),
         };
         uni.define_sys_types();
         uni
+    }
+
+    pub fn set_args(&mut self, args: &Obj) {
+        self.args = args.clone();
+    }
+
+    pub fn has_arg(&self, name: &str) -> bool {
+        self.args.has(name)
+    }
+
+    pub fn get_arg(&self, name: &str) -> Value {
+        self.args.get_or_nil(name)
     }
 
     pub fn dump(&self) {

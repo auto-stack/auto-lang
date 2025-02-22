@@ -3,6 +3,8 @@ use crate::eval::EvalMode;
 use crate::interp;
 use std::path::Path;
 use crate::eval_config;
+use autoval::Obj;
+
 pub struct AutoConfig {
     pub code: String,
     pub root: Node,
@@ -10,14 +12,14 @@ pub struct AutoConfig {
 }
 
 impl AutoConfig {
-    pub fn from_file(path: &Path) -> Result<Self, String> {
+    pub fn from_file(path: &Path, args: &Obj) -> Result<Self, String> {
         let content = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
-        Self::from_code(content)
+        Self::from_code(content, args)
     }
     
-    pub fn from_code(code: impl Into<String>) -> Result<Self, String> {
+    pub fn from_code(code: impl Into<String>, args: &Obj) -> Result<Self, String> {
         let code = code.into();
-        let mut interpreter = eval_config(&code)?;
+        let mut interpreter = eval_config(&code, args)?;
         let result = interpreter.result;
         interpreter.result = Value::Nil;
         if let Value::Node(root) = result {
