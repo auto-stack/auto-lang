@@ -21,3 +21,4 @@ strum_macros = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 ecow = { workspace = true }
+normalize-path = { workspace = true }

@@ -902,6 +902,10 @@ impl Node {
     pub fn add_sub(&mut self, node: Node) {
         self.nodes.push(node);
     }
+
+    pub fn nodes(&self, name: &str) -> Vec<&Node> {
+        self.nodes.iter().filter(|n| n.name == name).collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

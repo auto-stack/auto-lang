@@ -1,3 +1,7 @@
+use std::path::Path;
+use normalize_path::NormalizePath;
+use autoval::AutoStr;
+
 /// Get the file name from a path.
 pub fn file_name(path: &str) -> &str {
     if let Some(pos) = path.rfind('/') {
@@ -8,6 +12,17 @@ pub fn file_name(path: &str) -> &str {
         } else {
             path
         }
+    }
+}
+
+pub trait PathExt {
+    fn unified(&self) -> AutoStr;
+}
+
+impl PathExt for Path {
+    fn unified(&self) -> AutoStr {
+        let res = self.normalize().to_string_lossy().replace("\\", "/").into();
+        if res == "" { ".".into() } else { res }
     }
 }
 
