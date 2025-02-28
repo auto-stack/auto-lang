@@ -1,7 +1,7 @@
 use crate::eval::{Evaler, EvalMode};
 use crate::parser::Parser;
 use crate::scope::Universe;
-use autoval::{Value, AutoStr};
+use auto_val::{Value, AutoStr};
 use std::rc::Rc;
 use std::cell::RefCell;
 

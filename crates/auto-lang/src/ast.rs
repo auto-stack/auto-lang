@@ -1,6 +1,6 @@
 use std::fmt;
 use serde::Serialize;
-use autoval::Op;
+use auto_val::Op;
 
 #[derive(Debug)]
 pub struct Code {
@@ -752,16 +752,16 @@ impl fmt::Display for View {
     }
 }
 
-fn fmt_type_inst(f: &mut fmt::Formatter, name: &Box<Expr>, entries: &Vec<Pair>) -> fmt::Result {
-    write!(f, "(type-inst {} ", name.as_ref())?;
-    for (i, pair) in entries.iter().enumerate() {
-        write!(f, "{}", pair)?;
-        if i < entries.len() - 1 {
-            write!(f, " ")?;
-        }
-    }
-    write!(f, ")")
-}
+// fn fmt_type_inst(f: &mut fmt::Formatter, name: &Box<Expr>, entries: &Vec<Pair>) -> fmt::Result {
+//     write!(f, "(type-inst {} ", name.as_ref())?;
+//     for (i, pair) in entries.iter().enumerate() {
+//         write!(f, "{}", pair)?;
+//         if i < entries.len() - 1 {
+//             write!(f, " ")?;
+//         }
+//     }
+//     write!(f, ")")
+// }
 
 #[derive(Debug, Clone)]
 pub struct FStr {

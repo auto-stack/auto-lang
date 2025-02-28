@@ -16,7 +16,7 @@ use std::cell::RefCell;
 use crate::eval::EvalMode;
 use crate::scope::{Universe, Meta};
 use crate::parser::Parser;
-use autoval::Obj;
+use auto_val::Obj;
 
 pub fn run(code: &str) -> Result<String, String> {
     let mut interpreter = interp::Interpreter::new();
@@ -124,7 +124,7 @@ fn flip_template(template: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use autoval::Value;
+    use auto_val::Value;
 
     #[test]
     fn test_unit() {
@@ -428,7 +428,7 @@ $ }"#;
                 kid("kid1")
             }
         "#;
-        let interp = eval_config(code).unwrap();
+        let interp = eval_config(code, &Obj::EMPTY).unwrap();
         let config = interp.result.as_node();
         let parent = &config.nodes[0];
         let size = parent.props.get_uint_of("size");
@@ -473,7 +473,7 @@ $ }"#;
         match result {
             Ok(result) => {
                 match result.result {
-                    autoval::Value::Node(app) => {
+                    auto_val::Value::Node(app) => {
                         println!("node: {}", app.to_string());
                         app.nodes.iter().for_each(|node| {
                             println!("node: {}", node.to_string());
@@ -650,7 +650,7 @@ $ }
 
     #[test]
     fn test_insert_global_fn() {
-        fn myjoin(arg: &autoval::Args) -> Value {
+        fn myjoin(arg: &auto_val::Args) -> Value {
             Value::Str(arg.args.iter().map(|v| v.to_string()).collect::<Vec<String>>().join("::"))
         }
 
@@ -780,6 +780,7 @@ $ }
         duck.fly()
         "#;
         let result = run(code).unwrap();
+        assert_eq!(result, "void");
     }
 
     #[test]
@@ -825,7 +826,7 @@ exe(hello) {
     dir: "src"
     main: "main.c"
 }"#;
-        let interp = eval_config(code).unwrap();
+        let interp = eval_config(code, &Obj::EMPTY).unwrap();
         let result = interp.result;
         assert_eq!(result.repr(), r#"root {name: "hello", version: "0.1.0"} [exe (hello) {dir: "src", main: "main.c"}]"#);
     }

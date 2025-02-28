@@ -3,13 +3,12 @@ use crate::ast::*;
 use crate::lexer::Lexer;
 use crate::scope::Universe;
 use crate::scope::Meta;
-use autoval::Op;
+use auto_val::Op;
 use std::i32;
 use crate::error_pos;
 use std::rc::Rc;
 use std::cell::RefCell;
-use crate::interp::Interpreter;
-use autoval::AutoStr;
+use auto_val::AutoStr;
 use std::path::Path;
 
 type ParseError = String;

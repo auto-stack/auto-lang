@@ -1,16 +1,13 @@
 use crate::ast::*;
-use crate::parser;
 use crate::scope;
 use crate::scope::Meta;
-use autoval::{Value, Op, Obj, ValueKey, ExtFn, MetaID, Sig, Method, Type};
-use autoval;
-use autoval::{add, sub, mul, div, comp};
+use auto_val::{Value, Op, Obj, ValueKey, MetaID, Sig, Method, Type};
+use auto_val;
+use auto_val::{add, sub, mul, div, comp};
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use crate::ast;
-use crate::error_pos;
 
 pub enum EvalTempo {
     IMMEDIATE,
@@ -58,7 +55,7 @@ impl Evaler {
                 value
             }
             EvalMode::CONFIG => {
-                let mut node = autoval::Node::new("root");
+                let mut node = auto_val::Node::new("root");
                 for stmt in code.stmts.iter() {
                     let val = self.eval_stmt(stmt);
                     match val {
@@ -332,7 +329,7 @@ impl Evaler {
                         match left.as_ref() {
                             Expr::Ident(name) => {
                                 // find object `left`
-                                let obj = self.update_obj(&name.text, move |o| {
+                                self.update_obj(&name.text, move |o| {
                                     match right.as_ref() {
                                         Expr::Ident(rname) => o.set(rname.text.clone(), val),
                                         _ => {}
@@ -529,7 +526,7 @@ impl Evaler {
     fn eval_instance(&mut self, type_decl: &TypeDecl, args: &Args) -> Value {
         let ty = self.eval_type(&type_decl);
         let fields = self.eval_fields(&type_decl.members, args);
-        Value::Instance(autoval::Instance { ty, fields })
+        Value::Instance(auto_val::Instance { ty, fields })
     }
 
     fn eval_type(&mut self, type_decl: &TypeDecl) -> Type {
@@ -542,20 +539,20 @@ impl Evaler {
         for (j, arg) in args.args.iter().enumerate() {
             let val_arg = self.eval_arg(arg);
             match val_arg {
-                autoval::Arg::Pair(key, val) => {
+                auto_val::Arg::Pair(key, val) => {
                     for member in members.iter() {
                         if key.to_string() == member.name.text {
                             fields.set(member.name.text.clone(), val.clone());
                         }
                     }
                 }
-                autoval::Arg::Pos(value) => {
+                auto_val::Arg::Pos(value) => {
                     if j < members.len() {
                         let member = &members[j];
                         fields.set(member.name.text.clone(), value);
                     }
                 }
-                autoval::Arg::Name(name) => {
+                auto_val::Arg::Name(name) => {
                     for member in members.iter() {
                         if name == member.name.text {
                             fields.set(member.name.text.clone(), Value::Str(name.clone()));
@@ -838,11 +835,11 @@ impl Evaler {
             vars.push((ValueKey::Str(var.name.text.clone()), value.clone()));
             self.universe.borrow_mut().set_local_val(&var.name.text, value);
         }
-        let model = autoval::Model { values: vars };
+        let model = auto_val::Model { values: vars };
         // view
         let view_id = format!("{}.view", name);
         self.universe.borrow_mut().define(&view_id, Rc::new(Meta::View(widget.view.clone())));
-        let widget_value = autoval::Widget { name: name.clone(), model, view_id: MetaID::View(view_id) };
+        let widget_value = auto_val::Widget { name: name.clone(), model, view_id: MetaID::View(view_id) };
         let value = Value::Widget(widget_value);
         self.universe.borrow_mut().set_local_val(name, value.clone());
         self.universe.borrow_mut().widget = value.clone();
@@ -874,18 +871,18 @@ impl Evaler {
         res
     }
 
-    fn eval_arg(&mut self, arg: &ast::Arg) -> autoval::Arg {
+    fn eval_arg(&mut self, arg: &ast::Arg) -> auto_val::Arg {
         match arg {
             ast::Arg::Name(name) => {
-                autoval::Arg::Name(name.text.clone())
+                auto_val::Arg::Name(name.text.clone())
             }
-            ast::Arg::Pair(name, expr) => autoval::Arg::Pair(ValueKey::Str(name.text.clone()), self.eval_expr(expr)),
-            ast::Arg::Pos(expr) => autoval::Arg::Pos(self.eval_expr(expr)),
+            ast::Arg::Pair(name, expr) => auto_val::Arg::Pair(ValueKey::Str(name.text.clone()), self.eval_expr(expr)),
+            ast::Arg::Pos(expr) => auto_val::Arg::Pos(self.eval_expr(expr)),
         }
     }
 
-    fn eval_args(&mut self, args: &ast::Args) -> autoval::Args {
-        let mut res = autoval::Args::new();
+    fn eval_args(&mut self, args: &ast::Args) -> auto_val::Args {
+        let mut res = auto_val::Args::new();
         for arg in args.args.iter() {
             let val = self.eval_arg(arg);
             res.args.push(val);
@@ -912,7 +909,7 @@ impl Evaler {
                 // put args as local values
                 for arg in args.args.iter() {
                     match arg {
-                        autoval::Arg::Pair(name, value) => {
+                        auto_val::Arg::Pair(name, value) => {
                             self.universe.borrow_mut().set_local_val(&name.to_string().as_str(), value.clone());
                         }
                         _ => {}
@@ -939,39 +936,39 @@ impl Evaler {
                 self.universe.borrow_mut().define_global(&name, Rc::new(Meta::Body(node.body.clone())));
             }
         }
-        Value::Node(autoval::Node { name: node.name.text.clone(), args, props, nodes, body })
+        Value::Node(auto_val::Node { name: node.name.text.clone(), args, props, nodes, body })
     }
 
-    fn eval_value_node_body(&mut self, node_val: &mut Value) {
-        self.universe.borrow_mut().enter_scope();
-        match node_val {
-            Value::Node(ref mut node) => {
-                let props = &mut node.props;
-                let nodes = &mut node.nodes;
-                let mut stmts = Vec::new();
-                {
-                    let scope = self.universe.borrow();
-                    let meta = scope.lookup_meta(&node.name);
-                    stmts = meta.map(|m| {
-                        match m.as_ref() {
-                            scope::Meta::Body(body) => body.stmts.clone(),
-                            _ => Vec::new(),
-                        }
-                    }).unwrap();
-                }
-                for stmt in stmts.iter() {
-                    let val = self.eval_stmt(stmt);
-                    match val {
-                        Value::Node(node) => {nodes.push(node);},
-                        Value::Pair(key, value) => {props.set(key, *value);},
-                        _ => {},
-                    }
-                }
-            },
-            _ => {},
-        };
-        self.universe.borrow_mut().exit_scope();
-    }
+    // fn eval_value_node_body(&mut self, node_val: &mut Value) {
+    //     self.universe.borrow_mut().enter_scope();
+    //     match node_val {
+    //         Value::Node(ref mut node) => {
+    //             let props = &mut node.props;
+    //             let nodes = &mut node.nodes;
+    //             let mut stmts = Vec::new();
+    //             {
+    //                 let scope = self.universe.borrow();
+    //                 let meta = scope.lookup_meta(&node.name);
+    //                 stmts = meta.map(|m| {
+    //                     match m.as_ref() {
+    //                         scope::Meta::Body(body) => body.stmts.clone(),
+    //                         _ => Vec::new(),
+    //                     }
+    //                 }).unwrap();
+    //             }
+    //             for stmt in stmts.iter() {
+    //                 let val = self.eval_stmt(stmt);
+    //                 match val {
+    //                     Value::Node(node) => {nodes.push(node);},
+    //                     Value::Pair(key, value) => {props.set(key, *value);},
+    //                     _ => {},
+    //                 }
+    //             }
+    //         },
+    //         _ => {},
+    //     };
+    //     self.universe.borrow_mut().exit_scope();
+    // }
 
     fn fstr(&mut self, fstr: &FStr) -> Value {
         let parts: Vec<String> = fstr.parts.iter().map(|part| {
@@ -1051,7 +1048,7 @@ impl Evaler {
             let row_data = row.iter().map(|elem| self.eval_expr(elem)).collect();
             data.push(row_data);
         }
-        Value::Grid(autoval::Grid { head, data })
+        Value::Grid(auto_val::Grid { head, data })
     }
 }
 
@@ -1066,7 +1063,7 @@ fn to_meta_id(meta: &Rc<scope::Meta>) -> MetaID {
 fn to_value_sig(fn_decl: &Fn) -> Sig {
     let mut params = Vec::new();
     for param in fn_decl.params.iter() {
-        params.push(autoval::Param {
+        params.push(auto_val::Param {
             name: param.name.text.clone(),
             ty: Box::new(to_value_type(&param.ty)),
         });
@@ -1075,16 +1072,16 @@ fn to_value_sig(fn_decl: &Fn) -> Sig {
     Sig { name: fn_decl.name.text.clone(), params, ret }
 }
 
-fn to_value_type(ty: &ast::Type) -> autoval::Type {
+fn to_value_type(ty: &ast::Type) -> auto_val::Type {
     match ty {
-        ast::Type::Byte => autoval::Type::Byte,
-        ast::Type::Int => autoval::Type::Int,
-        ast::Type::Float => autoval::Type::Float,
-        ast::Type::Bool => autoval::Type::Bool,
-        ast::Type::Char => autoval::Type::Char,
-        ast::Type::Str => autoval::Type::Str,
-        ast::Type::Array(_) => autoval::Type::Array,
-        ast::Type::User(type_decl) => autoval::Type::User(type_decl.name.text.clone()),
-        ast::Type::Unknown => autoval::Type::Any,
+        ast::Type::Byte => auto_val::Type::Byte,
+        ast::Type::Int => auto_val::Type::Int,
+        ast::Type::Float => auto_val::Type::Float,
+        ast::Type::Bool => auto_val::Type::Bool,
+        ast::Type::Char => auto_val::Type::Char,
+        ast::Type::Str => auto_val::Type::Str,
+        ast::Type::Array(_) => auto_val::Type::Array,
+        ast::Type::User(type_decl) => auto_val::Type::User(type_decl.name.text.clone()),
+        ast::Type::Unknown => auto_val::Type::Any,
     }
 }

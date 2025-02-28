@@ -48,7 +48,6 @@ pub enum TokenKind {
     Colon, // :
     VBar, // |
     Dollar, // $
-    Backtick, // `
     CommentLine, // //
     CommentContent, // any text in comment
     CommentStart, // /*
@@ -149,7 +148,6 @@ impl fmt::Display for Token {
             TokenKind::CommentContent => write!(f, "<comment:...>"),
             TokenKind::CommentStart => write!(f, "</*>"),
             TokenKind::CommentEnd => write!(f, "<*/>"),
-            TokenKind::Backtick => write!(f, "<`>"),
             TokenKind::Ref => write!(f, "<ref>"),
             TokenKind::EOF => write!(f, "<eof>"),
             TokenKind::Char => write!(f, "<'{}'>", self.text),
@@ -183,24 +181,12 @@ impl Token {
         Token::new(TokenKind::Str, pos, text)
     }
 
-    pub fn fstr_start(pos: Pos, text: String) -> Self {
-        Token::new(TokenKind::FStrStart, pos, text)
-    }
-
     pub fn fstr_part(pos: Pos, text: String) -> Self {
         Token::new(TokenKind::FStrPart, pos, text)
     }
 
-    pub fn fstr_end(pos: Pos, text: String) -> Self {
-        Token::new(TokenKind::FStrEnd, pos, text)
-    }
-
     pub fn ident(pos: Pos, text: String) -> Self {
         Token::new(TokenKind::Ident, pos, text)
-    }
-
-    pub fn nil(pos: Pos) -> Self {
-        Token::new(TokenKind::Nil, pos, "nil".to_string())
     }
 
     pub fn eof(pos: Pos) -> Self {

@@ -1,13 +1,12 @@
 use std::collections::HashMap;
-use autoval::{Value, Args};
-use autoval::Sig;
-use autoval::MetaID;
+use auto_val::{Value, Args};
+use auto_val::Sig;
+use auto_val::MetaID;
 use crate::ast;
 use crate::libs;
 use std::rc::Rc;
 use std::cell::RefCell;
-use autoval::{TypeInfoStore, ExtFn, Obj};
-use crate::parser::Parser;
+use auto_val::{TypeInfoStore, ExtFn, Obj};
 use std::any::Any;
 use std::fmt;
 use std::sync::LazyLock;
@@ -448,7 +447,7 @@ impl Universe {
         self.update_obj_recurse(name, f);
     }
 
-    fn update_array_recurse(&mut self, name: &str, idx: Value, val: Value, sid: &Sid) {
+    fn update_array_recurse(&mut self, name: &str, idx: Value, val: Value) {
         if let Some(value) = self.lookup_val_mut(name) {
             if let Value::Array(a) = value {
                 match idx {
@@ -461,8 +460,7 @@ impl Universe {
     }
 
     pub fn update_array(&mut self, name: &str, idx: Value, val: Value) {
-        let sid = self.cur_spot.clone();
-        self.update_array_recurse(name, idx, val, &sid);
+        self.update_array_recurse(name, idx, val);
     }
 
     fn lookup_val_mut_recurse(&mut self, name: &str, sid: &Sid) -> Option<&mut Value> {

@@ -1,13 +1,12 @@
 use super::ast::*;
 use std::io;
 use std::io::Write;
-use autoval::Op;
-use autoval::AutoStr;
+use auto_val::Op;
+use auto_val::AutoStr;
 use crate::parser::Parser;
 use crate::scope;
 use std::rc::Rc;
 use std::cell::RefCell;
-use crate::interp;
 
 pub trait Transpiler {
     fn transpile(&mut self, ast: Code, out: &mut impl Write) -> Result<(), String>;
@@ -16,15 +15,13 @@ pub trait Transpiler {
 pub struct CTranspiler {
     indent: usize,
     includes: Vec<u8>,
-    main: Vec<u8>,
-    decls: Vec<u8>,
     header: Vec<u8>,
     name: AutoStr,
 }
 
 impl CTranspiler {
     fn new(name: AutoStr) -> Self {
-        Self { indent: 0, includes: Vec::new(), main: Vec::new(), decls: Vec::new(), header: Vec::new(), name }
+        Self { indent: 0, includes: Vec::new(), header: Vec::new(), name }
     }
 
     fn indent(&mut self) {
@@ -208,30 +205,39 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn call(&mut self, call: &Call, out: &mut impl Write) -> Result<(), String> {
-        if let Expr::Ident(name) = &call.name.as_ref() {
-            if name.text == "print" {
-                // TODO: check type of the args and format accordingly
-                // get number and type of args
-                let num_args = call.args.args.len();
-                let mut arg_types = Vec::new();
-                for arg in call.args.args.iter() {
-                    match arg {
-                        Arg::Pos(expr) => {
-                            match expr {
-                                Expr::Int(_) => arg_types.push("%d"),
-                                Expr::Str(_) => arg_types.push("%s"),
-                                Expr::Float(_) => arg_types.push("%f"),
-                                _ => {}
-                            }
-                        }
+    fn process_print(&mut self, call: &Call, out: &mut impl Write) -> Result<(), String> {
+        // TODO: check type of the args and format accordingly
+        // get number and type of args
+        let mut arg_types = Vec::new();
+        for arg in call.args.args.iter() {
+            match arg {
+                Arg::Pos(expr) => {
+                    match expr {
+                        Expr::Int(_) => arg_types.push("%d"),
+                        Expr::Str(_) => arg_types.push("%s"),
+                        Expr::Float(_) => arg_types.push("%f"),
+                        // TODO: check the actual type of the identifier
+                        Expr::Ident(_) => arg_types.push("%d"),
                         _ => {
-                            // TODO: implement identifier args and named args
+                            // other types are now viewed as ints
+                            arg_types.push("%d");
                         }
                     }
                 }
-                let fmt = format!("printf(\"{}\", ", arg_types.join(" "));
-                out.write(fmt.as_bytes()).to()?;
+                _ => {
+                    // TODO: implement identifier args and named args
+                }
+            }
+        }
+        let fmt = format!("printf(\"{}\", ", arg_types.join(" "));
+        out.write(fmt.as_bytes()).to()
+    }
+    
+
+    fn call(&mut self, call: &Call, out: &mut impl Write) -> Result<(), String> {
+        if let Expr::Ident(name) = &call.name.as_ref() {
+            if name.text == "print" {
+                self.process_print(call, out)?;
             } else {
                 self.expr(&call.name, out)?;
                 out.write(b"(").to()?;
@@ -320,7 +326,7 @@ impl Transpiler for CTranspiler {
                         Expr::Call(call) => {
                             if let Expr::Ident(name) = &call.name.as_ref() {
                                 if name.text == "print" {
-                                    self.includes.write(b"#include <stdio.h>\n");
+                                    self.includes.write(b"#include <stdio.h>\n").to()?;
                                 }
                             }
                         }
@@ -474,7 +480,7 @@ mod tests {
         let code = "for i in 1..5 { print(i) }";
         let out = transpile_part(code).unwrap();
         let expected = r#"for (int i = 1; i < 5; i++) {
-    print(i);
+    printf("%d", i);
 }
 "#;
         assert_eq!(out, expected);
@@ -486,7 +492,7 @@ mod tests {
         let out = transpile_part(code).unwrap();
         let expected = r#"int x = 41;
 if (x > 0) {
-    print(x);
+    printf("%d", x);
 }
 "#;
         assert_eq!(out, expected);
@@ -498,9 +504,9 @@ if (x > 0) {
         let out = transpile_part(code).unwrap();
         let expected = r#"int x = 41;
 if (x > 0) {
-    print(x);
+    printf("%d", x);
 } else {
-    print(-x);
+    printf("%d", -x);
 }
 "#;
         assert_eq!(out, expected);

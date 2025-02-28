@@ -1,6 +1,6 @@
-use std::fmt::{self, write, Display, Formatter};
+use std::fmt::{self, Display, Formatter};
 use std::collections::BTreeMap;
-use crate::types::{Type, TypeInfo};
+use crate::types::Type;
 use std::collections::btree_map::{Iter, IntoIter};
 use crate::AutoStr;
 
@@ -705,7 +705,7 @@ pub struct ExtFn {
 
 impl PartialEq for ExtFn {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.fun == other.fun
+        self.name == other.name && std::ptr::fn_addr_eq(self.fun, other.fun)
     }
 }
 
@@ -878,6 +878,10 @@ impl Node {
         } else {
             format!("{}({})", self.name, self.args.args[0])
         }
+    }
+
+    pub fn id(&self) -> AutoStr {
+        self.args.get_val(0).auto_str()
     }
 
     pub fn has_prop(&self, key: &str) -> bool {

@@ -1,6 +1,6 @@
 use std::path::Path;
 use normalize_path::NormalizePath;
-use autoval::AutoStr;
+use auto_val::AutoStr;
 
 /// Get the file name from a path.
 pub fn file_name(path: &str) -> &str {

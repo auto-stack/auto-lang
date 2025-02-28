@@ -410,6 +410,7 @@ impl<'a> Lexer<'a> {
         Token::eof(self.pos(0))
     }
 
+    #[cfg(test)]
     fn tokens(&mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
         loop {
@@ -422,10 +423,12 @@ impl<'a> Lexer<'a> {
         tokens
     }
 
+    #[cfg(test)]
     fn tokens_str(&mut self) -> String {
         let tokens = self.tokens();
         tokens.iter().map(|t| t.to_string()).collect::<Vec<String>>().join("")
     }
+
 
     fn slash_or_comment(&mut self) -> Token {
         self.chars.next();
