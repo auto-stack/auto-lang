@@ -1,311 +1,14 @@
-use std::fmt::{self, Display, Formatter};
-use std::collections::BTreeMap;
-use crate::types::Type;
-use std::collections::btree_map::{Iter, IntoIter};
+
 use crate::AutoStr;
+use crate::array::*;
+use crate::obj::*;
+use crate::pair::*;
+use crate::string::*;
+use crate::meta::*;
+use crate::node::*;
+use std::fmt::{self, Display, Formatter};
 
-#[derive(Debug, Clone, PartialEq, Hash, Ord, Eq, PartialOrd)]
-pub enum ValueKey {
-    Str(AutoStr),
-    Int(i32),
-    Bool(bool),
-}
 
-impl ValueKey {
-    pub fn name(&self) -> Option<&str> {
-        match self {
-            ValueKey::Str(s) => Some(s.as_str()),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Obj {
-    values: BTreeMap<ValueKey, Value>,
-}
-
-impl IntoIterator for Obj {
-    type Item = (ValueKey, Value);
-    type IntoIter = IntoIter<ValueKey, Value>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.values.into_iter()
-    }
-}
-
-impl Obj {
-    pub const EMPTY: Self = Self { values: BTreeMap::new() };
-
-    pub fn iter(&self) -> Iter<ValueKey, Value> {
-        self.values.iter()
-    }
-}
-
-impl Display for ValueKey {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ValueKey::Str(s) => write!(f, "{}", s),
-            ValueKey::Int(i) => write!(f, "{}", i),
-            ValueKey::Bool(b) => write!(f, "{}", b),
-        }
-    }
-}
-
-impl Into<ValueKey> for i32 {
-    fn into(self) -> ValueKey {
-        ValueKey::Int(self)
-    }
-}
-
-impl Into<ValueKey> for bool {
-    fn into(self) -> ValueKey {
-        ValueKey::Bool(self)
-    }
-} 
-
-impl Into<ValueKey> for i64 {
-    fn into(self) -> ValueKey {
-        ValueKey::Int(self as i32)
-    }
-}
-
-impl Into<ValueKey> for String {
-    fn into(self) -> ValueKey {
-        ValueKey::Str(self.into())
-    }
-}
-
-impl Into<ValueKey> for &str {
-    fn into(self) -> ValueKey {
-        ValueKey::Str(self.into())
-    }
-}
-
-impl From<AutoStr> for ValueKey {
-    fn from(s: AutoStr) -> ValueKey {
-        ValueKey::Str(s)
-    }
-}
-
-impl From<Obj> for Value {
-    fn from(obj: Obj) -> Value {
-        Value::Obj(obj)
-    }
-}
-
-impl From<String> for Value {
-    fn from(s: String) -> Value {
-        Value::Str(s.into())
-    }
-}
-
-impl From<bool> for Value {
-    fn from(b: bool) -> Value {
-        Value::Bool(b)
-    }
-}
-
-impl From<u8> for Value {
-    fn from(u: u8) -> Value {
-        Value::Uint(u as u32)
-    }
-}
-
-impl From<i32> for Value {
-    fn from(i: i32) -> Value {
-        Value::Int(i)
-    }
-}
-
-impl From<u32> for Value {
-    fn from(u: u32) -> Value {
-        Value::Uint(u)
-    }
-}
-
-impl From<f64> for Value {
-    fn from(f: f64) -> Value {
-        Value::Float(f)
-    }
-}
-
-impl From<i64> for Value {
-    fn from(i: i64) -> Value {
-        Value::Int(i as i32)
-    }
-}
-
-impl From<u64> for Value {
-    fn from(u: u64) -> Value {
-        Value::Uint(u as u32)
-    }
-}   
-
-impl From<f32> for Value {
-    fn from(f: f32) -> Value {
-        Value::Float(f as f64)
-    }
-}
-
-// impl From<Vec<Value>> for Value {
-//     fn from(v: Vec<Value>) -> Value {
-//         Value::Array(v)
-//     }
-// }
-
-impl<T> From<Vec<T>> for Value where T: Into<Value> {
-    fn from(v: Vec<T>) -> Value {
-        Value::Array(v.into_iter().map(|v| v.into()).collect())
-    }
-}
-
-impl From<&str> for Value {
-    fn from(s: &str) -> Value {
-        Value::Str(s.into())
-    }
-}
-
-impl Obj {
-    pub fn new() -> Self {
-        Obj { values: BTreeMap::new() }
-    }
-
-    pub fn len(&self) -> usize {
-        self.values.len()
-    }
-
-    pub fn has(&self, key: impl Into<ValueKey>) -> bool {
-        self.values.contains_key(&key.into())
-    }
-
-    pub fn keys(&self) -> Vec<ValueKey> {
-        self.values.keys().cloned().collect()
-    }
-
-    pub fn key_names(&self) -> Vec<AutoStr> {
-        self.values.keys().map(|k| match k {
-            ValueKey::Str(s) => s.clone(),
-            ValueKey::Int(i) => i.to_string().into(),
-            ValueKey::Bool(b) => b.to_string().into(),
-        }).collect()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.values.is_empty()
-    }
-
-    pub fn get(&self, key: impl Into<ValueKey>) -> Option<Value> {
-        self.values.get(&key.into()).cloned()
-    }
-
-    pub fn get_mut(&mut self, key: impl Into<ValueKey>) -> Option<&mut Value> {
-        self.values.get_mut(&key.into())
-    }
-
-    pub fn get_or_nil(&self, key: impl Into<ValueKey>) -> Value {
-        self.get(key).unwrap_or(Value::Nil)
-    }
-
-    pub fn set(&mut self, key: impl Into<ValueKey>, value: impl Into<Value>) {
-        self.values.insert(key.into(), value.into());
-    }
-
-    pub fn lookup(&self, name: &str) -> Option<Value> {
-        self.values.iter().find(|(k, _)| match k {
-            ValueKey::Str(s) => s == name,
-            ValueKey::Int(i) => i.to_string() == name,
-            ValueKey::Bool(b) => b.to_string() == name,
-        }).map(|(_, v)| v.clone())
-    }
-
-    pub fn get_or(&self, name: &str, default: Value) -> Value {
-        self.lookup(name).unwrap_or(default)
-    }
-
-    pub fn get_str(&self, name: &str) -> Option<AutoStr> {
-        match self.get(ValueKey::Str(name.into())) {
-            Some(Value::Str(s)) => Some(s),
-            _ => None,
-        }
-    }
-
-    pub fn get_str_or(&self, name: &str, default: impl Into<AutoStr>) -> AutoStr {
-        match self.get(ValueKey::Str(name.into())) {
-            Some(Value::Str(s)) => s,
-            _ => default.into(),
-        }
-    }
-
-    pub fn get_str_of(&self, name: &str) -> AutoStr {
-        self.get_str_or(name, "")
-    }
-
-    pub fn get_float_or(&self, name: &str, default: f64) -> f64 {
-        match self.get(ValueKey::Str(name.into())) {
-            Some(Value::Float(f)) => f,
-            _ => default,
-        }
-    }
-
-    pub fn get_uint_or(&self, name: &str, default: u32) -> u32 {
-        match self.get(name) {
-            Some(Value::Uint(u)) => u,
-            Some(Value::Int(i)) => if i >= 0 { i as u32 } else { default },
-            _ => default,
-        }
-    }
-
-    pub fn get_uint_of(&self, name: &str) -> u32 {
-        self.get_uint_or(name, 0)
-    }
-
-    pub fn get_bool_or(&self, name: &str, default: bool) -> bool {
-        match self.get(ValueKey::Str(name.into())) {
-            Some(Value::Bool(b)) => b,
-            _ => default,
-        }
-    }
-
-    pub fn get_bool_of(&self, name: &str) -> bool {
-        self.get_bool_or(name, false)
-    }
-
-    pub fn get_array_or(&self, name: &str, default: &Vec<Value>) -> Vec<Value> {
-        match self.get(ValueKey::Str(name.into())) {
-            Some(Value::Array(a)) => a,
-            _ => default.clone(),
-        }
-    }
-
-    pub fn get_array_of(&self, name: &str) -> Vec<Value> {
-        self.get_array_or(name, &vec![])
-    }
-
-    pub fn get_array_of_str(&self, name: &str) -> Vec<AutoStr> {
-        self.get_array_of(name).iter().map(|v| v.to_astr()).collect()
-    }
-
-    pub fn merge(&mut self, other: &Obj) {
-        for (key, value) in &other.values {
-            self.set(key.clone(), value.clone());
-        }
-    }
-
-    pub fn remove(&mut self, key: impl Into<ValueKey>) {
-        self.values.remove(&key.into());
-    }
-
-    pub fn pretty(&self, max_indent: usize) -> String {
-        pretty(format!("{}", self).as_str(), max_indent)
-    }
-}
-
-impl Display for Obj {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        print_object(f, self)
-    }
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -316,7 +19,7 @@ pub enum Value {
     Bool(bool),
     Char(char),
     Str(AutoStr),
-    Array(Vec<Value>),
+    Array(Array),
     Pair(ValueKey, Box<Value>),
     Obj(Obj),
     Node(Node),
@@ -349,12 +52,12 @@ impl Value {
         Value::Error(text.into())
     }
 
-    pub fn array() -> Self {
-        Value::Array(vec![])
+    pub fn array(items: impl Into<Array>) -> Self {
+        Value::Array(items.into())
     }
 
     pub fn str_array(values: Vec<impl Into<AutoStr>>) -> Self {
-        Value::Array(values.into_iter().map(|s| Value::Str(s.into())).collect())
+        Value::Array(values.into_iter().map(|s| Value::Str(s.into())).collect::<Vec<Value>>().into())
     }
 
     pub fn obj() -> Self {
@@ -385,30 +88,7 @@ fn float_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < epsilon
 }
 
-fn print_array(f: &mut Formatter<'_>, value: &Vec<Value>) -> fmt::Result {
-    write!(f, "[")?;
-    for (i, v) in value.iter().enumerate() {
-        write!(f, "{}", v)?;
-        if i < value.len() - 1 {
-            write!(f, ", ")?;
-        }
-    }
-    write!(f, "]")
-}
-
-fn print_object(f: &mut Formatter<'_>, obj: &Obj) -> fmt::Result {
-    write!(f, "{{")?;
-    for (i, (k, v)) in obj.values.iter().enumerate() {
-        write!(f, "{}: {}", k, v)?;
-        if i < obj.values.len() - 1 {
-            write!(f, ", ")?;
-        }
-    }
-    write!(f, "}}")
-}
-
 impl Display for Value {
-
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Value::Char(value) => write!(f, "'{}'", value),
@@ -561,10 +241,6 @@ impl Value {
     }
 }
 
-
-static OBJ_NIL: Obj = Obj::EMPTY;
-static ARRAY_NIL: Vec<Value> = vec![];
-static ASTR_EMPTY: AutoStr = AutoStr::new();
 static NODE_NIL: Node = Node {
     name: AutoStr::new(),
     args: Args::EMPTY,
@@ -600,17 +276,17 @@ impl Value {
         }
     }
 
-    pub fn as_array(&self) -> &Vec<Value> {
+    pub fn as_array(&self) -> &Array {
         match self {
             Value::Array(value) => value,
-            _ => &ARRAY_NIL,
+            _ => &ARRAY_EMPTY,
         }
     }
 
     pub fn as_obj(&self) -> &Obj {
         match self {
             Value::Obj(ref value) => value,
-            _ => &OBJ_NIL,
+            _ => &OBJ_EMPTY,
         }
     }
     
@@ -685,38 +361,6 @@ impl Value {
             Value::Str(s) => s.clone(),
             _ => self.to_string().into(),
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Fn {
-    pub sig: Sig,
-    pub fun: fn(&Vec<Value>) -> Value,
-}
-
-/// Function signature
-#[derive(Debug, Clone, PartialEq)]
-pub struct Sig {
-    pub name: String,
-    pub params: Vec<Param>,
-    pub ret: Type,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Param {
-    pub name: String,
-    pub ty: Box<Type>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ExtFn {
-    pub name: String,
-    pub fun: fn(&Args) -> Value,
-}
-
-impl PartialEq for ExtFn {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && std::ptr::fn_addr_eq(self.fun, other.fun)
     }
 }
 
@@ -869,213 +513,8 @@ impl View {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Node {
-    pub name: AutoStr,
-    pub args: Args,
-    pub props: Obj,
-    pub nodes: Vec<Node>,
-    pub body: MetaID,
-}
-
-impl Node {
-    pub fn new(name: impl Into<AutoStr>) -> Self {
-        Self { name: name.into(), args: Args::new(), props: Obj::new(), nodes: vec![], body: MetaID::Nil }
-    }
-
-    pub fn title(&self) -> AutoStr {
-        if self.args.is_empty() {
-            self.name.clone()
-        } else {
-            format!("{}({})", self.name, self.args.args[0].to_string()).into()
-        }
-    }
-
-    pub fn id(&self) -> AutoStr {
-        self.args.get_val(0).to_astr()
-    }
-
-    pub fn has_prop(&self, key: &str) -> bool {
-        self.props.has(key)
-    }
-
-    pub fn get_prop(&self, key: &str) -> Value {
-        match self.props.get(key) {
-            Some(value) => value.clone(),
-            None => Value::Nil,
-        }
-    }
-
-    pub fn set_prop(&mut self, key: impl Into<ValueKey>, value: impl Into<Value>) {
-        self.props.set(key.into(), value.into());
-    }
-
-    pub fn merge_obj(&mut self, obj: Obj) {
-        self.props.merge(&obj);
-    }
-
-    pub fn add_kid(&mut self, node: Node) {
-        self.nodes.push(node);
-    }
-
-    pub fn nodes(&self, name: &str) -> Vec<&Node> {
-        self.nodes.iter().filter(|n| n.name == name).collect()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Arg {
-    Pos(Value),
-    Pair(ValueKey, Value),
-    Name(AutoStr),
-}
-
-impl Arg {
-    pub fn get_val(&self) -> Value {
-        match self {
-            Arg::Pos(value) => value.clone(),
-            Arg::Pair(_, value) => value.clone(),
-            Arg::Name(name) => Value::Str(name.clone()),
-        }
-    }
-
-    pub fn to_astr(&self) -> AutoStr {
-        match self {
-            Arg::Pos(value) => value.to_astr(),
-            Arg::Pair(_, value) => value.to_astr(),
-            Arg::Name(name) => name.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Args {
-    pub args: Vec<Arg>,
-}
-
-impl fmt::Display for Args {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.args.is_empty() {
-            return Ok(());
-        }
-        write!(f, "(")?;
-        for (i, arg) in self.args.iter().enumerate() {
-            write!(f, "{}", arg)?;
-            if i < self.args.len() - 1 {
-                write!(f, ", ")?;
-            }
-        }
-        write!(f, ")")
-    }
-}
-
-impl fmt::Display for Arg {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Arg::Pos(value) => write!(f, "{}", value),
-            Arg::Pair(key, value) => write!(f, "{}:{}", key, value),
-            Arg::Name(name) => write!(f, "{}", name),
-        }
-    }
-}
-
-impl Args {
-    pub fn new() -> Self {
-        Self { args: Vec::new() }
-    }
-
-    pub const EMPTY: Self = Self { args: vec![] };
-
-    pub fn get_val(&self, index: usize) -> Value {
-        self.args.get(index).map(|arg| arg.get_val()).unwrap_or(Value::Nil)
-    }
-
-    pub fn array(values: Vec<impl Into<Value>>) -> Self {
-        Self { args: values.into_iter().map(|v| Arg::Pos(v.into())).collect() }
-    }
-
-    pub fn add_name(&mut self, name: impl Into<AutoStr>) {
-        self.args.push(Arg::Name(name.into()));
-    }
-
-    pub fn add_pos(&mut self, value: impl Into<Value>) {
-        self.args.push(Arg::Pos(value.into()));
-    }
-
-    pub fn add_pair(&mut self, name: &str, value: Value) {
-        self.args.push(Arg::Pair(name.into(), value));
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.args.is_empty()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Instance {
-    pub ty: Type,
-    pub fields: Obj,
-}
-
-impl fmt::Display for Instance {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}{}", self.ty, self.fields)
-    }
-}
 
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum MetaID {
-    Fn(Sig),
-    Lambda(Sig),
-    Type(String),
-    View(String),
-    Body(String),
-    Method(MethodMeta),
-    Nil,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct MethodMeta {
-    pub name: String,
-    pub ty: Type,
-}
-
-impl fmt::Display for MethodMeta {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}::{}", self.ty, self.name)
-    }
-}
-
-impl fmt::Display for MetaID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            MetaID::Fn(sig) => write!(f, "<fn:{}>", sig),
-            MetaID::Lambda(sig) => write!(f, "<lambda:{}>", sig),
-            MetaID::View(id) => write!(f, "<view:{}>", id),
-            MetaID::Body(id) => write!(f, "<body:{}>", id),
-            MetaID::Nil => write!(f, "<meta-nil>"),
-            MetaID::Method(method) => write!(f, "<method:{}>", method),
-            MetaID::Type(id) => write!(f, "<type:{}>", id),
-        }
-    }
-}
-
-impl fmt::Display for Sig {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)?;
-        for param in &self.params {
-            write!(f, " {}", param)?;
-        }
-        write!(f, " -> {}", self.ret)
-    }
-}
-
-impl fmt::Display for Param {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}", self.name, self.ty)
-    }
-}
 
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -1195,7 +634,7 @@ impl Grid {
             }
             result.push(Value::Obj(obj));
         }
-        Value::Array(result)
+        Value::array(result)
     }
 }
 
@@ -1297,9 +736,88 @@ pub fn pretty(text: &str, max_indent: usize) -> String {
     result
 }
 
-impl Into<Value> for AutoStr {
-    fn into(self) -> Value {
-        Value::Str(self)
+impl From<AutoStr> for Value {
+    fn from(astr: AutoStr) -> Value {
+        Value::Str(astr)
+    }
+}
+
+impl From<Obj> for Value {
+    fn from(obj: Obj) -> Value {
+        Value::Obj(obj)
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Value {
+        Value::Str(s.into())
+    }
+}
+
+impl From<bool> for Value {
+    fn from(b: bool) -> Value {
+        Value::Bool(b)
+    }
+}
+
+impl From<u8> for Value {
+    fn from(u: u8) -> Value {
+        Value::Uint(u as u32)
+    }
+}
+
+impl From<i32> for Value {
+    fn from(i: i32) -> Value {
+        Value::Int(i)
+    }
+}
+
+impl From<u32> for Value {
+    fn from(u: u32) -> Value {
+        Value::Uint(u)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(f: f64) -> Value {
+        Value::Float(f)
+    }
+}
+
+impl From<i64> for Value {
+    fn from(i: i64) -> Value {
+        Value::Int(i as i32)
+    }
+}
+
+impl From<u64> for Value {
+    fn from(u: u64) -> Value {
+        Value::Uint(u as u32)
+    }
+}   
+
+impl From<f32> for Value {
+    fn from(f: f32) -> Value {
+        Value::Float(f as f64)
+    }
+}
+
+// impl From<Vec<Value>> for Value {
+//     fn from(v: Vec<Value>) -> Value {
+//         Value::Array(v)
+//     }
+// }
+
+impl<T> From<Vec<T>> for Value where T: Into<Value> {
+    fn from(v: Vec<T>) -> Value {
+        let array = Array { values: v.into_iter().map(|v| v.into()).collect() };
+        Value::Array(array)
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Value {
+        Value::Str(s.into())
     }
 }
 

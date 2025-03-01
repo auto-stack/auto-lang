@@ -1,7 +1,7 @@
 
 use crate::scope;
 use crate::scope::Meta;
-use auto_val::{Value, Op, Obj, ValueKey, MetaID, Sig, Method, Type, AutoStr};
+use auto_val::{Value, Op, Obj, Array, ValueKey, MetaID, Sig, Method, Type, AutoStr};
 use auto_val;
 use auto_val::{add, sub, mul, div, comp};
 use std::rc::Rc;
@@ -202,7 +202,7 @@ impl Evaler {
         let body = &for_stmt.body;
         let mut max_loop = 1000;
         let range = self.eval_expr(&for_stmt.range);
-        let mut res = Vec::new();
+        let mut res = Array::new();
         let mut is_mid = true;
         let is_new_line = for_stmt.new_line;
         let sep = if for_stmt.new_line { "\n" } else { "" };
@@ -401,11 +401,11 @@ impl Evaler {
     }
 
     fn array(&mut self, elems: &Vec<Expr>) -> Value {
-        let mut values = Vec::new();
+        let mut values = Array::new();
         for elem in elems.iter() {
             values.push(self.eval_expr(elem));
         }
-        Value::Array(values)
+        Value::array(values)
     }
 
     fn object(&mut self, pairs: &Vec<Pair>) -> Value {

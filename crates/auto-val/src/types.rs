@@ -159,10 +159,14 @@ impl fmt::Display for Type {
 mod tests {
     use super::*;
 
+    fn vec_to_array(values: Vec<impl Into<Value>>) -> Value {
+        Value::array(values.into_iter().map(|v| v.into()).collect::<Vec<Value>>())
+    }
+
     #[test]
     fn test_call_method() {
         let method = Value::v_str;
-        let v = Value::Array(vec![Value::Int(1), Value::Int(2)]);
+        let v = vec_to_array(vec![1, 2]);
         let res = method(&v);
         assert_eq!(res, Value::str("[1, 2]"));
     }
@@ -171,7 +175,7 @@ mod tests {
     fn test_any_method() {
         let store = TypeInfoStore::new();
         let method = store.lookup_method(Type::Any, "str".to_string()).unwrap();
-        let v = Value::Array(vec![Value::Int(1), Value::Int(2)]);
+        let v = vec_to_array(vec![1, 2]);
         let res = method(&v);
         let s = res.repr();
         assert_eq!(s, "[1, 2]");
