@@ -1,4 +1,5 @@
 use crate::Value;
+use crate::AutoStr;
 use std::fmt::{self, Formatter};
 use std::ops::{Index, IndexMut};
 
@@ -55,6 +56,10 @@ impl Array {
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Value> {
         self.values.iter_mut()
     }
+
+    pub fn to_astr(&self) -> AutoStr {
+        self.to_string().into()
+    }
 }
 
 impl From<Array> for Value {
@@ -66,6 +71,12 @@ impl From<Array> for Value {
 impl From<Vec<Value>> for Array {
     fn from(values: Vec<Value>) -> Self {
         Array { values }
+    }
+}
+
+impl fmt::Display for Array {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        print_array(f, self)
     }
 }
 

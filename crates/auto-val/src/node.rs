@@ -65,6 +65,10 @@ impl Node {
     pub fn nodes(&self, name: &str) -> Vec<&Node> {
         self.nodes.iter().filter(|n| n.name == name).collect()
     }
+
+    pub fn to_astr(&self) -> AutoStr {
+        self.to_string().into()
+    }
 }
 
 
