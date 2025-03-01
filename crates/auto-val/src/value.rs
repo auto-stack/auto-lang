@@ -906,15 +906,15 @@ impl Node {
         }
     }
 
-    pub fn set_prop(&mut self, key: impl Into<ValueKey>, value: Value) {
-        self.props.set(key.into(), value);
+    pub fn set_prop(&mut self, key: impl Into<ValueKey>, value: impl Into<Value>) {
+        self.props.set(key.into(), value.into());
     }
 
     pub fn merge_obj(&mut self, obj: Obj) {
         self.props.merge(&obj);
     }
 
-    pub fn add_sub(&mut self, node: Node) {
+    pub fn add_kid(&mut self, node: Node) {
         self.nodes.push(node);
     }
 
@@ -992,6 +992,14 @@ impl Args {
 
     pub fn array(values: Vec<impl Into<Value>>) -> Self {
         Self { args: values.into_iter().map(|v| Arg::Pos(v.into())).collect() }
+    }
+
+    pub fn add_name(&mut self, name: impl Into<AutoStr>) {
+        self.args.push(Arg::Name(name.into()));
+    }
+
+    pub fn add_pos(&mut self, value: impl Into<Value>) {
+        self.args.push(Arg::Pos(value.into()));
     }
 
     pub fn add_pair(&mut self, name: &str, value: Value) {

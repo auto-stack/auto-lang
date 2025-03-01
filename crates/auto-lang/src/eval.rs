@@ -79,7 +79,7 @@ impl Evaler {
                             node.merge_obj(o);
                         }
                         Value::Node(n) => {
-                            node.add_sub(n);
+                            node.add_kid(n);
                         }
                         _ => {}
                     }
