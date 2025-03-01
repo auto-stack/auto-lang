@@ -6,7 +6,7 @@ use crate::AutoStr;
 
 #[derive(Debug, Clone, PartialEq, Hash, Ord, Eq, PartialOrd)]
 pub enum ValueKey {
-    Str(String),
+    Str(AutoStr),
     Int(i32),
     Bool(bool),
 }
@@ -14,7 +14,7 @@ pub enum ValueKey {
 impl ValueKey {
     pub fn name(&self) -> Option<&str> {
         match self {
-            ValueKey::Str(s) => Some(s),
+            ValueKey::Str(s) => Some(s.as_str()),
             _ => None,
         }
     }
@@ -72,13 +72,19 @@ impl Into<ValueKey> for i64 {
 
 impl Into<ValueKey> for String {
     fn into(self) -> ValueKey {
-        ValueKey::Str(self)
+        ValueKey::Str(self.into())
     }
 }
 
 impl Into<ValueKey> for &str {
     fn into(self) -> ValueKey {
-        ValueKey::Str(self.to_string())
+        ValueKey::Str(self.into())
+    }
+}
+
+impl From<AutoStr> for ValueKey {
+    fn from(s: AutoStr) -> ValueKey {
+        ValueKey::Str(s)
     }
 }
 
@@ -90,7 +96,7 @@ impl From<Obj> for Value {
 
 impl From<String> for Value {
     fn from(s: String) -> Value {
-        Value::Str(s)
+        Value::Str(s.into())
     }
 }
 
@@ -156,7 +162,7 @@ impl<T> From<Vec<T>> for Value where T: Into<Value> {
 
 impl From<&str> for Value {
     fn from(s: &str) -> Value {
-        Value::Str(s.to_string())
+        Value::Str(s.into())
     }
 }
 
@@ -177,10 +183,11 @@ impl Obj {
         self.values.keys().cloned().collect()
     }
 
-    pub fn key_names(&self) -> Vec<String> {
+    pub fn key_names(&self) -> Vec<AutoStr> {
         self.values.keys().map(|k| match k {
             ValueKey::Str(s) => s.clone(),
-            _ => k.to_string(),
+            ValueKey::Int(i) => i.to_string().into(),
+            ValueKey::Bool(b) => b.to_string().into(),
         }).collect()
     }
 
@@ -216,26 +223,26 @@ impl Obj {
         self.lookup(name).unwrap_or(default)
     }
 
-    pub fn get_str(&self, name: &str) -> Option<String> {
-        match self.get(ValueKey::Str(name.to_string())) {
+    pub fn get_str(&self, name: &str) -> Option<AutoStr> {
+        match self.get(ValueKey::Str(name.into())) {
             Some(Value::Str(s)) => Some(s),
             _ => None,
         }
     }
 
-    pub fn get_str_or(&self, name: &str, default: &str) -> String {
-        match self.get(ValueKey::Str(name.to_string())) {
+    pub fn get_str_or(&self, name: &str, default: impl Into<AutoStr>) -> AutoStr {
+        match self.get(ValueKey::Str(name.into())) {
             Some(Value::Str(s)) => s,
-            _ => default.to_string(),
+            _ => default.into(),
         }
     }
 
-    pub fn get_str_of(&self, name: &str) -> String {
+    pub fn get_str_of(&self, name: &str) -> AutoStr {
         self.get_str_or(name, "")
     }
 
     pub fn get_float_or(&self, name: &str, default: f64) -> f64 {
-        match self.get(ValueKey::Str(name.to_string())) {
+        match self.get(ValueKey::Str(name.into())) {
             Some(Value::Float(f)) => f,
             _ => default,
         }
@@ -254,7 +261,7 @@ impl Obj {
     }
 
     pub fn get_bool_or(&self, name: &str, default: bool) -> bool {
-        match self.get(ValueKey::Str(name.to_string())) {
+        match self.get(ValueKey::Str(name.into())) {
             Some(Value::Bool(b)) => b,
             _ => default,
         }
@@ -265,7 +272,7 @@ impl Obj {
     }
 
     pub fn get_array_or(&self, name: &str, default: &Vec<Value>) -> Vec<Value> {
-        match self.get(ValueKey::Str(name.to_string())) {
+        match self.get(ValueKey::Str(name.into())) {
             Some(Value::Array(a)) => a,
             _ => default.clone(),
         }
@@ -276,7 +283,7 @@ impl Obj {
     }
 
     pub fn get_array_of_str(&self, name: &str) -> Vec<AutoStr> {
-        self.get_array_of(name).iter().map(|v| v.auto_str()).collect()
+        self.get_array_of(name).iter().map(|v| v.to_astr()).collect()
     }
 
     pub fn merge(&mut self, other: &Obj) {
@@ -308,7 +315,7 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Char(char),
-    Str(String),
+    Str(AutoStr),
     Array(Vec<Value>),
     Pair(ValueKey, Box<Value>),
     Obj(Obj),
@@ -318,7 +325,7 @@ pub enum Value {
     Fn(Fn),
     ExtFn(ExtFn),
     Nil,
-    Lambda(String),
+    Lambda(AutoStr),
     Void,
     Widget(Widget),
     Model(Model),
@@ -327,18 +334,26 @@ pub enum Value {
     Method(Method),
     Instance(Instance),
     Args(Args),
-    Ref(String),
-    Error(String),
+    Ref(AutoStr),
+    Error(AutoStr),
     Grid(Grid),
 }
 
 // constructors
 impl Value {
+    pub fn str(text: impl Into<AutoStr>) -> Self {
+        Value::Str(text.into())
+    }
+
+    pub fn error(text: impl Into<AutoStr>) -> Self {
+        Value::Error(text.into())
+    }
+
     pub fn array() -> Self {
         Value::Array(vec![])
     }
 
-    pub fn str_array(values: Vec<impl Into<String>>) -> Self {
+    pub fn str_array(values: Vec<impl Into<AutoStr>>) -> Self {
         Value::Array(values.into_iter().map(|s| Value::Str(s.into())).collect())
     }
 
@@ -346,10 +361,10 @@ impl Value {
         Value::Obj(Obj::new())
     }
 
-    pub fn repr(&self) -> String {
+    pub fn repr(&self) -> AutoStr {
         match self {
-            Value::Str(s) => format!("{}", s),
-            _ => format!("{}", self),
+            Value::Str(s) => s.clone(),
+            _ => self.to_astr(),
         }
     }
 
@@ -549,9 +564,9 @@ impl Value {
 
 static OBJ_NIL: Obj = Obj::EMPTY;
 static ARRAY_NIL: Vec<Value> = vec![];
-static STR_NIL: String = String::new();
+static ASTR_EMPTY: AutoStr = AutoStr::new();
 static NODE_NIL: Node = Node {
-    name: String::new(),
+    name: AutoStr::new(),
     args: Args::EMPTY,
     props: Obj::EMPTY,
     nodes: vec![],
@@ -560,12 +575,8 @@ static NODE_NIL: Node = Node {
 
 // Quick Readers
 impl Value {
-    pub fn str(&self) -> String {
-        format!("{}", self)
-    }
-
     pub fn v_str(&self) -> Value {
-        Value::Str(self.str())
+        Value::Str(self.to_astr())
     }
 
     pub fn v_upper(&self) -> Value {
@@ -603,17 +614,17 @@ impl Value {
         }
     }
     
-    pub fn as_string(&self) -> &String {
-        match self {
-            Value::Str(value) => value,
-            _ => &STR_NIL,
-        }
-    }
-
     pub fn as_str(&self) -> &str {
         match self {
             Value::Str(value) => value.as_str(),
             _ => "",
+        }
+    }
+
+    pub fn as_astr(&self) -> &AutoStr {
+        match self {
+            Value::Str(value) => value,
+            _ => &ASTR_EMPTY,
         }
     }
 
@@ -669,10 +680,10 @@ impl Value {
         format!("{}", self)
     }
 
-    pub fn auto_str(&self) -> AutoStr {
+    pub fn to_astr(&self) -> AutoStr {
         match self {
-            Value::Str(s) => AutoStr::from(s.clone()),
-            _ => AutoStr::from(self.to_string()),
+            Value::Str(s) => s.clone(),
+            _ => self.to_string().into(),
         }
     }
 }
@@ -860,7 +871,7 @@ impl View {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
-    pub name: String,
+    pub name: AutoStr,
     pub args: Args,
     pub props: Obj,
     pub nodes: Vec<Node>,
@@ -868,20 +879,20 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(name: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<AutoStr>) -> Self {
         Self { name: name.into(), args: Args::new(), props: Obj::new(), nodes: vec![], body: MetaID::Nil }
     }
 
-    pub fn title(&self) -> String {
+    pub fn title(&self) -> AutoStr {
         if self.args.is_empty() {
             self.name.clone()
         } else {
-            format!("{}({})", self.name, self.args.args[0])
+            format!("{}({})", self.name, self.args.args[0].to_string()).into()
         }
     }
 
     pub fn id(&self) -> AutoStr {
-        self.args.get_val(0).auto_str()
+        self.args.get_val(0).to_astr()
     }
 
     pub fn has_prop(&self, key: &str) -> bool {
@@ -916,7 +927,7 @@ impl Node {
 pub enum Arg {
     Pos(Value),
     Pair(ValueKey, Value),
-    Name(String),
+    Name(AutoStr),
 }
 
 impl Arg {
@@ -928,11 +939,11 @@ impl Arg {
         }
     }
 
-    pub fn auto_str(&self) -> AutoStr {
+    pub fn to_astr(&self) -> AutoStr {
         match self {
-            Arg::Pos(value) => value.auto_str(),
-            Arg::Pair(_, value) => value.auto_str(),
-            Arg::Name(name) => AutoStr::from(name.clone()),
+            Arg::Pos(value) => value.to_astr(),
+            Arg::Pair(_, value) => value.to_astr(),
+            Arg::Name(name) => name.clone(),
         }
     }
 }
@@ -1276,6 +1287,12 @@ pub fn pretty(text: &str, max_indent: usize) -> String {
         }
     }
     result
+}
+
+impl Into<Value> for AutoStr {
+    fn into(self) -> Value {
+        Value::Str(self)
+    }
 }
 
 #[cfg(test)]

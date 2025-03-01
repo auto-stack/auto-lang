@@ -1,12 +1,13 @@
-use crate::ast::*;
+
 use crate::scope;
 use crate::scope::Meta;
-use auto_val::{Value, Op, Obj, ValueKey, MetaID, Sig, Method, Type};
+use auto_val::{Value, Op, Obj, ValueKey, MetaID, Sig, Method, Type, AutoStr};
 use auto_val;
 use auto_val::{add, sub, mul, div, comp};
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use crate::ast::*;
 use crate::ast;
 
 pub enum EvalTempo {
@@ -89,12 +90,9 @@ impl Evaler {
                 let mut result = Vec::new();
                 for stmt in code.stmts.iter() {
                     let val = self.eval_stmt(stmt);
-                    match val {
-                        Value::Str(s) => result.push(s),
-                        _ => result.push(val.to_string()),
-                    }
+                    result.push(val.to_astr());
                 }
-                Value::Str(result.join("\n"))
+                Value::Str(result.join("\n").into())
             }
         }
     }
@@ -147,9 +145,9 @@ impl Evaler {
                 Value::Str(res.iter().map(|v| {
                     match v {
                         Value::Str(s) => s.clone(),
-                        _ => v.to_string(),
+                        _ => v.to_astr(),
                     }
-                }).collect::<Vec<String>>().join("\n"))
+                }).collect::<Vec<AutoStr>>().join("\n").into())
             }
         };
         self.exit_scope();
@@ -169,9 +167,9 @@ impl Evaler {
             EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| {
                 match v {
                     Value::Str(s) => s.clone(),
-                    _ => v.to_string(),
+                    _ => v.to_astr(),
                 }
-            }).collect::<Vec<String>>().join(sep))
+            }).collect::<Vec<AutoStr>>().join(sep).into())
         }
     }
 
@@ -244,12 +242,12 @@ impl Evaler {
                 }
             }
             _ => {
-                return Value::Error(format!("Invalid range {}", range));
+                return Value::error(format!("Invalid range {}", range));
             }
         }
         self.universe.borrow_mut().exit_scope();
         if max_loop <= 0 {
-            return Value::Error("Max loop reached".to_string());
+            return Value::error("Max loop reached");
         } else {
             match self.mode {
                 EvalMode::SCRIPT => Value::Void,
@@ -257,16 +255,16 @@ impl Evaler {
                 EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| {
                     match v {
                         Value::Str(s) => s.clone(),
-                        _ => v.to_string(),
+                        _ => v.to_astr(),
                     }
-                }).collect::<Vec<String>>().join(sep))
+                }).collect::<Vec<AutoStr>>().join(sep).into())
             }
         }
     }
 
     fn eval_store(&mut self, store: &Store) -> Value {
         let mut value = match &store.expr {
-            Expr::Ref(target) => Value::Ref(target.text.clone()),
+            Expr::Ref(target) => Value::Ref(target.text.clone().into()),
             _ => self.eval_expr(&store.expr),
         };
         // TODO: add general type coercion in assignment
@@ -338,11 +336,11 @@ impl Evaler {
                                 Value::Void
                             }
                             _ => {
-                                Value::Error(format!("Invalid assignment {}", left))
+                                Value::error(format!("Invalid assignment {}", left))
                             }
                         }
                     }
-                    _ => Value::Error(format!("Invalid bina target of asn {} = {}", left, val)),
+                    _ => Value::error(format!("Invalid bina target of asn {} = {}", left, val)),
                 }
             }
             Expr::Index(array, index) => {
@@ -352,10 +350,10 @@ impl Evaler {
                         self.update_array(&name.text, idx, val);
                         Value::Void
                     }
-                    _ => Value::Error(format!("Invalid target of asn index {} = {}", left, val)),
+                    _ => Value::error(format!("Invalid target of asn index {} = {}", left, val)),
                 }
             }
-            _ => Value::Error(format!("Invalid target of asn {} = {}", left, val)),
+            _ => Value::error(format!("Invalid target of asn {} = {}", left, val)),
         }
     }
 
@@ -374,7 +372,7 @@ impl Evaler {
         let right_value = self.eval_expr(right);
         match (&left_value, &right_value) {
             (Value::Int(left), Value::Int(right)) => Value::Range(*left, *right),
-            _ => Value::Error(format!("Invalid range {}..{}", left_value, right_value)),
+            _ => Value::error(format!("Invalid range {}..{}", left_value, right_value)),
         }
     }
 
@@ -383,7 +381,7 @@ impl Evaler {
         let right_value = self.eval_expr(right);
         match (&left_value, &right_value) {
             (Value::Int(left), Value::Int(right)) => Value::RangeEq(*left, *right),
-            _ => Value::Error(format!("Invalid range {}..={}", left_value, right_value)),
+            _ => Value::error(format!("Invalid range {}..={}", left_value, right_value)),
         }
     }
 
@@ -426,10 +424,10 @@ impl Evaler {
 
     fn eval_key(&self, key: &Key) -> ValueKey {
         match key {
-            Key::NamedKey(name) => ValueKey::Str(name.text.clone()),
+            Key::NamedKey(name) => ValueKey::Str(name.text.clone().into()),
             Key::IntKey(value) => ValueKey::Int(*value),
             Key::BoolKey(value) => ValueKey::Bool(*value),
-            Key::StrKey(value) => ValueKey::Str(value.clone()),
+            Key::StrKey(value) => ValueKey::Str(value.clone().into()),
         }
     }
 
@@ -437,7 +435,7 @@ impl Evaler {
     fn eval_call(&mut self, call: &Call) -> Value {
         let name = self.eval_expr(&call.name);
         if name == Value::Nil {
-            return Value::Error(format!("Invalid function name to call {}", call.name));
+            return Value::error(format!("Invalid function name to call {}", call.name));
         }
 
         match name {
@@ -467,11 +465,11 @@ impl Evaler {
                             return self.eval_fn_call(fn_decl, &call.args);
                         }
                         _ => {
-                            return Value::Error(format!("Invalid lambda {}", name));
+                            return Value::error(format!("Invalid lambda {}", name));
                         }
                     }
                 } else {
-                    return Value::Error(format!("Invalid lambda {}", name));
+                    return Value::error(format!("Invalid lambda {}", name));
                 }
             }
             Value::Widget(_widget) => {
@@ -482,7 +480,7 @@ impl Evaler {
                 return self.eval_method(&method, &call.args);
             }
             _ => {
-                return Value::Error(format!("Invalid function call {}", name));
+                return Value::error(format!("Invalid function call {}", name));
             }
         }
         
@@ -493,7 +491,7 @@ impl Evaler {
                 scope::Meta::Fn(fn_decl) => {
                     return self.eval_fn_call(fn_decl, &call.args);
                 }
-                _ => return Value::Error(format!("Invalid lambda {}", call.get_name_text())),
+                _ => return Value::error(format!("Invalid lambda {}", call.get_name_text())),
             }
         } else {
             // convert call to node intance
@@ -513,13 +511,13 @@ impl Evaler {
                             let instance = self.eval_instance(type_decl, args);
                             return instance;
                         }
-                        _ => Value::Error(format!("Invalid type instance of {}", name)),
+                        _ => Value::error(format!("Invalid type instance of {}", name)),
                     }
                 }
-                _ => Value::Error(format!("Invalid type {}", name)),
+                _ => Value::error(format!("Invalid type {}", name)),
             }
         } else {
-            return Value::Error(format!("Invalid type {}", name));
+            return Value::error(format!("Invalid type {}", name));
         }
     }
 
@@ -590,7 +588,7 @@ impl Evaler {
                             return res;
                         }
                         _ => {
-                            return Value::Error(format!("wrong meta for method: {}", meta));
+                            return Value::error(format!("wrong meta for method: {}", meta));
                         }
                     }
 
@@ -603,14 +601,14 @@ impl Evaler {
                 }
             }
         }
-        Value::Error(format!("Invalid method {} on {}", name, target))
+        Value::error(format!("Invalid method {} on {}", name, target))
     }
 
     fn eval_fn_call_with_sig(&mut self, sig: &Sig, args: &Args) -> Value {
         let meta = self.universe.borrow().lookup_sig(sig).unwrap();
         match meta.as_ref() {
             scope::Meta::Fn(fn_decl) => self.eval_fn_call(fn_decl, args),
-            _ => Value::Error(format!("Invalid function call {}", sig.name)),
+            _ => Value::error(format!("Invalid function call {}", sig.name)),
         }
     }
 
@@ -638,7 +636,7 @@ impl Evaler {
             }
             Arg::Name(name) => {
                 let name = &name.text;
-                let val = Value::Str(name.clone());
+                let val = Value::Str(name.clone().into());
                 self.universe.borrow_mut().set_local_val(&name, val.clone());
             }
         }
@@ -663,16 +661,16 @@ impl Evaler {
             Value::Int(index) => index,
             // TODO: support negative index
             // TODO: support range index
-            _ => return Value::Error(format!("Invalid index {}", index_value)),
+            _ => return Value::error(format!("Invalid index {}", index_value)),
         };
         match array {
             Value::Array(values) => {
                 let len = values.len();
                 if idx >= len as i32 {
-                    return Value::Error(format!("Index out of bounds {}", idx));
+                    return Value::error(format!("Index out of bounds {}", idx));
                 }
                 if idx < -(len as i32) {
-                    return Value::Error(format!("Index out of bounds {}", idx));
+                    return Value::error(format!("Index out of bounds {}", idx));
                 }
                 if idx < 0 {
                     idx = len as i32 + idx;
@@ -682,11 +680,11 @@ impl Evaler {
             Value::Str(s) => {
                 let idx = idx as usize;
                 if idx >= s.len() {
-                    return Value::Error(format!("Index out of bounds {}", idx));
+                    return Value::error(format!("Index out of bounds {}", idx));
                 }
                 Value::Char(s.chars().nth(idx).unwrap())
             }
-            _ => Value::Error(format!("Invalid array {}", array)),
+            _ => Value::error(format!("Invalid array {}", array)),
         }
     }
 
@@ -698,7 +696,7 @@ impl Evaler {
             Expr::Float(value) => Value::Float(*value),
             // Why not move here?
             Expr::Char(value) => Value::Char(*value),
-            Expr::Str(value) => Value::Str(value.clone()),
+            Expr::Str(value) => Value::Str(value.clone().into()),
             Expr::Bool(value) => Value::Bool(*value),
             Expr::Ref(target) => {
                 let target_val = self.eval_expr(&Expr::Ident(target.clone()));
@@ -734,7 +732,7 @@ impl Evaler {
             Expr::Pair(pair) => self.pair(pair),
             Expr::Object(pairs) => self.object(pairs),
             Expr::Block(body) => self.eval_body(body),
-            Expr::Lambda(lambda) => Value::Lambda(lambda.name.text.clone()),
+            Expr::Lambda(lambda) => Value::Lambda(lambda.name.text.clone().into()),
             Expr::FStr(fstr) => self.fstr(fstr),
             Expr::Grid(grid) => self.grid(grid),
             Expr::Nil => Value::Nil,
@@ -823,7 +821,7 @@ impl Evaler {
                 }
             }
         };
-        res.unwrap_or(Value::Error(format!("Invalid dot expression {}.{}", left_value, right)))
+        res.unwrap_or(Value::error(format!("Invalid dot expression {}.{}", left_value, right)))
     }
 
     fn eval_widget(&mut self, widget: &Widget) -> Value {
@@ -832,7 +830,7 @@ impl Evaler {
         let mut vars = Vec::new();
         for var in widget.model.vars.iter() {
             let value = self.eval_expr(&var.expr);
-            vars.push((ValueKey::Str(var.name.text.clone()), value.clone()));
+            vars.push((ValueKey::Str(var.name.text.clone().into()), value.clone()));
             self.universe.borrow_mut().set_local_val(&var.name.text, value);
         }
         let model = auto_val::Model { values: vars };
@@ -849,7 +847,7 @@ impl Evaler {
     fn eval_mid(&mut self, node: &Node) -> Value {
         let is_mid = self.universe.borrow().lookup_val("is_mid").unwrap_or(Value::Bool(false)).as_bool();
         let args = &node.args.args;
-        let mut res = Value::Str("".to_string());
+        let mut res = Value::Str("".into());
         if args.len() >= 1 {
             if is_mid { // mid 
                 let mid = self.eval_expr(&args[0].get_expr());
@@ -874,9 +872,9 @@ impl Evaler {
     fn eval_arg(&mut self, arg: &ast::Arg) -> auto_val::Arg {
         match arg {
             ast::Arg::Name(name) => {
-                auto_val::Arg::Name(name.text.clone())
+                auto_val::Arg::Name(name.text.clone().into())
             }
-            ast::Arg::Pair(name, expr) => auto_val::Arg::Pair(ValueKey::Str(name.text.clone()), self.eval_expr(expr)),
+            ast::Arg::Pair(name, expr) => auto_val::Arg::Pair(ValueKey::Str(name.text.clone().into()), self.eval_expr(expr)),
             ast::Arg::Pos(expr) => auto_val::Arg::Pos(self.eval_expr(expr)),
         }
     }
@@ -936,7 +934,7 @@ impl Evaler {
                 self.universe.borrow_mut().define_global(&name, Rc::new(Meta::Body(node.body.clone())));
             }
         }
-        Value::Node(auto_val::Node { name: node.name.text.clone(), args, props, nodes, body })
+        Value::Node(auto_val::Node { name: node.name.text.clone().into(), args, props, nodes, body })
     }
 
     // fn eval_value_node_body(&mut self, node_val: &mut Value) {
@@ -971,14 +969,14 @@ impl Evaler {
     // }
 
     fn fstr(&mut self, fstr: &FStr) -> Value {
-        let parts: Vec<String> = fstr.parts.iter().map(|part| {
+        let parts: Vec<AutoStr> = fstr.parts.iter().map(|part| {
             let val = self.eval_expr(part);
             match val {
                 Value::Str(s) => s,
-                _ => val.to_string(),
+                _ => val.to_astr(),
             }
         }).collect();
-        Value::Str(parts.join(""))
+        Value::Str(parts.join("").into())
     }
 
     fn grid(&mut self, grid: &Grid) -> Value {
@@ -995,10 +993,10 @@ impl Evaler {
                                 match p.key.to_string().as_str() {
                                     "id" => {
                                         let id = self.eval_expr(&p.value);
-                                        head.push((ValueKey::Str("id".to_string()), id));
+                                        head.push((ValueKey::Str("id".to_string().into()), id));
                                     }
                                     k => {
-                                        head.push((ValueKey::Str(k.to_string()), self.eval_expr(&p.value)));
+                                        head.push((ValueKey::Str(k.to_string().into()), self.eval_expr(&p.value)));
                                     }
                                 }
                             }
@@ -1013,7 +1011,7 @@ impl Evaler {
                                 let id = obj.get_str("id");
                                 match id {
                                     Some(id) => {
-                                        head.push((ValueKey::Str(id.to_string()), elem));
+                                        head.push((ValueKey::Str(id.to_string().into()), elem));
                                     }
                                     None => {}
                                 }
@@ -1028,18 +1026,18 @@ impl Evaler {
             for arg in grid.head.args.iter() {
                 match arg {
                     Arg::Pair(name, value) => {
-                        head.push((ValueKey::Str(name.text.clone()), self.eval_expr(value)));
+                        head.push((ValueKey::Str(name.text.clone().into()), self.eval_expr(value)));
                     }
                     Arg::Pos(value) => {
                         match value {
                             Expr::Str(value) => {
-                                head.push((ValueKey::Str(value.clone()), Value::Str(value.clone())));
+                                head.push((ValueKey::Str(value.clone().into()), Value::Str(value.clone().into())));
                             }
                             _ => {}
                         }
                     }
                     Arg::Name(name) => {
-                        head.push((ValueKey::Str(name.text.clone()), Value::Str(name.text.clone())));
+                        head.push((ValueKey::Str(name.text.clone().into()), Value::Str(name.text.clone().into())));
                     }
                 }
             }

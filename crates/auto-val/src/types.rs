@@ -161,10 +161,10 @@ mod tests {
 
     #[test]
     fn test_call_method() {
-        let method = Value::str;
+        let method = Value::v_str;
         let v = Value::Array(vec![Value::Int(1), Value::Int(2)]);
         let res = method(&v);
-        assert_eq!(res, "[1, 2]");
+        assert_eq!(res, Value::str("[1, 2]"));
     }
 
     #[test]
@@ -181,8 +181,8 @@ mod tests {
     fn test_upper_method() {
         let store = TypeInfoStore::new();
         let method = store.lookup_method(Type::Str, "upper".to_string()).unwrap();
-        let v = Value::Str("hello".to_string());
+        let v = Value::str("hello");
         let res = method(&v);
-        assert_eq!(res, Value::Str("HELLO".to_string()));
+        assert_eq!(res, Value::str("HELLO"));
     }
 }

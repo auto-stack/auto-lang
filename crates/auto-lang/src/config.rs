@@ -33,14 +33,14 @@ impl AutoConfig {
     }
 
     pub fn name(&self) -> AutoStr {
-        self.root.get_prop("name").auto_str()
+        self.root.get_prop("name").to_astr()
     }
 
     pub fn version(&self) -> AutoStr {
-        self.root.get_prop("version").auto_str()
+        self.root.get_prop("version").to_astr()
     }
 
-    pub fn list_target_names(&self) -> Vec<String> {
+    pub fn list_target_names(&self) -> Vec<AutoStr> {
         self.root.nodes.iter().map(|n| n.title()).collect()
     }
 }

@@ -21,13 +21,13 @@ use auto_val::Obj;
 pub fn run(code: &str) -> Result<String, String> {
     let mut interpreter = interp::Interpreter::new();
     interpreter.interpret(code)?;
-    Ok(interpreter.result.repr())
+    Ok(interpreter.result.repr().to_string())
 }
 
 pub fn run_with_scope(code: &str, scope: Universe) -> Result<String, String> {
     let mut interpreter = interp::Interpreter::with_scope(scope);
     interpreter.interpret(code)?;
-    Ok(interpreter.result.repr())
+    Ok(interpreter.result.repr().to_string())
 }
 
 pub fn parse(code: &str) -> Result<ast::Code, String> {
@@ -651,7 +651,7 @@ $ }
     #[test]
     fn test_insert_global_fn() {
         fn myjoin(arg: &auto_val::Args) -> Value {
-            Value::Str(arg.args.iter().map(|v| v.to_string()).collect::<Vec<String>>().join("::"))
+            Value::Str(arg.args.iter().map(|v| v.to_astr()).collect::<Vec<auto_val::AutoStr>>().join("::").into())
         }
 
         let mut scope = Universe::new();
@@ -856,7 +856,7 @@ square(15)
     fn test_methods_in_template() {
         let code = r#"<div>${name.upper()}</div>"#;
         let mut scope = Universe::new();
-        scope.set_global("name", Value::Str("hello".to_string()));
+        scope.set_global("name", Value::str("hello"));
         let result = eval_template(code, scope).unwrap();
         assert_eq!(result.result.repr(), "<div>HELLO</div>");
     }
