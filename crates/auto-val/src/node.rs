@@ -43,6 +43,13 @@ impl Node {
         }
     }
 
+    pub fn get_prop_of(&self, key: &str) -> Value {
+        match self.props.get(key) {
+            Some(value) => value.clone(),
+            None => Value::Nil,
+        }
+    }
+
     pub fn set_prop(&mut self, key: impl Into<ValueKey>, value: impl Into<Value>) {
         self.props.set(key.into(), value.into());
     }

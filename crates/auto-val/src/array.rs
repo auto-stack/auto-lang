@@ -36,6 +36,10 @@ impl Array {
         Self { values: vec![] }
     }
 
+    pub fn from_vec(values: Vec<impl Into<Value>>) -> Self {
+        Array { values: values.into_iter().map(|v| v.into()).collect() }
+    }
+
     pub fn len(&self) -> usize {
         self.values.len()
     }

@@ -60,6 +60,10 @@ impl Value {
         Value::Array(values.into_iter().map(|s| Value::Str(s.into())).collect::<Vec<Value>>().into())
     }
 
+    pub fn pair(key: impl Into<ValueKey>, value: impl Into<Value>) -> Self {
+        Value::Pair(key.into(), Box::new(value.into()))
+    }
+
     pub fn obj() -> Self {
         Value::Obj(Obj::new())
     }
