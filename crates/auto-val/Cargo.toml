@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 ecow = { workspace = true }
+normalize-path = { workspace = true }
+regex = { workspace = true }
+glob-match = { workspace = true }
