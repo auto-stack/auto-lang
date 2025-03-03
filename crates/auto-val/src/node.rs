@@ -1,7 +1,7 @@
 use crate::AutoStr;
 use crate::obj::Obj;
 use crate::types::Type;
-use crate::meta::{Args, MetaID};
+use crate::meta::{Args, MetaID, Arg};
 use crate::value::Value;
 use crate::pair::ValueKey;
 use std::fmt;
@@ -28,8 +28,24 @@ impl Node {
         }
     }
 
+    pub fn main_arg(&self) -> Value {
+        if self.args.is_empty() {
+            Value::Nil
+        } else {
+            match &self.args.args[0] {
+                Arg::Pos(value) => value.clone(),
+                Arg::Name(name) => Value::Str(name.clone()),
+                Arg::Pair(_, value) => value.clone(),
+            }
+        }
+    }
+
     pub fn id(&self) -> AutoStr {
         self.args.get_val(0).to_astr()
+    }
+
+    pub fn add_arg(&mut self, arg: Arg) {
+        self.args.args.push(arg);
     }
 
     pub fn has_prop(&self, key: &str) -> bool {
@@ -68,6 +84,49 @@ impl Node {
 
     pub fn to_astr(&self) -> AutoStr {
         self.to_string().into()
+    }
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if !self.args.is_empty() {
+            write!(f, "(")?;
+            // don't display pair args as they are displayed in the props
+            let args = self.args.args.iter().filter(|arg| match arg {
+                Arg::Pair(_, _) => false,
+                _ => true,
+            }).collect::<Vec<_>>();
+
+            for (i, arg) in args.iter().enumerate() {
+                write!(f, "{}", arg)?;
+                if i < args.len() - 1 {
+                    write!(f, ", ")?;
+                }
+            }
+            write!(f, ")")?;
+        }
+        if !(self.props.is_empty() && self.nodes.is_empty()) {
+            write!(f, " {{")?;
+            if !self.props.is_empty() {
+                for (key, value) in self.props.iter() {
+                    write!(f, "{}: {}", key, value)?;
+                    write!(f, "; ")?;
+                }
+            }
+            if !self.nodes.is_empty() {
+                for node in self.nodes.iter() {
+                    write!(f, "{}", node)?;
+                    write!(f, "; ")?;
+                }
+            }
+            write!(f, "}}")?;
+        }
+        
+        if self.body != MetaID::Nil {
+            write!(f, " {}", self.body)?;
+        }
+        Ok(())
     }
 }
 

@@ -15,6 +15,7 @@ with-file-history = []
 
 [dependencies]
 auto-val = { workspace = true }
+auto-atom = { workspace = true }
 rustyline = { workspace = true, features = ["with-file-history"] }
 strum = { workspace = true }
 strum_macros = { workspace = true }

@@ -61,12 +61,11 @@ pub fn interpret_file(path: &str) -> interp::Interpreter {
     interpreter
 }
 
+// TODO: to be deprecated, use Interpreter::eval_template instead
 pub fn eval_template(template: &str, scope: Universe) -> Result<interp::Interpreter, String> {
-    let mut interpreter = interp::Interpreter::with_scope(scope).wit_eval_mode(EvalMode::TEMPLATE);
-    // flip template
-    let flipped = flip_template(template);
-    println!("flipped: {}", flipped);
-    interpreter.interpret(&flipped)?;
+    let mut interpreter = interp::Interpreter::with_scope(scope).with_eval_mode(EvalMode::TEMPLATE);
+    let result = interpreter.eval_template(template)?;
+    interpreter.result = result;
     Ok(interpreter)
 }
 
@@ -74,51 +73,9 @@ pub fn eval_config(code: &str, args: &Obj) -> Result<interp::Interpreter, String
     let mut scope = Universe::new();
     scope.define_global("root", Rc::new(Meta::Node(ast::Node::new(ast::Name::new("root")))));
     scope.set_args(args);
-    let mut interpreter = interp::Interpreter::with_scope(scope).wit_eval_mode(EvalMode::CONFIG);
+    let mut interpreter = interp::Interpreter::with_scope(scope).with_eval_mode(EvalMode::CONFIG);
     interpreter.interpret(code)?;
     Ok(interpreter)
-}
-
-// convert template (ex, a C file with interpolated auto expressions) into an auto source code with C code converted to lines of interpolated strings
-// Example:
-// template:
-// <code>
-// #include <stdio.h>
-// int main() {
-//     printf("Hello, $name!\n");
-//     return 0;
-// }
-// </code>
-// flipped:
-// <code>
-// f`#include <stdio.h>`
-// f`int main() {`
-// f`    printf(\"Hello, $name!\\n\");`
-// f`    return 0;`
-// f`}`
-// </code>
-fn flip_template(template: &str) -> String {
-    let lines = template.lines();
-    let mut result = Vec::new();
-    for line in lines {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            // NOTE: keep empty lines
-            result.push("``".to_string());
-            continue;
-        }
-        if trimmed.starts_with("$") && !trimmed.starts_with("${") {
-            let code = &trimmed[1..].trim();
-            result.push(format!("{}", code));
-        } else {
-            result.push(format!("`{}`", line));
-        }
-    }
-    // str.lines() does not include the last empty line
-    if template.ends_with("\n") {
-        result.push("``".to_string());
-    }
-    result.join("\n")
 }
 
 #[cfg(test)]
@@ -530,56 +487,6 @@ $ }
 </table>"#);
     }
 
-    #[test]
-    fn test_flip_template() {
-        let code = r#"#include <stdio.h>
-
-int main() {
-    printf("Hello, $name!\n");
-
-    $ for i in 0..10 {
-        printf("i = $i\n");
-    $ }
-
-    return 0;
-}
-"#;
-        let result = flip_template(code);
-
-        assert_eq!(result, r#"`#include <stdio.h>`
-``
-`int main() {`
-`    printf("Hello, $name!\n");`
-``
-for i in 0..10 {
-`        printf("i = $i\n");`
-}
-``
-`    return 0;`
-`}`
-``"#);
-    }
-
-    #[test]
-    fn test_flip_template_with_multiple_lines() {
-        let template = r#"
-$ for row in rows {
-{
-    name: ${row.name},
-    age: ${row.age},
-}${mid(",")}
-$ }
-"#;
-        let result = flip_template(template);
-        assert_eq!(result, r#"``
-for row in rows {
-`{`
-`    name: ${row.name},`
-`    age: ${row.age},`
-`}${mid(",")}`
-}
-``"#);
-    }
 
 
     #[test]
@@ -636,6 +543,16 @@ $ }
         assert_eq!(result, "void");
     }
 
+    #[test]
+    fn test_eval_template_with_note() {
+        let code = "#{x+1}";
+        use crate::interp::Interpreter;
+        let mut scope = Universe::new();
+        scope.set_global("x", Value::Int(41));
+        let mut interp = Interpreter::with_scope(scope);
+        let result = interp.eval_template_with_note(code, '#').unwrap();
+        assert_eq!(result.repr(), "42");
+    }
 
     #[test]
     fn test_to_string() {
@@ -828,7 +745,7 @@ exe(hello) {
 }"#;
         let interp = eval_config(code, &Obj::EMPTY).unwrap();
         let result = interp.result;
-        assert_eq!(result.repr(), r#"root {name: "hello", version: "0.1.0"} [exe (hello) {dir: "src", main: "main.c"}]"#);
+        assert_eq!(result.repr(), r#"root {name: "hello"; version: "0.1.0"; exe(hello) {dir: "src"; main: "main.c"; }; }"#);
     }
 
     #[test]

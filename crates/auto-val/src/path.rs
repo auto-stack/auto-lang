@@ -36,6 +36,22 @@ impl AutoPath {
         self.path.as_path()
     }
 
+    pub fn filename(&self) -> AutoStr {
+        let n = self.path.file_name();
+        if let Some(n) = n {
+            if let Some(n) = n.to_str() {
+                return n.into();
+            }
+        }
+        AutoStr::default()
+    }
+
+    pub fn join(&self, path: impl Into<AutoStr>) -> Self {
+        let s = path.into();
+        let path = self.path.join(s.as_str());
+        Self { path }
+    }
+
     pub fn to_astr(&self) -> AutoStr {
         self.path.unified()
     }

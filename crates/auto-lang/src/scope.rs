@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use auto_val::{Value, Args};
 use auto_val::Sig;
 use auto_val::MetaID;
+use auto_atom::Atom;
 use crate::ast;
 use crate::libs;
 use std::rc::Rc;
@@ -592,6 +593,16 @@ impl Universe {
 
     pub fn widget(&self) -> Value {
         self.widget.clone()
+    }
+
+    pub fn merge_atom(&mut self, atom: &Atom) {
+        match &atom.root {
+            auto_atom::Root::Node(node) => {
+                let main_arg = node.main_arg();
+                self.set_global("name", main_arg);
+            }
+            _ => {}
+        }
     }
 }
 

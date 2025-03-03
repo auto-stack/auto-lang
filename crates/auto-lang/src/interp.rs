@@ -14,6 +14,7 @@ pub struct Interpreter {
     pub evaler: Evaler,
     pub scope: Rc<RefCell<Universe>>,
     pub result: Value,
+    pub fstr_note: char,
 }
 
 impl Interpreter {
@@ -22,9 +23,15 @@ impl Interpreter {
         let interpreter = Self { 
             evaler: Evaler::new(scope.clone()),
             scope, 
-            result: Value::Nil 
+            result: Value::Nil,
+            fstr_note: '$',
         };
         interpreter
+    }
+
+    pub fn with_fstr_note(mut self, note: char) -> Self {
+        self.fstr_note = note;
+        self
     }
 
     pub fn with_scope(scope: Universe) -> Self {
@@ -32,12 +39,13 @@ impl Interpreter {
         let interpreter = Self { 
             evaler: Evaler::new(scope.clone()),
             scope, 
+            fstr_note: '$',
             result: Value::Nil 
         };
         interpreter
     }
     
-    pub fn wit_eval_mode(mut self, mode: EvalMode) -> Self {
+    pub fn with_eval_mode(mut self, mode: EvalMode) -> Self {
         self.evaler = self.evaler.with_mode(mode);
         self
     }
@@ -48,11 +56,25 @@ impl Interpreter {
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<(), String> {
-        let mut parser = Parser::new(code, self.scope.clone());
+        let mut parser = Parser::new_with_note(code, self.scope.clone(), self.fstr_note);
         let ast = parser.parse()?;
         let result = self.evaler.eval(&ast);
         self.result = result;
         Ok(())
+    }
+
+    pub fn eval_template(&mut self, code: impl Into<AutoStr>) -> Result<Value, String> {
+        self.eval_template_with_note(code, self.fstr_note)
+    }
+
+    pub fn eval_template_with_note(&mut self, code: impl Into<AutoStr>, note: char) -> Result<Value, String> {
+        self.evaler.set_mode(EvalMode::TEMPLATE);
+        let code = code.into();
+        let flipped = flip_template(code.as_str());
+        let mut parser = Parser::new_with_note(flipped.as_str(), self.scope.clone(), note);
+        let ast = parser.parse()?;
+        let result = self.evaler.eval(&ast);
+        Ok(result)
     }
 
     pub fn load_file(&mut self, filename: &str) -> Result<Value, String> {
@@ -68,4 +90,126 @@ impl Interpreter {
             Err(e) => Value::error(e),
         }
     }
+}
+
+// convert template (ex, a C file with interpolated auto expressions) into an auto source code with C code converted to lines of interpolated strings
+// Example:
+// template:
+// <code>
+// #include <stdio.h>
+// int main() {
+//     printf("Hello, $name!\n");
+//     return 0;
+// }
+// </code>
+// flipped:
+// <code>
+// f`#include <stdio.h>`
+// f`int main() {`
+// f`    printf(\"Hello, $name!\\n\");`
+// f`    return 0;`
+// f`}`
+// </code>
+pub fn flip_template(template: &str) -> String {
+    let lines = template.lines();
+    let mut result = Vec::new();
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            // NOTE: keep empty lines
+            result.push("``".to_string());
+            continue;
+        }
+        if trimmed.starts_with("$") && !trimmed.starts_with("${") {
+            let code = &trimmed[1..].trim();
+            result.push(format!("{}", code));
+        } else {
+            result.push(format!("`{}`", line));
+        }
+    }
+    // str.lines() does not include the last empty line
+    if template.ends_with("\n") {
+        result.push("``".to_string());
+    }
+    result.join("\n")
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_flip_template() {
+        let code = r#"#include <stdio.h>
+
+int main() {
+    printf("Hello, $name!\n");
+
+    $ for i in 0..10 {
+        printf("i = $i\n");
+    $ }
+
+    return 0;
+}
+"#;
+        let result = flip_template(code);
+
+        assert_eq!(result, r#"`#include <stdio.h>`
+``
+`int main() {`
+`    printf("Hello, $name!\n");`
+``
+for i in 0..10 {
+`        printf("i = $i\n");`
+}
+``
+`    return 0;`
+`}`
+``"#);
+    }
+
+    #[test]
+    fn test_flip_template_with_multiple_lines() {
+        let template = r#"
+$ for row in rows {
+{
+    name: ${row.name},
+    age: ${row.age},
+}${mid(",")}
+$ }
+"#;
+        let result = flip_template(template);
+        assert_eq!(result, r#"``
+for row in rows {
+`{`
+`    name: ${row.name},`
+`    age: ${row.age},`
+`}${mid(",")}`
+}
+``"#);
+    }
+
+    #[test]
+    fn test_eval_template_with_note() {
+        let code = r#"<workspace>
+    <project>
+        <path>$WS_DIR$\#{name}.ewp</path>
+    </project>
+    <batchBuild />
+</workspace>
+        "#;
+        let mut scope = Universe::new();
+        scope.set_global("name", "demo_project".into());
+        let mut inter = Interpreter::with_scope(scope).with_fstr_note('#');
+        let result = inter.eval_template_with_note(code, '#').unwrap();
+        assert_eq!(result.repr(), r#"<workspace>
+    <project>
+        <path>$WS_DIR$\demo_project.ewp</path>
+    </project>
+    <batchBuild />
+</workspace>
+"#);
+    }
+
 }

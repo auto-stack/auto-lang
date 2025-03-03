@@ -113,6 +113,14 @@ impl<'a> Parser<'a> {
         parser
     }
 
+    pub fn new_with_note(code: &'a str, scope: Rc<RefCell<Universe>>, note: char) -> Self {
+        let mut lexer = Lexer::new(code);
+        lexer.set_fstr_note(note);
+        let cur = lexer.next();
+        let mut parser = Parser { scope, lexer, cur };
+        parser.skip_comments();
+        parser
+    }
     pub fn peek(&mut self) -> &Token {
         &self.cur
     }
@@ -638,7 +646,7 @@ impl<'a> Parser<'a> {
         let mut parts = Vec::new();
         while !(self.is_kind(TokenKind::FStrEnd) || self.is_kind(TokenKind::EOF)) {
             // $ expressions
-            if self.is_kind(TokenKind::Dollar) {
+            if self.is_kind(TokenKind::FStrNote) {
                 self.next(); // skip $
                 if self.is_kind(TokenKind::LBrace) { // ${Expr}
                     self.expect(TokenKind::LBrace)?;
@@ -1851,5 +1859,14 @@ exe(hello) {
         let code = r#"'a'"#;
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (char 'a'))");
+    }
+
+    #[test]
+    fn test_fstr_with_note() {
+        let code = r#"`hello #{2 + 1} again`"#;
+        let scope = Rc::new(RefCell::new(Universe::new()));
+        let mut parser = Parser::new_with_note(code, scope, '#');
+        let ast = parser.parse().unwrap();
+        assert_eq!(ast.to_string(), "(code (fstr (str \"hello \") (bina (int 2) (op +) (int 1)) (str \" again\")))");
     }
 }

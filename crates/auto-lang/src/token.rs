@@ -47,7 +47,6 @@ pub enum TokenKind {
     RangeEq, // ..= 
     Colon, // :
     VBar, // |
-    Dollar, // $
     CommentLine, // //
     CommentContent, // any text in comment
     CommentStart, // /*
@@ -75,6 +74,7 @@ pub enum TokenKind {
     FStrStart,
     FStrPart,
     FStrEnd,
+    FStrNote,
 
     // Keywords For AutoData
     Grid,
@@ -140,7 +140,7 @@ impl fmt::Display for Token {
             TokenKind::Model => write!(f, "<model>"),
             TokenKind::View => write!(f, "<view>"),
             TokenKind::Style => write!(f, "<style>"),
-            TokenKind::Dollar => write!(f, "<$>"),
+            TokenKind::FStrNote => write!(f, "<{}>", self.text),
             TokenKind::FStrStart => write!(f, "<fstrs>"),
             TokenKind::FStrEnd => write!(f, "<fstre>"),
             TokenKind::FStrPart => write!(f, "<fstrp:{}>", self.text),

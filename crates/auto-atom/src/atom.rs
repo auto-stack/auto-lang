@@ -143,6 +143,6 @@ mod tests {
             Value::pair("a", 1),
             Value::pair("b", 2),
         ]);
-        assert_eq!(format!("{}", atom), "test {a: 1, b: 2}");
+        assert_eq!(format!("{}", atom), "test {a: 1; b: 2; }");
     }
 }

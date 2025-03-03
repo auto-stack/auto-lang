@@ -517,42 +517,6 @@ impl View {
     }
 }
 
-
-
-
-impl fmt::Display for Node {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)?;
-        if !self.args.is_empty() {
-            write!(f, " {}", self.args)?;
-        }
-        if !self.props.is_empty() {
-            write!(f, " {{")?;
-            for (i, (key, value)) in self.props.iter().enumerate() {
-                write!(f, "{}: {}", key, value)?;
-                if i < self.props.len() - 1 {
-                    write!(f, ", ")?;
-                }
-            }
-            write!(f, "}}")?;
-        }
-        if !self.nodes.is_empty() {
-            write!(f, " [")?;
-            for (i, node) in self.nodes.iter().enumerate() {
-                write!(f, "{}", node)?;
-                if i < self.nodes.len() - 1 {
-                    write!(f, "; ")?;
-                }
-            }
-            write!(f, "]")?;
-        }
-        if self.body != MetaID::Nil {
-            write!(f, " {}", self.body)?;
-        }
-        Ok(())
-    }
-}
-
 impl fmt::Display for Widget {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "widget {} {{", self.name)?;
@@ -675,11 +639,12 @@ pub fn pretty(text: &str, max_indent: usize) -> String {
     let mut level = 0;
     let mut in_str = false;
     let tab = "    ";
+    let mut last_c = ' ';
     
     for c in text.chars() {
         match c {
             ' ' if !in_str => {
-                if level > max_indent {
+                if last_c == ')' || level > max_indent {
                     result.push(c);
                 }
             }
@@ -730,12 +695,17 @@ pub fn pretty(text: &str, max_indent: usize) -> String {
                     result.push(c);
                 }
             }
+            ';' if !in_str => {
+                result.push('\n');
+                result.push_str(&tab.repeat(indent));
+            }
             '"' => {
                 in_str = !in_str;
                 result.push(c);
             }
             _ => result.push(c)
         }
+        last_c = c;
     }
     result
 }

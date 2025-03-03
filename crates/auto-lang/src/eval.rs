@@ -39,6 +39,10 @@ impl Evaler {
         self
     }
 
+    pub fn set_mode(&mut self, mode: EvalMode) {
+        self.mode = mode;
+    }
+
     pub fn set_tempo(&mut self, name: &str, tempo: EvalTempo) {
         self.tempo_for_nodes.insert(name.to_string(), tempo);
     }

@@ -9,6 +9,9 @@ pub struct Lexer<'a> {
     line: usize,
     pos: usize,
     buffer: VecDeque<Token>,
+
+    // special tokens
+    fstr_note: char,
 }
 
 impl<'a> Lexer<'a> {
@@ -18,7 +21,12 @@ impl<'a> Lexer<'a> {
             line: 0,
             pos: 0,
             buffer: VecDeque::new(),
+            fstr_note: '$',
         }
+    }
+
+    pub fn set_fstr_note(&mut self, c: char) {
+        self.fstr_note = c;
     }
 
     pub fn pos(&mut self, len: usize) -> Pos {
@@ -167,13 +175,13 @@ impl<'a> Lexer<'a> {
                 self.buffer.push_back(tk);
                 break;
             }
-            if c == '$' {
+            if c == self.fstr_note {
                 // text until $ is a string part
                 let tk = Token::fstr_part(self.pos(text.len()), text.clone());
                 self.buffer.push_back(tk);
                 text.clear();
                 // lex $
-                let tk = self.single(TokenKind::Dollar, '$');
+                let tk = self.single(TokenKind::FStrNote, c);
                 self.buffer.push_back(tk);
                 if let Some(&c) = self.chars.peek() {
                     if c == '{' {
@@ -387,13 +395,13 @@ impl<'a> Lexer<'a> {
                 '|' => {
                     return self.single(TokenKind::VBar, c);
                 }
-                '$' => {
-                    return self.single(TokenKind::Dollar, c);
-                }
                 '`' => {
                     return self.fstr();
                 }
                 _ => {
+                    if c == self.fstr_note {
+                        return self.single(TokenKind::FStrNote, c);
+                    }
                     if c.is_digit(10) {
                         return self.number();
                     }
@@ -590,5 +598,14 @@ mod tests {
         let code = r#"'a'"#;
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<'a'>");
+    }
+
+    #[test]
+    fn test_fstr_with_note() {
+        let fstr = r#"`hello #{2 + 1} again`"#;
+        let mut lexer = Lexer::new(fstr); 
+        lexer.set_fstr_note('#');
+        let tokens = lexer.tokens_str();
+        assert_eq!(tokens, "<fstrs><fstrp:hello ><#><{><int:2><+><int:1><}><fstrp: again><fstre>");
     }
 }
