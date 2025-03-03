@@ -595,11 +595,36 @@ impl Universe {
         self.widget.clone()
     }
 
+    // TODO: support nested nodes
     pub fn merge_atom(&mut self, atom: &Atom) {
         match &atom.root {
             auto_atom::Root::Node(node) => {
                 let main_arg = node.main_arg();
                 self.set_global("name", main_arg);
+                for (key, val) in node.props.iter() {
+                    println!("merging atom to scope: key: {}, val: {}", key, val);
+                    self.set_global(key.to_string(), val.clone());
+                }
+                // set kids
+                let kids_groups = node.group_kids();
+                for (name, kids) in kids_groups.iter() {
+                    let plural = format!("{}s", name);
+                    // for each kid, set its main arg as `id`, and all props as is
+                    let mut kids_vec: Vec<Value> = Vec::new();
+                    for kid in kids.iter() {
+                        let mut props = kid.props.clone();
+                        props.set("name", kid.main_arg());
+                        kids_vec.push(props.into());
+                    }
+                    println!("merging atom to scope: plural: {}, props: {:?}", plural, kids_vec);
+                    self.set_global(plural.as_str(), kids_vec.into());
+                }
+                
+            }
+            auto_atom::Root::Array(array) => {
+                for (i, val) in array.iter().enumerate() {
+                    self.set_global(format!("item_{}", i).as_str(), val.clone());
+                }
             }
             _ => {}
         }

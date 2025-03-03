@@ -70,7 +70,8 @@ impl Interpreter {
     pub fn eval_template_with_note(&mut self, code: impl Into<AutoStr>, note: char) -> Result<Value, String> {
         self.evaler.set_mode(EvalMode::TEMPLATE);
         let code = code.into();
-        let flipped = flip_template(code.as_str());
+        let flipped = flip_template(code.as_str(), note);
+        println!("flipped: {}", flipped);
         let mut parser = Parser::new_with_note(flipped.as_str(), self.scope.clone(), note);
         let ast = parser.parse()?;
         let result = self.evaler.eval(&ast);
@@ -110,7 +111,7 @@ impl Interpreter {
 // f`    return 0;`
 // f`}`
 // </code>
-pub fn flip_template(template: &str) -> String {
+pub fn flip_template(template: &str, fnote: char) -> String {
     let lines = template.lines();
     let mut result = Vec::new();
     for line in lines {
@@ -120,7 +121,9 @@ pub fn flip_template(template: &str) -> String {
             result.push("``".to_string());
             continue;
         }
-        if trimmed.starts_with("$") && !trimmed.starts_with("${") {
+        let fnote_str = format!("{}", fnote);
+        let fnote_brace_pat = format!("{}{{", fnote);
+        if trimmed.starts_with(fnote_str.as_str()) && !trimmed.starts_with(fnote_brace_pat.as_str()) {
             let code = &trimmed[1..].trim();
             result.push(format!("{}", code));
         } else {
@@ -153,7 +156,7 @@ int main() {
     return 0;
 }
 "#;
-        let result = flip_template(code);
+        let result = flip_template(code, '$');
 
         assert_eq!(result, r#"`#include <stdio.h>`
 ``
@@ -179,7 +182,7 @@ $ for row in rows {
 }${mid(",")}
 $ }
 "#;
-        let result = flip_template(template);
+        let result = flip_template(template, '$');
         assert_eq!(result, r#"``
 for row in rows {
 `{`
@@ -212,4 +215,30 @@ for row in rows {
 "#);
     }
 
+    #[test]
+    fn test_flip_template_with_note() {
+        let code = r#"
+@ for lib in libs {
+    <name>@{lib.name}</name>
+@ }
+"#;
+        let result = flip_template(code, '@');
+        assert_eq!(result, r#"``
+for lib in libs {
+`    <name>@{lib.name}</name>`
+}
+``"#);
+    }
+
+    #[test]
+    fn test_starts_with() {
+        let s = "@ f";
+        let c = '@';
+        let pat = format!("{}", c);
+        assert!(s.starts_with(pat.as_str()));
+
+        let s1 = "@ for i in 0..10 {";
+        assert!(s1.starts_with(pat.as_str()));
+
+    }
 }

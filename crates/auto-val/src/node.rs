@@ -5,6 +5,7 @@ use crate::meta::{Args, MetaID, Arg};
 use crate::value::Value;
 use crate::pair::ValueKey;
 use std::fmt;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
@@ -84,6 +85,20 @@ impl Node {
 
     pub fn to_astr(&self) -> AutoStr {
         self.to_string().into()
+    }
+
+    pub fn group_kids(&self) -> HashMap<AutoStr, Vec<&Node>> {
+        // organize kids by their node name
+        let mut kids = HashMap::new();
+        for node in self.nodes.iter() {
+            let name = node.name.clone();
+            if !kids.contains_key(&name) {
+                kids.insert(name, vec![node]);
+            } else {
+                kids.get_mut(&name).unwrap().push(node);
+            }
+        }
+        kids
     }
 }
 
