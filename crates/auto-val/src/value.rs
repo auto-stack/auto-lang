@@ -86,6 +86,25 @@ impl Value {
     }
 }
 
+// arithmetic
+impl Value {
+    pub fn inc(&mut self) {
+        match self {
+            Value::Int(value) => *value += 1,
+            Value::Uint(value) => *value += 1,
+            _ => {}
+        }
+    }
+
+    pub fn dec(&mut self) {
+        match self {
+            Value::Int(value) => *value -= 1,
+            Value::Uint(value) => *value -= 1,
+            _ => {}
+        }
+    }
+}
+
 
 fn float_eq(a: f64, b: f64) -> bool {
     let epsilon = 0.000001;

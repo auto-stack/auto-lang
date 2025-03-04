@@ -10,7 +10,7 @@ use crate::array::ARRAY_EMPTY;
 
 pub static OBJ_EMPTY: Obj = Obj::EMPTY;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Obj {
     values: BTreeMap<ValueKey, Value>,
 }
@@ -90,6 +90,10 @@ impl Obj {
         self.lookup(name).unwrap_or(default)
     }
 
+    pub fn get_or_insert(&mut self, key: impl Into<ValueKey>, default: impl Into<Value>) -> Value {
+        self.values.entry(key.into()).or_insert(default.into()).clone()
+    }
+
     pub fn get_str(&self, name: &str) -> Option<AutoStr> {
         match self.get(ValueKey::Str(name.into())) {
             Some(Value::Str(s)) => Some(s),
@@ -106,6 +110,17 @@ impl Obj {
 
     pub fn get_str_of(&self, name: &str) -> AutoStr {
         self.get_str_or(name, "")
+    }
+
+    pub fn get_int_or(&self, name: &str, default: i32) -> i32 {
+        match self.get(ValueKey::Str(name.into())) {
+            Some(Value::Int(i)) => i,
+            _ => default,
+        }
+    }
+
+    pub fn get_int_of(&self, name: &str) -> i32 {
+        self.get_int_or(name, 0)
     }
 
     pub fn get_float_or(&self, name: &str, default: f64) -> f64 {
@@ -165,6 +180,32 @@ impl Obj {
 
     pub fn pretty(&self, max_indent: usize) -> String {
         pretty(format!("{}", self).as_str(), max_indent)
+    }
+}
+
+// arithmetic operations
+impl Obj {
+
+    pub fn inc(&mut self, key: impl Into<ValueKey>) -> i32 {
+        let key = key.into();
+        let mut value = self.get_or_insert(key.clone(), 0);   
+        value.inc();
+        self.set(key, value.clone());
+        value.as_int()
+    }
+
+    pub fn dec(&mut self, key: impl Into<ValueKey>) -> i32 {
+        let key = key.into();
+        let mut value = self.get_or_insert(key.clone(), 0);
+        value.dec();
+        self.set(key, value.clone());
+        value.as_int()
+    }
+
+    pub fn reset(&mut self, key: impl Into<ValueKey>) -> i32 {
+        let key = key.into();
+        self.set(key, 0);
+        0
     }
 }
 
