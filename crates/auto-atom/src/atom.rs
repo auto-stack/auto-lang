@@ -12,6 +12,18 @@ pub enum Root {
     Empty,
 }
 
+impl Root {
+    pub fn main_arg(&self) -> Value {
+        match self {
+            Root::Node(node) => node.main_arg(),
+            Root::Array(_) => Value::Nil,
+            Root::Empty => Value::Nil,
+        }
+    }
+}
+
+
+
 pub const EMPTY: Atom = Atom {
     root: Root::Empty,
 };

@@ -71,7 +71,6 @@ impl Interpreter {
         self.evaler.set_mode(EvalMode::TEMPLATE);
         let code = code.into();
         let flipped = flip_template(code.as_str(), note);
-        println!("flipped: {}", flipped);
         let mut parser = Parser::new_with_note(flipped.as_str(), self.scope.clone(), note);
         let ast = parser.parse()?;
         let result = self.evaler.eval(&ast);

@@ -602,7 +602,6 @@ impl Universe {
                 let main_arg = node.main_arg();
                 self.set_global("name", main_arg);
                 for (key, val) in node.props.iter() {
-                    println!("merging atom to scope: key: {}, val: {}", key, val);
                     self.set_global(key.to_string(), val.clone());
                 }
                 // set kids
@@ -616,7 +615,6 @@ impl Universe {
                         props.set("name", kid.main_arg());
                         kids_vec.push(props.into());
                     }
-                    println!("merging atom to scope: plural: {}, props: {:?}", plural, kids_vec);
                     self.set_global(plural.as_str(), kids_vec.into());
                 }
                 
