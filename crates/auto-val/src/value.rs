@@ -243,6 +243,13 @@ impl Value {
                     _ => Value::Nil,
                 }
             }
+            (Value::Str(a), Value::Str(b)) => {
+                match op {
+                    Op::Eq => Value::Bool(a == b),
+                    Op::Neq => Value::Bool(a != b),
+                    _ => Value::Nil,
+                }
+            }
             _ => Value::Nil,
         }
     }
