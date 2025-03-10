@@ -94,7 +94,9 @@ impl Evaler {
                 let mut result = Vec::new();
                 for stmt in code.stmts.iter() {
                     let val = self.eval_stmt(stmt);
-                    result.push(val.to_astr());
+                    if !val.is_nil() {
+                        result.push(val.to_astr());
+                    }
                 }
                 Value::Str(result.join("\n").into())
             }
@@ -168,7 +170,7 @@ impl Evaler {
         match self.mode {
             EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
             EvalMode::CONFIG => Value::Obj(self.collect_body(res)),
-            EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| {
+            EvalMode::TEMPLATE => Value::Str(res.into_iter().filter(|v| !v.is_nil()).map(|v| {
                 match v {
                     Value::Str(s) => s.clone(),
                     _ => v.to_astr(),
@@ -256,7 +258,13 @@ impl Evaler {
             match self.mode {
                 EvalMode::SCRIPT => Value::Void,
                 EvalMode::CONFIG => Value::Array(res),
-                EvalMode::TEMPLATE => Value::Str(res.iter().map(|v| {
+                EvalMode::TEMPLATE => Value::Str(res.into_iter().filter(|v| {
+                    match v {
+                        Value::Nil => false,
+                        Value::Str(s) => !s.is_empty(),
+                        _ => true,
+                    }
+                }).map(|v| {
                     match v {
                         Value::Str(s) => s.clone(),
                         _ => v.to_astr(),
