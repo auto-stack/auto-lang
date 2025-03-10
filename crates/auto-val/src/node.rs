@@ -67,6 +67,11 @@ impl Node {
         }
     }
 
+    pub fn get_nodes(&self, name: impl Into<AutoStr>) -> Vec<Node> {
+        let name = name.into();
+        self.nodes.iter().filter(|n| *n.name == name).map(|n| n.clone()).collect()
+    }
+
     pub fn set_prop(&mut self, key: impl Into<ValueKey>, value: impl Into<Value>) {
         self.props.set(key.into(), value.into());
     }
