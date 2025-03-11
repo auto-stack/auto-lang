@@ -221,7 +221,8 @@ impl Evaler {
                         is_mid = false;
                     }
                     self.eval_iter(iter, idx, Value::Int(n));
-                    res.push(self.eval_loop_body(body, is_mid, is_new_line));
+                    let s = self.eval_loop_body(body, is_mid, is_new_line);
+                    res.push(s);
                     max_loop -= 1;
                 }
             }
@@ -255,22 +256,20 @@ impl Evaler {
         if max_loop <= 0 {
             return Value::error("Max loop reached");
         } else {
-            match self.mode {
+            let result = match self.mode {
                 EvalMode::SCRIPT => Value::Void,
                 EvalMode::CONFIG => Value::Array(res),
-                EvalMode::TEMPLATE => Value::Str(res.into_iter().filter(|v| {
-                    match v {
-                        Value::Nil => false,
-                        Value::Str(s) => !s.is_empty(),
-                        _ => true,
-                    }
-                }).map(|v| {
-                    match v {
-                        Value::Str(s) => s.clone(),
-                        _ => v.to_astr(),
-                    }
-                }).collect::<Vec<AutoStr>>().join(sep).into())
-            }
+                EvalMode::TEMPLATE => Value::Str(
+                        res.iter().filter(|v| {
+                            match v {
+                                Value::Nil => false,
+                                Value::Str(s) => !s.is_empty(),
+                                _ => true,
+                            }
+                        }).map(|v| v.to_astr()).collect::<Vec<AutoStr>>().join(sep).into()
+                )
+            };
+            result
         }
     }
 
@@ -724,7 +723,6 @@ impl Evaler {
                     Value::Nil => {
                         // try to lookup in meta and builtins
                         let meta = self.universe.borrow().lookup_meta(&name.text);
-                        println!("lookup {} = {:?}", name.text, meta);
                         if let Some(meta) = meta {
                             return Value::Meta(to_meta_id(&meta));
                         }

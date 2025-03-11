@@ -221,6 +221,14 @@ mod tests {
     }
 
     #[test]
+    fn test_range_print() {
+        let code = r#"for i in 0..10 { print(i) }"#;
+        let result = run(code).unwrap();
+        // TODO: capture stdout and assert
+        assert_eq!(result, "void");
+    }
+
+    #[test]
     fn test_for() {
         let code = "var sum = 0; for i in 0..10 { sum = sum + i }; sum";
         let result = run(code).unwrap();
@@ -233,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_for_with_mid() {
-        let code = r#"$ for i in 0..10 { `$i`; mid(",") }"#;
+        let code = r#"$ for i in 0..10 { `${i}`; mid(",") }"#;
         let scope = Universe::new();
         let result = eval_template(code, scope).unwrap();
         assert_eq!(result.result.repr(), "0,1,2,3,4,5,6,7,8,9");
