@@ -1,7 +1,7 @@
 
 use crate::scope;
 use crate::scope::Meta;
-use auto_val::{Value, Op, Obj, Array, ValueKey, MetaID, Sig, Method, Type, AutoStr};
+use auto_val::{Value, Op, Obj, Array, ValueKey, MetaID, Sig, Method, Type, AutoStr, ConfigBody, Pair, ConfigItem};
 use auto_val;
 use auto_val::{add, sub, mul, div, comp};
 use std::rc::Rc;
@@ -85,6 +85,28 @@ impl Evaler {
                         Value::Node(n) => {
                             node.add_kid(n);
                         }
+                        Value::Array(arr) => {
+                            for item in arr.values.into_iter() {
+                                match item {
+                                    Value::ConfigBody(body) => {
+                                        for item in body.items.into_iter() {
+                                            match item {
+                                                ConfigItem::Pair(pair) => {
+                                                    node.set_prop(pair.key, pair.value);
+                                                }
+                                                ConfigItem::Object(o) => {
+                                                    node.merge_obj(o);
+                                                }
+                                                ConfigItem::Node(n) => {
+                                                    node.add_kid(n.clone());
+                                                }
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -127,15 +149,17 @@ impl Evaler {
         Value::Int(25)
     }
 
-    fn collect_body(&mut self, vals: Vec<Value>) -> Obj {
-        let mut obj = Obj::new();
+    fn collect_config_body(&mut self, vals: Vec<Value>) -> ConfigBody {
+        let mut body = ConfigBody::new();
         for val in vals.into_iter() {
             match val {
-                Value::Pair(key, value) => obj.set(key, *value),
+                Value::Pair(key, value) => body.add_pair(Pair::new(key, *value)),
+                Value::Obj(o) => body.add_object(o),
+                Value::Node(n) => body.add_node(n),
                 _ => {}
             }
         }
-        obj
+        body
     }
 
     fn eval_body(&mut self, body: &Body) -> Value {
@@ -146,7 +170,7 @@ impl Evaler {
         }
         let res = match self.mode {
             EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
-            EvalMode::CONFIG => Value::Obj(self.collect_body(res)),
+            EvalMode::CONFIG => Value::ConfigBody(self.collect_config_body(res)),
             EvalMode::TEMPLATE => {
                 Value::Str(res.iter().map(|v| {
                     match v {
@@ -169,7 +193,7 @@ impl Evaler {
         }
         match self.mode {
             EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
-            EvalMode::CONFIG => Value::Obj(self.collect_body(res)),
+            EvalMode::CONFIG => Value::ConfigBody(self.collect_config_body(res)),
             EvalMode::TEMPLATE => Value::Str(res.into_iter().filter(|v| !v.is_nil()).map(|v| {
                 match v {
                     Value::Str(s) => s.clone(),
@@ -419,7 +443,7 @@ impl Evaler {
         Value::array(values)
     }
 
-    fn object(&mut self, pairs: &Vec<Pair>) -> Value {
+    fn object(&mut self, pairs: &Vec<ast::Pair>) -> Value {
         let mut obj = Obj::new();
         for pair in pairs.iter() {
             obj.set(self.eval_key(&pair.key), self.eval_expr(&pair.value));
@@ -427,9 +451,9 @@ impl Evaler {
         Value::Obj(obj)
     }
 
-    fn pair(&mut self, pair: &Pair) -> Value {
+    fn pair(&mut self, pair: &ast::Pair) -> Value {
         let key = self.eval_key(&pair.key);
-        let value = self.eval_expr(pair.value.as_ref());
+        let value = self.eval_expr(&pair.value);
         Value::Pair(key, Box::new(value))
     }
 
@@ -931,6 +955,28 @@ impl Evaler {
                             props.set(key, *value);
                         },
                         Value::Node(node) => {nodes.push(node);},
+                        Value::Array(arr) => {
+                            for item in arr.values.into_iter() {
+                                match item {
+                                    Value::ConfigBody(body) => {
+                                        for item in body.items.into_iter() {
+                                            match item {
+                                                ConfigItem::Pair(pair) => {
+                                                    props.set(pair.key, pair.value);
+                                                }
+                                                ConfigItem::Object(o) => {
+                                                    props.merge(&o);
+                                                }
+                                                ConfigItem::Node(n) => {
+                                                    nodes.push(n.clone());
+                                                }
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
                         _ => {},
                     }
                 }

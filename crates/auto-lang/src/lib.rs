@@ -80,6 +80,8 @@ pub fn eval_config(code: &str, args: &Obj) -> Result<interp::Interpreter, String
 
 #[cfg(test)]
 mod tests {
+    use crate::config::AutoConfig;
+
     use super::*;
     use auto_val::Value;
 
@@ -754,6 +756,24 @@ exe(hello) {
         let interp = eval_config(code, &Obj::EMPTY).unwrap();
         let result = interp.result;
         assert_eq!(result.repr(), r#"root {name: "hello"; version: "0.1.0"; exe(hello) {dir: "src"; main: "main.c"; }; }"#);
+    }
+
+    #[test]
+    fn test_config_with_node() {
+        let code = r#"
+        name: "hello"
+
+        var dirs = ["a", "b", "c"]
+
+        lib("hello") {
+            for d in dirs {
+                dir(d) {}
+            }
+        }
+        "#;
+
+        let conf = AutoConfig::from_code(code, &Obj::EMPTY).unwrap();
+        assert_eq!(conf.root.to_string(), r#"root {name: "hello"; lib("hello") {dir("a"); dir("b"); dir("c"); }; }"#);
     }
 
     #[test]
