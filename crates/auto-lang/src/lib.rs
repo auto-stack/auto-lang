@@ -1,22 +1,22 @@
-mod token;
-mod lexer;
 pub mod ast;
-mod parser;
-pub mod eval;
-pub mod scope;
-pub mod transpiler;
-pub mod repl;
-pub mod libs;
-pub mod util;
-pub mod interp;
 pub mod config;
+pub mod eval;
+pub mod interp;
+mod lexer;
+pub mod libs;
+mod parser;
+pub mod repl;
+pub mod scope;
+mod token;
+pub mod transpiler;
+pub mod util;
 
-use std::rc::Rc;
-use std::cell::RefCell;
 use crate::eval::EvalMode;
-use crate::scope::{Universe, Meta};
 use crate::parser::Parser;
+use crate::scope::{Meta, Universe};
 use auto_val::Obj;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub fn run(code: &str) -> Result<String, String> {
     let mut interpreter = interp::Interpreter::new();
@@ -36,14 +36,16 @@ pub fn parse(code: &str) -> Result<ast::Code, String> {
     parser.parse()
 }
 
-
 pub fn interpret(code: &str) -> Result<interp::Interpreter, String> {
     let mut interpreter = interp::Interpreter::new();
     interpreter.interpret(code)?;
     Ok(interpreter)
 }
 
-pub fn interpret_with_scope(code: &str, scope: scope::Universe) -> Result<interp::Interpreter, String> {
+pub fn interpret_with_scope(
+    code: &str,
+    scope: scope::Universe,
+) -> Result<interp::Interpreter, String> {
     let mut interpreter = interp::Interpreter::with_scope(scope);
     interpreter.interpret(code)?;
     Ok(interpreter)
@@ -55,7 +57,9 @@ pub fn run_file(path: &str) -> Result<String, String> {
 }
 
 pub fn interpret_file(path: &str) -> interp::Interpreter {
-    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e)).unwrap();
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))
+        .unwrap();
     let mut interpreter = interp::Interpreter::new();
     interpreter.interpret(&code).unwrap();
     interpreter
@@ -71,7 +75,10 @@ pub fn eval_template(template: &str, scope: Universe) -> Result<interp::Interpre
 
 pub fn eval_config(code: &str, args: &Obj) -> Result<interp::Interpreter, String> {
     let mut scope = Universe::new();
-    scope.define_global("root", Rc::new(Meta::Node(ast::Node::new(ast::Name::new("root")))));
+    scope.define_global(
+        "root",
+        Rc::new(Meta::Node(ast::Node::new(ast::Name::new("root")))),
+    );
     scope.set_args(args);
     let mut interpreter = interp::Interpreter::with_scope(scope).with_eval_mode(EvalMode::CONFIG);
     interpreter.interpret(code)?;
@@ -175,7 +182,6 @@ mod tests {
         assert_eq!(result, "3");
     }
 
-
     #[test]
     fn test_var() {
         let code = "var a = 1; a+2";
@@ -257,7 +263,8 @@ $ for i in 0..10 {
 $ }"#;
         let scope = Universe::new();
         let result = eval_template(code, scope).unwrap();
-        let expected = "\n    0,\n    1,\n    2,\n    3,\n    4,\n    5,\n    6,\n    7,\n    8,\n    9";
+        let expected =
+            "\n    0,\n    1,\n    2,\n    3,\n    4,\n    5,\n    6,\n    7,\n    8,\n    9";
         if let Value::Str(s) = result.result {
             assert_eq!(s, expected);
         } else {
@@ -337,7 +344,6 @@ $ }"#;
         let result = run(code).unwrap();
         assert_eq!(result, "ClearDiagnosticInformation");
     }
-
 
     #[test]
     fn test_widget() {
@@ -438,23 +444,20 @@ $ }"#;
 
         let result = interpret(code);
         match result {
-            Ok(result) => {
-                match result.result {
-                    auto_val::Value::Node(app) => {
-                        println!("node: {}", app.to_string());
-                        app.nodes.iter().for_each(|node| {
-                            println!("node: {}", node.to_string());
-                        });
-                    }
-                    _ => {}
+            Ok(result) => match result.result {
+                auto_val::Value::Node(app) => {
+                    println!("node: {}", app.to_string());
+                    app.nodes.iter().for_each(|node| {
+                        println!("node: {}", node.to_string());
+                    });
                 }
-            }
+                _ => {}
+            },
             Err(e) => {
                 println!("error: {}", e);
             }
         }
     }
-
 
     #[test]
     fn test_simple_template() {
@@ -479,7 +482,9 @@ $ for row in rows {
 $ }
 </table>"#;
         let interpreter = eval_template(template, scope).unwrap();
-        assert_eq!(interpreter.result.repr(), r#"
+        assert_eq!(
+            interpreter.result.repr(),
+            r#"
 <h1>Students</h1>
 <table>
     <tr>
@@ -494,10 +499,9 @@ $ }
         <td>Charlie</td>
         <td>22</td>
     </tr>
-</table>"#);
+</table>"#
+        );
     }
-
-
 
     #[test]
     fn test_eval_template() {
@@ -535,7 +539,6 @@ $ }
 "#;
         assert_eq!(result.result.repr(), expected);
     }
-
 
     #[test]
     fn test_for_loop_with_object() {
@@ -578,7 +581,14 @@ $ }
     #[test]
     fn test_insert_global_fn() {
         fn myjoin(arg: &auto_val::Args) -> Value {
-            Value::Str(arg.args.iter().map(|v| v.to_astr()).collect::<Vec<auto_val::AutoStr>>().join("::").into())
+            Value::Str(
+                arg.args
+                    .iter()
+                    .map(|v| v.to_astr())
+                    .collect::<Vec<auto_val::AutoStr>>()
+                    .join("::")
+                    .into(),
+            )
         }
 
         let mut scope = Universe::new();
@@ -740,7 +750,10 @@ $ }
         ref g
         "#;
         let result = run(code).unwrap();
-        assert_eq!(result, r#"grid(a:"first",b:"second",c:"third",) {[1, 2, 3];[4, 5, 6];[7, 8, 9]}"#);
+        assert_eq!(
+            result,
+            r#"grid(a:"first",b:"second",c:"third",) {[1, 2, 3];[4, 5, 6];[7, 8, 9]}"#
+        );
     }
 
     #[test]
@@ -755,7 +768,10 @@ exe(hello) {
 }"#;
         let interp = eval_config(code, &Obj::EMPTY).unwrap();
         let result = interp.result;
-        assert_eq!(result.repr(), r#"root {name: "hello"; version: "0.1.0"; exe(hello) {dir: "src"; main: "main.c"; }; }"#);
+        assert_eq!(
+            result.repr(),
+            r#"root {name: "hello"; version: "0.1.0"; exe(hello) {dir: "src"; main: "main.c"; }; }"#
+        );
     }
 
     #[test]
@@ -773,7 +789,10 @@ exe(hello) {
         "#;
 
         let conf = AutoConfig::from_code(code, &Obj::EMPTY).unwrap();
-        assert_eq!(conf.root.to_string(), r#"root {name: "hello"; lib("hello") {dir("a"); dir("b"); dir("c"); }; }"#);
+        assert_eq!(
+            conf.root.to_string(),
+            r#"root {name: "hello"; lib("hello") {dir("a"); dir("b"); dir("c"); }; }"#
+        );
     }
 
     #[test]
@@ -796,7 +815,6 @@ square(15)
         assert_eq!(result, "'e'");
     }
 
-
     #[test]
     fn test_methods_in_template() {
         let code = r#"<div>${name.upper()}</div>"#;
@@ -804,5 +822,23 @@ square(15)
         scope.set_global("name", Value::str("hello"));
         let result = eval_template(code, scope).unwrap();
         assert_eq!(result.result.repr(), "<div>HELLO</div>");
+    }
+
+    #[test]
+    fn test_view_types() {
+        let code = r#"
+            type Hello {
+                text str
+                fn view() {
+                    label(text) {}
+                }
+            }
+            var hello = Hello(text:"hallo")
+            hello.view()
+        "#;
+        // TODO: implement view types
+        let res = run(code).unwrap();
+        println!("{}", res);
+        assert!(true);
     }
 }

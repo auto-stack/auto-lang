@@ -1,6 +1,6 @@
-use std::fmt;
-use serde::Serialize;
 use auto_val::Op;
+use serde::Serialize;
+use std::fmt;
 
 #[derive(Debug)]
 pub struct Code {
@@ -9,7 +9,9 @@ pub struct Code {
 
 impl Default for Code {
     fn default() -> Self {
-        Self { stmts: Vec::default() }
+        Self {
+            stmts: Vec::default(),
+        }
     }
 }
 
@@ -70,7 +72,9 @@ impl Name {
 
 impl Default for Name {
     fn default() -> Self {
-        Self { text: "".to_string() }
+        Self {
+            text: "".to_string(),
+        }
     }
 }
 
@@ -131,7 +135,10 @@ impl Var {
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
-    If(/*multiple branches with condition/body*/Vec<Branch>, /*else*/Option<Body>),
+    If(
+        /*multiple branches with condition/body*/ Vec<Branch>,
+        /*else*/ Option<Body>,
+    ),
     For(For),
     Store(Store),
     Block(Body),
@@ -159,8 +166,8 @@ impl fmt::Display for For {
 
 #[derive(Debug, Clone)]
 pub enum Iter {
-    Indexed(/*index*/Name, /*iter*/Name),
-    Named(/*iter*/Name),
+    Indexed(/*index*/ Name, /*iter*/ Name),
+    Named(/*iter*/ Name),
 }
 
 #[derive(Debug, Clone)]
@@ -171,11 +178,17 @@ pub struct Body {
 
 impl Body {
     pub fn new() -> Self {
-        Self { stmts: Vec::new(), has_new_line: false }
+        Self {
+            stmts: Vec::new(),
+            has_new_line: false,
+        }
     }
 
     pub fn single_expr(expr: Expr) -> Self {
-        Self { stmts: vec![Stmt::Expr(expr)], has_new_line: false }
+        Self {
+            stmts: vec![Stmt::Expr(expr)],
+            has_new_line: false,
+        }
     }
 }
 
@@ -215,12 +228,12 @@ impl fmt::Display for Stmt {
                     write!(f, " (else {})", else_stmt)?;
                 }
                 write!(f, ")")
-            },
+            }
             Stmt::For(for_stmt) => write!(f, "{}", for_stmt),
             Stmt::Block(body) => write!(f, "{}", body),
             Stmt::Store(store) => write!(f, "{}", store),
             Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),
-            Stmt::TypeDecl(type_decl) => write!(f, "{}", type_decl),    
+            Stmt::TypeDecl(type_decl) => write!(f, "{}", type_decl),
             Stmt::Widget(widget) => write!(f, "{}", widget),
             Stmt::Node(node) => write!(f, "{}", node),
         }
@@ -248,7 +261,7 @@ pub enum Expr {
     Object(Vec<Pair>),
     Call(Call),
     Node(Node),
-    Index(/*array*/Box<Expr>, /*index*/Box<Expr>),
+    Index(/*array*/ Box<Expr>, /*index*/ Box<Expr>),
     Lambda(Fn),
     FStr(FStr),
     Grid(Grid),
@@ -541,9 +554,14 @@ impl fmt::Display for Fn {
 
 impl Fn {
     pub fn new(name: Name, parent: Option<Name>, params: Vec<Param>, body: Body, ret: Type) -> Fn {
-        Fn { name, parent, params, body, ret }
+        Fn {
+            name,
+            parent,
+            params,
+            body,
+            ret,
+        }
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -659,9 +677,13 @@ pub struct Node {
 
 impl Node {
     pub fn new(name: Name) -> Self {
-        Self { name, args: Args::new(), body: Body::new() }
+        Self {
+            name,
+            args: Args::new(),
+            body: Body::new(),
+        }
     }
-}   
+}
 
 impl From<Call> for Node {
     fn from(call: Call) -> Self {
@@ -696,7 +718,11 @@ pub struct Widget {
 
 impl Widget {
     pub fn new(name: Name) -> Self {
-        Self { name, model: Model::default(), view: View::default() }
+        Self {
+            name,
+            model: Model::default(),
+            view: View::default(),
+        }
     }
 }
 
@@ -713,7 +739,9 @@ pub struct Model {
 
 impl Default for Model {
     fn default() -> Self {
-        Self { vars: Vec::default() }
+        Self {
+            vars: Vec::default(),
+        }
     }
 }
 
@@ -738,7 +766,10 @@ pub struct View {
 
 impl Default for View {
     fn default() -> Self {
-        Self { nodes: Vec::new(), body: Body::new() }
+        Self {
+            nodes: Vec::new(),
+            body: Body::new(),
+        }
     }
 }
 

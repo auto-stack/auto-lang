@@ -1,17 +1,17 @@
-use std::collections::HashMap;
-use auto_val::{Value, Args};
-use auto_val::Sig;
-use auto_val::MetaID;
-use auto_atom::Atom;
 use crate::ast;
 use crate::libs;
-use std::rc::Rc;
-use std::cell::RefCell;
-use auto_val::{TypeInfoStore, ExtFn, Obj};
-use std::any::Any;
-use std::fmt;
-use std::sync::LazyLock;
+use auto_atom::Atom;
+use auto_val::MetaID;
+use auto_val::Sig;
+use auto_val::{Args, Value};
+use auto_val::{ExtFn, Obj, TypeInfoStore};
 use ecow::EcoString as AutoStr;
+use std::any::Any;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::fmt;
+use std::rc::Rc;
+use std::sync::LazyLock;
 
 static SID_PATH_GLOBAL: LazyLock<Sid> = LazyLock::new(|| Sid::new(""));
 
@@ -50,23 +50,21 @@ impl fmt::Display for Sid {
 impl From<String> for Sid {
     fn from(value: String) -> Self {
         Self {
-            path: AutoStr::from(value)
+            path: AutoStr::from(value),
         }
     }
 }
 
 impl From<AutoStr> for Sid {
     fn from(value: AutoStr) -> Self {
-        Self {
-            path: value
-        }
+        Self { path: value }
     }
 }
 
 impl From<&str> for Sid {
     fn from(value: &str) -> Self {
         Self {
-            path: AutoStr::from(value)
+            path: AutoStr::from(value),
         }
     }
 }
@@ -74,7 +72,7 @@ impl From<&str> for Sid {
 impl Sid {
     pub fn new(path: impl Into<String>) -> Self {
         Self {
-            path: AutoStr::from(path.into())
+            path: AutoStr::from(path.into()),
         }
     }
 
@@ -84,19 +82,21 @@ impl Sid {
                 AutoStr::from(name.into())
             } else {
                 AutoStr::from(format!("{}.{}", parent.path, name.into()))
-            }
+            },
         }
     }
 
     pub fn top(name: impl Into<String>) -> Self {
         Self {
-            path: AutoStr::from(name.into())
+            path: AutoStr::from(name.into()),
         }
     }
 
     pub fn parent(&self) -> Option<Self> {
         if let Some(pos) = self.path.rfind('.') {
-            Some(Self { path: AutoStr::from(self.path[0..pos].to_string()) })
+            Some(Self {
+                path: AutoStr::from(self.path[0..pos].to_string()),
+            })
         } else if self.path == SID_PATH_GLOBAL.path {
             None
         } else {
@@ -106,7 +106,7 @@ impl Sid {
 
     pub fn name(&self) -> AutoStr {
         if let Some(pos) = self.path.rfind('.') {
-            self.path[pos+1..].into()
+            self.path[pos + 1..].into()
         } else {
             self.path.clone()
         }
@@ -119,7 +119,7 @@ impl Sid {
 
 pub struct Scope {
     pub kind: ScopeKind,
-    pub sid: Sid, // TODO: should use SharedString?
+    pub sid: Sid,            // TODO: should use SharedString?
     pub parent: Option<Sid>, // sid to parent
     pub kids: Vec<Sid>,
     pub symbols: HashMap<String, Rc<Meta>>,
@@ -140,7 +140,7 @@ impl Scope {
     }
 
     pub fn is_global(&self) -> bool {
-        return matches!(self.kind, ScopeKind::Global)
+        return matches!(self.kind, ScopeKind::Global);
     }
 
     pub fn dump(&self) {
@@ -174,7 +174,7 @@ impl Scope {
 }
 
 pub struct Universe {
-    pub scopes: HashMap<Sid, Scope>, // sid -> scope
+    pub scopes: HashMap<Sid, Scope>,   // sid -> scope
     pub asts: HashMap<Sid, ast::Code>, // sid -> ast
     // pub stack: Vec<StackedScope>,
     pub env_vals: HashMap<String, Box<dyn Any>>,
@@ -197,15 +197,18 @@ impl Universe {
     pub fn new() -> Self {
         let builtins = libs::builtin::builtins();
         let mut scopes = HashMap::new();
-        scopes.insert(SID_PATH_GLOBAL.clone(), Scope::new(ScopeKind::Global, SID_PATH_GLOBAL.clone()));
+        scopes.insert(
+            SID_PATH_GLOBAL.clone(),
+            Scope::new(ScopeKind::Global, SID_PATH_GLOBAL.clone()),
+        );
         let mut uni = Self {
             scopes,
             asts: HashMap::new(),
             // stack: vec![StackedScope::new()],
             env_vals: HashMap::new(),
             shared_vals: HashMap::new(),
-            builtins, 
-            types: TypeInfoStore::new(), 
+            builtins,
+            types: TypeInfoStore::new(),
             lambda_counter: 0,
             cur_spot: SID_PATH_GLOBAL.clone(),
             widget: Value::Nil,
@@ -284,7 +287,7 @@ impl Universe {
     pub fn enter_type(&mut self, name: impl Into<String>) {
         self.enter_named_scope(name, ScopeKind::Type);
     }
-    
+
     pub fn cur_scope(&self) -> &Scope {
         self.scopes.get(&self.cur_spot).unwrap()
     }
@@ -328,11 +331,15 @@ impl Universe {
     }
 
     pub fn global_scope(&self) -> &Scope {
-        self.scopes.get(&SID_PATH_GLOBAL).expect("No global scope left")
+        self.scopes
+            .get(&SID_PATH_GLOBAL)
+            .expect("No global scope left")
     }
 
     pub fn global_scope_mut(&mut self) -> &mut Scope {
-        self.scopes.get_mut(&SID_PATH_GLOBAL).expect("No global scope left")
+        self.scopes
+            .get_mut(&SID_PATH_GLOBAL)
+            .expect("No global scope left")
     }
 
     pub fn set_local_val(&mut self, name: &str, value: Value) {
@@ -344,7 +351,8 @@ impl Universe {
         for key in obj.keys() {
             let val = obj.get(key.clone());
             if let Some(v) = val {
-                self.current_scope_mut().set_val(key.to_string().as_str(), v);
+                self.current_scope_mut()
+                    .set_val(key.to_string().as_str(), v);
             }
         }
     }
@@ -357,12 +365,22 @@ impl Universe {
         self.shared_vals.get(name).cloned()
     }
 
+    pub fn has_global(&self, name: &str) -> bool {
+        self.global_scope().exists(name)
+    }
+
     pub fn set_global(&mut self, name: impl Into<String>, value: Value) {
         self.global_scope_mut().set_val(name, value);
     }
 
     pub fn add_global_fn(&mut self, name: &str, f: fn(&Args) -> Value) {
-        self.global_scope_mut().set_val(name, Value::ExtFn(ExtFn { fun: f, name: name.to_string() }));
+        self.global_scope_mut().set_val(
+            name,
+            Value::ExtFn(ExtFn {
+                fun: f,
+                name: name.to_string(),
+            }),
+        );
     }
 
     pub fn get_global(&self, name: &str) -> Value {
@@ -537,7 +555,7 @@ impl Universe {
                     Some(meta) => match meta.as_ref() {
                         Meta::View(view) => Some(view.clone()),
                         _ => None,
-                    }
+                    },
                     None => None,
                 }
             }
@@ -547,7 +565,7 @@ impl Universe {
                     Some(meta) => match meta.as_ref() {
                         Meta::Body(body) => Some(Self::body_to_view(body)),
                         _ => None,
-                    }
+                    },
                     None => None,
                 }
             }
@@ -615,9 +633,19 @@ impl Universe {
                         props.set("name", kid.main_arg());
                         kids_vec.push(props.into());
                     }
-                    self.set_global(plural.as_str(), kids_vec.into());
+                    let key = plural.as_str();
+                    if !self.has_global(key) {
+                        self.set_global(key, kids_vec.into());
+                    } else {
+                        let existing = self.get_global(key);
+                        if let Value::Array(mut existing) = existing {
+                            for kid in kids_vec.iter() {
+                                existing.push(kid.clone());
+                            }
+                            self.set_global(key, Value::Array(existing));
+                        }
+                    }
                 }
-                
             }
             auto_atom::Root::Array(array) => {
                 for (i, val) in array.iter().enumerate() {
@@ -645,7 +673,6 @@ pub enum Meta {
 }
 
 impl fmt::Display for Meta {
-
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Meta::Store(_) => write!(f, "STORE"),
@@ -670,7 +697,10 @@ pub struct StackedScope {
 
 impl StackedScope {
     pub fn new() -> StackedScope {
-        StackedScope { vals: HashMap::new(), symbols: HashMap::new() }
+        StackedScope {
+            vals: HashMap::new(),
+            symbols: HashMap::new(),
+        }
     }
 
     pub fn dump(&self) -> String {

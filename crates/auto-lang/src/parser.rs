@@ -1,18 +1,17 @@
-use crate::token::{Token, TokenKind, Pos};
 use crate::ast::*;
-use crate::lexer::Lexer;
-use crate::scope::Universe;
-use crate::scope::Meta;
-use auto_val::Op;
-use std::i32;
 use crate::error_pos;
-use std::rc::Rc;
-use std::cell::RefCell;
+use crate::lexer::Lexer;
+use crate::scope::Meta;
+use crate::scope::Universe;
+use crate::token::{Pos, Token, TokenKind};
 use auto_val::AutoStr;
+use auto_val::Op;
+use std::cell::RefCell;
+use std::i32;
 use std::path::Path;
+use std::rc::Rc;
 
 type ParseError = String;
-
 
 pub struct PostfixPrec {
     l: u8,
@@ -30,18 +29,21 @@ pub struct PrefixPrec {
 }
 
 const fn prefix_prec(n: u8) -> PrefixPrec {
-    PrefixPrec { _l: (), r: 2*n }
+    PrefixPrec { _l: (), r: 2 * n }
 }
 
 const fn postfix_prec(n: u8) -> PostfixPrec {
-    PostfixPrec { l: 2*n, _r: () }
+    PostfixPrec { l: 2 * n, _r: () }
 }
 
 const fn infix_prec(n: u8) -> InfixPrec {
     if n == 0 {
         InfixPrec { l: 0, r: 0 }
     } else {
-        InfixPrec { l: 2*n-1, r: 2*n }
+        InfixPrec {
+            l: 2 * n - 1,
+            r: 2 * n,
+        }
     }
 }
 
@@ -93,10 +95,9 @@ fn infix_power(op: Op) -> Result<InfixPrec, ParseError> {
 }
 
 // pub fn parse(code: &str, scope: Rc<RefCell<Universe>>, interpreter: &'a Interpreter) -> Result<Code, ParseError> {
-    // let mut parser = Parser::new(code, scope, interpreter);
-    // parser.parse()
+// let mut parser = Parser::new(code, scope, interpreter);
+// parser.parse()
 // }
-
 
 pub struct Parser<'a> {
     pub scope: Rc<RefCell<Universe>>,
@@ -140,7 +141,10 @@ impl<'a> Parser<'a> {
     pub fn skip_comments(&mut self) {
         loop {
             match self.kind() {
-                TokenKind::CommentLine | TokenKind::CommentStart | TokenKind::CommentContent | TokenKind::CommentEnd => {
+                TokenKind::CommentLine
+                | TokenKind::CommentStart
+                | TokenKind::CommentContent
+                | TokenKind::CommentEnd => {
                     self.cur = self.lexer.next();
                 }
                 _ => {
@@ -156,7 +160,7 @@ impl<'a> Parser<'a> {
         &self.cur
     }
 
-    pub fn expect(&mut self, kind: TokenKind) -> Result<(), ParseError>{
+    pub fn expect(&mut self, kind: TokenKind) -> Result<(), ParseError> {
         if self.is_kind(kind) {
             self.next();
             Ok(())
@@ -200,7 +204,15 @@ impl<'a> Parser<'a> {
             // TODO: this should only happen in a Config scenario
             if let Stmt::Expr(Expr::Pair(Pair { key, value })) = &stmt {
                 if let Some(name) = key.name() {
-                    self.define(name, Meta::Store(Store { name: Name::new(name), kind: StoreKind::Var, ty: Type::Unknown, expr: *value.clone() }));
+                    self.define(
+                        name,
+                        Meta::Store(Store {
+                            name: Name::new(name),
+                            kind: StoreKind::Var,
+                            ty: Type::Unknown,
+                            expr: *value.clone(),
+                        }),
+                    );
                 }
             }
             stmts.push(stmt);
@@ -229,15 +241,13 @@ impl<'a> Parser<'a> {
         let mut pairs = Vec::new();
         for stmt in body.stmts.iter() {
             match stmt {
-                Stmt::Expr(expr) => {
-                    match expr {
-                        Expr::Pair(p) => {
-                            pairs.push(p.clone());
-                        }
-                        _ => return error_pos!("Last block must be an object!")
+                Stmt::Expr(expr) => match expr {
+                    Expr::Pair(p) => {
+                        pairs.push(p.clone());
                     }
-                }
-                _ => return error_pos!("Last block must be an object!")
+                    _ => return error_pos!("Last block must be an object!"),
+                },
+                _ => return error_pos!("Last block must be an object!"),
             }
         }
         Ok(pairs)
@@ -298,15 +308,29 @@ impl<'a> Parser<'a> {
     fn expr_pratt_with_left(&mut self, mut lhs: Expr, min_power: u8) -> Result<Expr, ParseError> {
         loop {
             let op = match self.kind() {
-                TokenKind::EOF | TokenKind::Newline | TokenKind::Semi | TokenKind::LBrace | TokenKind::RBrace | TokenKind::Comma => break,
-                TokenKind::Add | TokenKind::Sub | TokenKind::Mul | TokenKind::Div | TokenKind::Not => self.op(),
+                TokenKind::EOF
+                | TokenKind::Newline
+                | TokenKind::Semi
+                | TokenKind::LBrace
+                | TokenKind::RBrace
+                | TokenKind::Comma => break,
+                TokenKind::Add
+                | TokenKind::Sub
+                | TokenKind::Mul
+                | TokenKind::Div
+                | TokenKind::Not => self.op(),
                 TokenKind::Dot => self.op(),
                 TokenKind::Colon => self.op(),
                 TokenKind::Range | TokenKind::RangeEq => self.op(),
                 TokenKind::LSquare => self.op(),
                 TokenKind::LParen => self.op(),
                 TokenKind::Asn => self.op(),
-                TokenKind::Eq | TokenKind::Neq | TokenKind::Lt | TokenKind::Gt | TokenKind::Le | TokenKind::Ge => self.op(),
+                TokenKind::Eq
+                | TokenKind::Neq
+                | TokenKind::Lt
+                | TokenKind::Gt
+                | TokenKind::Le
+                | TokenKind::Ge => self.op(),
                 TokenKind::RSquare => break,
                 TokenKind::RParen => break,
                 _ => {
@@ -316,7 +340,9 @@ impl<'a> Parser<'a> {
             // Postfix
 
             if let Ok(Some(power)) = postfix_power(op) {
-                if power.l < min_power { break; }
+                if power.l < min_power {
+                    break;
+                }
 
                 match op {
                     // Index
@@ -330,7 +356,10 @@ impl<'a> Parser<'a> {
                     // Call or Node Instance
                     Op::LParen => {
                         let args = self.args()?;
-                        lhs = Expr::Call(Call{name: Box::new(lhs), args});
+                        lhs = Expr::Call(Call {
+                            name: Box::new(lhs),
+                            args,
+                        });
                         continue;
                     }
                     // Pair
@@ -343,7 +372,10 @@ impl<'a> Parser<'a> {
                             _ => return error_pos!("Invalid key: {}", lhs),
                         };
                         let rhs = self.expr()?;
-                        lhs = Expr::Pair(Pair { key, value: Box::new(rhs) });
+                        lhs = Expr::Pair(Pair {
+                            key,
+                            value: Box::new(rhs),
+                        });
                         return Ok(lhs);
                     }
                     _ => return error_pos!("Invalid postfix operator: {}", op),
@@ -355,7 +387,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             self.next(); // skip binary op
-            // Check for whether assignment is allowed
+                         // Check for whether assignment is allowed
             match op {
                 Op::Asn => {
                     self.check_asn(&lhs)?;
@@ -374,7 +406,10 @@ impl<'a> Parser<'a> {
                 let meta = self.lookup_meta(name.text.as_str());
                 if let Some(Meta::Store(store)) = meta.as_deref() {
                     if matches!(store.kind, StoreKind::Let) {
-                        return error_pos!("Syntax error: Assignment not allowed for let store: {}", store.name);
+                        return error_pos!(
+                            "Syntax error: Assignment not allowed for let store: {}",
+                            store.name
+                        );
                     }
                 }
             }
@@ -385,25 +420,25 @@ impl<'a> Parser<'a> {
 
     pub fn op(&mut self) -> Op {
         match self.kind() {
-            TokenKind::Add => { Op::Add },
-            TokenKind::Sub => { Op::Sub },
-            TokenKind::Mul => { Op::Mul },
-            TokenKind::Div => { Op::Div },
-            TokenKind::LSquare => { Op::LSquare },
-            TokenKind::LParen => { Op::LParen },
-            TokenKind::LBrace => { Op::LBrace },
-            TokenKind::Not => { Op::Not },
-            TokenKind::Asn => { Op::Asn },
-            TokenKind::Eq => { Op::Eq },
-            TokenKind::Neq => { Op::Neq },
-            TokenKind::Lt => { Op::Lt },
-            TokenKind::Gt => { Op::Gt },
-            TokenKind::Le => { Op::Le },
-            TokenKind::Ge => { Op::Ge },
-            TokenKind::Range => { Op::Range },
-            TokenKind::RangeEq => { Op::RangeEq },
-            TokenKind::Dot => { Op::Dot },
-            TokenKind::Colon => { Op::Colon },
+            TokenKind::Add => Op::Add,
+            TokenKind::Sub => Op::Sub,
+            TokenKind::Mul => Op::Mul,
+            TokenKind::Div => Op::Div,
+            TokenKind::LSquare => Op::LSquare,
+            TokenKind::LParen => Op::LParen,
+            TokenKind::LBrace => Op::LBrace,
+            TokenKind::Not => Op::Not,
+            TokenKind::Asn => Op::Asn,
+            TokenKind::Eq => Op::Eq,
+            TokenKind::Neq => Op::Neq,
+            TokenKind::Lt => Op::Lt,
+            TokenKind::Gt => Op::Gt,
+            TokenKind::Le => Op::Le,
+            TokenKind::Ge => Op::Ge,
+            TokenKind::Range => Op::Range,
+            TokenKind::RangeEq => Op::RangeEq,
+            TokenKind::Dot => Op::Dot,
+            TokenKind::Colon => Op::Colon,
             _ => panic!("Expected operator, got {:?}", self.kind()),
         }
     }
@@ -479,7 +514,10 @@ impl<'a> Parser<'a> {
                             // args.map.push((name, *p.value));
                         }
                         _ => {
-                            return error_pos!("named args should have named key instead of {}", &k);
+                            return error_pos!(
+                                "named args should have named key instead of {}",
+                                &k
+                            );
                         }
                     }
                 }
@@ -522,7 +560,10 @@ impl<'a> Parser<'a> {
         let key = self.key()?;
         self.expect(TokenKind::Colon)?;
         let value = self.expr()?;
-        Ok(Pair { key, value: Box::new(value) })
+        Ok(Pair {
+            key,
+            value: Box::new(value),
+        })
     }
 
     #[allow(unused)]
@@ -648,7 +689,8 @@ impl<'a> Parser<'a> {
             // $ expressions
             if self.is_kind(TokenKind::FStrNote) {
                 self.next(); // skip $
-                if self.is_kind(TokenKind::LBrace) { // ${Expr}
+                if self.is_kind(TokenKind::LBrace) {
+                    // ${Expr}
                     self.expect(TokenKind::LBrace)?;
                     // NOTE: allow only one expression in a ${} block
                     if !self.is_kind(TokenKind::RBrace) {
@@ -657,7 +699,8 @@ impl<'a> Parser<'a> {
                         // self.expect_eos()?;
                     }
                     self.expect(TokenKind::RBrace)?;
-                } else { // $Ident
+                } else {
+                    // $Ident
                     let ident = self.ident()?;
                     parts.push(ident);
                     self.expect(TokenKind::Ident)?;
@@ -700,9 +743,16 @@ impl<'a> Parser<'a> {
         let lambda = if self.is_kind(TokenKind::LBrace) {
             let body = self.body()?;
             Fn::new(Name::new(id.clone()), None, params, body, Type::Unknown)
-        } else { // single expression
+        } else {
+            // single expression
             let expr = self.expr()?;
-            Fn::new(Name::new(id.clone()), None, params, Body::single_expr(expr), Type::Unknown)
+            Fn::new(
+                Name::new(id.clone()),
+                None,
+                params,
+                Body::single_expr(expr),
+                Type::Unknown,
+            )
         };
         // put lambda in scope
         self.define(id.as_str(), Meta::Fn(lambda.clone()));
@@ -716,8 +766,10 @@ impl<'a> Parser<'a> {
     // End of statement
     pub fn expect_eos(&mut self) -> Result<(), ParseError> {
         let mut has_sep = false;
-        while self.is_kind(TokenKind::Semi) || self.is_kind(TokenKind::Newline)
-                || self.is_kind(TokenKind::Comma) {
+        while self.is_kind(TokenKind::Semi)
+            || self.is_kind(TokenKind::Newline)
+            || self.is_kind(TokenKind::Comma)
+        {
             has_sep = true;
             self.next();
         }
@@ -745,9 +797,7 @@ impl<'a> Parser<'a> {
             // AutoUI Stmts
             TokenKind::Widget => self.widget_stmt()?,
             // Node Instance?
-            TokenKind::Ident => {
-                self.node_or_call_stmt()?
-            }
+            TokenKind::Ident => self.node_or_call_stmt()?,
             // Otherwise, try to parse as an expression
             _ => self.expr_stmt()?,
         };
@@ -778,7 +828,7 @@ impl<'a> Parser<'a> {
         // end of path, next should be a colon (for items) or end-of-statement
         if self.is_kind(TokenKind::Colon) {
             self.next(); // skip :
-            // parse items
+                         // parse items
             if self.is_kind(TokenKind::Ident) {
                 let name = self.expect_ident_str()?;
                 items.push(name);
@@ -835,7 +885,11 @@ impl<'a> Parser<'a> {
         // Define items in scope
         for item in uses.items.iter() {
             // lookup item's meta from its mod
-            let meta = self.scope.borrow().lookup(item.as_str(), path.clone()).unwrap();
+            let meta = self
+                .scope
+                .borrow()
+                .lookup(item.as_str(), path.clone())
+                .unwrap();
             // println!("meta: {:?}", meta);
             // define iten with its name in current scope
             self.define_rc(item.as_str(), meta);
@@ -864,8 +918,11 @@ impl<'a> Parser<'a> {
                 if let Stmt::Expr(Expr::Pair(Pair { key, value })) = &stmt {
                     // define as a property
                     self.define(
-                        key.to_string().as_str(), 
-                        Meta::Pair(Pair { key: key.clone(), value: value.clone() })
+                        key.to_string().as_str(),
+                        Meta::Pair(Pair {
+                            key: key.clone(),
+                            value: value.clone(),
+                        }),
                     );
                 }
             }
@@ -875,7 +932,10 @@ impl<'a> Parser<'a> {
         stmts = self.convert_last_block(stmts)?;
         self.exit_scope();
         self.expect(TokenKind::RBrace)?;
-        Ok(Body { stmts, has_new_line })
+        Ok(Body {
+            stmts,
+            has_new_line,
+        })
     }
 
     pub fn node_body(&mut self) -> Result<Body, ParseError> {
@@ -896,7 +956,7 @@ impl<'a> Parser<'a> {
         let mut else_stmt = None;
         while self.is_kind(TokenKind::Else) {
             self.next(); // skip else
-            // more branches
+                         // more branches
             if self.is_kind(TokenKind::If) {
                 self.next(); // skip if
                 let cond = self.expr()?;
@@ -917,18 +977,24 @@ impl<'a> Parser<'a> {
 
     pub fn for_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.next(); // skip `for`
-        // enumerator
+                     // enumerator
         if self.is_kind(TokenKind::Ident) {
             let name = self.cur.text.clone();
             self.enter_scope();
-            let meta = Meta::Var(Var { name: Name::new(name.clone()), expr: Expr::Nil });
+            let meta = Meta::Var(Var {
+                name: Name::new(name.clone()),
+                expr: Expr::Nil,
+            });
             self.define(name.as_str(), meta);
             self.next(); // skip name
             let mut iter = Iter::Named(Name::new(name.clone()));
             if self.is_kind(TokenKind::Comma) {
                 self.next(); // skip ,
                 let iter_name = self.cur.text.clone();
-                let meta_iter = Meta::Var(Var { name: Name::new(iter_name.clone()), expr: Expr::Nil });
+                let meta_iter = Meta::Var(Var {
+                    name: Name::new(iter_name.clone()),
+                    expr: Expr::Nil,
+                });
                 self.define(iter_name.as_str(), meta_iter);
                 self.next(); // skip iter name
                 iter = Iter::Indexed(Name::new(name.clone()), Name::new(iter_name.clone()));
@@ -938,7 +1004,12 @@ impl<'a> Parser<'a> {
             let body = self.body()?;
             let has_new_line = body.has_new_line;
             self.exit_scope();
-            return Ok(Stmt::For(For { iter, range, body, new_line: has_new_line }));
+            return Ok(Stmt::For(For {
+                iter,
+                range,
+                body,
+                new_line: has_new_line,
+            }));
         }
         error_pos!("Expected for loop, got {:?}", self.kind())
     }
@@ -947,7 +1018,7 @@ impl<'a> Parser<'a> {
         // store kind: var/let/mut
         let store_kind = self.store_kind()?;
         self.next(); // skip var/let/mut
-        // identifier name
+                     // identifier name
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
 
@@ -960,7 +1031,6 @@ impl<'a> Parser<'a> {
         // =
         self.expect(TokenKind::Asn)?;
 
-
         // inital value: expression
         let expr = self.rhs_expr()?;
         // TODO: check type compatibility
@@ -968,7 +1038,12 @@ impl<'a> Parser<'a> {
             ty = self.find_expr_type(&expr)?;
         }
 
-        let store = Store { kind: store_kind, name: Name::new(name.clone()), ty, expr: expr.clone() };
+        let store = Store {
+            kind: store_kind,
+            name: Name::new(name.clone()),
+            ty,
+            expr: expr.clone(),
+        };
         if let Expr::Lambda(lambda) = &expr {
             self.define(name.as_str(), Meta::Ref(lambda.name.clone()));
         } else {
@@ -998,9 +1073,15 @@ impl<'a> Parser<'a> {
                 if arr.len() > 0 {
                     let first = &arr[0];
                     let elem_ty = self.find_expr_type(first)?;
-                    ty = Type::Array(ArrayType { elem: Box::new(elem_ty), len: arr.len() });
+                    ty = Type::Array(ArrayType {
+                        elem: Box::new(elem_ty),
+                        len: arr.len(),
+                    });
                 } else {
-                    ty = Type::Array(ArrayType { elem: Box::new(Type::Unknown), len: 0 });
+                    ty = Type::Array(ArrayType {
+                        elem: Box::new(Type::Unknown),
+                        len: 0,
+                    });
                 }
             }
             _ => {}
@@ -1020,9 +1101,13 @@ impl<'a> Parser<'a> {
     // Function Declaration
     pub fn fn_stmt(&mut self, parent_name: &str) -> Result<Stmt, ParseError> {
         self.next(); // skip keyword `fn`
-        // parse function name
+                     // parse function name
         let name = self.cur.text.clone();
-        self.expect(TokenKind::Ident)?;
+        if self.is_kind(TokenKind::View) {
+            self.next(); // skip view
+        } else {
+            self.expect(TokenKind::Ident)?;
+        }
 
         // enter function scope
         self.scope.borrow_mut().enter_fn(name.clone());
@@ -1081,7 +1166,7 @@ impl<'a> Parser<'a> {
             // param name
             let name = self.cur.text.clone();
             self.next(); // skip name
-            // param type
+                         // param type
             let mut ty = Type::Int;
             if self.is_kind(TokenKind::Ident) {
                 ty = self.type_name()?;
@@ -1094,10 +1179,17 @@ impl<'a> Parser<'a> {
                 default = Some(expr);
             }
             // define param in current scope (currently in fn scope)
-            let var = Var { name: Name::new(name.clone()), expr: default.clone().unwrap_or(Expr::Nil) };
+            let var = Var {
+                name: Name::new(name.clone()),
+                expr: default.clone().unwrap_or(Expr::Nil),
+            };
             // TODO: should we consider Meta::Param instead of Meta::Var?
             self.define(name.as_str(), Meta::Var(var.clone()));
-            params.push(Param { name: Name::new(name), ty, default });
+            params.push(Param {
+                name: Name::new(name),
+                ty,
+                default,
+            });
             self.sep_params();
         }
         Ok(params)
@@ -1170,7 +1262,12 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        let decl = TypeDecl { name: name.clone(), has, members, methods };
+        let decl = TypeDecl {
+            name: name.clone(),
+            has,
+            members,
+            methods,
+        };
         // put type in scope
         self.define(name.text.as_str(), Meta::Type(Type::User(decl.clone())));
         Ok(Stmt::TypeDecl(decl))
@@ -1188,7 +1285,9 @@ impl<'a> Parser<'a> {
         self.next();
         match type_name {
             Expr::Ident(name) => {
-                let meta = self.lookup_meta(&name.text).ok_or(format!("Undefined type: {}", name.text))?;
+                let meta = self
+                    .lookup_meta(&name.text)
+                    .ok_or(format!("Undefined type: {}", name.text))?;
                 if let Meta::Type(ty) = meta.as_ref() {
                     Ok(ty.clone())
                 } else {
@@ -1205,22 +1304,20 @@ impl<'a> Parser<'a> {
     // 3, 函数调用，如果函数名不存在，表示是一个节点实例
     pub fn check_symbol(&mut self, expr: Expr) -> Result<Expr, ParseError> {
         match &expr {
-            Expr::Bina(l, op, _) => {
-                match op {
-                    Op::Dot => {
-                        if let Expr::Ident(name) = l.as_ref() {
-                            if !self.exists(&name.text) {
-                                return error_pos!("Undefined variable: {}", name.text);
-                            }
+            Expr::Bina(l, op, _) => match op {
+                Op::Dot => {
+                    if let Expr::Ident(name) = l.as_ref() {
+                        if !self.exists(&name.text) {
+                            return error_pos!("Undefined variable: {}", name.text);
                         }
-                        Ok(expr)
                     }
-                    _ => Ok(expr),
+                    Ok(expr)
                 }
-            }
+                _ => Ok(expr),
+            },
             Expr::Ident(name) => {
                 if !self.exists(&name.text) {
-                    return error_pos!("Undefined variable: {}", name.text);
+                    return error_pos!("Undefined identifier: {}", name.text);
                 }
                 Ok(expr)
             }
@@ -1344,11 +1441,18 @@ impl<'a> Parser<'a> {
         }
 
         // If has brace, must be a node instance
-        if self.is_kind(TokenKind::LBrace) { // node instance
+        if self.is_kind(TokenKind::LBrace) {
+            // node instance
             // with node instance, pair args also defines as properties
             for arg in &args.args {
                 if let Arg::Pair(name, value) = arg {
-                    self.define(name.text.as_str(), Meta::Pair(Pair { key: Key::NamedKey(name.clone()), value: Box::new(value.clone()) }));
+                    self.define(
+                        name.text.as_str(),
+                        Meta::Pair(Pair {
+                            key: Key::NamedKey(name.clone()),
+                            value: Box::new(value.clone()),
+                        }),
+                    );
                 }
             }
             let body = self.node_body()?;
@@ -1363,15 +1467,21 @@ impl<'a> Parser<'a> {
                     return error_pos!("Expected node name, got {:?}", ident);
                 }
             }
-        } else { // no brace, might be a call or simple expression
-            if has_paren { // call
-                let mut expr = Expr::Call(Call { name: Box::new(ident), args });
+        } else {
+            // no brace, might be a call or simple expression
+            if has_paren {
+                // call
+                let mut expr = Expr::Call(Call {
+                    name: Box::new(ident),
+                    args,
+                });
                 expr = self.check_symbol(expr)?;
                 if let Expr::Node(node) = expr {
                     return Ok(Stmt::Node(node));
                 }
                 Ok(Stmt::Expr(expr))
-            } else { // Something else with a starting Ident
+            } else {
+                // Something else with a starting Ident
                 let expr = self.expr_pratt_with_left(ident, 0)?;
                 Ok(Stmt::Expr(expr))
             }
@@ -1380,7 +1490,7 @@ impl<'a> Parser<'a> {
 
     pub fn grid(&mut self) -> Result<Grid, ParseError> {
         self.next(); // skip grid
-        // args
+                     // args
         let mut data = Vec::new();
         let args = self.args()?;
         // data
@@ -1419,7 +1529,10 @@ mod tests {
     fn test_parser() {
         let code = "1+2+3";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (bina (bina (int 1) (op +) (int 2)) (op +) (int 3)))");
+        assert_eq!(
+            ast.to_string(),
+            "(code (bina (bina (int 1) (op +) (int 2)) (op +) (int 3)))"
+        );
     }
 
     #[test]
@@ -1435,7 +1548,10 @@ mod tests {
         let code = "if false {1} else {2}";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(if (branch (false) (body (int 1))) (else (body (int 2))))");
+        assert_eq!(
+            last.to_string(),
+            "(if (branch (false) (body (int 1))) (else (body (int 2))))"
+        );
     }
 
     #[test]
@@ -1465,7 +1581,10 @@ mod tests {
     fn test_store_use() {
         let code = "let x = 41; x+1";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (let (name x) (type int) (int 41)) (bina (name x) (op +) (int 1)))");
+        assert_eq!(
+            ast.to_string(),
+            "(code (let (name x) (type int) (int 41)) (bina (name x) (op +) (int 1)))"
+        );
     }
 
     #[test]
@@ -1479,11 +1598,17 @@ mod tests {
     fn test_for() {
         let code = "for i in 1..5 {i}";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (for (name i) (bina (int 1) (op ..) (int 5)) (body (name i))))");
+        assert_eq!(
+            ast.to_string(),
+            "(code (for (name i) (bina (int 1) (op ..) (int 5)) (body (name i))))"
+        );
 
         let code = "for i, x in 1..5 {x}";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (for ((name i) (name x)) (bina (int 1) (op ..) (int 5)) (body (name x))))");
+        assert_eq!(
+            ast.to_string(),
+            "(code (for ((name i) (name x)) (bina (int 1) (op ..) (int 5)) (body (name x))))"
+        );
     }
 
     #[test]
@@ -1514,15 +1639,16 @@ mod tests {
     fn test_object() {
         let code = "let o = {x:1, y:2}";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (let (name o) (object (pair (name x) (int 1)) (pair (name y) (int 2)))))");
-
+        assert_eq!(
+            ast.to_string(),
+            "(code (let (name o) (object (pair (name x) (int 1)) (pair (name y) (int 2)))))"
+        );
 
         let code = "var a = { 1: 2, 3: 4 }; a.1";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
         assert_eq!(last.to_string(), "(bina (name a) (op .) (int 1))");
     }
-
 
     #[test]
     fn test_fn() {
@@ -1547,13 +1673,15 @@ mod tests {
         assert_eq!(last.to_string(), "(fn (name say) (params (param (name msg) (type str))) (body (call (name print) (args (name msg)))))");
     }
 
-
     #[test]
     fn test_fn_with_named_args() {
         let code = "fn add(a int, b int) int { a + b }; add(a:1, b:2)";
         let ast = parse_once(code);
         let last = ast.stmts[1].clone();
-        assert_eq!(last.to_string(), "(call (name add) (args (pair (name a) (int 1)) (pair (name b) (int 2))))");
+        assert_eq!(
+            last.to_string(),
+            "(call (name add) (args (pair (name a) (int 1)) (pair (name b) (int 2))))"
+        );
     }
 
     #[test]
@@ -1581,12 +1709,14 @@ mod tests {
         assert_eq!(last.to_string(), "(bina (name p) (op .) (name x))");
     }
 
-
     #[test]
     fn test_lambda() {
         let code = "var x = || 1 + 2";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (var (name x) (fn (name lambda_1) (body (bina (int 1) (op +) (int 2))))))");
+        assert_eq!(
+            ast.to_string(),
+            "(code (var (name x) (fn (name lambda_1) (body (bina (int 1) (op +) (int 2))))))"
+        );
     }
 
     #[test]
@@ -1624,7 +1754,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn test_pair() {
         let code = r#"
@@ -1654,9 +1783,11 @@ mod tests {
         }"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(node (name center) (body (node (name text) (args (str \"Hello\")))))");
+        assert_eq!(
+            last.to_string(),
+            "(node (name center) (body (node (name text) (args (str \"Hello\")))))"
+        );
     }
-
 
     #[test]
     fn test_array() {
@@ -1671,7 +1802,6 @@ mod tests {
         assert_eq!(ast.to_string(), "(code (array (object (pair (name id) (int 1)) (pair (name name) (str \"test\"))) (object (pair (name id) (int 2)) (pair (name name) (str \"test2\"))) (object (pair (name id) (int 3)) (pair (name name) (str \"test3\")))))");
     }
 
-
     #[test]
     fn test_hex() {
         let code = "0x10";
@@ -1684,14 +1814,20 @@ mod tests {
         let code = "var a = {b: [0, 1, 2]}; a.b[0]";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(index (bina (name a) (op .) (name b)) (int 0))");
+        assert_eq!(
+            last.to_string(),
+            "(index (bina (name a) (op .) (name b)) (int 0))"
+        );
     }
 
     #[test]
     fn test_fstr() {
         let code = r#"f"hello $name""#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (fstr (str \"hello \") (name name)))");
+        assert_eq!(
+            ast.to_string(),
+            "(code (fstr (str \"hello \") (name name)))"
+        );
     }
 
     #[test]
@@ -1699,7 +1835,10 @@ mod tests {
         let code = r#"var name = "haha"; var age = 18; `hello $name ${age}`"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(fstr (str \"hello \") (name name) (str \" \") (name age))");
+        assert_eq!(
+            last.to_string(),
+            "(fstr (str \"hello \") (name name) (str \" \") (name age))"
+        );
     }
 
     #[test]
@@ -1707,7 +1846,10 @@ mod tests {
         let code = r#"var a = 1; var b = 2; f"a + b = ${a+b}""#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(fstr (str \"a + b = \") (bina (name a) (op +) (name b)))");
+        assert_eq!(
+            last.to_string(),
+            "(fstr (str \"a + b = \") (bina (name a) (op +) (name b)))"
+        );
     }
 
     #[test]
@@ -1718,7 +1860,10 @@ mod tests {
         }
         "#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (node (name center) (body (node (name text) (args (str \"Hello\"))))))");
+        assert_eq!(
+            ast.to_string(),
+            "(code (node (name center) (body (node (name text) (args (str \"Hello\"))))))"
+        );
     }
 
     #[test]
@@ -1749,9 +1894,11 @@ mod tests {
     fn test_ref() {
         let code = "var a = 1; var b = ref a; b";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (var (name a) (int 1)) (var (name b) (ref a)) (name b))");
+        assert_eq!(
+            ast.to_string(),
+            "(code (var (name a) (int 1)) (var (name b) (ref a)) (name b))"
+        );
     }
-
 
     #[test]
     fn test_type_instance_obj() {
@@ -1762,7 +1909,10 @@ mod tests {
         A(x:1, y:2)"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(call (name A) (args (pair (name x) (int 1)) (pair (name y) (int 2))))");
+        assert_eq!(
+            last.to_string(),
+            "(call (name A) (args (pair (name x) (int 1)) (pair (name y) (int 2))))"
+        );
     }
 
     #[test]
@@ -1791,7 +1941,10 @@ mod tests {
         "#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(type-decl (name Duck) (has (type Wing)) (methods (fn (name fly) (body ))))");
+        assert_eq!(
+            last.to_string(),
+            "(type-decl (name Duck) (has (type Wing)) (methods (fn (name fly) (body ))))"
+        );
     }
 
     #[test]
@@ -1836,13 +1989,16 @@ exe(hello) {
 }"#;
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (pair (name name) (str \"hello\")) (pair (name version) (str \"0.1.0\")) (node (name exe) (args (name hello)) (body (pair (name dir) (str \"src\")) (pair (name main) (str \"main.c\")))))");
-    }   
+    }
 
     #[test]
     fn test_use() {
         let code = "use std.math.square; square(16)";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (use (path std.math) (items square)) (call (name square) (args (int 16))))");
+        assert_eq!(
+            ast.to_string(),
+            "(code (use (path std.math) (items square)) (call (name square) (args (int 16))))"
+        );
     }
 
     #[test]
@@ -1851,7 +2007,10 @@ exe(hello) {
         let scope = Universe::new();
         let mut parser = Parser::new(&code, Rc::new(RefCell::new(scope)));
         let ast = parser.parse().unwrap();
-        assert_eq!(ast.to_string(), "(code (use (path std.math) (items square)))");
+        assert_eq!(
+            ast.to_string(),
+            "(code (use (path std.math) (items square)))"
+        );
     }
 
     #[test]
@@ -1867,6 +2026,9 @@ exe(hello) {
         let scope = Rc::new(RefCell::new(Universe::new()));
         let mut parser = Parser::new_with_note(code, scope, '#');
         let ast = parser.parse().unwrap();
-        assert_eq!(ast.to_string(), "(code (fstr (str \"hello \") (bina (int 2) (op +) (int 1)) (str \" again\")))");
+        assert_eq!(
+            ast.to_string(),
+            "(code (fstr (str \"hello \") (bina (int 2) (op +) (int 1)) (str \" again\")))"
+        );
     }
 }
