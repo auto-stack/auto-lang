@@ -31,7 +31,15 @@ impl Node {
 
     pub fn main_arg(&self) -> Value {
         if self.args.is_empty() {
-            Value::Nil
+            if self.props.has("name") {
+                if let Some(value) = self.props.get("name") {
+                    value.clone()
+                } else {
+                    Value::Nil
+                }
+            } else {
+                Value::Nil
+            }
         } else {
             match &self.args.args[0] {
                 Arg::Pos(value) => value.clone(),

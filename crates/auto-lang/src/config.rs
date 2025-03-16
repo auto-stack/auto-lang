@@ -1,8 +1,8 @@
-use auto_val::{Node, Value, AutoStr};
-use crate::interp;
-use std::path::Path;
 use crate::eval_config;
+use crate::interp;
 use auto_val::Obj;
+use auto_val::{AutoStr, Node, Value};
+use std::path::Path;
 
 pub struct AutoConfig {
     pub code: String,
@@ -12,10 +12,11 @@ pub struct AutoConfig {
 
 impl AutoConfig {
     pub fn from_file(path: &Path, args: &Obj) -> Result<Self, String> {
-        let content = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
         Self::from_code(content, args)
     }
-    
+
     pub fn from_code(code: impl Into<String>, args: &Obj) -> Result<Self, String> {
         let code = code.into();
         let mut interpreter = eval_config(&code, args)?;
