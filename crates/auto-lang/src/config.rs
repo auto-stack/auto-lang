@@ -11,6 +11,10 @@ pub struct AutoConfig {
 }
 
 impl AutoConfig {
+    pub fn read(path: &Path) -> Result<Self, String> {
+        Self::from_file(path, &Obj::default())
+    }
+
     pub fn from_file(path: &Path, args: &Obj) -> Result<Self, String> {
         let content =
             std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;

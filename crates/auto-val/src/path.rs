@@ -2,6 +2,9 @@ use crate::AutoStr;
 use normalize_path::NormalizePath;
 use std::path::{Path, PathBuf};
 use glob_match::glob_match;
+use std::fmt;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AutoPath {
     pub path: PathBuf,
 }
@@ -98,7 +101,13 @@ impl AutoPath {
         }
         res
     }
+
+    pub fn normalized(&self) -> AutoPath {
+        let path = self.path.unified();
+        AutoPath::new(path)
+    }
 }
+
 
 impl From<PathBuf> for AutoPath {
     fn from(path: PathBuf) -> Self {
@@ -109,6 +118,12 @@ impl From<PathBuf> for AutoPath {
 impl From<&str> for AutoPath {
     fn from(path: &str) -> Self {
         Self::new(path)
+    }
+}
+
+impl fmt::Display for AutoPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_astr())
     }
 }
 

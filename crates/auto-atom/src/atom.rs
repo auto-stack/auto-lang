@@ -1,9 +1,8 @@
-use auto_val::{Node, Array, Value};
 use auto_val::AutoStr;
+use auto_val::{Array, Node, Value};
 use std::fmt;
 pub struct Atom {
     pub root: Root,
-
 }
 
 pub enum Root {
@@ -22,11 +21,7 @@ impl Root {
     }
 }
 
-
-
-pub const EMPTY: Atom = Atom {
-    root: Root::Empty,
-};
+pub const EMPTY: Atom = Atom { root: Root::Empty };
 
 impl Default for Atom {
     fn default() -> Self {
@@ -35,7 +30,6 @@ impl Default for Atom {
 }
 
 impl Atom {
-
     pub fn new(val: Value) -> Self {
         match val {
             Value::Node(n) => Self::node(n),
@@ -96,9 +90,10 @@ impl Root {
     }
 
     pub fn as_node(&self) -> &Node {
-        match self {
-            Root::Node(node) => node,
-            _ => panic!("Root is not a node"),
+        if let Root::Node(node) = self {
+            node
+        } else {
+            panic!("Root is not a node")
         }
     }
 }
@@ -112,7 +107,6 @@ impl fmt::Display for Atom {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -133,13 +127,16 @@ mod tests {
 
     #[test]
     fn test_node() {
-        let atom = Atom::assemble("test", vec![
-            Value::pair("a", 1),
-            Value::pair("b", 2),
-            Value::pair("c", 3),
-            Value::pair("d", 4),
-            Value::pair("e", 5),
-        ]);
+        let atom = Atom::assemble(
+            "test",
+            vec![
+                Value::pair("a", 1),
+                Value::pair("b", 2),
+                Value::pair("c", 3),
+                Value::pair("d", 4),
+                Value::pair("e", 5),
+            ],
+        );
         let node = atom.root.as_node();
         assert_eq!(node.name, "test");
         assert_eq!(node.get_prop_of("a"), Value::Int(1));
@@ -151,10 +148,7 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let atom = Atom::assemble("test", vec![
-            Value::pair("a", 1),
-            Value::pair("b", 2),
-        ]);
+        let atom = Atom::assemble("test", vec![Value::pair("a", 1), Value::pair("b", 2)]);
         assert_eq!(format!("{}", atom), "test {a: 1; b: 2; }");
     }
 }
