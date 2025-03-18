@@ -8,7 +8,7 @@ mod parser;
 pub mod repl;
 pub mod scope;
 mod token;
-pub mod transpiler;
+pub mod transpilers;
 pub mod util;
 
 use crate::eval::EvalMode;
