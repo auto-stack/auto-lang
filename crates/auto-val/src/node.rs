@@ -49,6 +49,10 @@ impl Node {
         }
     }
 
+    pub fn set_main_arg(&mut self, arg: impl Into<Value>) {
+        self.args.args.push(Arg::Pos(arg.into()));
+    }
+
     pub fn id(&self) -> AutoStr {
         self.args.get_val(0).to_astr()
     }

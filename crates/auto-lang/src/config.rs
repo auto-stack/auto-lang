@@ -3,7 +3,7 @@ use crate::interp;
 use auto_val::Obj;
 use auto_val::{AutoStr, Node, Value};
 use std::path::Path;
-
+use crate::AutoResult;
 pub struct AutoConfig {
     pub code: String,
     pub root: Node,
@@ -11,17 +11,17 @@ pub struct AutoConfig {
 }
 
 impl AutoConfig {
-    pub fn read(path: &Path) -> Result<Self, String> {
+    pub fn read(path: &Path) -> AutoResult<Self> {
         Self::from_file(path, &Obj::default())
     }
 
-    pub fn from_file(path: &Path, args: &Obj) -> Result<Self, String> {
+    pub fn from_file(path: &Path, args: &Obj) -> AutoResult<Self> {
         let content =
             std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
         Self::from_code(content, args)
     }
 
-    pub fn from_code(code: impl Into<String>, args: &Obj) -> Result<Self, String> {
+    pub fn from_code(code: impl Into<String>, args: &Obj) -> AutoResult<Self> {
         let code = code.into();
         let mut interpreter = eval_config(&code, args)?;
         let result = interpreter.result;
@@ -33,7 +33,7 @@ impl AutoConfig {
                 interpreter: interpreter,
             })
         } else {
-            Err(format!("Invalid config result: {}", result.repr()))
+            Err(format!("Invalid config result: {}", result.repr()).into())
         }
     }
 

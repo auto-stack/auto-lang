@@ -4,36 +4,36 @@ use std::io::Write;
 use auto_val::AutoStr;
 use crate::parser::Parser;
 use crate::scope;
+use crate::AutoResult;
 use std::rc::Rc;
 use std::cell::RefCell;
 
 pub mod c;
-pub mod ui;
 pub mod rust;
 pub trait Transpiler {
-    fn transpile(&mut self, ast: Code, out: &mut impl Write) -> Result<(), String>;
+    fn transpile(&mut self, ast: Code, out: &mut impl Write) -> AutoResult<()>;
 }
 
 pub trait ToStrError {
-    fn to(self) -> Result<(), String>;
+    fn to(self) -> AutoResult<()>;
 }
 
 impl ToStrError for Result<(), io::Error> {
-    fn to(self) -> Result<(), String> {
-        self.map_err(|e| e.to_string())
+    fn to(self) -> AutoResult<()> {
+        self.map_err(|e| e.to_string().into())
     }
 }
 
 impl ToStrError for Result<usize, io::Error> {
-    fn to(self) -> Result<(), String> {
+    fn to(self) -> AutoResult<()> {
         match self {
             Ok(_) => Ok(()),
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(e.to_string().into()),
         }
     }
 }
 
-pub fn transpile_part(code: &str) -> Result<String, String> {
+pub fn transpile_part(code: &str) -> AutoResult<String> {
     let mut transpiler = c::CTranspiler::new("part".into());
     let scope = Rc::new(RefCell::new(scope::Universe::new()));
     let mut parser = Parser::new(code, scope);
@@ -49,7 +49,7 @@ pub struct CCode {
 }
 
 // Transpile the code into a whole C program
-pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> Result<CCode, String> {
+pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<CCode> {
     let scope = Rc::new(RefCell::new(scope::Universe::new()));
     let mut parser = Parser::new(code, scope);
     let ast = parser.parse()?;

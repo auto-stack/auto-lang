@@ -3,7 +3,7 @@ use auto_val::AutoStr;
 use std::io::Write;
 use auto_val::Op;
 use crate::ast::*;
-
+use crate::AutoResult;
 pub struct CTranspiler {
     indent: usize,
     includes: Vec<u8>,
@@ -24,7 +24,7 @@ impl CTranspiler {
         self.indent -= 1;
     }
 
-    fn print_indent(&self, out: &mut impl Write) -> Result<(), String> {
+    fn print_indent(&self, out: &mut impl Write) -> AutoResult<()> {
         for _ in 0..self.indent {
             out.write(b"    ").to()?;
         }
@@ -34,7 +34,7 @@ impl CTranspiler {
 
 impl CTranspiler {
 
-    pub fn code(&mut self, code: &Code, out: &mut impl Write) -> Result<(), String> {
+    pub fn code(&mut self, code: &Code, out: &mut impl Write) -> AutoResult<()> {
         for stmt in code.stmts.iter() {
             self.stmt(stmt, out)?;
             out.write(b"\n").to()?;
@@ -42,22 +42,22 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn eos(&mut self, out: &mut impl Write) -> Result<(), String> {
+    fn eos(&mut self, out: &mut impl Write) -> AutoResult<()> {
         out.write(b";").to()
     }
 
-    fn stmt(&mut self, stmt: &Stmt, out: &mut impl Write) -> Result<(), String> {
+    fn stmt(&mut self, stmt: &Stmt, out: &mut impl Write) -> AutoResult<()> {
         match stmt {
             Stmt::Expr(expr) => {self.expr(expr, out)?; self.eos(out)},
             Stmt::Store(store) => {self.store(store, out)?; self.eos(out)},
             Stmt::Fn(fn_decl) => self.fn_decl(fn_decl, out),
             Stmt::For(for_stmt) => self.for_stmt(for_stmt, out),
             Stmt::If(branches, otherwise) => self.if_stmt(branches, otherwise, out),
-            _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt)),
+            _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into()),
         }
     }
 
-    fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> Result<(), String> {
+    fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
         match expr {
             Expr::Int(i) => out.write_all(i.to_string().as_bytes()).to(),
             Expr::Bina(lhs, op, rhs) => {
@@ -80,11 +80,11 @@ impl CTranspiler {
             Expr::Str(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::Call(call) => self.call(call, out),
             Expr::Array(array) => self.array(array, out), 
-            _ => Err(format!("C Transpiler: unsupported expression: {}", expr)),
+            _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
     }
 
-    fn fn_decl(&mut self, fn_decl: &Fn, out: &mut impl Write) -> Result<(), String> {
+    fn fn_decl(&mut self, fn_decl: &Fn, out: &mut impl Write) -> AutoResult<()> {
         // header
         let mut header = Vec::new();
         self.fn_sig(&fn_decl, &mut header)?;
@@ -98,7 +98,7 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn fn_sig(&mut self, fn_decl: &Fn, out: &mut impl Write) -> Result<(), String> {
+    fn fn_sig(&mut self, fn_decl: &Fn, out: &mut impl Write) -> AutoResult<()> {
         // return type
         if !matches!(fn_decl.ret, Type::Unknown) {
             out.write(format!("{} ", fn_decl.ret).as_bytes()).to()?;
@@ -122,7 +122,7 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn body(&mut self, body: &Body, out: &mut impl Write, has_return: bool) -> Result<(), String> {
+    fn body(&mut self, body: &Body, out: &mut impl Write, has_return: bool) -> AutoResult<()> {
         out.write(b"{\n").to()?;
         self.indent();
         for (i, stmt) in body.stmts.iter().enumerate() {
@@ -143,9 +143,9 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn store(&mut self, store: &Store, out: &mut impl Write) -> Result<(), String> {
+    fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
         if matches!(store.kind, StoreKind::Var) {
-            return Err(format!("C Transpiler: unsupported store kind: {:?}", store.kind));
+            return Err(format!("C Transpiler: unsupported store kind: {:?}", store.kind).into());
         }
         match &store.ty {
             Type::Array(array_type) => {
@@ -161,7 +161,7 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn for_stmt(&mut self, for_stmt: &For, out: &mut impl Write) -> Result<(), String> {
+    fn for_stmt(&mut self, for_stmt: &For, out: &mut impl Write) -> AutoResult<()> {
         out.write(b"for (").to()?;
         self.expr(&for_stmt.range, out)?;
         out.write(b") ").to()?;
@@ -169,7 +169,7 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn range(&mut self, start: &Expr, end: &Expr, out: &mut impl Write) -> Result<(), String> {
+    fn range(&mut self, start: &Expr, end: &Expr, out: &mut impl Write) -> AutoResult<()> {
         // TODO: check index name for deep loops
         out.write(b"int i = ").to()?;
         self.expr(start, out)?;
@@ -179,7 +179,7 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn if_stmt(&mut self, branches: &Vec<Branch>, otherwise: &Option<Body>, out: &mut impl Write) -> Result<(), String> {
+    fn if_stmt(&mut self, branches: &Vec<Branch>, otherwise: &Option<Body>, out: &mut impl Write) -> AutoResult<()> {
         out.write(b"if ").to()?;
         for (i, branch) in branches.iter().enumerate() {
             out.write(b"(").to()?;
@@ -197,7 +197,7 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn process_print(&mut self, call: &Call, out: &mut impl Write) -> Result<(), String> {
+    fn process_print(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         // TODO: check type of the args and format accordingly
         // get number and type of args
         let mut arg_types = Vec::new();
@@ -226,7 +226,7 @@ impl CTranspiler {
     }
     
 
-    fn call(&mut self, call: &Call, out: &mut impl Write) -> Result<(), String> {
+    fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         if let Expr::Ident(name) = &call.name.as_ref() {
             if name.text == "print" {
                 self.process_print(call, out)?;
@@ -253,7 +253,7 @@ impl CTranspiler {
         Ok(())
     }
 
-    fn arg(&mut self, arg: &Arg, out: &mut impl Write) -> Result<(), String> {
+    fn arg(&mut self, arg: &Arg, out: &mut impl Write) -> AutoResult<()> {
         match arg {
             Arg::Name(name) => self.str(name.text.as_str(), out),
             Arg::Pair(_, expr) => self.expr(expr, out),
@@ -261,14 +261,14 @@ impl CTranspiler {
         }
     }
 
-    fn str(&mut self, s: &str, out: &mut impl Write) -> Result<(), String> {
+    fn str(&mut self, s: &str, out: &mut impl Write) -> AutoResult<()> {
         out.write(b"\"").to()?;
         out.write(s.as_bytes()).to()?;
         out.write(b"\"").to()?;
         Ok(())
     }
 
-    fn array(&mut self, array: &Vec<Expr>, out: &mut impl Write) -> Result<(), String> {
+    fn array(&mut self, array: &Vec<Expr>, out: &mut impl Write) -> AutoResult<()> {
         out.write(b"{").to()?;
         for (i, expr) in array.iter().enumerate() {
             self.expr(expr, out)?;
@@ -301,7 +301,7 @@ impl CTranspiler {
 }
 
 impl Transpiler for CTranspiler {
-    fn transpile(&mut self, ast: Code, out: &mut impl Write) -> Result<(), String> {
+    fn transpile(&mut self, ast: Code, out: &mut impl Write) -> AutoResult<()> {
         // Split stmts into decls and main
         // TODO: handle potential includes when needed
         let mut decls: Vec<Stmt> = Vec::new();

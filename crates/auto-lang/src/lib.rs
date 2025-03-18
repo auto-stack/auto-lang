@@ -8,7 +8,7 @@ mod parser;
 pub mod repl;
 pub mod scope;
 mod token;
-pub mod transpilers;
+pub mod trans;
 pub mod util;
 
 use crate::eval::EvalMode;
@@ -18,25 +18,28 @@ use auto_val::Obj;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub fn run(code: &str) -> Result<String, String> {
+pub type AutoError = Box<dyn std::error::Error>;
+pub type AutoResult<T> = Result<T, AutoError>;
+
+pub fn run(code: &str) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::new();
     interpreter.interpret(code)?;
     Ok(interpreter.result.repr().to_string())
 }
 
-pub fn run_with_scope(code: &str, scope: Universe) -> Result<String, String> {
+pub fn run_with_scope(code: &str, scope: Universe) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::with_scope(scope);
     interpreter.interpret(code)?;
     Ok(interpreter.result.repr().to_string())
 }
 
-pub fn parse(code: &str) -> Result<ast::Code, String> {
+pub fn parse(code: &str) -> AutoResult<ast::Code> {
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope.clone());
-    parser.parse()
+    parser.parse().map_err(|e| e.to_string().into())
 }
 
-pub fn interpret(code: &str) -> Result<interp::Interpreter, String> {
+pub fn interpret(code: &str) -> AutoResult<interp::Interpreter> {
     let mut interpreter = interp::Interpreter::new();
     interpreter.interpret(code)?;
     Ok(interpreter)
@@ -45,13 +48,13 @@ pub fn interpret(code: &str) -> Result<interp::Interpreter, String> {
 pub fn interpret_with_scope(
     code: &str,
     scope: scope::Universe,
-) -> Result<interp::Interpreter, String> {
+) -> AutoResult<interp::Interpreter> {
     let mut interpreter = interp::Interpreter::with_scope(scope);
     interpreter.interpret(code)?;
     Ok(interpreter)
 }
 
-pub fn run_file(path: &str) -> Result<String, String> {
+pub fn run_file(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
     run(&code)
 }
@@ -66,14 +69,14 @@ pub fn interpret_file(path: &str) -> interp::Interpreter {
 }
 
 // TODO: to be deprecated, use Interpreter::eval_template instead
-pub fn eval_template(template: &str, scope: Universe) -> Result<interp::Interpreter, String> {
+pub fn eval_template(template: &str, scope: Universe) -> AutoResult<interp::Interpreter> {
     let mut interpreter = interp::Interpreter::with_scope(scope).with_eval_mode(EvalMode::TEMPLATE);
     let result = interpreter.eval_template(template)?;
     interpreter.result = result;
     Ok(interpreter)
 }
 
-pub fn eval_config(code: &str, args: &Obj) -> Result<interp::Interpreter, String> {
+pub fn eval_config(code: &str, args: &Obj) -> AutoResult<interp::Interpreter> {
     let mut scope = Universe::new();
     scope.define_global(
         "root",
