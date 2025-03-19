@@ -10,8 +10,8 @@ use std::cell::RefCell;
 
 pub mod c;
 pub mod rust;
-pub trait Transpiler {
-    fn transpile(&mut self, ast: Code, out: &mut impl Write) -> AutoResult<()>;
+pub trait Trans {
+    fn trans(&mut self, ast: Code, out: &mut impl Write) -> AutoResult<()>;
 }
 
 pub trait ToStrError {
@@ -34,7 +34,7 @@ impl ToStrError for Result<usize, io::Error> {
 }
 
 pub fn transpile_part(code: &str) -> AutoResult<String> {
-    let mut transpiler = c::CTranspiler::new("part".into());
+    let mut transpiler = c::CTrans::new("part".into());
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
     let ast = parser.parse()?;
@@ -54,8 +54,8 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<CCode> {
     let mut parser = Parser::new(code, scope);
     let ast = parser.parse()?;
     let mut out = Vec::new();
-    let mut transpiler = c::CTranspiler::new(name.into());
-    transpiler.transpile(ast, &mut out)?;
+    let mut transpiler = c::CTrans::new(name.into());
+    transpiler.trans(ast, &mut out)?;
     let header = transpiler.header;
     Ok(CCode {
         source: out,

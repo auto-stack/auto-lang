@@ -1,17 +1,17 @@
-use super::{Transpiler, ToStrError};
+use super::{Trans, ToStrError};
 use auto_val::AutoStr;
 use std::io::Write;
 use auto_val::Op;
 use crate::ast::*;
 use crate::AutoResult;
-pub struct CTranspiler {
+pub struct CTrans {
     indent: usize,
     includes: Vec<u8>,
     pub header: Vec<u8>,
     name: AutoStr,
 }
 
-impl CTranspiler {
+impl CTrans {
     pub fn new(name: AutoStr) -> Self {
         Self { indent: 0, includes: Vec::new(), header: Vec::new(), name }
     }
@@ -32,7 +32,7 @@ impl CTranspiler {
     }
 }
 
-impl CTranspiler {
+impl CTrans {
 
     pub fn code(&mut self, code: &Code, out: &mut impl Write) -> AutoResult<()> {
         for stmt in code.stmts.iter() {
@@ -300,8 +300,8 @@ impl CTranspiler {
     }
 }
 
-impl Transpiler for CTranspiler {
-    fn transpile(&mut self, ast: Code, out: &mut impl Write) -> AutoResult<()> {
+impl Trans for CTrans {
+    fn trans(&mut self, ast: Code, out: &mut impl Write) -> AutoResult<()> {
         // Split stmts into decls and main
         // TODO: handle potential includes when needed
         let mut decls: Vec<Stmt> = Vec::new();
