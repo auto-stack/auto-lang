@@ -1,6 +1,7 @@
 
 use crate::scope;
 use crate::scope::Meta;
+use crate::universe::Universe;
 use auto_val::{Value, Op, Obj, Array, ValueKey, MetaID, Sig, Method, Type, AutoStr, ConfigBody, Pair, ConfigItem};
 use auto_val;
 use auto_val::{add, sub, mul, div, comp};
@@ -22,7 +23,7 @@ pub enum EvalMode {
 }
 
 pub struct Evaler {
-    universe: Rc<RefCell<scope::Universe>>,
+    universe: Rc<RefCell<Universe>>,
     // configure whether to evaluate a node immediately or lazily
     tempo_for_nodes: HashMap<String, EvalTempo>,
     // evaluation mode
@@ -30,7 +31,7 @@ pub struct Evaler {
 }
 
 impl Evaler {
-    pub fn new(universe: Rc<RefCell<scope::Universe>>) -> Self {
+    pub fn new(universe: Rc<RefCell<Universe>>) -> Self {
         Evaler { universe, tempo_for_nodes: HashMap::new(), mode: EvalMode::SCRIPT }
     }
 
@@ -558,7 +559,7 @@ impl Evaler {
 
     fn eval_instance(&mut self, type_decl: &TypeDecl, args: &Args) -> Value {
         let ty = self.eval_type(&type_decl);
-        let fields = self.eval_fields(&type_decl.members, args);
+        let fields = self.eval_fields(&type_decl, args);
         Value::Instance(auto_val::Instance { ty, fields })
     }
 
@@ -566,7 +567,8 @@ impl Evaler {
         Type::User(type_decl.name.text.clone())
     }
 
-    fn eval_fields(&mut self, members: &Vec<Member>, args: &Args) -> Obj {
+    fn eval_fields(&mut self, type_decl: &TypeDecl, args: &Args) -> Obj {
+        let members = &type_decl.members;
         // TODO: remove unnecessary clone
         let mut fields = Obj::new();
         for (j, arg) in args.args.iter().enumerate() {
@@ -594,6 +596,18 @@ impl Evaler {
                 }
             }
             
+        }
+        // check default field values
+        for member in members.iter() {
+            match &member.value {
+                Some(value) => {
+                    if fields.has(member.name.text.clone()) {
+                        continue;
+                    }
+                    fields.set(member.name.text.clone(), self.eval_expr(value));
+                }
+                None => {}
+            }
         }
         fields
     }
@@ -788,9 +802,22 @@ impl Evaler {
             }
             Value::Node(node) => match right {
                 Expr::Ident(name) => {
-                    let v = node.get_prop(&name.text);
+                    println!("Try to dot with {}.{}", node.name, name.text);
+                    let mut name = name.text.clone();
+                    let v = node.get_prop(&name);
                     match v {
-                        Value::Nil => None,
+                        Value::Nil => {
+                            // try with nodes
+                            if name.ends_with("s") {
+                                name = name[..name.len() - 1].to_string();
+                            }
+                            let nodes = node.get_nodes(&name);
+                            if nodes.len() > 0 {
+                                Some(Value::array_of(nodes.iter().map(|n| n.clone()).collect()))
+                            } else {
+                                None
+                            }
+                        }
                         _ => Some(v),
                     }
                 }
@@ -855,7 +882,7 @@ impl Evaler {
                 }
             }
         };
-        res.unwrap_or(Value::error(format!("Invalid dot expression {}.{}", left_value, right)))
+        res.unwrap_or(Value::error(format!("Invalid dot expression {}.{}", left_value.name(), right)))
     }
 
     fn eval_widget(&mut self, widget: &Widget) -> Value {
@@ -1139,3 +1166,16 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Unknown => auto_val::Type::Any,
     }
 }
+
+pub fn eval_basic_expr(expr: &Expr) -> Value {
+    match expr {
+        Expr::Str(s) => Value::Str(s.clone().into()),
+        Expr::Byte(b) => Value::Byte(*b),
+        Expr::Int(i) => Value::Int(*i),
+        Expr::Float(f) => Value::Float(*f),
+        Expr::Bool(b) => Value::Bool(*b),
+        Expr::Char(c) => Value::Char(*c),
+        _ => Value::error(format!("Unsupported basic expression: {:?}", expr)),
+    }
+}
+

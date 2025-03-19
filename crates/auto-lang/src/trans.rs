@@ -3,7 +3,7 @@ use std::io;
 use std::io::Write;
 use auto_val::AutoStr;
 use crate::parser::Parser;
-use crate::scope;
+use crate::universe::Universe;
 use crate::AutoResult;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -35,7 +35,7 @@ impl ToStrError for Result<usize, io::Error> {
 
 pub fn transpile_part(code: &str) -> AutoResult<String> {
     let mut transpiler = c::CTranspiler::new("part".into());
-    let scope = Rc::new(RefCell::new(scope::Universe::new()));
+    let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
     let ast = parser.parse()?;
     let mut out = Vec::new();
@@ -50,7 +50,7 @@ pub struct CCode {
 
 // Transpile the code into a whole C program
 pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<CCode> {
-    let scope = Rc::new(RefCell::new(scope::Universe::new()));
+    let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
     let ast = parser.parse()?;
     let mut out = Vec::new();

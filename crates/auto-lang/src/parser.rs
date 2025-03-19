@@ -2,7 +2,7 @@ use crate::ast::*;
 use crate::error_pos;
 use crate::lexer::Lexer;
 use crate::scope::Meta;
-use crate::scope::Universe;
+use crate::universe::Universe;
 use crate::token::{Pos, Token, TokenKind};
 use auto_val::AutoStr;
 use auto_val::Op;
@@ -1209,6 +1209,14 @@ impl<'a> Parser<'a> {
         self.next(); // skip `type` keyword
         let name = Name::new(self.cur.text.clone());
         self.expect(TokenKind::Ident)?;
+        // deal with `as` keyword
+        let mut specs = Vec::new();
+        if self.is_kind(TokenKind::As) {
+            self.next(); // skip `as` keyword
+            let spec = self.cur.text.clone();
+            self.next(); // skip spec
+            specs.push(spec.into());
+        }
         // deal with `has` keyword
         let mut has = Vec::new();
         if self.is_kind(TokenKind::Has) {
@@ -1264,6 +1272,7 @@ impl<'a> Parser<'a> {
         }
         let decl = TypeDecl {
             name: name.clone(),
+            specs,
             has,
             members,
             methods,
@@ -1277,7 +1286,13 @@ impl<'a> Parser<'a> {
         let name = Name::new(self.cur.text.clone());
         self.expect(TokenKind::Ident)?;
         let ty = self.type_expr()?;
-        Ok(Member { name, ty })
+        let mut value = None;
+        if self.is_kind(TokenKind::Asn) {
+            self.next(); // skip =
+            let expr = self.expr()?;
+            value = Some(expr);
+        }
+        Ok(Member::new(name, ty, value))
     }
 
     pub fn type_expr(&mut self) -> Result<Type, ParseError> {

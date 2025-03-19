@@ -4,16 +4,18 @@ pub mod eval;
 pub mod interp;
 mod lexer;
 pub mod libs;
-mod parser;
+pub mod parser;
 pub mod repl;
 pub mod scope;
+pub mod universe;
 mod token;
 pub mod trans;
 pub mod util;
 
 use crate::eval::EvalMode;
 use crate::parser::Parser;
-use crate::scope::{Meta, Universe};
+use crate::scope::Meta;
+use crate::universe::Universe;
 use auto_val::Obj;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -47,7 +49,7 @@ pub fn interpret(code: &str) -> AutoResult<interp::Interpreter> {
 
 pub fn interpret_with_scope(
     code: &str,
-    scope: scope::Universe,
+    scope: Universe,
 ) -> AutoResult<interp::Interpreter> {
     let mut interpreter = interp::Interpreter::with_scope(scope);
     interpreter.interpret(code)?;
@@ -659,13 +661,13 @@ $ }
 
     #[test]
     fn test_type_decl() {
-        let code = "type Point { x int; y int }; let p = Point(x:1, y:2); p";
+        let code = "type Point { x int = 5; y int }; let p = Point(y:2); p";
         let mut interpreter = interpret(code).unwrap();
-        assert_eq!(interpreter.result.repr(), "Point{x: 1, y: 2}");
+        assert_eq!(interpreter.result.repr(), "Point{x: 5, y: 2}");
 
         let code = "p.x";
         let result = interpreter.eval(code);
-        assert_eq!(result.repr(), "1");
+        assert_eq!(result.repr(), "5");
     }
 
     #[test]
@@ -831,7 +833,7 @@ square(15)
     fn test_view_types() {
         let code = r#"
             type Hello {
-                text str
+                text str = "hello"
                 fn view() {
                     label(text) {}
                 }

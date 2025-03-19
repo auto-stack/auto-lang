@@ -57,6 +57,10 @@ impl Value {
         Value::Array(items.into())
     }
 
+    pub fn array_of(values: Vec<impl Into<Value>>) -> Self {
+        Value::Array(Array::from_vec(values))
+    }
+
     pub fn str_array(values: Vec<impl Into<AutoStr>>) -> Self {
         Value::Array(values.into_iter().map(|s| Value::Str(s.into())).collect::<Vec<Value>>().into())
     }
@@ -394,6 +398,15 @@ impl Value {
             _ => self.to_string().into(),
         }
     }
+
+    pub fn name(&self) -> AutoStr {
+        match self {
+            Value::Node(node) => node.name.clone().into(),
+            Value::Str(s) => s.clone().into(),
+            Value::Fn(f) => f.sig.name.clone().into(),
+            _ => self.to_astr(),
+        }
+    }
 }
 
 impl fmt::Display for Op {
@@ -423,6 +436,11 @@ impl fmt::Display for Op {
 }
 
 impl Op {
+    #[inline]
+    pub fn repr(&self) -> &str {
+        self.op()
+    }
+
     pub fn op(&self) -> &str {
         match self {
             Op::Add => "+",
@@ -747,6 +765,12 @@ impl From<AutoStr> for Value {
 impl From<Obj> for Value {
     fn from(obj: Obj) -> Value {
         Value::Obj(obj)
+    }
+}
+
+impl From<Node> for Value {
+    fn from(node: Node) -> Value {
+        Value::Node(node)
     }
 }
 

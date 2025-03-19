@@ -1,4 +1,8 @@
-use auto_val::Op;
+mod types;
+
+pub use types::*;
+
+use auto_val::{Op, AutoStr};
 use serde::Serialize;
 use std::fmt;
 
@@ -81,6 +85,30 @@ impl Default for Name {
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(name {})", self.text)
+    }
+}
+
+impl From<Name> for AutoStr {
+    fn from(name: Name) -> Self {
+        AutoStr::from(name.text)
+    }
+}
+
+impl From<&str> for Name {
+    fn from(text: &str) -> Self {
+        Name { text: text.to_string() }
+    }
+}
+
+impl From<String> for Name {
+    fn from(text: String) -> Self {
+        Name { text }
+    }
+}
+
+impl From<AutoStr> for Name {
+    fn from(text: AutoStr) -> Self {
+        Name { text: text.to_string() }
     }
 }
 
@@ -307,6 +335,14 @@ impl Arg {
             Arg::Pair(_, expr) => expr.clone(),
         }
     }
+
+    pub fn repr(&self) -> String {
+        match self {
+            Arg::Pos(expr) => expr.repr(),
+            Arg::Name(name) => name.text.clone(),
+            Arg::Pair(key, expr) => format!("{}:{}", key.text, expr.repr()),
+        }
+    }
 }
 
 impl Args {
@@ -433,6 +469,27 @@ impl fmt::Display for Expr {
     }
 }
 
+impl Expr {
+    pub fn repr(&self) -> String {
+        match self {
+            Expr::Int(i) => i.to_string(),
+            Expr::Uint(u) => u.to_string(),
+            Expr::Float(f) => f.to_string(),
+            Expr::Bool(b) => b.to_string(),
+            Expr::Char(c) => c.to_string(),
+            Expr::Str(s) => s.clone(),
+            Expr::Ident(n) => n.text.clone(),
+            Expr::Ref(n) => n.text.clone(),
+            Expr::Bina(l, op, r) => format!("{}{}{}", l.repr(), op.repr(), r.repr()),
+            Expr::Unary(op, e) => format!("{}{}", op.repr(), e.repr()),
+            Expr::Array(elems) => format!("[{}]", elems.iter().map(|e| e.repr()).collect::<Vec<String>>().join(", ")),
+            Expr::Pair(pair) => format!("{}:{}", pair.key.to_string(), pair.value.repr()),
+            Expr::Object(pairs) => format!("{{{}}}", pairs.iter().map(|p| p.repr()).collect::<Vec<String>>().join(", ")),
+            _ => self.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Param {
     pub name: Name,
@@ -456,55 +513,7 @@ impl fmt::Display for Param {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Type {
-    Byte,
-    Int,
-    Float,
-    Bool,
-    Char,
-    Str,
-    Array(ArrayType),
-    User(TypeDecl),
-    Unknown,
-}
 
-impl Type {
-    pub fn unique_name(&self) -> String {
-        match self {
-            Type::User(type_decl) => type_decl.name.text.clone(),
-            _ => "".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ArrayType {
-    pub elem: Box<Type>,
-    pub len: usize,
-}
-
-impl fmt::Display for ArrayType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(array-type (elem {}) (len {}))", &self.elem, self.len)
-    }
-}
-
-impl fmt::Display for Type {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Type::Byte => write!(f, "byte"),
-            Type::Int => write!(f, "int"),
-            Type::Float => write!(f, "float"),
-            Type::Bool => write!(f, "bool"),
-            Type::Char => write!(f, "char"),
-            Type::Str => write!(f, "str"),
-            Type::Array(array_type) => write!(f, "{}", array_type),
-            Type::User(type_decl) => write!(f, "{}", type_decl),
-            Type::Unknown => write!(f, "unknown"),
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Fn {
@@ -564,108 +573,7 @@ impl Fn {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct TypeDecl {
-    pub name: Name,
-    pub has: Vec<Type>,
-    pub members: Vec<Member>,
-    pub methods: Vec<Fn>,
-}
 
-impl fmt::Display for TypeDecl {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(type-decl {}", self.name)?;
-        if !self.has.is_empty() {
-            write!(f, " (has ")?;
-            for h in self.has.iter() {
-                write!(f, "(type {})", h.unique_name())?;
-            }
-            write!(f, ")")?;
-        }
-        if !self.members.is_empty() {
-            write!(f, " (members ")?;
-            for (i, member) in self.members.iter().enumerate() {
-                write!(f, "{}", member)?;
-                if i < self.members.len() - 1 {
-                    write!(f, " ")?;
-                }
-            }
-            write!(f, ")")?;
-        }
-        if !self.methods.is_empty() {
-            write!(f, " (methods ")?;
-        }
-        for (i, method) in self.methods.iter().enumerate() {
-            write!(f, "{}", method)?;
-            if i < self.methods.len() - 1 {
-                write!(f, " ")?;
-            }
-        }
-        if !self.methods.is_empty() {
-            write!(f, ")")?;
-        }
-        write!(f, ")")
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Member {
-    pub name: Name,
-    pub ty: Type,
-}
-
-impl fmt::Display for Member {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(member {} (type {}))", self.name, self.ty)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TypeInst {
-    pub name: Name,
-    pub entries: Vec<Pair>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Pair {
-    pub key: Key,
-    pub value: Box<Expr>,
-}
-
-impl fmt::Display for Pair {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(pair {} {})", self.key, self.value)
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
-pub enum Key {
-    NamedKey(Name),
-    IntKey(i32),
-    BoolKey(bool),
-    StrKey(String),
-}
-
-impl fmt::Display for Key {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Key::NamedKey(name) => write!(f, "{}", name),
-            Key::IntKey(i) => write!(f, "{}", i),
-            Key::BoolKey(b) => write!(f, "{}", b),
-            Key::StrKey(s) => write!(f, "\"{}\"", s),
-        }
-    }
-}
-
-impl Key {
-    pub fn name(&self) -> Option<&str> {
-        match self {
-            Key::NamedKey(name) => Some(&name.text),
-            Key::StrKey(s) => Some(s),
-            _ => None,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -676,9 +584,9 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(name: Name) -> Self {
+    pub fn new(name: impl Into<Name>) -> Self {
         Self {
-            name,
+            name: name.into(),
             args: Args::new(),
             body: Body::new(),
         }
