@@ -226,7 +226,6 @@ impl Universe {
     pub fn define(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
         let name = name.into();
         if matches!(meta.as_ref(), Meta::Type(_)) {
-            println!("define type {} in scope {}", name, self.cur_spot.to_string());
             self.current_scope_mut().define_type(name.clone(), meta.clone());
         }
         self.current_scope_mut().put_symbol(name.as_str(), meta);

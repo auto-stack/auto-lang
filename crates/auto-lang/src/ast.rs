@@ -242,6 +242,15 @@ impl fmt::Display for Body {
     }
 }
 
+impl Stmt {
+    pub fn as_fn(&self) -> Option<&Fn> {
+        match self {
+            Stmt::Fn(fn_decl) => Some(fn_decl),
+            _ => None,
+        }
+    }
+}
+
 impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -341,6 +350,14 @@ impl Arg {
             Arg::Pos(expr) => expr.repr(),
             Arg::Name(name) => name.text.clone(),
             Arg::Pair(key, expr) => format!("{}:{}", key.text, expr.repr()),
+        }
+    }
+
+    pub fn to_code(&self) -> String {
+        match self {
+            Arg::Pos(expr) => expr.to_code(),
+            Arg::Name(name) => name.text.clone(),
+            Arg::Pair(key, expr) => format!("{}:{}", key.text, expr.to_code()),
         }
     }
 }
@@ -484,6 +501,25 @@ impl Expr {
             Expr::Unary(op, e) => format!("{}{}", op.repr(), e.repr()),
             Expr::Array(elems) => format!("[{}]", elems.iter().map(|e| e.repr()).collect::<Vec<String>>().join(", ")),
             Expr::Pair(pair) => format!("{}:{}", pair.key.to_string(), pair.value.repr()),
+            Expr::Object(pairs) => format!("{{{}}}", pairs.iter().map(|p| p.repr()).collect::<Vec<String>>().join(", ")),
+            _ => self.to_string(),
+        }
+    }
+
+    pub fn to_code(&self) -> String {
+        match self {
+            Expr::Int(i) => i.to_string(),
+            Expr::Uint(u) => u.to_string(),
+            Expr::Float(f) => f.to_string(),
+            Expr::Bool(b) => b.to_string(),
+            Expr::Char(c) => c.to_string(),
+            Expr::Str(s) => format!("\"{}\"", s),
+            Expr::Ident(n) => n.text.clone(),
+            Expr::Ref(n) => n.text.clone(),
+            Expr::Bina(l, op, r) => format!("{}{}{}", l.to_code(), op.repr(), r.to_code()),
+            Expr::Unary(op, e) => format!("{}{}", op.repr(), e.to_code()),
+            Expr::Array(elems) => format!("[{}]", elems.iter().map(|e| e.to_code()).collect::<Vec<String>>().join(", ")),
+            Expr::Pair(pair) => format!("{}:{}", pair.key.to_string(), pair.value.to_code()),
             Expr::Object(pairs) => format!("{{{}}}", pairs.iter().map(|p| p.repr()).collect::<Vec<String>>().join(", ")),
             _ => self.to_string(),
         }

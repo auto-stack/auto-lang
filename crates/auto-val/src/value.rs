@@ -10,7 +10,7 @@ use std::fmt::{self, Display, Formatter};
 
 
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Value {
     Byte(u8),
     Int(i32),
@@ -27,6 +27,7 @@ pub enum Value {
     RangeEq(i32, i32),
     Fn(Fn),
     ExtFn(ExtFn),
+    #[default]
     Nil,
     Lambda(AutoStr),
     Void,

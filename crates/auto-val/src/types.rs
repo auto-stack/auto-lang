@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use crate::Value;
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Type {
+    #[default]
     Any,
     Void,
     Byte,

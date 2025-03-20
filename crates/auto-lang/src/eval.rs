@@ -802,7 +802,6 @@ impl Evaler {
             }
             Value::Node(node) => match right {
                 Expr::Ident(name) => {
-                    println!("Try to dot with {}.{}", node.name, name.text);
                     let mut name = name.text.clone();
                     let v = node.get_prop(&name);
                     match v {
