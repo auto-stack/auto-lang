@@ -12,6 +12,7 @@ pub enum Type {
     Str,
     Array(ArrayType),
     User(TypeDecl),
+    Void,
     Unknown,
 }
 
@@ -47,6 +48,7 @@ impl fmt::Display for Type {
             Type::Str => write!(f, "str"),
             Type::Array(array_type) => write!(f, "{}", array_type),
             Type::User(type_decl) => write!(f, "{}", type_decl),
+            Type::Void => write!(f, "void"),
             Type::Unknown => write!(f, "unknown"),
         }
     }
@@ -63,6 +65,7 @@ impl From<Type> for auto_val::Type {
             Type::Str => auto_val::Type::Str,
             Type::Array(_) => auto_val::Type::Array,
             Type::User(decl) => auto_val::Type::User(decl.name.text),
+            Type::Void => auto_val::Type::Void,
             Type::Unknown => auto_val::Type::Void, // TODO: is this correct?
         }
     }

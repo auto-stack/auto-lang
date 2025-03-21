@@ -7,15 +7,15 @@ pub mod libs;
 pub mod parser;
 pub mod repl;
 pub mod scope;
-pub mod universe;
 mod token;
 pub mod trans;
+mod universe;
 pub mod util;
 
 use crate::eval::EvalMode;
 use crate::parser::Parser;
 use crate::scope::Meta;
-use crate::universe::Universe;
+pub use crate::universe::Universe;
 use auto_val::Obj;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -41,16 +41,18 @@ pub fn parse(code: &str) -> AutoResult<ast::Code> {
     parser.parse().map_err(|e| e.to_string().into())
 }
 
+pub fn parse_with_scope(code: &str, scope: Rc<RefCell<Universe>>) -> AutoResult<ast::Code> {
+    let mut parser = Parser::new(code, scope.clone());
+    parser.parse().map_err(|e| e.to_string().into())
+}
+
 pub fn interpret(code: &str) -> AutoResult<interp::Interpreter> {
     let mut interpreter = interp::Interpreter::new();
     interpreter.interpret(code)?;
     Ok(interpreter)
 }
 
-pub fn interpret_with_scope(
-    code: &str,
-    scope: Universe,
-) -> AutoResult<interp::Interpreter> {
+pub fn interpret_with_scope(code: &str, scope: Universe) -> AutoResult<interp::Interpreter> {
     let mut interpreter = interp::Interpreter::with_scope(scope);
     interpreter.interpret(code)?;
     Ok(interpreter)
@@ -844,6 +846,23 @@ square(15)
         // TODO: implement view types
         let res = run(code).unwrap();
         println!("{}", res);
+        assert!(true);
+    }
+
+    #[test]
+    fn test_access_fields_in_method() {
+        let code = r#"
+            type Login {
+                username str
+                status str = ""
+
+                fn on(ev str) {
+                    // status = `Login ${username} ...`
+                    var a = status
+                }
+            }"#;
+        let result = run(code).unwrap();
+        println!("{}", result);
         assert!(true);
     }
 }

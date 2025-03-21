@@ -1,9 +1,9 @@
-use super::{Trans, ToStrError};
-use auto_val::AutoStr;
-use std::io::Write;
-use auto_val::Op;
+use super::{ToStrError, Trans};
 use crate::ast::*;
 use crate::AutoResult;
+use auto_val::AutoStr;
+use auto_val::Op;
+use std::io::Write;
 pub struct CTrans {
     indent: usize,
     includes: Vec<u8>,
@@ -13,7 +13,12 @@ pub struct CTrans {
 
 impl CTrans {
     pub fn new(name: AutoStr) -> Self {
-        Self { indent: 0, includes: Vec::new(), header: Vec::new(), name }
+        Self {
+            indent: 0,
+            includes: Vec::new(),
+            header: Vec::new(),
+            name,
+        }
     }
 
     fn indent(&mut self) {
@@ -33,7 +38,6 @@ impl CTrans {
 }
 
 impl CTrans {
-
     pub fn code(&mut self, code: &Code, out: &mut impl Write) -> AutoResult<()> {
         for stmt in code.stmts.iter() {
             self.stmt(stmt, out)?;
@@ -48,8 +52,14 @@ impl CTrans {
 
     fn stmt(&mut self, stmt: &Stmt, out: &mut impl Write) -> AutoResult<()> {
         match stmt {
-            Stmt::Expr(expr) => {self.expr(expr, out)?; self.eos(out)},
-            Stmt::Store(store) => {self.store(store, out)?; self.eos(out)},
+            Stmt::Expr(expr) => {
+                self.expr(expr, out)?;
+                self.eos(out)
+            }
+            Stmt::Store(store) => {
+                self.store(store, out)?;
+                self.eos(out)
+            }
             Stmt::Fn(fn_decl) => self.fn_decl(fn_decl, out),
             Stmt::For(for_stmt) => self.for_stmt(for_stmt, out),
             Stmt::If(branches, otherwise) => self.if_stmt(branches, otherwise, out),
@@ -79,7 +89,7 @@ impl CTrans {
             Expr::Ident(name) => out.write_all(name.text.as_bytes()).to(),
             Expr::Str(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::Call(call) => self.call(call, out),
-            Expr::Array(array) => self.array(array, out), 
+            Expr::Array(array) => self.array(array, out),
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
     }
@@ -151,10 +161,12 @@ impl CTrans {
             Type::Array(array_type) => {
                 let elem_type = &array_type.elem;
                 let len = array_type.len;
-                out.write(format!("{} {}[{}] = ", elem_type, store.name.text, len).as_bytes()).to()?;
+                out.write(format!("{} {}[{}] = ", elem_type, store.name.text, len).as_bytes())
+                    .to()?;
             }
             _ => {
-                out.write(format!("{} {} = ", store.ty, store.name.text).as_bytes()).to()?;
+                out.write(format!("{} {} = ", store.ty, store.name.text).as_bytes())
+                    .to()?;
             }
         }
         self.expr(&store.expr, out)?;
@@ -179,7 +191,12 @@ impl CTrans {
         Ok(())
     }
 
-    fn if_stmt(&mut self, branches: &Vec<Branch>, otherwise: &Option<Body>, out: &mut impl Write) -> AutoResult<()> {
+    fn if_stmt(
+        &mut self,
+        branches: &Vec<Branch>,
+        otherwise: &Option<Body>,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
         out.write(b"if ").to()?;
         for (i, branch) in branches.iter().enumerate() {
             out.write(b"(").to()?;
@@ -224,7 +241,6 @@ impl CTrans {
         let fmt = format!("printf(\"{}\", ", arg_types.join(" "));
         out.write(fmt.as_bytes()).to()
     }
-    
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         if let Expr::Ident(name) = &call.name.as_ref() {
@@ -282,19 +298,17 @@ impl CTrans {
 
     fn is_returnable(&self, stmt: &Stmt) -> bool {
         match stmt {
-            Stmt::Expr(expr) => {
-                match expr {
-                    Expr::Call(call) => {
-                        if let Expr::Ident(name) = &call.name.as_ref() {
-                            if name.text == "print" {
-                                return false;
-                            }
+            Stmt::Expr(expr) => match expr {
+                Expr::Call(call) => {
+                    if let Expr::Ident(name) = &call.name.as_ref() {
+                        if name.text == "print" {
+                            return false;
                         }
-                        true
                     }
-                    _ => true,
+                    true
                 }
-            }
+                _ => true,
+            },
             _ => false,
         }
     }
@@ -322,7 +336,7 @@ impl Trans for CTrans {
                                 }
                             }
                         }
-                        _ => { }
+                        _ => {}
                     }
                     main.push(stmt);
                 }

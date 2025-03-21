@@ -1,18 +1,10 @@
 use crate::ast;
-use crate::libs;
-use auto_atom::Atom;
-use auto_val::MetaID;
-use auto_val::Sig;
-use auto_val::{Args, Value};
-use auto_val::{ExtFn, Obj, TypeInfoStore};
+use auto_val::Value;
 use ecow::EcoString as AutoStr;
-use std::any::Any;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::LazyLock;
-use super::universe::*;
 
 pub static SID_PATH_GLOBAL: LazyLock<Sid> = LazyLock::new(|| Sid::new(""));
 
@@ -186,8 +178,6 @@ impl Scope {
     }
 }
 
-
-
 #[derive(Debug)]
 pub enum Meta {
     Store(ast::Store),
@@ -280,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_scope_enter_and_exit() {
-        let mut uni = Universe::new();
+        let mut uni = crate::Universe::new();
         uni.enter_mod("std");
         assert_eq!(uni.cur_spot, Sid::new("std"));
         uni.enter_fn("math");
@@ -301,7 +291,7 @@ mod tests {
 
     #[test]
     fn test_scope_define_and_lookup() {
-        let mut uni = Universe::new();
+        let mut uni = crate::Universe::new();
         uni.enter_mod("std");
         uni.enter_mod("math");
         let val_expr = ast::Expr::Int(32);

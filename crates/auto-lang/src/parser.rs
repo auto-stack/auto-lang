@@ -2,8 +2,8 @@ use crate::ast::*;
 use crate::error_pos;
 use crate::lexer::Lexer;
 use crate::scope::Meta;
-use crate::universe::Universe;
 use crate::token::{Pos, Token, TokenKind};
+use crate::universe::Universe;
 use auto_val::AutoStr;
 use auto_val::Op;
 use std::cell::RefCell;
@@ -791,8 +791,8 @@ impl<'a> Parser<'a> {
             TokenKind::Var => self.store_stmt()?,
             TokenKind::Let => self.store_stmt()?,
             TokenKind::Mut => self.store_stmt()?,
-            TokenKind::Fn => self.fn_stmt("")?,
-            TokenKind::Type => self.type_stmt()?,
+            TokenKind::Fn => self.fn_decl_stmt("")?,
+            TokenKind::Type => self.type_decl_stmt()?,
             TokenKind::LBrace => Stmt::Block(self.body()?),
             // AutoUI Stmts
             TokenKind::Widget => self.widget_stmt()?,
@@ -1099,7 +1099,7 @@ impl<'a> Parser<'a> {
     }
 
     // Function Declaration
-    pub fn fn_stmt(&mut self, parent_name: &str) -> Result<Stmt, ParseError> {
+    pub fn fn_decl_stmt(&mut self, parent_name: &str) -> Result<Stmt, ParseError> {
         self.next(); // skip keyword `fn`
                      // parse function name
         let name = self.cur.text.clone();
@@ -1204,7 +1204,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Expr(self.expr()?))
     }
 
-    pub fn type_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn type_decl_stmt(&mut self) -> Result<Stmt, ParseError> {
         // TODO: deal with scope
         self.next(); // skip `type` keyword
         let name = Name::new(self.cur.text.clone());
@@ -1237,7 +1237,7 @@ impl<'a> Parser<'a> {
         let mut methods = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             if self.is_kind(TokenKind::Fn) {
-                let fn_stmt = self.fn_stmt(&name.text)?;
+                let fn_stmt = self.fn_decl_stmt(&name.text)?;
                 if let Stmt::Fn(fn_expr) = fn_stmt {
                     methods.push(fn_expr);
                 }
@@ -1292,6 +1292,16 @@ impl<'a> Parser<'a> {
             let expr = self.expr()?;
             value = Some(expr);
         }
+        let store = Store {
+            name: name.clone(),
+            ty: ty.clone(),
+            expr: match &value {
+                Some(expr) => expr.clone(),
+                None => Expr::Nil,
+            },
+            kind: StoreKind::Field,
+        };
+        self.define(name.text.as_str(), Meta::Store(store));
         Ok(Member::new(name, ty, value))
     }
 

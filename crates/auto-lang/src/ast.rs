@@ -2,7 +2,7 @@ mod types;
 
 pub use types::*;
 
-use auto_val::{Op, AutoStr};
+use auto_val::{AutoStr, Op};
 use serde::Serialize;
 use std::fmt;
 
@@ -96,7 +96,9 @@ impl From<Name> for AutoStr {
 
 impl From<&str> for Name {
     fn from(text: &str) -> Self {
-        Name { text: text.to_string() }
+        Name {
+            text: text.to_string(),
+        }
     }
 }
 
@@ -108,7 +110,9 @@ impl From<String> for Name {
 
 impl From<AutoStr> for Name {
     fn from(text: AutoStr) -> Self {
-        Name { text: text.to_string() }
+        Name {
+            text: text.to_string(),
+        }
     }
 }
 
@@ -117,6 +121,7 @@ pub enum StoreKind {
     Let,
     Mut,
     Var,
+    Field, // field of struct
 }
 
 #[derive(Debug, Clone)]
@@ -138,6 +143,7 @@ impl fmt::Display for Store {
             StoreKind::Let => write!(f, "(let {}{}{})", self.name, ty_str, self.expr),
             StoreKind::Mut => write!(f, "(mut {}{}{})", self.name, ty_str, self.expr),
             StoreKind::Var => write!(f, "(var {} {})", self.name, self.expr),
+            StoreKind::Field => write!(f, "(field {} {})", self.name, self.expr),
         }
     }
 }
@@ -499,9 +505,23 @@ impl Expr {
             Expr::Ref(n) => n.text.clone(),
             Expr::Bina(l, op, r) => format!("{}{}{}", l.repr(), op.repr(), r.repr()),
             Expr::Unary(op, e) => format!("{}{}", op.repr(), e.repr()),
-            Expr::Array(elems) => format!("[{}]", elems.iter().map(|e| e.repr()).collect::<Vec<String>>().join(", ")),
+            Expr::Array(elems) => format!(
+                "[{}]",
+                elems
+                    .iter()
+                    .map(|e| e.repr())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Expr::Pair(pair) => format!("{}:{}", pair.key.to_string(), pair.value.repr()),
-            Expr::Object(pairs) => format!("{{{}}}", pairs.iter().map(|p| p.repr()).collect::<Vec<String>>().join(", ")),
+            Expr::Object(pairs) => format!(
+                "{{{}}}",
+                pairs
+                    .iter()
+                    .map(|p| p.repr())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             _ => self.to_string(),
         }
     }
@@ -518,9 +538,23 @@ impl Expr {
             Expr::Ref(n) => n.text.clone(),
             Expr::Bina(l, op, r) => format!("{}{}{}", l.to_code(), op.repr(), r.to_code()),
             Expr::Unary(op, e) => format!("{}{}", op.repr(), e.to_code()),
-            Expr::Array(elems) => format!("[{}]", elems.iter().map(|e| e.to_code()).collect::<Vec<String>>().join(", ")),
+            Expr::Array(elems) => format!(
+                "[{}]",
+                elems
+                    .iter()
+                    .map(|e| e.to_code())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Expr::Pair(pair) => format!("{}:{}", pair.key.to_string(), pair.value.to_code()),
-            Expr::Object(pairs) => format!("{{{}}}", pairs.iter().map(|p| p.repr()).collect::<Vec<String>>().join(", ")),
+            Expr::Object(pairs) => format!(
+                "{{{}}}",
+                pairs
+                    .iter()
+                    .map(|p| p.repr())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             _ => self.to_string(),
         }
     }
@@ -548,8 +582,6 @@ impl fmt::Display for Param {
         write!(f, ")")
     }
 }
-
-
 
 #[derive(Debug, Clone)]
 pub struct Fn {
@@ -608,8 +640,6 @@ impl Fn {
         }
     }
 }
-
-
 
 #[derive(Debug, Clone)]
 pub struct Node {

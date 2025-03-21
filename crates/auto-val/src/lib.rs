@@ -7,6 +7,9 @@ pub use types::*;
 mod string;
 pub use string::*;
 
+mod shared;
+pub use shared::*;
+
 mod array;
 pub use array::*;
 
