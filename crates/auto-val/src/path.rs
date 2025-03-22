@@ -21,6 +21,13 @@ impl PathBufExt for PathBuf {
 }
 
 impl AutoPath {
+    pub fn crate_root() -> Self {
+        let path = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        Self::new(path)
+    }
+}
+
+impl AutoPath {
     pub fn new(path: impl Into<AutoStr>) -> Self {
         let s = path.into();
         let path = Path::new(s.as_str()).to_path_buf();
@@ -106,6 +113,15 @@ impl AutoPath {
         let path = self.path.unified();
         AutoPath::new(path)
     }
+
+    pub fn parent(&self) -> AutoPath {
+        let path = self.path.parent();
+        if let Some(path) = path {
+            AutoPath::from(path.to_path_buf())
+        } else {
+            self.clone()
+        }
+    }
 }
 
 
@@ -166,5 +182,11 @@ mod tests {
         assert_eq!(ap.exts(2), vec!["txt", "at"]);
         assert_eq!(ap.exts(3), vec!["txt", "at"]);
         assert_eq!(ap.exts(4), vec!["txt", "at"]);
+    }
+
+    #[test]
+    fn test_workspace_root() {
+        let path = AutoPath::workspace_root();
+        assert_eq!(path.to_astr(), "auto-stack");
     }
 }

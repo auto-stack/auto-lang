@@ -1119,6 +1119,7 @@ impl<'a> Parser<'a> {
 
         // parse return type
         let mut ret_type = Type::Unknown;
+        // TODO: determine return type with last stmt if it's not specified
         if self.is_kind(TokenKind::Ident) {
             ret_type = self.type_name()?;
         }
