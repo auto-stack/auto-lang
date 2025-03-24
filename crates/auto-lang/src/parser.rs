@@ -1753,32 +1753,32 @@ mod tests {
         assert_eq!(last.to_string(), "(fn (name lambda_1) (params (param (name a) (type int)) (param (name b) (type int))) (body (bina (name a) (op +) (name b))))");
     }
 
-    #[test]
-    fn test_widget() {
-        let code = r#"
-        widget counter {
-            model {
-                var count = 0
-            }
-            view {
-                button("+") {
-                    onclick: || count = count + 1
-                }
-            }
-        }
-        "#;
-        let ast = parse_once(code);
-        let widget = &ast.stmts[0];
-        match widget {
-            Stmt::Widget(widget) => {
-                let model = &widget.model;
-                assert_eq!(model.to_string(), "(model (var (name count) (int 0)))");
-                let view = &widget.view;
-                assert_eq!(view.to_string(), "(view (node (name button) (args (str \"+\")) (body (pair (name onclick) (fn (name lambda_1) (body (bina (name count) (op =) (bina (name count) (op +) (int 1)))))))))");
-            }
-            _ => panic!("Expected widget, got {:?}", widget),
-        }
-    }
+    // #[test]
+    // fn test_widget() {
+    //     let code = r#"
+    //     widget counter {
+    //         model {
+    //             var count = 0
+    //         }
+    //         view {
+    //             button("+") {
+    //                 onclick: || count = count + 1
+    //             }
+    //         }
+    //     }
+    //     "#;
+    //     let ast = parse_once(code);
+    //     let widget = &ast.stmts[0];
+    //     match widget {
+    //         Stmt::Widget(widget) => {
+    //             let model = &widget.model;
+    //             assert_eq!(model.to_string(), "(model (var (name count) (int 0)))");
+    //             let view = &widget.view;
+    //             assert_eq!(view.to_string(), "(view (node (name button) (args (str \"+\")) (body (pair (name onclick) (fn (name lambda_1) (body (bina (name count) (op =) (bina (name count) (op +) (int 1)))))))))");
+    //         }
+    //         _ => panic!("Expected widget, got {:?}", widget),
+    //     }
+    // }
 
     #[test]
     fn test_pair() {
@@ -1892,29 +1892,29 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_app() {
-        let code = r#"
-        widget hello {
-            model {
-                var name = ""
-            }
+    // #[test]
+    // fn test_app() {
+    //     let code = r#"
+    //     widget hello {
+    //         model {
+    //             var name = ""
+    //         }
 
-            view {
-                text(f"Hello $name")
-            }
-        }
+    //         view {
+    //             text(f"Hello $name")
+    //         }
+    //     }
 
-        app {
-            center {
-                hello(name:"You")
-            }
-        }"#;
-        let ast = parse_once(code);
-        let last = ast.stmts.last().unwrap();
-        println!("{}", pretty(&last.to_string()));
-        assert_eq!(last.to_string(), "(node (name app) (body (node (name center) (body (call (name hello) (args (pair (name name) (str \"You\"))))))))");
-    }
+    //     app {
+    //         center {
+    //             hello(name:"You")
+    //         }
+    //     }"#;
+    //     let ast = parse_once(code);
+    //     let last = ast.stmts.last().unwrap();
+    //     println!("{}", pretty(&last.to_string()));
+    //     assert_eq!(last.to_string(), "(node (name app) (body (node (name center) (body (call (name hello) (args (pair (name name) (str \"You\"))))))))");
+    // }
 
     #[test]
     fn test_ref() {

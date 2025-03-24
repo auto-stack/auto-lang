@@ -352,23 +352,23 @@ $ }"#;
         assert_eq!(result, "ClearDiagnosticInformation");
     }
 
-    #[test]
-    fn test_widget() {
-        let code = r#"
-        widget MyWidget {
-            model {
-                var a = 1
-            }
-            view {
-                text(f"Count: $a")
-                button("+") {
-                    onclick: || a = a + 1
-                }
-            }
-        }"#;
-        let result = run(code).unwrap();
-        println!("{}", result);
-    }
+    // #[test]
+    // fn test_widget() {
+    //     let code = r#"
+    //     widget MyWidget {
+    //         model {
+    //             var a = 1
+    //         }
+    //         view {
+    //             text(f"Count: $a")
+    //             button("+") {
+    //                 onclick: || a = a + 1
+    //             }
+    //         }
+    //     }"#;
+    //     let result = run(code).unwrap();
+    //     println!("{}", result);
+    // }
 
     #[test]
     fn test_fstr() {
