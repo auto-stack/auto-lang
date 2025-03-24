@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_workspace_root() {
-        let path = AutoPath::workspace_root();
-        assert_eq!(path.to_astr(), "auto-stack");
+        let path = AutoPath::crate_root();
+        assert_eq!(path.filename(), "auto-val");
     }
 }
