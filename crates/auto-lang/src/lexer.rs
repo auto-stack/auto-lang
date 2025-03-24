@@ -108,7 +108,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        
+
         if has_dot {
             Token::float(self.pos(text.len()), text)
         } else {
@@ -259,10 +259,10 @@ impl<'a> Lexer<'a> {
                 // TODO: Add an Option to not check these keywords
                 match text.as_str() {
                     "grid" => self.keyword_tok(TokenKind::Grid, &text),
-                    "widget" => self.keyword_tok(TokenKind::Widget, &text),
-                    "model" => self.keyword_tok(TokenKind::Model, &text),
-                    "view" => self.keyword_tok(TokenKind::View, &text),
-                    "style" => self.keyword_tok(TokenKind::Style, &text),
+                    // "widget" => self.keyword_tok(TokenKind::Widget, &text),
+                    // "model" => self.keyword_tok(TokenKind::Model, &text),
+                    // "view" => self.keyword_tok(TokenKind::View, &text),
+                    // "style" => self.keyword_tok(TokenKind::Style, &text),
                     _ => None,
                 }
             }
@@ -412,7 +412,7 @@ impl<'a> Lexer<'a> {
                     }
 
                     panic!("unknown character: `{}`", c);
-                    
+
                 }
             }
         }
@@ -604,7 +604,7 @@ mod tests {
     #[test]
     fn test_fstr_with_note() {
         let fstr = r#"`hello #{2 + 1} again`"#;
-        let mut lexer = Lexer::new(fstr); 
+        let mut lexer = Lexer::new(fstr);
         lexer.set_fstr_note('#');
         let tokens = lexer.tokens_str();
         assert_eq!(tokens, "<fstrs><fstrp:hello ><#><{><int:2><+><int:1><}><fstrp: again><fstre>");
