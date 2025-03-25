@@ -2,32 +2,30 @@
 
 ![icon](docs/icon.png)
 
-Auto编程语言（Auto Lang）是一门以“**万物自动化**”为目标的通用编程语言。
+Auto语言是一门跨生态的“融合语言”，基本理念是：
 
-- **简洁高效**：当作脚本使用时，和Python一样易用；当作静态代码时和C/Rust一样高效。
-- **灵活多变**：Auto语言有多套语法，能够灵活适配各种使用场景，甚至混合使用。
-    - *AutoLang*：静态的Auto语言，可以转译成C/Rust执行。
-    - *AutoConfig*：作为可编程配置语言，可以替代JSON和YAML。
-    - *AutoScript*：作为脚本语言，可以动态解释执行
-    - *AutoIR*：高阶中间语言和字节码，可以用于代码生成和快速解释执行。
-    - *AutoTemplate*：作为模板语言，可以生成任意形式的结构化文本。
-    - *AutoShell*：作为Shell脚本语言，可以用于快速开发和调试。
-- **生态融合**：
-    - Auto语言可以调用C/Rust/Python/Javascript的功能，并在融合在同一个运行环境中使用。
-- **周边完备**：Auto语言生态配备了如下工具：
-    - *AutoVM*：Auto语言的解释器，可以解释执行AutoIR和AutoScript。
-    - *AutoCompiler*：将AutoIR编译成C/Rust/Python/Javascript/WASM等语言。
-    - *AutoLib*：Auto语言的标准库，跨平台、跨语言、跨生态。
-    - *AutoMan*：作为构建器和包管理器，可以管理Auto/C/Rust的混合工程。
-    - *AutoUI*：基于Rust/GPUI实现的跨平台UI框架，风格类似于Jetpack Compose/Vue.js。现在支持Windows/Linux，未来会扩展到Web/鸿蒙。
-    - *AutoGen*：基于模板和AST的代码生成功能，可以生成多种配置文件、C和Rust的代码。
-    - *AutoIDE*：TODO：基于Zed/GPUI，以Auto语言为基础的插件系统，做成一套平台的IDE。
+- 语言即系统（Language as OS）：微内核、模块化、多外设。
+- 灵活多变（Scenario Oriented）：面向不同场景，提供所需的语言特性。
+- 动静结合（Dynamic+Static）：动态和静态类型相辅相成，动态解释和静态编译有机结合。
+- 生态融合（Ecosytem Friendly）：面向C、Rust、Javascript、Python等多个生态。
+
+Auto语言应用在汽车行业，未来会不断探索，拓宽边界。
+
+Auto语言的远景目标是“万物自动化”（*One Lang to Rule Them All*）。
 
 Auto语言是Soutek公司推出的技术产品Soutek AutoStack的开源版本。
 
 ## 用途
 
 Auto语言可以用于如下场景：
+- 作为`Better C`，生成C/Rust源码
+- 作为配置文件，替代JSON/YAML
+- 作为数据格式语言，替代JSON
+- 作为构建工具，替代CMake
+- 作为UI界面描述语言，替代XAML/QML/HTML
+- 作为脚本语言，替代Python/Javascript
+- 作为模板语言，替代Jinja2/Mustache
+- 作为跨平台Shell，替代Bash/PowerShell
 
 ### 1. AutoLang生成C源码
 
@@ -216,7 +214,7 @@ class(name: info.name, count: info.count) {
 这种基于节点的格式，非常适合用来描述UI等树状配置。
 和XML、YAML不同，AutoConfig是可编程的，因此要更加灵活强大。
 
-### 3. AutoConfig，作为构建器AutoMan的配置文件
+### 3. AutoMan，作为构建器的配置文件
 
 `AutoMan`是Auto语言的构建工具，支持编译、依赖包管理和Auto/C混合编程。
 `AutoMan`可以看作是CMake的替代品。
@@ -228,44 +226,48 @@ project: "osal"
 version: "v0.0.1"
 
 // 依赖项目，可以指定参数
-dep(FreeRTOS, "v0.0.3") {
+dep("FreeRTOS", "v0.0.3") {
     heap: "heap_5"
     config_inc: "demo/inc"
 }
 
 // 本工程中的库
-lib(osal) {
+lib("osal") {
     // 子目录
-    pac(hsm) {
+    dir("hsm") {
         skip: ["hsm_test.h", "hsm_test.c"]
     }
-    pac(log) {}
+    dir("log") {}
     link: FreeRTOS
 }
 
 // 可以输出到不同的平台，指定不同的编译工具链、架构和芯片
-port(windows, cmake, x64, win32, "v1.0.0") {}
-port(stm32, iar, arm_cortex_m4, f103RE, "v1.0.0") {}
+port("cmake", "win32") {}
+port("iar", "ls1480") {
+    // 芯片对应的SDK
+    device("Lanshan-LS1480-SDK") {
+    }
+}
 
 // 可执行文件
-exe(demo) {
+app("demo") {
     // 静态链接
-    link: osal
+    links: ["osal"]
     // 指定输出文件名
-    outfile: "demo.bin"
+    out: "demo.bin"
 }
 ```
 
 ### 4. AutoShell
 
-AutoShell是类似Bash的Shell脚本语言，
-与普通的AutoScript唯一的区别，就是添加了对Shell命令调用格式的支持：
+AutoShell是类似Bash的Shell脚本语言，可以试下跨平台统一语法。
+相对于AutoScript，添加了对Shell命令调用格式的支持：
 
 ```bash
 mkdir -p src/app
 ```
 
-相当于AutoScript中的如下代码：
+上述的Shell脚本语法会被转换为AutoScript中的如下代码：
 
 ```rust
 mkdir("src/app", p=true)
@@ -338,8 +340,6 @@ grep -Hirn TODO .
 grep(key="TODO", dir=".", H=true, i=true, r=true, n=true)
 ```
 
-Auto语言提供了一个动态执行环境（Auto Shell），可以用于脚本执行、开发调试等。
-
 ### 5. AutoTemplate，可以生成任意格式文本的模板语言
 
 类似于Python的`Jinja2`模板。
@@ -362,7 +362,7 @@ Auto语言提供了一个动态执行环境（Auto Shell），可以用于脚本
 
 AutoTemplate是`AutoGen`代码生成系统的基础。
 
-### 6. AutoUI，用AutoScript来描述UI界面
+### 6. AutoUI，用Auto语言来描述UI界面
 
 `AutoUI`是Auto语言的UI框架，基于`Zed/GPUI`实现。
 可以支持Windows/Linxu/MacOS/Web等多种平台。
@@ -370,40 +370,70 @@ AutoTemplate是`AutoGen`代码生成系统的基础。
 AutoUI的语法风格类似Kotlin，代码组织模式类似于Vue.js。
 
 ```rust
-// 一个组件
-widget counter {
-    // 数据模型
-    model {
-        var count = 0
-    }
-    // 视图，用来描述UI的布局
-    view {
+// 任何一个实现了`View`特征的类型，都可以作为一个UI组件来使用
+type Counter as View {
+    // 类型的成员，相当于MVC中的Model
+    count int = 0
+
+    // `view`方法，返回一个节点数据。相当于MVC中的View
+    fn view() {
         col {
             button("+") {
-                onclick: || count = count + 1
+                onclick: "click:inc" // 点击事件，暂时用字符串类型，未来会扩展成枚举数据类型
             }
-            text(f"Count: $count")
+            label(`Count: ${count}`) {}
             button("-") {
-                onclick: || count = count - 1
+                onclick: "click:dec" // 点击事件，暂时用字符串类型，未来会扩展成枚举数据类型
             }
             button("reset") {
-                onclick: || count = 0
+                onclick: "click:reset" // 点击事件，暂时用字符串类型，未来会扩展成枚举数据类型
             }
         }
+    }
+
+    // 事件处理函数
+    fn on(ev str) {
+        when ev {
+            is "click:inc" => count += 1
+            is "click:dec" => count -= 1
+            is "click:reset" => count = 0
+            else => print(`Unknown event: ${ev}`)
+        }
+    }
+}
+
+fn main() {
+    app("Counter Example") {
+        counter() {}
     }
 }
 ```
 
-上面的Auto代码会被解析成一个动态的`DynamicWidget`对象，可以直接在`AutoUI`中绘制出来。
+上述的Auto代码会被翻译成对应的RustUI库代码，然后编译成可执行的UI程序。
 
 下面是生成的UI界面：
 
 ![Counter](https://foruda.gitee.com/images/1730021021429704035/4625e3ce_142056.png)
 
-`AutoUI`支持自动重载，因此修改了`counter.at`文件后，`AutoUI`会自动重绘，不需要重新编译。
+Note: 在上一版实现（参见分支`gpui2`），`AutoUI`不是通过翻译成Rust，而是在Rust代码中动态解析，直接渲染出来的。
 
-TODO：在`Release`模式中，编译器将`counter.at`代码编译成Rust代码，直接和`AutoUI`的库一起打包成可执行的UI界面程序。
+这样的动态解释有如下好处：
 
+1. 可以实时重载，修改了`counter.at`文件后，`AutoUI`会自动重绘，不需要重新编译。
+2. 可以动态改变UI的渲染方式，比如在Debug模式下，可以渲染出组件的边界等信息，方便调试。
+3. 甚至可以做成动态拖拽的UI设计工具，直接一边浏览一边修改。
+
+但这样的坏处是：
+
+1. 性能较低，UI的数据都是动态解析的。
+2. 占用更多内存，此时的动态数据格式和事件响应代码，都是用解释器执行的，因此会占用更多的资源。
+
+在最近的版本`gpui3`中，我尝试了转译成Rust的方案。这么做运行效率最高，但是开发时的响应周期会比较低。
+
+因此，未来考虑将两种方案都实现，并根据场景选择使用。
+
+- 在`Debug`模式中，使用动态解释，方便开发调试。
+- 在`Release`模式中，使用转译成Rust，生成静态的UI程序。
 
 ## 语法概览
 
@@ -1205,14 +1235,14 @@ println(results)
 node button(name str) {
     text str
     scale Scale
-    onclick fn()
+    onclick str
 }
 
 // 新建节点
 button("btn1") {
     text: "Click me"
     scale: Scale.M
-    onclick: || println("button clicked")
+    onclick: "click:btn1"
 }
 
 // 多层节点
@@ -1221,7 +1251,7 @@ ul {
         label("Item 1: ") {}
         button("btn1") {
             text: "Click me"
-            onclick: || println("button clicked")
+            onclick: "click:btn1"
         }
         div { label("div1") {} }
     }
