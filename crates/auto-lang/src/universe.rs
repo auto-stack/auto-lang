@@ -1,3 +1,4 @@
+use super::scope::*;
 use crate::ast;
 use crate::libs;
 use auto_atom::Atom;
@@ -10,7 +11,6 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use super::scope::*;
 
 pub struct Universe {
     pub scopes: HashMap<Sid, Scope>,   // sid -> scope
@@ -226,7 +226,8 @@ impl Universe {
     pub fn define(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
         let name = name.into();
         if matches!(meta.as_ref(), Meta::Type(_)) {
-            self.current_scope_mut().define_type(name.clone(), meta.clone());
+            self.current_scope_mut()
+                .define_type(name.clone(), meta.clone());
         }
         self.current_scope_mut().put_symbol(name.as_str(), meta);
     }
@@ -376,7 +377,7 @@ impl Universe {
         let sid = self.cur_spot.clone();
         self.lookup_meta_recurse(name, &sid)
     }
-    
+
     fn lookup_type_recurse(&self, name: impl Into<AutoStr>, sid: &Sid) -> Option<Rc<Meta>> {
         let name = name.into();
         if let Some(scope) = self.scopes.get(sid) {
@@ -492,10 +493,10 @@ impl Universe {
                     let key = plural_key.as_str();
                     // for each kid, set its main arg as `id`, and all props as is
                     let mut kids_vec: Vec<Value> = Vec::new();
-                    for kid in kids.iter() {
+                    for kid in kids.into_iter() {
                         let mut props = kid.props.clone();
                         props.set("name", kid.main_arg());
-                        kids_vec.push(props.into());
+                        kids_vec.push(Value::Node((*kid).clone()));
                     }
                     if !self.has_global(key) {
                         self.set_global(key, kids_vec.into());
@@ -534,7 +535,9 @@ mod tests {
     fn test_global_define_and_lookup_type() {
         let uni = Rc::new(RefCell::new(Universe::new()));
         let uni_clone = uni.clone();
-        uni_clone.borrow_mut().define_type("int", Rc::new(Meta::Type(ast::Type::Int)));
+        uni_clone
+            .borrow_mut()
+            .define_type("int", Rc::new(Meta::Type(ast::Type::Int)));
 
         let meta = uni.borrow().lookup_type("int");
         assert!(meta.is_some());

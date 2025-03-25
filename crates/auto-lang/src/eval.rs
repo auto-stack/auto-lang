@@ -67,7 +67,7 @@ impl Evaler {
                     match val {
                         Value::Pair(key, value) => {
                             // first level pairs are viewed as variable declarations
-                            // TODO: this should only happen in a Config scenario   
+                            // TODO: this should only happen in a Config scenario
                             let mut value = *value;
                             if let Some(name) = key.name() {
                                 let mut scope = self.universe.borrow_mut();
@@ -519,7 +519,7 @@ impl Evaler {
                 return Value::error(format!("Invalid function call {}", name));
             }
         }
-        
+
         // Lookup Fn meta
         let meta = self.universe.borrow().lookup_meta(&call.get_name_text());
         if let Some(meta) = meta {
@@ -595,7 +595,7 @@ impl Evaler {
                     }
                 }
             }
-            
+
         }
         // check default field values
         for member in members.iter() {
@@ -625,7 +625,7 @@ impl Evaler {
                     println!("wrong method?: {}", s);
                 }
             }
-            Value::Instance(inst) => { 
+            Value::Instance(inst) => {
                 let method = self.universe.borrow().lookup_meta(&method.name);
                 if let Some(meta) = method {
                     match meta.as_ref() {
@@ -680,7 +680,7 @@ impl Evaler {
             }
             Arg::Pos(expr) => {
                 let val = self.eval_expr(expr);
-                let name = &params[i].name.text;   
+                let name = &params[i].name.text;
                 self.universe.borrow_mut().set_local_val(&name, val.clone());
             }
             Arg::Name(name) => {
@@ -803,10 +803,11 @@ impl Evaler {
             Value::Node(node) => match right {
                 Expr::Ident(name) => {
                     let mut name = name.text.clone();
+                    // 1. lookup in the props
                     let v = node.get_prop(&name);
                     match v {
                         Value::Nil => {
-                            // try with nodes
+                            // 2. lookup in sub nodes
                             if name.ends_with("s") {
                                 name = name[..name.len() - 1].to_string();
                             }
@@ -909,7 +910,7 @@ impl Evaler {
         let args = &node.args.args;
         let mut res = Value::Str("".into());
         if args.len() >= 1 {
-            if is_mid { // mid 
+            if is_mid { // mid
                 let mid = self.eval_expr(&args[0].get_expr());
                 res = mid;
             }
@@ -1178,4 +1179,3 @@ pub fn eval_basic_expr(expr: &Expr) -> Value {
         _ => Value::error(format!("Unsupported basic expression: {:?}", expr)),
     }
 }
-
