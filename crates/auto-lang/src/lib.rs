@@ -7,7 +7,7 @@ pub mod libs;
 pub mod parser;
 pub mod repl;
 pub mod scope;
-mod token;
+pub mod token;
 pub mod trans;
 mod universe;
 pub mod util;

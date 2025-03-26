@@ -54,6 +54,16 @@ impl<'a> Lexer<'a> {
         false
     }
 
+    pub fn peek_non_whitespace(&mut self, c: char) -> bool {
+        let iter = self.chars.clone();
+        for i in iter {
+            if !i.is_whitespace() {
+                return c == i;
+            }
+        }
+        false
+    }
+
     pub fn with_equal(&mut self, kind1: TokenKind, kind2: TokenKind, c: char) -> Token {
         self.chars.next(); // skip c
         if self.peek('=') {
@@ -269,6 +279,32 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    pub fn identifier_or_special_block(&mut self) -> Token {
+        let ident = self.identifier();
+        // TODO: register special blocks dynamically
+        if ident.text == "markdown" && self.peek_non_whitespace('{') {
+            self.chars.next();
+            let tk = self.single(TokenKind::LBrace, '{');
+            self.buffer.push_back(tk);
+            let mut code = String::new();
+            while let Some(&c) = self.chars.peek() {
+                if c == '}' {
+                    self.chars.next();
+                    break;
+                }
+                code.push(c);
+                self.chars.next();
+            }
+            let code = Token::str(self.pos(code.len()), code);
+            self.buffer.push_back(code);
+            let tk = self.single(TokenKind::RBrace, '}');
+            self.buffer.push_back(tk);
+            ident
+        } else {
+            ident
+        }
+    }
+
     pub fn identifier(&mut self) -> Token {
         let mut text = String::new();
         // 第1个字符，必须是字母或下划线
@@ -288,6 +324,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+        // TODO: keyword detection should be dynamic, e.g. context dependent)
         if let Some(keyword) = self.keyword(text.clone()) {
             keyword
         } else {
@@ -408,7 +445,7 @@ impl<'a> Lexer<'a> {
                     }
 
                     if c.is_alphabetic() {
-                        return self.identifier();
+                        return self.identifier_or_special_block();
                     }
 
                     panic!("unknown character: `{}`", c);
@@ -608,5 +645,16 @@ mod tests {
         lexer.set_fstr_note('#');
         let tokens = lexer.tokens_str();
         assert_eq!(tokens, "<fstrs><fstrp:hello ><#><{><int:2><+><int:1><}><fstrp: again><fstre>");
+    }
+
+    #[test]
+    fn test_markdown() {
+        let code = r#"markdown {
+        # hello
+            This is a **test** for markdown
+        }
+        "#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<ident:markdown><{><str:\n        # hello\n            This is a **test** for markdown\n        ><}>");
     }
 }

@@ -17,12 +17,12 @@ Auto语言是Soutek公司推出的技术产品Soutek AutoStack的开源版本。
 
 ## 用途
 
-Auto语言可以用于如下场景：
+Auto语言可用于如下场景：
 - 作为`Better C`，生成C/Rust源码
-- 作为配置文件，替代JSON/YAML
-- 作为数据格式语言，替代JSON
-- 作为构建工具，替代CMake
-- 作为UI界面描述语言，替代XAML/QML/HTML
+- 作为配置语言，替代JSON/XML/YAML
+- 作为数据格式语言，替代JSON/ProtoBuf
+- 作为构建工具，替代CMake/XMake
+- 作为UI界面描述语言，替代QML/XAML/Vue
 - 作为脚本语言，替代Python/Javascript
 - 作为模板语言，替代Jinja2/Mustache
 - 作为跨平台Shell，替代Bash/PowerShell
@@ -435,6 +435,15 @@ Note: 在上一版实现（参见分支`gpui2`），`AutoUI`不是通过翻译�
 - 在`Debug`模式中，使用动态解释，方便开发调试。
 - 在`Release`模式中，使用转译成Rust，生成静态的UI程序。
 
+注意：上述所有场景用途，并未完全实现，现在进度大致如下：
+
+- `Better C`：v0.1初步完成了Auto2C的转译器，可以翻译简单的函数、控制流等。预计v0.2版本实现绝大部分功能。
+- 配置语言：已完成，有静态版（Atom）和动态版（AutoConfig）两个层次。
+- 脚本语言：有一个初步可用的动态解释器，但对Rust/Python/JS等生态的动态调用功能还未实现。
+- UI界面：完成了简单的界面，可以配置UI组件、设置Style、组合、布局、模块化、事件响应等。
+- 模板：基本可用，已经用在一些简单项目中了。
+- Shell：正在开发中。
+
 ## 语法概览
 
 ### 存量
@@ -474,7 +483,7 @@ const PI = 3.14
 // 幻量：幻量是最自由的量，可以任意改变值和类型，一般用于脚本环境
 var x = 1
 x = "hello"
-x = [x+"1", x+"2", x+"3"] 
+x = [x+"1", x+"2", x+"3"]
 ```
 
 ### 数组

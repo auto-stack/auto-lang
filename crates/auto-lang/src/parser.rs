@@ -7,11 +7,12 @@ use crate::universe::Universe;
 use auto_val::AutoStr;
 use auto_val::Op;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::i32;
 use std::path::Path;
 use std::rc::Rc;
 
-type ParseError = String;
+pub type ParseError = String;
 
 pub struct PostfixPrec {
     l: u8,
@@ -94,6 +95,10 @@ fn infix_power(op: Op) -> Result<InfixPrec, ParseError> {
     }
 }
 
+pub trait BlockParser {
+    fn parse(&self, parser: &mut Parser) -> Result<Body, ParseError>;
+}
+
 // pub fn parse(code: &str, scope: Rc<RefCell<Universe>>, interpreter: &'a Interpreter) -> Result<Code, ParseError> {
 // let mut parser = Parser::new(code, scope, interpreter);
 // parser.parse()
@@ -102,23 +107,28 @@ fn infix_power(op: Op) -> Result<InfixPrec, ParseError> {
 pub struct Parser<'a> {
     pub scope: Rc<RefCell<Universe>>,
     lexer: Lexer<'a>,
-    cur: Token,
+    pub cur: Token,
+    pub special_blocks: HashMap<AutoStr, Box<dyn BlockParser>>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(code: &'a str, scope: Rc<RefCell<Universe>>) -> Self {
         let mut lexer = Lexer::new(code);
         let cur = lexer.next();
-        let mut parser = Parser { scope, lexer, cur };
+        let mut parser = Parser { scope, lexer, cur, special_blocks: HashMap::new() };
         parser.skip_comments();
         parser
+    }
+
+    pub fn add_special_block(&mut self, block: AutoStr, parser: Box<dyn BlockParser>) {
+        self.special_blocks.insert(block, parser);
     }
 
     pub fn new_with_note(code: &'a str, scope: Rc<RefCell<Universe>>, note: char) -> Self {
         let mut lexer = Lexer::new(code);
         lexer.set_fstr_note(note);
         let cur = lexer.next();
-        let mut parser = Parser { scope, lexer, cur };
+        let mut parser = Parser { scope, lexer, cur, special_blocks: HashMap::new() };
         parser.skip_comments();
         parser
     }
@@ -725,6 +735,14 @@ impl<'a> Parser<'a> {
     pub fn rhs_expr(&mut self) -> Result<Expr, ParseError> {
         if self.is_kind(TokenKind::If) {
             self.if_expr()
+        } else if self.is_kind(TokenKind::Ident) {
+            // TODO: should have a node_or_call_expr()
+            let stmt = self.node_or_call_stmt()?;
+            match stmt {
+                Stmt::Expr(expr) => Ok(expr),
+                Stmt::Node(node) => Ok(Expr::Node(node)),
+                _ => error_pos!("Expected expression, got {:?}", stmt),
+            }
         } else {
             self.expr()
         }
@@ -1481,12 +1499,16 @@ impl<'a> Parser<'a> {
                     );
                 }
             }
-            let body = self.node_body()?;
             match ident {
                 Expr::Ident(name) => {
+                    let n = name.text.clone().into();
                     let mut node = Node::new(name.clone());
+                    if self.special_blocks.contains_key(&n) {
+                        node.body = self.special_block(&n)?;
+                    } else {
+                        node.body = self.node_body()?;
+                    }
                     node.args = args;
-                    node.body = body;
                     return Ok(Stmt::Node(node));
                 }
                 _ => {
@@ -1512,6 +1534,19 @@ impl<'a> Parser<'a> {
                 Ok(Stmt::Expr(expr))
             }
         }
+    }
+
+    fn special_block(&mut self, name: &AutoStr) -> Result<Body, ParseError> {
+        self.expect(TokenKind::LBrace)?;
+        let block_parser = self.special_blocks.remove(name);
+        if block_parser.is_none() {
+            return error_pos!("Unknown special block: {}", name);
+        }
+        let block_parser = block_parser.unwrap();
+        let body = block_parser.parse(self)?;
+        self.special_blocks.insert(name.clone(), block_parser);
+        self.expect(TokenKind::RBrace)?;
+        Ok(body)
     }
 
     pub fn grid(&mut self) -> Result<Grid, ParseError> {
