@@ -375,12 +375,12 @@ impl Value {
         }
     }
 
-    pub fn pretty(&self, max_indent: usize) -> String {
+    pub fn pretty(&self, max_indent: usize) -> AutoStr {
         pretty(format!("{}", self).as_str(), max_indent)
     }
 
-    pub fn to_string(&self) -> String {
-        format!("{}", self)
+    pub fn to_string(&self) -> AutoStr {
+        format!("{}", self).into()
     }
 
     pub fn to_astr(&self) -> AutoStr {
@@ -527,7 +527,7 @@ pub fn comp(a: &Value, op: &Op, b: &Value) -> Value {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Widget {
-    pub name: String,
+    pub name: AutoStr,
     pub model: Model,
     pub view_id: MetaID,
 }
@@ -606,7 +606,7 @@ impl View {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Method {
-    pub name: String,
+    pub name: AutoStr,
     pub target: Box<Value>,
 }
 
@@ -617,7 +617,7 @@ impl fmt::Display for Method {
 }
 
 impl Method {
-    pub fn new(target: Value, name: String) -> Self {
+    pub fn new(target: Value, name: AutoStr) -> Self {
         Self {
             target: Box::new(target),
             name,
@@ -686,7 +686,7 @@ impl fmt::Display for Grid {
     }
 }
 
-pub fn pretty(text: &str, max_indent: usize) -> String {
+pub fn pretty(text: &str, max_indent: usize) -> AutoStr {
     let mut result = String::new();
     let mut indent = 0;
     let mut level = 0;
@@ -760,7 +760,7 @@ pub fn pretty(text: &str, max_indent: usize) -> String {
         }
         last_c = c;
     }
-    result
+    result.into()
 }
 
 impl From<AutoStr> for Value {

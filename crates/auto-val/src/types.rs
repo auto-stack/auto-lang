@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use crate::AutoStr;
 use crate::Value;
+use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -14,52 +15,53 @@ pub enum Type {
     Char,
     Str,
     Array,
-    User(String),
+    User(AutoStr),
 }
 
 impl Type {
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> AutoStr {
         match self {
             Type::User(name) => name.clone(),
-            _ => format!("{:?}", self).to_lowercase(),
+            _ => format!("{:?}", self).to_lowercase().into(),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeInfo {
-    pub name: String,
-    pub methods: HashMap<String, ValueMethod>,
+    pub name: AutoStr,
+    pub methods: HashMap<AutoStr, ValueMethod>,
     // pub members: Vec<Member>,
 }
 
 pub type ValueMethod = fn(&Value) -> Value;
 
-
 pub struct TypeInfoStore {
-    types: HashMap<String, TypeInfo>,
+    types: HashMap<AutoStr, TypeInfo>,
     any: TypeInfo,
 }
-
 
 impl TypeInfoStore {
     pub fn new() -> Self {
         let mut types = HashMap::new();
-        types.insert("void".to_string(), type_info_void());
-        types.insert("byte".to_string(), type_info_byte());
-        types.insert("int".to_string(), type_info_int());
-        types.insert("float".to_string(), type_info_float());
-        types.insert("bool".to_string(), type_info_bool());
-        types.insert("str".to_string(), type_info_str());
-        types.insert("char".to_string(), type_info_char());
-        Self { types, any: type_info_any() }
+        types.insert("void".into(), type_info_void());
+        types.insert("byte".into(), type_info_byte());
+        types.insert("int".into(), type_info_int());
+        types.insert("float".into(), type_info_float());
+        types.insert("bool".into(), type_info_bool());
+        types.insert("str".into(), type_info_str());
+        types.insert("char".into(), type_info_char());
+        Self {
+            types,
+            any: type_info_any(),
+        }
     }
 
-    pub fn register(&mut self, name: String, info: TypeInfo) {
+    pub fn register(&mut self, name: AutoStr, info: TypeInfo) {
         self.types.insert(name, info);
     }
 
-    pub fn lookup_method_for_value(&self, value: &Value, name: String) -> Option<ValueMethod> {
+    pub fn lookup_method_for_value(&self, value: &Value, name: AutoStr) -> Option<ValueMethod> {
         match value {
             Value::Int(_) => self.lookup_method(Type::Int, name),
             Value::Float(_) => self.lookup_method(Type::Float, name),
@@ -69,7 +71,7 @@ impl TypeInfoStore {
         }
     }
 
-    pub fn lookup_method(&self, typ: Type, name: String) -> Option<ValueMethod> {
+    pub fn lookup_method(&self, typ: Type, name: AutoStr) -> Option<ValueMethod> {
         let info = self.type_info(typ);
         if info.methods.contains_key(name.as_str()) {
             info.methods.get(name.as_str()).cloned()
@@ -77,7 +79,7 @@ impl TypeInfoStore {
             // try in any
             match self.type_info(Type::Any).methods.get(name.as_str()) {
                 Some(method) => Some(method.clone()),
-                None => None
+                None => None,
             }
         }
     }
@@ -96,47 +98,69 @@ impl TypeInfoStore {
             Type::User(name) => self.types.get(name.as_str()).unwrap(),
         }
     }
-
 }
 
 fn type_info_any() -> TypeInfo {
-    let mut methods: HashMap<String, ValueMethod> = HashMap::new();
-    methods.insert("str".to_string(), Value::v_str);
-    TypeInfo { name: "any".to_string(), methods }
+    let mut methods: HashMap<AutoStr, ValueMethod> = HashMap::new();
+    methods.insert("str".into(), Value::v_str);
+    TypeInfo {
+        name: "any".into(),
+        methods,
+    }
 }
 
 fn type_info_void() -> TypeInfo {
-    TypeInfo { name: "void".to_string(), methods: HashMap::new() }
+    TypeInfo {
+        name: "void".into(),
+        methods: HashMap::new(),
+    }
 }
 
 fn type_info_byte() -> TypeInfo {
-    TypeInfo { name: "byte".to_string(), methods: HashMap::new() }
+    TypeInfo {
+        name: "byte".into(),
+        methods: HashMap::new(),
+    }
 }
 
 fn type_info_int() -> TypeInfo {
-    TypeInfo { name: "int".to_string(), methods: HashMap::new() }
+    TypeInfo {
+        name: "int".into(),
+        methods: HashMap::new(),
+    }
 }
 
 fn type_info_float() -> TypeInfo {
-    TypeInfo { name: "float".to_string(), methods: HashMap::new() }
+    TypeInfo {
+        name: "float".into(),
+        methods: HashMap::new(),
+    }
 }
 
 fn type_info_bool() -> TypeInfo {
-    TypeInfo { name: "bool".to_string(), methods: HashMap::new() }
+    TypeInfo {
+        name: "bool".into(),
+        methods: HashMap::new(),
+    }
 }
 
 fn type_info_str() -> TypeInfo {
-    let mut methods: HashMap<String, ValueMethod> = HashMap::new();
-    methods.insert("upper".to_string(), Value::v_upper);
-    methods.insert("lower".to_string(), Value::v_lower);
-    methods.insert("len".to_string(), Value::v_len);
-    TypeInfo { name: "str".to_string(), methods }
+    let mut methods: HashMap<AutoStr, ValueMethod> = HashMap::new();
+    methods.insert("upper".into(), Value::v_upper);
+    methods.insert("lower".into(), Value::v_lower);
+    methods.insert("len".into(), Value::v_len);
+    TypeInfo {
+        name: "str".into(),
+        methods,
+    }
 }
 
 fn type_info_char() -> TypeInfo {
-    TypeInfo { name: "char".to_string(), methods: HashMap::new() }
+    TypeInfo {
+        name: "char".into(),
+        methods: HashMap::new(),
+    }
 }
-
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -154,7 +178,6 @@ impl fmt::Display for Type {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -175,7 +198,7 @@ mod tests {
     #[test]
     fn test_any_method() {
         let store = TypeInfoStore::new();
-        let method = store.lookup_method(Type::Any, "str".to_string()).unwrap();
+        let method = store.lookup_method(Type::Any, "str".into()).unwrap();
         let v = vec_to_array(vec![1, 2]);
         let res = method(&v);
         let s = res.repr();
@@ -185,7 +208,7 @@ mod tests {
     #[test]
     fn test_upper_method() {
         let store = TypeInfoStore::new();
-        let method = store.lookup_method(Type::Str, "upper".to_string()).unwrap();
+        let method = store.lookup_method(Type::Str, "upper".into()).unwrap();
         let v = Value::str("hello");
         let res = method(&v);
         assert_eq!(res, Value::str("HELLO"));

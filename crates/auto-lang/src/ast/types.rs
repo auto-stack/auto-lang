@@ -1,6 +1,6 @@
-use std::fmt;
-use super::{Name, Expr, Fn};
+use super::{Expr, Fn, Name};
 use auto_val::AutoStr;
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -17,10 +17,10 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn unique_name(&self) -> String {
+    pub fn unique_name(&self) -> AutoStr {
         match self {
             Type::User(type_decl) => type_decl.name.text.clone(),
-            _ => "".to_string(),
+            _ => "".into(),
         }
     }
 }
@@ -171,7 +171,7 @@ pub enum Key {
     NamedKey(Name),
     IntKey(i32),
     BoolKey(bool),
-    StrKey(String),
+    StrKey(AutoStr),
 }
 
 impl fmt::Display for Key {

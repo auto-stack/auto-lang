@@ -1,12 +1,12 @@
 use super::ast::*;
-use std::io;
-use std::io::Write;
-use auto_val::AutoStr;
 use crate::parser::Parser;
 use crate::universe::Universe;
 use crate::AutoResult;
-use std::rc::Rc;
+use auto_val::AutoStr;
 use std::cell::RefCell;
+use std::io;
+use std::io::Write;
+use std::rc::Rc;
 
 pub mod c;
 pub mod rust;
@@ -33,14 +33,14 @@ impl ToStrError for Result<usize, io::Error> {
     }
 }
 
-pub fn transpile_part(code: &str) -> AutoResult<String> {
+pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     let mut transpiler = c::CTrans::new("part".into());
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
-    let ast = parser.parse()?;
+    let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     transpiler.code(&ast, &mut out)?;
-    Ok(String::from_utf8(out).unwrap())
+    Ok(String::from_utf8(out).unwrap().into())
 }
 
 pub struct CCode {
@@ -52,17 +52,16 @@ pub struct CCode {
 pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<CCode> {
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
-    let ast = parser.parse()?;
+    let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     let mut transpiler = c::CTrans::new(name.into());
     transpiler.trans(ast, &mut out)?;
     let header = transpiler.header;
     Ok(CCode {
         source: out,
-        header
+        header,
     })
 }
- 
 
 #[cfg(test)]
 mod tests {
@@ -85,7 +84,6 @@ mod tests {
 "#;
         assert_eq!(out, expected);
     }
-
 
     #[test]
     fn test_c_let() {
@@ -147,7 +145,6 @@ if (x > 0) {
         let expected = "int x = 41;\nx = 42;\n";
         assert_eq!(out, expected);
     }
-
 
     #[test]
     fn test_c_return_42() {

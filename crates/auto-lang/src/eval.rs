@@ -27,7 +27,7 @@ pub enum EvalMode {
 pub struct Evaler {
     universe: Rc<RefCell<Universe>>,
     // configure whether to evaluate a node immediately or lazily
-    tempo_for_nodes: HashMap<String, EvalTempo>,
+    tempo_for_nodes: HashMap<AutoStr, EvalTempo>,
     // evaluation mode
     mode: EvalMode,
 }
@@ -51,7 +51,7 @@ impl Evaler {
     }
 
     pub fn set_tempo(&mut self, name: &str, tempo: EvalTempo) {
-        self.tempo_for_nodes.insert(name.to_string(), tempo);
+        self.tempo_for_nodes.insert(name.into(), tempo);
     }
 
     pub fn eval(&mut self, code: &Code) -> Value {
@@ -151,7 +151,7 @@ impl Evaler {
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
             Stmt::Widget(widget) => self.eval_widget(widget),
             Stmt::Node(node) => self.eval_node(node),
-            Stmt::EnumDecl(enum_decl) => Value::Nil,
+            Stmt::EnumDecl(_) => Value::Nil,
         }
     }
 
@@ -857,7 +857,7 @@ impl Evaler {
                         Value::Nil => {
                             // 2. lookup in sub nodes
                             if name.ends_with("s") {
-                                name = name[..name.len() - 1].to_string();
+                                name = name[..name.len() - 1].into();
                             }
                             let nodes = node.get_nodes(&name);
                             if nodes.len() > 0 {
@@ -895,7 +895,7 @@ impl Evaler {
                         None => {
                             // not a field, try method
                             let typ = instance.ty.name();
-                            let combined_name = format!("{}::{}", typ, name.text);
+                            let combined_name: AutoStr = format!("{}::{}", typ, name.text).into();
                             let method = self.universe.borrow().lookup_meta(&combined_name);
                             if let Some(meta) = method {
                                 match meta.as_ref() {
@@ -975,7 +975,7 @@ impl Evaler {
         }
         let model = auto_val::Model { values: vars };
         // view
-        let view_id = format!("{}.view", name);
+        let view_id = format!("{}.view", name).into();
         self.universe
             .borrow_mut()
             .define(&view_id, Rc::new(Meta::View(widget.view.clone())));
@@ -1054,9 +1054,10 @@ impl Evaler {
         if name == "mid" {
             return self.eval_mid(&node);
         }
+        let name: AutoStr = name.into();
         let tempo = self
             .tempo_for_nodes
-            .get(name)
+            .get(&name)
             .unwrap_or(&EvalTempo::IMMEDIATE);
 
         match tempo {
@@ -1116,7 +1117,7 @@ impl Evaler {
             EvalTempo::LAZY => {
                 // push node body to scope meta
                 // TODO: support multiple nodes of same name
-                body = MetaID::Body(name.clone());
+                body = MetaID::Body(name.clone().into());
                 println!("define global {}", name);
                 self.universe
                     .borrow_mut()
@@ -1262,7 +1263,7 @@ impl Evaler {
 fn to_meta_id(meta: &Rc<scope::Meta>) -> MetaID {
     match meta.as_ref() {
         scope::Meta::Fn(fn_decl) => MetaID::Fn(to_value_sig(&fn_decl)),
-        scope::Meta::Type(type_decl) => MetaID::Type(type_decl.unique_name()),
+        scope::Meta::Type(type_decl) => MetaID::Type(type_decl.unique_name().into()),
         scope::Meta::Enum(enum_decl) => MetaID::Enum(enum_decl.unique_name()),
         _ => MetaID::Nil,
     }
@@ -1272,13 +1273,13 @@ fn to_value_sig(fn_decl: &Fn) -> Sig {
     let mut params = Vec::new();
     for param in fn_decl.params.iter() {
         params.push(auto_val::Param {
-            name: param.name.text.clone(),
+            name: param.name.text.clone().into(),
             ty: Box::new(to_value_type(&param.ty)),
         });
     }
     let ret = to_value_type(&fn_decl.ret);
     Sig {
-        name: fn_decl.name.text.clone(),
+        name: fn_decl.name.text.clone().into(),
         params,
         ret,
     }

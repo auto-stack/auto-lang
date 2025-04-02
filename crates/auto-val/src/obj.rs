@@ -1,12 +1,12 @@
+use crate::array::Array;
+use crate::array::ARRAY_EMPTY;
+use crate::pretty;
+use crate::AutoStr;
 use crate::Value;
 use crate::ValueKey;
-use crate::array::Array;
-use crate::AutoStr;
-use crate::pretty;
-use std::fmt::{self, Display, Formatter};
+use std::collections::btree_map::{IntoIter, Iter};
 use std::collections::BTreeMap;
-use std::collections::btree_map::{Iter, IntoIter};
-use crate::array::ARRAY_EMPTY;
+use std::fmt::{self, Display, Formatter};
 
 pub static OBJ_EMPTY: Obj = Obj::EMPTY;
 
@@ -25,17 +25,20 @@ impl IntoIterator for Obj {
 }
 
 impl Obj {
-    pub const EMPTY: Self = Self { values: BTreeMap::new() };
+    pub const EMPTY: Self = Self {
+        values: BTreeMap::new(),
+    };
 
     pub fn iter(&self) -> Iter<ValueKey, Value> {
         self.values.iter()
     }
 }
 
-
 impl Obj {
     pub fn new() -> Self {
-        Obj { values: BTreeMap::new() }
+        Obj {
+            values: BTreeMap::new(),
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -51,11 +54,14 @@ impl Obj {
     }
 
     pub fn key_names(&self) -> Vec<AutoStr> {
-        self.values.keys().map(|k| match k {
-            ValueKey::Str(s) => s.clone(),
-            ValueKey::Int(i) => i.to_string().into(),
-            ValueKey::Bool(b) => b.to_string().into(),
-        }).collect()
+        self.values
+            .keys()
+            .map(|k| match k {
+                ValueKey::Str(s) => s.clone(),
+                ValueKey::Int(i) => i.to_string().into(),
+                ValueKey::Bool(b) => b.to_string().into(),
+            })
+            .collect()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -79,11 +85,14 @@ impl Obj {
     }
 
     pub fn lookup(&self, name: &str) -> Option<Value> {
-        self.values.iter().find(|(k, _)| match k {
-            ValueKey::Str(s) => s == name,
-            ValueKey::Int(i) => i.to_string() == name,
-            ValueKey::Bool(b) => b.to_string() == name,
-        }).map(|(_, v)| v.clone())
+        self.values
+            .iter()
+            .find(|(k, _)| match k {
+                ValueKey::Str(s) => s == name,
+                ValueKey::Int(i) => i.to_string() == name,
+                ValueKey::Bool(b) => b.to_string() == name,
+            })
+            .map(|(_, v)| v.clone())
     }
 
     pub fn get_or(&self, name: &str, default: Value) -> Value {
@@ -91,7 +100,10 @@ impl Obj {
     }
 
     pub fn get_or_insert(&mut self, key: impl Into<ValueKey>, default: impl Into<Value>) -> Value {
-        self.values.entry(key.into()).or_insert(default.into()).clone()
+        self.values
+            .entry(key.into())
+            .or_insert(default.into())
+            .clone()
     }
 
     pub fn get_str(&self, name: &str) -> Option<AutoStr> {
@@ -133,7 +145,13 @@ impl Obj {
     pub fn get_uint_or(&self, name: &str, default: u32) -> u32 {
         match self.get(name) {
             Some(Value::Uint(u)) => u,
-            Some(Value::Int(i)) => if i >= 0 { i as u32 } else { default },
+            Some(Value::Int(i)) => {
+                if i >= 0 {
+                    i as u32
+                } else {
+                    default
+                }
+            }
             _ => default,
         }
     }
@@ -165,7 +183,10 @@ impl Obj {
     }
 
     pub fn get_array_of_str(&self, name: &str) -> Vec<AutoStr> {
-        self.get_array_of(name).iter().map(|v| v.to_astr()).collect()
+        self.get_array_of(name)
+            .iter()
+            .map(|v| v.to_astr())
+            .collect()
     }
 
     pub fn merge(&mut self, other: &Obj) {
@@ -178,17 +199,16 @@ impl Obj {
         self.values.remove(&key.into());
     }
 
-    pub fn pretty(&self, max_indent: usize) -> String {
+    pub fn pretty(&self, max_indent: usize) -> AutoStr {
         pretty(format!("{}", self).as_str(), max_indent)
     }
 }
 
 // arithmetic operations
 impl Obj {
-
     pub fn inc(&mut self, key: impl Into<ValueKey>) -> i32 {
         let key = key.into();
-        let mut value = self.get_or_insert(key.clone(), 0);   
+        let mut value = self.get_or_insert(key.clone(), 0);
         value.inc();
         self.set(key, value.clone());
         value.as_int()

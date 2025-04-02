@@ -4,14 +4,20 @@ use crate::types::Type;
 use crate::value::Value;
 use std::fmt;
 
+/// Represents an argument in a function call.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Arg {
+    /// Positional argument.
     Pos(Value),
+    /// Pair argument: key is the arg's name, value is the arg's value.
     Pair(ValueKey, Value),
+    /// Name argument, where the name and value are the same.
     Name(AutoStr),
 }
 
+/// Methods for the `Arg` enum.
 impl Arg {
+    /// Returns the value of the argument.
     pub fn get_val(&self) -> Value {
         match self {
             Arg::Pos(value) => value.clone(),
@@ -20,6 +26,7 @@ impl Arg {
         }
     }
 
+    /// Returns the argument as an AutoStr.
     pub fn to_astr(&self) -> AutoStr {
         match self {
             Arg::Pos(value) => value.to_astr(),
@@ -29,35 +36,10 @@ impl Arg {
     }
 }
 
+/// Container for arguments.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Args {
     pub args: Vec<Arg>,
-}
-
-impl fmt::Display for Args {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.args.is_empty() {
-            return Ok(());
-        }
-        write!(f, "(")?;
-        for (i, arg) in self.args.iter().enumerate() {
-            write!(f, "{}", arg)?;
-            if i < self.args.len() - 1 {
-                write!(f, ", ")?;
-            }
-        }
-        write!(f, ")")
-    }
-}
-
-impl fmt::Display for Arg {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Arg::Pos(value) => write!(f, "{}", value),
-            Arg::Pair(key, value) => write!(f, "{}:{}", key, value),
-            Arg::Name(name) => write!(f, "{}", name),
-        }
-    }
 }
 
 impl Args {
@@ -97,6 +79,34 @@ impl Args {
     }
 }
 
+/// Print related
+
+impl fmt::Display for Args {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.args.is_empty() {
+            return Ok(());
+        }
+        write!(f, "(")?;
+        for (i, arg) in self.args.iter().enumerate() {
+            write!(f, "{}", arg)?;
+            if i < self.args.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, ")")
+    }
+}
+
+impl fmt::Display for Arg {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Arg::Pos(value) => write!(f, "{}", value),
+            Arg::Pair(key, value) => write!(f, "{}:{}", key, value),
+            Arg::Name(name) => write!(f, "{}", name),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fn {
     pub sig: Sig,
@@ -106,20 +116,20 @@ pub struct Fn {
 /// Function signature
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sig {
-    pub name: String,
+    pub name: AutoStr,
     pub params: Vec<Param>,
     pub ret: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Param {
-    pub name: String,
+    pub name: AutoStr,
     pub ty: Box<Type>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ExtFn {
-    pub name: String,
+    pub name: AutoStr,
     pub fun: fn(&Args) -> Value,
 }
 
@@ -133,17 +143,17 @@ impl PartialEq for ExtFn {
 pub enum MetaID {
     Fn(Sig),
     Lambda(Sig),
-    Type(String),
+    Type(AutoStr),
     Enum(AutoStr),
-    View(String),
-    Body(String),
+    View(AutoStr),
+    Body(AutoStr),
     Method(MethodMeta),
     Nil,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MethodMeta {
-    pub name: String,
+    pub name: AutoStr,
     pub ty: Type,
 }
 

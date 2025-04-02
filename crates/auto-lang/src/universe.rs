@@ -2,11 +2,7 @@ use super::scope::*;
 use crate::ast;
 use crate::libs;
 use auto_atom::Atom;
-use auto_val::MetaID;
-use auto_val::Sig;
-use auto_val::{Args, Value};
-use auto_val::{ExtFn, Obj, TypeInfoStore};
-use ecow::EcoString as AutoStr;
+use auto_val::{Args, AutoStr, ExtFn, MetaID, Obj, Sig, TypeInfoStore, Value};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -16,9 +12,9 @@ pub struct Universe {
     pub scopes: HashMap<Sid, Scope>,   // sid -> scope
     pub asts: HashMap<Sid, ast::Code>, // sid -> ast
     // pub stack: Vec<StackedScope>,
-    pub env_vals: HashMap<String, Box<dyn Any>>,
-    pub shared_vals: HashMap<String, Rc<RefCell<Value>>>,
-    pub builtins: HashMap<String, Value>, // Value of builtin functions
+    pub env_vals: HashMap<AutoStr, Box<dyn Any>>,
+    pub shared_vals: HashMap<AutoStr, Rc<RefCell<Value>>>,
+    pub builtins: HashMap<AutoStr, Value>, // Value of builtin functions
     pub types: TypeInfoStore,
     pub args: Obj,
     lambda_counter: usize,
@@ -75,7 +71,7 @@ impl Universe {
         }
     }
 
-    pub fn chart(&self) -> String {
+    pub fn chart(&self) -> AutoStr {
         let mut chart = String::new();
         for (sid, scope) in self.scopes.iter() {
             if let Some(parent) = &scope.parent {
@@ -87,12 +83,12 @@ impl Universe {
         // for (i, scope) in self.stack.iter().enumerate() {
         //     chart.push_str(&format!("{}: {}\n", i, scope.dump()));
         // }
-        chart
+        chart.into()
     }
 
-    pub fn gen_lambda_id(&mut self) -> String {
+    pub fn gen_lambda_id(&mut self) -> AutoStr {
         self.lambda_counter += 1;
-        format!("lambda_{}", self.lambda_counter)
+        format!("lambda_{}", self.lambda_counter).into()
     }
 
     pub fn define_sys_types(&mut self) {
@@ -103,25 +99,25 @@ impl Universe {
         self.define("byte", Rc::new(Meta::Type(ast::Type::Byte)));
     }
 
-    fn enter_named_scope(&mut self, name: impl Into<String>, kind: ScopeKind) {
+    fn enter_named_scope(&mut self, name: impl Into<AutoStr>, kind: ScopeKind) {
         // Create a new scope under Global
-        let new_sid = Sid::kid_of(&self.cur_spot, name);
+        let new_sid = Sid::kid_of(&self.cur_spot, name.into());
         let new_scope = Scope::new(kind, new_sid.clone());
         self.cur_scope_mut().kids.push(new_sid.clone());
         self.scopes.insert(new_sid.clone(), new_scope);
         self.cur_spot = new_sid;
     }
 
-    pub fn enter_mod(&mut self, name: impl Into<String>) {
-        self.enter_named_scope(name, ScopeKind::Mod);
+    pub fn enter_mod(&mut self, name: impl Into<AutoStr>) {
+        self.enter_named_scope(name.into(), ScopeKind::Mod);
     }
 
-    pub fn enter_fn(&mut self, name: impl Into<String>) {
-        self.enter_named_scope(name, ScopeKind::Fn);
+    pub fn enter_fn(&mut self, name: impl Into<AutoStr>) {
+        self.enter_named_scope(name.into(), ScopeKind::Fn);
     }
 
-    pub fn enter_type(&mut self, name: impl Into<String>) {
-        self.enter_named_scope(name, ScopeKind::Type);
+    pub fn enter_type(&mut self, name: impl Into<AutoStr>) {
+        self.enter_named_scope(name.into(), ScopeKind::Type);
     }
 
     pub fn cur_scope(&self) -> &Scope {
@@ -194,7 +190,7 @@ impl Universe {
     }
 
     pub fn set_shared(&mut self, name: &str, value: Rc<RefCell<Value>>) {
-        self.shared_vals.insert(name.to_string(), value);
+        self.shared_vals.insert(name.into(), value);
     }
 
     pub fn get_shared(&self, name: &str) -> Option<Rc<RefCell<Value>>> {
@@ -206,7 +202,7 @@ impl Universe {
     }
 
     pub fn set_global(&mut self, name: impl Into<String>, value: Value) {
-        self.global_scope_mut().set_val(name, value);
+        self.global_scope_mut().set_val(name.into(), value);
     }
 
     pub fn add_global_fn(&mut self, name: &str, f: fn(&Args) -> Value) {
@@ -214,7 +210,7 @@ impl Universe {
             name,
             Value::ExtFn(ExtFn {
                 fun: f,
-                name: name.to_string(),
+                name: name.into(),
             }),
         );
     }
@@ -237,7 +233,7 @@ impl Universe {
     }
 
     pub fn define_env(&mut self, name: &str, val: Box<dyn Any>) {
-        self.env_vals.insert(name.to_string(), val);
+        self.env_vals.insert(name.into(), val);
     }
 
     pub fn get_env(&self, name: &str) -> Option<&Box<dyn Any>> {

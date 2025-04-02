@@ -115,9 +115,9 @@ pub struct Scope {
     pub sid: Sid,            // TODO: should use SharedString?
     pub parent: Option<Sid>, // sid to parent
     pub kids: Vec<Sid>,
-    pub symbols: HashMap<String, Rc<Meta>>,
+    pub symbols: HashMap<AutoStr, Rc<Meta>>,
     pub types: HashMap<AutoStr, Rc<Meta>>,
-    pub vals: HashMap<String, Value>,
+    pub vals: HashMap<AutoStr, Value>,
 }
 
 impl Scope {
@@ -143,24 +143,24 @@ impl Scope {
         println!("Symbols: {:?}", self.symbols);
     }
 
-    pub fn set_val(&mut self, name: impl Into<String>, value: Value) {
+    pub fn set_val(&mut self, name: impl Into<AutoStr>, value: Value) {
         self.vals.insert(name.into(), value);
     }
 
-    pub fn get_val(&self, name: &str) -> Option<Value> {
-        self.vals.get(name).cloned()
+    pub fn get_val(&self, name: impl Into<AutoStr>) -> Option<Value> {
+        self.vals.get(&name.into()).cloned()
     }
 
     pub fn get_val_mut(&mut self, name: &str) -> Option<&mut Value> {
         self.vals.get_mut(name)
     }
 
-    pub fn put_symbol(&mut self, name: &str, meta: Rc<Meta>) {
-        self.symbols.insert(name.to_string(), meta);
+    pub fn put_symbol(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
+        self.symbols.insert(name.into(), meta);
     }
 
-    pub fn get_symbol(&self, name: &str) -> Option<Rc<Meta>> {
-        self.symbols.get(name).cloned()
+    pub fn get_symbol(&self, name: impl Into<AutoStr>) -> Option<Rc<Meta>> {
+        self.symbols.get(&name.into()).cloned()
     }
 
     pub fn define_type(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
@@ -173,8 +173,9 @@ impl Scope {
         self.types.get(&name).cloned()
     }
 
-    pub fn exists(&self, name: &str) -> bool {
-        self.symbols.contains_key(name) || self.vals.contains_key(name)
+    pub fn exists(&self, name: impl Into<AutoStr>) -> bool {
+        let name = name.into();
+        self.symbols.contains_key(&name) || self.vals.contains_key(&name)
     }
 }
 

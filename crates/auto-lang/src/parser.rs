@@ -12,7 +12,7 @@ use std::i32;
 use std::path::Path;
 use std::rc::Rc;
 
-pub type ParseError = String;
+pub type ParseError = AutoStr;
 
 pub struct PostfixPrec {
     l: u8,
@@ -864,7 +864,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::EnumDecl(enum_decl))
     }
 
-    fn expect_ident_str(&mut self) -> Result<String, ParseError> {
+    fn expect_ident_str(&mut self) -> Result<AutoStr, ParseError> {
         if self.is_kind(TokenKind::Ident) {
             let name = self.cur.text.clone();
             self.next(); // skip name
@@ -1201,7 +1201,7 @@ impl<'a> Parser<'a> {
         let unique_name = if parent_name.is_empty() {
             name
         } else {
-            format!("{}::{}", parent_name, name)
+            format!("{}::{}", parent_name, name).into()
         };
 
         // define function in scope
@@ -1615,7 +1615,6 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::pretty;
     fn parse_once(code: &str) -> Code {
         let scope = Rc::new(RefCell::new(Universe::new()));
         let mut parser = Parser::new(code, scope);

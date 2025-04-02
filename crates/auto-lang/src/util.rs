@@ -1,6 +1,6 @@
-use std::path::Path;
-use normalize_path::NormalizePath;
 use auto_val::AutoStr;
+use normalize_path::NormalizePath;
+use std::path::Path;
 
 /// Get the file name from a path.
 pub fn file_name(path: &str) -> &str {
@@ -22,7 +22,11 @@ pub trait PathExt {
 impl PathExt for Path {
     fn unified(&self) -> AutoStr {
         let res = self.normalize().to_string_lossy().replace("\\", "/").into();
-        if res == "" { ".".into() } else { res }
+        if res == "" {
+            ".".into()
+        } else {
+            res
+        }
     }
 }
 
@@ -30,32 +34,32 @@ impl PathExt for Path {
 #[macro_export]
 macro_rules! error_pos {
     ($msg: literal) => {
-        Err(format!("{} at {}:{}", $msg, crate::util::file_name(file!()), line!()))
+        Err(format!("{} at {}:{}", $msg, crate::util::file_name(file!()), line!()).into())
     };
     ($msg: literal, $($args:tt)*) => {
-        Err(format!("{} at {}:{}", format!($msg, $($args)*), crate::util::file_name(file!()), line!()))
+        Err(format!("{} at {}:{}", format!($msg, $($args)*), crate::util::file_name(file!()), line!()).into())
     };
 }
 
 /// Pretty print an s-expression with proper indentation.
-/// 
+///
 /// Example:
 /// ```text
 /// (code
-///   (stmt 
-///     (pair 
-///       (name name) 
+///   (stmt
+///     (pair
+///       (name name)
 ///       (str "hello")))
-///   (stmt 
-///     (pair 
+///   (stmt
+///     (pair
 ///       (name version)
 ///       (str "0.1.0"))))
 /// ```
-pub fn pretty(text: &str) -> String {
+pub fn pretty(text: &str) -> AutoStr {
     let mut result = String::new();
     let mut indent = 0;
     let mut in_str = false;
-    
+
     for c in text.chars() {
         match c {
             '(' if !in_str => {
@@ -79,12 +83,11 @@ pub fn pretty(text: &str) -> String {
                 // result.push_str(&"  ".repeat(indent));
                 result.push(c)
             }
-            _ => result.push(c)
+            _ => result.push(c),
         }
     }
-    result
+    result.into()
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -101,12 +104,18 @@ mod tests {
     #[test]
     fn test_error() {
         let err: Result<(), String> = error_pos!("test error");
-        let err_line = line!()-1;
-        assert_eq!(format!("{}", err.unwrap_err()), format!("test error at util.rs:{}", err_line));
+        let err_line = line!() - 1;
+        assert_eq!(
+            format!("{}", err.unwrap_err()),
+            format!("test error at util.rs:{}", err_line)
+        );
 
         let err: Result<(), String> = error_pos!("int error {}", "-1");
-        let err_line = line!()-1;
-        assert_eq!(format!("{}", err.unwrap_err()), format!("int error -1 at util.rs:{}", err_line));
+        let err_line = line!() - 1;
+        assert_eq!(
+            format!("{}", err.unwrap_err()),
+            format!("int error -1 at util.rs:{}", err_line)
+        );
     }
 
     #[test]

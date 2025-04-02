@@ -40,7 +40,7 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn single(&mut self, kind: TokenKind, c: char) -> Token {
-        let tok = Token::new(kind, self.pos(1), c.to_string());
+        let tok = Token::new(kind, self.pos(1), c.into());
         self.chars.next();
         tok
     }
@@ -68,9 +68,9 @@ impl<'a> Lexer<'a> {
         self.chars.next(); // skip c
         if self.peek('=') {
             self.chars.next(); // skip =
-            return Token::new(kind2, self.pos(2), format!("{}{}", c, '='));
+            return Token::new(kind2, self.pos(2), format!("{}{}", c, '=').into());
         }
-        Token::new(kind1, self.pos(1), c.to_string())
+        Token::new(kind1, self.pos(1), c.into())
     }
 }
 
@@ -120,14 +120,14 @@ impl<'a> Lexer<'a> {
         }
 
         if has_dot {
-            Token::float(self.pos(text.len()), text)
+            Token::float(self.pos(text.len()), text.into())
         } else {
             // check trailing character
             if self.peek('u') {
                 self.next(); // skip u
-                Token::uint(self.pos(text.len()), text)
+                Token::uint(self.pos(text.len()), text.into())
             } else {
-                Token::int(self.pos(text.len()), text)
+                Token::int(self.pos(text.len()), text.into())
             }
         }
     }
@@ -135,7 +135,7 @@ impl<'a> Lexer<'a> {
     fn char(&mut self) -> Token {
         self.chars.next(); // skip '
         if let Some(&c) = self.chars.peek() {
-            let tok = Token::char(self.pos(1), c.to_string());
+            let tok = Token::char(self.pos(1), c.into());
             self.chars.next(); // skip char
             if self.peek('\'') {
                 self.chars.next(); // skip '
@@ -159,7 +159,7 @@ impl<'a> Lexer<'a> {
             text.push(c);
             self.chars.next();
         }
-        Token::str(self.pos(text.len()), text)
+        Token::str(self.pos(text.len()), text.into())
     }
 
     fn fstr(&mut self) -> Token {
@@ -171,7 +171,7 @@ impl<'a> Lexer<'a> {
             endchar = '"';
             self.chars.next(); // skip f
             self.chars.next(); // skip "
-            let tk = Token::new(TokenKind::FStrStart, self.pos(2), "f\"".to_string());
+            let tk = Token::new(TokenKind::FStrStart, self.pos(2), "f\"".into());
             self.buffer.push_back(tk);
         }
         let mut text = String::new();
@@ -179,7 +179,7 @@ impl<'a> Lexer<'a> {
             if c == endchar {
                 // got end
                 if !text.is_empty() {
-                    let tk = Token::fstr_part(self.pos(text.len()), text);
+                    let tk = Token::fstr_part(self.pos(text.len()), text.into());
                     self.buffer.push_back(tk);
                 }
                 let tk = self.single(TokenKind::FStrEnd, endchar);
@@ -188,7 +188,7 @@ impl<'a> Lexer<'a> {
             }
             if c == self.fstr_note {
                 // text until $ is a string part
-                let tk = Token::fstr_part(self.pos(text.len()), text.clone());
+                let tk = Token::fstr_part(self.pos(text.len()), text.clone().into());
                 self.buffer.push_back(tk);
                 text.clear();
                 // lex $
@@ -236,15 +236,15 @@ impl<'a> Lexer<'a> {
             self.chars.next();
             if self.peek('=') {
                 self.chars.next();
-                return Token::new(TokenKind::RangeEq, self.pos(3), "..=".to_string());
+                return Token::new(TokenKind::RangeEq, self.pos(3), "..=".into());
             }
-            return Token::new(TokenKind::Range, self.pos(2), "..".to_string());
+            return Token::new(TokenKind::Range, self.pos(2), "..".into());
         }
-        Token::new(TokenKind::Dot, self.pos(1), ".".to_string())
+        Token::new(TokenKind::Dot, self.pos(1), ".".into())
     }
 
     fn keyword_tok(&mut self, kind: TokenKind, text: &str) -> Option<Token> {
-        Some(Token::new(kind, self.pos(text.len()), text.to_string()))
+        Some(Token::new(kind, self.pos(text.len()), text.into()))
     }
 
     pub fn keyword(&mut self, text: String) -> Option<Token> {
@@ -297,7 +297,7 @@ impl<'a> Lexer<'a> {
                 code.push(c);
                 self.chars.next();
             }
-            let code = Token::str(self.pos(code.len()), code);
+            let code = Token::str(self.pos(code.len()), code.into());
             self.buffer.push_back(code);
             let tk = self.single(TokenKind::RBrace, '}');
             self.buffer.push_back(tk);
@@ -330,7 +330,7 @@ impl<'a> Lexer<'a> {
         if let Some(keyword) = self.keyword(text.clone()) {
             keyword
         } else {
-            Token::ident(self.pos(text.len()), text)
+            Token::ident(self.pos(text.len()), text.into())
         }
     }
 }
@@ -484,7 +484,7 @@ impl<'a> Lexer<'a> {
         self.chars.next();
         if self.peek('/') {
             // //
-            let tok = Token::new(TokenKind::CommentLine, self.pos(2), "//".to_string());
+            let tok = Token::new(TokenKind::CommentLine, self.pos(2), "//".into());
             // content
             let mut text = String::new();
             while let Some(&c) = self.chars.peek() {
@@ -494,12 +494,12 @@ impl<'a> Lexer<'a> {
                 text.push(c);
                 self.chars.next();
             }
-            let content = Token::new(TokenKind::CommentContent, self.pos(text.len()), text);
+            let content = Token::new(TokenKind::CommentContent, self.pos(text.len()), text.into());
             self.buffer.push_back(content);
             tok
         } else if self.peek('*') {
             // /*
-            let tok = Token::new(TokenKind::CommentStart, self.pos(2), "/*".to_string());
+            let tok = Token::new(TokenKind::CommentStart, self.pos(2), "/*".into());
             // content
             let mut text = String::new();
             while let Some(&c) = self.chars.peek() {
@@ -513,10 +513,10 @@ impl<'a> Lexer<'a> {
                 text.push(c);
                 self.chars.next();
             }
-            let content = Token::new(TokenKind::CommentContent, self.pos(text.len()), text);
+            let content = Token::new(TokenKind::CommentContent, self.pos(text.len()), text.into());
             self.buffer.push_back(content);
             // */
-            let end = Token::new(TokenKind::CommentEnd, self.pos(2), "*/".to_string());
+            let end = Token::new(TokenKind::CommentEnd, self.pos(2), "*/".into());
             self.buffer.push_back(end);
             tok
         } else {

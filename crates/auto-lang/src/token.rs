@@ -1,3 +1,4 @@
+use auto_val::AutoStr;
 use std::fmt;
 use strum_macros;
 
@@ -93,7 +94,7 @@ pub enum TokenKind {
 pub struct Token {
     pub kind: TokenKind,
     pub pos: Pos,
-    pub text: String,
+    pub text: AutoStr,
 }
 
 impl fmt::Display for Token {
@@ -157,40 +158,40 @@ impl fmt::Display for Token {
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, pos: Pos, text: String) -> Self {
+    pub fn new(kind: TokenKind, pos: Pos, text: AutoStr) -> Self {
         Token { kind, pos, text }
     }
 
-    pub fn int(pos: Pos, text: String) -> Self {
+    pub fn int(pos: Pos, text: AutoStr) -> Self {
         Token::new(TokenKind::Int, pos, text)
     }
 
-    pub fn uint(pos: Pos, text: String) -> Self {
+    pub fn uint(pos: Pos, text: AutoStr) -> Self {
         Token::new(TokenKind::Uint, pos, text)
     }
 
-    pub fn float(pos: Pos, text: String) -> Self {
+    pub fn float(pos: Pos, text: AutoStr) -> Self {
         Token::new(TokenKind::Float, pos, text)
     }
 
-    pub fn char(pos: Pos, text: String) -> Self {
+    pub fn char(pos: Pos, text: AutoStr) -> Self {
         Token::new(TokenKind::Char, pos, text)
     }
 
-    pub fn str(pos: Pos, text: String) -> Self {
+    pub fn str(pos: Pos, text: AutoStr) -> Self {
         Token::new(TokenKind::Str, pos, text)
     }
 
-    pub fn fstr_part(pos: Pos, text: String) -> Self {
+    pub fn fstr_part(pos: Pos, text: AutoStr) -> Self {
         Token::new(TokenKind::FStrPart, pos, text)
     }
 
-    pub fn ident(pos: Pos, text: String) -> Self {
+    pub fn ident(pos: Pos, text: AutoStr) -> Self {
         Token::new(TokenKind::Ident, pos, text)
     }
 
     pub fn eof(pos: Pos) -> Self {
-        Token::new(TokenKind::EOF, pos, "".to_string())
+        Token::new(TokenKind::EOF, pos, "".into())
     }
 }
 
