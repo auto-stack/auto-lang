@@ -19,7 +19,7 @@ pub enum Type {
 impl Type {
     pub fn unique_name(&self) -> AutoStr {
         match self {
-            Type::User(type_decl) => type_decl.name.text.clone(),
+            Type::User(type_decl) => type_decl.name.clone(),
             _ => "".into(),
         }
     }
@@ -64,7 +64,7 @@ impl From<Type> for auto_val::Type {
             Type::Char => auto_val::Type::Char,
             Type::Str => auto_val::Type::Str,
             Type::Array(_) => auto_val::Type::Array,
-            Type::User(decl) => auto_val::Type::User(decl.name.text),
+            Type::User(decl) => auto_val::Type::User(decl.name),
             Type::Void => auto_val::Type::Void,
             Type::Unknown => auto_val::Type::Void, // TODO: is this correct?
         }
@@ -85,7 +85,7 @@ pub struct TypeDecl {
 
 impl fmt::Display for TypeDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(type-decl {}", self.name)?;
+        write!(f, "(type-decl (name {})", self.name)?;
         if !self.has.is_empty() {
             write!(f, " (has ")?;
             for h in self.has.iter() {
@@ -128,7 +128,7 @@ pub struct Member {
 
 impl fmt::Display for Member {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(member {} (type {})", self.name, self.ty)?;
+        write!(f, "(member (name {}) (type {})", self.name, self.ty)?;
         if let Some(value) = &self.value {
             write!(f, " (value {})", value)?;
         }
@@ -177,7 +177,7 @@ pub enum Key {
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Key::NamedKey(name) => write!(f, "{}", name),
+            Key::NamedKey(name) => write!(f, "(name {})", name),
             Key::IntKey(i) => write!(f, "{}", i),
             Key::BoolKey(b) => write!(f, "{}", b),
             Key::StrKey(s) => write!(f, "\"{}\"", s),
@@ -188,7 +188,7 @@ impl fmt::Display for Key {
 impl Key {
     pub fn name(&self) -> Option<&str> {
         match self {
-            Key::NamedKey(name) => Some(&name.text),
+            Key::NamedKey(name) => Some(&name),
             Key::StrKey(s) => Some(s),
             _ => None,
         }

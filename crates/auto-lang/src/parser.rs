@@ -227,7 +227,7 @@ impl<'a> Parser<'a> {
                     self.define(
                         name,
                         Meta::Store(Store {
-                            name: Name::new(name),
+                            name: name.into(),
                             kind: StoreKind::Var,
                             ty: Type::Unknown,
                             expr: *value.clone(),
@@ -313,7 +313,7 @@ impl<'a> Parser<'a> {
                 self.next(); // skip ref
                 let name = self.cur.text.clone();
                 self.next(); // skip name
-                Expr::Ref(Name::new(name))
+                Expr::Ref(name)
             }
             // fstr
             TokenKind::FStrStart => self.fstr()?,
@@ -423,7 +423,7 @@ impl<'a> Parser<'a> {
     fn check_asn(&mut self, lhs: &Expr) -> Result<(), ParseError> {
         match lhs {
             Expr::Ident(name) => {
-                let meta = self.lookup_meta(name.text.as_str());
+                let meta = self.lookup_meta(name.as_str());
                 if let Some(Meta::Store(store)) = meta.as_deref() {
                     if matches!(store.kind, StoreKind::Let) {
                         return error_pos!(
@@ -514,7 +514,7 @@ impl<'a> Parser<'a> {
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RParen) {
             // TODO: this is a temp fix for identifier as string in arg
             let expr = if self.is_kind(TokenKind::Ident) {
-                let name = Expr::Ident(Name::new(self.cur.text.clone()));
+                let name = Expr::Ident(self.cur.text.clone());
                 self.next();
                 if self.is_kind(TokenKind::Comma) {
                     name
@@ -544,13 +544,13 @@ impl<'a> Parser<'a> {
                 // Positional args
                 Expr::Ident(name) => {
                     // name arg without value
-                    let name = name.text.clone();
+                    let name = name.clone();
                     match self.lookup_meta(&name) {
                         Some(_) => {
                             args.args.push(Arg::Pos(expr.clone()));
                         }
                         None => {
-                            args.args.push(Arg::Name(Name::new(name)));
+                            args.args.push(Arg::Name(name));
                         }
                     }
                 }
@@ -601,7 +601,7 @@ impl<'a> Parser<'a> {
             TokenKind::Ident => {
                 let name = self.cur.text.clone();
                 self.next();
-                Ok(Key::NamedKey(Name::new(name)))
+                Ok(Key::NamedKey(name))
             }
             TokenKind::Int => {
                 let value = self.cur.text.parse().unwrap();
@@ -625,7 +625,7 @@ impl<'a> Parser<'a> {
             TokenKind::Type => {
                 let value = self.cur.text.clone();
                 self.next();
-                Ok(Key::NamedKey(Name::new(value)))
+                Ok(Key::NamedKey(value))
             }
             _ => error_pos!("Expected key, got {:?}", self.kind()),
         }
@@ -649,7 +649,7 @@ impl<'a> Parser<'a> {
         // if !self.exists(&name) {
         //     return Err(format!("Undefined variable: {}", name));
         // }
-        Ok(Expr::Ident(Name::new(name)))
+        Ok(Expr::Ident(name))
     }
 
     pub fn atom(&mut self) -> Result<Expr, ParseError> {
@@ -685,8 +685,8 @@ impl<'a> Parser<'a> {
             TokenKind::Str => Expr::Str(self.cur.text.clone()),
             TokenKind::Char => Expr::Char(self.cur.text.chars().nth(0).unwrap()),
             TokenKind::Ident => self.ident()?,
-            TokenKind::Model => Expr::Ident(Name::new("model".to_string())),
-            TokenKind::View => Expr::Ident(Name::new("view".to_string())),
+            TokenKind::Model => Expr::Ident("model".into()),
+            TokenKind::View => Expr::Ident("view".into()),
             TokenKind::Nil => Expr::Nil,
             _ => {
                 return error_pos!("Expected term, got {:?}, pos: {}", self.kind(), self.pos());
@@ -770,12 +770,12 @@ impl<'a> Parser<'a> {
         let id = self.scope.borrow_mut().gen_lambda_id();
         let lambda = if self.is_kind(TokenKind::LBrace) {
             let body = self.body()?;
-            Fn::new(Name::new(id.clone()), None, params, body, Type::Unknown)
+            Fn::new(id.clone(), None, params, body, Type::Unknown)
         } else {
             // single expression
             let expr = self.expr()?;
             Fn::new(
-                Name::new(id.clone()),
+                id.clone(),
                 None,
                 params,
                 Body::single_expr(expr),
@@ -1042,22 +1042,22 @@ impl<'a> Parser<'a> {
             let name = self.cur.text.clone();
             self.enter_scope();
             let meta = Meta::Var(Var {
-                name: Name::new(name.clone()),
+                name: name.clone(),
                 expr: Expr::Nil,
             });
             self.define(name.as_str(), meta);
             self.next(); // skip name
-            let mut iter = Iter::Named(Name::new(name.clone()));
+            let mut iter = Iter::Named(name.clone());
             if self.is_kind(TokenKind::Comma) {
                 self.next(); // skip ,
                 let iter_name = self.cur.text.clone();
                 let meta_iter = Meta::Var(Var {
-                    name: Name::new(iter_name.clone()),
+                    name: iter_name.clone(),
                     expr: Expr::Nil,
                 });
                 self.define(iter_name.as_str(), meta_iter);
                 self.next(); // skip iter name
-                iter = Iter::Indexed(Name::new(name.clone()), Name::new(iter_name.clone()));
+                iter = Iter::Indexed(name.clone(), iter_name.clone());
             }
             self.expect(TokenKind::In)?;
             let range = self.iterable_expr()?;
@@ -1100,7 +1100,7 @@ impl<'a> Parser<'a> {
 
         let store = Store {
             kind: store_kind,
-            name: Name::new(name.clone()),
+            name: name.clone(),
             ty,
             expr: expr.clone(),
         };
@@ -1194,9 +1194,9 @@ impl<'a> Parser<'a> {
         let parent = if parent_name.is_empty() {
             None
         } else {
-            Some(Name::new(parent_name.to_string()))
+            Some(parent_name.into())
         };
-        let fn_expr = Fn::new(Name::new(name.clone()), parent, params, body, ret_type);
+        let fn_expr = Fn::new(name.clone(), parent, params, body, ret_type);
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         let unique_name = if parent_name.is_empty() {
             name
@@ -1241,16 +1241,12 @@ impl<'a> Parser<'a> {
             }
             // define param in current scope (currently in fn scope)
             let var = Var {
-                name: Name::new(name.clone()),
+                name: name.clone(),
                 expr: default.clone().unwrap_or(Expr::Nil),
             };
             // TODO: should we consider Meta::Param instead of Meta::Var?
             self.define(name.as_str(), Meta::Var(var.clone()));
-            params.push(Param {
-                name: Name::new(name),
-                ty,
-                default,
-            });
+            params.push(Param { name, ty, default });
             self.sep_params();
         }
         Ok(params)
@@ -1268,7 +1264,7 @@ impl<'a> Parser<'a> {
     pub fn type_decl_stmt(&mut self) -> Result<Stmt, ParseError> {
         // TODO: deal with scope
         self.next(); // skip `type` keyword
-        let name = Name::new(self.cur.text.clone());
+        let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
         // deal with `as` keyword
         let mut specs = Vec::new();
@@ -1298,7 +1294,7 @@ impl<'a> Parser<'a> {
         let mut methods = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             if self.is_kind(TokenKind::Fn) {
-                let fn_stmt = self.fn_decl_stmt(&name.text)?;
+                let fn_stmt = self.fn_decl_stmt(&name)?;
                 if let Stmt::Fn(fn_expr) = fn_stmt {
                     methods.push(fn_expr);
                 }
@@ -1321,7 +1317,7 @@ impl<'a> Parser<'a> {
                         let mut compose_meth = meth.clone();
                         compose_meth.parent = Some(name.clone());
                         // register this method as Self::method
-                        let unique_name = format!("{}::{}", &name.text, &compose_meth.name.text);
+                        let unique_name = format!("{}::{}", &name, &compose_meth.name);
                         self.define(unique_name.as_str(), Meta::Fn(compose_meth.clone()));
                         methods.push(compose_meth);
                     }
@@ -1339,12 +1335,12 @@ impl<'a> Parser<'a> {
             methods,
         };
         // put type in scope
-        self.define(name.text.as_str(), Meta::Type(Type::User(decl.clone())));
+        self.define(name.as_str(), Meta::Type(Type::User(decl.clone())));
         Ok(Stmt::TypeDecl(decl))
     }
 
     pub fn type_member(&mut self) -> Result<Member, ParseError> {
-        let name = Name::new(self.cur.text.clone());
+        let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
         let ty = self.type_expr()?;
         let mut value = None;
@@ -1362,7 +1358,7 @@ impl<'a> Parser<'a> {
             },
             kind: StoreKind::Field,
         };
-        self.define(name.text.as_str(), Meta::Store(store));
+        self.define(name.as_str(), Meta::Store(store));
         Ok(Member::new(name, ty, value))
     }
 
@@ -1372,8 +1368,8 @@ impl<'a> Parser<'a> {
         match type_name {
             Expr::Ident(name) => {
                 let meta = self
-                    .lookup_meta(&name.text)
-                    .ok_or(format!("Undefined type: {}", name.text))?;
+                    .lookup_meta(&name)
+                    .ok_or(format!("Undefined type: {}", name))?;
                 if let Meta::Type(ty) = meta.as_ref() {
                     Ok(ty.clone())
                 } else {
@@ -1393,8 +1389,8 @@ impl<'a> Parser<'a> {
             Expr::Bina(l, op, _) => match op {
                 Op::Dot => {
                     if let Expr::Ident(name) = l.as_ref() {
-                        if !self.exists(&name.text) {
-                            return error_pos!("Undefined variable: {}", name.text);
+                        if !self.exists(&name) {
+                            return error_pos!("Undefined variable: {}", name);
                         }
                     }
                     Ok(expr)
@@ -1402,14 +1398,14 @@ impl<'a> Parser<'a> {
                 _ => Ok(expr),
             },
             Expr::Ident(name) => {
-                if !self.exists(&name.text) {
-                    return error_pos!("Undefined identifier: {}", name.text);
+                if !self.exists(&name) {
+                    return error_pos!("Undefined identifier: {}", name);
                 }
                 Ok(expr)
             }
             Expr::Call(call) => {
                 if let Expr::Ident(name) = call.name.as_ref() {
-                    if !self.exists(&name.text) {
+                    if !self.exists(&name) {
                         // 表示是一个节点实例
                         let node = Node::from(call.clone());
                         return Ok(Expr::Node(node));
@@ -1426,7 +1422,7 @@ impl<'a> Parser<'a> {
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
         let (model, view) = self.widget_body()?;
-        let mut widget = Widget::new(Name::new(name.clone()));
+        let mut widget = Widget::new(name.clone());
         widget.model = model;
         widget.view = view;
         self.define(name.as_str(), Meta::Widget(widget.clone()));
@@ -1533,7 +1529,7 @@ impl<'a> Parser<'a> {
             for arg in &args.args {
                 if let Arg::Pair(name, value) = arg {
                     self.define(
-                        name.text.as_str(),
+                        name.as_str(),
                         Meta::Pair(Pair {
                             key: Key::NamedKey(name.clone()),
                             value: Box::new(value.clone()),
@@ -1543,7 +1539,7 @@ impl<'a> Parser<'a> {
             }
             match ident {
                 Expr::Ident(name) => {
-                    let n = name.text.clone().into();
+                    let n = name.clone().into();
                     let mut node = Node::new(name.clone());
                     if self.special_blocks.contains_key(&n) {
                         node.body = self.special_block(&n)?;

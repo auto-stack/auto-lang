@@ -86,7 +86,7 @@ impl CTrans {
                 self.expr(expr, out)?;
                 Ok(())
             }
-            Expr::Ident(name) => out.write_all(name.text.as_bytes()).to(),
+            Expr::Ident(name) => out.write_all(name.as_bytes()).to(),
             Expr::Str(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::Call(call) => self.call(call, out),
             Expr::Array(array) => self.array(array, out),
@@ -117,13 +117,13 @@ impl CTrans {
         }
         // name
         let name = fn_decl.name.clone();
-        out.write(name.text.as_bytes()).to()?;
+        out.write(name.as_bytes()).to()?;
         // params
         out.write(b"(").to()?;
         let params = fn_decl
             .params
             .iter()
-            .map(|p| format!("int {}", p.name.text))
+            .map(|p| format!("int {}", p.name))
             .collect::<Vec<_>>()
             .join(", ");
         out.write(params.as_bytes()).to()?;
@@ -161,11 +161,11 @@ impl CTrans {
             Type::Array(array_type) => {
                 let elem_type = &array_type.elem;
                 let len = array_type.len;
-                out.write(format!("{} {}[{}] = ", elem_type, store.name.text, len).as_bytes())
+                out.write(format!("{} {}[{}] = ", elem_type, store.name, len).as_bytes())
                     .to()?;
             }
             _ => {
-                out.write(format!("{} {} = ", store.ty, store.name.text).as_bytes())
+                out.write(format!("{} {} = ", store.ty, store.name).as_bytes())
                     .to()?;
             }
         }
@@ -244,7 +244,7 @@ impl CTrans {
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         if let Expr::Ident(name) = &call.name.as_ref() {
-            if name.text == "print" {
+            if name == "print" {
                 self.process_print(call, out)?;
             } else {
                 self.expr(&call.name, out)?;
@@ -271,7 +271,7 @@ impl CTrans {
 
     fn arg(&mut self, arg: &Arg, out: &mut impl Write) -> AutoResult<()> {
         match arg {
-            Arg::Name(name) => self.str(name.text.as_str(), out),
+            Arg::Name(name) => self.str(name.as_str(), out),
             Arg::Pair(_, expr) => self.expr(expr, out),
             Arg::Pos(expr) => self.expr(expr, out),
         }
@@ -301,7 +301,7 @@ impl CTrans {
             Stmt::Expr(expr) => match expr {
                 Expr::Call(call) => {
                     if let Expr::Ident(name) = &call.name.as_ref() {
-                        if name.text == "print" {
+                        if name == "print" {
                             return false;
                         }
                     }
@@ -331,7 +331,7 @@ impl Trans for CTrans {
                     match expr {
                         Expr::Call(call) => {
                             if let Expr::Ident(name) = &call.name.as_ref() {
-                                if name.text == "print" {
+                                if name == "print" {
                                     self.includes.write(b"#include <stdio.h>\n").to()?;
                                 }
                             }

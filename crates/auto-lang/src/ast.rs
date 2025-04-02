@@ -8,6 +8,8 @@ use auto_val::{AutoStr, Op};
 use serde::Serialize;
 use std::fmt;
 
+pub type Name = AutoStr;
+
 #[derive(Debug)]
 pub struct Code {
     pub stmts: Vec<Stmt>,
@@ -65,47 +67,6 @@ impl fmt::Display for Branch {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct Name {
-    pub text: AutoStr,
-}
-
-impl Name {
-    pub fn new(text: impl Into<AutoStr>) -> Name {
-        Name { text: text.into() }
-    }
-}
-
-impl Default for Name {
-    fn default() -> Self {
-        Self { text: "".into() }
-    }
-}
-
-impl fmt::Display for Name {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(name {})", self.text)
-    }
-}
-
-impl From<Name> for AutoStr {
-    fn from(name: Name) -> Self {
-        AutoStr::from(name.text)
-    }
-}
-
-impl From<&str> for Name {
-    fn from(text: &str) -> Self {
-        Name { text: text.into() }
-    }
-}
-
-impl From<AutoStr> for Name {
-    fn from(text: AutoStr) -> Self {
-        Name { text }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum StoreKind {
     Let,
@@ -130,10 +91,10 @@ impl fmt::Display for Store {
             format!(" (type {}) ", self.ty)
         };
         match self.kind {
-            StoreKind::Let => write!(f, "(let {}{}{})", self.name, ty_str, self.expr),
-            StoreKind::Mut => write!(f, "(mut {}{}{})", self.name, ty_str, self.expr),
-            StoreKind::Var => write!(f, "(var {} {})", self.name, self.expr),
-            StoreKind::Field => write!(f, "(field {} {})", self.name, self.expr),
+            StoreKind::Let => write!(f, "(let (name {}){}{})", self.name, ty_str, self.expr),
+            StoreKind::Mut => write!(f, "(mut (name {}){}{})", self.name, ty_str, self.expr),
+            StoreKind::Var => write!(f, "(var (name {}) {})", self.name, self.expr),
+            StoreKind::Field => write!(f, "(field (name {}) {})", self.name, self.expr),
         }
     }
 }
@@ -220,8 +181,8 @@ impl Body {
 impl fmt::Display for Iter {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Iter::Indexed(index, iter) => write!(f, "({} {})", index, iter),
-            Iter::Named(iter) => write!(f, "{}", iter),
+            Iter::Indexed(index, iter) => write!(f, "((name {}) (name {}))", index, iter),
+            Iter::Named(iter) => write!(f, "(name {})", iter),
         }
     }
 }
@@ -314,7 +275,7 @@ pub struct Call {
 impl Call {
     pub fn get_name_text(&self) -> AutoStr {
         match &self.name.as_ref() {
-            Expr::Ident(name) => name.text.clone(),
+            Expr::Ident(name) => name.clone(),
             _ => panic!("Expected identifier, got {:?}", self.name),
         }
     }
@@ -338,7 +299,7 @@ impl Arg {
     pub fn get_expr(&self) -> Expr {
         match self {
             Arg::Pos(expr) => expr.clone(),
-            Arg::Name(name) => Expr::Str(name.text.clone()),
+            Arg::Name(name) => Expr::Str(name.clone()),
             Arg::Pair(_, expr) => expr.clone(),
         }
     }
@@ -346,16 +307,16 @@ impl Arg {
     pub fn repr(&self) -> AutoStr {
         match self {
             Arg::Pos(expr) => expr.repr(),
-            Arg::Name(name) => name.text.clone(),
-            Arg::Pair(key, expr) => format!("{}:{}", key.text, expr.repr()).into(),
+            Arg::Name(name) => name.clone(),
+            Arg::Pair(key, expr) => format!("{}:{}", key, expr.repr()).into(),
         }
     }
 
     pub fn to_code(&self) -> AutoStr {
         match self {
             Arg::Pos(expr) => expr.to_code(),
-            Arg::Name(name) => name.text.clone(),
-            Arg::Pair(key, expr) => format!("{}:{}", key.text, expr.to_code()).into(),
+            Arg::Name(name) => name.clone(),
+            Arg::Pair(key, expr) => format!("{}:{}", key, expr.to_code()).into(),
         }
     }
 }
@@ -376,12 +337,12 @@ impl Args {
         for arg in self.args.iter() {
             match arg {
                 Arg::Name(n) => {
-                    if n.text == name {
+                    if n == name {
                         return Some(arg.clone());
                     }
                 }
                 Arg::Pair(n, _) => {
-                    if n.text == name {
+                    if n == name {
                         return Some(arg.clone());
                     }
                 }
@@ -412,8 +373,8 @@ impl fmt::Display for Arg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Arg::Pos(expr) => write!(f, "{}", expr),
-            Arg::Name(name) => write!(f, "{}", name),
-            Arg::Pair(name, expr) => write!(f, "(pair {} {})", name, expr),
+            Arg::Name(name) => write!(f, "(name {})", name),
+            Arg::Pair(name, expr) => write!(f, "(pair (name {}) {})", name, expr),
         }
     }
 }
@@ -464,8 +425,8 @@ impl fmt::Display for Expr {
             Expr::Bool(b) => write!(f, "({})", b),
             Expr::Char(c) => write!(f, "(char '{}')", c),
             Expr::Str(s) => write!(f, "(str \"{}\")", s),
-            Expr::Ident(n) => write!(f, "(name {})", n.text),
-            Expr::Ref(n) => write!(f, "(ref {})", n.text),
+            Expr::Ident(n) => write!(f, "(name {})", n),
+            Expr::Ref(n) => write!(f, "(ref {})", n),
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
             Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
             Expr::Array(elems) => fmt_array(f, elems),
@@ -493,8 +454,8 @@ impl Expr {
             Expr::Bool(b) => b.to_string().into(),
             Expr::Char(c) => c.to_string().into(),
             Expr::Str(s) => s.clone(),
-            Expr::Ident(n) => n.text.clone(),
-            Expr::Ref(n) => n.text.clone(),
+            Expr::Ident(n) => n.clone(),
+            Expr::Ref(n) => n.clone(),
             Expr::Bina(l, op, r) => format!("{}{}{}", l.repr(), op.repr(), r.repr()).into(),
             Expr::Unary(op, e) => format!("{}{}", op.repr(), e.repr()).into(),
             Expr::Array(elems) => format!(
@@ -528,8 +489,8 @@ impl Expr {
             Expr::Bool(b) => b.to_string().into(),
             Expr::Char(c) => c.to_string().into(),
             Expr::Str(s) => format!("\"{}\"", s).into(),
-            Expr::Ident(n) => n.text.clone(),
-            Expr::Ref(n) => n.text.clone(),
+            Expr::Ident(n) => n.clone(),
+            Expr::Ref(n) => n.clone(),
             Expr::Bina(l, op, r) => format!("{}{}{}", l.to_code(), op.repr(), r.to_code()).into(),
             Expr::Unary(op, e) => format!("{}{}", op.repr(), e.to_code()).into(),
             Expr::Array(elems) => format!(
@@ -571,7 +532,7 @@ impl PartialEq for Param {
 
 impl fmt::Display for Param {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(param {} (type {})", self.name, self.ty)?;
+        write!(f, "(param (name {}) (type {})", self.name, self.ty)?;
         if let Some(default) = &self.default {
             write!(f, " (default {})", default)?;
         }
@@ -606,7 +567,7 @@ impl PartialEq for Fn {
 
 impl fmt::Display for Fn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(fn {}", self.name)?;
+        write!(f, "(fn (name {})", self.name)?;
         if !self.params.is_empty() {
             write!(f, " (params ")?;
             for (i, param) in self.params.iter().enumerate() {
@@ -657,7 +618,7 @@ impl Node {
 
 impl From<Call> for Node {
     fn from(call: Call) -> Self {
-        let name = Name::new(call.get_name_text());
+        let name = call.get_name_text();
         let mut node = Node::new(name);
         node.args = call.args;
         node
@@ -666,7 +627,7 @@ impl From<Call> for Node {
 
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(node {}", self.name)?;
+        write!(f, "(node (name {})", self.name)?;
         if !self.args.is_empty() {
             write!(f, " {}", self.args)?;
         }

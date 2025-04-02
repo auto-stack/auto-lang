@@ -82,10 +82,7 @@ pub fn eval_template(template: &str, scope: Universe) -> AutoResult<interp::Inte
 
 pub fn eval_config(code: &str, args: &Obj) -> AutoResult<interp::Interpreter> {
     let mut scope = Universe::new();
-    scope.define_global(
-        "root",
-        Rc::new(Meta::Node(ast::Node::new(ast::Name::new("root")))),
-    );
+    scope.define_global("root", Rc::new(Meta::Node(ast::Node::new("root"))));
     scope.set_args(args);
     let mut interpreter = interp::Interpreter::with_scope(scope).with_eval_mode(EvalMode::CONFIG);
     interpreter.interpret(code)?;

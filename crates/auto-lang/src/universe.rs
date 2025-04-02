@@ -454,12 +454,12 @@ impl Universe {
 
     pub fn define_var(&mut self, name: &str, expr: ast::Expr) {
         // Add meta to current scope
-        let ast_name = ast::Name::new(name.to_string());
+        let ast_name = name.into();
         let store = ast::Store {
             kind: ast::StoreKind::Var,
             name: ast_name,
             ty: ast::Type::Int,
-            expr: expr,
+            expr,
         };
         self.define(name, Rc::new(Meta::Store(store)));
     }

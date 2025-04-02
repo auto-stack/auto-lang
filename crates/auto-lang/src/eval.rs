@@ -241,11 +241,11 @@ impl Evaler {
             Iter::Indexed(index, iter) => {
                 self.universe
                     .borrow_mut()
-                    .set_local_val(&index.text, Value::Int(idx as i32));
+                    .set_local_val(&index, Value::Int(idx as i32));
                 // println!("set index {}, iter: {}, item: {}", index.text, iter.text, item.clone());
-                self.universe.borrow_mut().set_local_val(&iter.text, item);
+                self.universe.borrow_mut().set_local_val(&iter, item);
             }
-            Iter::Named(iter) => self.universe.borrow_mut().set_local_val(&iter.text, item),
+            Iter::Named(iter) => self.universe.borrow_mut().set_local_val(&iter, item),
         }
     }
 
@@ -324,7 +324,7 @@ impl Evaler {
 
     fn eval_store(&mut self, store: &Store) -> Value {
         let mut value = match &store.expr {
-            Expr::Ref(target) => Value::Ref(target.text.clone().into()),
+            Expr::Ref(target) => Value::Ref(target.clone().into()),
             _ => self.eval_expr(&store.expr),
         };
         // TODO: add general type coercion in assignment
@@ -333,12 +333,10 @@ impl Evaler {
             value = Value::Byte(value.as_int() as u8);
         }
         self.universe.borrow_mut().define(
-            store.name.text.as_str(),
+            store.name.as_str(),
             Rc::new(scope::Meta::Store(store.clone())),
         );
-        self.universe
-            .borrow_mut()
-            .set_local_val(&store.name.text, value);
+        self.universe.borrow_mut().set_local_val(&store.name, value);
         Value::Void
     }
 
@@ -366,7 +364,7 @@ impl Evaler {
         match left {
             Expr::Ident(name) => {
                 // check ref
-                let left_val = self.lookup(&name.text);
+                let left_val = self.lookup(&name);
                 match left_val {
                     Value::Ref(target) => {
                         println!("ref: {}", target);
@@ -375,15 +373,15 @@ impl Evaler {
                         } else {
                             panic!(
                                 "Invalid assignment, variable (ref {} -> {}) not found",
-                                name.text, target
+                                name, target
                             );
                         }
                     }
                     _ => {
-                        if self.universe.borrow().exists(&name.text) {
-                            self.universe.borrow_mut().update_val(&name.text, val);
+                        if self.universe.borrow().exists(&name) {
+                            self.universe.borrow_mut().update_val(&name, val);
                         } else {
-                            panic!("Invalid assignment, variable {} not found", name.text);
+                            panic!("Invalid assignment, variable {} not found", name);
                         }
                     }
                 }
@@ -396,8 +394,8 @@ impl Evaler {
                         match left.as_ref() {
                             Expr::Ident(name) => {
                                 // find object `left`
-                                self.update_obj(&name.text, move |o| match right.as_ref() {
-                                    Expr::Ident(rname) => o.set(rname.text.clone(), val),
+                                self.update_obj(&name, move |o| match right.as_ref() {
+                                    Expr::Ident(rname) => o.set(rname.clone(), val),
                                     _ => {}
                                 });
                                 Value::Void
@@ -411,7 +409,7 @@ impl Evaler {
             Expr::Index(array, index) => match array.as_ref() {
                 Expr::Ident(name) => {
                     let idx = self.eval_expr(index);
-                    self.update_array(&name.text, idx, val);
+                    self.update_array(&name, idx, val);
                     Value::Void
                 }
                 _ => Value::error(format!("Invalid target of asn index {} = {}", left, val)),
@@ -490,7 +488,7 @@ impl Evaler {
 
     fn eval_key(&self, key: &Key) -> ValueKey {
         match key {
-            Key::NamedKey(name) => ValueKey::Str(name.text.clone().into()),
+            Key::NamedKey(name) => ValueKey::Str(name.clone().into()),
             Key::IntKey(value) => ValueKey::Int(*value),
             Key::BoolKey(value) => ValueKey::Bool(*value),
             Key::StrKey(value) => ValueKey::Str(value.clone().into()),
@@ -590,7 +588,7 @@ impl Evaler {
     }
 
     fn eval_type(&mut self, type_decl: &TypeDecl) -> Type {
-        Type::User(type_decl.name.text.clone())
+        Type::User(type_decl.name.clone())
     }
 
     fn eval_fields(&mut self, type_decl: &TypeDecl, args: &Args) -> Obj {
@@ -602,21 +600,21 @@ impl Evaler {
             match val_arg {
                 auto_val::Arg::Pair(key, val) => {
                     for member in members.iter() {
-                        if key.to_string() == member.name.text {
-                            fields.set(member.name.text.clone(), val.clone());
+                        if key.to_string() == member.name {
+                            fields.set(member.name.clone(), val.clone());
                         }
                     }
                 }
                 auto_val::Arg::Pos(value) => {
                     if j < members.len() {
                         let member = &members[j];
-                        fields.set(member.name.text.clone(), value);
+                        fields.set(member.name.clone(), value);
                     }
                 }
                 auto_val::Arg::Name(name) => {
                     for member in members.iter() {
-                        if name == member.name.text {
-                            fields.set(member.name.text.clone(), Value::Str(name.clone()));
+                        if name == member.name {
+                            fields.set(member.name.clone(), Value::Str(name.clone()));
                         }
                     }
                 }
@@ -626,10 +624,10 @@ impl Evaler {
         for member in members.iter() {
             match &member.value {
                 Some(value) => {
-                    if fields.has(member.name.text.clone()) {
+                    if fields.has(member.name.clone()) {
                         continue;
                     }
-                    fields.set(member.name.text.clone(), self.eval_expr(value));
+                    fields.set(member.name.clone(), self.eval_expr(value));
                 }
                 None => {}
             }
@@ -707,16 +705,16 @@ impl Evaler {
         match arg {
             Arg::Pair(name, expr) => {
                 let val = self.eval_expr(expr);
-                let name = &name.text;
+                let name = &name;
                 self.universe.borrow_mut().set_local_val(&name, val.clone());
             }
             Arg::Pos(expr) => {
                 let val = self.eval_expr(expr);
-                let name = &params[i].name.text;
+                let name = &params[i].name;
                 self.universe.borrow_mut().set_local_val(&name, val.clone());
             }
             Arg::Name(name) => {
-                let name = &name.text;
+                let name = &name;
                 let val = Value::Str(name.clone().into());
                 self.universe.borrow_mut().set_local_val(&name, val.clone());
             }
@@ -787,22 +785,22 @@ impl Evaler {
                 target_val
             }
             Expr::Ident(name) => {
-                let res = self.lookup(&name.text);
+                let res = self.lookup(&name);
                 match res {
                     Value::Ref(target) => {
-                        let target_val = self.eval_expr(&Expr::Ident(Name::new(target)));
+                        let target_val = self.eval_expr(&Expr::Ident(target));
                         target_val
                     }
                     Value::Nil => {
                         // try to lookup in meta and builtins
-                        let meta = self.universe.borrow().lookup_meta(&name.text);
+                        let meta = self.universe.borrow().lookup_meta(&name);
                         if let Some(meta) = meta {
                             return Value::Meta(to_meta_id(&meta));
                         }
                         // Try builtin
                         self.universe
                             .borrow()
-                            .lookup_builtin(&name.text)
+                            .lookup_builtin(&name)
                             .unwrap_or(Value::Nil)
                     }
                     _ => res,
@@ -818,7 +816,7 @@ impl Evaler {
             Expr::Pair(pair) => self.pair(pair),
             Expr::Object(pairs) => self.object(pairs),
             Expr::Block(body) => self.eval_body(body),
-            Expr::Lambda(lambda) => Value::Lambda(lambda.name.text.clone().into()),
+            Expr::Lambda(lambda) => Value::Lambda(lambda.name.clone().into()),
             Expr::FStr(fstr) => self.fstr(fstr),
             Expr::Grid(grid) => self.grid(grid),
             Expr::Nil => Value::Nil,
@@ -843,14 +841,14 @@ impl Evaler {
                 }
             }
             Value::Obj(obj) => match right {
-                Expr::Ident(name) => obj.lookup(&name.text),
+                Expr::Ident(name) => obj.lookup(&name),
                 Expr::Int(key) => obj.lookup(&key.to_string()),
                 Expr::Bool(key) => obj.lookup(&key.to_string()),
                 _ => None,
             },
             Value::Node(node) => match right {
                 Expr::Ident(name) => {
-                    let mut name = name.text.clone();
+                    let mut name = name.clone();
                     // 1. lookup in the props
                     let v = node.get_prop(&name);
                     match v {
@@ -872,7 +870,7 @@ impl Evaler {
                 _ => None,
             },
             Value::Widget(widget) => match right {
-                Expr::Ident(name) => match name.text.as_str() {
+                Expr::Ident(name) => match name.as_str() {
                     "model" => Some(Value::Model(widget.model.clone())),
                     "view" => Some(Value::Meta(widget.view_id.clone())),
                     _ => None,
@@ -880,22 +878,22 @@ impl Evaler {
                 _ => None,
             },
             Value::Model(model) => match right {
-                Expr::Ident(name) => model.find(&name.text),
+                Expr::Ident(name) => model.find(&name),
                 _ => None,
             },
             Value::View(view) => match right {
-                Expr::Ident(name) => view.find(&name.text),
+                Expr::Ident(name) => view.find(&name),
                 _ => None,
             },
             Value::Instance(instance) => match right {
                 Expr::Ident(name) => {
-                    let f = instance.fields.lookup(&name.text);
+                    let f = instance.fields.lookup(&name);
                     match f {
                         Some(v) => Some(v),
                         None => {
                             // not a field, try method
                             let typ = instance.ty.name();
-                            let combined_name: AutoStr = format!("{}::{}", typ, name.text).into();
+                            let combined_name: AutoStr = format!("{}::{}", typ, name).into();
                             let method = self.universe.borrow().lookup_meta(&combined_name);
                             if let Some(meta) = method {
                                 match meta.as_ref() {
@@ -922,13 +920,10 @@ impl Evaler {
                             .universe
                             .borrow()
                             .types
-                            .lookup_method_for_value(&left_value, name.text.clone())
+                            .lookup_method_for_value(&left_value, name.clone())
                             .is_some()
                         {
-                            Some(Value::Method(Method::new(
-                                left_value.clone(),
-                                name.text.clone(),
-                            )))
+                            Some(Value::Method(Method::new(left_value.clone(), name.clone())))
                         } else {
                             None
                         }
@@ -963,15 +958,13 @@ impl Evaler {
     }
 
     fn eval_widget(&mut self, widget: &Widget) -> Value {
-        let name = &widget.name.text;
+        let name = &widget.name;
         // model
         let mut vars = Vec::new();
         for var in widget.model.vars.iter() {
             let value = self.eval_expr(&var.expr);
-            vars.push((ValueKey::Str(var.name.text.clone().into()), value.clone()));
-            self.universe
-                .borrow_mut()
-                .set_local_val(&var.name.text, value);
+            vars.push((ValueKey::Str(var.name.clone().into()), value.clone()));
+            self.universe.borrow_mut().set_local_val(&var.name, value);
         }
         let model = auto_val::Model { values: vars };
         // view
@@ -1026,11 +1019,10 @@ impl Evaler {
 
     fn eval_arg(&mut self, arg: &ast::Arg) -> auto_val::Arg {
         match arg {
-            ast::Arg::Name(name) => auto_val::Arg::Name(name.text.clone().into()),
-            ast::Arg::Pair(name, expr) => auto_val::Arg::Pair(
-                ValueKey::Str(name.text.clone().into()),
-                self.eval_expr(expr),
-            ),
+            ast::Arg::Name(name) => auto_val::Arg::Name(name.clone().into()),
+            ast::Arg::Pair(name, expr) => {
+                auto_val::Arg::Pair(ValueKey::Str(name.clone().into()), self.eval_expr(expr))
+            }
             ast::Arg::Pos(expr) => auto_val::Arg::Pos(self.eval_expr(expr)),
         }
     }
@@ -1050,7 +1042,7 @@ impl Evaler {
         let mut nodes = Vec::new();
         let mut props = Obj::new();
         let mut body = MetaID::Nil;
-        let name = &node.name.text;
+        let name = &node.name;
         if name == "mid" {
             return self.eval_mid(&node);
         }
@@ -1125,7 +1117,7 @@ impl Evaler {
             }
         }
         Value::Node(auto_val::Node {
-            name: node.name.text.clone().into(),
+            name: node.name.clone().into(),
             args,
             props,
             nodes,
@@ -1229,10 +1221,7 @@ impl Evaler {
             for arg in grid.head.args.iter() {
                 match arg {
                     Arg::Pair(name, value) => {
-                        head.push((
-                            ValueKey::Str(name.text.clone().into()),
-                            self.eval_expr(value),
-                        ));
+                        head.push((ValueKey::Str(name.clone().into()), self.eval_expr(value)));
                     }
                     Arg::Pos(value) => match value {
                         Expr::Str(value) => {
@@ -1245,8 +1234,8 @@ impl Evaler {
                     },
                     Arg::Name(name) => {
                         head.push((
-                            ValueKey::Str(name.text.clone().into()),
-                            Value::Str(name.text.clone().into()),
+                            ValueKey::Str(name.clone().into()),
+                            Value::Str(name.clone().into()),
                         ));
                     }
                 }
@@ -1273,13 +1262,13 @@ fn to_value_sig(fn_decl: &Fn) -> Sig {
     let mut params = Vec::new();
     for param in fn_decl.params.iter() {
         params.push(auto_val::Param {
-            name: param.name.text.clone().into(),
+            name: param.name.clone().into(),
             ty: Box::new(to_value_type(&param.ty)),
         });
     }
     let ret = to_value_type(&fn_decl.ret);
     Sig {
-        name: fn_decl.name.text.clone().into(),
+        name: fn_decl.name.clone().into(),
         params,
         ret,
     }
@@ -1294,7 +1283,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Char => auto_val::Type::Char,
         ast::Type::Str => auto_val::Type::Str,
         ast::Type::Array(_) => auto_val::Type::Array,
-        ast::Type::User(type_decl) => auto_val::Type::User(type_decl.name.text.clone()),
+        ast::Type::User(type_decl) => auto_val::Type::User(type_decl.name.clone()),
         ast::Type::Void => auto_val::Type::Void,
         ast::Type::Unknown => auto_val::Type::Any,
     }
