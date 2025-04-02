@@ -1,9 +1,8 @@
-use std::fmt;
-use crate::types::Type;
-use crate::value::Value;
 use crate::pair::ValueKey;
 use crate::string::AutoStr;
-
+use crate::types::Type;
+use crate::value::Value;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Arg {
@@ -69,11 +68,16 @@ impl Args {
     pub const EMPTY: Self = Self { args: vec![] };
 
     pub fn get_val(&self, index: usize) -> Value {
-        self.args.get(index).map(|arg| arg.get_val()).unwrap_or(Value::Nil)
+        self.args
+            .get(index)
+            .map(|arg| arg.get_val())
+            .unwrap_or(Value::Nil)
     }
 
     pub fn array(values: Vec<impl Into<Value>>) -> Self {
-        Self { args: values.into_iter().map(|v| Arg::Pos(v.into())).collect() }
+        Self {
+            args: values.into_iter().map(|v| Arg::Pos(v.into())).collect(),
+        }
     }
 
     pub fn add_name(&mut self, name: impl Into<AutoStr>) {
@@ -130,6 +134,7 @@ pub enum MetaID {
     Fn(Sig),
     Lambda(Sig),
     Type(String),
+    Enum(AutoStr),
     View(String),
     Body(String),
     Method(MethodMeta),
@@ -158,6 +163,7 @@ impl fmt::Display for MetaID {
             MetaID::Nil => write!(f, "<meta-nil>"),
             MetaID::Method(method) => write!(f, "<method:{}>", method),
             MetaID::Type(id) => write!(f, "<type:{}>", id),
+            MetaID::Enum(name) => write!(f, "<enum:{}>", name),
         }
     }
 }

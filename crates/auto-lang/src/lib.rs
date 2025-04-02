@@ -865,4 +865,18 @@ square(15)
         println!("{}", result);
         assert!(true);
     }
+
+    #[test]
+    fn test_int_enums() {
+        let code = r#"
+            enum Color {
+                Red = 1
+                Green = 2
+                Blue = 3
+            }
+            Color.Red
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "1");
+    }
 }

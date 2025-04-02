@@ -115,7 +115,12 @@ impl<'a> Parser<'a> {
     pub fn new(code: &'a str, scope: Rc<RefCell<Universe>>) -> Self {
         let mut lexer = Lexer::new(code);
         let cur = lexer.next();
-        let mut parser = Parser { scope, lexer, cur, special_blocks: HashMap::new() };
+        let mut parser = Parser {
+            scope,
+            lexer,
+            cur,
+            special_blocks: HashMap::new(),
+        };
         parser.skip_comments();
         parser
     }
@@ -128,7 +133,12 @@ impl<'a> Parser<'a> {
         let mut lexer = Lexer::new(code);
         lexer.set_fstr_note(note);
         let cur = lexer.next();
-        let mut parser = Parser { scope, lexer, cur, special_blocks: HashMap::new() };
+        let mut parser = Parser {
+            scope,
+            lexer,
+            cur,
+            special_blocks: HashMap::new(),
+        };
         parser.skip_comments();
         parser
     }
@@ -816,10 +826,42 @@ impl<'a> Parser<'a> {
             TokenKind::Widget => self.widget_stmt()?,
             // Node Instance?
             TokenKind::Ident => self.node_or_call_stmt()?,
+            // Enum Definition
+            TokenKind::Enum => self.enum_stmt()?,
             // Otherwise, try to parse as an expression
             _ => self.expr_stmt()?,
         };
         Ok(stmt)
+    }
+
+    fn enum_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.next(); // skip enum
+        let name = self.cur.text.clone().into();
+        self.next();
+        let mut items = Vec::new();
+        self.expect(TokenKind::LBrace)?;
+        while !self.is_kind(TokenKind::RBrace) {
+            let item = self.cur.text.clone().into();
+            self.next();
+            items.push(item);
+            if self.is_kind(TokenKind::Comma) {
+                self.next(); // skip ,
+            }
+        }
+        self.expect(TokenKind::RBrace)?;
+        let enum_decl = EnumDecl {
+            name,
+            items: items
+                .into_iter()
+                .enumerate()
+                .map(|(i, name)| EnumItem {
+                    name,
+                    value: i as i32,
+                })
+                .collect(),
+        };
+        self.define(enum_decl.name.as_str(), Meta::Enum(enum_decl.clone()));
+        Ok(Stmt::EnumDecl(enum_decl))
     }
 
     fn expect_ident_str(&mut self) -> Result<String, ParseError> {
@@ -2090,6 +2132,17 @@ exe(hello) {
         assert_eq!(
             ast.to_string(),
             "(code (fstr (str \"hello \") (bina (int 2) (op +) (int 1)) (str \" again\")))"
+        );
+    }
+
+    #[test]
+    fn test_simple_enum() {
+        // Test simple enum parsing
+        let code = "enum Color { Red, Green, Blue }; Color.Red";
+        let ast = parse_once(code);
+        assert_eq!(
+            ast.to_string(),
+            "(code (enum (name Color) (item (name Red) (value 0)) (item (name Green) (value 1)) (item (name Blue) (value 2))) (bina (name Color) (op .) (name Red)))"
         );
     }
 }

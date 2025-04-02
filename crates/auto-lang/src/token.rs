@@ -11,7 +11,6 @@ pub struct Pos {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, strum_macros::Display)]
 #[strum(serialize_all = "snake_case")]
 pub enum TokenKind {
-
     // Literals
     Int,
     Uint,
@@ -21,36 +20,36 @@ pub enum TokenKind {
     Ident,
 
     // Operators
-    LParen, // (
-    RParen, // )
-    LSquare, // [
-    RSquare, // ]
-    LBrace, // {
-    RBrace, // }
-    Comma, // ,
-    Semi, // ;
-    Newline, // \n
-    Add, // +
-    Sub, // -
-    Mul, // *
-    Div, // /
-    Not, // !
-    Lt, // <
-    Gt, // >
-    Le, // <=
-    Ge, // >=
-    Asn, // =
-    Eq, // ==
-    Neq, // !=
-    Dot, // .
-    Range, // ..
-    RangeEq, // ..= 
-    Colon, // :
-    VBar, // |
-    CommentLine, // //
+    LParen,         // (
+    RParen,         // )
+    LSquare,        // [
+    RSquare,        // ]
+    LBrace,         // {
+    RBrace,         // }
+    Comma,          // ,
+    Semi,           // ;
+    Newline,        // \n
+    Add,            // +
+    Sub,            // -
+    Mul,            // *
+    Div,            // /
+    Not,            // !
+    Lt,             // <
+    Gt,             // >
+    Le,             // <=
+    Ge,             // >=
+    Asn,            // =
+    Eq,             // ==
+    Neq,            // !=
+    Dot,            // .
+    Range,          // ..
+    RangeEq,        // ..=
+    Colon,          // :
+    VBar,           // |
+    CommentLine,    // //
     CommentContent, // any text in comment
-    CommentStart, // /*
-    CommentEnd, // */
+    CommentStart,   // /*
+    CommentEnd,     // */
 
     // Keywords
     True,
@@ -69,7 +68,7 @@ pub enum TokenKind {
     Has,
     Use,
     As,
-
+    Enum,
 
     // Format Str
     FStrStart,
@@ -193,7 +192,6 @@ impl Token {
     pub fn eof(pos: Pos) -> Self {
         Token::new(TokenKind::EOF, pos, "".to_string())
     }
-
 }
 
 impl fmt::Display for Pos {

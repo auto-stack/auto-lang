@@ -1,6 +1,8 @@
 mod types;
-
 pub use types::*;
+
+mod enums;
+pub use enums::*;
 
 use auto_val::{AutoStr, Op};
 use serde::Serialize;
@@ -177,6 +179,7 @@ pub enum Stmt {
     Store(Store),
     Block(Body),
     Fn(Fn),
+    EnumDecl(EnumDecl),
     TypeDecl(TypeDecl),
     Widget(Widget),
     Node(Node),
@@ -277,6 +280,7 @@ impl fmt::Display for Stmt {
             Stmt::Store(store) => write!(f, "{}", store),
             Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),
             Stmt::TypeDecl(type_decl) => write!(f, "{}", type_decl),
+            Stmt::EnumDecl(enum_decl) => write!(f, "{}", enum_decl),
             Stmt::Widget(widget) => write!(f, "{}", widget),
             Stmt::Node(node) => write!(f, "{}", node),
         }

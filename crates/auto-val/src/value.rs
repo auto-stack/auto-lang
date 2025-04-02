@@ -1,14 +1,11 @@
-
-use crate::AutoStr;
 use crate::array::*;
+use crate::meta::*;
+use crate::node::*;
 use crate::obj::*;
 use crate::pair::*;
 use crate::string::*;
-use crate::meta::*;
-use crate::node::*;
+use crate::AutoStr;
 use std::fmt::{self, Display, Formatter};
-
-
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum Value {
@@ -63,7 +60,13 @@ impl Value {
     }
 
     pub fn str_array(values: Vec<impl Into<AutoStr>>) -> Self {
-        Value::Array(values.into_iter().map(|s| Value::Str(s.into())).collect::<Vec<Value>>().into())
+        Value::Array(
+            values
+                .into_iter()
+                .map(|s| Value::Str(s.into()))
+                .collect::<Vec<Value>>()
+                .into(),
+        )
     }
 
     pub fn pair(key: impl Into<ValueKey>, value: impl Into<Value>) -> Self {
@@ -110,7 +113,6 @@ impl Value {
         }
     }
 }
-
 
 fn float_eq(a: f64, b: f64) -> bool {
     let epsilon = 0.000001;
@@ -199,64 +201,52 @@ impl Value {
 
     pub fn comp(&self, op: &Op, other: &Value) -> Value {
         match (self, other) {
-            (Value::Int(a), Value::Int(b)) => {
-                match op {
-                    Op::Eq => Value::Bool(a == b),
-                    Op::Neq => Value::Bool(a != b),
-                    Op::Lt => Value::Bool(a < b),
-                    Op::Gt => Value::Bool(a > b),
-                    Op::Le => Value::Bool(a <= b),
-                    Op::Ge => Value::Bool(a >= b),
-                    _ => Value::Nil,
-                }
-            }
-            (Value::Uint(a), Value::Uint(b)) => {
-                match op {
-                    Op::Eq => Value::Bool(a == b),
-                    Op::Neq => Value::Bool(a != b),
-                    Op::Lt => Value::Bool(a < b),
-                    Op::Gt => Value::Bool(a > b),
-                    Op::Le => Value::Bool(a <= b),
-                    Op::Ge => Value::Bool(a >= b),
-                    _ => Value::Nil,
-                }
-            }
-            (Value::Float(a), Value::Float(b)) => {
-                match op {
-                    Op::Eq => Value::Bool(float_eq(*a, *b)),
-                    Op::Neq => Value::Bool(!float_eq(*a, *b)),
-                    Op::Lt => Value::Bool(*a < *b),
-                    Op::Gt => Value::Bool(*a > *b),
-                    Op::Le => Value::Bool(*a <= *b),
-                    Op::Ge => Value::Bool(*a >= *b),
-                    _ => Value::Nil,
-                }
-            }
-            (Value::Bool(a), Value::Bool(b)) => {
-                match op {
-                    Op::Eq => Value::Bool(*a == *b),
-                    Op::Neq => Value::Bool(*a != *b),
-                    _ => Value::Nil,
-                }
-            }
-            (Value::Byte(a), Value::Byte(b)) => {
-                match op {
-                    Op::Eq => Value::Bool(a == b),
-                    Op::Neq => Value::Bool(a != b),
-                    Op::Lt => Value::Bool(a < b),
-                    Op::Gt => Value::Bool(a > b),
-                    Op::Le => Value::Bool(a <= b),
-                    Op::Ge => Value::Bool(a >= b),
-                    _ => Value::Nil,
-                }
-            }
-            (Value::Str(a), Value::Str(b)) => {
-                match op {
-                    Op::Eq => Value::Bool(a == b),
-                    Op::Neq => Value::Bool(a != b),
-                    _ => Value::Nil,
-                }
-            }
+            (Value::Int(a), Value::Int(b)) => match op {
+                Op::Eq => Value::Bool(a == b),
+                Op::Neq => Value::Bool(a != b),
+                Op::Lt => Value::Bool(a < b),
+                Op::Gt => Value::Bool(a > b),
+                Op::Le => Value::Bool(a <= b),
+                Op::Ge => Value::Bool(a >= b),
+                _ => Value::Nil,
+            },
+            (Value::Uint(a), Value::Uint(b)) => match op {
+                Op::Eq => Value::Bool(a == b),
+                Op::Neq => Value::Bool(a != b),
+                Op::Lt => Value::Bool(a < b),
+                Op::Gt => Value::Bool(a > b),
+                Op::Le => Value::Bool(a <= b),
+                Op::Ge => Value::Bool(a >= b),
+                _ => Value::Nil,
+            },
+            (Value::Float(a), Value::Float(b)) => match op {
+                Op::Eq => Value::Bool(float_eq(*a, *b)),
+                Op::Neq => Value::Bool(!float_eq(*a, *b)),
+                Op::Lt => Value::Bool(*a < *b),
+                Op::Gt => Value::Bool(*a > *b),
+                Op::Le => Value::Bool(*a <= *b),
+                Op::Ge => Value::Bool(*a >= *b),
+                _ => Value::Nil,
+            },
+            (Value::Bool(a), Value::Bool(b)) => match op {
+                Op::Eq => Value::Bool(*a == *b),
+                Op::Neq => Value::Bool(*a != *b),
+                _ => Value::Nil,
+            },
+            (Value::Byte(a), Value::Byte(b)) => match op {
+                Op::Eq => Value::Bool(a == b),
+                Op::Neq => Value::Bool(a != b),
+                Op::Lt => Value::Bool(a < b),
+                Op::Gt => Value::Bool(a > b),
+                Op::Le => Value::Bool(a <= b),
+                Op::Ge => Value::Bool(a >= b),
+                _ => Value::Nil,
+            },
+            (Value::Str(a), Value::Str(b)) => match op {
+                Op::Eq => Value::Bool(a == b),
+                Op::Neq => Value::Bool(a != b),
+                _ => Value::Nil,
+            },
             _ => Value::Nil,
         }
     }
@@ -326,7 +316,7 @@ impl Value {
             _ => &OBJ_EMPTY,
         }
     }
-    
+
     pub fn as_str(&self) -> &str {
         match self {
             Value::Str(value) => value.as_str(),
@@ -381,7 +371,7 @@ impl Value {
     pub fn update_node(&mut self, f: impl FnOnce(&mut Node)) {
         match self {
             Value::Node(value) => f(value),
-            _ => {},
+            _ => {}
         }
     }
 
@@ -598,13 +588,19 @@ impl fmt::Display for View {
 
 impl Model {
     pub fn find(&self, key: &str) -> Option<Value> {
-        self.values.iter().find(|(k, _)| k.to_string() == key).map(|(_, v)| v.clone())
+        self.values
+            .iter()
+            .find(|(k, _)| k.to_string() == key)
+            .map(|(_, v)| v.clone())
     }
 }
 
 impl View {
     pub fn find(&self, key: &str) -> Option<Value> {
-        self.nodes.iter().find(|n| n.name == key).map(|n| Value::Node(n.clone()))
+        self.nodes
+            .iter()
+            .find(|n| n.name == key)
+            .map(|n| Value::Node(n.clone()))
     }
 }
 
@@ -622,7 +618,10 @@ impl fmt::Display for Method {
 
 impl Method {
     pub fn new(target: Value, name: String) -> Self {
-        Self { target: Box::new(target), name }
+        Self {
+            target: Box::new(target),
+            name,
+        }
     }
 }
 
@@ -634,13 +633,20 @@ pub struct Grid {
 
 impl Default for Grid {
     fn default() -> Self {
-        Self { head: vec![], data: vec![] }
+        Self {
+            head: vec![],
+            data: vec![],
+        }
     }
 }
 
 impl Grid {
     pub fn to_array_of_objects(&self) -> Value {
-        let colids = self.head.iter().map(|(_, col)| col.as_obj().get_str_of("id")).collect::<Vec<_>>();
+        let colids = self
+            .head
+            .iter()
+            .map(|(_, col)| col.as_obj().get_str_of("id"))
+            .collect::<Vec<_>>();
         let mut result = Vec::new();
         for row in self.data.iter() {
             let mut obj = Obj::new();
@@ -665,7 +671,7 @@ impl fmt::Display for Grid {
         write!(f, " {{")?;
         for (i, row) in self.data.iter().enumerate() {
             write!(f, "[")?;
-            for (j, cell) in row.iter().enumerate() {   
+            for (j, cell) in row.iter().enumerate() {
                 write!(f, "{}", cell)?;
                 if j < row.len() - 1 {
                     write!(f, ", ")?;
@@ -687,7 +693,7 @@ pub fn pretty(text: &str, max_indent: usize) -> String {
     let mut in_str = false;
     let tab = "    ";
     let mut last_c = ' ';
-    
+
     for c in text.chars() {
         match c {
             ' ' if !in_str => {
@@ -721,7 +727,7 @@ pub fn pretty(text: &str, max_indent: usize) -> String {
                     result.push('\n');
                     indent -= 1;
                     result.push_str(&tab.repeat(indent));
-                } 
+                }
                 result.push(c);
                 level -= 1;
             }
@@ -750,7 +756,7 @@ pub fn pretty(text: &str, max_indent: usize) -> String {
                 in_str = !in_str;
                 result.push(c);
             }
-            _ => result.push(c)
+            _ => result.push(c),
         }
         last_c = c;
     }
@@ -821,7 +827,7 @@ impl From<u64> for Value {
     fn from(u: u64) -> Value {
         Value::Uint(u as u32)
     }
-}   
+}
 
 impl From<f32> for Value {
     fn from(f: f32) -> Value {
@@ -835,9 +841,14 @@ impl From<f32> for Value {
 //     }
 // }
 
-impl<T> From<Vec<T>> for Value where T: Into<Value> {
+impl<T> From<Vec<T>> for Value
+where
+    T: Into<Value>,
+{
     fn from(v: Vec<T>) -> Value {
-        let array = Array { values: v.into_iter().map(|v| v.into()).collect() };
+        let array = Array {
+            values: v.into_iter().map(|v| v.into()).collect(),
+        };
         Value::Array(array)
     }
 }
@@ -966,7 +977,10 @@ mod tests {
                 }
             }
         }
-        assert_eq!(obj.get_array_of("a")[2].as_obj().get_uint_of("timeout"), 4000);
+        assert_eq!(
+            obj.get_array_of("a")[2].as_obj().get_uint_of("timeout"),
+            4000
+        );
     }
 
     #[test]
@@ -975,5 +989,4 @@ mod tests {
         let pretty = pretty(text, 2);
         println!("{}", pretty);
     }
-
 }

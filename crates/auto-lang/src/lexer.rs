@@ -176,7 +176,8 @@ impl<'a> Lexer<'a> {
         }
         let mut text = String::new();
         while let Some(&c) = self.chars.peek() {
-            if c == endchar { // got end
+            if c == endchar {
+                // got end
                 if !text.is_empty() {
                     let tk = Token::fstr_part(self.pos(text.len()), text);
                     self.buffer.push_back(tk);
@@ -224,8 +225,8 @@ impl<'a> Lexer<'a> {
             }
         }
         // if self.peek('}') {
-            // let tk = self.single(TokenKind::RBrace, '}');
-            // self.buffer.push_back(tk);
+        // let tk = self.single(TokenKind::RBrace, '}');
+        // self.buffer.push_back(tk);
         // }
     }
 
@@ -264,6 +265,7 @@ impl<'a> Lexer<'a> {
             "has" => self.keyword_tok(TokenKind::Has, &text),
             "use" => self.keyword_tok(TokenKind::Use, &text),
             "as" => self.keyword_tok(TokenKind::As, &text),
+            "enum" => self.keyword_tok(TokenKind::Enum, &text),
             _ => {
                 // AutoUI Keywords
                 // TODO: Add an Option to not check these keywords
@@ -449,7 +451,6 @@ impl<'a> Lexer<'a> {
                     }
 
                     panic!("unknown character: `{}`", c);
-
                 }
             }
         }
@@ -472,9 +473,12 @@ impl<'a> Lexer<'a> {
     #[cfg(test)]
     fn tokens_str(&mut self) -> String {
         let tokens = self.tokens();
-        tokens.iter().map(|t| t.to_string()).collect::<Vec<String>>().join("")
+        tokens
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<String>>()
+            .join("")
     }
-
 
     fn slash_or_comment(&mut self) -> Token {
         self.chars.next();
@@ -519,7 +523,6 @@ impl<'a> Lexer<'a> {
             self.single(TokenKind::Div, '/')
         }
     }
-
 }
 
 #[cfg(test)]
@@ -535,20 +538,14 @@ mod tests {
     fn test_lexer() {
         let code = "(123)";
         let tokens = parse_token_strings(code);
-        assert_eq!(
-            tokens,
-            "<(><int:123><)>"
-        );
+        assert_eq!(tokens, "<(><int:123><)>");
     }
 
     #[test]
     fn test_str() {
         let code = "\"Hello, World!\"";
         let tokens = parse_token_strings(code);
-        assert_eq!(
-            tokens,
-            "<str:Hello, World!>"
-        );
+        assert_eq!(tokens, "<str:Hello, World!>");
     }
 
     #[test]
@@ -557,7 +554,6 @@ mod tests {
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<int:1><..><int:5>");
     }
-
 
     #[test]
     fn test_pair() {
@@ -571,21 +567,30 @@ mod tests {
     fn test_fstr() {
         let code = r#"f"hello $you again""#;
         let tokens = parse_token_strings(code);
-        assert_eq!(tokens, "<fstrs><fstrp:hello ><$><ident:you><fstrp: again><fstre>");
+        assert_eq!(
+            tokens,
+            "<fstrs><fstrp:hello ><$><ident:you><fstrp: again><fstre>"
+        );
     }
 
     #[test]
     fn test_fstr_expr() {
         let code = r#"f"hello ${2 + 1} again""#;
         let tokens = parse_token_strings(code);
-        assert_eq!(tokens, "<fstrs><fstrp:hello ><$><{><int:2><+><int:1><}><fstrp: again><fstre>");
+        assert_eq!(
+            tokens,
+            "<fstrs><fstrp:hello ><$><{><int:2><+><int:1><}><fstrp: again><fstre>"
+        );
     }
 
     #[test]
     fn test_tick_str() {
         let code = r#"`hello $you again`"#;
         let tokens = parse_token_strings(code);
-        assert_eq!(tokens, "<fstrs><fstrp:hello ><$><ident:you><fstrp: again><fstre>");
+        assert_eq!(
+            tokens,
+            "<fstrs><fstrp:hello ><$><ident:you><fstrp: again><fstre>"
+        );
     }
 
     #[test]
@@ -600,7 +605,10 @@ mod tests {
     fn test_fstr_multi() {
         let code = r#"`hello $name ${age}`"#;
         let tokens = parse_token_strings(code);
-        assert_eq!(tokens, "<fstrs><fstrp:hello ><$><ident:name><fstrp: ><$><{><ident:age><}><fstre>");
+        assert_eq!(
+            tokens,
+            "<fstrs><fstrp:hello ><$><ident:name><fstrp: ><$><{><ident:age><}><fstre>"
+        );
     }
 
     #[test]
@@ -621,7 +629,10 @@ mod tests {
     fn test_path() {
         let code = "a.b.c: x, y";
         let tokens = parse_token_strings(code);
-        assert_eq!(tokens, "<ident:a><.><ident:b><.><ident:c><:><ident:x><,><ident:y>");
+        assert_eq!(
+            tokens,
+            "<ident:a><.><ident:b><.><ident:c><:><ident:x><,><ident:y>"
+        );
     }
 
     #[test]
@@ -644,7 +655,10 @@ mod tests {
         let mut lexer = Lexer::new(fstr);
         lexer.set_fstr_note('#');
         let tokens = lexer.tokens_str();
-        assert_eq!(tokens, "<fstrs><fstrp:hello ><#><{><int:2><+><int:1><}><fstrp: again><fstre>");
+        assert_eq!(
+            tokens,
+            "<fstrs><fstrp:hello ><#><{><int:2><+><int:1><}><fstrp: again><fstre>"
+        );
     }
 
     #[test]
