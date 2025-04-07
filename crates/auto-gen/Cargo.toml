@@ -1,0 +1,16 @@
+[package]
+name = "auto-gen"
+version = "0.1.0"
+edition = "2021"
+description = "AutoGen is a automatic code generater, supporting generation of JSON/C/Rust/"
+homepage = "https://gitee.com/auto-stack/auto-gen"
+repository = "https://gitee.com/auto-stack/auto-gen"
+readme = "README.md"
+license = "Proprietary"
+keywords = ["automation", "language", "code generation"]
+
+[dependencies]
+clap = { workspace = true }
+auto-lang = { workspace = true }
+auto-val = { workspace = true }
+auto-atom = { workspace = true }

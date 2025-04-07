@@ -4,8 +4,10 @@ resolver = "2"
 
 
 [workspace.dependencies]
+auto-lang = { path = "crates/auto-lang" }
 auto-val = { path = "crates/auto-val" }
 auto-atom = { path = "crates/auto-atom" }
+auto-gen = { path = "crates/auto-gen" }
 clap = { version = "4.5.17", features = ["derive"] }
 rustyline = { version = "14.0.0", features = ["with-file-history"] }
 strum = "0.26"
@@ -16,4 +18,3 @@ ecow = "0.2.3"
 normalize-path = "0.2.1"
 regex = "1.11.1"
 glob-match = "0.2.1"
-
