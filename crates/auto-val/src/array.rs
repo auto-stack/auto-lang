@@ -1,5 +1,5 @@
-use crate::Value;
 use crate::AutoStr;
+use crate::Value;
 use std::fmt::{self, Formatter};
 use std::ops::{Index, IndexMut};
 
@@ -38,7 +38,9 @@ impl Array {
     }
 
     pub fn from_vec(values: Vec<impl Into<Value>>) -> Self {
-        Array { values: values.into_iter().map(|v| v.into()).collect() }
+        Array {
+            values: values.into_iter().map(|v| v.into()).collect(),
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -48,17 +50,21 @@ impl Array {
     pub fn push(&mut self, value: impl Into<Value>) {
         self.values.push(value.into());
     }
-    
+
     pub fn iter(&self) -> impl Iterator<Item = &Value> {
         self.values.iter()
     }
-    
+
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Value> {
         self.values.iter_mut()
     }
 
     pub fn to_astr(&self) -> AutoStr {
         self.to_string().into()
+    }
+
+    pub fn extend(&mut self, other: &Array) {
+        self.values.extend(other.values.iter().cloned());
     }
 }
 
@@ -90,4 +96,3 @@ pub fn print_array(f: &mut Formatter<'_>, value: &Array) -> fmt::Result {
     }
     write!(f, "]")
 }
-

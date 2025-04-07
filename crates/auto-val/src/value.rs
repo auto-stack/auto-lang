@@ -379,8 +379,8 @@ impl Value {
         pretty(format!("{}", self).as_str(), max_indent)
     }
 
-    pub fn to_string(&self) -> AutoStr {
-        format!("{}", self).into()
+    pub fn to_string(&self) -> String {
+        format!("{}", self)
     }
 
     pub fn to_astr(&self) -> AutoStr {
