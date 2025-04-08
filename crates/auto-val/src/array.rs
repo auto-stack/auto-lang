@@ -32,6 +32,12 @@ impl Iterator for Array {
     }
 }
 
+impl Default for Array {
+    fn default() -> Self {
+        Array::new()
+    }
+}
+
 impl Array {
     pub fn new() -> Self {
         Self { values: vec![] }

@@ -82,12 +82,43 @@ impl AutoGen {
             let out_name = replace_name(mold.name.clone(), atom_name.clone()).to_lowercase();
             let out_file = self.out.join(&out_name);
             println!("out_file: {}", out_file.to_astr());
-            self.gen_one(&mold, &self.data, &out_file);
+            self.gen_one(&mold, &out_file);
         }
         self.data.to_astr()
     }
 
-    fn gen_one(&self, mold: &Mold, data: &Atom, out_file: &AutoPath) {
+    pub fn gen_str(&self) -> AutoStr {
+        let atom_name = self.data.root.main_arg().to_astr();
+        let mut result = String::new();
+        for mold in self.molds.iter() {
+            //TODO: rename mold to pac name
+            println!("mold: {}", mold.name);
+            println!("atom_name: {}", atom_name);
+            let out_name = replace_name(mold.name.clone(), atom_name.clone()).to_lowercase();
+            let out_file = self.out.join(&out_name);
+            println!("out_file: {}", out_file.to_astr());
+            let code = self.gen_one_str(&mold);
+            result.push_str(&code);
+        }
+        result.into()
+    }
+
+    fn gen_one_str(&self, mold: &Mold) -> AutoStr {
+        let mut universe = auto_lang::Universe::new();
+        universe.merge_atom(&self.data);
+        let mut inter =
+            auto_lang::interp::Interpreter::with_scope(universe).with_fstr_note(self.note);
+        let result = inter.eval_template(&mold.code);
+        match result {
+            Ok(result) => result.to_astr(),
+            Err(e) => {
+                println!("error: {}", e);
+                mold.code.clone()
+            }
+        }
+    }
+
+    fn gen_one(&self, mold: &Mold, out_file: &AutoPath) {
         let mut universe = auto_lang::Universe::new();
         universe.merge_atom(&self.data);
         let mut inter =

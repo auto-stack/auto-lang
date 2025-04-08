@@ -51,6 +51,10 @@ impl Value {
         Value::Error(text.into())
     }
 
+    pub fn empty_array() -> Self {
+        Value::Array(Array::default())
+    }
+
     pub fn array(items: impl Into<Array>) -> Self {
         Value::Array(items.into())
     }
