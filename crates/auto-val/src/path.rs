@@ -1,8 +1,8 @@
 use crate::AutoStr;
-use normalize_path::NormalizePath;
-use std::path::{Path, PathBuf};
 use glob_match::glob_match;
+use normalize_path::NormalizePath;
 use std::fmt;
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AutoPath {
@@ -15,8 +15,17 @@ pub trait PathBufExt {
 
 impl PathBufExt for PathBuf {
     fn unified(&self) -> AutoStr {
-        let res = self.as_path().normalize().to_string_lossy().replace("\\", "/").into();
-        if res == "" { ".".into() } else { res }
+        let res = self
+            .as_path()
+            .normalize()
+            .to_string_lossy()
+            .replace("\\", "/")
+            .into();
+        if res == "" {
+            ".".into()
+        } else {
+            res
+        }
     }
 }
 
@@ -122,8 +131,21 @@ impl AutoPath {
             self.clone()
         }
     }
-}
 
+    pub fn head(&self) -> AutoPath {
+        let c = self.path.components().next();
+        match c {
+            Some(c) => match c {
+                Component::Normal(s) => AutoPath::from(s.to_str().unwrap()),
+                Component::CurDir => AutoPath::from("."),
+                Component::ParentDir => AutoPath::from(".."),
+                Component::RootDir => AutoPath::from("/"),
+                _ => self.clone(),
+            },
+            None => self.clone(),
+        }
+    }
+}
 
 impl From<PathBuf> for AutoPath {
     fn from(path: PathBuf) -> Self {
@@ -188,5 +210,12 @@ mod tests {
     fn test_workspace_root() {
         let path = AutoPath::crate_root();
         assert_eq!(path.filename(), "auto-val");
+    }
+
+    #[test]
+    fn test_head() {
+        let path = AutoPath::new("lib/servcie/test.txt");
+        let head = path.head();
+        assert_eq!(head.to_astr(), "lib");
     }
 }

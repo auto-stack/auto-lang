@@ -1,11 +1,11 @@
-use crate::AutoStr;
+use crate::meta::{Arg, Args, MetaID};
 use crate::obj::Obj;
-use crate::types::Type;
-use crate::meta::{Args, MetaID, Arg};
-use crate::value::Value;
 use crate::pair::ValueKey;
-use std::fmt;
+use crate::types::Type;
+use crate::value::Value;
+use crate::AutoStr;
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
@@ -18,7 +18,13 @@ pub struct Node {
 
 impl Node {
     pub fn new(name: impl Into<AutoStr>) -> Self {
-        Self { name: name.into(), args: Args::new(), props: Obj::new(), nodes: vec![], body: MetaID::Nil }
+        Self {
+            name: name.into(),
+            args: Args::new(),
+            props: Obj::new(),
+            nodes: vec![],
+            body: MetaID::Nil,
+        }
     }
 
     pub fn title(&self) -> AutoStr {
@@ -81,7 +87,11 @@ impl Node {
 
     pub fn get_nodes(&self, name: impl Into<AutoStr>) -> Vec<Node> {
         let name = name.into();
-        self.nodes.iter().filter(|n| *n.name == name).map(|n| n.clone()).collect()
+        self.nodes
+            .iter()
+            .filter(|n| *n.name == name)
+            .map(|n| n.clone())
+            .collect()
     }
 
     pub fn set_prop(&mut self, key: impl Into<ValueKey>, value: impl Into<Value>) {
@@ -125,10 +135,15 @@ impl fmt::Display for Node {
         if !self.args.is_empty() {
             write!(f, "(")?;
             // don't display pair args as they are displayed in the props
-            let args = self.args.args.iter().filter(|arg| match arg {
-                Arg::Pair(_, _) => false,
-                _ => true,
-            }).collect::<Vec<_>>();
+            let args = self
+                .args
+                .args
+                .iter()
+                .filter(|arg| match arg {
+                    Arg::Pair(_, _) => false,
+                    _ => true,
+                })
+                .collect::<Vec<_>>();
 
             for (i, arg) in args.iter().enumerate() {
                 write!(f, "{}", arg)?;
@@ -154,14 +169,13 @@ impl fmt::Display for Node {
             }
             write!(f, "}}")?;
         }
-        
+
         if self.body != MetaID::Nil {
             write!(f, " {}", self.body)?;
         }
         Ok(())
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Instance {

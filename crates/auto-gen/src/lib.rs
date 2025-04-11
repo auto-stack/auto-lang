@@ -79,7 +79,7 @@ impl AutoGen {
             //TODO: rename mold to pac name
             println!("mold: {}", mold.name);
             println!("atom_name: {}", atom_name);
-            let out_name = replace_name(mold.name.clone(), atom_name.clone()).to_lowercase();
+            let out_name = replace_name(mold.name.clone(), atom_name.clone());
             let out_file = self.out.join(&out_name);
             println!("out_file: {}", out_file.to_astr());
             self.gen_one(&mold, &out_file);
@@ -94,7 +94,7 @@ impl AutoGen {
             //TODO: rename mold to pac name
             println!("mold: {}", mold.name);
             println!("atom_name: {}", atom_name);
-            let out_name = replace_name(mold.name.clone(), atom_name.clone()).to_lowercase();
+            let out_name = replace_name(mold.name.clone(), atom_name.clone());
             let out_file = self.out.join(&out_name);
             println!("out_file: {}", out_file.to_astr());
             let code = self.gen_one_str(&mold);

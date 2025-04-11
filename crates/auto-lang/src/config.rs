@@ -1,9 +1,9 @@
 use crate::eval_config;
 use crate::interp;
+use crate::AutoResult;
 use auto_val::Obj;
 use auto_val::{AutoStr, Node, Value};
 use std::path::Path;
-use crate::AutoResult;
 pub struct AutoConfig {
     pub code: String,
     pub root: Node,
