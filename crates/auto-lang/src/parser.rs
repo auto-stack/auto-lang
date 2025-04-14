@@ -389,6 +389,7 @@ impl<'a> Parser<'a> {
                             Expr::Ident(name) => Key::NamedKey(name.clone()),
                             Expr::Int(i) => Key::IntKey(*i),
                             Expr::Bool(b) => Key::BoolKey(*b),
+                            Expr::Str(s) => Key::StrKey(s.clone()),
                             _ => return error_pos!("Invalid key: {}", lhs),
                         };
                         let rhs = self.expr()?;
