@@ -313,12 +313,10 @@ $ }"#;
 
     #[test]
     fn test_array_of_objects() {
-        let code = r#"[ 1,
-        2
-        ]
-        "#;
+        let code = "[1, 2]";
         let result = run(code).unwrap();
         println!("{}", result);
+        assert_eq!(result, "[1, 2]");
     }
 
     #[test]

@@ -916,12 +916,14 @@ impl<'a> Parser<'a> {
     // TODO: search path from System Env, Default Locations and etc.
     pub fn import(&mut self, uses: &Use) -> Result<(), ParseError> {
         let path = uses.paths.join(".");
+        println!("debug: use path: {}", path);
         // locate file from path
         let base_path = std::env::current_dir().unwrap();
         let base_path = base_path.as_path();
         let std_path = base_path.parent().unwrap();
         let std_path = std_path.parent().unwrap();
         let std_path = std_path.join("std");
+        println!("debug: std path: {}", std_path.to_str().unwrap());
         // println!("std_path: {}", std_path.display());
         if !path.starts_with("std.") {
             return error_pos!("Invalid import path: {}", path);
@@ -2102,7 +2104,7 @@ exe(hello) {
 
     #[test]
     fn test_import() {
-        let code = "use std.math.square";
+        let code = "use std.math: square";
         let scope = Universe::new();
         let mut parser = Parser::new(&code, Rc::new(RefCell::new(scope)));
         let ast = parser.parse().unwrap();
