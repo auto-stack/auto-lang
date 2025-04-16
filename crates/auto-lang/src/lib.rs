@@ -876,4 +876,20 @@ square(15)
         let result = run(code).unwrap();
         assert_eq!(result, "1");
     }
+
+    #[test]
+    fn test_if_with_bool() {
+        let code = r#"
+            var succ = true
+            if succ {
+                print("I won!")
+                "succ"
+            } else {
+                print("You failed!")
+                "failed"
+            }
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "succ");
+    }
 }

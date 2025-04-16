@@ -117,6 +117,21 @@ impl Evaler {
                                 }
                             }
                         }
+                        Value::ConfigBody(body) => {
+                            for item in body.items.into_iter() {
+                                match item {
+                                    ConfigItem::Pair(pair) => {
+                                        node.set_prop(pair.key, pair.value);
+                                    }
+                                    ConfigItem::Object(o) => {
+                                        node.merge_obj(o);
+                                    }
+                                    ConfigItem::Node(n) => {
+                                        node.add_kid(n.clone());
+                                    }
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -1098,6 +1113,21 @@ impl Evaler {
                                         }
                                     }
                                     _ => {}
+                                }
+                            }
+                        }
+                        Value::ConfigBody(body) => {
+                            for item in body.items.into_iter() {
+                                match item {
+                                    ConfigItem::Pair(pair) => {
+                                        props.set(pair.key, pair.value);
+                                    }
+                                    ConfigItem::Object(o) => {
+                                        props.merge(&o);
+                                    }
+                                    ConfigItem::Node(n) => {
+                                        nodes.push(n.clone());
+                                    }
                                 }
                             }
                         }

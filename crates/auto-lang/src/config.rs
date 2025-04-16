@@ -49,3 +49,27 @@ impl AutoConfig {
         self.root.nodes.iter().map(|n| n.title()).collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_with_if() -> AutoResult<()> {
+        let code = r#"
+            name: "hello"
+
+            var a = true
+
+            if a {
+                lib("alib") {}
+            }
+        "#;
+
+        let config = AutoConfig::from_code(code, &Obj::default())?;
+        assert_eq!(config.name(), "hello");
+        assert_eq!(config.list_target_names(), vec!["lib(\"alib\")"]);
+
+        Ok(())
+    }
+}
