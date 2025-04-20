@@ -4,6 +4,7 @@ use crate::lexer::Lexer;
 use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
 use crate::universe::Universe;
+use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
 use std::cell::RefCell;
@@ -392,7 +393,7 @@ impl<'a> Parser<'a> {
                             Expr::Str(s) => Key::StrKey(s.clone()),
                             _ => return error_pos!("Invalid key: {}", lhs),
                         };
-                        let rhs = self.expr()?;
+                        let rhs = self.pair_expr()?;
                         lhs = Expr::Pair(Pair {
                             key,
                             value: Box::new(rhs),
@@ -577,10 +578,20 @@ impl<'a> Parser<'a> {
         Ok(entries)
     }
 
+    pub fn pair_expr(&mut self) -> Result<Expr, ParseError> {
+        let exp = self.expr_pratt(0)?;
+        if let Expr::Ident(ident) = &exp {
+            if !self.exists(ident) {
+                return Ok(Expr::Str(ident.clone()));
+            }
+        }
+        Ok(exp)
+    }
+
     pub fn pair(&mut self) -> Result<Pair, ParseError> {
         let key = self.key()?;
         self.expect(TokenKind::Colon)?;
-        let value = self.expr()?;
+        let value = self.pair_expr()?;
         Ok(Pair {
             key,
             value: Box::new(value),

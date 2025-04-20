@@ -18,13 +18,12 @@ fn try_command(line: &str, interpreter: &mut interp::Interpreter) -> CmdResult {
             println!("help - show this help");
             CmdResult::Continue
         }
-        "q" | "quit" => {
-            CmdResult::Exit
-        }
+        "q" | "quit" => CmdResult::Exit,
         "load" => {
             if words.len() == 2 {
                 let filename = words[1];
-                match interpreter.interpret(filename) {
+                println!("Loading file: {}", filename);
+                match interpreter.load_file(filename) {
                     Ok(_) => CmdResult::Continue,
                     Err(error) => {
                         eprintln!("Error: {}", error);
@@ -36,22 +35,36 @@ fn try_command(line: &str, interpreter: &mut interp::Interpreter) -> CmdResult {
                 CmdResult::Continue
             }
         }
+        "load_config" => {
+            if words.len() == 2 {
+                let filename = words[1];
+                println!("Loading config file: {}", filename);
+                match interpreter.load_config(filename) {
+                    Ok(_) => CmdResult::Continue,
+                    Err(error) => {
+                        eprintln!("Error: {}", error);
+                        CmdResult::Continue
+                    }
+                }
+            } else {
+                eprintln!("Usage: load_config <filename>");
+                CmdResult::Continue
+            }
+        }
         "scope" => {
             // interpreter.dump_scope();
             CmdResult::Continue
         }
-        _ => {
-            match interpreter.interpret(line) {
-                Ok(_) => {
-                    println!("{}", interpreter.result);
-                    CmdResult::Continue
-                }
-                Err(error) => {
-                    eprintln!("Error: {}", error);
-                    CmdResult::Continue
-                }
+        _ => match interpreter.interpret(line) {
+            Ok(_) => {
+                println!("{}", interpreter.result);
+                CmdResult::Continue
             }
-        }
+            Err(error) => {
+                eprintln!("Error: {}", error);
+                CmdResult::Continue
+            }
+        },
     }
 }
 

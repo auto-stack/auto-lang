@@ -1,5 +1,6 @@
 use auto_val::AutoStr;
 use normalize_path::NormalizePath;
+use roxmltree::{Document, NodeType};
 use std::path::Path;
 
 /// Get the file name from a path.
@@ -89,6 +90,90 @@ pub fn pretty(text: &str) -> AutoStr {
     result.into()
 }
 
+/// Compacts an XML string by parsing it and regenerating without extra whitespace
+///
+/// # Arguments
+/// * `xml` - The XML string to compact
+///
+/// # Returns
+/// A compacted version of the XML string, or an error message if parsing fails
+pub fn compact_xml(xml: &str) -> Result<String, String> {
+    // Parse the XML
+    let doc = match Document::parse(xml) {
+        Ok(doc) => doc,
+        Err(e) => return Err(format!("XML parsing error: {}", e)),
+    };
+
+    let mut result = String::new();
+
+    // Process the XML declaration if present
+    // if let Some(decl) = doc.declaration() {
+    //     result.push_str(&format!(
+    //         "<?xml version=\"{}\" encoding=\"{}\"?>",
+    //         decl.version().unwrap_or("1.0"),
+    //         decl.encoding().unwrap_or("UTF-8")
+    //     ));
+    // }
+
+    // Recursively process nodes
+    fn process_node(node: roxmltree::Node, output: &mut String) {
+        match node.node_type() {
+            NodeType::Element => {
+                // Open tag
+                output.push('<');
+                output.push_str(node.tag_name().name());
+
+                // Attributes
+                for attr in node.attributes() {
+                    output.push(' ');
+                    output.push_str(attr.name());
+                    output.push_str("=\"");
+                    output.push_str(&attr.value().replace("\"", "&quot;"));
+                    output.push('"');
+                }
+
+                if !node.has_children() {
+                    output.push_str("/>");
+                } else {
+                    output.push('>');
+
+                    // Process children
+                    for child in node.children() {
+                        process_node(child, output);
+                    }
+
+                    // Close tag
+                    output.push_str("</");
+                    output.push_str(node.tag_name().name());
+                    output.push('>');
+                }
+            }
+            NodeType::Text => {
+                // Compact whitespace in text, but preserve it
+                let text = node.text().unwrap();
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    output.push_str(&text.split_whitespace().collect::<Vec<_>>().join(" "));
+                }
+            }
+            NodeType::Comment => {
+                // Preserve comments
+                output.push_str("<!--");
+                output.push_str(node.text().unwrap_or(""));
+                output.push_str("-->");
+            }
+            _ => {}
+        }
+    }
+
+    // Process all root-level nodes
+    for child in doc.root().children() {
+        process_node(child, &mut result);
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,9 +204,20 @@ mod tests {
     }
 
     #[test]
-    fn test_pretty_print_sexp() {
+    fn test_pretty_print() {
         let text = "(code (stmt (pair (name name) (str \"hello\"))) (stmt (pair (name version) (str \"0.1.0\"))) (stmt (node (name exe) (args (str \"hello\")) (props (pair (name dir) (str \"src\")) (pair (name main) (str \"main.c\")))))";
         let pretty = pretty(text);
         println!("{}", pretty);
+    }
+
+    #[test]
+    fn test_xml_compact() {
+        let xml = r#"
+            <root>
+                <child attr="value">text</child>
+            </root>
+        "#;
+        let compact = compact_xml(xml).unwrap();
+        assert_eq!(compact, r#"<root><child attr="value">text</child></root>"#);
     }
 }

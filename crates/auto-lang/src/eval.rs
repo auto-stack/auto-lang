@@ -729,9 +729,9 @@ impl Evaler {
                 self.universe.borrow_mut().set_local_val(&name, val.clone());
             }
             Arg::Name(name) => {
-                let name = &name;
-                let val = Value::Str(name.clone().into());
-                self.universe.borrow_mut().set_local_val(&name, val.clone());
+                self.universe
+                    .borrow_mut()
+                    .set_local_val(name.as_str(), Value::Str(name.clone()));
             }
         }
     }
@@ -842,6 +842,38 @@ impl Evaler {
         Value::Void
     }
 
+    fn dot_node(&mut self, node: &auto_val::Node, right: &Expr) -> Option<Value> {
+        let Expr::Ident(name) = right else {
+            return None;
+        };
+        if name == "name" {
+            return Some(Value::Str(node.name.clone()));
+        }
+        let mut name = name.clone();
+        println!("Lookup {} in node", name);
+        // 1. lookup in the props
+        let v = node.get_prop(&name);
+        if v.is_nil() {
+            // 2.1 check if nodes with the name exists
+            let nodes = node.get_nodes(&name);
+            if nodes.len() > 0 {
+                return Some(Value::array_of(nodes.iter().map(|n| n.clone()).collect()));
+            }
+            // 2.2 lookup in sub nodes
+            if name.ends_with("s") {
+                name = name[..name.len() - 1].into();
+            }
+            let nodes = node.get_nodes(&name);
+            if nodes.len() > 0 {
+                Some(Value::array_of(nodes.iter().map(|n| n.clone()).collect()))
+            } else {
+                None
+            }
+        } else {
+            Some(v)
+        }
+    }
+
     fn dot(&mut self, left: &Expr, right: &Expr) -> Value {
         let left_value = self.eval_expr(left);
         let res: Option<Value> = match &left_value {
@@ -861,29 +893,7 @@ impl Evaler {
                 Expr::Bool(key) => obj.lookup(&key.to_string()),
                 _ => None,
             },
-            Value::Node(node) => match right {
-                Expr::Ident(name) => {
-                    let mut name = name.clone();
-                    // 1. lookup in the props
-                    let v = node.get_prop(&name);
-                    match v {
-                        Value::Nil => {
-                            // 2. lookup in sub nodes
-                            if name.ends_with("s") {
-                                name = name[..name.len() - 1].into();
-                            }
-                            let nodes = node.get_nodes(&name);
-                            if nodes.len() > 0 {
-                                Some(Value::array_of(nodes.iter().map(|n| n.clone()).collect()))
-                            } else {
-                                None
-                            }
-                        }
-                        _ => Some(v),
-                    }
-                }
-                _ => None,
-            },
+            Value::Node(node) => self.dot_node(node, right),
             Value::Widget(widget) => match right {
                 Expr::Ident(name) => match name.as_str() {
                     "model" => Some(Value::Model(widget.model.clone())),
@@ -926,6 +936,7 @@ impl Evaler {
                 }
                 _ => None,
             },
+
             _ => {
                 // try to lookup method
                 match right {
@@ -1085,6 +1096,11 @@ impl Evaler {
                 for stmt in node.body.stmts.iter() {
                     let val = self.eval_stmt(stmt);
                     match val {
+                        Value::Str(s) => {
+                            let mut n = auto_val::Node::new("text");
+                            n.text = s.clone();
+                            nodes.push(n);
+                        }
                         Value::Pair(key, value) => {
                             self.universe
                                 .borrow_mut()
@@ -1150,6 +1166,7 @@ impl Evaler {
             name: node.name.clone().into(),
             args,
             props,
+            text: AutoStr::new(),
             nodes,
             body,
         })

@@ -21,6 +21,10 @@ impl AutoConfig {
         Self::from_code(content, args)
     }
 
+    pub fn new(code: impl Into<String>) -> AutoResult<Self> {
+        Self::from_code(code, &Obj::EMPTY)
+    }
+
     pub fn from_code(code: impl Into<String>, args: &Obj) -> AutoResult<Self> {
         let code = code.into();
         let mut interpreter = eval_config(&code, args)?;
@@ -47,6 +51,10 @@ impl AutoConfig {
 
     pub fn list_target_names(&self) -> Vec<AutoStr> {
         self.root.nodes.iter().map(|n| n.title()).collect()
+    }
+
+    pub fn to_xml(&self) -> AutoStr {
+        AutoStr::new()
     }
 }
 

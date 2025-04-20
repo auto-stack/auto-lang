@@ -1,0 +1,10 @@
+[package]
+name = "auto-xml"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+auto-lang = { workspace = true }
+auto-val = { workspace = true }
+auto-atom = { workspace = true }
+roxmltree = { workspace = true }

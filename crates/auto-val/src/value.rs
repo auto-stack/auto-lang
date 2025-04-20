@@ -277,6 +277,7 @@ static NODE_NIL: Node = Node {
     args: Args::EMPTY,
     props: Obj::EMPTY,
     nodes: vec![],
+    text: AutoStr::new(),
     body: MetaID::Nil,
 };
 
@@ -484,6 +485,14 @@ pub fn add(a: Value, b: Value) -> Value {
         // Current policy: convert rhs to lhs type if possible
         (Value::Uint(left), Value::Int(right)) => Value::Uint(left + right as u32),
         (Value::Int(left), Value::Uint(right)) => Value::Int(left + right as i32),
+        // str
+        (Value::Str(left), Value::Str(right)) => Value::Str(format!("{}{}", left, right).into()),
+        // array
+        (Value::Array(left), Value::Array(right)) => Value::Array({
+            let mut res = left.clone();
+            res.extend(&right);
+            res
+        }),
         // TODO: what if sum is bigger than u8?
         _ => Value::Nil,
     }

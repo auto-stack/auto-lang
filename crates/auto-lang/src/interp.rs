@@ -1,9 +1,10 @@
-use crate::eval::{Evaler, EvalMode};
+use crate::eval::{EvalMode, Evaler};
 use crate::parser::Parser;
 use crate::universe::Universe;
-use auto_val::{Value, AutoStr};
-use std::rc::Rc;
+use crate::AutoResult;
+use auto_val::{AutoStr, Value};
 use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct Importer {
     pub path: AutoStr,
@@ -20,9 +21,9 @@ pub struct Interpreter {
 impl Interpreter {
     pub fn new() -> Self {
         let scope = Rc::new(RefCell::new(Universe::new()));
-        let interpreter = Self { 
+        let interpreter = Self {
             evaler: Evaler::new(scope.clone()),
-            scope, 
+            scope,
             result: Value::Nil,
             fstr_note: '$',
         };
@@ -36,15 +37,15 @@ impl Interpreter {
 
     pub fn with_scope(scope: Universe) -> Self {
         let scope = Rc::new(RefCell::new(scope));
-        let interpreter = Self { 
+        let interpreter = Self {
             evaler: Evaler::new(scope.clone()),
-            scope, 
+            scope,
             fstr_note: '$',
-            result: Value::Nil 
+            result: Value::Nil,
         };
         interpreter
     }
-    
+
     pub fn with_eval_mode(mut self, mode: EvalMode) -> Self {
         self.evaler = self.evaler.with_mode(mode);
         self
@@ -67,7 +68,11 @@ impl Interpreter {
         self.eval_template_with_note(code, self.fstr_note)
     }
 
-    pub fn eval_template_with_note(&mut self, code: impl Into<AutoStr>, note: char) -> Result<Value, String> {
+    pub fn eval_template_with_note(
+        &mut self,
+        code: impl Into<AutoStr>,
+        note: char,
+    ) -> Result<Value, String> {
         self.evaler.set_mode(EvalMode::TEMPLATE);
         let code = code.into();
         let flipped = flip_template(code.as_str(), note);
@@ -78,11 +83,29 @@ impl Interpreter {
     }
 
     pub fn load_file(&mut self, filename: &str) -> Result<Value, String> {
-        let code = std::fs::read_to_string(filename).map_err(|e| format!("Failed to read file: {}", e))?;
+        let code =
+            std::fs::read_to_string(filename).map_err(|e| format!("Failed to read file: {}", e))?;
         self.interpret(&code)?;
         Ok(self.result.clone())
     }
 
+    pub fn load_config(&mut self, filename: &str) -> AutoResult<Value> {
+        let code =
+            std::fs::read_to_string(filename).map_err(|e| format!("Failed to read file: {}", e))?;
+        self.result = self.eval_config(&code)?;
+        self.scope
+            .borrow_mut()
+            .set_global("result", self.result.clone());
+        Ok(self.result.clone())
+    }
+
+    fn eval_config(&mut self, code: &str) -> AutoResult<Value> {
+        let mut parser = Parser::new_with_note(code, self.scope.clone(), self.fstr_note);
+        let ast = parser.parse().map_err(|e| e.to_string())?;
+        let mut config_evaler = Evaler::new(self.scope.clone()).with_mode(EvalMode::CONFIG);
+        let res = config_evaler.eval(&ast);
+        Ok(res)
+    }
 
     pub fn eval(&mut self, code: &str) -> Value {
         match self.interpret(code) {
@@ -122,7 +145,8 @@ pub fn flip_template(template: &str, fnote: char) -> String {
         }
         let fnote_str = format!("{}", fnote);
         let fnote_brace_pat = format!("{}{{", fnote);
-        if trimmed.starts_with(fnote_str.as_str()) && !trimmed.starts_with(fnote_brace_pat.as_str()) {
+        if trimmed.starts_with(fnote_str.as_str()) && !trimmed.starts_with(fnote_brace_pat.as_str())
+        {
             let code = &trimmed[1..].trim();
             result.push(format!("{}", code));
         } else {
@@ -135,7 +159,6 @@ pub fn flip_template(template: &str, fnote: char) -> String {
     }
     result.join("\n")
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -157,7 +180,9 @@ int main() {
 "#;
         let result = flip_template(code, '$');
 
-        assert_eq!(result, r#"`#include <stdio.h>`
+        assert_eq!(
+            result,
+            r#"`#include <stdio.h>`
 ``
 `int main() {`
 `    printf("Hello, $name!\n");`
@@ -168,7 +193,8 @@ for i in 0..10 {
 ``
 `    return 0;`
 `}`
-``"#);
+``"#
+        );
     }
 
     #[test]
@@ -182,14 +208,17 @@ $ for row in rows {
 $ }
 "#;
         let result = flip_template(template, '$');
-        assert_eq!(result, r#"``
+        assert_eq!(
+            result,
+            r#"``
 for row in rows {
 `{`
 `    name: ${row.name},`
 `    age: ${row.age},`
 `}${mid(",")}`
 }
-``"#);
+``"#
+        );
     }
 
     #[test]
@@ -205,13 +234,16 @@ for row in rows {
         scope.set_global("name", "demo_project".into());
         let mut inter = Interpreter::with_scope(scope).with_fstr_note('#');
         let result = inter.eval_template_with_note(code, '#').unwrap();
-        assert_eq!(result.repr(), r#"<workspace>
+        assert_eq!(
+            result.repr(),
+            r#"<workspace>
     <project>
         <path>$WS_DIR$\demo_project.ewp</path>
     </project>
     <batchBuild />
 </workspace>
-"#);
+"#
+        );
     }
 
     #[test]
@@ -222,11 +254,14 @@ for row in rows {
 @ }
 "#;
         let result = flip_template(code, '@');
-        assert_eq!(result, r#"``
+        assert_eq!(
+            result,
+            r#"``
 for lib in libs {
 `    <name>@{lib.name}</name>`
 }
-``"#);
+``"#
+        );
     }
 
     #[test]
@@ -238,6 +273,5 @@ for lib in libs {
 
         let s1 = "@ for i in 0..10 {";
         assert!(s1.starts_with(pat.as_str()));
-
     }
 }

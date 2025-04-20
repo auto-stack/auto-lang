@@ -13,6 +13,7 @@ pub struct Node {
     pub args: Args,
     pub props: Obj,
     pub nodes: Vec<Node>,
+    pub text: AutoStr,
     pub body: MetaID,
 }
 
@@ -23,6 +24,7 @@ impl Node {
             args: Args::new(),
             props: Obj::new(),
             nodes: vec![],
+            text: AutoStr::default(),
             body: MetaID::Nil,
         }
     }
