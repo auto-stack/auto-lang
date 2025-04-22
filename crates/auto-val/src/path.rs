@@ -55,6 +55,10 @@ impl AutoPath {
         self.path.as_path()
     }
 
+    pub fn unified(&self) -> AutoStr {
+        self.path().to_path_buf().unified()
+    }
+
     pub fn filename(&self) -> AutoStr {
         let n = self.path.file_name();
         if let Some(n) = n {
