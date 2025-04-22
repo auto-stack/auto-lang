@@ -579,13 +579,14 @@ impl<'a> Parser<'a> {
     }
 
     pub fn pair_expr(&mut self) -> Result<Expr, ParseError> {
-        let exp = self.expr_pratt(0)?;
-        if let Expr::Ident(ident) = &exp {
-            if !self.exists(ident) {
-                return Ok(Expr::Str(ident.clone()));
-            }
-        }
-        Ok(exp)
+        self.rhs_expr()
+        // let exp = self.expr_pratt(0)?;
+        // if let Expr::Ident(ident) = &exp {
+        //     if !self.exists(ident) {
+        //         return Ok(Expr::Str(ident.clone()));
+        //     }
+        // }
+        // Ok(exp)
     }
 
     pub fn pair(&mut self) -> Result<Pair, ParseError> {
