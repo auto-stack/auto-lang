@@ -74,9 +74,14 @@ mod tests {
             }
         "#;
 
-        let config = AutoConfig::from_code(code, &Obj::default())?;
+        let mut config = AutoConfig::from_code(code, &Obj::default())?;
         assert_eq!(config.name(), "hello");
         assert_eq!(config.list_target_names(), vec!["lib(\"alib\")"]);
+
+        let interp = &mut config.interpreter;
+        let res = interp.eval("1 + 2");
+        println!("{}", res);
+        assert_eq!("3", res.to_string());
 
         Ok(())
     }

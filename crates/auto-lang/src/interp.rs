@@ -108,9 +108,17 @@ impl Interpreter {
     }
 
     pub fn eval(&mut self, code: &str) -> Value {
-        match self.interpret(code) {
-            Ok(_) => self.result.clone(),
-            Err(e) => Value::error(e),
+        let mut parser = Parser::new_with_note(code, self.scope.clone(), self.fstr_note);
+        let ast = parser.parse();
+        match ast {
+            Ok(ast) => {
+                let mut val = Value::Nil;
+                for stmt in ast.stmts {
+                    val = self.evaler.eval_stmt(&stmt);
+                }
+                val
+            }
+            Err(err) => Value::Error(err),
         }
     }
 }

@@ -4,7 +4,6 @@ use crate::lexer::Lexer;
 use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
 use crate::universe::Universe;
-use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
 use std::cell::RefCell;
@@ -14,6 +13,14 @@ use std::path::Path;
 use std::rc::Rc;
 
 pub type ParseError = AutoStr;
+pub type ParseResult<T> = Result<T, ParseError>;
+
+/// TODO: T should be a generic AST node type
+pub trait ParserExt {
+    fn parse(input: impl Into<AutoStr>) -> ParseResult<Self>
+    where
+        Self: Sized;
+}
 
 pub struct PostfixPrec {
     l: u8,
@@ -617,7 +624,7 @@ impl<'a> Parser<'a> {
                 Ok(Key::NamedKey(name))
             }
             TokenKind::Int => {
-                let value = self.cur.text.parse().unwrap();
+                let value = self.cur.text.as_str().parse().unwrap();
                 self.next();
                 Ok(Key::IntKey(value))
             }
@@ -677,7 +684,7 @@ impl<'a> Parser<'a> {
                     let val = u32::from_str_radix(trim, 16).unwrap();
                     Expr::Uint(val)
                 } else {
-                    let val = self.cur.text.parse::<u32>().unwrap();
+                    let val = self.cur.text.as_str().parse::<u32>().unwrap();
                     Expr::Uint(val)
                 }
             }
@@ -688,11 +695,11 @@ impl<'a> Parser<'a> {
                     let val = i32::from_str_radix(trim, 16).unwrap();
                     Expr::Int(val)
                 } else {
-                    let val = self.cur.text.parse::<i32>().unwrap();
+                    let val = self.cur.text.as_str().parse::<i32>().unwrap();
                     Expr::Int(val)
                 }
             }
-            TokenKind::Float => Expr::Float(self.cur.text.parse().unwrap()),
+            TokenKind::Float => Expr::Float(self.cur.text.as_str().parse().unwrap()),
             TokenKind::True => Expr::Bool(true),
             TokenKind::False => Expr::Bool(false),
             TokenKind::Str => Expr::Str(self.cur.text.clone()),

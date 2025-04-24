@@ -4,6 +4,8 @@ pub use types::*;
 mod enums;
 pub use enums::*;
 
+mod parsers;
+
 use auto_val::{AutoStr, Op};
 use serde::Serialize;
 use std::fmt;
@@ -13,6 +15,12 @@ pub type Name = AutoStr;
 #[derive(Debug)]
 pub struct Code {
     pub stmts: Vec<Stmt>,
+}
+
+impl Code {
+    pub fn new() -> Self {
+        Self { stmts: Vec::new() }
+    }
 }
 
 impl Default for Code {
