@@ -5,7 +5,7 @@ use crate::types::Type;
 use crate::value::Value;
 use crate::AutoStr;
 use std::collections::HashMap;
-use std::fmt;
+use std::fmt::{self, Write};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
@@ -128,6 +128,21 @@ impl Node {
             }
         }
         kids
+    }
+
+    pub fn contents(&self) -> Vec<AutoStr> {
+        let mut vec = Vec::new();
+        // props
+        for (k, v) in self.props.iter() {
+            vec.push(format!("{}: {}", k, v).into());
+            vec.push("\n".into());
+        }
+        // nodes
+        for n in self.nodes.iter() {
+            vec.push(n.to_astr());
+            vec.push("\n".into());
+        }
+        vec
     }
 }
 

@@ -2,7 +2,7 @@ use crate::eval_config;
 use crate::interp;
 use crate::AutoResult;
 use auto_val::Obj;
-use auto_val::{AutoStr, Node, Value};
+use auto_val::{AutoPath, AutoStr, Node, Value};
 use std::path::Path;
 pub struct AutoConfig {
     pub code: String,
@@ -23,6 +23,13 @@ impl AutoConfig {
 
     pub fn new(code: impl Into<String>) -> AutoResult<Self> {
         Self::from_code(code, &Obj::EMPTY)
+    }
+
+    pub fn save(&mut self, path: &AutoPath) -> AutoResult<()> {
+        let contents = self.root.contents();
+        std::fs::write(path.path(), contents.join("\n"))
+            .map_err(|e| format!("Failed to write file: {}", e))?;
+        Ok(())
     }
 
     pub fn from_code(code: impl Into<String>, args: &Obj) -> AutoResult<Self> {
