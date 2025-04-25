@@ -56,6 +56,10 @@ impl AutoConfig {
     pub fn to_xml(&self) -> AutoStr {
         AutoStr::new()
     }
+
+    pub fn eval(&mut self, code: impl Into<AutoStr>) -> Value {
+        self.interpreter.eval(code.into().as_str())
+    }
 }
 
 #[cfg(test)]

@@ -57,7 +57,7 @@ impl AutoGen {
 
     pub fn out(mut self, path: impl Into<AutoPath>) -> Self {
         let path = path.into();
-        println!("out path: {}", path.to_astr());
+        // println!("out path: {}", path.to_astr());
         self.out = path;
         // if path.is_dir() {
         // self.out = path;
@@ -77,11 +77,8 @@ impl AutoGen {
         let atom_name = self.data.root.main_arg().to_astr();
         for mold in self.molds.iter() {
             //TODO: rename mold to pac name
-            println!("mold: {}", mold.name);
-            println!("atom_name: {}", atom_name);
             let out_name = replace_name(mold.name.clone(), atom_name.clone());
             let out_file = self.out.join(&out_name);
-            println!("out_file: {}", out_file.to_astr());
             self.gen_one(&mold, &out_file);
         }
         self.data.to_astr()
@@ -92,11 +89,7 @@ impl AutoGen {
         let mut result = String::new();
         for mold in self.molds.iter() {
             //TODO: rename mold to pac name
-            println!("mold: {}", mold.name);
-            println!("atom_name: {}", atom_name);
             let out_name = replace_name(mold.name.clone(), atom_name.clone());
-            let out_file = self.out.join(&out_name);
-            println!("out_file: {}", out_file.to_astr());
             let code = self.gen_one_str(&mold);
             result.push_str(&code);
         }

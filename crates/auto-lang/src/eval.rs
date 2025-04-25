@@ -79,10 +79,10 @@ impl Evaler {
                                 let mut scope = self.universe.borrow_mut();
                                 if scope.has_arg(name) {
                                     let arg_val = scope.get_arg(name);
-                                    println!(
-                                        "replacing value of {} from {} to {}",
-                                        name, value, arg_val
-                                    );
+                                    // println!(
+                                    // "replacing value of {} from {} to {}",
+                                    // name, value, arg_val
+                                    // );
                                     value = arg_val;
                                 }
                                 scope.set_local_val(name, value.clone());
@@ -850,7 +850,6 @@ impl Evaler {
             return Some(Value::Str(node.name.clone()));
         }
         let mut name = name.clone();
-        println!("Lookup {} in node", name);
         // 1. lookup in the props
         let v = node.get_prop(&name);
         if v.is_nil() {
