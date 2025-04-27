@@ -149,6 +149,12 @@ impl AutoPath {
             None => self.clone(),
         }
     }
+
+    pub fn reverse_relative(&self) -> AutoStr {
+        // check number of parts in this unified path
+        let level = self.unified().split("/").count();
+        "../".repeat(level).into()
+    }
 }
 
 impl From<PathBuf> for AutoPath {
@@ -221,5 +227,12 @@ mod tests {
         let path = AutoPath::new("lib/servcie/test.txt");
         let head = path.head();
         assert_eq!(head.to_astr(), "lib");
+    }
+
+    #[test]
+    fn test_relative_location() {
+        let path = AutoPath::new("ghs/build");
+        let relative_loc = path.reverse_relative();
+        assert_eq!(relative_loc, "lib/servcie/test.txt");
     }
 }

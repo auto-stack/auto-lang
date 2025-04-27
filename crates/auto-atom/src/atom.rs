@@ -1,10 +1,13 @@
 use auto_val::AutoStr;
 use auto_val::{Array, Node, Value};
 use std::fmt;
+
+#[derive(Clone)]
 pub struct Atom {
     pub root: Root,
 }
 
+#[derive(Clone)]
 pub enum Root {
     Node(Node),
     Array(Array),

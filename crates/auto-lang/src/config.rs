@@ -16,8 +16,13 @@ impl AutoConfig {
     }
 
     pub fn from_file(path: &Path, args: &Obj) -> AutoResult<Self> {
-        let content =
-            std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            format!(
+                "Failed to read config file {}: {}",
+                path.to_str().unwrap(),
+                e
+            )
+        })?;
         Self::from_code(content, args)
     }
 

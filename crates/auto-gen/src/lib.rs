@@ -1,9 +1,11 @@
 use auto_atom::Atom;
+use auto_lang::AutoResult;
 use auto_val::{AutoPath, AutoStr};
 
 pub struct Mold {
     pub name: AutoStr,
     pub code: AutoStr,
+    pub is_rename: bool,
 }
 
 impl Mold {
@@ -11,7 +13,13 @@ impl Mold {
         Self {
             name: name.into(),
             code: code.into(),
+            is_rename: false,
         }
+    }
+
+    pub fn is_rename(mut self, is_rename: bool) -> Self {
+        self.is_rename = is_rename;
+        self
     }
 
     pub fn from_file(path: impl Into<AutoPath>) -> Self {
@@ -26,9 +34,9 @@ pub struct AutoGen {
     pub data: Atom,
     pub out: AutoPath,
     pub molds: Vec<Mold>, // paths to
+    pub is_rename: bool,
     note: char,
 }
-
 impl Default for AutoGen {
     fn default() -> Self {
         Self::new()
@@ -42,6 +50,7 @@ impl AutoGen {
             out: AutoPath::new("."),
             molds: Vec::new(),
             note: '$',
+            is_rename: false,
         }
     }
 
@@ -52,6 +61,11 @@ impl AutoGen {
 
     pub fn note(mut self, note: char) -> Self {
         self.note = note;
+        self
+    }
+
+    pub fn is_rename(mut self, is_rename: bool) -> Self {
+        self.is_rename = is_rename;
         self
     }
 
@@ -77,19 +91,21 @@ impl AutoGen {
         let atom_name = self.data.root.main_arg().to_astr();
         for mold in self.molds.iter() {
             //TODO: rename mold to pac name
-            let out_name = replace_name(mold.name.clone(), atom_name.clone());
-            let out_file = self.out.join(&out_name);
+            let out_file = if self.is_rename || mold.is_rename {
+                let out_name = replace_name(mold.name.clone(), atom_name.clone());
+                self.out.join(&out_name)
+            } else {
+                self.out.join(&mold.name)
+            };
             self.gen_one(&mold, &out_file);
         }
         self.data.to_astr()
     }
 
     pub fn gen_str(&self) -> AutoStr {
-        let atom_name = self.data.root.main_arg().to_astr();
         let mut result = String::new();
         for mold in self.molds.iter() {
             //TODO: rename mold to pac name
-            let out_name = replace_name(mold.name.clone(), atom_name.clone());
             let code = self.gen_one_str(&mold);
             result.push_str(&code);
         }
@@ -129,6 +145,80 @@ impl AutoGen {
                     (mold.code[..100].to_string() + "...").into()
                 } else {
                     mold.code.clone()
+                };
+                panic!("failed to evaluate mold: {}", code);
+            }
+        }
+    }
+}
+
+pub struct OneGen {
+    pub data: Atom,
+    pub out: AutoPath,
+    pub mold: Mold,
+    pub is_rename: bool,
+    note: char,
+}
+
+impl OneGen {
+    pub fn new(mold: Mold, data: Atom) -> Self {
+        Self {
+            out: AutoPath::new("."),
+            mold,
+            note: '$',
+            is_rename: false,
+            data,
+        }
+    }
+}
+
+impl OneGen {
+    pub fn note(mut self, note: char) -> Self {
+        self.note = note;
+        self
+    }
+
+    pub fn is_rename(mut self, is_rename: bool) -> Self {
+        self.is_rename = is_rename;
+        self
+    }
+
+    pub fn data(mut self, data: Atom) -> Self {
+        self.data = data;
+        self
+    }
+
+    pub fn mold(mut self, mold: Mold) -> Self {
+        self.mold = mold;
+        self
+    }
+
+    pub fn out(mut self, out: impl Into<AutoPath>) -> Self {
+        self.out = out.into();
+        self
+    }
+
+    pub fn gen(&self) -> AutoResult<()> {
+        let mut universe = auto_lang::Universe::new();
+        universe.merge_atom(&self.data);
+        let mut inter =
+            auto_lang::interp::Interpreter::with_scope(universe).with_fstr_note(self.note);
+        let result = inter.eval_template(&self.mold.code);
+        match result {
+            Ok(result) => {
+                let out_str = result.to_astr();
+                println!("writing to {}", self.out.to_astr());
+                let path = self.out.join(self.mold.name.clone());
+                std::fs::write(path.path(), out_str.as_bytes()).unwrap();
+                println!("generated: {}", self.out.to_astr());
+                Ok(())
+            }
+            Err(e) => {
+                println!("error: {}", e);
+                let code = if self.mold.code.len() > 100 {
+                    (self.mold.code[..100].to_string() + "...").into()
+                } else {
+                    self.mold.code.clone()
                 };
                 panic!("failed to evaluate mold: {}", code);
             }
