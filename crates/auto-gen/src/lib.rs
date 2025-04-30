@@ -207,8 +207,12 @@ impl OneGen {
         match result {
             Ok(result) => {
                 let out_str = result.to_astr();
-                println!("writing to {}", self.out.to_astr());
                 let path = self.out.join(self.mold.name.clone());
+                let parent_dir = path.parent();
+                if !parent_dir.is_dir() {
+                    std::fs::create_dir_all(parent_dir.path())?;
+                }
+                println!("writing to {}", path.to_astr());
                 std::fs::write(path.path(), out_str.as_bytes()).unwrap();
                 println!("generated: {}", self.out.to_astr());
                 Ok(())

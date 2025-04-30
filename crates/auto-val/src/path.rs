@@ -150,6 +150,17 @@ impl AutoPath {
         }
     }
 
+    pub fn tail(&self, n: usize) -> AutoPath {
+        let c: Vec<Component> = self.path.components().rev().take(n).collect();
+        let p = c
+            .iter()
+            .rev()
+            .map(|c| c.as_os_str().to_str().unwrap())
+            .collect::<Vec<&str>>()
+            .join("/");
+        AutoPath::new(p)
+    }
+
     pub fn reverse_relative(&self) -> AutoStr {
         // check number of parts in this unified path
         let level = self.unified().split("/").count();
