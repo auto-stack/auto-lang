@@ -166,6 +166,11 @@ impl AutoPath {
         let level = self.unified().split("/").count();
         "../".repeat(level).into()
     }
+
+    /// Get the depth of this path
+    pub fn depth(&self) -> usize {
+        self.unified().split("/").count()
+    }
 }
 
 impl From<PathBuf> for AutoPath {
