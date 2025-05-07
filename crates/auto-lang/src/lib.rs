@@ -80,6 +80,18 @@ pub fn eval_template(template: &str, scope: Universe) -> AutoResult<interp::Inte
     Ok(interpreter)
 }
 
+pub fn eval_config_with_scope(
+    code: &str,
+    args: &Obj,
+    mut scope: Universe,
+) -> AutoResult<interp::Interpreter> {
+    scope.define_global("root", Rc::new(Meta::Node(ast::Node::new("root"))));
+    scope.set_args(args);
+    let mut interpreter = interp::Interpreter::with_scope(scope).with_eval_mode(EvalMode::CONFIG);
+    interpreter.interpret(code)?;
+    Ok(interpreter)
+}
+
 pub fn eval_config(code: &str, args: &Obj) -> AutoResult<interp::Interpreter> {
     let mut scope = Universe::new();
     scope.define_global("root", Rc::new(Meta::Node(ast::Node::new("root"))));
@@ -258,6 +270,13 @@ mod tests {
         let result = eval_template(code, scope).unwrap();
         assert_eq!(result.result.repr(), "0,1,2,3,4,5,6,7,8,9");
     }
+
+    // #[test]
+    // fn test_when() {
+    //     let code = r#"var x = 10; when x { is 10 => print("10") }"#;
+    //     let result = run(code).unwrap();
+    //     assert_eq!(result, "void");
+    // }
 
     #[test]
     fn test_for_with_mid_and_newline() {
@@ -790,7 +809,7 @@ exe(hello) {
         }
         "#;
 
-        let conf = AutoConfig::from_code(code, &Obj::EMPTY).unwrap();
+        let conf = AutoConfig::new(code).unwrap();
         assert_eq!(
             conf.root.to_string(),
             r#"root {name: "hello"; lib("hello") {dir("a"); dir("b"); dir("c"); }; }"#

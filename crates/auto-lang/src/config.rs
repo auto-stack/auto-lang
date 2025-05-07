@@ -1,6 +1,8 @@
 use crate::eval_config;
+use crate::eval_config_with_scope;
 use crate::interp;
 use crate::AutoResult;
+use crate::Universe;
 use auto_val::Obj;
 use auto_val::{AutoPath, AutoStr, Node, Value};
 use std::path::Path;
@@ -12,10 +14,10 @@ pub struct AutoConfig {
 
 impl AutoConfig {
     pub fn read(path: &Path) -> AutoResult<Self> {
-        Self::from_file(path, &Obj::default())
+        Self::from_file(path, &Obj::default(), Universe::default())
     }
 
-    pub fn from_file(path: &Path, args: &Obj) -> AutoResult<Self> {
+    pub fn from_file(path: &Path, args: &Obj, univ: Universe) -> AutoResult<Self> {
         let content = std::fs::read_to_string(path).map_err(|e| {
             format!(
                 "Failed to read config file {}: {}",
@@ -23,11 +25,12 @@ impl AutoConfig {
                 e
             )
         })?;
-        Self::from_code(content, args)
+        Self::from_code(content, args, univ)
     }
 
     pub fn new(code: impl Into<String>) -> AutoResult<Self> {
-        Self::from_code(code, &Obj::EMPTY)
+        let univ = Universe::default();
+        Self::from_code(code, &Obj::EMPTY, univ)
     }
 
     pub fn save(&mut self, path: &AutoPath) -> AutoResult<()> {
@@ -37,14 +40,14 @@ impl AutoConfig {
         Ok(())
     }
 
-    pub fn from_code(code: impl Into<String>, args: &Obj) -> AutoResult<Self> {
+    pub fn from_code(code: impl Into<String>, args: &Obj, univ: Universe) -> AutoResult<Self> {
         let code = code.into();
-        let mut interpreter = eval_config(&code, args)?;
+        let mut interpreter = eval_config_with_scope(&code, args, univ)?;
         let result = interpreter.result;
         interpreter.result = Value::Nil;
         if let Value::Node(root) = result {
             Ok(Self {
-                code: code,
+                code: code.clone(),
                 root: root,
                 interpreter: interpreter,
             })
@@ -90,7 +93,7 @@ mod tests {
             }
         "#;
 
-        let mut config = AutoConfig::from_code(code, &Obj::default())?;
+        let mut config = AutoConfig::new(code)?;
         assert_eq!(config.name(), "hello");
         assert_eq!(config.list_target_names(), vec!["lib(\"alib\")"]);
 
