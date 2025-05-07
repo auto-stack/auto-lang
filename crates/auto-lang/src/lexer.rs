@@ -255,6 +255,8 @@ impl<'a> Lexer<'a> {
             "if" => self.keyword_tok(TokenKind::If, &text),
             "else" => self.keyword_tok(TokenKind::Else, &text),
             "for" => self.keyword_tok(TokenKind::For, &text),
+            "when" => self.keyword_tok(TokenKind::When, &text),
+            "is" => self.keyword_tok(TokenKind::Is, &text),
             "var" => self.keyword_tok(TokenKind::Var, &text),
             "in" => self.keyword_tok(TokenKind::In, &text),
             "fn" => self.keyword_tok(TokenKind::Fn, &text),
@@ -670,5 +672,28 @@ mod tests {
         "#;
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<ident:markdown><{><str:\n        # hello\n            This is a **test** for markdown\n        ><}>");
+    }
+
+    #[test]
+    fn test_when() {
+        let code = r#"when x {
+            is 5 print("x is 5")
+            is 10 print("x is 10")
+            if x > 5 print("x is greater than 5")
+            else print("x is else")
+        }
+        "#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(
+            tokens,
+            format!(
+                "{}{}{}{}{}",
+                "<when><ident:x><{><nl>",
+                "<is><int:5><ident:print><(><str:x is 5><)><nl>",
+                "<is><int:10><ident:print><(><str:x is 10><)><nl>",
+                "<if><ident:x><gt><int:5><ident:print><(><str:x is greater than 5><)><nl>",
+                "<else><ident:print><(><str:x is else><)><nl><}><nl>"
+            )
+        );
     }
 }

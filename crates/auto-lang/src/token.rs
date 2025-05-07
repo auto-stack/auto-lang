@@ -59,6 +59,8 @@ pub enum TokenKind {
     If,
     Else,
     For,
+    When,
+    Is,
     Var,
     In,
     Fn,
@@ -152,6 +154,8 @@ impl fmt::Display for Token {
             TokenKind::Ref => write!(f, "<ref>"),
             TokenKind::EOF => write!(f, "<eof>"),
             TokenKind::Char => write!(f, "<'{}'>", self.text),
+            TokenKind::Is => write!(f, "<is>"),
+            TokenKind::When => write!(f, "<when>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }
     }

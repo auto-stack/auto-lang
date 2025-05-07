@@ -4,6 +4,9 @@ pub use types::*;
 mod enums;
 pub use enums::*;
 
+mod when;
+pub use when::*;
+
 mod parsers;
 
 use auto_val::{AutoStr, Op};
@@ -133,6 +136,7 @@ pub enum Stmt {
         /*else*/ Option<Body>,
     ),
     For(For),
+    When(When),
     Store(Store),
     Block(Body),
     Fn(Fn),
@@ -233,6 +237,7 @@ impl fmt::Display for Stmt {
                 write!(f, ")")
             }
             Stmt::For(for_stmt) => write!(f, "{}", for_stmt),
+            Stmt::When(when_stmt) => write!(f, "{}", when_stmt),
             Stmt::Block(body) => write!(f, "{}", body),
             Stmt::Store(store) => write!(f, "{}", store),
             Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),

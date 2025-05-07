@@ -836,6 +836,7 @@ impl<'a> Parser<'a> {
             TokenKind::Use => self.use_stmt()?,
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
+            TokenKind::When => self.when_stmt()?,
             TokenKind::Var => self.store_stmt()?,
             TokenKind::Let => self.store_stmt()?,
             TokenKind::Mut => self.store_stmt()?,
@@ -1094,6 +1095,18 @@ impl<'a> Parser<'a> {
             }));
         }
         error_pos!("Expected for loop, got {:?}", self.kind())
+    }
+
+    pub fn when_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.next(); // skip when
+        self.expect(TokenKind::LBrace); // {
+
+        self.expect(TokenKind::Is); // is
+        let cond = self.expr()?;
+        let body = self.body()?;
+        self.expect(TokenKind::RBrace); // }
+        let when = When { branches: vec![] };
+        return Ok(Stmt::When(when));
     }
 
     pub fn store_stmt(&mut self) -> Result<Stmt, ParseError> {

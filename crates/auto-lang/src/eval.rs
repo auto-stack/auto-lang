@@ -166,6 +166,7 @@ impl Evaler {
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
             Stmt::Widget(widget) => self.eval_widget(widget),
             Stmt::Node(node) => self.eval_node(node),
+            Stmt::When(_) => Value::Nil, // TODO: implement
             Stmt::EnumDecl(_) => Value::Nil,
         }
     }
