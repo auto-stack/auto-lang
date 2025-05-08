@@ -18,7 +18,7 @@ pub enum WhenBranch {
 impl fmt::Display for When {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(when {} ", self.target)?;
-        for b in &self.branches {
+        for (i, b) in self.branches.iter().enumerate() {
             match b {
                 WhenBranch::IsBranch(expr, body) => {
                     write!(f, "(is ")?;
@@ -37,6 +37,9 @@ impl fmt::Display for When {
                     write!(f, "{}", body)?;
                     write!(f, ")")?;
                 }
+            }
+            if i < self.branches.len() - 1 {
+                write!(f, " ")?;
             }
         }
         write!(f, ")")

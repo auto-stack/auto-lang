@@ -1135,10 +1135,25 @@ impl<'a> Parser<'a> {
     pub fn parse_when_branch(&mut self) -> ParseResult<WhenBranch> {
         match self.cur.kind {
             TokenKind::Is => {
-                self.expect(TokenKind::Is)?; // is
+                self.next(); // is
                 let expr = self.cond_expr()?;
                 let body = self.body()?;
                 let branch = WhenBranch::IsBranch(expr, body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
+            TokenKind::If => {
+                self.next(); // skip is
+                let expr = self.cond_expr()?;
+                let body = self.body()?;
+                let branch = WhenBranch::IfBranch(expr, body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
+            TokenKind::Else => {
+                self.next(); // skip else
+                let body = self.body()?;
+                let branch = WhenBranch::ElseBranch(body);
                 self.skip_empty_lines();
                 return Ok(branch);
             }
@@ -2215,11 +2230,19 @@ exe(hello) {
     fn test_when() {
         let code = r#"when x {
         is 10 {print("ten")}
+        is 20 {print("twenty")}
+        else {print("ehh")}
         }"#;
         let when = When::parse(code).unwrap();
         assert_eq!(
             when.to_string(),
-            r#"(when (name x) (is (int 10) (body (call (name print) (args (str "ten"))))))"#
+            format!(
+                "{}{}{}{}",
+                r#"(when (name x) "#,
+                r#"(is (int 10) (body (call (name print) (args (str "ten"))))) "#,
+                r#"(is (int 20) (body (call (name print) (args (str "twenty"))))) "#,
+                r#"(else (body (call (name print) (args (str "ehh"))))))"#,
+            )
         )
     }
 }
