@@ -318,8 +318,8 @@ await downloads.join()
 // 如果是AutoShell没有支持的命令，也可以调用底层真正的shell程序：
 // NOTE: 这个模式下，语法就不是跨平台的了，因此需要做平台判断
 when sys.shell() {
-    is sys.POWERSHELL = > shell("del -Force -Recurse ./logs")
-    is sys.BASH = > shell("rm -rf ./logs")
+    is sys.POWERSHELL shell("del -Force -Recurse ./logs")
+    is sys.BASH shell("rm -rf ./logs")
 }
 ```
 
@@ -394,10 +394,10 @@ type Counter as View {
     // 事件处理函数
     fn on(ev str) {
         when ev {
-            is "click:inc" => count += 1
-            is "click:dec" => count -= 1
-            is "click:reset" => count = 0
-            else => print(`Unknown event: ${ev}`)
+            is "click:inc" count += 1
+            is "click:dec" count -= 1
+            is "click:reset" count = 0
+            else print(`Unknown event: ${ev}`)
         }
     }
 }
@@ -849,15 +849,15 @@ loop {
 // 模式匹配，类似switch/match
 when a {
     // is 用于精确匹配
-    is 41 => println("a is 41"),
+    is 41 println("a is 41")
     // in 用于范围匹配
-    in 0..9 => println("a is a single digit"),
+    in 0..9 println("a is a single digit")
     // if 用于条件匹配
-    if a > 10 => println("a is a big number"),
+    if a > 10 println("a is a big number")
     // as 用于类型判断
-    as str => println("a is a string"),
+    as str println("a is a string")
     // 其他情况
-    else => println("a is a weired number")
+    else println("a is a weired number")
 }
 ```
 
@@ -886,10 +886,10 @@ println(a.name)
 
 // 枚举匹配
 when a as Scale {
-    is S => println("a is small")
-    is M => println("a is medium")
-    is L => println("a is large")
-    else => println("a is not a Scale")
+    is S println("a is small")
+    is M println("a is medium")
+    is L println("a is large")
+    else println("a is not a Scale")
 }
 
 
@@ -903,10 +903,10 @@ enum Shape union {
 // 联合枚举匹配
 mut s = get_shape(/*...*/)
 when s as Shape {
-    is Point(x, y) => println(f"Point($x, $y)")
-    is Rect(x, y, w, h) => println(f"Rect($x, $y, $w, $h)")
-    is Circle(x, y, r) => println(f"Circle($x, $y, $r)")
-    else => println("not a shape")
+    is Point(x, y) println(f"Point($x, $y)")
+    is Rect(x, y, w, h) println(f"Rect($x, $y, $w, $h)")
+    is Circle(x, y, r) println(f"Circle($x, $y, $r)")
+    else println("not a shape")
 }
 // 获取联合枚举的数据
 mut p = s as Shape.Point
@@ -1161,12 +1161,12 @@ fn predicate(t type) bool {
 fn IsIterable(t type) bool {
     when t {
         // 是一个数组，其元素类型可以任意
-        is []any => true
+        is []any true
         // 或者有next()方法
-        if t.has_method("next") => true
+        if t.has_method("next") true
         // 或者实现了Indexer接口
-        is Indexer => true
-        else => false
+        is Indexer true
+        else false
     }
 }
 

@@ -4,6 +4,7 @@ pub mod eval;
 pub mod interp;
 mod lexer;
 pub mod libs;
+pub mod maker;
 pub mod parser;
 pub mod repl;
 pub mod scope;

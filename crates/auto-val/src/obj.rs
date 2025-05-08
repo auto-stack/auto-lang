@@ -6,6 +6,7 @@ use crate::Value;
 use crate::ValueKey;
 use std::collections::btree_map::{IntoIter, Iter};
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
 pub static OBJ_EMPTY: Obj = Obj::EMPTY;
@@ -226,6 +227,16 @@ impl Obj {
         let key = key.into();
         self.set(key, 0);
         0
+    }
+}
+
+impl Obj {
+    pub fn to_hashmap(&self) -> HashMap<AutoStr, AutoStr> {
+        let mut map = HashMap::new();
+        for (k, v) in self.iter() {
+            map.insert(k.to_astr(), v.to_astr());
+        }
+        map
     }
 }
 

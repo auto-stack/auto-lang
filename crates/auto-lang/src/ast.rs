@@ -145,6 +145,7 @@ pub enum Stmt {
     Widget(Widget),
     Node(Node),
     Use(Use),
+    Comment(AutoStr),
 }
 
 #[derive(Debug, Clone)]
@@ -245,6 +246,7 @@ impl fmt::Display for Stmt {
             Stmt::EnumDecl(enum_decl) => write!(f, "{}", enum_decl),
             Stmt::Widget(widget) => write!(f, "{}", widget),
             Stmt::Node(node) => write!(f, "{}", node),
+            Stmt::Comment(cmt) => write!(f, "{}", cmt),
         }
     }
 }

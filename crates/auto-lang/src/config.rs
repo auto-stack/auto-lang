@@ -1,6 +1,7 @@
 use crate::eval_config;
 use crate::eval_config_with_scope;
 use crate::interp;
+use crate::interpret;
 use crate::AutoResult;
 use crate::Universe;
 use auto_val::Obj;
@@ -9,6 +10,7 @@ use std::path::Path;
 pub struct AutoConfig {
     pub code: String,
     pub root: Node,
+    pub args: Obj,
     pub interpreter: interp::Interpreter,
 }
 
@@ -45,9 +47,11 @@ impl AutoConfig {
         let mut interpreter = eval_config_with_scope(&code, args, univ)?;
         let result = interpreter.result;
         interpreter.result = Value::Nil;
+        let args = interpreter.scope.borrow_mut().args.clone();
         if let Value::Node(root) = result {
             Ok(Self {
                 code: code.clone(),
+                args,
                 root: root,
                 interpreter: interpreter,
             })

@@ -37,7 +37,7 @@ impl Into<ValueKey> for bool {
     fn into(self) -> ValueKey {
         ValueKey::Bool(self)
     }
-} 
+}
 
 impl Into<ValueKey> for i64 {
     fn into(self) -> ValueKey {
@@ -60,5 +60,11 @@ impl Into<ValueKey> for &str {
 impl From<AutoStr> for ValueKey {
     fn from(s: AutoStr) -> ValueKey {
         ValueKey::Str(s)
+    }
+}
+
+impl ValueKey {
+    pub fn to_astr(&self) -> AutoStr {
+        self.to_string().into()
     }
 }
