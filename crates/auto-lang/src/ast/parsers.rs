@@ -1,13 +1,10 @@
 use super::*;
 use crate::parser::{ParseResult, Parser, ParserExt};
-use crate::Universe;
-use auto_val::shared;
 
 impl ParserExt for Code {
     fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
-        let universe = shared(Universe::new());
         let code = code.into();
-        let mut parser = Parser::new(code.as_str(), universe);
+        let mut parser = Parser::from(code.as_str());
         let ast = parser.parse()?;
         Ok(ast)
     }
@@ -21,11 +18,19 @@ impl ParserExt for Name {
 }
 
 impl ParserExt for Expr {
-    fn parse(expr: impl Into<AutoStr>) -> ParseResult<Self> {
-        let expr = expr.into();
-        let mut parser = Parser::new(expr.as_str(), shared(Universe::new()));
+    fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
+        let code = code.into();
+        let mut parser = Parser::from(code.as_str());
         let ast = parser.expr()?;
         Ok(ast)
+    }
+}
+
+impl ParserExt for When {
+    fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
+        let code = code.into();
+        let mut parser = Parser::from(code.as_str());
+        parser.parse_when()
     }
 }
 

@@ -6,7 +6,8 @@ use crate::token::{Pos, Token, TokenKind};
 use crate::universe::Universe;
 use auto_val::AutoStr;
 use auto_val::Op;
-use std::cell::RefCell;
+use auto_val::{shared, Shared};
+use std::backtrace::Backtrace;
 use std::collections::HashMap;
 use std::i32;
 use std::path::Path;
@@ -73,7 +74,7 @@ const PREC_INDEX: PostfixPrec = postfix_prec(14);
 const PREC_DOT: InfixPrec = infix_prec(15);
 const _PREC_ATOM: InfixPrec = infix_prec(16);
 
-fn prefix_power(op: Op) -> Result<PrefixPrec, ParseError> {
+fn prefix_power(op: Op) -> ParseResult<PrefixPrec> {
     match op {
         Op::Add | Op::Sub => Ok(PREC_SIGN),
         Op::Not => Ok(PREC_NOT),
@@ -81,7 +82,7 @@ fn prefix_power(op: Op) -> Result<PrefixPrec, ParseError> {
     }
 }
 
-fn postfix_power(op: Op) -> Result<Option<PostfixPrec>, ParseError> {
+fn postfix_power(op: Op) -> ParseResult<Option<PostfixPrec>> {
     match op {
         Op::LSquare => Ok(Some(PREC_INDEX)),
         Op::LParen => Ok(Some(PREC_CALL)),
@@ -90,7 +91,7 @@ fn postfix_power(op: Op) -> Result<Option<PostfixPrec>, ParseError> {
     }
 }
 
-fn infix_power(op: Op) -> Result<InfixPrec, ParseError> {
+fn infix_power(op: Op) -> ParseResult<InfixPrec> {
     match op {
         Op::Add | Op::Sub => Ok(PREC_ADD),
         Op::Mul | Op::Div => Ok(PREC_MUL),
@@ -104,23 +105,27 @@ fn infix_power(op: Op) -> Result<InfixPrec, ParseError> {
 }
 
 pub trait BlockParser {
-    fn parse(&self, parser: &mut Parser) -> Result<Body, ParseError>;
+    fn parse(&self, parser: &mut Parser) -> ParseResult<Body>;
 }
 
-// pub fn parse(code: &str, scope: Rc<RefCell<Universe>>, interpreter: &'a Interpreter) -> Result<Code, ParseError> {
+// pub fn parse(code: &str, scope: Rc<RefCell<Universe>>, interpreter: &'a Interpreter) -> ParseResult<Code> {
 // let mut parser = Parser::new(code, scope, interpreter);
 // parser.parse()
 // }
 
 pub struct Parser<'a> {
-    pub scope: Rc<RefCell<Universe>>,
+    pub scope: Shared<Universe>,
     lexer: Lexer<'a>,
     pub cur: Token,
     pub special_blocks: HashMap<AutoStr, Box<dyn BlockParser>>,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(code: &'a str, scope: Rc<RefCell<Universe>>) -> Self {
+    pub fn from(code: &'a str) -> Self {
+        Self::new(code, shared(Universe::new()))
+    }
+
+    pub fn new(code: &'a str, scope: Shared<Universe>) -> Self {
         let mut lexer = Lexer::new(code);
         let cur = lexer.next();
         let mut parser = Parser {
@@ -137,7 +142,7 @@ impl<'a> Parser<'a> {
         self.special_blocks.insert(block, parser);
     }
 
-    pub fn new_with_note(code: &'a str, scope: Rc<RefCell<Universe>>, note: char) -> Self {
+    pub fn new_with_note(code: &'a str, scope: Shared<Universe>, note: char) -> Self {
         let mut lexer = Lexer::new(code);
         lexer.set_fstr_note(note);
         let cur = lexer.next();
@@ -188,11 +193,12 @@ impl<'a> Parser<'a> {
         &self.cur
     }
 
-    pub fn expect(&mut self, kind: TokenKind) -> Result<(), ParseError> {
+    pub fn expect(&mut self, kind: TokenKind) -> ParseResult<()> {
         if self.is_kind(kind) {
             self.next();
             Ok(())
         } else {
+            println!("{}", Backtrace::capture());
             error_pos!("Expected token kind: {:?}, got {:?}", kind, self.cur.text)
         }
     }
@@ -223,7 +229,7 @@ impl<'a> Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn parse(&mut self) -> Result<Code, ParseError> {
+    pub fn parse(&mut self) -> ParseResult<Code> {
         let mut stmts = Vec::new();
         self.skip_empty_lines();
         while !self.is_kind(TokenKind::EOF) {
@@ -250,7 +256,7 @@ impl<'a> Parser<'a> {
         Ok(Code { stmts })
     }
 
-    fn convert_last_block(&mut self, mut stmts: Vec<Stmt>) -> Result<Vec<Stmt>, ParseError> {
+    fn convert_last_block(&mut self, mut stmts: Vec<Stmt>) -> ParseResult<Vec<Stmt>> {
         let last = stmts.last();
         if let Some(st) = last {
             match st {
@@ -265,7 +271,7 @@ impl<'a> Parser<'a> {
         Ok(stmts)
     }
 
-    fn body_to_obj(&mut self, body: &Body) -> Result<Vec<Pair>, ParseError> {
+    fn body_to_obj(&mut self, body: &Body) -> ParseResult<Vec<Pair>> {
         let mut pairs = Vec::new();
         for stmt in body.stmts.iter() {
             match stmt {
@@ -284,7 +290,7 @@ impl<'a> Parser<'a> {
 
 // Expressions
 impl<'a> Parser<'a> {
-    pub fn expr(&mut self) -> Result<Expr, ParseError> {
+    pub fn expr(&mut self) -> ParseResult<Expr> {
         let mut exp = self.expr_pratt(0)?;
         exp = self.check_symbol(exp)?;
         Ok(exp)
@@ -292,7 +298,7 @@ impl<'a> Parser<'a> {
 
     // simple Pratt parser
     // ref: https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
-    pub fn expr_pratt(&mut self, min_power: u8) -> Result<Expr, ParseError> {
+    pub fn expr_pratt(&mut self, min_power: u8) -> ParseResult<Expr> {
         // Prefix
         let lhs = match self.kind() {
             // unary
@@ -333,7 +339,7 @@ impl<'a> Parser<'a> {
         self.expr_pratt_with_left(lhs, min_power)
     }
 
-    fn expr_pratt_with_left(&mut self, mut lhs: Expr, min_power: u8) -> Result<Expr, ParseError> {
+    fn expr_pratt_with_left(&mut self, mut lhs: Expr, min_power: u8) -> ParseResult<Expr> {
         loop {
             let op = match self.kind() {
                 TokenKind::EOF
@@ -429,7 +435,7 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    fn check_asn(&mut self, lhs: &Expr) -> Result<(), ParseError> {
+    fn check_asn(&mut self, lhs: &Expr) -> ParseResult<()> {
         match lhs {
             Expr::Ident(name) => {
                 let meta = self.lookup_meta(name.as_str());
@@ -472,14 +478,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn group(&mut self) -> Result<Expr, ParseError> {
+    pub fn group(&mut self) -> ParseResult<Expr> {
         self.next(); // skip (
         let expr = self.expr()?;
         self.expect(TokenKind::RParen)?; // skip )
         Ok(expr)
     }
 
-    pub fn sep_array(&mut self) -> Result<(), ParseError> {
+    pub fn sep_array(&mut self) -> ParseResult<()> {
         let mut has_sep = false;
         while self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
             has_sep = true;
@@ -494,7 +500,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    pub fn array(&mut self) -> Result<Expr, ParseError> {
+    pub fn array(&mut self) -> ParseResult<Expr> {
         self.expect(TokenKind::LSquare)?;
         self.skip_empty_lines();
         let mut elems = Vec::new();
@@ -517,7 +523,7 @@ impl<'a> Parser<'a> {
         panic!("Expected argument separator, got {:?}", self.kind());
     }
 
-    pub fn args(&mut self) -> Result<Args, ParseError> {
+    pub fn args(&mut self) -> ParseResult<Args> {
         self.expect(TokenKind::LParen)?;
         let mut args = Args::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RParen) {
@@ -573,7 +579,7 @@ impl<'a> Parser<'a> {
         Ok(args)
     }
 
-    pub fn object(&mut self) -> Result<Vec<Pair>, ParseError> {
+    pub fn object(&mut self) -> ParseResult<Vec<Pair>> {
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
         let mut entries = Vec::new();
@@ -585,7 +591,7 @@ impl<'a> Parser<'a> {
         Ok(entries)
     }
 
-    pub fn pair_expr(&mut self) -> Result<Expr, ParseError> {
+    pub fn pair_expr(&mut self) -> ParseResult<Expr> {
         self.rhs_expr()
         // let exp = self.expr_pratt(0)?;
         // if let Expr::Ident(ident) = &exp {
@@ -596,7 +602,7 @@ impl<'a> Parser<'a> {
         // Ok(exp)
     }
 
-    pub fn pair(&mut self) -> Result<Pair, ParseError> {
+    pub fn pair(&mut self) -> ParseResult<Pair> {
         let key = self.key()?;
         self.expect(TokenKind::Colon)?;
         let value = self.pair_expr()?;
@@ -616,7 +622,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn key(&mut self) -> Result<Key, ParseError> {
+    pub fn key(&mut self) -> ParseResult<Key> {
         match self.kind() {
             TokenKind::Ident => {
                 let name = self.cur.text.clone();
@@ -663,7 +669,7 @@ impl<'a> Parser<'a> {
         panic!("Expected pair separator, got {:?}", self.kind());
     }
 
-    pub fn ident(&mut self) -> Result<Expr, ParseError> {
+    pub fn ident(&mut self) -> ParseResult<Expr> {
         let name = self.cur.text.clone();
         // // check for existence
         // if !self.exists(&name) {
@@ -672,7 +678,7 @@ impl<'a> Parser<'a> {
         Ok(Expr::Ident(name))
     }
 
-    pub fn atom(&mut self) -> Result<Expr, ParseError> {
+    pub fn atom(&mut self) -> ParseResult<Expr> {
         if self.is_kind(TokenKind::LParen) {
             return self.group();
         }
@@ -719,7 +725,7 @@ impl<'a> Parser<'a> {
 
     /// 解析fstr
     /// fstr: [FStrSart, (FStrParts | ${Expr} | $Ident)*, FStrEnd]
-    pub fn fstr(&mut self) -> Result<Expr, ParseError> {
+    pub fn fstr(&mut self) -> ParseResult<Expr> {
         // skip fstrs (e.g. ` or f")
         self.expect(TokenKind::FStrStart)?;
 
@@ -756,13 +762,17 @@ impl<'a> Parser<'a> {
         Ok(Expr::FStr(FStr::new(parts)))
     }
 
-    pub fn if_expr(&mut self) -> Result<Expr, ParseError> {
+    pub fn if_expr(&mut self) -> ParseResult<Expr> {
         let (branches, else_stmt) = self.if_contents()?;
         Ok(Expr::If(branches, else_stmt))
     }
 
+    pub fn cond_expr(&mut self) -> ParseResult<Expr> {
+        self.rhs_expr()
+    }
+
     // An Expression that can be assigned to a variable, e.g. right-hand side of an assignment
-    pub fn rhs_expr(&mut self) -> Result<Expr, ParseError> {
+    pub fn rhs_expr(&mut self) -> ParseResult<Expr> {
         if self.is_kind(TokenKind::If) {
             self.if_expr()
         } else if self.is_kind(TokenKind::Ident) {
@@ -778,12 +788,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn iterable_expr(&mut self) -> Result<Expr, ParseError> {
+    pub fn lhs_expr(&mut self) -> ParseResult<Expr> {
+        let expr = self.ident()?;
+        self.next();
+        Ok(expr)
+    }
+
+    pub fn iterable_expr(&mut self) -> ParseResult<Expr> {
         // TODO: how to check for range/array but reject other cases?
         self.expr()
     }
 
-    pub fn lambda(&mut self) -> Result<Expr, ParseError> {
+    pub fn lambda(&mut self) -> ParseResult<Expr> {
         self.next(); // skip |
         let params = self.fn_params()?;
         self.expect(TokenKind::VBar)?; // skip |
@@ -812,7 +828,7 @@ impl<'a> Parser<'a> {
 // Statements
 impl<'a> Parser<'a> {
     // End of statement
-    pub fn expect_eos(&mut self) -> Result<(), ParseError> {
+    pub fn expect_eos(&mut self) -> ParseResult<()> {
         let mut has_sep = false;
         while self.is_kind(TokenKind::Semi)
             || self.is_kind(TokenKind::Newline)
@@ -831,12 +847,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn stmt(&mut self) -> ParseResult<Stmt> {
         let stmt = match self.kind() {
             TokenKind::Use => self.use_stmt()?,
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
-            TokenKind::When => self.when_stmt()?,
+            TokenKind::When => Stmt::When(self.parse_when()?),
             TokenKind::Var => self.store_stmt()?,
             TokenKind::Let => self.store_stmt()?,
             TokenKind::Mut => self.store_stmt()?,
@@ -855,7 +871,7 @@ impl<'a> Parser<'a> {
         Ok(stmt)
     }
 
-    fn enum_stmt(&mut self) -> Result<Stmt, ParseError> {
+    fn enum_stmt(&mut self) -> ParseResult<Stmt> {
         self.next(); // skip enum
         let name = self.cur.text.clone().into();
         self.next();
@@ -885,7 +901,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::EnumDecl(enum_decl))
     }
 
-    fn expect_ident_str(&mut self) -> Result<AutoStr, ParseError> {
+    fn expect_ident_str(&mut self) -> ParseResult<AutoStr> {
         if self.is_kind(TokenKind::Ident) {
             let name = self.cur.text.clone();
             self.next(); // skip name
@@ -895,7 +911,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn use_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn use_stmt(&mut self) -> ParseResult<Stmt> {
         self.next(); // skip use
         let mut paths = Vec::new();
         let mut items = Vec::new();
@@ -934,7 +950,7 @@ impl<'a> Parser<'a> {
     // Import a path from `use` statement
     // TODO: clean up code
     // TODO: search path from System Env, Default Locations and etc.
-    pub fn import(&mut self, uses: &Use) -> Result<(), ParseError> {
+    pub fn import(&mut self, uses: &Use) -> ParseResult<()> {
         let path = uses.paths.join(".");
         println!("debug: use path: {}", path);
         // locate file from path
@@ -989,7 +1005,7 @@ impl<'a> Parser<'a> {
         count
     }
 
-    fn parse_body(&mut self, is_node: bool) -> Result<Body, ParseError> {
+    fn parse_body(&mut self, is_node: bool) -> ParseResult<Body> {
         self.expect(TokenKind::LBrace)?;
         self.enter_scope();
         let mut stmts = Vec::new();
@@ -1021,15 +1037,15 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn node_body(&mut self) -> Result<Body, ParseError> {
+    pub fn node_body(&mut self) -> ParseResult<Body> {
         self.parse_body(true)
     }
 
-    pub fn body(&mut self) -> Result<Body, ParseError> {
+    pub fn body(&mut self) -> ParseResult<Body> {
         self.parse_body(false)
     }
 
-    pub fn if_contents(&mut self) -> Result<(Vec<Branch>, Option<Body>), ParseError> {
+    pub fn if_contents(&mut self) -> ParseResult<(Vec<Branch>, Option<Body>)> {
         let mut branches = Vec::new();
         self.next(); // skip if
         let cond = self.expr()?;
@@ -1053,12 +1069,12 @@ impl<'a> Parser<'a> {
         Ok((branches, else_stmt))
     }
 
-    pub fn if_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn if_stmt(&mut self) -> ParseResult<Stmt> {
         let (branches, else_stmt) = self.if_contents()?;
         Ok(Stmt::If(branches, else_stmt))
     }
 
-    pub fn for_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn for_stmt(&mut self) -> ParseResult<Stmt> {
         self.next(); // skip `for`
                      // enumerator
         if self.is_kind(TokenKind::Ident) {
@@ -1097,19 +1113,40 @@ impl<'a> Parser<'a> {
         error_pos!("Expected for loop, got {:?}", self.kind())
     }
 
-    pub fn when_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn parse_when(&mut self) -> ParseResult<When> {
         self.next(); // skip when
-        self.expect(TokenKind::LBrace); // {
+        let target = self.lhs_expr()?;
 
-        self.expect(TokenKind::Is); // is
-        let cond = self.expr()?;
-        let body = self.body()?;
-        self.expect(TokenKind::RBrace); // }
-        let when = When { branches: vec![] };
-        return Ok(Stmt::When(when));
+        self.expect(TokenKind::LBrace)?; // {
+        self.skip_empty_lines();
+
+        let mut branches = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            let branch = self.parse_when_branch()?;
+            branches.push(branch);
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        let when = When { target, branches };
+        return Ok(when);
     }
 
-    pub fn store_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn parse_when_branch(&mut self) -> ParseResult<WhenBranch> {
+        match self.cur.kind {
+            TokenKind::Is => {
+                self.expect(TokenKind::Is)?; // is
+                let expr = self.cond_expr()?;
+                let body = self.body()?;
+                let branch = WhenBranch::IsBranch(expr, body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
+            _ => error_pos!("When branch for {} is not recognized", self.cur),
+        }
+    }
+
+    pub fn store_stmt(&mut self) -> ParseResult<Stmt> {
         // store kind: var/let/mut
         let store_kind = self.store_kind()?;
         self.next(); // skip var/let/mut
@@ -1148,7 +1185,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Store(store))
     }
 
-    pub fn find_expr_type(&mut self, expr: &Expr) -> Result<Type, ParseError> {
+    pub fn find_expr_type(&mut self, expr: &Expr) -> ParseResult<Type> {
         let mut ty = Type::Unknown;
         match &expr {
             Expr::Int(_) => {
@@ -1184,7 +1221,7 @@ impl<'a> Parser<'a> {
         Ok(ty)
     }
 
-    pub fn store_kind(&mut self) -> Result<StoreKind, ParseError> {
+    pub fn store_kind(&mut self) -> ParseResult<StoreKind> {
         match self.kind() {
             TokenKind::Var => Ok(StoreKind::Var),
             TokenKind::Let => Ok(StoreKind::Let),
@@ -1194,7 +1231,7 @@ impl<'a> Parser<'a> {
     }
 
     // Function Declaration
-    pub fn fn_decl_stmt(&mut self, parent_name: &str) -> Result<Stmt, ParseError> {
+    pub fn fn_decl_stmt(&mut self, parent_name: &str) -> ParseResult<Stmt> {
         self.next(); // skip keyword `fn`
                      // parse function name
         let name = self.cur.text.clone();
@@ -1256,7 +1293,7 @@ impl<'a> Parser<'a> {
     }
 
     // parse function parameters
-    pub fn fn_params(&mut self) -> Result<Vec<Param>, ParseError> {
+    pub fn fn_params(&mut self) -> ParseResult<Vec<Param>> {
         let mut params = Vec::new();
         while self.is_kind(TokenKind::Ident) {
             // param name
@@ -1287,16 +1324,16 @@ impl<'a> Parser<'a> {
         Ok(params)
     }
 
-    pub fn type_name(&mut self) -> Result<Type, ParseError> {
+    pub fn type_name(&mut self) -> ParseResult<Type> {
         let ty = self.type_expr()?;
         Ok(ty)
     }
 
-    pub fn expr_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn expr_stmt(&mut self) -> ParseResult<Stmt> {
         Ok(Stmt::Expr(self.expr()?))
     }
 
-    pub fn type_decl_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn type_decl_stmt(&mut self) -> ParseResult<Stmt> {
         // TODO: deal with scope
         self.next(); // skip `type` keyword
         let name = self.cur.text.clone();
@@ -1374,7 +1411,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::TypeDecl(decl))
     }
 
-    pub fn type_member(&mut self) -> Result<Member, ParseError> {
+    pub fn type_member(&mut self) -> ParseResult<Member> {
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
         let ty = self.type_expr()?;
@@ -1397,7 +1434,7 @@ impl<'a> Parser<'a> {
         Ok(Member::new(name, ty, value))
     }
 
-    pub fn type_expr(&mut self) -> Result<Type, ParseError> {
+    pub fn type_expr(&mut self) -> ParseResult<Type> {
         let type_name = self.ident()?;
         self.next();
         match type_name {
@@ -1419,7 +1456,7 @@ impl<'a> Parser<'a> {
     // 1，简单名称；
     // 2，点号表达式最左侧的名称
     // 3, 函数调用，如果函数名不存在，表示是一个节点实例
-    pub fn check_symbol(&mut self, expr: Expr) -> Result<Expr, ParseError> {
+    pub fn check_symbol(&mut self, expr: Expr) -> ParseResult<Expr> {
         match &expr {
             Expr::Bina(l, op, _) => match op {
                 Op::Dot => {
@@ -1452,7 +1489,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn widget_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn widget_stmt(&mut self) -> ParseResult<Stmt> {
         self.next(); // skip widget
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
@@ -1464,7 +1501,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Widget(widget))
     }
 
-    pub fn widget_body(&mut self) -> Result<(Model, View), ParseError> {
+    pub fn widget_body(&mut self) -> ParseResult<(Model, View)> {
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
         let mut has_content = false;
@@ -1487,7 +1524,7 @@ impl<'a> Parser<'a> {
         Ok((model, view))
     }
 
-    pub fn model_decl(&mut self) -> Result<Model, ParseError> {
+    pub fn model_decl(&mut self) -> ParseResult<Model> {
         self.next(); // skip model
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
@@ -1509,7 +1546,7 @@ impl<'a> Parser<'a> {
         Ok(model)
     }
 
-    pub fn view_decl(&mut self) -> Result<View, ParseError> {
+    pub fn view_decl(&mut self) -> ParseResult<View> {
         self.next(); // skip view
         let mut view = View::default();
         self.expect(TokenKind::LBrace)?; // skip {
@@ -1545,7 +1582,7 @@ impl<'a> Parser<'a> {
     // 6. hello(x, y) {}, 这个是子节点为空的节点实例
     // 7. hello(){}， 这个是参数为空，子节点也为空的节点实例
     // 8. hello {}， 上面的()也可以省略。
-    pub fn node_or_call_stmt(&mut self) -> Result<Stmt, ParseError> {
+    pub fn node_or_call_stmt(&mut self) -> ParseResult<Stmt> {
         let ident = self.ident()?;
         self.next();
 
@@ -1609,7 +1646,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn special_block(&mut self, name: &AutoStr) -> Result<Body, ParseError> {
+    fn special_block(&mut self, name: &AutoStr) -> ParseResult<Body> {
         self.expect(TokenKind::LBrace)?;
         let block_parser = self.special_blocks.remove(name);
         if block_parser.is_none() {
@@ -1622,7 +1659,7 @@ impl<'a> Parser<'a> {
         Ok(body)
     }
 
-    pub fn grid(&mut self) -> Result<Grid, ParseError> {
+    pub fn grid(&mut self) -> ParseResult<Grid> {
         self.next(); // skip grid
                      // args
         let mut data = Vec::new();
@@ -1647,14 +1684,12 @@ impl<'a> Parser<'a> {
 mod tests {
     use super::*;
     fn parse_once(code: &str) -> Code {
-        let scope = Rc::new(RefCell::new(Universe::new()));
-        let mut parser = Parser::new(code, scope);
+        let mut parser = Parser::from(code);
         parser.parse().unwrap()
     }
 
-    fn parse_with_err(code: &str) -> Result<Code, ParseError> {
-        let scope = Rc::new(RefCell::new(Universe::new()));
-        let mut parser = Parser::new(code, scope);
+    fn parse_with_err(code: &str) -> ParseResult<Code> {
+        let mut parser = Parser::from(code);
         parser.parse()
     }
 
@@ -2138,7 +2173,7 @@ exe(hello) {
     fn test_import() {
         let code = "use std.math: square";
         let scope = Universe::new();
-        let mut parser = Parser::new(&code, Rc::new(RefCell::new(scope)));
+        let mut parser = Parser::from(&code);
         let ast = parser.parse().unwrap();
         assert_eq!(
             ast.to_string(),
@@ -2156,7 +2191,7 @@ exe(hello) {
     #[test]
     fn test_fstr_with_note() {
         let code = r#"`hello #{2 + 1} again`"#;
-        let scope = Rc::new(RefCell::new(Universe::new()));
+        let scope = shared(Universe::new());
         let mut parser = Parser::new_with_note(code, scope, '#');
         let ast = parser.parse().unwrap();
         assert_eq!(
@@ -2174,5 +2209,17 @@ exe(hello) {
             ast.to_string(),
             "(code (enum (name Color) (item (name Red) (value 0)) (item (name Green) (value 1)) (item (name Blue) (value 2))) (bina (name Color) (op .) (name Red)))"
         );
+    }
+
+    #[test]
+    fn test_when() {
+        let code = r#"when x {
+        is 10 {print("ten")}
+        }"#;
+        let when = When::parse(code).unwrap();
+        assert_eq!(
+            when.to_string(),
+            r#"(when (name x) (is (int 10) (body (call (name print) (args (str "ten"))))))"#
+        )
     }
 }

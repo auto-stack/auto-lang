@@ -247,8 +247,8 @@ mod tests {
 
     #[test]
     fn test_relative_location() {
-        let path = AutoPath::new("ghs/build");
+        let path = AutoPath::new("crates/auto-lang");
         let relative_loc = path.reverse_relative();
-        assert_eq!(relative_loc, "lib/servcie/test.txt");
+        assert_eq!(relative_loc, "../../");
     }
 }
