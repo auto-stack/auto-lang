@@ -21,8 +21,7 @@ use auto_val::Obj;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub type AutoError = Box<dyn std::error::Error>;
-pub type AutoResult<T> = Result<T, AutoError>;
+use auto_val::{AutoError, AutoResult};
 
 pub fn run(code: &str) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::new();

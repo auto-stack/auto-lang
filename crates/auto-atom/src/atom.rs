@@ -1,30 +1,24 @@
-use auto_val::AutoStr;
 use auto_val::{Array, Node, Value};
+use auto_val::{AutoStr, NodeBody};
 use std::fmt;
 
 #[derive(Clone)]
 pub struct Atom {
+    pub name: AutoStr,
     pub root: Root,
 }
 
 #[derive(Clone)]
 pub enum Root {
-    Node(Node),
+    Node(NodeBody),
     Array(Array),
     Empty,
 }
 
-impl Root {
-    pub fn main_arg(&self) -> Value {
-        match self {
-            Root::Node(node) => node.main_arg(),
-            Root::Array(_) => Value::Nil,
-            Root::Empty => Value::Nil,
-        }
-    }
-}
-
-pub const EMPTY: Atom = Atom { root: Root::Empty };
+pub const EMPTY: Atom = Atom {
+    name: AutoStr::new(),
+    root: Root::Empty,
+};
 
 impl Default for Atom {
     fn default() -> Self {
@@ -35,7 +29,23 @@ impl Default for Atom {
 impl Atom {
     pub fn new(val: Value) -> Self {
         match val {
-            Value::Node(n) => Self::node(n),
+            Value::Node(n) => {
+                let mut nb = NodeBody::new();
+                for (k, v) in n.props.iter() {
+                    nb.add_prop(k.clone(), v.clone());
+                }
+                for n in &n.nodes {
+                    nb.add_kid(n.clone());
+                }
+                let name = if !n.has_prop("name") {
+                    n.main_arg().to_astr()
+                } else {
+                    n.props.get_str_of("name").clone()
+                };
+                let mut atom = Self::node(nb);
+                atom.name = name;
+                atom
+            }
             Value::Array(a) => Self::array(a),
             _ => panic!("Atom can only be a node or an array"),
         }
@@ -43,12 +53,14 @@ impl Atom {
 
     pub fn array(array: Array) -> Self {
         Self {
+            name: AutoStr::new(),
             root: Root::Array(array),
         }
     }
 
-    pub fn node(node: Node) -> Self {
+    pub fn node(node: NodeBody) -> Self {
         Self {
+            name: AutoStr::new(),
             root: Root::Node(node),
         }
     }
@@ -56,21 +68,23 @@ impl Atom {
     pub fn assemble_array(values: Vec<impl Into<Value>>) -> Self {
         let array = Array::from_vec(values);
         Self {
+            name: AutoStr::new(),
             root: Root::Array(array),
         }
     }
 
-    pub fn assemble(name: &str, values: Vec<impl Into<Value>>) -> Self {
-        let mut node = Node::new(name);
+    pub fn assemble(values: Vec<impl Into<Value>>) -> Self {
+        let mut node = NodeBody::new();
         for value in values {
             let val = value.into();
             match val {
                 Value::Node(n) => node.add_kid(n),
-                Value::Pair(k, v) => node.set_prop(k, *v),
+                Value::Pair(k, v) => node.add_prop(k, *v),
                 _ => panic!("Node can only have nodes or pairs as children"),
             }
         }
         Self {
+            name: AutoStr::new(),
             root: Root::Node(node),
         }
     }
@@ -92,7 +106,7 @@ impl Root {
         }
     }
 
-    pub fn as_node(&self) -> &Node {
+    pub fn as_node(&self) -> &NodeBody {
         if let Root::Node(node) = self {
             node
         } else {
@@ -130,18 +144,14 @@ mod tests {
 
     #[test]
     fn test_node() {
-        let atom = Atom::assemble(
-            "test",
-            vec![
-                Value::pair("a", 1),
-                Value::pair("b", 2),
-                Value::pair("c", 3),
-                Value::pair("d", 4),
-                Value::pair("e", 5),
-            ],
-        );
+        let atom = Atom::assemble(vec![
+            Value::pair("a", 1),
+            Value::pair("b", 2),
+            Value::pair("c", 3),
+            Value::pair("d", 4),
+            Value::pair("e", 5),
+        ]);
         let node = atom.root.as_node();
-        assert_eq!(node.name, "test");
         assert_eq!(node.get_prop_of("a"), Value::Int(1));
         assert_eq!(node.get_prop_of("b"), Value::Int(2));
         assert_eq!(node.get_prop_of("c"), Value::Int(3));
@@ -151,7 +161,7 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let atom = Atom::assemble("test", vec![Value::pair("a", 1), Value::pair("b", 2)]);
-        assert_eq!(format!("{}", atom), "test {a: 1; b: 2; }");
+        let atom = Atom::assemble(vec![Value::pair("a", 1), Value::pair("b", 2)]);
+        assert_eq!(format!("{}", atom), "a: 1; b: 2");
     }
 }

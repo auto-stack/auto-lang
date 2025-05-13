@@ -3,9 +3,71 @@ use crate::obj::Obj;
 use crate::pair::ValueKey;
 use crate::types::Type;
 use crate::value::Value;
-use crate::AutoStr;
+use crate::{AutoStr, Pair};
 use std::collections::HashMap;
-use std::fmt::{self, Write};
+use std::fmt;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NodeBody {
+    pub items: Vec<NodeItem>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NodeItem {
+    Prop(Pair),
+    Node(Node),
+}
+
+impl NodeBody {
+    pub fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+
+    pub fn add_kid(&mut self, n: Node) {
+        self.items.push(NodeItem::Node(n))
+    }
+
+    pub fn add_prop(&mut self, k: impl Into<ValueKey>, v: impl Into<Value>) {
+        self.items.push(NodeItem::Prop(Pair {
+            key: k.into(),
+            value: v.into(),
+        }))
+    }
+
+    pub fn get_prop_of(&self, key: impl Into<ValueKey>) -> Value {
+        let key = key.into();
+        self.items
+            .iter()
+            .find(|item| match item {
+                NodeItem::Prop(p) => p.key == key,
+                _ => false,
+            })
+            .map_or(Value::Nil, |item| match item {
+                NodeItem::Prop(p) => p.value.clone(),
+                _ => Value::Nil,
+            })
+    }
+
+    pub fn to_astr(&self) -> AutoStr {
+        format!("{}", self).into()
+    }
+
+    pub fn group_kids(&self) -> HashMap<AutoStr, Vec<&Node>> {
+        // organize kids by their node name
+        let mut kids = HashMap::new();
+        for item in self.items.iter() {
+            if let NodeItem::Node(node) = item {
+                let name = node.name.clone();
+                if !kids.contains_key(&name) {
+                    kids.insert(name, vec![node]);
+                } else {
+                    kids.get_mut(&name).unwrap().push(node);
+                }
+            }
+        }
+        kids
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
@@ -191,6 +253,27 @@ impl fmt::Display for Node {
             write!(f, " {}", self.body)?;
         }
         Ok(())
+    }
+}
+
+impl fmt::Display for NodeBody {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, item) in self.items.iter().enumerate() {
+            write!(f, "{}", item)?;
+            if i < self.items.len() - 1 {
+                write!(f, "; ")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for NodeItem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NodeItem::Node(node) => write!(f, "{}", node),
+            NodeItem::Prop(pair) => write!(f, "{}", pair),
+        }
     }
 }
 

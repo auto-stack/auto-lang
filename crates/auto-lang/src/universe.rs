@@ -2,7 +2,7 @@ use super::scope::*;
 use crate::ast;
 use crate::libs;
 use auto_atom::Atom;
-use auto_val::{Args, AutoStr, ExtFn, MetaID, Obj, Sig, TypeInfoStore, Value};
+use auto_val::{Args, AutoStr, ExtFn, MetaID, NodeItem, Obj, Sig, TypeInfoStore, Value};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -477,10 +477,16 @@ impl Universe {
     pub fn merge_atom(&mut self, atom: &Atom) {
         match &atom.root {
             auto_atom::Root::Node(node) => {
-                let main_arg = node.main_arg();
-                self.set_global("name", main_arg);
-                for (key, val) in node.props.iter() {
-                    self.set_global(key.to_string(), val.clone());
+                // let main_arg = node.main_arg();
+                // self.set_global("name", main_arg);
+                let name = node.get_prop_of("name");
+                if !name.is_nil() {
+                    self.set_global("name", name);
+                }
+                for item in node.items.iter() {
+                    if let NodeItem::Prop(p) = item {
+                        self.set_global(p.key.to_string(), p.value.clone());
+                    }
                 }
                 // set kids
                 let kids_groups = node.group_kids();

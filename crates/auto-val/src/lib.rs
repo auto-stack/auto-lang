@@ -27,3 +27,6 @@ pub use node::*;
 
 mod path;
 pub use path::*;
+
+pub type AutoError = Box<dyn std::error::Error>;
+pub type AutoResult<T> = Result<T, AutoError>;

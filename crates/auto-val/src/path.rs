@@ -1,4 +1,4 @@
-use crate::AutoStr;
+use crate::{AutoResult, AutoStr};
 use glob_match::glob_match;
 use normalize_path::NormalizePath;
 use std::fmt;
@@ -171,6 +171,54 @@ impl AutoPath {
     pub fn depth(&self) -> usize {
         self.unified().split("/").count()
     }
+
+    /// Check if this path has children
+    pub fn is_empty(&self) -> AutoResult<bool> {
+        Ok(self.path().read_dir()?.next().is_none())
+    }
+
+    pub fn abs(&self) -> AutoStr {
+        if self.path.is_absolute() {
+            return self.unified();
+        } else {
+            let abs_path = std::path::absolute(&self.path);
+            if abs_path.is_err() {
+                return self.unified();
+            }
+            Self::from(abs_path.unwrap()).to_astr()
+        }
+    }
+}
+
+/// File system operations
+impl AutoPath {
+    pub fn clean_with_parents(&mut self) -> AutoResult<()> {
+        // 0. check wether the directory is sub folder of working directory
+        let cwd = AutoPath::from(std::env::current_dir()?).abs();
+        let abs_path = self.abs();
+        if !abs_path.starts_with(cwd.as_str()) {
+            return Err(format!(
+                "Path {} is not a subdirectory of working directory {}",
+                abs_path, cwd
+            )
+            .into());
+        }
+        // 1. remove directory at the path
+        println!("removing ... {}", self.path().display());
+        std::fs::remove_dir_all(self.path())?;
+        // 2. recursively check parents: if empty, remove directory
+        let mut parent = self.parent();
+        while parent.to_astr() != "." && parent.unified() != cwd {
+            if parent.is_empty()? {
+                println!("removing ... {}", parent.path().display());
+                std::fs::remove_dir_all(parent.path())?;
+                parent = parent.parent();
+            } else {
+                break;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl From<PathBuf> for AutoPath {
@@ -250,5 +298,15 @@ mod tests {
         let path = AutoPath::new("crates/auto-lang");
         let relative_loc = path.reverse_relative();
         assert_eq!(relative_loc, "../../");
+    }
+
+    #[test]
+    fn test_parents() {
+        let path = AutoPath::new("build/lanshan/iar");
+        let mut parent = path.parent();
+        for _ in 0..4 {
+            println!("{}", parent.to_astr());
+            parent = parent.parent();
+        }
     }
 }

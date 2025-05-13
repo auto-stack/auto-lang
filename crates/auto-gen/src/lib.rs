@@ -1,6 +1,5 @@
 use auto_atom::Atom;
-use auto_lang::AutoResult;
-use auto_val::{AutoPath, AutoStr};
+use auto_val::{AutoPath, AutoResult, AutoStr};
 
 pub struct Mold {
     pub name: AutoStr,
@@ -88,7 +87,7 @@ impl AutoGen {
 
     // Main API
     pub fn gen(&self) -> AutoStr {
-        let atom_name = self.data.root.main_arg().to_astr();
+        let atom_name = self.data.name.clone();
         for mold in self.molds.iter() {
             //TODO: rename mold to pac name
             let out_file = if self.is_rename || mold.is_rename {

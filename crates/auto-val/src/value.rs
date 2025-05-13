@@ -884,6 +884,12 @@ impl Pair {
     }
 }
 
+impl fmt::Display for Pair {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.key, self.value)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConfigItem {
     Pair(Pair),
