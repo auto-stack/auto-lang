@@ -251,10 +251,10 @@ mod tests {
     #[test]
     fn test_gen() {
         let values = vec![Value::pair("a", 1), Value::pair("b", 2)];
-        let atom = Atom::assemble("root", values);
+        let atom = Atom::assemble(values);
         let ag = AutoGen::new().data(atom);
         let result = ag.gen();
-        assert_eq!(result, "root {a: 1; b: 2; }");
+        assert_eq!(result, "a: 1; b: 2");
     }
 
     #[test]

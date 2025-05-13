@@ -1,4 +1,4 @@
-use auto_val::{Array, Node, Value};
+use auto_val::{Array, Value};
 use auto_val::{AutoStr, NodeBody};
 use std::fmt;
 

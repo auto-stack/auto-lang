@@ -1,9 +1,6 @@
-use crate::eval_config;
-use crate::eval_config_with_scope;
-use crate::interp;
-use crate::interpret;
 use crate::AutoResult;
 use crate::Universe;
+use crate::{eval_config_with_scope, interp};
 use auto_val::Obj;
 use auto_val::{AutoPath, AutoStr, Node, Value};
 use std::path::Path;

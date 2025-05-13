@@ -21,7 +21,7 @@ use auto_val::Obj;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use auto_val::{AutoError, AutoResult};
+use auto_val::AutoResult;
 
 pub fn run(code: &str) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::new();

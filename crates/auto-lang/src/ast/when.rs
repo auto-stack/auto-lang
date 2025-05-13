@@ -1,4 +1,4 @@
-use std::fmt::{self, Write};
+use std::fmt::{self};
 
 use super::{Body, Expr};
 

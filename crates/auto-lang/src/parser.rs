@@ -2187,7 +2187,6 @@ exe(hello) {
     #[test]
     fn test_import() {
         let code = "use std.math: square";
-        let scope = Universe::new();
         let mut parser = Parser::from(&code);
         let ast = parser.parse().unwrap();
         assert_eq!(
