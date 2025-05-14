@@ -909,4 +909,15 @@ square(15)
         let result = run(code).unwrap();
         assert_eq!(result, "succ");
     }
+
+    #[test]
+    fn test_if_in_array() {
+        let code = r#"
+            var is_lse = false
+            var is_rh = true
+            ["osal", if is_lse {"EB"}, if is_rh {"al"}]
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, r#"["osal", "al"]"#)
+    }
 }

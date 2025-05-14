@@ -124,7 +124,7 @@ impl Node {
     }
 
     pub fn id(&self) -> AutoStr {
-        self.args.get_val(0).to_astr()
+        self.main_arg().to_astr()
     }
 
     pub fn add_arg(&mut self, arg: Arg) {
@@ -156,6 +156,27 @@ impl Node {
             .filter(|n| *n.name == name)
             .map(|n| n.clone())
             .collect()
+    }
+
+    pub fn get_kids(&self, name: impl Into<AutoStr>) -> Vec<Node> {
+        let name = name.into();
+        let mut nodes: Vec<Node> = self
+            .nodes
+            .iter()
+            .filter(|n| *n.name == name)
+            .map(|n| n.clone())
+            .collect();
+        let plural = format!("{}s", name);
+        if self.has_prop(&plural) {
+            let simple_kids = self.props.get_array_of_str(&plural);
+            println!("Simple kids:{:?}", simple_kids);
+            for kid in simple_kids {
+                let mut n = Node::new(name.clone());
+                n.set_main_arg(kid);
+                nodes.push(n);
+            }
+        }
+        nodes
     }
 
     pub fn set_prop(&mut self, key: impl Into<ValueKey>, value: impl Into<Value>) {

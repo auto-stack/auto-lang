@@ -97,6 +97,10 @@ impl Value {
     pub fn is_nil(&self) -> bool {
         matches!(self, Value::Nil)
     }
+
+    pub fn is_void(&self) -> bool {
+        matches!(self, Value::Void)
+    }
 }
 
 // arithmetic
@@ -895,6 +899,7 @@ pub enum ConfigItem {
     Pair(Pair),
     Object(Obj),
     Node(Node),
+    Value(Value), // simple values
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -919,6 +924,10 @@ impl ConfigBody {
         self.items.push(ConfigItem::Node(node));
     }
 
+    pub fn add_val(&mut self, val: Value) {
+        self.items.push(ConfigItem::Value(val));
+    }
+
     pub fn to_node(self, name: impl Into<AutoStr>) -> Node {
         let mut node = Node::new(name);
         for item in self.items.into_iter() {
@@ -926,6 +935,7 @@ impl ConfigBody {
                 ConfigItem::Pair(pair) => node.props.set(pair.key.to_string(), pair.value),
                 ConfigItem::Object(object) => node.props.merge(&object),
                 ConfigItem::Node(n) => node.add_kid(n),
+                ConfigItem::Value(v) => node.props.set("value".to_string(), v),
             }
         }
         node
@@ -938,6 +948,7 @@ impl fmt::Display for ConfigItem {
             ConfigItem::Pair(pair) => write!(f, "{}: {}", pair.key, pair.value),
             ConfigItem::Object(object) => write!(f, "{}", object),
             ConfigItem::Node(node) => write!(f, "{}", node),
+            ConfigItem::Value(v) => write!(f, "{}", v),
         }
     }
 }

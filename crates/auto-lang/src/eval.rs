@@ -110,6 +110,9 @@ impl Evaler {
                                                 ConfigItem::Node(n) => {
                                                     node.add_kid(n.clone());
                                                 }
+                                                ConfigItem::Value(v) => {
+                                                    node.set_prop(v.to_astr(), v);
+                                                }
                                             }
                                         }
                                     }
@@ -128,6 +131,9 @@ impl Evaler {
                                     }
                                     ConfigItem::Node(n) => {
                                         node.add_kid(n.clone());
+                                    }
+                                    ConfigItem::Value(v) => {
+                                        node.set_prop(v.to_astr(), v);
                                     }
                                 }
                             }
@@ -184,7 +190,7 @@ impl Evaler {
                 Value::Pair(key, value) => body.add_pair(Pair::new(key, *value)),
                 Value::Obj(o) => body.add_object(o),
                 Value::Node(n) => body.add_node(n),
-                _ => {}
+                _ => body.add_val(val),
             }
         }
         body
@@ -250,7 +256,7 @@ impl Evaler {
         if let Some(else_stmt) = else_stmt {
             return self.eval_body(else_stmt);
         }
-        Value::Nil
+        Value::Void
     }
 
     fn eval_iter(&mut self, iter: &Iter, idx: usize, item: Value) {
@@ -481,10 +487,25 @@ impl Evaler {
             .unwrap_or(Value::Nil)
     }
 
-    fn array(&mut self, elems: &Vec<Expr>) -> Value {
+    fn eval_array(&mut self, elems: &Vec<Expr>) -> Value {
         let mut values = Array::new();
         for elem in elems.iter() {
-            values.push(self.eval_expr(elem));
+            let v = self.eval_expr(elem);
+            if !v.is_void() {
+                if let Value::ConfigBody(b) = v {
+                    // merge values
+                    for i in b.items {
+                        match i {
+                            ConfigItem::Node(n) => values.push(n),
+                            ConfigItem::Pair(p) => values.push(Value::pair(p.key, p.value)),
+                            ConfigItem::Object(o) => values.push(o),
+                            ConfigItem::Value(v) => values.push(v),
+                        }
+                    }
+                } else {
+                    values.push(self.eval_expr(elem));
+                }
+            }
         }
         Value::array(values)
     }
@@ -826,7 +847,7 @@ impl Evaler {
             Expr::Unary(op, e) => self.eval_una(op, e),
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
             Expr::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
-            Expr::Array(elems) => self.array(elems),
+            Expr::Array(elems) => self.eval_array(elems),
             Expr::Call(call) => self.eval_call(call),
             Expr::Node(node) => self.eval_node(node),
             Expr::Index(array, index) => self.index(array, index),
@@ -1126,6 +1147,9 @@ impl Evaler {
                                                 ConfigItem::Node(n) => {
                                                     nodes.push(n.clone());
                                                 }
+                                                ConfigItem::Value(v) => {
+                                                    props.set(v.to_astr(), v);
+                                                }
                                             }
                                         }
                                     }
@@ -1144,6 +1168,9 @@ impl Evaler {
                                     }
                                     ConfigItem::Node(n) => {
                                         nodes.push(n.clone());
+                                    }
+                                    ConfigItem::Value(v) => {
+                                        props.set(v.to_astr(), v);
                                     }
                                 }
                             }

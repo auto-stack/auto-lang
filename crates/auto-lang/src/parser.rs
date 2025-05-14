@@ -505,7 +505,7 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         let mut elems = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RSquare) {
-            elems.push(self.expr()?);
+            elems.push(self.rhs_expr()?);
             self.sep_array()?;
         }
         self.expect(TokenKind::RSquare)?; // skip ]
