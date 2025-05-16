@@ -282,7 +282,8 @@ static NODE_NIL: Node = Node {
     props: Obj::EMPTY,
     nodes: vec![],
     text: AutoStr::new(),
-    body: MetaID::Nil,
+    body: NodeBody::new(),
+    body_ref: MetaID::Nil,
 };
 
 // Quick Readers

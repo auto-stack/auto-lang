@@ -314,7 +314,10 @@ impl<'a> Lexer<'a> {
         // 第1个字符，必须是字母或下划线
         if let Some(&c) = self.chars.peek() {
             if !c.is_alphabetic() && c != '_' {
-                panic!("identifier must start with a letter or underscore");
+                panic!(
+                    "identifier must start with a letter or underscore, got {}",
+                    c
+                );
             } else {
                 text.push(c);
                 self.chars.next();

@@ -4,6 +4,7 @@ use crate::scope;
 use crate::scope::Meta;
 use crate::universe::Universe;
 use auto_val;
+use auto_val::NodeBody;
 use auto_val::{add, comp, div, mul, sub};
 use auto_val::{
     Array, AutoStr, ConfigBody, ConfigItem, MetaID, Method, Obj, Op, Pair, Sig, Type, Value,
@@ -866,6 +867,10 @@ impl Evaler {
     }
 
     fn dot_node(&mut self, node: &auto_val::Node, right: &Expr) -> Option<Value> {
+        // println!(
+        //     "===================== dot node {} ====================",
+        //     node.main_arg()
+        // );
         let Expr::Ident(name) = right else {
             return None;
         };
@@ -1196,7 +1201,8 @@ impl Evaler {
             props,
             text: AutoStr::new(),
             nodes,
-            body,
+            body: NodeBody::new(),
+            body_ref: body,
         })
     }
 

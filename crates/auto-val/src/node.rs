@@ -4,12 +4,13 @@ use crate::pair::ValueKey;
 use crate::types::Type;
 use crate::value::Value;
 use crate::{AutoStr, Pair};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeBody {
-    pub items: Vec<NodeItem>,
+    pub index: Vec<ValueKey>,
+    pub map: BTreeMap<ValueKey, NodeItem>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -18,34 +19,45 @@ pub enum NodeItem {
     Node(Node),
 }
 
+impl NodeItem {
+    pub fn prop(key: impl Into<ValueKey>, value: impl Into<Value>) -> Self {
+        NodeItem::Prop(Pair::new(key.into(), value.into()))
+    }
+}
+
 impl NodeBody {
-    pub fn new() -> Self {
-        Self { items: Vec::new() }
+    pub const fn new() -> Self {
+        Self {
+            index: Vec::new(),
+            map: BTreeMap::new(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
     }
 
     pub fn add_kid(&mut self, n: Node) {
-        self.items.push(NodeItem::Node(n))
+        let id: ValueKey = n.id().into();
+        self.index.push(id.clone());
+        self.map.insert(id, NodeItem::Node(n));
     }
 
     pub fn add_prop(&mut self, k: impl Into<ValueKey>, v: impl Into<Value>) {
-        self.items.push(NodeItem::Prop(Pair {
-            key: k.into(),
-            value: v.into(),
-        }))
+        let k = k.into();
+        self.index.push(k.clone());
+        self.map.insert(k.clone(), NodeItem::prop(k, v.into()));
     }
 
     pub fn get_prop_of(&self, key: impl Into<ValueKey>) -> Value {
         let key = key.into();
-        self.items
-            .iter()
-            .find(|item| match item {
-                NodeItem::Prop(p) => p.key == key,
-                _ => false,
-            })
-            .map_or(Value::Nil, |item| match item {
+        match self.map.get(&key) {
+            Some(v) => match v {
                 NodeItem::Prop(p) => p.value.clone(),
                 _ => Value::Nil,
-            })
+            },
+            None => Value::Nil,
+        }
     }
 
     pub fn to_astr(&self) -> AutoStr {
@@ -55,7 +67,7 @@ impl NodeBody {
     pub fn group_kids(&self) -> HashMap<AutoStr, Vec<&Node>> {
         // organize kids by their node name
         let mut kids = HashMap::new();
-        for item in self.items.iter() {
+        for item in self.map.values() {
             if let NodeItem::Node(node) = item {
                 let name = node.name.clone();
                 if !kids.contains_key(&name) {
@@ -76,7 +88,8 @@ pub struct Node {
     pub props: Obj,
     pub nodes: Vec<Node>,
     pub text: AutoStr,
-    pub body: MetaID,
+    pub body: NodeBody,
+    pub body_ref: MetaID,
 }
 
 impl Node {
@@ -87,7 +100,8 @@ impl Node {
             props: Obj::new(),
             nodes: vec![],
             text: AutoStr::default(),
-            body: MetaID::Nil,
+            body: NodeBody::new(),
+            body_ref: MetaID::Nil,
         }
     }
 
@@ -136,10 +150,16 @@ impl Node {
     }
 
     pub fn get_prop(&self, key: &str) -> Value {
-        match self.props.get(key) {
+        let v = match self.props.get(key) {
             Some(value) => value.clone(),
             None => Value::Nil,
+        };
+        if v.is_nil() {
+            if !self.body.is_empty() {
+                return self.body.get_prop_of(key);
+            }
         }
+        v
     }
 
     pub fn get_prop_of(&self, key: &str) -> Value {
@@ -270,8 +290,14 @@ impl fmt::Display for Node {
             write!(f, "}}")?;
         }
 
-        if self.body != MetaID::Nil {
-            write!(f, " {}", self.body)?;
+        if !self.body.is_empty() {
+            write!(f, " {{")?;
+            write!(f, "{}", self.body)?;
+            write!(f, "}}")?;
+        }
+
+        if self.body_ref != MetaID::Nil {
+            write!(f, " {}", self.body_ref)?;
         }
         Ok(())
     }
@@ -279,9 +305,9 @@ impl fmt::Display for Node {
 
 impl fmt::Display for NodeBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (i, item) in self.items.iter().enumerate() {
-            write!(f, "{}", item)?;
-            if i < self.items.len() - 1 {
+        for (i, k) in self.map.keys().enumerate() {
+            write!(f, "{}", self.map.get(k).unwrap())?;
+            if i < self.map.len() - 1 {
                 write!(f, "; ")?;
             }
         }

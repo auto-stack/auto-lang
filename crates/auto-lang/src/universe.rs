@@ -483,9 +483,14 @@ impl Universe {
                 if !name.is_nil() {
                     self.set_global("name", name);
                 }
-                for item in node.items.iter() {
-                    if let NodeItem::Prop(p) = item {
-                        self.set_global(p.key.to_string(), p.value.clone());
+                for (_key, item) in node.map.iter() {
+                    match item {
+                        NodeItem::Prop(p) => {
+                            self.set_global(p.key.to_string(), p.value.clone());
+                        }
+                        _ => {
+                            //
+                        }
                     }
                 }
                 // set kids
