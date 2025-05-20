@@ -920,4 +920,18 @@ square(15)
         let result = run(code).unwrap();
         assert_eq!(result, r#"["osal", "al"]"#)
     }
+
+    #[test]
+    fn test_node_newline() {
+        let code = r#"
+            dep("x")
+            {
+                x: 1
+                y: 2
+            }
+        "#;
+
+        let config = AutoConfig::new(code);
+        assert!(config.is_err());
+    }
 }

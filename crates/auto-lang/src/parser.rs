@@ -1493,10 +1493,13 @@ impl<'a> Parser<'a> {
             Expr::Call(call) => {
                 if let Expr::Ident(name) = call.name.as_ref() {
                     if !self.exists(&name) {
-                        // 表示是一个节点实例
-                        let node = Node::from(call.clone());
-                        return Ok(Expr::Node(node));
+                        return error_pos!("Function {} not define!", name);
                     }
+                    // if !self.exists(&name) {
+                    //     // 表示是一个节点实例
+                    //     let node = Node::from(call.clone());
+                    //     return Ok(Expr::Node(node));
+                    // }
                 }
                 Ok(expr)
             }
@@ -1649,9 +1652,9 @@ impl<'a> Parser<'a> {
                     args,
                 });
                 expr = self.check_symbol(expr)?;
-                if let Expr::Node(node) = expr {
-                    return Ok(Stmt::Node(node));
-                }
+                // if let Expr::Node(node) = expr {
+                // return Ok(Stmt::Node(node));
+                // }
                 Ok(Stmt::Expr(expr))
             } else {
                 // Something else with a starting Ident
