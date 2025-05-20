@@ -199,7 +199,7 @@ impl<'a> Parser<'a> {
             Ok(())
         } else {
             println!("{}", Backtrace::capture());
-            error_pos!("Expected token kind: {:?}, got {:?}", kind, self.cur.text)
+            error_pos!("Expected token kind: {:?}, got [{:?}]", kind, self.cur.text)
         }
     }
 
@@ -740,10 +740,13 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::LBrace)?;
                     // NOTE: allow only one expression in a ${} block
                     if !self.is_kind(TokenKind::RBrace) {
+                        println!("Trying to parse expr in fstr");
                         let expr = self.rhs_expr()?;
+                        println!("got {}", expr);
                         parts.push(expr);
                         // self.expect_eos()?;
                     }
+                    println!("next:{}", self.cur);
                     self.expect(TokenKind::RBrace)?;
                 } else {
                     // $Ident
@@ -1815,10 +1818,10 @@ mod tests {
 
     #[test]
     fn test_for_with_mid_call() {
-        let code = r#"for i in 0..10 { `$i`; mid(",") }"#;
+        let code = r#"for i in 0..10 { `$i`; mid{","} }"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(for (name i) (bina (int 0) (op ..) (int 10)) (body (fstr (str \"\") (name i)) (node (name mid) (args (str \",\")))))");
+        assert_eq!(last.to_string(), "(for (name i) (bina (int 0) (op ..) (int 10)) (body (fstr (str \"\") (name i)) (node (name mid) (body (str \",\")))))");
     }
 
     #[test]
@@ -1965,7 +1968,7 @@ mod tests {
     #[test]
     fn test_node_instance_without_args() {
         let code = r#"center {
-            text("Hello")
+            text("Hello") {}
         }"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
@@ -2042,7 +2045,7 @@ mod tests {
     fn test_node_tree() {
         let code = r#"
         center {
-            text("Hello")
+            text("Hello") {}
         }
         "#;
         let ast = parse_once(code);

@@ -215,12 +215,22 @@ impl<'a> Lexer<'a> {
         // push {
         let tk = self.single(TokenKind::LBrace, '{');
         self.buffer.push_back(tk);
+        let mut level = 1;
         // tokens in the expression
         loop {
             let tk = self.next_step();
             let kind = tk.kind;
             self.buffer.push_back(tk);
-            if kind == TokenKind::RBrace || kind == TokenKind::EOF {
+            if kind == TokenKind::LBrace {
+                level += 1;
+            }
+            if kind == TokenKind::RBrace {
+                level -= 1;
+                if level <= 0 {
+                    break;
+                }
+            }
+            if kind == TokenKind::EOF {
                 break;
             }
         }
@@ -697,6 +707,16 @@ mod tests {
                 "<if><ident:x><gt><int:5><ident:print><(><str:x is greater than 5><)><nl>",
                 "<else><ident:print><(><str:x is else><)><nl><}><nl>"
             )
+        );
+    }
+
+    #[test]
+    fn test_fstr_lexer() {
+        let code = r#"`${mid(){}}`"#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(
+            tokens,
+            "<fstrs><fstrp:><$><{><ident:mid><(><)><{><}><}><fstre>"
         );
     }
 }

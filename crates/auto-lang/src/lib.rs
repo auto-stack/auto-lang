@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn test_for_with_mid() {
-        let code = r#"$ for i in 0..10 { `${i}`; mid(",") }"#;
+        let code = r#"$ for i in 0..10 { `${i}`; mid{","} }"#;
         let scope = Universe::new();
         let result = eval_template(code, scope).unwrap();
         assert_eq!(result.result.repr(), "0,1,2,3,4,5,6,7,8,9");
@@ -282,7 +282,7 @@ mod tests {
     fn test_for_with_mid_and_newline() {
         let code = r#"
 $ for i in 0..10 {
-    ${i}${mid(",")}
+    ${i}${mid{","}}
 $ }"#;
         let scope = Universe::new();
         let result = eval_template(code, scope).unwrap();
@@ -419,7 +419,7 @@ $ }"#;
         let code = r#"
             parent("parent") {
                 size: 10
-                kid("kid1")
+                kid("kid1") {}
             }
         "#;
         let interp = eval_config(code, &Obj::EMPTY).unwrap();
@@ -432,7 +432,7 @@ $ }"#;
     #[test]
     fn test_nodes() {
         let code = r#"center {
-            text("Hello")
+            text("Hello") {}
             button("OK") {
                 onclick: || print("clicked")
             }
@@ -450,16 +450,16 @@ $ }"#;
             }
 
             view {
-                text(f"Hello $name")
+                text(f"Hello $name") {}
             }
         }
 
         app {
             center {
-                hello(name="You")
+                hello(name="You") {}
             }
             bottom {
-                text("Bottom")
+                text("Bottom") {}
             }
         }"#;
 
@@ -540,7 +540,7 @@ $ for row in rows {
 {
     name: ${row.name},
     age: ${row.age},
-}${mid(",")}
+},
 $ }
 "#;
         let result = eval_template(template, scope).unwrap();
@@ -556,7 +556,7 @@ $ }
 {
     name: Charlie,
     age: 22,
-}
+},
 "#;
         assert_eq!(result.result.repr(), expected);
     }

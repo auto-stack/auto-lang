@@ -173,6 +173,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_flip_template_simple() {
+        let code = r#"
+$ for i in 0..10 {
+    ${i}${mid{","}}
+$ }"#;
+        let result = flip_template(code, '$');
+
+        assert_eq!(result, "``\nfor i in 0..10 {\n`    ${i}${mid{\",\"}}`\n}",);
+    }
+
+    #[test]
     fn test_flip_template() {
         let code = r#"#include <stdio.h>
 
