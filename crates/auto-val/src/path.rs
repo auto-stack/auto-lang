@@ -309,4 +309,10 @@ mod tests {
             parent = parent.parent();
         }
     }
+
+    #[test]
+    fn test_abs() {
+        let path = "./Cargo.toml";
+        println!("{}", AutoPath::new(path).abs());
+    }
 }

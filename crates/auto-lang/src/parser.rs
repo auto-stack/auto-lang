@@ -740,9 +740,7 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::LBrace)?;
                     // NOTE: allow only one expression in a ${} block
                     if !self.is_kind(TokenKind::RBrace) {
-                        println!("Trying to parse expr in fstr");
                         let expr = self.rhs_expr()?;
-                        println!("got {}", expr);
                         parts.push(expr);
                         // self.expect_eos()?;
                     }
