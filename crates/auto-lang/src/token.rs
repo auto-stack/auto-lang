@@ -51,6 +51,7 @@ pub enum TokenKind {
     CommentContent, // any text in comment
     CommentStart,   // /*
     CommentEnd,     // */
+    Arrow,          // ->
 
     // Keywords
     True,
@@ -127,6 +128,7 @@ impl fmt::Display for Token {
             TokenKind::Asn => write!(f, "<=>"),
             TokenKind::Eq => write!(f, "<==>"),
             TokenKind::Neq => write!(f, "<!=>"),
+            TokenKind::Arrow => write!(f, "<->>"),
             TokenKind::True => write!(f, "<true>"),
             TokenKind::False => write!(f, "<false>"),
             TokenKind::Nil => write!(f, "<nil>"),

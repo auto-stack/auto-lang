@@ -174,6 +174,17 @@ pub enum Key {
     StrKey(AutoStr),
 }
 
+impl From<Key> for Expr {
+    fn from(key: Key) -> Self {
+        match key {
+            Key::NamedKey(name) => Expr::Ident(name),
+            Key::IntKey(i) => Expr::Int(i),
+            Key::BoolKey(b) => Expr::Bool(b),
+            Key::StrKey(s) => Expr::Str(s),
+        }
+    }
+}
+
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

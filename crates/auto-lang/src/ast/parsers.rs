@@ -1,5 +1,8 @@
 use super::*;
-use crate::parser::{ParseResult, Parser, ParserExt};
+use crate::{
+    parser::{ParseResult, Parser, ParserExt},
+    token::TokenKind,
+};
 
 impl ParserExt for Code {
     fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
@@ -34,6 +37,14 @@ impl ParserExt for When {
     }
 }
 
+impl ParserExt for Goto {
+    fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
+        let code = code.into();
+        let mut parser = Parser::from(code.as_str());
+        parser.parse_goto()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -55,5 +66,14 @@ mod tests {
     fn test_parse_expr() {
         let expr = Expr::parse("1 + 2").unwrap();
         assert_eq!(expr.to_string(), "(bina (int 1) (op +) (int 2))");
+    }
+
+    #[test]
+    fn test_parse_goto() {
+        let goto = Goto::parse("5 -> 7 : ok").unwrap();
+        assert_eq!(
+            goto.to_string(),
+            "(goto (from (int 5)) (to (int 7)) (with (name ok)))"
+        );
     }
 }

@@ -369,6 +369,20 @@ impl<'a> Lexer<'a> {
         self.next_step()
     }
 
+    fn minus_or_arrow(&mut self, c: char) -> Token {
+        self.chars.next();
+        if let Some(&next) = self.chars.peek() {
+            if next == '>' {
+                self.chars.next();
+                Token::new(TokenKind::Arrow, self.pos(2), "->".into())
+            } else {
+                Token::new(TokenKind::Sub, self.pos(1), c.into())
+            }
+        } else {
+            Token::new(TokenKind::Sub, self.pos(1), c.into())
+        }
+    }
+
     fn next_step(&mut self) -> Token {
         self.skip_whitespace();
         while let Some(&c) = self.chars.peek() {
@@ -424,7 +438,7 @@ impl<'a> Lexer<'a> {
                     return self.single(TokenKind::Add, c);
                 }
                 '-' => {
-                    return self.single(TokenKind::Sub, c);
+                    return self.minus_or_arrow(c);
                 }
                 '*' => {
                     return self.single(TokenKind::Mul, c);
@@ -718,5 +732,12 @@ mod tests {
             tokens,
             "<fstrs><fstrp:><$><{><ident:mid><(><)><{><}><}><fstre>"
         );
+    }
+
+    #[test]
+    fn test_arrow() {
+        let code = "5 -> 7";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<int:5><->><int:7>");
     }
 }

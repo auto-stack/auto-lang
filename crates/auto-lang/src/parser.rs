@@ -744,7 +744,6 @@ impl<'a> Parser<'a> {
                         parts.push(expr);
                         // self.expect_eos()?;
                     }
-                    println!("next:{}", self.cur);
                     self.expect(TokenKind::RBrace)?;
                 } else {
                     // $Ident
@@ -1696,6 +1695,32 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::RBrace)?;
         let grid = Grid { head: args, data };
         Ok(grid)
+    }
+
+    pub fn parse_goto(&mut self) -> ParseResult<Goto> {
+        let src = if self.is_kind(TokenKind::Ident) {
+            Some(self.ident()?)
+        } else if self.is_kind(TokenKind::Int) {
+            Some(self.atom()?)
+        } else if self.is_kind(TokenKind::Str) {
+            Some(self.atom()?)
+        } else if self.is_kind(TokenKind::FStrStart) {
+            Some(self.fstr()?)
+        } else if self.is_kind(TokenKind::Arrow) {
+            None
+        } else {
+            None
+        };
+        self.expect(TokenKind::Arrow)?;
+        let to = self.expr()?;
+        let (to, with) = if let Expr::Pair(p) = to {
+            let to = p.key.into();
+            let value = *p.value;
+            (to, Some(value))
+        } else {
+            (to, None)
+        };
+        Ok(Goto::new(src, to, with))
     }
 }
 
