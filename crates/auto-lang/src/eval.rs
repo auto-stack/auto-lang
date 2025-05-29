@@ -1195,15 +1195,21 @@ impl Evaler {
                     .define_global(&name, Rc::new(Meta::Body(node.body.clone())));
             }
         }
-        Value::Node(auto_val::Node {
+        let nd = Value::Node(auto_val::Node {
             name: node.name.clone().into(),
+            id: node.id.clone(),
             args,
             props,
             text: AutoStr::new(),
             nodes,
             body: NodeBody::new(),
             body_ref: body,
-        })
+        });
+        // save value to scope
+        self.universe
+            .borrow_mut()
+            .set_local_val(node.id.as_str(), nd.clone());
+        nd
     }
 
     // fn eval_value_node_body(&mut self, node_val: &mut Value) {

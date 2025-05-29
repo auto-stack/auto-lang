@@ -84,6 +84,7 @@ impl NodeBody {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
     pub name: AutoStr,
+    pub id: AutoStr,
     pub args: Args,
     pub props: Obj,
     pub nodes: Vec<Node>,
@@ -96,6 +97,7 @@ impl Node {
     pub fn new(name: impl Into<AutoStr>) -> Self {
         Self {
             name: name.into(),
+            id: AutoStr::default(),
             args: Args::new(),
             props: Obj::new(),
             nodes: vec![],

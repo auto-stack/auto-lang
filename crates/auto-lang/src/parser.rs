@@ -1658,6 +1658,7 @@ impl<'a> Parser<'a> {
                     let mut node = Node::new(name.clone());
                     if let Some(id) = id {
                         // define a variable for this node instance with id
+                        println!("Defining variable for node instance with id: {}", id);
                         self.define(id.as_str(), Meta::Node(node.clone()));
                         node.id = id;
                     }

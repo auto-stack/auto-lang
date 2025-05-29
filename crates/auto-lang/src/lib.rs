@@ -895,4 +895,16 @@ square(15)
         let config = AutoConfig::new(code);
         assert!(config.is_err());
     }
+
+    #[test]
+    fn test_node_store() {
+        let code = r#"
+            lib x {
+                at: "src/x"
+            }
+            x.at
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "src/x");
+    }
 }

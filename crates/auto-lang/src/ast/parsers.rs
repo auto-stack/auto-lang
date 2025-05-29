@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    parser::{ParseResult, Parser, ParserExt},
-    token::TokenKind,
-};
+use crate::parser::{ParseResult, Parser, ParserExt};
 
 impl ParserExt for Code {
     fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {

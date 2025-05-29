@@ -278,6 +278,7 @@ impl Value {
 
 static NODE_NIL: Node = Node {
     name: AutoStr::new(),
+    id: AutoStr::new(),
     args: Args::EMPTY,
     props: Obj::EMPTY,
     nodes: vec![],
