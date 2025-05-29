@@ -9,7 +9,7 @@ pub struct Lexer<'a> {
     line: usize,
     pos: usize,
     buffer: VecDeque<Token>,
-
+    last: Option<Token>,
     // special tokens
     fstr_note: char,
 }
@@ -21,6 +21,7 @@ impl<'a> Lexer<'a> {
             line: 0,
             pos: 0,
             buffer: VecDeque::new(),
+            last: None,
             fstr_note: '$',
         }
     }
@@ -257,6 +258,13 @@ impl<'a> Lexer<'a> {
         Some(Token::new(kind, self.pos(text.len()), text.into()))
     }
 
+    pub fn header_keyword(&mut self, text: String) -> Option<Token> {
+        match text.as_str() {
+            "on" => self.keyword_tok(TokenKind::On, &text),
+            _ => None,
+        }
+    }
+
     pub fn keyword(&mut self, text: String) -> Option<Token> {
         match text.as_str() {
             "true" => self.keyword_tok(TokenKind::True, &text),
@@ -319,6 +327,16 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn is_newstart(&mut self) -> bool {
+        if let Some(last) = &self.last {
+            return last.kind == TokenKind::Newline
+                || last.kind == TokenKind::LBrace
+                || last.kind == TokenKind::Semi;
+        } else {
+            true
+        }
+    }
+
     pub fn identifier(&mut self) -> Token {
         let mut text = String::new();
         // 第1个字符，必须是字母或下划线
@@ -344,6 +362,12 @@ impl<'a> Lexer<'a> {
         // TODO: keyword detection should be dynamic, e.g. context dependent)
         if let Some(keyword) = self.keyword(text.clone()) {
             keyword
+        } else if self.is_newstart() {
+            if let Some(header_keyword) = self.header_keyword(text.clone()) {
+                header_keyword
+            } else {
+                Token::ident(self.pos(text.len()), text.into())
+            }
         } else {
             Token::ident(self.pos(text.len()), text.into())
         }
@@ -364,9 +388,13 @@ impl<'a> Lexer<'a> {
         // skip whitespace
         self.skip_whitespace();
         if !self.buffer.is_empty() {
-            return self.buffer.pop_front().unwrap();
+            let b = self.buffer.pop_front().unwrap();
+            self.last = Some(b.clone());
+            return b;
         }
-        self.next_step()
+        let t = self.next_step();
+        self.last = Some(t.clone());
+        t
     }
 
     fn minus_or_arrow(&mut self, c: char) -> Token {
@@ -739,5 +767,25 @@ mod tests {
         let code = "5 -> 7";
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<int:5><->><int:7>");
+    }
+
+    #[test]
+    fn test_on() {
+        let code = r#"on {
+            5 -> 7
+            6 -> 8 : 10
+        }"#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(
+            tokens,
+            "<on><{><nl><int:5><->><int:7><nl><int:6><->><int:8><:><int:10><nl><}>"
+        )
+    }
+
+    #[test]
+    fn test_on_in_fn() {
+        let code = r#"fn on(ev str) {}"#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<fn><ident:on><(><ident:ev><ident:str><)><{><}>")
     }
 }

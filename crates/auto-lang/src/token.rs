@@ -73,6 +73,7 @@ pub enum TokenKind {
     Use,
     As,
     Enum,
+    On,
 
     // Format Str
     FStrStart,
@@ -93,7 +94,7 @@ pub enum TokenKind {
     EOF,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Token {
     pub kind: TokenKind,
     pub pos: Pos,
@@ -158,6 +159,7 @@ impl fmt::Display for Token {
             TokenKind::Char => write!(f, "<'{}'>", self.text),
             TokenKind::Is => write!(f, "<is>"),
             TokenKind::When => write!(f, "<when>"),
+            TokenKind::On => write!(f, "<on>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }
     }

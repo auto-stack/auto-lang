@@ -233,7 +233,7 @@ impl<'a> Parser<'a> {
         let mut stmts = Vec::new();
         self.skip_empty_lines();
         while !self.is_kind(TokenKind::EOF) {
-            let stmt = self.stmt()?;
+            let stmt = self.parse_stmt()?;
             // First level pairs are viewed as variable declarations
             // TODO: this should only happen in a Config scenario
             if let Stmt::Expr(Expr::Pair(Pair { key, value })) = &stmt {
@@ -290,7 +290,7 @@ impl<'a> Parser<'a> {
 
 // Expressions
 impl<'a> Parser<'a> {
-    pub fn expr(&mut self) -> ParseResult<Expr> {
+    pub fn parse_expr(&mut self) -> ParseResult<Expr> {
         let mut exp = self.expr_pratt(0)?;
         exp = self.check_symbol(exp)?;
         Ok(exp)
@@ -480,7 +480,7 @@ impl<'a> Parser<'a> {
 
     pub fn group(&mut self) -> ParseResult<Expr> {
         self.next(); // skip (
-        let expr = self.expr()?;
+        let expr = self.parse_expr()?;
         self.expect(TokenKind::RParen)?; // skip )
         Ok(expr)
     }
@@ -537,7 +537,7 @@ impl<'a> Parser<'a> {
                     self.expr_pratt_with_left(name, 0)?
                 }
             } else {
-                self.expr()?
+                self.parse_expr()?
             };
             match &expr {
                 // Named args
@@ -788,7 +788,7 @@ impl<'a> Parser<'a> {
                 _ => error_pos!("Expected expression, got {:?}", stmt),
             }
         } else {
-            self.expr()
+            self.parse_expr()
         }
     }
 
@@ -800,7 +800,7 @@ impl<'a> Parser<'a> {
 
     pub fn iterable_expr(&mut self) -> ParseResult<Expr> {
         // TODO: how to check for range/array but reject other cases?
-        self.expr()
+        self.parse_expr()
     }
 
     pub fn lambda(&mut self) -> ParseResult<Expr> {
@@ -813,7 +813,7 @@ impl<'a> Parser<'a> {
             Fn::new(id.clone(), None, params, body, Type::Unknown)
         } else {
             // single expression
-            let expr = self.expr()?;
+            let expr = self.parse_expr()?;
             Fn::new(
                 id.clone(),
                 None,
@@ -851,7 +851,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn stmt(&mut self) -> ParseResult<Stmt> {
+    pub fn parse_stmt(&mut self) -> ParseResult<Stmt> {
         let stmt = match self.kind() {
             TokenKind::Use => self.use_stmt()?,
             TokenKind::If => self.if_stmt()?,
@@ -1016,7 +1016,7 @@ impl<'a> Parser<'a> {
         let new_lines = self.skip_empty_lines();
         let has_new_line = new_lines > 0;
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            let stmt = self.stmt()?;
+            let stmt = self.parse_stmt()?;
             if is_node {
                 if let Stmt::Expr(Expr::Pair(Pair { key, value })) = &stmt {
                     // define as a property
@@ -1052,7 +1052,7 @@ impl<'a> Parser<'a> {
     pub fn if_contents(&mut self) -> ParseResult<(Vec<Branch>, Option<Body>)> {
         let mut branches = Vec::new();
         self.next(); // skip if
-        let cond = self.expr()?;
+        let cond = self.parse_expr()?;
         let body = self.body()?;
         branches.push(Branch { cond, body });
 
@@ -1062,7 +1062,7 @@ impl<'a> Parser<'a> {
                          // more branches
             if self.is_kind(TokenKind::If) {
                 self.next(); // skip if
-                let cond = self.expr()?;
+                let cond = self.parse_expr()?;
                 let body = self.body()?;
                 branches.push(Branch { cond, body });
             } else {
@@ -1327,7 +1327,7 @@ impl<'a> Parser<'a> {
             let mut default = None;
             if self.is_kind(TokenKind::Asn) {
                 self.next(); // skip =
-                let expr = self.expr()?;
+                let expr = self.parse_expr()?;
                 default = Some(expr);
             }
             // define param in current scope (currently in fn scope)
@@ -1349,7 +1349,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn expr_stmt(&mut self) -> ParseResult<Stmt> {
-        Ok(Stmt::Expr(self.expr()?))
+        Ok(Stmt::Expr(self.parse_expr()?))
     }
 
     pub fn type_decl_stmt(&mut self) -> ParseResult<Stmt> {
@@ -1437,7 +1437,7 @@ impl<'a> Parser<'a> {
         let mut value = None;
         if self.is_kind(TokenKind::Asn) {
             self.next(); // skip =
-            let expr = self.expr()?;
+            let expr = self.parse_expr()?;
             value = Some(expr);
         }
         let store = Store {
@@ -1689,6 +1689,7 @@ impl<'a> Parser<'a> {
             } else {
                 // Something else with a starting Ident
                 let expr = self.expr_pratt_with_left(ident, 0)?;
+                let expr = self.check_symbol(expr)?;
                 Ok(Stmt::Expr(expr))
             }
         }
@@ -1742,7 +1743,7 @@ impl<'a> Parser<'a> {
             None
         };
         self.expect(TokenKind::Arrow)?;
-        let to = self.expr()?;
+        let to = self.parse_expr()?;
         let (to, with) = if let Expr::Pair(p) = to {
             let to = p.key.into();
             let value = *p.value;
@@ -1751,6 +1752,34 @@ impl<'a> Parser<'a> {
             (to, None)
         };
         Ok(Goto::new(src, to, with))
+    }
+
+    fn parse_goto_branch(&mut self) -> ParseResult<Goto> {
+        self.parse_goto()
+    }
+
+    pub fn parse_goto_switch(&mut self) -> ParseResult<GotoSwitch> {
+        // skip on
+        self.expect(TokenKind::On)?;
+
+        let mut branches = Vec::new();
+
+        // multiple branches
+        if self.is_kind(TokenKind::LBrace) {
+            self.next(); // skip {
+            self.skip_empty_lines();
+            while !self.is_kind(TokenKind::RBrace) {
+                self.skip_empty_lines();
+                println!("cchecking branch: {}", self.cur);
+                branches.push(self.parse_goto_branch()?);
+                self.skip_empty_lines();
+            }
+            self.expect(TokenKind::RBrace)?;
+        } else {
+            // single branch
+            branches.push(self.parse_goto_branch()?);
+        }
+        Ok(GotoSwitch::new(branches))
     }
 }
 
