@@ -669,6 +669,10 @@ impl<'a> Parser<'a> {
         panic!("Expected pair separator, got {:?}", self.kind());
     }
 
+    pub fn ident_name(&mut self) -> ParseResult<Name> {
+        Ok(self.cur.text.clone())
+    }
+
     pub fn ident(&mut self) -> ParseResult<Expr> {
         let name = self.cur.text.clone();
         // // check for existence
@@ -777,7 +781,7 @@ impl<'a> Parser<'a> {
             self.if_expr()
         } else if self.is_kind(TokenKind::Ident) {
             // TODO: should have a node_or_call_expr()
-            let stmt = self.node_or_call_stmt()?;
+            let stmt = self.parse_node_or_call_stmt()?;
             match stmt {
                 Stmt::Expr(expr) => Ok(expr),
                 Stmt::Node(node) => Ok(Expr::Node(node)),
@@ -862,7 +866,7 @@ impl<'a> Parser<'a> {
             // AutoUI Stmts
             TokenKind::Widget => self.widget_stmt()?,
             // Node Instance?
-            TokenKind::Ident => self.node_or_call_stmt()?,
+            TokenKind::Ident => self.parse_node_or_call_stmt()?,
             // Enum Definition
             TokenKind::Enum => self.enum_stmt()?,
             // Otherwise, try to parse as an expression
@@ -1571,7 +1575,7 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         // parse multiple node instances
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            let node = self.node_or_call_stmt()?;
+            let node = self.parse_node_or_call_stmt()?;
             match node {
                 Stmt::Node(node) => {
                     view.nodes.push((node.name.clone(), node));
@@ -1592,24 +1596,45 @@ impl<'a> Parser<'a> {
     }
 
     // 节点实例和函数调用有类似语法：
+    // 函数调用：
     // 1. hello(x, y)， 这个是函数调用
     // 2. hello(), 这个是参数为空的函数调用
-    // 3. hello(x, y) { ... }， 这个是节点实例
-    // 4. hello() { ... }， 这个是参数为空的节点实例
-    // 5. hello {...}，当参数为空时，可以省略()。但不能省略{}，否则和函数调用就冲突了。
-    // 6. hello(x, y) {}, 这个是子节点为空的节点实例
-    // 7. hello(){}， 这个是参数为空，子节点也为空的节点实例
-    // 8. hello {}， 上面的()也可以省略。
-    pub fn node_or_call_stmt(&mut self) -> ParseResult<Stmt> {
+    // 节点实例化：
+    // 1. hello (x, y) { ... }， 这个是节点实例
+    // 2. hello () { ... }， 这个是参数为空的节点实例
+    // 3. hello {...}，当参数为空时，可以省略()。但不能省略{}，否则和函数调用就冲突了。
+    // 4. hello(x, y) {}, 这个是子节点为空的节点实例
+    // 5. hello () {}， 这个是参数为空，子节点也为空的节点实例
+    // 6. hello {}， 上面的()也可以省略。
+    // 7. hello name (x, y) { ... }， 这是新的带变量名称的语法
+    // 8. hello name { ... } 参数可以省略
+    // 总之，节点实例的关键特征是`{}`，而函数调用没有`{}`
+    pub fn parse_node_or_call_stmt(&mut self) -> ParseResult<Stmt> {
         let ident = self.ident()?;
         self.next();
 
-        let mut args = Args::new();
+        let mut has_id = false;
         let mut has_paren = false;
+
+        // 节点实例的id
+        let mut id = if self.is_kind(TokenKind::Ident) {
+            has_id = true;
+            let id = self.ident_name()?;
+            self.next();
+            Some(id)
+        } else {
+            None
+        };
+
+        let mut args = Args::new();
         // If has paren, maybe a call or node instance
         if self.is_kind(TokenKind::LParen) {
             args = self.args()?;
             has_paren = true;
+        }
+
+        if !has_id && !args.is_empty() {
+            id = Some(args.id());
         }
 
         // If has brace, must be a node instance
@@ -1631,6 +1656,11 @@ impl<'a> Parser<'a> {
                 Expr::Ident(name) => {
                     let n = name.clone().into();
                     let mut node = Node::new(name.clone());
+                    if let Some(id) = id {
+                        // define a variable for this node instance with id
+                        self.define(id.as_str(), Meta::Node(node.clone()));
+                        node.id = id;
+                    }
                     if self.special_blocks.contains_key(&n) {
                         node.body = self.special_block(&n)?;
                     } else {
@@ -1985,7 +2015,15 @@ mod tests {
             kind: "primary"
         }"#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (node (name button) (args (str \"OK\")) (body (pair (name border) (int 1)) (pair (name kind) (str \"primary\")))))");
+        assert_eq!(ast.to_string(), "(code (node (name button) (id OK) (args (str \"OK\")) (body (pair (name border) (int 1)) (pair (name kind) (str \"primary\")))))");
+    }
+
+    #[test]
+    fn test_node_instance_with_id() {
+        let code = r#"lib mymath {}"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(node (name lib) (id mymath))");
     }
 
     #[test]
@@ -1997,7 +2035,7 @@ mod tests {
         let last = ast.stmts.last().unwrap();
         assert_eq!(
             last.to_string(),
-            "(node (name center) (body (node (name text) (args (str \"Hello\")))))"
+            "(node (name center) (body (node (name text) (id Hello) (args (str \"Hello\")))))"
         );
     }
 
@@ -2074,7 +2112,7 @@ mod tests {
         let ast = parse_once(code);
         assert_eq!(
             ast.to_string(),
-            "(code (node (name center) (body (node (name text) (args (str \"Hello\"))))))"
+            "(code (node (name center) (body (node (name text) (id Hello) (args (str \"Hello\"))))))"
         );
     }
 
@@ -2200,7 +2238,7 @@ exe(hello) {
     main: "main.c"
 }"#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (pair (name name) (str \"hello\")) (pair (name version) (str \"0.1.0\")) (node (name exe) (args (name hello)) (body (pair (name dir) (str \"src\")) (pair (name main) (str \"main.c\")))))");
+        assert_eq!(ast.to_string(), "(code (pair (name name) (str \"hello\")) (pair (name version) (str \"0.1.0\")) (node (name exe) (id hello) (args (name hello)) (body (pair (name dir) (str \"src\")) (pair (name main) (str \"main.c\")))))");
     }
 
     #[test]

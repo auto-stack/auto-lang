@@ -6,6 +6,8 @@ mod when;
 pub use when::*;
 mod goto;
 pub use goto::*;
+mod node;
+pub use node::*;
 
 mod parsers;
 
@@ -370,6 +372,47 @@ impl Args {
     pub fn is_empty(&self) -> bool {
         self.args.is_empty()
     }
+
+    pub fn id(&self) -> AutoStr {
+        let empty = "".into();
+        let id = match self.args.first() {
+            Some(Arg::Name(name)) => name.clone(),
+            Some(Arg::Pair(k, v)) => {
+                if k == "id" {
+                    v.repr().clone()
+                } else {
+                    empty
+                }
+            }
+            Some(Arg::Pos(p)) => p.repr().clone(),
+            _ => empty,
+        };
+        let id = if id.is_empty() {
+            // try all args
+            let arg = self.args.iter().find_map(|arg| match arg {
+                Arg::Pair(k, v) => {
+                    if k == "id" {
+                        Some(v.repr().clone())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            });
+            if let Some(arg) = arg {
+                arg
+            } else {
+                id
+            }
+        } else {
+            id
+        };
+        id
+    }
+
+    pub fn major(&self) -> Option<&Arg> {
+        self.args.first()
+    }
 }
 
 impl fmt::Display for Args {
@@ -610,48 +653,6 @@ impl Fn {
             body,
             ret,
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Node {
-    pub name: Name,
-    pub args: Args,
-    // pub props: BTreeMap<Key, Expr>,
-    pub body: Body,
-}
-
-impl Node {
-    pub fn new(name: impl Into<Name>) -> Self {
-        Self {
-            name: name.into(),
-            args: Args::new(),
-            body: Body::new(),
-        }
-    }
-}
-
-impl From<Call> for Node {
-    fn from(call: Call) -> Self {
-        let name = call.get_name_text();
-        let mut node = Node::new(name);
-        node.args = call.args;
-        node
-    }
-}
-
-impl fmt::Display for Node {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(node (name {})", self.name)?;
-        if !self.args.is_empty() {
-            write!(f, " {}", self.args)?;
-        }
-
-        if !self.body.stmts.is_empty() {
-            write!(f, " {}", self.body)?;
-        }
-
-        write!(f, ")")
     }
 }
 

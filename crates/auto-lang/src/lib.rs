@@ -442,45 +442,6 @@ $ }"#;
     }
 
     #[test]
-    fn test_app() {
-        let code = r#"
-        widget hello {
-            model {
-                var name = ""
-            }
-
-            view {
-                text(f"Hello $name") {}
-            }
-        }
-
-        app {
-            center {
-                hello(name="You") {}
-            }
-            bottom {
-                text("Bottom") {}
-            }
-        }"#;
-
-        let result = interpret(code);
-        match result {
-            Ok(result) => match result.result {
-                auto_val::Value::Node(app) => {
-                    println!("node: {}", app.to_string());
-                    app.nodes.iter().for_each(|node| {
-                        println!("node: {}", node.to_string());
-                    });
-                }
-                _ => {}
-            },
-            Err(e) => {
-                println!("error: {}", e);
-            }
-        }
-    }
-
-    #[test]
     fn test_simple_template() {
         let code = r#"
             var title = "Students"
