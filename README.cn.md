@@ -1240,15 +1240,15 @@ println(results)
 ### 节点
 
 ```rust
-// 节点配置，可以提前指定节点的属性对应的类型，如果配置，也可以按照默认配置使用
-node button(name str) {
+// 节点定义，可以提前指定节点的属性对应的类型
+node button {
     text str
     scale Scale
     onclick str
 }
 
-// 新建节点
-button("btn1") {
+// 新建节点，其id为btn1
+button btn1 {
     text: "Click me"
     scale: Scale.M
     onclick: "click:btn1"
@@ -1257,15 +1257,15 @@ button("btn1") {
 // 多层节点
 ul {
     li {
-        label("Item 1: ") {}
-        button("btn1") {
+        label {"Item 1"}
+        button btn1 {
             text: "Click me"
             onclick: "click:btn1"
         }
-        div { label("div1") {} }
+        div { label {"div1"} }
     }
-    li { label("Item 2") {} }
-    li { label("Item 3") {} }
+    li { label {"Item 1"} }
+    li { label {"Item 3"} }
 }
 ```
 

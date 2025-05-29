@@ -116,6 +116,9 @@ impl Node {
     }
 
     pub fn main_arg(&self) -> Value {
+        if !self.id.is_empty() {
+            return self.id.clone().into();
+        }
         if self.args.is_empty() {
             if self.props.has("name") {
                 if let Some(value) = self.props.get("name") {
@@ -190,11 +193,15 @@ impl Node {
             .collect();
         let plural = format!("{}s", name);
         if self.has_prop(&plural) {
-            let simple_kids = self.props.get_array_of_str(&plural);
+            let simple_kids = self.props.get_array_of(&plural);
             println!("Simple kids:{:?}", simple_kids);
             for kid in simple_kids {
                 let mut n = Node::new(name.clone());
-                n.set_main_arg(kid);
+                match kid {
+                    Value::Str(_) => n.set_main_arg(kid.clone()),
+                    Value::Node(nd) => n.set_main_arg(nd.id.clone()),
+                    _ => {}
+                }
                 nodes.push(n);
             }
         }

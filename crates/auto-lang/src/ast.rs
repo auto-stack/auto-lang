@@ -384,7 +384,11 @@ impl Args {
                     empty
                 }
             }
-            Some(Arg::Pos(p)) => p.repr().clone(),
+            Some(Arg::Pos(p)) => match p {
+                Expr::Str(s) => s.clone(),
+                Expr::Ident(n) => n.clone(),
+                _ => empty,
+            },
             _ => empty,
         };
         let id = if id.is_empty() {

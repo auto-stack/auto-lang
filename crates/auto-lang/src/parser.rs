@@ -1041,7 +1041,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn node_body(&mut self) -> ParseResult<Body> {
+    pub fn parse_node_body(&mut self) -> ParseResult<Body> {
         self.parse_body(true)
     }
 
@@ -1658,14 +1658,13 @@ impl<'a> Parser<'a> {
                     let mut node = Node::new(name.clone());
                     if let Some(id) = id {
                         // define a variable for this node instance with id
-                        println!("Defining variable for node instance with id: {}", id);
                         self.define(id.as_str(), Meta::Node(node.clone()));
                         node.id = id;
                     }
                     if self.special_blocks.contains_key(&n) {
                         node.body = self.special_block(&n)?;
                     } else {
-                        node.body = self.node_body()?;
+                        node.body = self.parse_node_body()?;
                     }
                     node.args = args;
                     return Ok(Stmt::Node(node));

@@ -1208,7 +1208,7 @@ impl Evaler {
         // save value to scope
         self.universe
             .borrow_mut()
-            .set_local_val(node.id.as_str(), nd.clone());
+            .set_global(node.id.as_str(), nd.clone());
         nd
     }
 
