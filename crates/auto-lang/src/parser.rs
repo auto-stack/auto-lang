@@ -347,7 +347,9 @@ impl<'a> Parser<'a> {
                 | TokenKind::Semi
                 | TokenKind::LBrace
                 | TokenKind::RBrace
-                | TokenKind::Comma => break,
+                | TokenKind::Comma
+                | TokenKind::Arrow
+                | TokenKind::DoubleArrow => break,
                 TokenKind::Add
                 | TokenKind::Sub
                 | TokenKind::Mul
@@ -856,7 +858,7 @@ impl<'a> Parser<'a> {
             TokenKind::Use => self.use_stmt()?,
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
-            TokenKind::When => Stmt::When(self.parse_when()?),
+            TokenKind::Is => Stmt::Is(self.parse_is()?),
             TokenKind::Var => self.store_stmt()?,
             TokenKind::Let => self.store_stmt()?,
             TokenKind::Mut => self.store_stmt()?,
@@ -1117,8 +1119,8 @@ impl<'a> Parser<'a> {
         error_pos!("Expected for loop, got {:?}", self.kind())
     }
 
-    pub fn parse_when(&mut self) -> ParseResult<When> {
-        self.next(); // skip when
+    pub fn parse_is(&mut self) -> ParseResult<Is> {
+        self.next(); // skip is
         let target = self.lhs_expr()?;
 
         self.expect(TokenKind::LBrace)?; // {
@@ -1127,41 +1129,52 @@ impl<'a> Parser<'a> {
         let mut branches = Vec::new();
 
         while !self.is_kind(TokenKind::RBrace) {
-            let branch = self.parse_when_branch()?;
+            let branch = self.parse_is_branch()?;
             branches.push(branch);
         }
         self.expect(TokenKind::RBrace)?;
 
-        let when = When { target, branches };
-        return Ok(when);
+        let is = Is { target, branches };
+        return Ok(is);
     }
 
-    pub fn parse_when_branch(&mut self) -> ParseResult<WhenBranch> {
+    pub fn parse_expr_or_body(&mut self) -> ParseResult<Body> {
+        if self.is_kind(TokenKind::LBrace) {
+            self.body()
+        } else {
+            let mut body = Body::new();
+            body.stmts.push(Stmt::Expr(self.parse_expr()?));
+            Ok(body)
+        }
+    }
+
+    pub fn parse_is_branch(&mut self) -> ParseResult<IsBranch> {
         match self.cur.kind {
-            TokenKind::Is => {
-                self.next(); // is
-                let expr = self.cond_expr()?;
-                let body = self.body()?;
-                let branch = WhenBranch::IsBranch(expr, body);
-                self.skip_empty_lines();
-                return Ok(branch);
-            }
             TokenKind::If => {
                 self.next(); // skip is
                 let expr = self.cond_expr()?;
-                let body = self.body()?;
-                let branch = WhenBranch::IfBranch(expr, body);
+                self.expect(TokenKind::DoubleArrow)?;
+                let body = self.parse_expr_or_body()?;
+                let branch = IsBranch::IfBranch(expr, body);
                 self.skip_empty_lines();
                 return Ok(branch);
             }
             TokenKind::Else => {
                 self.next(); // skip else
-                let body = self.body()?;
-                let branch = WhenBranch::ElseBranch(body);
+                self.expect(TokenKind::DoubleArrow)?;
+                let body = self.parse_expr_or_body()?;
+                let branch = IsBranch::ElseBranch(body);
                 self.skip_empty_lines();
                 return Ok(branch);
             }
-            _ => error_pos!("When branch for {} is not recognized", self.cur),
+            _ => {
+                let expr = self.cond_expr()?;
+                self.expect(TokenKind::DoubleArrow)?;
+                let body = self.parse_expr_or_body()?;
+                let branch = IsBranch::EqBranch(expr, body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
         }
     }
 
@@ -2322,20 +2335,20 @@ exe(hello) {
     }
 
     #[test]
-    fn test_when() {
-        let code = r#"when x {
-        is 10 {print("ten")}
-        is 20 {print("twenty")}
-        else {print("ehh")}
+    fn test_is_stmt() {
+        let code = r#"is x {
+        10 => print("ten")
+        20 => print("twenty")
+        else => print("ehh")
         }"#;
-        let when = When::parse(code).unwrap();
+        let when = Is::parse(code).unwrap();
         assert_eq!(
             when.to_string(),
             format!(
                 "{}{}{}{}",
-                r#"(when (name x) "#,
-                r#"(is (int 10) (body (call (name print) (args (str "ten"))))) "#,
-                r#"(is (int 20) (body (call (name print) (args (str "twenty"))))) "#,
+                r#"(is (name x) "#,
+                r#"(eq (int 10) (body (call (name print) (args (str "ten"))))) "#,
+                r#"(eq (int 20) (body (call (name print) (args (str "twenty"))))) "#,
                 r#"(else (body (call (name print) (args (str "ehh"))))))"#,
             )
         )

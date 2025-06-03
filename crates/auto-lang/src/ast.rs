@@ -2,8 +2,8 @@ mod types;
 pub use types::*;
 mod enums;
 pub use enums::*;
-mod when;
-pub use when::*;
+mod is;
+pub use is::*;
 mod goto;
 pub use goto::*;
 mod node;
@@ -138,7 +138,7 @@ pub enum Stmt {
         /*else*/ Option<Body>,
     ),
     For(For),
-    When(When),
+    Is(Is),
     Store(Store),
     Block(Body),
     Fn(Fn),
@@ -240,7 +240,7 @@ impl fmt::Display for Stmt {
                 write!(f, ")")
             }
             Stmt::For(for_stmt) => write!(f, "{}", for_stmt),
-            Stmt::When(when_stmt) => write!(f, "{}", when_stmt),
+            Stmt::Is(is_stmt) => write!(f, "{}", is_stmt),
             Stmt::Block(body) => write!(f, "{}", body),
             Stmt::Store(store) => write!(f, "{}", store),
             Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),

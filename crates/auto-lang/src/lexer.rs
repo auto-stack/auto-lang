@@ -411,6 +411,22 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn equal_or_double_arrow(&mut self, c: char) -> Token {
+        self.chars.next();
+        if let Some(&next) = self.chars.peek() {
+            if next == '>' {
+                self.chars.next();
+                Token::new(TokenKind::DoubleArrow, self.pos(2), "=>".into())
+            } else if next == '=' {
+                Token::new(TokenKind::Eq, self.pos(2), "==".into())
+            } else {
+                Token::new(TokenKind::Asn, self.pos(1), c.into())
+            }
+        } else {
+            Token::new(TokenKind::Asn, self.pos(1), c.into())
+        }
+    }
+
     fn next_step(&mut self) -> Token {
         self.skip_whitespace();
         while let Some(&c) = self.chars.peek() {
@@ -484,7 +500,7 @@ impl<'a> Lexer<'a> {
                     return self.with_equal(TokenKind::Lt, TokenKind::Le, c);
                 }
                 '=' => {
-                    return self.with_equal(TokenKind::Asn, TokenKind::Eq, c);
+                    return self.equal_or_double_arrow(c);
                 }
                 '.' => {
                     return self.dot_or_range();
@@ -731,11 +747,11 @@ mod tests {
 
     #[test]
     fn test_when() {
-        let code = r#"when x {
-            is 5 print("x is 5")
-            is 10 print("x is 10")
-            if x > 5 print("x is greater than 5")
-            else print("x is else")
+        let code = r#"is x {
+            5 => print("x is 5")
+            10 => print("x is 10")
+            if x > 5 => print("x is greater than 5")
+            else => print("x is else")
         }
         "#;
         let tokens = parse_token_strings(code);
@@ -743,11 +759,11 @@ mod tests {
             tokens,
             format!(
                 "{}{}{}{}{}",
-                "<when><ident:x><{><nl>",
-                "<is><int:5><ident:print><(><str:x is 5><)><nl>",
-                "<is><int:10><ident:print><(><str:x is 10><)><nl>",
-                "<if><ident:x><gt><int:5><ident:print><(><str:x is greater than 5><)><nl>",
-                "<else><ident:print><(><str:x is else><)><nl><}><nl>"
+                "<is><ident:x><{><nl>",
+                "<int:5><=>><ident:print><(><str:x is 5><)><nl>",
+                "<int:10><=>><ident:print><(><str:x is 10><)><nl>",
+                "<if><ident:x><gt><int:5><=>><ident:print><(><str:x is greater than 5><)><nl>",
+                "<else><=>><ident:print><(><str:x is else><)><nl><}><nl>"
             )
         );
     }

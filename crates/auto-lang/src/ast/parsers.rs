@@ -26,11 +26,11 @@ impl ParserExt for Expr {
     }
 }
 
-impl ParserExt for When {
+impl ParserExt for Is {
     fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
         let code = code.into();
         let mut parser = Parser::from(code.as_str());
-        parser.parse_when()
+        parser.parse_is()
     }
 }
 

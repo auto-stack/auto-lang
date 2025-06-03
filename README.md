@@ -76,7 +76,7 @@ TODO: translate more syntax overview examples into Language Tour
 
 ### 1. Auto2C
 
-A function in AutoLang: 
+A function in AutoLang:
 
 ```rust
 // math.a
@@ -386,7 +386,7 @@ const PI = 3.14
 // 幻量：幻量是最自由的量，可以任意改变值和类型，一般用于脚本环境
 var x = 1
 x = "hello"
-x = [x+"1", x+"2", x+"3"] 
+x = [x+"1", x+"2", x+"3"]
 ```
 
 ### 数组
@@ -687,17 +687,17 @@ loop {
 }
 
 // 模式匹配，类似switch/match
-when a {
-    // is 用于精确匹配
-    is 41 => println("a is 41"),
-    // is 用于类型判断
-    is str => println("a is a string"),
+is a {
+    // 精确匹配
+    41 -> println("a is 41"),
+    // as 用于类型判断
+    as str -> println("a is a string"),
     // in 用于范围匹配
-    in 0..9 => println("a is a single digit"),
+    in 0..9 -> println("a is a single digit"),
     // if 用于条件匹配
-    if a > 10 => println("a is a big number"),
+    if a > 10 -> println("a is a big number"),
     // 其他情况
-    else => println("a is a weired number")
+    else x-> println("a is a weired number")
 }
 ```
 
@@ -725,11 +725,11 @@ mut a = Scale.M
 println(a.name)
 
 // 枚举匹配
-when a {
-    is Scale::S => println("a is small")
-    is Scale::M => println("a is medium")
-    is Scale::L => println("a is large")
-    else => println("a is not a Scale")
+is a {
+    Scale::S -> println("a is small")
+    Scale::M -> println("a is medium")
+    Scale::L -> println("a is large")
+    else -> println("a is not a Scale")
 }
 
 
@@ -742,11 +742,11 @@ enum Shape union {
 
 // 联合枚举匹配
 mut s = get_shape(/*...*/)
-when s as Shape {
-    is Point(x, y) => println(f"Point($x, $y)")
-    is Rect(x, y, w, h) => println(f"Rect($x, $y, $w, $h)")
-    is Circle(x, y, r) => println(f"Circle($x, $y, $r)")
-    else => println("not a shape")
+is s as Shape {
+    Point(x, y) -> println(f"Point($x, $y)")
+    Rect(x, y, w, h) -> println(f"Rect($x, $y, $w, $h)")
+    Circle(x, y, r) -> println(f"Circle($x, $y, $r)")
+    else -> println("not a shape")
 }
 // 获取联合枚举的数据
 mut p = s as Shape::Point
@@ -888,12 +888,12 @@ fn <T = Number> add(a T, b T) T {
 
 // 复杂类型判断，参数为type，且返回bool的函数，可以用来做任意逻辑的类型判断
 fn IsArray(t type) bool {
-    when t {
+    is t {
         // 数组，其元素类型可以任意
-        is []_ => true
+        as []_ -> true
         // 实现了Iterable接口
-        as Indexable => true
-        else => false
+        as Indexable -> true
+        else -> false
     }
 }
 
