@@ -721,7 +721,12 @@ impl<'a> Parser<'a> {
             TokenKind::View => Expr::Ident("view".into()),
             TokenKind::Nil => Expr::Nil,
             _ => {
-                return error_pos!("Expected term, got {:?}, pos: {}", self.kind(), self.pos());
+                return error_pos!(
+                    "Expected term, got {:?}, pos: {}, next: {}",
+                    self.kind(),
+                    self.pos(),
+                    self.cur
+                );
             }
         };
 
