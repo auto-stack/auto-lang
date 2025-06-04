@@ -8,6 +8,7 @@ pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
     line: usize,
     pos: usize,
+    at: usize,
     buffer: VecDeque<Token>,
     last: Option<Token>,
     // special tokens
@@ -18,7 +19,8 @@ impl<'a> Lexer<'a> {
     pub fn new(code: &'a str) -> Self {
         Lexer {
             chars: code.chars().peekable(),
-            line: 0,
+            line: 1,
+            at: 0,
             pos: 0,
             buffer: VecDeque::new(),
             last: None,
@@ -33,10 +35,12 @@ impl<'a> Lexer<'a> {
     pub fn pos(&mut self, len: usize) -> Pos {
         let p = Pos {
             line: self.line,
+            at: self.at,
             pos: self.pos,
             len,
         };
         self.pos += len;
+        self.at += len;
         p
     }
 
@@ -418,6 +422,7 @@ impl<'a> Lexer<'a> {
                 self.chars.next();
                 Token::new(TokenKind::DoubleArrow, self.pos(2), "=>".into())
             } else if next == '=' {
+                self.chars.next();
                 Token::new(TokenKind::Eq, self.pos(2), "==".into())
             } else {
                 Token::new(TokenKind::Asn, self.pos(1), c.into())
@@ -476,6 +481,8 @@ impl<'a> Lexer<'a> {
                     return self.single(TokenKind::Semi, c);
                 }
                 '\n' => {
+                    self.line += 1;
+                    self.at = 0;
                     return self.single(TokenKind::Newline, c);
                 }
                 '+' => {
