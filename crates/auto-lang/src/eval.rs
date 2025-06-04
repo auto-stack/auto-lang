@@ -134,6 +134,10 @@ impl Evaler {
                                         node.add_kid(n.clone());
                                     }
                                     ConfigItem::Value(v) => {
+                                        // TODO: where did we get this void prop from config body?
+                                        if v.is_void() {
+                                            continue;
+                                        }
                                         node.set_prop(v.to_astr(), v);
                                     }
                                 }

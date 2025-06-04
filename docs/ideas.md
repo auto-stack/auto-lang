@@ -72,6 +72,7 @@ cly - 偷取
 col - column
 con - connection
 cop - 捕获
+cot - 小屋子
 cue - 发送信号，提示
 cup - 杯子
 
