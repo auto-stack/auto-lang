@@ -63,6 +63,7 @@ impl Interpreter {
 
     pub fn skip_check(&mut self) {
         self.skip_check = true;
+        self.evaler.skip_check();
     }
 
     pub fn interpret(&mut self, code: &str) -> Result<(), String> {

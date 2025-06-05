@@ -30,6 +30,8 @@ pub struct Evaler {
     tempo_for_nodes: HashMap<AutoStr, EvalTempo>,
     // evaluation mode
     mode: EvalMode,
+    // skip_check
+    skip_check: bool,
 }
 
 impl Evaler {
@@ -38,6 +40,7 @@ impl Evaler {
             universe,
             tempo_for_nodes: HashMap::new(),
             mode: EvalMode::SCRIPT,
+            skip_check: false,
         }
     }
 
@@ -52,6 +55,10 @@ impl Evaler {
 
     pub fn set_tempo(&mut self, name: &str, tempo: EvalTempo) {
         self.tempo_for_nodes.insert(name.into(), tempo);
+    }
+
+    pub fn skip_check(&mut self) {
+        self.skip_check = true;
     }
 
     pub fn eval(&mut self, code: &Code) -> Value {
@@ -827,28 +834,7 @@ impl Evaler {
                 let target_val = self.eval_expr(&Expr::Ident(target.clone()));
                 target_val
             }
-            Expr::Ident(name) => {
-                let res = self.lookup(&name);
-                match res {
-                    Value::Ref(target) => {
-                        let target_val = self.eval_expr(&Expr::Ident(target));
-                        target_val
-                    }
-                    Value::Nil => {
-                        // try to lookup in meta and builtins
-                        let meta = self.universe.borrow().lookup_meta(&name);
-                        if let Some(meta) = meta {
-                            return Value::Meta(to_meta_id(&meta));
-                        }
-                        // Try builtin
-                        self.universe
-                            .borrow()
-                            .lookup_builtin(&name)
-                            .unwrap_or(Value::Nil)
-                    }
-                    _ => res,
-                }
-            }
+            Expr::Ident(name) => self.eval_ident(name),
             Expr::Unary(op, e) => self.eval_una(op, e),
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
             Expr::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
@@ -863,6 +849,39 @@ impl Evaler {
             Expr::FStr(fstr) => self.fstr(fstr),
             Expr::Grid(grid) => self.grid(grid),
             Expr::Nil => Value::Nil,
+        }
+    }
+
+    fn eval_ident(&mut self, name: &AutoStr) -> Value {
+        let res = self.lookup(&name);
+        match res {
+            Value::Ref(target) => {
+                let target_val = self.eval_expr(&Expr::Ident(target));
+                target_val
+            }
+            Value::Nil => {
+                // try to lookup in meta and builtins
+                let meta = self.universe.borrow().lookup_meta(&name);
+                if let Some(meta) = meta {
+                    return Value::Meta(to_meta_id(&meta));
+                }
+                // Try builtin
+                let v = self
+                    .universe
+                    .borrow()
+                    .lookup_builtin(&name)
+                    .unwrap_or(Value::Nil);
+
+                if !v.is_nil() {
+                    return v;
+                }
+                if self.skip_check {
+                    Value::Str(name.clone())
+                } else {
+                    Value::Nil
+                }
+            }
+            _ => res,
         }
     }
 
