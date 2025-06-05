@@ -1,14 +1,77 @@
+use crate::ast;
+use crate::eval::EvalMode;
+use crate::eval_config_with_scope;
+use crate::interp::Interpreter;
+use crate::scope::Meta;
 use crate::AutoResult;
 use crate::Universe;
-use crate::{eval_config_with_scope, interp};
+use auto_val::shared;
 use auto_val::Obj;
+use auto_val::Shared;
 use auto_val::{AutoPath, AutoStr, Node, Value};
 use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+
+pub struct AutoConfigReader {
+    pub skip_check: bool,
+    pub interp: Interpreter,
+    pub univ: Shared<Universe>,
+}
+
+impl AutoConfigReader {
+    pub fn new() -> Self {
+        let univ = shared(Universe::new());
+        let interp = Interpreter::with_univ(univ.clone()).with_eval_mode(EvalMode::CONFIG);
+        Self {
+            skip_check: false,
+            interp,
+            univ,
+        }
+    }
+
+    pub fn skip_check(mut self) -> Self {
+        self.skip_check = true;
+        self
+    }
+
+    pub fn args(self, args: &Obj) -> Self {
+        self.univ
+            .borrow_mut()
+            .define_global("root", Rc::new(Meta::Node(ast::Node::new("root"))));
+        self.univ.borrow_mut().set_args(args);
+        self
+    }
+
+    pub fn parse(&mut self, code: impl Into<AutoStr>) -> AutoResult<AutoConfig> {
+        let code = code.into();
+        self.interp.interpret(code.as_str())?;
+        let result = std::mem::replace(&mut self.interp.result, Value::Nil);
+
+        Ok(AutoConfig {
+            code: code.to_string(),
+            root: result.to_node(),
+            args: Obj::new(),
+        })
+    }
+
+    pub fn read(&mut self, path: impl Into<PathBuf>) -> AutoResult<AutoConfig> {
+        let path = path.into();
+        let content = std::fs::read_to_string(&path).map_err(|e| {
+            format!(
+                "Failed to read config file {}: {}",
+                path.to_str().unwrap(),
+                e
+            )
+        })?;
+        self.parse(content)
+    }
+}
+
 pub struct AutoConfig {
     pub code: String,
     pub root: Node,
     pub args: Obj,
-    pub interpreter: interp::Interpreter,
 }
 
 impl AutoConfig {
@@ -50,7 +113,6 @@ impl AutoConfig {
                 code: code.clone(),
                 args,
                 root: root,
-                interpreter: interpreter,
             })
         } else {
             Err(format!("Invalid config result: {}", result.repr()).into())
@@ -73,9 +135,9 @@ impl AutoConfig {
         AutoStr::new()
     }
 
-    pub fn eval(&mut self, code: impl Into<AutoStr>) -> Value {
-        self.interpreter.eval(code.into().as_str())
-    }
+    // pub fn eval(&mut self, code: impl Into<AutoStr>) -> Value {
+    // self.interpreter.eval(code.into().as_str())
+    // }
 }
 
 #[cfg(test)]
@@ -94,11 +156,12 @@ mod tests {
             }
         "#;
 
-        let mut config = AutoConfig::new(code)?;
+        let mut reader = AutoConfigReader::new();
+        let config = reader.parse(code)?;
         assert_eq!(config.name(), "hello");
         assert_eq!(config.list_target_names(), vec!["lib(\"alib\")"]);
 
-        let interp = &mut config.interpreter;
+        let interp = &mut reader.interp;
         let res = interp.eval("1 + 2");
         println!("{}", res);
         assert_eq!("3", res.to_string());

@@ -880,6 +880,9 @@ impl Evaler {
         if name == "name" {
             return Some(Value::Str(node.name.clone()));
         }
+        if name == "id" {
+            return Some(Value::Str(node.id.clone()));
+        }
         let mut name = name.clone();
         // 1. lookup in the props
         let v = node.get_prop(&name);

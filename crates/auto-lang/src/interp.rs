@@ -2,25 +2,24 @@ use crate::eval::{EvalMode, Evaler};
 use crate::parser::Parser;
 use crate::universe::Universe;
 use crate::AutoResult;
+use auto_val::{shared, Shared};
 use auto_val::{AutoStr, Value};
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct Importer {
     pub path: AutoStr,
-    pub scope: Rc<RefCell<Universe>>,
+    pub scope: Shared<Universe>,
 }
 
 pub struct Interpreter {
     pub evaler: Evaler,
-    pub scope: Rc<RefCell<Universe>>,
+    pub scope: Shared<Universe>,
     pub result: Value,
     pub fstr_note: char,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
-        let scope = Rc::new(RefCell::new(Universe::new()));
+        let scope = shared(Universe::new());
         let interpreter = Self {
             evaler: Evaler::new(scope.clone()),
             scope,
@@ -35,15 +34,18 @@ impl Interpreter {
         self
     }
 
-    pub fn with_scope(scope: Universe) -> Self {
-        let scope = Rc::new(RefCell::new(scope));
-        let interpreter = Self {
-            evaler: Evaler::new(scope.clone()),
-            scope,
+    pub fn with_univ(univ: Shared<Universe>) -> Self {
+        let interp = Self {
+            evaler: Evaler::new(univ.clone()),
+            scope: univ.clone(),
             fstr_note: '$',
             result: Value::Nil,
         };
-        interpreter
+        interp
+    }
+
+    pub fn with_scope(scope: Universe) -> Self {
+        Self::with_univ(shared(scope))
     }
 
     pub fn with_eval_mode(mut self, mode: EvalMode) -> Self {

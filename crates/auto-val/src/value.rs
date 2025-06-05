@@ -377,6 +377,13 @@ impl Value {
         }
     }
 
+    pub fn to_node(self) -> Node {
+        match self {
+            Value::Node(value) => value,
+            _ => NODE_NIL.clone(),
+        }
+    }
+
     pub fn update_node(&mut self, f: impl FnOnce(&mut Node)) {
         match self {
             Value::Node(value) => f(value),

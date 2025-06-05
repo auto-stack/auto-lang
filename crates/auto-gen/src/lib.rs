@@ -63,7 +63,7 @@ impl AutoGen {
         self
     }
 
-    pub fn is_rename(mut self, is_rename: bool) -> Self {
+    pub fn rename(mut self, is_rename: bool) -> Self {
         self.is_rename = is_rename;
         self
     }
@@ -85,8 +85,13 @@ impl AutoGen {
         self
     }
 
+    pub fn mold(mut self, mold: Mold) -> Self {
+        self.molds.push(mold);
+        self
+    }
+
     // Main API
-    pub fn gen(&self) -> AutoStr {
+    pub fn gen_all(&self) -> AutoStr {
         let atom_name = self.data.name.clone();
         for mold in self.molds.iter() {
             //TODO: rename mold to pac name
@@ -94,7 +99,9 @@ impl AutoGen {
                 let out_name = replace_name(mold.name.clone(), atom_name.clone());
                 self.out.join(&out_name)
             } else {
-                self.out.join(&mold.name)
+                // trim `.at.` in mold name
+                let trimmed = mold.name.replace(".at.", ".");
+                self.out.join(&trimmed)
             };
             self.gen_one(&mold, &out_file);
         }
@@ -253,7 +260,7 @@ mod tests {
         let values = vec![Value::pair("a", 1), Value::pair("b", 2)];
         let atom = Atom::assemble(values);
         let ag = AutoGen::new().data(atom);
-        let result = ag.gen();
+        let result = ag.gen_all();
         assert_eq!(result, "a: 1; b: 2");
     }
 

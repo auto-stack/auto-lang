@@ -118,6 +118,7 @@ pub struct Parser<'a> {
     lexer: Lexer<'a>,
     pub cur: Token,
     pub special_blocks: HashMap<AutoStr, Box<dyn BlockParser>>,
+    pub skip_check: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -133,6 +134,7 @@ impl<'a> Parser<'a> {
             lexer,
             cur,
             special_blocks: HashMap::new(),
+            skip_check: false,
         };
         parser.skip_comments();
         parser
@@ -151,10 +153,17 @@ impl<'a> Parser<'a> {
             lexer,
             cur,
             special_blocks: HashMap::new(),
+            skip_check: false,
         };
         parser.skip_comments();
         parser
     }
+
+    pub fn skip_check(mut self) -> Self {
+        self.skip_check = true;
+        self
+    }
+
     pub fn peek(&mut self) -> &Token {
         &self.cur
     }

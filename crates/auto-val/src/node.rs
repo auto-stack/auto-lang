@@ -277,6 +277,18 @@ impl Node {
         }
         vec
     }
+
+    pub fn fill_node_body(&mut self) -> &mut Self {
+        // fill props into nodebody
+        for (k, v) in self.props.iter() {
+            self.body.add_prop(k.clone(), v.clone());
+        }
+        // fill nodes into nodebody
+        for n in self.nodes.iter() {
+            self.body.add_kid(n.clone());
+        }
+        self
+    }
 }
 
 impl fmt::Display for Node {
