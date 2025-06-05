@@ -693,6 +693,12 @@ impl<'a> Parser<'a> {
         Ok(Expr::Ident(name))
     }
 
+    pub fn parse_ident(&mut self) -> ParseResult<Expr> {
+        let name = self.cur.text.clone();
+        self.next();
+        Ok(Expr::Ident(name))
+    }
+
     pub fn atom(&mut self) -> ParseResult<Expr> {
         if self.is_kind(TokenKind::LParen) {
             return self.group();
@@ -885,6 +891,8 @@ impl<'a> Parser<'a> {
             TokenKind::Ident => self.parse_node_or_call_stmt()?,
             // Enum Definition
             TokenKind::Enum => self.enum_stmt()?,
+            // On Events Switch
+            TokenKind::On => Stmt::OnEvents(self.parse_on_events()?),
             // Otherwise, try to parse as an expression
             _ => self.expr_stmt()?,
         };
@@ -1503,6 +1511,9 @@ impl<'a> Parser<'a> {
     // 2，点号表达式最左侧的名称
     // 3, 函数调用，如果函数名不存在，表示是一个节点实例
     pub fn check_symbol(&mut self, expr: Expr) -> ParseResult<Expr> {
+        if self.skip_check {
+            return Ok(expr);
+        }
         match &expr {
             Expr::Bina(l, op, _) => match op {
                 Op::Dot => {
@@ -1755,9 +1766,9 @@ impl<'a> Parser<'a> {
         Ok(grid)
     }
 
-    pub fn parse_goto(&mut self) -> ParseResult<Goto> {
+    pub fn parse_arrow(&mut self) -> ParseResult<Arrow> {
         let src = if self.is_kind(TokenKind::Ident) {
-            Some(self.ident()?)
+            Some(self.parse_ident()?)
         } else if self.is_kind(TokenKind::Int) {
             Some(self.atom()?)
         } else if self.is_kind(TokenKind::Str) {
@@ -1769,23 +1780,29 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-        self.expect(TokenKind::Arrow)?;
-        let to = self.parse_expr()?;
-        let (to, with) = if let Expr::Pair(p) = to {
-            let to = p.key.into();
-            let value = *p.value;
-            (to, Some(value))
+        let (to, with) = if self.is_kind(TokenKind::Colon) {
+            self.next();
+            let with = self.parse_expr()?;
+            (None, Some(with))
         } else {
-            (to, None)
+            self.expect(TokenKind::Arrow)?;
+            let to = self.parse_expr()?;
+            if let Expr::Pair(p) = to {
+                let to = p.key.into();
+                let value = *p.value;
+                (Some(to), Some(value))
+            } else {
+                (Some(to), None)
+            }
         };
-        Ok(Goto::new(src, to, with))
+        Ok(Arrow::new(src, to, with))
     }
 
-    fn parse_goto_branch(&mut self) -> ParseResult<Goto> {
-        self.parse_goto()
+    fn parse_goto_branch(&mut self) -> ParseResult<Arrow> {
+        self.parse_arrow()
     }
 
-    pub fn parse_goto_switch(&mut self) -> ParseResult<GotoSwitch> {
+    pub fn parse_on_events(&mut self) -> ParseResult<OnEvents> {
         // skip on
         self.expect(TokenKind::On)?;
 
@@ -1806,7 +1823,7 @@ impl<'a> Parser<'a> {
             // single branch
             branches.push(self.parse_goto_branch()?);
         }
-        Ok(GotoSwitch::new(branches))
+        Ok(OnEvents::new(branches))
     }
 }
 

@@ -15,6 +15,7 @@ pub struct Interpreter {
     pub scope: Shared<Universe>,
     pub result: Value,
     pub fstr_note: char,
+    skip_check: bool,
 }
 
 impl Interpreter {
@@ -25,6 +26,7 @@ impl Interpreter {
             scope,
             result: Value::Nil,
             fstr_note: '$',
+            skip_check: false,
         };
         interpreter
     }
@@ -40,6 +42,7 @@ impl Interpreter {
             scope: univ.clone(),
             fstr_note: '$',
             result: Value::Nil,
+            skip_check: false,
         };
         interp
     }
@@ -58,8 +61,15 @@ impl Interpreter {
         Ok(())
     }
 
+    pub fn skip_check(&mut self) {
+        self.skip_check = true;
+    }
+
     pub fn interpret(&mut self, code: &str) -> Result<(), String> {
         let mut parser = Parser::new_with_note(code, self.scope.clone(), self.fstr_note);
+        if self.skip_check {
+            parser = parser.skip_check();
+        }
         let ast = parser.parse()?;
         let result = self.evaler.eval(&ast);
         self.result = result;

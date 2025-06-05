@@ -14,7 +14,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 pub struct AutoConfigReader {
-    pub skip_check: bool,
     pub interp: Interpreter,
     pub univ: Shared<Universe>,
 }
@@ -23,15 +22,11 @@ impl AutoConfigReader {
     pub fn new() -> Self {
         let univ = shared(Universe::new());
         let interp = Interpreter::with_univ(univ.clone()).with_eval_mode(EvalMode::CONFIG);
-        Self {
-            skip_check: false,
-            interp,
-            univ,
-        }
+        Self { interp, univ }
     }
 
     pub fn skip_check(mut self) -> Self {
-        self.skip_check = true;
+        self.interp.skip_check();
         self
     }
 

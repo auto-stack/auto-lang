@@ -178,6 +178,7 @@ impl Evaler {
             Stmt::Node(node) => self.eval_node(node),
             Stmt::Is(_) => Value::Nil, // TODO: implement
             Stmt::EnumDecl(_) => Value::Nil,
+            Stmt::OnEvents(_) => Value::Nil, // TODO: implement
             Stmt::Comment(_) => Value::Nil,
         }
     }

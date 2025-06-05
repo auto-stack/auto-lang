@@ -4,8 +4,8 @@ mod enums;
 pub use enums::*;
 mod is;
 pub use is::*;
-mod goto;
-pub use goto::*;
+mod on;
+pub use on::*;
 mod node;
 pub use node::*;
 
@@ -147,6 +147,7 @@ pub enum Stmt {
     Widget(Widget),
     Node(Node),
     Use(Use),
+    OnEvents(OnEvents),
     Comment(AutoStr),
 }
 
@@ -248,6 +249,7 @@ impl fmt::Display for Stmt {
             Stmt::EnumDecl(enum_decl) => write!(f, "{}", enum_decl),
             Stmt::Widget(widget) => write!(f, "{}", widget),
             Stmt::Node(node) => write!(f, "{}", node),
+            Stmt::OnEvents(on_events) => write!(f, "{}", on_events),
             Stmt::Comment(cmt) => write!(f, "{}", cmt),
         }
     }

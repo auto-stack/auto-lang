@@ -34,19 +34,19 @@ impl ParserExt for Is {
     }
 }
 
-impl ParserExt for Goto {
+impl ParserExt for Arrow {
     fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
         let code = code.into();
         let mut parser = Parser::from(code.as_str());
-        parser.parse_goto()
+        parser.parse_arrow()
     }
 }
 
-impl ParserExt for GotoSwitch {
+impl ParserExt for OnEvents {
     fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
         let code = code.into();
         let mut parser = Parser::from(code.as_str());
-        parser.parse_goto_switch()
+        parser.parse_on_events()
     }
 }
 
@@ -74,26 +74,26 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_goto() {
-        let goto = Goto::parse("5 -> 7 : 8").unwrap();
+    fn test_parse_arrow() {
+        let arrow = Arrow::parse("5 -> 7 : 8").unwrap();
         assert_eq!(
-            goto.to_string(),
-            "(goto (from (int 5)) (to (int 7)) (with (int 8)))"
+            arrow.to_string(),
+            "(arrow (from (int 5)) (to (int 7)) (with (int 8)))"
         );
     }
 
     #[test]
-    fn test_parse_goto_switch() {
+    fn test_parse_on_events() {
         let code = r#"
             on {
                 5 -> 7 : 10
                 9 -> 10 : 11
             }
         "#;
-        let goto_switch = GotoSwitch::parse(code.trim()).unwrap();
+        let on = OnEvents::parse(code.trim()).unwrap();
         assert_eq!(
-            goto_switch.to_string(),
-            "(goto-switch (goto (from (int 5)) (to (int 7)) (with (int 10))) (goto (from (int 9)) (to (int 10)) (with (int 11))))"
+            on.to_string(),
+            "(on (arrow (from (int 5)) (to (int 7)) (with (int 10))) (arrow (from (int 9)) (to (int 10)) (with (int 11))))"
         );
     }
 }
