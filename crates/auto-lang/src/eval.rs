@@ -4,7 +4,6 @@ use crate::scope;
 use crate::scope::Meta;
 use crate::universe::Universe;
 use auto_val;
-use auto_val::NodeBody;
 use auto_val::{add, comp, div, mul, sub};
 use auto_val::{
     Array, AutoStr, ConfigBody, ConfigItem, MetaID, Method, Obj, Op, Pair, Sig, Type, Value,
@@ -1199,16 +1198,13 @@ impl Evaler {
                     .define_global(&name, Rc::new(Meta::Body(node.body.clone())));
             }
         }
-        let nd = Value::Node(auto_val::Node {
-            name: node.name.clone().into(),
-            id: node.id.clone(),
-            args,
-            props,
-            text: AutoStr::new(),
-            nodes,
-            body: NodeBody::new(),
-            body_ref: body,
-        });
+        let mut nd = auto_val::Node::new(name);
+        nd.id = node.id.clone();
+        nd.args = args;
+        nd.merge_obj(props);
+        nd.nodes = nodes;
+        nd.body_ref = body;
+        let nd = Value::Node(nd);
         // save value to scope
         self.universe
             .borrow_mut()

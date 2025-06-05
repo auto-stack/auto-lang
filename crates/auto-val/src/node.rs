@@ -86,7 +86,7 @@ pub struct Node {
     pub name: AutoStr,
     pub id: AutoStr,
     pub args: Args,
-    pub props: Obj,
+    props: Obj,
     pub nodes: Vec<Node>,
     pub text: AutoStr,
     pub body: NodeBody,
@@ -94,6 +94,19 @@ pub struct Node {
 }
 
 impl Node {
+    pub const fn empty() -> Self {
+        Self {
+            name: AutoStr::new(),
+            id: AutoStr::new(),
+            args: Args::new(),
+            props: Obj::new(),
+            nodes: vec![],
+            text: AutoStr::new(),
+            body: NodeBody::new(),
+            body_ref: MetaID::Nil,
+        }
+    }
+
     pub fn new(name: impl Into<AutoStr>) -> Self {
         Self {
             name: name.into(),
@@ -136,6 +149,14 @@ impl Node {
                 Arg::Pair(_, value) => value.clone(),
             }
         }
+    }
+
+    pub fn props_iter(&self) -> impl Iterator<Item = (&ValueKey, &Value)> {
+        self.props.iter()
+    }
+
+    pub fn props_clone(&self) -> Obj {
+        self.props.clone()
     }
 
     pub fn set_main_arg(&mut self, arg: impl Into<Value>) {

@@ -43,7 +43,7 @@ pub struct Args {
 }
 
 impl Args {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { args: Vec::new() }
     }
 

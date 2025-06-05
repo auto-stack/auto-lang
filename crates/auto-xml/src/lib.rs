@@ -19,7 +19,7 @@ impl ToXML for Node {
         xml.push_str(format!("<{}", name).as_str());
 
         // fill props
-        for (k, v) in self.props.iter() {
+        for (k, v) in self.props_iter() {
             xml.push_str(format!(" {}=\"{}\"", k, v.repr()).as_str());
         }
 

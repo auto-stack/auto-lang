@@ -425,7 +425,7 @@ $ }"#;
         let interp = eval_config(code, &Obj::EMPTY).unwrap();
         let config = interp.result.as_node();
         let parent = &config.nodes[0];
-        let size = parent.props.get_uint_of("size");
+        let size = parent.get_prop_of("size").to_uint();
         assert_eq!(size, 10);
     }
 

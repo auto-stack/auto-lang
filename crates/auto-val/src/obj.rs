@@ -36,7 +36,7 @@ impl Obj {
 }
 
 impl Obj {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Obj {
             values: BTreeMap::new(),
         }

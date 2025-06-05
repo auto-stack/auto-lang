@@ -501,8 +501,8 @@ impl Universe {
                     // for each kid, set its main arg as `id`, and all props as is
                     let mut kids_vec: Vec<Value> = Vec::new();
                     for kid in kids.into_iter() {
-                        let mut props = kid.props.clone();
-                        props.set("name", kid.main_arg());
+                        // let mut props = kid.props.clone();
+                        // props.set("name", kid.main_arg());
                         kids_vec.push(Value::Node((*kid).clone()));
                     }
                     if !self.has_global(key) {

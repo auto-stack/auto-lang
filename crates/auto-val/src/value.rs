@@ -276,16 +276,7 @@ impl Value {
     }
 }
 
-static NODE_NIL: Node = Node {
-    name: AutoStr::new(),
-    id: AutoStr::new(),
-    args: Args::EMPTY,
-    props: Obj::EMPTY,
-    nodes: vec![],
-    text: AutoStr::new(),
-    body: NodeBody::new(),
-    body_ref: MetaID::Nil,
-};
+static NODE_NIL: Node = Node::empty();
 
 // Quick Readers
 impl Value {
@@ -318,6 +309,13 @@ impl Value {
         match self {
             Value::Array(value) => value,
             _ => &ARRAY_EMPTY,
+        }
+    }
+
+    pub fn to_str_vec(&self) -> Vec<AutoStr> {
+        match self {
+            Value::Array(value) => value.to_str_vec(),
+            _ => vec![],
         }
     }
 
@@ -397,7 +395,24 @@ impl Value {
     pub fn to_astr(&self) -> AutoStr {
         match self {
             Value::Str(s) => s.clone(),
+            Value::Nil => "".into(),
             _ => self.to_string().into(),
+        }
+    }
+
+    pub fn to_astr_or(&self, default: &str) -> AutoStr {
+        match self {
+            Value::Str(s) => s.clone(),
+            Value::Nil => default.into(),
+            _ => self.to_string().into(),
+        }
+    }
+
+    pub fn to_uint(&self) -> u32 {
+        match self {
+            Value::Int(n) => *n as u32,
+            Value::Uint(n) => *n,
+            _ => 0,
         }
     }
 
@@ -934,10 +949,10 @@ impl ConfigBody {
         let mut node = Node::new(name);
         for item in self.items.into_iter() {
             match item {
-                ConfigItem::Pair(pair) => node.props.set(pair.key.to_string(), pair.value),
-                ConfigItem::Object(object) => node.props.merge(&object),
+                ConfigItem::Pair(pair) => node.set_prop(pair.key.to_string(), pair.value),
+                ConfigItem::Object(object) => node.merge_obj(object),
                 ConfigItem::Node(n) => node.add_kid(n),
-                ConfigItem::Value(v) => node.props.set("value".to_string(), v),
+                ConfigItem::Value(v) => node.set_prop("value".to_string(), v),
             }
         }
         node

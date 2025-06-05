@@ -31,7 +31,7 @@ impl Atom {
         match val {
             Value::Node(n) => {
                 let mut nb = NodeBody::new();
-                for (k, v) in n.props.iter() {
+                for (k, v) in n.props_iter() {
                     nb.add_prop(k.clone(), v.clone());
                 }
                 for n in &n.nodes {
@@ -40,7 +40,7 @@ impl Atom {
                 let name = if !n.has_prop("name") {
                     n.main_arg().to_astr()
                 } else {
-                    n.props.get_str_of("name").clone()
+                    n.get_prop_of("name").to_astr()
                 };
                 let mut atom = Self::node(nb);
                 atom.name = name;

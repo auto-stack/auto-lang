@@ -69,6 +69,10 @@ impl Array {
         self.to_string().into()
     }
 
+    pub fn to_str_vec(&self) -> Vec<AutoStr> {
+        self.values.iter().map(|v| v.to_astr()).collect()
+    }
+
     pub fn extend(&mut self, other: &Array) {
         self.values.extend(other.values.iter().cloned());
     }
