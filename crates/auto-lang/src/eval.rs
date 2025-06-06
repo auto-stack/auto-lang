@@ -185,7 +185,7 @@ impl Evaler {
             Stmt::Node(node) => self.eval_node(node),
             Stmt::Is(_) => Value::Nil, // TODO: implement
             Stmt::EnumDecl(_) => Value::Nil,
-            Stmt::OnEvents(_) => Value::Nil, // TODO: implement
+            Stmt::OnEvents(on) => self.eval_on_events(on),
             Stmt::Comment(_) => Value::Nil,
         }
     }
@@ -1113,6 +1113,29 @@ impl Evaler {
             res.args.push(val);
         }
         res
+    }
+
+    fn eval_on_events(&mut self, events: &ast::OnEvents) -> Value {
+        // TODO: currently only supports for AutoConfig
+        let mut nd = auto_val::Node::new("on");
+        for branch in events.branches.iter() {
+            if let Some(src) = &branch.src {
+                nd.set_prop("src", src.to_code());
+            } else {
+                nd.set_prop("src", "DEFAULT");
+            }
+            if let Some(dest) = &branch.dest {
+                nd.set_prop("dest", dest.to_code());
+            } else {
+                nd.set_prop("dest", "None");
+            }
+            if let Some(handler) = &branch.with {
+                nd.set_prop("with", handler.to_code());
+            } else {
+                nd.set_prop("with", "()");
+            }
+        }
+        Value::Node(nd)
     }
 
     // TODO: should node only be used in config mode?
