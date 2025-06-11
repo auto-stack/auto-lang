@@ -2088,7 +2088,7 @@ mod tests {
             kind: "primary"
         }"#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (node (name button) (id OK) (args (str \"OK\")) (body (pair (name border) (int 1)) (pair (name kind) (str \"primary\")))))");
+        assert_eq!(ast.to_string(), "(code (node (name button) (args (str \"OK\")) (body (pair (name border) (int 1)) (pair (name kind) (str \"primary\")))))");
     }
 
     #[test]
@@ -2108,7 +2108,7 @@ mod tests {
         let last = ast.stmts.last().unwrap();
         assert_eq!(
             last.to_string(),
-            "(node (name center) (body (node (name text) (id Hello) (args (str \"Hello\")))))"
+            "(node (name center) (body (node (name text) (args (str \"Hello\")))))"
         );
     }
 
@@ -2185,7 +2185,7 @@ mod tests {
         let ast = parse_once(code);
         assert_eq!(
             ast.to_string(),
-            "(code (node (name center) (body (node (name text) (id Hello) (args (str \"Hello\"))))))"
+            "(code (node (name center) (body (node (name text) (args (str \"Hello\"))))))"
         );
     }
 
@@ -2306,12 +2306,12 @@ mod tests {
 name: "hello"
 version: "0.1.0"
 
-exe(hello) {
+exe hello {
     dir: "src"
     main: "main.c"
 }"#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (pair (name name) (str \"hello\")) (pair (name version) (str \"0.1.0\")) (node (name exe) (id hello) (args (name hello)) (body (pair (name dir) (str \"src\")) (pair (name main) (str \"main.c\")))))");
+        assert_eq!(ast.to_string(), "(code (pair (name name) (str \"hello\")) (pair (name version) (str \"0.1.0\")) (node (name exe) (id hello) (body (pair (name dir) (str \"src\")) (pair (name main) (str \"main.c\")))))");
     }
 
     #[test]
