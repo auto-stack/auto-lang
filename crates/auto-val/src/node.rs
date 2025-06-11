@@ -204,6 +204,11 @@ impl Node {
             .collect()
     }
 
+    pub fn has_nodes(&self, name: impl Into<AutoStr>) -> bool {
+        let name = name.into();
+        self.nodes.iter().any(|n| *n.name == name)
+    }
+
     pub fn get_kids(&self, name: impl Into<AutoStr>) -> Vec<Node> {
         let name = name.into();
         let mut nodes: Vec<Node> = self
@@ -294,19 +299,25 @@ impl Node {
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)?;
-        if !self.args.is_empty() {
-            write!(f, "(")?;
-            // don't display pair args as they are displayed in the props
-            let args = self
-                .args
-                .args
-                .iter()
-                .filter(|arg| match arg {
-                    Arg::Pair(_, _) => false,
-                    _ => true,
-                })
-                .collect::<Vec<_>>();
+        if !self.id.is_empty() {
+            write!(f, " {}", self.id)?;
+        }
+        // if first arg is the same as id
+        let args = if self.id == self.main_arg().to_astr() {
+            self.args.args.iter().skip(1)
+        } else {
+            self.args.args.iter().skip(0)
+        };
+        // don't display pair args as they are displayed in the props
+        let args = args
+            .filter(|arg| match arg {
+                Arg::Pair(_, _) => false,
+                _ => true,
+            })
+            .collect::<Vec<_>>();
 
+        if !args.is_empty() {
+            write!(f, "(")?;
             for (i, arg) in args.iter().enumerate() {
                 write!(f, "{}", arg)?;
                 if i < args.len() - 1 {
@@ -315,6 +326,7 @@ impl fmt::Display for Node {
             }
             write!(f, ")")?;
         }
+        let mut has_body = false;
         if !(self.props.is_empty() && self.nodes.is_empty()) {
             write!(f, " {{")?;
             if !self.props.is_empty() {
@@ -330,16 +342,22 @@ impl fmt::Display for Node {
                 }
             }
             write!(f, "}}")?;
+            has_body = true;
         }
 
         if !self.body.is_empty() {
             write!(f, " {{")?;
             write!(f, "{}", self.body)?;
             write!(f, "}}")?;
+            has_body = true;
         }
 
         if self.body_ref != MetaID::Nil {
             write!(f, " {}", self.body_ref)?;
+            has_body = true;
+        }
+        if !has_body {
+            write!(f, " {{}}")?;
         }
         Ok(())
     }

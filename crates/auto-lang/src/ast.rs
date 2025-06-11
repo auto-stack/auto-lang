@@ -419,6 +419,17 @@ impl Args {
     pub fn major(&self) -> Option<&Arg> {
         self.args.first()
     }
+
+    pub fn first_arg(&self) -> Option<Expr> {
+        let Some(arg) = self.args.first() else {
+            return None;
+        };
+        match arg {
+            Arg::Pos(expr) => Some(expr.clone()),
+            Arg::Name(n) => Some(Expr::Ident(n.clone())),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Args {

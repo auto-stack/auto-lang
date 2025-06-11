@@ -1,4 +1,4 @@
-use auto_val::{Array, Value};
+use auto_val::{Array, Node, Value};
 use auto_val::{AutoStr, NodeBody};
 use std::fmt;
 
@@ -10,7 +10,8 @@ pub struct Atom {
 
 #[derive(Clone)]
 pub enum Root {
-    Node(NodeBody),
+    Node(Node),
+    NodeBody(NodeBody),
     Array(Array),
     Empty,
 }
@@ -42,7 +43,7 @@ impl Atom {
                 } else {
                     n.get_prop_of("name").to_astr()
                 };
-                let mut atom = Self::node(nb);
+                let mut atom = Self::node_body(nb);
                 atom.name = name;
                 atom
             }
@@ -58,7 +59,14 @@ impl Atom {
         }
     }
 
-    pub fn node(node: NodeBody) -> Self {
+    pub fn node_body(node: NodeBody) -> Self {
+        Self {
+            name: AutoStr::new(),
+            root: Root::NodeBody(node),
+        }
+    }
+
+    pub fn node(node: Node) -> Self {
         Self {
             name: AutoStr::new(),
             root: Root::Node(node),
@@ -85,13 +93,14 @@ impl Atom {
         }
         Self {
             name: AutoStr::new(),
-            root: Root::Node(node),
+            root: Root::NodeBody(node),
         }
     }
 
     pub fn to_astr(&self) -> AutoStr {
         match &self.root {
             Root::Node(node) => node.to_astr(),
+            Root::NodeBody(node) => node.to_astr(),
             Root::Array(array) => array.to_astr(),
             Root::Empty => AutoStr::default(),
         }
@@ -106,7 +115,15 @@ impl Root {
         }
     }
 
-    pub fn as_node(&self) -> &NodeBody {
+    pub fn as_nodebody(&self) -> &NodeBody {
+        if let Root::NodeBody(node) = self {
+            node
+        } else {
+            panic!("Root is not a node")
+        }
+    }
+
+    pub fn as_node(&self) -> &Node {
         if let Root::Node(node) = self {
             node
         } else {
@@ -119,6 +136,7 @@ impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.root {
             Root::Node(node) => write!(f, "{}", node),
+            Root::NodeBody(node) => write!(f, "{}", node),
             Root::Array(array) => write!(f, "{}", array),
             Root::Empty => write!(f, ""),
         }
@@ -151,7 +169,7 @@ mod tests {
             Value::pair("d", 4),
             Value::pair("e", 5),
         ]);
-        let node = atom.root.as_node();
+        let node = atom.root.as_nodebody();
         assert_eq!(node.get_prop_of("a"), Value::Int(1));
         assert_eq!(node.get_prop_of("b"), Value::Int(2));
         assert_eq!(node.get_prop_of("c"), Value::Int(3));

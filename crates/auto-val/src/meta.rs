@@ -146,6 +146,7 @@ pub enum MetaID {
     Type(AutoStr),
     Enum(AutoStr),
     View(AutoStr),
+    Node(AutoStr),
     Body(AutoStr),
     Method(MethodMeta),
     Nil,
@@ -174,6 +175,7 @@ impl fmt::Display for MetaID {
             MetaID::Method(method) => write!(f, "<method:{}>", method),
             MetaID::Type(id) => write!(f, "<type:{}>", id),
             MetaID::Enum(name) => write!(f, "<enum:{}>", name),
+            MetaID::Node(id) => write!(f, "<node:{}>", id),
         }
     }
 }

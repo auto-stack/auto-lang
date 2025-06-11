@@ -752,7 +752,7 @@ exe(hello) {
         let result = interp.result;
         assert_eq!(
             result.repr(),
-            r#"root {name: "hello"; version: "0.1.0"; exe(hello) {dir: "src"; main: "main.c"; }; }"#
+            r#"root {name: "hello"; version: "0.1.0"; exe hello {dir: "src"; main: "main.c"; }; }"#
         );
     }
 
@@ -773,7 +773,7 @@ exe(hello) {
         let conf = AutoConfig::new(code).unwrap();
         assert_eq!(
             conf.root.to_string(),
-            r#"root {name: "hello"; lib("hello") {dir("a"); dir("b"); dir("c"); }; }"#
+            r#"root {name: "hello"; lib hello {dir("a"); dir("b"); dir("c"); }; }"#
         );
     }
 
@@ -906,5 +906,15 @@ square(15)
         "#;
         let result = run(code).unwrap();
         assert_eq!(result, "src/x");
+    }
+
+    #[test]
+    fn test_node_arg_ident() {
+        let code = r#"
+            var myname = "Xiaoming"
+            lib (myname) {}
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "lib Xiaoming {}");
     }
 }

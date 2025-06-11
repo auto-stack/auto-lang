@@ -1119,21 +1119,23 @@ impl Evaler {
         // TODO: currently only supports for AutoConfig
         let mut nd = auto_val::Node::new("on");
         for branch in events.branches.iter() {
+            let mut ev = auto_val::Node::new("ev");
             if let Some(src) = &branch.src {
-                nd.set_prop("src", src.to_code());
+                ev.set_prop("src", src.to_code());
             } else {
-                nd.set_prop("src", "DEFAULT");
+                ev.set_prop("src", "DEFAULT");
             }
             if let Some(dest) = &branch.dest {
-                nd.set_prop("dest", dest.to_code());
+                ev.set_prop("dest", dest.to_code());
             } else {
-                nd.set_prop("dest", "None");
+                ev.set_prop("dest", "None");
             }
             if let Some(handler) = &branch.with {
-                nd.set_prop("with", handler.to_code());
+                ev.set_prop("with", handler.to_code());
             } else {
-                nd.set_prop("with", "()");
+                ev.set_prop("with", "()");
             }
+            nd.add_kid(ev);
         }
         Value::Node(nd)
     }
@@ -1245,16 +1247,25 @@ impl Evaler {
             }
         }
         let mut nd = auto_val::Node::new(name);
-        nd.id = node.id.clone();
+        // id is not specified, try use first argument as id
+        if !node.id.is_empty() {
+            nd.id = node.id.clone();
+        } else {
+            let first_arg = node.args.first_arg();
+            if let Some(Expr::Ident(ident)) = first_arg {
+                nd.id = self.eval_ident(&ident).as_astr().clone();
+            }
+        }
+        let ndid = nd.id.clone();
         nd.args = args;
         nd.merge_obj(props);
         nd.nodes = nodes;
         nd.body_ref = body;
         let nd = Value::Node(nd);
         // save value to scope
-        self.universe
-            .borrow_mut()
-            .set_global(node.id.as_str(), nd.clone());
+        if !ndid.is_empty() {
+            self.universe.borrow_mut().set_global(ndid, nd.clone());
+        }
         nd
     }
 
@@ -1387,6 +1398,7 @@ fn to_meta_id(meta: &Rc<scope::Meta>) -> MetaID {
         scope::Meta::Fn(fn_decl) => MetaID::Fn(to_value_sig(&fn_decl)),
         scope::Meta::Type(type_decl) => MetaID::Type(type_decl.unique_name().into()),
         scope::Meta::Enum(enum_decl) => MetaID::Enum(enum_decl.unique_name()),
+        scope::Meta::Node(nd) => MetaID::Node(nd.id.clone()),
         _ => MetaID::Nil,
     }
 }

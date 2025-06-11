@@ -1671,9 +1671,9 @@ impl<'a> Parser<'a> {
             has_paren = true;
         }
 
-        if !has_id && !args.is_empty() {
-            id = Some(args.id());
-        }
+        // if !has_id && !args.is_empty() {
+        // id = Some(args.id());
+        // }
 
         // If has brace, must be a node instance
         if self.is_kind(TokenKind::LBrace) {

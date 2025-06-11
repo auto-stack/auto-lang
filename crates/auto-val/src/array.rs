@@ -1,5 +1,7 @@
 use crate::AutoStr;
 use crate::Value;
+use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::fmt::{self, Formatter};
 use std::ops::{Index, IndexMut};
 
@@ -49,6 +51,17 @@ impl Array {
         }
     }
 
+    pub fn from_set(values: HashSet<impl Into<Value>>) -> Self {
+        Array {
+            values: values.into_iter().map(|v| v.into()).collect(),
+        }
+    }
+
+    pub fn from_treeset(values: BTreeSet<impl Into<Value>>) -> Self {
+        Array {
+            values: values.into_iter().map(|v| v.into()).collect(),
+        }
+    }
     pub fn len(&self) -> usize {
         self.values.len()
     }

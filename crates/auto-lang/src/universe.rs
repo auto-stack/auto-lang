@@ -483,6 +483,47 @@ impl Universe {
                 if !name.is_nil() {
                     self.set_global("name", name);
                 }
+                for (_key, item) in node.props_iter() {
+                    self.set_global(_key.to_string(), item.clone());
+                }
+                // set kids
+                let kids_groups = node.group_kids();
+                for (name, kids) in kids_groups.iter() {
+                    let plural_key = format!("{}s", name);
+                    let key = plural_key.as_str();
+                    // for each kid, set its main arg as `id`, and all props as is
+                    let mut kids_vec: Vec<Value> = Vec::new();
+                    for kid in kids.into_iter() {
+                        // let mut props = kid.props.clone();
+                        // props.set("name", kid.main_arg());
+                        kids_vec.push(Value::Node((*kid).clone()));
+                    }
+                    if !self.has_global(key) {
+                        self.set_global(key, kids_vec.into());
+                    } else {
+                        let existing = self.get_global(key);
+                        if let Value::Array(mut existing) = existing {
+                            for kid in kids_vec.iter() {
+                                existing.push(kid.clone());
+                            }
+                            self.set_global(key, Value::Array(existing));
+                        }
+                    }
+                    // if len is 1, also set key with single form
+                    if kids.len() == 1 {
+                        let single_key = name.as_str();
+                        let kid = kids[0].clone();
+                        self.set_global(single_key, kid.into());
+                    }
+                }
+            }
+            auto_atom::Root::NodeBody(node) => {
+                // let main_arg = node.main_arg();
+                // self.set_global("name", main_arg);
+                let name = node.get_prop_of("name");
+                if !name.is_nil() {
+                    self.set_global("name", name);
+                }
                 for (_key, item) in node.map.iter() {
                     match item {
                         NodeItem::Prop(p) => {

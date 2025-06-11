@@ -14,3 +14,4 @@ clap = { workspace = true }
 auto-lang = { workspace = true }
 auto-val = { workspace = true }
 auto-atom = { workspace = true }
+regex = { workspace = true }

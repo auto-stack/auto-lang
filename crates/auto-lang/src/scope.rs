@@ -208,7 +208,7 @@ impl fmt::Display for Meta {
             Meta::Widget(_) => write!(f, "Widget"),
             Meta::View(_) => write!(f, "VIEW"),
             Meta::Body(_) => write!(f, "BoDY"),
-            Meta::Node(_) => write!(f, "NODE"),
+            Meta::Node(nd) => write!(f, "{}", nd),
             Meta::Use(name) => write!(f, "USE {}", name),
         }
     }
