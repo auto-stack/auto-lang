@@ -738,7 +738,7 @@ pub fn pretty(text: &str, max_indent: usize) -> AutoStr {
     for c in text.chars() {
         match c {
             ' ' if !in_str => {
-                if last_c == ')' || level > max_indent {
+                if last_c.is_alphanumeric() || last_c == ')' || level > max_indent {
                     result.push(c);
                 }
             }
@@ -1041,6 +1041,13 @@ mod tests {
     fn test_pretty() {
         let text = r#"{"a":[[1, 2, 3], [4, 5, 6]], "b":[[7, 8, 9], [10, 11, 12]], "c":[[13, 14, 15], [16, 17, 18]]}"#;
         let pretty = pretty(text, 2);
+        println!("{}", pretty);
+    }
+
+    #[test]
+    fn test_pretty_with_space() {
+        let code = r#"dep log { x: 1, y: 2, z: 3 }"#;
+        let pretty = pretty(code, 2);
         println!("{}", pretty);
     }
 }
