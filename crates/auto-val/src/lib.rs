@@ -61,17 +61,17 @@ impl From<std::io::Error> for IOError {
 }
 
 impl IOError {
-    pub fn file(err: std::io::Error, src: impl Into<AutoPath>) -> Self {
+    pub fn file(err: std::io::Error, src: impl Into<AutoStr>) -> Self {
         IOError::FileError {
             err,
-            src: src.into().to_astr(),
+            src: src.into()
         }
     }
 
-    pub fn dual(err: std::io::Error, src: impl Into<AutoPath>, dst: impl Into<AutoPath>) -> Self {
+    pub fn dual(err: std::io::Error, src: impl Into<AutoStr>, dst: impl Into<AutoStr>) -> Self {
         IOError::DualError {
-            src: src.into().to_astr(),
-            dst: dst.into().to_astr(),
+            src: src.into(),
+            dst: dst.into(),
             err: err,
         }
     }

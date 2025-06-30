@@ -51,6 +51,10 @@ impl AutoPath {
         self.path.is_dir()
     }
 
+    pub fn exists(&self) -> bool {
+        self.path.exists()
+    }
+
     pub fn path(&self) -> &Path {
         self.path.as_path()
     }
@@ -236,6 +240,12 @@ impl From<&str> for AutoPath {
 impl fmt::Display for AutoPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_astr())
+    }
+}
+
+impl From<AutoPath> for AutoStr {
+    fn from(path: AutoPath) -> Self {
+        path.to_astr()
     }
 }
 
