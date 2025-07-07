@@ -1120,21 +1120,51 @@ impl Evaler {
         let mut nd = auto_val::Node::new("on");
         for branch in events.branches.iter() {
             let mut ev = auto_val::Node::new("ev");
-            if let Some(src) = &branch.src {
-                ev.set_prop("src", src.to_code());
-            } else {
-                ev.set_prop("src", "DEFAULT");
+            match branch {
+                Event::Arrow(arrow) => {
+                    if let Some(src) = &arrow.src {
+                        ev.set_prop("src", src.to_code());
+                    } else {
+                        ev.set_prop("src", "DEFAULT");
+                    }
+                    if let Some(dest) = &arrow.dest {
+                        ev.set_prop("dest", dest.to_code());
+                    } else {
+                        ev.set_prop("dest", "None");
+                    }
+                    if let Some(handler) = &arrow.with {
+                        ev.set_prop("with", handler.to_code());
+                    } else {
+                        ev.set_prop("with", "()");
+                    }
+                }
+                Event::CondArrow(cond) => {
+                    let src = if let Some(src) = &cond.src {
+                        src.to_code()
+                    } else {
+                        "DEFAULT".into()
+                    };
+                    ev.set_prop("src", src.clone());
+                    ev.set_prop("dest", "CONDITION");
+                    ev.set_prop("with", cond.cond.to_code());
+                    for arrow in cond.subs.iter() {
+                        let mut sub = auto_val::Node::new("sub");
+                        sub.set_prop("src", src.clone());
+                        if let Some(dest) = &arrow.dest {
+                            sub.set_prop("dest", dest.to_code());
+                        } else {
+                            sub.set_prop("dest", "DEFAULT");
+                        }
+                        if let Some(handler) = &arrow.with {
+                            sub.set_prop("with", handler.to_code());
+                        } else {
+                            sub.set_prop("with", "()");
+                        }
+                        ev.add_kid(sub);
+                    }
+                }
             }
-            if let Some(dest) = &branch.dest {
-                ev.set_prop("dest", dest.to_code());
-            } else {
-                ev.set_prop("dest", "None");
-            }
-            if let Some(handler) = &branch.with {
-                ev.set_prop("with", handler.to_code());
-            } else {
-                ev.set_prop("with", "()");
-            }
+
             nd.add_kid(ev);
         }
         Value::Node(nd)

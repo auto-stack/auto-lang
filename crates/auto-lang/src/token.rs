@@ -54,6 +54,7 @@ pub enum TokenKind {
     CommentEnd,     // */
     Arrow,          // ->
     DoubleArrow,    // =>
+    Question,       // ?
 
     // Keywords
     True,
@@ -163,6 +164,7 @@ impl fmt::Display for Token {
             TokenKind::Is => write!(f, "<is>"),
             TokenKind::When => write!(f, "<when>"),
             TokenKind::On => write!(f, "<on>"),
+            TokenKind::Question => write!(f, "<?>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }
     }

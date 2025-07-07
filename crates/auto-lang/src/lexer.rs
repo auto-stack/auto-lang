@@ -518,6 +518,9 @@ impl<'a> Lexer<'a> {
                 '`' => {
                     return self.fstr();
                 }
+                '?' => {
+                    return self.single(TokenKind::Question, c);
+                }
                 _ => {
                     if c == self.fstr_note {
                         return self.single(TokenKind::FStrNote, c);

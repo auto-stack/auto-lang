@@ -9,8 +9,21 @@ pub struct Arrow {
 }
 
 #[derive(Debug, Clone)]
+pub struct CondArrow {
+    pub src: Option<Expr>,
+    pub cond: Expr,
+    pub subs: Vec<Arrow>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Event {
+    Arrow(Arrow),
+    CondArrow(CondArrow),
+}
+
+#[derive(Debug, Clone)]
 pub struct OnEvents {
-    pub branches: Vec<Arrow>,
+    pub branches: Vec<Event>,
 }
 
 impl Arrow {
@@ -19,8 +32,14 @@ impl Arrow {
     }
 }
 
+impl CondArrow {
+    pub fn new(src: Option<Expr>, cond: Expr, subs: Vec<Arrow>) -> Self {
+        Self { src, cond, subs }
+    }
+}
+
 impl OnEvents {
-    pub fn new(branches: Vec<Arrow>) -> Self {
+    pub fn new(branches: Vec<Event>) -> Self {
         Self { branches }
     }
 }
@@ -38,6 +57,29 @@ impl fmt::Display for Arrow {
             write!(f, " (with {})", with)?;
         }
         write!(f, ")")
+    }
+}
+
+impl fmt::Display for CondArrow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(cond-arrow")?;
+        if let Some(src) = &self.src {
+            write!(f, " (from {})", src)?;
+        }
+        write!(f, " (cond {})", self.cond)?;
+        for sub in &self.subs {
+            write!(f, " {}", sub)?;
+        }
+        write!(f, ")")
+    }
+}
+
+impl fmt::Display for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Event::Arrow(a) => write!(f, "{}", a),
+            Event::CondArrow(c) => write!(f, "{}", c),
+        }
     }
 }
 

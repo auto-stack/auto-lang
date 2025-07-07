@@ -38,14 +38,16 @@ impl ParserExt for Arrow {
     fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
         let code = code.into();
         let mut parser = Parser::from(code.as_str());
-        parser.parse_arrow()
+        let ev = parser.parse_event_src()?;
+        let arrow = parser.parse_arrow(ev)?;
+        Ok(arrow)
     }
 }
 
 impl ParserExt for OnEvents {
     fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
         let code = code.into();
-        let mut parser = Parser::from(code.as_str());
+        let mut parser = Parser::from(code.as_str()).skip_check();
         parser.parse_on_events()
     }
 }

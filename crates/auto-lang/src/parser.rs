@@ -1766,7 +1766,7 @@ impl<'a> Parser<'a> {
         Ok(grid)
     }
 
-    pub fn parse_arrow(&mut self) -> ParseResult<Arrow> {
+    pub fn parse_event_src(&mut self) -> ParseResult<Option<Expr>> {
         let src = if self.is_kind(TokenKind::Ident) {
             Some(self.parse_ident()?)
         } else if self.is_kind(TokenKind::Int) {
@@ -1780,26 +1780,75 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-        let (to, with) = if self.is_kind(TokenKind::Colon) {
+
+        Ok(src)
+    }
+
+    pub fn parse_cond_arrow(&mut self, src: Option<Expr>) -> ParseResult<CondArrow> {
+        if self.is_kind(TokenKind::Question) {
+            self.next(); // skip ?
+            let cond = self.parse_expr()?;
+            let subs = self.parse_arrow_list()?;
+            return Ok(CondArrow::new(src, cond, subs));
+        } else {
+            return Err(format!("Expected condition arrow").into());
+        }
+    }
+
+    /// Deffirent forms:
+    /// 1. EV -> State : Handler
+    /// 2. -> State : Handler
+    /// 3. EV : Handler
+    /// 4. EV -> State
+    /// 5. EV ? ConditionCheck {
+    ///       -> State1 : Handler1
+    ///       -> State2 : handler2
+    ///    }
+    pub fn parse_arrow(&mut self, src: Option<Expr>) -> ParseResult<Arrow> {
+        if self.is_kind(TokenKind::Colon) {
             self.next();
             let with = self.parse_expr()?;
-            (None, Some(with))
+            return Ok(Arrow::new(src, None, Some(with)));
         } else {
             self.expect(TokenKind::Arrow)?;
             let to = self.parse_expr()?;
             if let Expr::Pair(p) = to {
                 let to = p.key.into();
                 let value = *p.value;
-                (Some(to), Some(value))
+                return Ok(Arrow::new(src, Some(to), Some(value)));
             } else {
-                (Some(to), None)
+                return Ok(Arrow::new(src, Some(to), None));
             }
         };
-        Ok(Arrow::new(src, to, with))
     }
 
-    fn parse_goto_branch(&mut self) -> ParseResult<Arrow> {
-        self.parse_arrow()
+    fn parse_arrow_list(&mut self) -> ParseResult<Vec<Arrow>> {
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut events = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            let src = self.parse_event_src()?;
+            events.push(self.parse_arrow(src)?);
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(events)
+    }
+
+    pub fn parse_event(&mut self) -> ParseResult<Event> {
+        let src = self.parse_event_src()?;
+        println!("NEXT I S {}", self.kind());
+        if self.is_kind(TokenKind::Arrow) || self.is_kind(TokenKind::Colon) {
+            return Ok(Event::Arrow(self.parse_arrow(src)?));
+        } else if self.is_kind(TokenKind::Question) {
+            return Ok(Event::CondArrow(self.parse_cond_arrow(src)?));
+        } else {
+            return Err(format!("expected arrow, colon or question mark.").into());
+        }
+    }
+
+    fn parse_goto_branch(&mut self) -> ParseResult<Event> {
+        self.parse_event()
     }
 
     pub fn parse_on_events(&mut self) -> ParseResult<OnEvents> {
@@ -2381,6 +2430,30 @@ exe hello {
                 r#"(eq (int 10) (body (call (name print) (args (str "ten"))))) "#,
                 r#"(eq (int 20) (body (call (name print) (args (str "twenty"))))) "#,
                 r#"(else (body (call (name print) (args (str "ehh"))))))"#,
+            )
+        )
+    }
+
+    #[test]
+    fn test_on_condition_events() {
+        let code = r#"on {
+            EV1 -> State1 : handler1
+            EV2 ? checker2 {
+                -> State2 : handler2
+                -> State3 : handler3
+            }
+        }"#;
+        let when = OnEvents::parse(code).unwrap();
+        assert_eq!(
+            when.to_string(),
+            format!(
+                "{}{}{}{}{}{}",
+                r#"(on "#,
+                r#"(arrow (from (name EV1)) (to (name State1)) (with (name handler1))) "#,
+                r#"(cond-arrow (from (name EV2)) (cond (name checker2)) "#,
+                r#"(arrow (to (name State2)) (with (name handler2))) "#,
+                r#"(arrow (to (name State3)) (with (name handler3)))"#,
+                r#"))"#,
             )
         )
     }
