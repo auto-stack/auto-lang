@@ -1137,6 +1137,7 @@ impl Evaler {
                     } else {
                         ev.set_prop("with", "()");
                     }
+                    nd.add_kid(ev);
                 }
                 Event::CondArrow(cond) => {
                     let src = if let Some(src) = &cond.src {
@@ -1147,8 +1148,10 @@ impl Evaler {
                     ev.set_prop("src", src.clone());
                     ev.set_prop("dest", "CONDITION");
                     ev.set_prop("with", cond.cond.to_code());
+                    nd.add_kid(ev);
                     for arrow in cond.subs.iter() {
-                        let mut sub = auto_val::Node::new("sub");
+                        println!("NEWSUB!!!! {}", arrow.with.clone().unwrap().to_code());
+                        let mut sub = auto_val::Node::new("ev");
                         sub.set_prop("src", src.clone());
                         if let Some(dest) = &arrow.dest {
                             sub.set_prop("dest", dest.to_code());
@@ -1160,12 +1163,10 @@ impl Evaler {
                         } else {
                             sub.set_prop("with", "()");
                         }
-                        ev.add_kid(sub);
+                        nd.add_kid(sub);
                     }
                 }
             }
-
-            nd.add_kid(ev);
         }
         Value::Node(nd)
     }

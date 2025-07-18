@@ -1,7 +1,6 @@
-use std::{collections::HashMap, path::Path, ptr::read_unaligned};
+use std::{collections::HashMap, path::Path};
 
 use auto_atom::Atom;
-use auto_lang::ast::Key;
 use auto_val::{AutoPath, AutoResult, AutoStr};
 use regex::Regex;
 
