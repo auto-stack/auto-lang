@@ -899,12 +899,14 @@ impl<'a> Parser<'a> {
         Ok(stmt)
     }
 
+    /// Format: enum { item1, item2, item3 }
     fn enum_stmt(&mut self) -> ParseResult<Stmt> {
         self.next(); // skip enum
         let name = self.cur.text.clone().into();
         self.next();
         let mut items = Vec::new();
         self.expect(TokenKind::LBrace)?;
+        // parse items
         while !self.is_kind(TokenKind::RBrace) {
             let item = self.cur.text.clone().into();
             self.next();
@@ -914,6 +916,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect(TokenKind::RBrace)?;
+        // make enum ast node
         let enum_decl = EnumDecl {
             name,
             items: items
@@ -984,11 +987,13 @@ impl<'a> Parser<'a> {
         // locate file from path
         let base_path = std::env::current_dir().unwrap();
         let base_path = base_path.as_path();
-        let std_path = base_path.parent().unwrap();
-        let std_path = std_path.parent().unwrap();
-        let std_path = std_path.join("std");
-        println!("debug: std path: {}", std_path.to_str().unwrap());
-        // println!("std_path: {}", std_path.display());
+        let mut std_path = base_path.join("std");
+        if !std_path.is_dir() {
+            println!("debug: std lib location: {}", std_path.to_str().unwrap());
+            let pa = base_path.parent().unwrap();
+            std_path = pa.parent().unwrap().join("std");
+        }
+        println!("debug: std lib location: {}", std_path.to_str().unwrap());
         if !path.starts_with("std.") {
             return error_pos!("Invalid import path: {}", path);
         }

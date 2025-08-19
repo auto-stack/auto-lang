@@ -270,38 +270,9 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn keyword(&mut self, text: String) -> Option<Token> {
-        match text.as_str() {
-            "true" => self.keyword_tok(TokenKind::True, &text),
-            "false" => self.keyword_tok(TokenKind::False, &text),
-            "nil" => self.keyword_tok(TokenKind::Nil, &text),
-            "if" => self.keyword_tok(TokenKind::If, &text),
-            "else" => self.keyword_tok(TokenKind::Else, &text),
-            "for" => self.keyword_tok(TokenKind::For, &text),
-            "when" => self.keyword_tok(TokenKind::When, &text),
-            "is" => self.keyword_tok(TokenKind::Is, &text),
-            "var" => self.keyword_tok(TokenKind::Var, &text),
-            "in" => self.keyword_tok(TokenKind::In, &text),
-            "fn" => self.keyword_tok(TokenKind::Fn, &text),
-            "type" => self.keyword_tok(TokenKind::Type, &text),
-            "ref" => self.keyword_tok(TokenKind::Ref, &text),
-            "let" => self.keyword_tok(TokenKind::Let, &text),
-            "mut" => self.keyword_tok(TokenKind::Mut, &text),
-            "has" => self.keyword_tok(TokenKind::Has, &text),
-            "use" => self.keyword_tok(TokenKind::Use, &text),
-            "as" => self.keyword_tok(TokenKind::As, &text),
-            "enum" => self.keyword_tok(TokenKind::Enum, &text),
-            _ => {
-                // AutoUI Keywords
-                // TODO: Add an Option to not check these keywords
-                match text.as_str() {
-                    "grid" => self.keyword_tok(TokenKind::Grid, &text),
-                    // "widget" => self.keyword_tok(TokenKind::Widget, &text),
-                    // "model" => self.keyword_tok(TokenKind::Model, &text),
-                    // "view" => self.keyword_tok(TokenKind::View, &text),
-                    // "style" => self.keyword_tok(TokenKind::Style, &text),
-                    _ => None,
-                }
-            }
+        match Token::keyword_kind(text.as_str()) {
+            Some(kind) => self.keyword_tok(kind, &text),
+            None => None,
         }
     }
 

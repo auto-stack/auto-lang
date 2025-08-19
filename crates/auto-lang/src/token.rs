@@ -213,3 +213,32 @@ impl fmt::Display for Pos {
         write!(f, "{}:{}:{}", self.line, self.at, self.len)
     }
 }
+
+impl Token {
+
+    pub fn keyword_kind(text: &str) -> Option<TokenKind> {
+        match text {
+            "true" => Some(TokenKind::True),
+            "false" => Some(TokenKind::False),
+            "nil" => Some(TokenKind::Nil),
+            "if" => Some(TokenKind::If),
+            "else" => Some(TokenKind::Else),
+            "for" => Some(TokenKind::For),
+            "when" => Some(TokenKind::When),
+            "is" => Some(TokenKind::Is),
+            "var" => Some(TokenKind::Var),
+            "in" => Some(TokenKind::In),
+            "fn" => Some(TokenKind::Fn),
+            "type" => Some(TokenKind::Type),
+            "ref" => Some(TokenKind::Ref),
+            "let" => Some(TokenKind::Let),
+            "mut" => Some(TokenKind::Mut),
+            "has" => Some(TokenKind::Has),
+            "use" => Some(TokenKind::Use),
+            "as" => Some(TokenKind::As),
+            "enum" => Some(TokenKind::Enum),
+            "grid" => Some(TokenKind::Grid),
+            _ => None,
+        }
+    }
+}

@@ -191,8 +191,7 @@ impl Evaler {
     }
 
     fn eval_use(&mut self, use_: &Use) -> Value {
-        println!("Got use {}", use_);
-        Value::Int(25)
+        Value::Void
     }
 
     fn collect_config_body(&mut self, vals: Vec<Value>) -> ConfigBody {
@@ -774,10 +773,10 @@ impl Evaler {
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
         // TODO: 需不需要一个单独的 enter_call()
         self.enter_scope();
-        println!(
-            "enter call scope {}",
-            self.universe.borrow().current_scope().sid
-        );
+        // println!(
+        //     "enter call scope {}",
+        //     self.universe.borrow().current_scope().sid
+        // );
         for (i, arg) in args.args.iter().enumerate() {
             self.eval_fn_arg(arg, i, &fn_decl.params);
         }
