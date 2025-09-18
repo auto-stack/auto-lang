@@ -183,7 +183,7 @@ impl Evaler {
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
             Stmt::Widget(widget) => self.eval_widget(widget),
             Stmt::Node(node) => self.eval_node(node),
-            Stmt::Is(_) => Value::Nil, // TODO: implement
+            Stmt::Is(stmt) => self.eval_is(stmt),
             Stmt::EnumDecl(_) => Value::Nil,
             Stmt::OnEvents(on) => self.eval_on_events(on),
             Stmt::Comment(_) => Value::Nil,
@@ -255,6 +255,23 @@ impl Evaler {
                     .into(),
             ),
         }
+    }
+
+    fn eval_is(&mut self, stmt: &Is) -> Value {
+        let t = &stmt.target;
+        for br in &stmt.branches {
+            match br {
+                IsBranch::EqBranch(expr, body) => {
+                    let cond = self.eval_expr(t) == self.eval_expr(&expr);
+                    if cond {
+                        return self.eval_body(&body);
+                    }
+                }
+                // TODO: implement other types of is-branch
+                _ => {return Value::Void;}
+            }
+        }
+        Value::Void
     }
 
     fn eval_if(&mut self, branches: &Vec<Branch>, else_stmt: &Option<Body>) -> Value {

@@ -1,0 +1,13 @@
+@C
+pub fn print(n T) {
+    #when T {
+        is int => printf("%d\n", n)
+        is str => printf("%s\n", n)
+        is float => printf("%f\n", n)
+    }
+}
+
+@RUST
+pub fn print(n: i32) {
+    println!("{}", n);
+}

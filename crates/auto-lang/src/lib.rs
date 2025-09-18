@@ -271,12 +271,12 @@ mod tests {
         assert_eq!(result.result.repr(), "0,1,2,3,4,5,6,7,8,9");
     }
 
-    // #[test]
-    // fn test_when() {
-    //     let code = r#"var x = 10; when x { is 10 => print("10") }"#;
-    //     let result = run(code).unwrap();
-    //     assert_eq!(result, "void");
-    // }
+    #[test]
+    fn test_is_stmt() {
+        let code = r#"var x = 10; is x { 10 => {print("Here is 10!"); x} }"#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "10");
+    }
 
     #[test]
     fn test_for_with_mid_and_newline() {
