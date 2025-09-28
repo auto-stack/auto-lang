@@ -1,4 +1,4 @@
-use super::{ToStrError, Trans};
+use super::{ToStrError, Trans, Sink};
 use crate::ast::*;
 use crate::parser::Parser;
 use crate::universe::Universe;
@@ -6,12 +6,13 @@ use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::io::Write;
 use std::rc::Rc;
 
 pub struct CTrans {
     indent: usize,
-    includes: Vec<u8>,
+    libs: HashSet<AutoStr>,
     pub header: Vec<u8>,
     name: AutoStr,
 }
@@ -20,7 +21,7 @@ impl CTrans {
     pub fn new(name: AutoStr) -> Self {
         Self {
             indent: 0,
-            includes: Vec::new(),
+            libs: HashSet::new(),
             header: Vec::new(),
             name,
         }
@@ -43,10 +44,10 @@ impl CTrans {
 }
 
 impl CTrans {
-    pub fn code(&mut self, code: &Code, out: &mut impl Write) -> AutoResult<()> {
+    pub fn code(&mut self, code: &Code, sink: &mut Sink) -> AutoResult<()> {
         for stmt in code.stmts.iter() {
-            self.stmt(stmt, out)?;
-            out.write(b"\n").to()?;
+            self.stmt(stmt, sink)?;
+            sink.body.write(b"\n").to()?;
         }
         Ok(())
     }
@@ -55,7 +56,8 @@ impl CTrans {
         out.write(b";").to()
     }
 
-    fn stmt(&mut self, stmt: &Stmt, out: &mut impl Write) -> AutoResult<()> {
+    fn stmt(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         match stmt {
             Stmt::Expr(expr) => {
                 self.expr(expr, out)?;
@@ -75,9 +77,9 @@ impl CTrans {
 
     fn use_stmt(&mut self, use_stmt: &Use, _out: &mut impl Write) -> AutoResult<()> {
         for path in use_stmt.paths.iter() {
-            self.includes.write(b"#include ").to()?;
-            self.includes.write(path.as_bytes()).to()?;
-            self.includes.write(b"\n").to()?;
+            if !self.libs.contains(path) {
+                self.libs.insert(path.clone());
+            }
         }
         Ok(())
     }
@@ -115,7 +117,8 @@ impl CTrans {
         }
     }
 
-    fn fn_decl(&mut self, fn_decl: &Fn, out: &mut impl Write) -> AutoResult<()> {
+    fn fn_decl(&mut self, fn_decl: &Fn, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
         // header
         let mut header = Vec::new();
         self.fn_sig(&fn_decl, &mut header)?;
@@ -125,7 +128,7 @@ impl CTrans {
         // source
         self.fn_sig(&fn_decl, out)?;
         out.write(b" ").to()?;
-        self.body(&fn_decl.body, out, true)?;
+        self.body(&fn_decl.body, sink, true)?;
         Ok(())
     }
 
@@ -159,30 +162,30 @@ impl CTrans {
         Ok(())
     }
 
-    fn body(&mut self, body: &Body, out: &mut impl Write, has_return: bool) -> AutoResult<()> {
-        out.write(b"{\n").to()?;
+    fn body(&mut self, body: &Body, sink: &mut Sink, has_return: bool) -> AutoResult<()> {
+        sink.body.write(b"{\n").to()?;
         self.indent();
         for (i, stmt) in body.stmts.iter().enumerate() {
-            self.print_indent(out)?;
+            self.print_indent(&mut sink.body)?;
             if i < body.stmts.len() - 1 {
-                self.stmt(stmt, out)?;
-                out.write(b"\n").to()?;
+                self.stmt(stmt, sink)?;
+                sink.body.write(b"\n").to()?;
             } else { // last stmt
                 if has_return {
                     if self.is_returnable(stmt) {
-                        out.write(b"return ").to()?;
+                        sink.body.write(b"return ").to()?;
                     }
                 }
-                self.stmt(stmt, out)?;
-                out.write(b"\n").to()?;
+                self.stmt(stmt, sink)?;
+                sink.body.write(b"\n").to()?;
                 if has_return && !self.is_returnable(stmt) {
-                    self.print_indent(out)?;
-                    out.write(b"return 0;\n").to()?;
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"return 0;\n").to()?;
                 }
             }
         }
         self.dedent();
-        out.write(b"}").to()?;
+        sink.body.write(b"}").to()?;
         Ok(())
     }
 
@@ -206,11 +209,11 @@ impl CTrans {
         Ok(())
     }
 
-    fn for_stmt(&mut self, for_stmt: &For, out: &mut impl Write) -> AutoResult<()> {
-        out.write(b"for (").to()?;
-        self.expr(&for_stmt.range, out)?;
-        out.write(b") ").to()?;
-        self.body(&for_stmt.body, out, false)?;
+    fn for_stmt(&mut self, for_stmt: &For, sink: &mut Sink) -> AutoResult<()> {
+        sink.body.write(b"for (").to()?;
+        self.expr(&for_stmt.range, &mut sink.body)?;
+        sink.body.write(b") ").to()?;
+        self.body(&for_stmt.body, sink, false)?;
         Ok(())
     }
 
@@ -224,31 +227,28 @@ impl CTrans {
         Ok(())
     }
 
-    fn if_stmt(
-        &mut self,
-        branches: &Vec<Branch>,
-        otherwise: &Option<Body>,
-        out: &mut impl Write,
-    ) -> AutoResult<()> {
-        out.write(b"if ").to()?;
+    fn if_stmt(&mut self, branches: &Vec<Branch>, otherwise: &Option<Body>, sink: &mut Sink) -> AutoResult<()> {
+        sink.body.write(b"if ").to()?;
         for (i, branch) in branches.iter().enumerate() {
-            out.write(b"(").to()?;
-            self.expr(&branch.cond, out)?;
-            out.write(b") ").to()?;
-            self.body(&branch.body, out, false)?;
+            sink.body.write(b"(").to()?;
+            self.expr(&branch.cond, &mut sink.body)?;
+            sink.body.write(b") ").to()?;
+            self.body(&branch.body, sink, false)?;
             if i < branches.len() - 1 {
-                out.write(b" else ").to()?;
+                sink.body.write(b" else ").to()?;
             }
         }
         if let Some(body) = otherwise {
-            out.write(b" else ").to()?;
-            self.body(body, out, false)?;
+            sink.body.write(b" else ").to()?;
+            self.body(body, sink, false)?;
         }
         Ok(())
     }
 
     fn process_print(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         // TODO: check type of the args and format accordingly
+        println!("GOT PRINT !!!!");
+        self.libs.insert("<stdio.h>".into());
         // get number and type of args
         let mut arg_types = Vec::new();
         for arg in call.args.args.iter() {
@@ -348,12 +348,13 @@ impl CTrans {
 }
 
 impl Trans for CTrans {
-    fn trans(&mut self, ast: Code, out: &mut impl Write) -> AutoResult<()> {
+    fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
         // Split stmts into decls and main
         // TODO: handle potential includes when needed
         let mut decls: Vec<Stmt> = Vec::new();
         let mut main: Vec<Stmt> = Vec::new();
 
+        // preprocess
         for stmt in ast.stmts.into_iter() {
             match stmt {
                 Stmt::Fn(_) => decls.push(stmt),
@@ -365,7 +366,7 @@ impl Trans for CTrans {
                         Expr::Call(call) => {
                             if let Expr::Ident(name) = &call.name.as_ref() {
                                 if name == "print" {
-                                    self.includes.write(b"#include <stdio.h>\n").to()?;
+                                    self.libs.insert("<stdio.h>".into());
                                 }
                             }
                         }
@@ -373,7 +374,7 @@ impl Trans for CTrans {
                     }
                     main.push(stmt);
                 }
-                Stmt::Use(use_stmt) => self.use_stmt(&use_stmt, out)?,
+                Stmt::Use(use_stmt) => self.use_stmt(&use_stmt, &mut sink.body)?,
                 _ => {}
             }
         }
@@ -388,48 +389,51 @@ impl Trans for CTrans {
         self.header.write(b"_H\n\n").to()?;
 
         // TODO: Includes on demand
-        if !self.includes.is_empty() {
-            out.write(&self.includes).to()?;
-            out.write(b"\n").to()?;
+        if !self.libs.is_empty() {
+            for path in self.libs.iter() {
+                sink.body.write(b"#include ").to()?;
+                sink.body.write(path.as_bytes()).to()?;
+                sink.body.write(b"\n").to()?;
+            }
+            sink.body.write(b"\n").to()?;
         }
 
         // Decls
         for decl in decls.iter() {
-            self.stmt(decl, out)?;
-            out.write(b"\n").to()?;
+            self.stmt(decl, sink)?;
+            sink.body.write(b"\n").to()?;
         }
-
 
         // Main
         // TODO: check wether auto code already has a main function
         if !main.is_empty() {
 
             if !decls.is_empty() {
-                out.write(b"\n").to()?;
+                sink.body.write(b"\n").to()?;
             }
 
-            out.write(b"int main(void) {\n").to()?;
+            sink.body.write(b"int main(void) {\n").to()?;
             self.indent();
             for (i, stmt) in main.iter().enumerate() {
-                self.print_indent(out)?;
+                self.print_indent(&mut sink.body)?;
                 if i < main.len() - 1 {
-                    self.stmt(stmt, out)?;
-                    out.write(b"\n").to()?;
+                    self.stmt(stmt, sink)?;
+                    sink.body.write(b"\n").to()?;
                 } else {
                     if self.is_returnable(stmt) {
-                        out.write(b"return ").to()?;
-                        self.stmt(stmt, out)?;
-                        out.write(b"\n").to()?;
+                        sink.body.write(b"return ").to()?;
+                        self.stmt(stmt, sink)?;
+                        sink.body.write(b"\n").to()?;
                     } else {
-                        self.stmt(stmt, out)?;
-                        out.write(b"\n").to()?;
-                        self.print_indent(out)?;
-                        out.write(b"return 0;\n").to()?;
+                        self.stmt(stmt, sink)?;
+                        sink.body.write(b"\n").to()?;
+                        self.print_indent(&mut sink.body)?;
+                        sink.body.write(b"return 0;\n").to()?;
                     }
                 }
             }
             self.dedent();
-            out.write(b"}\n").to()?;
+            sink.body.write(b"}\n").to()?;
         }
 
         // header guard end
@@ -443,9 +447,9 @@ pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
     let ast = parser.parse().map_err(|e| e.to_string())?;
-    let mut out = Vec::new();
+    let mut out = Sink::new();
     transpiler.code(&ast, &mut out)?;
-    Ok(String::from_utf8(out).unwrap().into())
+    Ok(String::from_utf8(out.body).unwrap().into())
 }
 
 pub struct CCode {
@@ -458,12 +462,12 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<CCode> {
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
     let ast = parser.parse().map_err(|e| e.to_string())?;
-    let mut out = Vec::new();
+    let mut out = Sink::new();
     let mut transpiler = CTrans::new(name.into());
     transpiler.trans(ast, &mut out)?;
     let header = transpiler.header;
     Ok(CCode {
-        source: out,
+        source: out.body,
         header,
     })
 }
