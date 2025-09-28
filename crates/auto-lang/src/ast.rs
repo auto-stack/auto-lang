@@ -52,15 +52,30 @@ impl fmt::Display for Code {
 }
 
 #[derive(Debug, Clone)]
+pub enum UseKind {
+    Auto,
+    C,
+    Rust,
+}
+
+#[derive(Debug, Clone)]
 pub struct Use {
+    pub kind: UseKind,
     pub paths: Vec<AutoStr>,
     pub items: Vec<AutoStr>,
 }
 
 impl fmt::Display for Use {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(use ")?;
-        write!(f, "(path {})", self.paths.join("."))?;
+        write!(f, "(use")?;
+        match self.kind {
+            UseKind::C => write!(f, " (kind c)")?,
+            UseKind::Rust => write!(f, " (kind rust)")?,
+            _ => (),
+        }
+        if !self.paths.is_empty() {
+            write!(f, " (path {})", self.paths.join("."))?;
+        }
         if !self.items.is_empty() {
             write!(f, " (items {})", self.items.join(","))?;
         }
@@ -261,7 +276,7 @@ pub enum Expr {
     Int(i32),
     Uint(u32),
     Byte(u8),
-    Float(f64),
+    Float(f64, AutoStr),
     Bool(bool),
     Char(char),
     Str(AutoStr),
@@ -496,7 +511,7 @@ impl fmt::Display for Expr {
             Expr::Byte(b) => write!(f, "(byte {})", b),
             Expr::Int(i) => write!(f, "(int {})", i),
             Expr::Uint(u) => write!(f, "(uint {})", u),
-            Expr::Float(v) => write!(f, "(float {})", v),
+            Expr::Float(v, _) => write!(f, "(float {})", v),
             Expr::Bool(b) => write!(f, "({})", b),
             Expr::Char(c) => write!(f, "(char '{}')", c),
             Expr::Str(s) => write!(f, "(str \"{}\")", s),
@@ -525,7 +540,7 @@ impl Expr {
         match self {
             Expr::Int(i) => i.to_string().into(),
             Expr::Uint(u) => u.to_string().into(),
-            Expr::Float(f) => f.to_string().into(),
+            Expr::Float(f, _) => f.to_string().into(),
             Expr::Bool(b) => b.to_string().into(),
             Expr::Char(c) => c.to_string().into(),
             Expr::Str(s) => s.clone(),
@@ -560,7 +575,7 @@ impl Expr {
         match self {
             Expr::Int(i) => i.to_string().into(),
             Expr::Uint(u) => u.to_string().into(),
-            Expr::Float(f) => f.to_string().into(),
+            Expr::Float(f, _) => f.to_string().into(),
             Expr::Bool(b) => b.to_string().into(),
             Expr::Char(c) => c.to_string().into(),
             Expr::Str(s) => format!("\"{}\"", s).into(),

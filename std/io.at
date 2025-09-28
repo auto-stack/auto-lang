@@ -1,13 +1,17 @@
-@C
-pub fn print(n T) {
-    #when T {
-        is int => printf("%d\n", n)
-        is str => printf("%s\n", n)
-        is float => printf("%f\n", n)
-    }
+# auto
+
+fn print(n T) {
+    __print(n)
 }
 
-@RUST
-pub fn print(n: i32) {
-    println!("{}", n);
+# c
+
+use c <stdio.h>
+
+fn print(n T) {
+    $is T {
+        int => printf("%d\n", n)
+        str => printf("%s\n", n)
+        float => printf("%f\n", n)
+    }
 }

@@ -17,6 +17,7 @@ pub enum TokenKind {
     Int,
     Uint,
     Float,
+    Double,
     Str,
     Char,
     Ident,
@@ -165,6 +166,7 @@ impl fmt::Display for Token {
             TokenKind::When => write!(f, "<when>"),
             TokenKind::On => write!(f, "<on>"),
             TokenKind::Question => write!(f, "<?>"),
+            TokenKind::Use => write!(f, "<use>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }
     }
@@ -185,6 +187,10 @@ impl Token {
 
     pub fn float(pos: Pos, text: AutoStr) -> Self {
         Token::new(TokenKind::Float, pos, text)
+    }
+
+    pub fn double(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::Double, pos, text)
     }
 
     pub fn char(pos: Pos, text: AutoStr) -> Self {

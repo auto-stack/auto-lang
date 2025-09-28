@@ -1,0 +1,6 @@
+use c <math.h> : sqrt
+
+fn main() {
+    let x double = 4.0
+    let y double = sqrt(x)
+}

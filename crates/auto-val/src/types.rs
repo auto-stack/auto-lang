@@ -11,6 +11,7 @@ pub enum Type {
     Byte,
     Int,
     Float,
+    Double,
     Bool,
     Char,
     Str,
@@ -48,6 +49,7 @@ impl TypeInfoStore {
         types.insert("byte".into(), type_info_byte());
         types.insert("int".into(), type_info_int());
         types.insert("float".into(), type_info_float());
+        types.insert("double".into(), type_info_float());
         types.insert("bool".into(), type_info_bool());
         types.insert("str".into(), type_info_str());
         types.insert("char".into(), type_info_char());
@@ -91,6 +93,7 @@ impl TypeInfoStore {
             Type::Byte => self.types.get("byte").unwrap(),
             Type::Int => self.types.get("int").unwrap(),
             Type::Float => self.types.get("float").unwrap(),
+            Type::Double => self.types.get("double").unwrap(),
             Type::Bool => self.types.get("bool").unwrap(),
             Type::Str => self.types.get("str").unwrap(),
             Type::Char => self.types.get("char").unwrap(),
@@ -137,6 +140,14 @@ fn type_info_float() -> TypeInfo {
     }
 }
 
+fn type_info_double() -> TypeInfo {
+    TypeInfo {
+        name: "double".into(),
+        methods: HashMap::new(),
+    }
+}
+
+
 fn type_info_bool() -> TypeInfo {
     TypeInfo {
         name: "bool".into(),
@@ -170,6 +181,7 @@ impl fmt::Display for Type {
             Type::Byte => write!(f, "byte"),
             Type::Int => write!(f, "int"),
             Type::Float => write!(f, "float"),
+            Type::Double => write!(f, "double"),
             Type::Bool => write!(f, "bool"),
             Type::Str => write!(f, "str"),
             Type::Char => write!(f, "char"),

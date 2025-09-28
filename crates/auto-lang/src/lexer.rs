@@ -785,4 +785,11 @@ mod tests {
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<fn><ident:on><(><ident:ev><ident:str><)><{><}>")
     }
+
+    #[test]
+    fn test_use_c() {
+        let code = "use c <stdio.h>";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<use><ident:c><lt><ident:stdio><.><ident:h><gt>");
+    }
 }

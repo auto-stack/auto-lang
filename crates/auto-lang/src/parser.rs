@@ -726,7 +726,7 @@ impl<'a> Parser<'a> {
                     Expr::Int(val)
                 }
             }
-            TokenKind::Float => Expr::Float(self.cur.text.as_str().parse().unwrap()),
+            TokenKind::Float => Expr::Float(self.cur.text.as_str().parse().unwrap(), self.cur.text.clone()),
             TokenKind::True => Expr::Bool(true),
             TokenKind::False => Expr::Bool(false),
             TokenKind::Str => Expr::Str(self.cur.text.clone()),
@@ -869,7 +869,7 @@ impl<'a> Parser<'a> {
         if has_sep {
             Ok(())
         } else {
-            error_pos!("Expected end of statement, got {:?}", self.kind())
+            error_pos!("Expected end of statement, got {:?}, {}", self.kind(), self.cur.text)
         }
     }
 
@@ -942,17 +942,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn use_stmt(&mut self) -> ParseResult<Stmt> {
-        self.next(); // skip use
-        let mut paths = Vec::new();
+    fn parse_use_items(&mut self) -> ParseResult<Vec<AutoStr>> {
         let mut items = Vec::new();
-        let name = self.expect_ident_str()?;
-        paths.push(name);
-        while self.is_kind(TokenKind::Dot) {
-            self.next(); // skip .
-            let name = self.expect_ident_str()?;
-            paths.push(name);
-        }
         // end of path, next should be a colon (for items) or end-of-statement
         if self.is_kind(TokenKind::Colon) {
             self.next(); // skip :
@@ -969,21 +960,91 @@ impl<'a> Parser<'a> {
                 items.push(name);
             }
         }
+        Ok(items)
+    }
+
+    pub fn use_c_stmt(&mut self) -> ParseResult<Stmt> {
+        let mut paths = Vec::new();
+        // include "<lib.h>"
+        if self.is_kind(TokenKind::Lt) {
+            self.next(); // skip <
+            let mut name = "<".to_string();
+            while !self.is_kind(TokenKind::Gt) {
+                name.push_str(self.cur.text.as_str());
+                self.next(); // skip lib
+            }
+            name.push_str(">");
+            self.expect(TokenKind::Gt)?;
+            paths.push(name.into());
+        } else if self.is_kind(TokenKind::Str) { 
+            // include "lib.h"
+            let name = self.cur.text.clone();
+            self.next(); // skip lib
+            paths.push(format!("\"{}\"", name).into());
+        } else {
+            return error_pos!("Expected <lib> or \"lib\", got {:?}, {}", self.kind(), self.cur.text);
+        }
+
+        let items = self.parse_use_items()?;
+
+        for item in items.iter() {
+            // add item to scope
+            self.define(item.as_str(), Meta::Use(item.into()));
+        }
+
+        let uses = Use {
+            kind: UseKind::C,
+            paths,
+            items,
+        };
+
+        Ok(Stmt::Use(uses))
+    }
+
+    pub fn use_rust_stmt(&mut self) -> ParseResult<Stmt> {
+        error_pos!("Rust import not supported yet")
+    }
+
+    // There are three kinds of import
+    // 1. auto: import std.io: println
+    // 2. c: import c <stdio.h>
+    // 3. rust: import rust std::fs
+    pub fn use_stmt(&mut self) -> ParseResult<Stmt> {
+        self.next(); // skip use
+
+        // check c/rust
+        let name = self.expect_ident_str()?;
+
+        if name == "c" {
+            return self.use_c_stmt();
+        } else if name == "rust" {
+            return self.use_rust_stmt();
+        }
+
+        let mut paths = Vec::new();
+        paths.push(name);
+        while self.is_kind(TokenKind::Dot) {
+            self.next(); // skip .
+            let name = self.expect_ident_str()?;
+            paths.push(name);
+        }
+
+        let mut items = self.parse_use_items()?;
+
         if items.is_empty() && !paths.is_empty() {
             items.push(paths.pop().unwrap());
         }
         // import the path into scope
-        let uses = Use { paths, items };
+        let uses = Use { kind: UseKind::Auto, paths, items };
         self.import(&uses)?;
         Ok(Stmt::Use(uses))
     }
 
-    // Import a path from `use` statement
+    /// Import a path from `use` statement
     // TODO: clean up code
     // TODO: search path from System Env, Default Locations and etc.
     pub fn import(&mut self, uses: &Use) -> ParseResult<()> {
         let path = uses.paths.join(".");
-        println!("debug: use path: {}", path);
         // locate file from path
         let base_path = std::env::current_dir().unwrap();
         let base_path = base_path.as_path();
@@ -1250,7 +1311,7 @@ impl<'a> Parser<'a> {
             Expr::Int(_) => {
                 ty = Type::Int;
             }
-            Expr::Float(_) => {
+            Expr::Float(_, _) => {
                 ty = Type::Float;
             }
             Expr::Bool(_) => {
@@ -2376,6 +2437,13 @@ exe hello {
             ast.to_string(),
             "(code (use (path std.math) (items square)) (call (name square) (args (int 16))))"
         );
+    }
+
+    #[test]
+    fn test_use_c() {
+        let code = "use c <stdio.h>";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (use (kind c) (path <stdio.h>)))");
     }
 
     #[test]

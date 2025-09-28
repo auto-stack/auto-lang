@@ -68,8 +68,23 @@ impl CTrans {
             Stmt::Fn(fn_decl) => self.fn_decl(fn_decl, out),
             Stmt::For(for_stmt) => self.for_stmt(for_stmt, out),
             Stmt::If(branches, otherwise) => self.if_stmt(branches, otherwise, out),
+            Stmt::Use(use_stmt) => self.use_stmt(use_stmt, out),
             _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into()),
         }
+    }
+
+    fn use_stmt(&mut self, use_stmt: &Use, _out: &mut impl Write) -> AutoResult<()> {
+        for path in use_stmt.paths.iter() {
+            self.includes.write(b"#include ").to()?;
+            self.includes.write(path.as_bytes()).to()?;
+            self.includes.write(b"\n").to()?;
+        }
+        Ok(())
+    }
+
+    fn float(&mut self, f: &f64, txt: &str, out: &mut impl Write) -> AutoResult<()> {
+        println!("Float: {}", f);
+        out.write_all(txt.as_bytes()).to()  
     }
 
     fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
@@ -95,6 +110,7 @@ impl CTrans {
             Expr::Str(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::Call(call) => self.call(call, out),
             Expr::Array(array) => self.array(array, out),
+            Expr::Float(f, t) => self.float(f, t, out),
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
     }
@@ -114,6 +130,12 @@ impl CTrans {
     }
 
     fn fn_sig(&mut self, fn_decl: &Fn, out: &mut impl Write) -> AutoResult<()> {
+        // special: main
+        // TODO: main with args
+        if fn_decl.name == "main" {
+            out.write(b"int main(void)").to()?;
+            return Ok(());
+        }
         // return type
         if !matches!(fn_decl.ret, Type::Unknown) {
             out.write(format!("{} ", fn_decl.ret).as_bytes()).to()?;
@@ -145,12 +167,18 @@ impl CTrans {
             if i < body.stmts.len() - 1 {
                 self.stmt(stmt, out)?;
                 out.write(b"\n").to()?;
-            } else {
+            } else { // last stmt
                 if has_return {
-                    out.write(b"return ").to()?;
+                    if self.is_returnable(stmt) {
+                        out.write(b"return ").to()?;
+                    }
                 }
                 self.stmt(stmt, out)?;
                 out.write(b"\n").to()?;
+                if has_return && !self.is_returnable(stmt) {
+                    self.print_indent(out)?;
+                    out.write(b"return 0;\n").to()?;
+                }
             }
         }
         self.dedent();
@@ -229,7 +257,7 @@ impl CTrans {
                     match expr {
                         Expr::Int(_) => arg_types.push("%d"),
                         Expr::Str(_) => arg_types.push("%s"),
-                        Expr::Float(_) => arg_types.push("%f"),
+                        Expr::Float(_, _) => arg_types.push("%f"),
                         // TODO: check the actual type of the identifier
                         Expr::Ident(_) => arg_types.push("%d"),
                         _ => {
@@ -243,7 +271,7 @@ impl CTrans {
                 }
             }
         }
-        let fmt = format!("printf(\"{}\", ", arg_types.join(" "));
+        let fmt = format!("printf(\"{}\\n\", ", arg_types.join(" "));
         out.write(fmt.as_bytes()).to()
     }
 
@@ -345,6 +373,7 @@ impl Trans for CTrans {
                     }
                     main.push(stmt);
                 }
+                Stmt::Use(use_stmt) => self.use_stmt(&use_stmt, out)?,
                 _ => {}
             }
         }
@@ -361,6 +390,7 @@ impl Trans for CTrans {
         // TODO: Includes on demand
         if !self.includes.is_empty() {
             out.write(&self.includes).to()?;
+            out.write(b"\n").to()?;
         }
 
         // Decls
@@ -368,13 +398,16 @@ impl Trans for CTrans {
             self.stmt(decl, out)?;
             out.write(b"\n").to()?;
         }
-        if !decls.is_empty() {
-            out.write(b"\n").to()?;
-        }
+
 
         // Main
         // TODO: check wether auto code already has a main function
         if !main.is_empty() {
+
+            if !decls.is_empty() {
+                out.write(b"\n").to()?;
+            }
+
             out.write(b"int main(void) {\n").to()?;
             self.indent();
             for (i, stmt) in main.iter().enumerate() {
@@ -470,7 +503,7 @@ mod tests {
         let code = "for i in 1..5 { print(i) }";
         let out = transpile_part(code).unwrap();
         let expected = r#"for (int i = 1; i < 5; i++) {
-    printf("%d", i);
+    printf("%d\n", i);
 }
 "#;
         assert_eq!(out, expected);
@@ -482,7 +515,7 @@ mod tests {
         let out = transpile_part(code).unwrap();
         let expected = r#"int x = 41;
 if (x > 0) {
-    printf("%d", x);
+    printf("%d\n", x);
 }
 "#;
         assert_eq!(out, expected);
@@ -494,9 +527,9 @@ if (x > 0) {
         let out = transpile_part(code).unwrap();
         let expected = r#"int x = 41;
 if (x > 0) {
-    printf("%d", x);
+    printf("%d\n", x);
 } else {
-    printf("%d", -x);
+    printf("%d\n", -x);
 }
 "#;
         assert_eq!(out, expected);
@@ -552,5 +585,39 @@ int add(int x, int y);
 "#;
         assert_eq!(String::from_utf8(ccode.source).unwrap(), expected);
         assert_eq!(String::from_utf8(ccode.header).unwrap(), expected_header);
+    }
+
+    fn test_a2c(case: &str) -> AutoResult<()> {
+        use std::path::PathBuf;
+        use std::fs::read_to_string;
+
+        // split number from name: 000_hello -> hello
+        let parts: Vec<&str> = case.split("_").collect();
+        let name = parts[1];
+
+        let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+        let src_path = format!("test/a2c/{}/{}.at", case, name);
+        let src_path = d.join(src_path);
+        let src = read_to_string(src_path.as_path())?;
+
+        let exp_path = format!("test/a2c/{}/{}.expected.c", case, name);
+        let exp_path = d.join(exp_path);
+        let expected = read_to_string(exp_path.as_path())?;
+
+        let ccode = transpile_c(name, &src)?;
+
+        assert_eq!(String::from_utf8(ccode.source).unwrap(), expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_000_hello() {
+        test_a2c("000_hello").unwrap();
+    }
+
+    #[test]
+    fn test_001_sqrt() {
+        test_a2c("001_sqrt").unwrap();
     }
 }
