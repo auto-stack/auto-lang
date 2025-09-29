@@ -67,9 +67,9 @@ impl CTrans {
                 self.store(store, out)?;
                 self.eos(out)
             }
-            Stmt::Fn(fn_decl) => self.fn_decl(fn_decl, out),
-            Stmt::For(for_stmt) => self.for_stmt(for_stmt, out),
-            Stmt::If(branches, otherwise) => self.if_stmt(branches, otherwise, out),
+            Stmt::Fn(fn_decl) => self.fn_decl(fn_decl, sink),
+            Stmt::For(for_stmt) => self.for_stmt(for_stmt, sink),
+            Stmt::If(branches, otherwise) => self.if_stmt(branches, otherwise, sink),
             Stmt::Use(use_stmt) => self.use_stmt(use_stmt, out),
             _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into()),
         }
@@ -388,15 +388,15 @@ impl Trans for CTrans {
         self.header.write(name_bytes).to()?;
         self.header.write(b"_H\n\n").to()?;
 
-        // TODO: Includes on demand
-        if !self.libs.is_empty() {
-            for path in self.libs.iter() {
-                sink.body.write(b"#include ").to()?;
-                sink.body.write(path.as_bytes()).to()?;
-                sink.body.write(b"\n").to()?;
-            }
-            sink.body.write(b"\n").to()?;
-        }
+        // // TODO: Includes on demand
+        // if !self.libs.is_empty() {
+        //     for path in self.libs.iter() {
+        //         sink.body.write(b"#include ").to()?;
+        //         sink.body.write(path.as_bytes()).to()?;
+        //         sink.body.write(b"\n").to()?;
+        //     }
+        //     sink.body.write(b"\n").to()?;
+        // }
 
         // Decls
         for decl in decls.iter() {
@@ -438,6 +438,15 @@ impl Trans for CTrans {
 
         // header guard end
         self.header.write(b"\n#endif\n\n").to()?;
+
+        sink.header = self.header.clone();
+
+        // includes
+        for path in self.libs.iter() {
+            sink.includes.write(b"#include ").to()?;
+            sink.includes.write(path.as_bytes()).to()?;
+            sink.includes.write(b"\n").to()?;
+        }
         Ok(())
     }
 }
@@ -453,23 +462,20 @@ pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
 }
 
 pub struct CCode {
+    pub includes: Vec<u8>,
     pub source: Vec<u8>,
     pub header: Vec<u8>,
 }
 
 // Transpile the code into a whole C program
-pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<CCode> {
+pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> {
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut out = Sink::new();
     let mut transpiler = CTrans::new(name.into());
     transpiler.trans(ast, &mut out)?;
-    let header = transpiler.header;
-    Ok(CCode {
-        source: out.body,
-        header,
-    })
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -558,19 +564,19 @@ if (x > 0) {
     #[test]
     fn test_c_return_42() {
         let code = r#"42"#;
-        let ccode = transpile_c("test", code).unwrap();
+        let mut sink = transpile_c("test", code).unwrap();
         let expected = r#"int main(void) {
     return 42;
 }
 "#;
-        assert_eq!(ccode.source, expected.as_bytes());
+        assert_eq!(String::from_utf8(sink.done().clone()).unwrap(), expected);
     }
 
     #[test]
     fn test_math() {
         let code = r#"fn add(x int, y int) int { x+y }
 add(1, 2)"#;
-        let ccode = transpile_c("test", code).unwrap();
+        let mut sink = transpile_c("test", code).unwrap();
         let expected = r#"int add(int x, int y) {
     return x + y;
 }
@@ -587,8 +593,8 @@ int add(int x, int y);
 #endif
 
 "#;
-        assert_eq!(String::from_utf8(ccode.source).unwrap(), expected);
-        assert_eq!(String::from_utf8(ccode.header).unwrap(), expected_header);
+        assert_eq!(String::from_utf8(sink.done().clone()).unwrap(), expected);
+        assert_eq!(String::from_utf8(sink.header).unwrap(), expected_header);
     }
 
     fn test_a2c(case: &str) -> AutoResult<()> {
@@ -609,9 +615,9 @@ int add(int x, int y);
         let exp_path = d.join(exp_path);
         let expected = read_to_string(exp_path.as_path())?;
 
-        let ccode = transpile_c(name, &src)?;
+        let mut ccode = transpile_c(name, &src)?;
 
-        assert_eq!(String::from_utf8(ccode.source).unwrap(), expected);
+        assert_eq!(String::from_utf8(ccode.done().clone()).unwrap(), expected);
         Ok(())
     }
 

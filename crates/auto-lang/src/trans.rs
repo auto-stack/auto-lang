@@ -1,6 +1,6 @@
 use super::ast::*;
 use crate::AutoResult;
-use std::io;
+use std::io::{self, Write};
 
 pub mod c;
 pub mod rust;
@@ -9,6 +9,7 @@ pub struct Sink {
     pub includes: Vec<u8>,
     pub body: Vec<u8>,
     pub header: Vec<u8>,
+    pub source: Vec<u8>
 }
 
 impl Sink {
@@ -17,8 +18,19 @@ impl Sink {
             includes: Vec::new(),
             body: Vec::new(),
             header: Vec::new(),
+            source: Vec::new(),
         }
     }
+
+    pub fn done(&mut self) -> &Vec<u8> {
+        if self.includes.len() > 0 {
+            self.source.append(&mut self.includes);
+            self.source.push('\n' as u8);
+        }
+        self.source.append(&mut self.body);
+        &self.source
+    }
+
 }
 
 pub trait Trans {
