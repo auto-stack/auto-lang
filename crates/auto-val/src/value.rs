@@ -12,6 +12,8 @@ pub enum Value {
     Byte(u8),
     Int(i32),
     Uint(u32),
+    I8(i8),
+    U8(u8),
     Float(f64),
     Bool(bool),
     Char(char),
@@ -134,6 +136,8 @@ impl Display for Value {
             Value::Str(value) => write!(f, "\"{}\"", value),
             Value::Int(value) => write!(f, "{}", value),
             Value::Uint(value) => write!(f, "{}u", value),
+            Value::I8(value) => write!(f, "{}", value),
+            Value::U8(value) => write!(f, "{}", value),
             Value::Byte(value) => write!(f, "0x{:X}", value),
             Value::Float(value) => write!(f, "{}", value),
             Value::Bool(value) => write!(f, "{}", value),
@@ -503,16 +507,22 @@ fn try_promote(a: Value, b: Value) -> (Value, Value) {
 }
 
 pub fn add(a: Value, b: Value) -> Value {
+    // TODO: make a thorough mechanism for promoting types
     let (a, b) = try_promote(a, b);
     match (a, b) {
         (Value::Uint(left), Value::Uint(right)) => Value::Uint(left + right),
         (Value::Int(left), Value::Int(right)) => Value::Int(left + right),
         (Value::Byte(left), Value::Byte(right)) => Value::Byte(left + right),
         (Value::Float(left), Value::Float(right)) => Value::Float(left + right),
-        // TODO: promote u32 or i32 to i64/u64
-        // Current policy: convert rhs to lhs type if possible
-        (Value::Uint(left), Value::Int(right)) => Value::Uint(left + right as u32),
-        (Value::Int(left), Value::Uint(right)) => Value::Int(left + right as i32),
+
+        (Value::I8(left), Value::I8(right)) => Value::I8(left + right),
+        (Value::I8(left), Value::Int(right)) => Value::Int((left as i32) + right),
+        (Value::Int(left), Value::I8(right)) => Value::Int(left + (right as i32)),
+
+        (Value::U8(left), Value::U8(right)) => Value::U8(left + right),
+        (Value::U8(left), Value::Uint(right)) => Value::Uint((left as u32) + right),
+        (Value::Uint(left), Value::U8(right)) => Value::Uint(left + (right as u32)),
+
         // str
         (Value::Str(left), Value::Str(right)) => Value::Str(format!("{}{}", left, right).into()),
         // array

@@ -726,7 +726,32 @@ impl<'a> Parser<'a> {
                     Expr::Int(val)
                 }
             }
-            TokenKind::Float => Expr::Float(self.cur.text.as_str().parse().unwrap(), self.cur.text.clone()),
+            TokenKind::U8 => {
+                if self.cur.text.starts_with("0x") {
+                    // trim 0x
+                    let trim = &self.cur.text[2..];
+                    let val = u8::from_str_radix(trim, 16).unwrap();
+                    Expr::U8(val as u8)
+                } else {
+                    let val = self.cur.text.as_str().parse::<u8>().unwrap();
+                    Expr::U8(val as u8)
+                }
+            }
+            TokenKind::I8 => {
+                if self.cur.text.starts_with("0x") {
+                    // trim 0x
+                    let trim = &self.cur.text[2..];
+                    let val = i8::from_str_radix(trim, 16).unwrap();
+                    Expr::I8(val as i8)
+                } else {
+                    let val = self.cur.text.as_str().parse::<i8>().unwrap();
+                    Expr::I8(val as i8)
+                }
+            }
+            TokenKind::Float => Expr::Float(
+                self.cur.text.as_str().parse().unwrap(),
+                self.cur.text.clone(),
+            ),
             TokenKind::True => Expr::Bool(true),
             TokenKind::False => Expr::Bool(false),
             TokenKind::Str => Expr::Str(self.cur.text.clone()),
@@ -869,7 +894,11 @@ impl<'a> Parser<'a> {
         if has_sep {
             Ok(())
         } else {
-            error_pos!("Expected end of statement, got {:?}, {}", self.kind(), self.cur.text)
+            error_pos!(
+                "Expected end of statement, got {:?}, {}",
+                self.kind(),
+                self.cur.text
+            )
         }
     }
 
@@ -976,13 +1005,17 @@ impl<'a> Parser<'a> {
             name.push_str(">");
             self.expect(TokenKind::Gt)?;
             paths.push(name.into());
-        } else if self.is_kind(TokenKind::Str) { 
+        } else if self.is_kind(TokenKind::Str) {
             // include "lib.h"
             let name = self.cur.text.clone();
             self.next(); // skip lib
             paths.push(format!("\"{}\"", name).into());
         } else {
-            return error_pos!("Expected <lib> or \"lib\", got {:?}, {}", self.kind(), self.cur.text);
+            return error_pos!(
+                "Expected <lib> or \"lib\", got {:?}, {}",
+                self.kind(),
+                self.cur.text
+            );
         }
 
         let items = self.parse_use_items()?;
@@ -1035,7 +1068,11 @@ impl<'a> Parser<'a> {
             items.push(paths.pop().unwrap());
         }
         // import the path into scope
-        let uses = Use { kind: UseKind::Auto, paths, items };
+        let uses = Use {
+            kind: UseKind::Auto,
+            paths,
+            items,
+        };
         self.import(&uses)?;
         Ok(Stmt::Use(uses))
     }

@@ -16,6 +16,8 @@ pub enum TokenKind {
     // Literals
     Int,
     Uint,
+    U8,
+    I8,
     Float,
     Double,
     Str,
@@ -185,6 +187,14 @@ impl Token {
         Token::new(TokenKind::Uint, pos, text)
     }
 
+    pub fn u8(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::U8, pos, text)
+    }
+
+    pub fn i8(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::I8, pos, text)
+    }
+
     pub fn float(pos: Pos, text: AutoStr) -> Self {
         Token::new(TokenKind::Float, pos, text)
     }
@@ -221,7 +231,6 @@ impl fmt::Display for Pos {
 }
 
 impl Token {
-
     pub fn keyword_kind(text: &str) -> Option<TokenKind> {
         match text {
             "true" => Some(TokenKind::True),

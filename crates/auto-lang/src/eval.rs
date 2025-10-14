@@ -268,7 +268,9 @@ impl Evaler {
                     }
                 }
                 // TODO: implement other types of is-branch
-                _ => {return Value::Void;}
+                _ => {
+                    return Value::Void;
+                }
             }
         }
         Value::Void
@@ -841,6 +843,8 @@ impl Evaler {
             Expr::Byte(value) => Value::Byte(*value),
             Expr::Uint(value) => Value::Uint(*value),
             Expr::Int(value) => Value::Int(*value),
+            Expr::I8(value) => Value::I8(*value),
+            Expr::U8(value) => Value::U8(*value),
             Expr::Float(value, _) => Value::Float(*value),
             // Why not move here?
             Expr::Char(value) => Value::Char(*value),

@@ -109,12 +109,12 @@ mod tests {
     use auto_val::Value;
 
     #[test]
-    fn test_unit() {
+    fn test_uint() {
         let code = "1u+2u";
         let result = run(code).unwrap();
         assert_eq!(result, "3u");
 
-        let code = "25u+123";
+        let code = "25u+123u";
         let result = run(code).unwrap();
         assert_eq!(result, "148u");
     }
@@ -918,5 +918,16 @@ square(15)
         "#;
         let result = run(code).unwrap();
         assert_eq!(result, "lib Xiaoming {}");
+    }
+
+    #[test]
+    fn test_add_u8() {
+        let code = r#"
+            var a = 1u8
+            var b = 2u8
+            a + b
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "3");
     }
 }

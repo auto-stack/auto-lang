@@ -275,6 +275,8 @@ pub enum Expr {
     // value exprs
     Int(i32),
     Uint(u32),
+    I8(i8),
+    U8(u8),
     Byte(u8),
     Float(f64, AutoStr),
     Bool(bool),
@@ -511,6 +513,8 @@ impl fmt::Display for Expr {
             Expr::Byte(b) => write!(f, "(byte {})", b),
             Expr::Int(i) => write!(f, "(int {})", i),
             Expr::Uint(u) => write!(f, "(uint {})", u),
+            Expr::I8(i) => write!(f, "(i8 {})", i),
+            Expr::U8(u) => write!(f, "(u8 {})", u),
             Expr::Float(v, _) => write!(f, "(float {})", v),
             Expr::Bool(b) => write!(f, "({})", b),
             Expr::Char(c) => write!(f, "(char '{}')", c),

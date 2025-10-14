@@ -1,0 +1,4 @@
+fn main() {
+    let array = "Hello!"
+    print(array[0])
+}

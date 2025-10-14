@@ -129,8 +129,21 @@ impl<'a> Lexer<'a> {
         } else {
             // check trailing character
             if self.peek('u') {
-                self.next(); // skip u
-                Token::uint(self.pos(text.len()), text.into())
+                self.chars.next();
+                if self.peek('8') {
+                    self.chars.next(); // skip 8
+                    Token::u8(self.pos(text.len()), text.into())
+                } else {
+                    Token::uint(self.pos(text.len()), text.into())
+                }
+            } else if self.peek('i') {
+                self.chars.next(); // skip i
+                if self.peek('8') {
+                    self.chars.next(); // skip 8
+                    Token::i8(self.pos(text.len()), text.into())
+                } else {
+                    Token::int(self.pos(text.len()), text.into())
+                }
             } else {
                 Token::int(self.pos(text.len()), text.into())
             }
@@ -677,6 +690,20 @@ mod tests {
         let code = "125u";
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<uint:125>");
+    }
+
+    #[test]
+    fn test_u8() {
+        let code = "125u8";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<u8:125>");
+    }
+
+    #[test]
+    fn test_i8() {
+        let code = "41i8";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<i8:41>");
     }
 
     #[test]
