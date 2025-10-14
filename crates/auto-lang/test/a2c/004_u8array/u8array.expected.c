@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 int main(void) {
-    int result = add(5, 3);
-    printf("%s %d\n", "The result is:", result);
+    char* array = "Hello";
+    printf("%s %c\n", "The result is:", array[0]);
     return 0;
 }

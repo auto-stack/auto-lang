@@ -1,4 +1,4 @@
 fn main() {
     let array = "Hello!"
-    print(array[0])
+    print("The result is:", array[0]);
 }
