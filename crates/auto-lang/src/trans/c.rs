@@ -85,7 +85,6 @@ impl CTrans {
     }
 
     fn float(&mut self, f: &f64, txt: &str, out: &mut impl Write) -> AutoResult<()> {
-        println!("Float: {}", f);
         out.write_all(txt.as_bytes()).to()
     }
 
@@ -110,6 +109,7 @@ impl CTrans {
             }
             Expr::Ident(name) => out.write_all(name.as_bytes()).to(),
             Expr::Str(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
+            Expr::CStr(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::Call(call) => self.call(call, out),
             Expr::Array(array) => self.array(array, out),
             Expr::Float(f, t) => self.float(f, t, out),
@@ -199,6 +199,26 @@ impl CTrans {
         Ok(())
     }
 
+    fn c_type_name(&self, ty: &Type) -> String {
+        match ty {
+            Type::Int => "int".to_string(),
+            Type::Float => "float".to_string(),
+            Type::Double => "double".to_string(),
+            Type::Bool => "bool".to_string(),
+            Type::Str => "char*".to_string(),
+            Type::CStr => "char*".to_string(),
+            Type::Array(array_type) => {
+                let elem_type = &array_type.elem;
+                let len = array_type.len;
+                format!("{}[{}]", self.c_type_name(elem_type), len)
+            }
+            _ => {
+                println!("Unsupported type for C transpiler: {}", ty);
+                panic!("Unsupported type for C transpiler: {}", ty);
+            }
+        }
+    }
+
     fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
         if matches!(store.kind, StoreKind::Var) {
             return Err(format!("C Transpiler: unsupported store kind: {:?}", store.kind).into());
@@ -211,7 +231,8 @@ impl CTrans {
                     .to()?;
             }
             _ => {
-                out.write(format!("{} {} = ", store.ty, store.name).as_bytes())
+                let type_name = self.c_type_name(&store.ty);
+                out.write(format!("{} {} = ", type_name, store.name).as_bytes())
                     .to()?;
             }
         }
@@ -262,7 +283,6 @@ impl CTrans {
 
     fn process_print(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         // TODO: check type of the args and format accordingly
-        println!("GOT PRINT !!!!");
         self.libs.insert("<stdio.h>".into());
         // get number and type of args
         let mut arg_types = Vec::new();
@@ -272,9 +292,12 @@ impl CTrans {
                     match expr {
                         Expr::Int(_) => arg_types.push("%d"),
                         Expr::Str(_) => arg_types.push("%s"),
+                        Expr::CStr(_) => arg_types.push("%s"),
                         Expr::Float(_, _) => arg_types.push("%f"),
                         // TODO: check the actual type of the identifier
-                        Expr::Ident(_) => arg_types.push("%d"),
+                        Expr::Ident(ident) => {
+                            arg_types.push("%d");
+                        }
                         _ => {
                             // other types are now viewed as ints
                             arg_types.push("%d");
@@ -655,8 +678,8 @@ int add(int x, int y);
         test_a2c("003_func").unwrap();
     }
 
-    // #[test]
-    // fn test_004_u8array() {
-    //     test_a2c("004_u8array").unwrap();
-    // }
+    #[test]
+    fn test_004_u8array() {
+        test_a2c("004_cstr").unwrap();
+    }
 }

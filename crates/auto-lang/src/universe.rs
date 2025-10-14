@@ -97,6 +97,7 @@ impl Universe {
         self.define("double", Rc::new(Meta::Type(ast::Type::Double)));
         self.define("bool", Rc::new(Meta::Type(ast::Type::Bool)));
         self.define("str", Rc::new(Meta::Type(ast::Type::Str)));
+        self.define("cstr", Rc::new(Meta::Type(ast::Type::CStr)));
         self.define("byte", Rc::new(Meta::Type(ast::Type::Byte)));
     }
 

@@ -1358,6 +1358,9 @@ impl<'a> Parser<'a> {
             Expr::Str(_) => {
                 ty = Type::Str;
             }
+            Expr::CStr(_) => {
+                ty = Type::CStr;
+            }
             Expr::Array(arr) => {
                 // check first element
                 if arr.len() > 0 {

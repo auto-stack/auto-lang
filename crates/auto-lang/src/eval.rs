@@ -1480,6 +1480,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Bool => auto_val::Type::Bool,
         ast::Type::Char => auto_val::Type::Char,
         ast::Type::Str => auto_val::Type::Str,
+        ast::Type::CStr => auto_val::Type::CStr,
         ast::Type::Array(_) => auto_val::Type::Array,
         ast::Type::User(type_decl) => auto_val::Type::User(type_decl.name.clone()),
         ast::Type::Void => auto_val::Type::Void,

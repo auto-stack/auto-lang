@@ -15,6 +15,7 @@ pub enum Type {
     Bool,
     Char,
     Str,
+    CStr,
     Array,
     User(AutoStr),
 }
@@ -96,6 +97,7 @@ impl TypeInfoStore {
             Type::Double => self.types.get("double").unwrap(),
             Type::Bool => self.types.get("bool").unwrap(),
             Type::Str => self.types.get("str").unwrap(),
+            Type::CStr => self.types.get("cstr").unwrap(),
             Type::Char => self.types.get("char").unwrap(),
             Type::Array => self.types.get("array").unwrap(),
             Type::User(name) => self.types.get(name.as_str()).unwrap(),
@@ -147,7 +149,6 @@ fn type_info_double() -> TypeInfo {
     }
 }
 
-
 fn type_info_bool() -> TypeInfo {
     TypeInfo {
         name: "bool".into(),
@@ -184,6 +185,7 @@ impl fmt::Display for Type {
             Type::Double => write!(f, "double"),
             Type::Bool => write!(f, "bool"),
             Type::Str => write!(f, "str"),
+            Type::CStr => write!(f, "cstr"),
             Type::Char => write!(f, "char"),
             Type::Array => write!(f, "array"),
             Type::User(name) => write!(f, "{}", name),
