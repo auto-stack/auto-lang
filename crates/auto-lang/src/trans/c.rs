@@ -1,4 +1,4 @@
-use super::{ToStrError, Trans, Sink};
+use super::{Sink, ToStrError, Trans};
 use crate::ast::*;
 use crate::parser::Parser;
 use crate::universe::Universe;
@@ -86,7 +86,7 @@ impl CTrans {
 
     fn float(&mut self, f: &f64, txt: &str, out: &mut impl Write) -> AutoResult<()> {
         println!("Float: {}", f);
-        out.write_all(txt.as_bytes()).to()  
+        out.write_all(txt.as_bytes()).to()
     }
 
     fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
@@ -113,8 +113,17 @@ impl CTrans {
             Expr::Call(call) => self.call(call, out),
             Expr::Array(array) => self.array(array, out),
             Expr::Float(f, t) => self.float(f, t, out),
+            Expr::Index(arr, idx) => self.index(arr, idx, out),
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
+    }
+
+    fn index(&mut self, arr: &Box<Expr>, idx: &Box<Expr>, out: &mut impl Write) -> AutoResult<()> {
+        self.expr(arr, out)?;
+        out.write(b"[")?;
+        self.expr(idx, out)?;
+        out.write(b"]")?;
+        Ok(())
     }
 
     fn fn_decl(&mut self, fn_decl: &Fn, sink: &mut Sink) -> AutoResult<()> {
@@ -170,7 +179,8 @@ impl CTrans {
             if i < body.stmts.len() - 1 {
                 self.stmt(stmt, sink)?;
                 sink.body.write(b"\n").to()?;
-            } else { // last stmt
+            } else {
+                // last stmt
                 if has_return {
                     if self.is_returnable(stmt) {
                         sink.body.write(b"return ").to()?;
@@ -227,7 +237,12 @@ impl CTrans {
         Ok(())
     }
 
-    fn if_stmt(&mut self, branches: &Vec<Branch>, otherwise: &Option<Body>, sink: &mut Sink) -> AutoResult<()> {
+    fn if_stmt(
+        &mut self,
+        branches: &Vec<Branch>,
+        otherwise: &Option<Body>,
+        sink: &mut Sink,
+    ) -> AutoResult<()> {
         sink.body.write(b"if ").to()?;
         for (i, branch) in branches.iter().enumerate() {
             sink.body.write(b"(").to()?;
@@ -407,7 +422,6 @@ impl Trans for CTrans {
         // Main
         // TODO: check wether auto code already has a main function
         if !main.is_empty() {
-
             if !decls.is_empty() {
                 sink.body.write(b"\n").to()?;
             }
@@ -598,8 +612,8 @@ int add(int x, int y);
     }
 
     fn test_a2c(case: &str) -> AutoResult<()> {
-        use std::path::PathBuf;
         use std::fs::read_to_string;
+        use std::path::PathBuf;
 
         // split number from name: 000_hello -> hello
         let parts: Vec<&str> = case.split("_").collect();
@@ -629,5 +643,10 @@ int add(int x, int y);
     #[test]
     fn test_001_sqrt() {
         test_a2c("001_sqrt").unwrap();
+    }
+
+    #[test]
+    fn test_002_array() {
+        test_a2c("002_array").unwrap();
     }
 }
