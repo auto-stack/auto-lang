@@ -1,0 +1,8 @@
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() {
+    let result int = add(5, 3);
+    print("The result is:", result);
+}

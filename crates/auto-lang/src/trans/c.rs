@@ -649,4 +649,9 @@ int add(int x, int y);
     fn test_002_array() {
         test_a2c("002_array").unwrap();
     }
+
+    #[test]
+    fn test_003_func() {
+        test_a2c("003_func").unwrap();
+    }
 }
