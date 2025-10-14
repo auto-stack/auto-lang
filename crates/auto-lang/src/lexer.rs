@@ -180,6 +180,23 @@ impl<'a> Lexer<'a> {
         Token::str(self.pos(text.len()), text.into())
     }
 
+    fn cstr(&mut self) -> Token {
+        self.chars.next(); // skip c
+        self.chars.next(); // skip "
+
+        let mut text = String::new();
+
+        while let Some(&c) = self.chars.peek() {
+            if c == '"' {
+                self.chars.next();
+                break;
+            }
+            text.push(c);
+            self.chars.next();
+        }
+        Token::new(TokenKind::CStr, self.pos(text.len()), text.into())
+    }
+
     fn fstr(&mut self) -> Token {
         let mut endchar = '`';
         if self.peek('`') {
@@ -443,6 +460,17 @@ impl<'a> Lexer<'a> {
                 }
                 '"' => {
                     return self.str();
+                }
+                'c' => {
+                    let mut iter_copy = self.chars.clone();
+                    iter_copy.next();
+                    if let Some(next_char) = iter_copy.peek() {
+                        if *next_char == '"' {
+                            return self.cstr();
+                        } else {
+                            return self.identifier();
+                        }
+                    }
                 }
                 'f' => {
                     let mut iter_copy = self.chars.clone();
@@ -818,5 +846,12 @@ mod tests {
         let code = "use c <stdio.h>";
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<use><ident:c><lt><ident:stdio><.><ident:h><gt>");
+    }
+
+    #[test]
+    fn test_cstr() {
+        let code = "c\"hello\"";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<cstr:hello>");
     }
 }

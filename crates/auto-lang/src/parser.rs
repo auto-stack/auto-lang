@@ -755,6 +755,7 @@ impl<'a> Parser<'a> {
             TokenKind::True => Expr::Bool(true),
             TokenKind::False => Expr::Bool(false),
             TokenKind::Str => Expr::Str(self.cur.text.clone()),
+            TokenKind::CStr => Expr::CStr(self.cur.text.clone()),
             TokenKind::Char => Expr::Char(self.cur.text.chars().nth(0).unwrap()),
             TokenKind::Ident => self.ident()?,
             TokenKind::Model => Expr::Ident("model".into()),
@@ -2293,6 +2294,13 @@ mod tests {
             last.to_string(),
             "(index (bina (name a) (op .) (name b)) (int 0))"
         );
+    }
+
+    #[test]
+    fn test_cstr() {
+        let code = r#"c"hello""#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (cstr \"hello\"))");
     }
 
     #[test]

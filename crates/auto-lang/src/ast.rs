@@ -282,6 +282,7 @@ pub enum Expr {
     Bool(bool),
     Char(char),
     Str(AutoStr),
+    CStr(AutoStr),
     Ident(Name),
     // composite exprs
     Ref(Name),
@@ -519,6 +520,7 @@ impl fmt::Display for Expr {
             Expr::Bool(b) => write!(f, "({})", b),
             Expr::Char(c) => write!(f, "(char '{}')", c),
             Expr::Str(s) => write!(f, "(str \"{}\")", s),
+            Expr::CStr(s) => write!(f, "(cstr \"{}\")", s),
             Expr::Ident(n) => write!(f, "(name {})", n),
             Expr::Ref(n) => write!(f, "(ref {})", n),
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),

@@ -20,8 +20,9 @@ pub enum TokenKind {
     I8,
     Float,
     Double,
-    Str,
-    Char,
+    Str,  // "hello"
+    CStr, // c"hello"
+    Char, // 'c'
     Ident,
 
     // Operators
