@@ -170,6 +170,7 @@ impl fmt::Display for Token {
             TokenKind::On => write!(f, "<on>"),
             TokenKind::Question => write!(f, "<?>"),
             TokenKind::Use => write!(f, "<use>"),
+            TokenKind::CStr => write!(f, "<cstr:{}>", self.text),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }
     }

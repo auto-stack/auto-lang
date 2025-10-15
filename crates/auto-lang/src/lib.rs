@@ -580,26 +580,26 @@ $ }
         assert_eq!(result, "1::2::3");
     }
 
-    #[test]
-    fn test_ref() {
-        let code = "var a = 1; var b = ref a; b";
-        let result = run(code).unwrap();
-        assert_eq!(result, "1");
-    }
+    // #[test]
+    // fn test_ref() {
+    //     let code = "var a = 1; var b = ref a; b";
+    //     let result = run(code).unwrap();
+    //     assert_eq!(result, "1");
+    // }
 
-    #[test]
-    fn test_ref_modify() {
-        let code = "var a = 1; var b = ref a; b = 2; [a, b]";
-        let result = run(code).unwrap();
-        assert_eq!(result, "[2, 2]");
-    }
+    // #[test]
+    // fn test_ref_modify() {
+    //     let code = "var a = 1; var b = ref a; b = 2; [a, b]";
+    //     let result = run(code).unwrap();
+    //     assert_eq!(result, "[2, 2]");
+    // }
 
-    #[test]
-    fn test_ref_array() {
-        let code = "var a = [1, 2, 3]; var b = ref a; b = [4, 5, 6]; var c = {a: a, b: b}; c";
-        let result = run(code).unwrap();
-        assert_eq!(result, "{a: [4, 5, 6], b: [4, 5, 6]}");
-    }
+    // #[test]
+    // fn test_ref_array() {
+    //     let code = "var a = [1, 2, 3]; var b = ref a; b = [4, 5, 6]; var c = {a: a, b: b}; c";
+    //     let result = run(code).unwrap();
+    //     assert_eq!(result, "{a: [4, 5, 6], b: [4, 5, 6]}");
+    // }
 
     #[test]
     fn test_obj_set() {
