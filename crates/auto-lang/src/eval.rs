@@ -846,6 +846,7 @@ impl Evaler {
             Expr::I8(value) => Value::I8(*value),
             Expr::U8(value) => Value::U8(*value),
             Expr::Float(value, _) => Value::Float(*value),
+            Expr::Double(value, _) => Value::Double(*value),
             // Why not move here?
             Expr::Char(value) => Value::Char(*value),
             Expr::Str(value) => Value::Str(value.clone().into()),

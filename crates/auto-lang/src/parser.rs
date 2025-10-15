@@ -752,6 +752,10 @@ impl<'a> Parser<'a> {
                 self.cur.text.as_str().parse().unwrap(),
                 self.cur.text.clone(),
             ),
+            TokenKind::Double => Expr::Double(
+                self.cur.text.as_str().parse().unwrap(),
+                self.cur.text.clone(),
+            ),
             TokenKind::True => Expr::Bool(true),
             TokenKind::False => Expr::Bool(false),
             TokenKind::Str => Expr::Str(self.cur.text.clone()),
@@ -1351,6 +1355,9 @@ impl<'a> Parser<'a> {
             }
             Expr::Float(_, _) => {
                 ty = Type::Float;
+            }
+            Expr::Double(_, _) => {
+                ty = Type::Double;
             }
             Expr::Bool(_) => {
                 ty = Type::Bool;

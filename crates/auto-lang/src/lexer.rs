@@ -125,10 +125,24 @@ impl<'a> Lexer<'a> {
         }
 
         if has_dot {
-            Token::float(self.pos(text.len()), text.into())
+            if self.peek('f') {
+                self.chars.next();
+                Token::float(self.pos(text.len()), text.into())
+            } else if self.peek('d') {
+                self.chars.next();
+                Token::double(self.pos(text.len()), text.into())
+            } else {
+                Token::float(self.pos(text.len()), text.into())
+            }
         } else {
             // check trailing character
-            if self.peek('u') {
+            if self.peek('f') {
+                self.chars.next();
+                Token::float(self.pos(text.len()), text.into())
+            } else if self.peek('d') {
+                self.chars.next();
+                Token::double(self.pos(text.len()), text.into())
+            } else if self.peek('u') {
                 self.chars.next();
                 if self.peek('8') {
                     self.chars.next(); // skip 8

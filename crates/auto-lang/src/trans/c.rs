@@ -1,10 +1,13 @@
 use super::{Sink, ToStrError, Trans};
+use crate::ast::Type;
 use crate::ast::*;
 use crate::parser::Parser;
+use crate::scope::Meta;
 use crate::universe::Universe;
 use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
+use auto_val::{shared, Shared};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io::Write;
@@ -15,6 +18,7 @@ pub struct CTrans {
     libs: HashSet<AutoStr>,
     pub header: Vec<u8>,
     name: AutoStr,
+    scope: Shared<Universe>,
 }
 
 impl CTrans {
@@ -24,6 +28,7 @@ impl CTrans {
             libs: HashSet::new(),
             header: Vec::new(),
             name,
+            scope: shared(Universe::default()),
         }
     }
 
@@ -113,6 +118,7 @@ impl CTrans {
             Expr::Call(call) => self.call(call, out),
             Expr::Array(array) => self.array(array, out),
             Expr::Float(f, t) => self.float(f, t, out),
+            Expr::Double(d, t) => self.float(d, t, out),
             Expr::Index(arr, idx) => self.index(arr, idx, out),
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
@@ -212,6 +218,7 @@ impl CTrans {
                 let len = array_type.len;
                 format!("{}[{}]", self.c_type_name(elem_type), len)
             }
+            Type::Unknown => "unknown".to_string(),
             _ => {
                 println!("Unsupported type for C transpiler: {}", ty);
                 panic!("Unsupported type for C transpiler: {}", ty);
@@ -281,6 +288,17 @@ impl CTrans {
         Ok(())
     }
 
+    fn lookup_type(&self, ident: &AutoStr) -> Type {
+        let meta = self.scope.borrow().lookup_meta(ident);
+        match meta {
+            Some(meta) => match meta.as_ref() {
+                Meta::Store(s) => s.ty.clone(),
+                _ => Type::CStr,
+            },
+            None => Type::Unknown,
+        }
+    }
+
     fn process_print(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         // TODO: check type of the args and format accordingly
         self.libs.insert("<stdio.h>".into());
@@ -296,7 +314,12 @@ impl CTrans {
                         Expr::Float(_, _) => arg_types.push("%f"),
                         // TODO: check the actual type of the identifier
                         Expr::Ident(ident) => {
-                            arg_types.push("%d");
+                            println!("lookup type for {}", ident);
+                            let typ = self.lookup_type(ident);
+                            match typ {
+                                Type::CStr => arg_types.push("%s"),
+                                _ => arg_types.push("%d"),
+                            }
                         }
                         _ => {
                             // other types are now viewed as ints
@@ -511,6 +534,7 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> {
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut out = Sink::new();
     let mut transpiler = CTrans::new(name.into());
+    transpiler.scope = parser.scope.clone();
     transpiler.trans(ast, &mut out)?;
     Ok(out)
 }
