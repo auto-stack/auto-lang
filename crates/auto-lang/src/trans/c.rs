@@ -706,4 +706,9 @@ int add(int x, int y);
     fn test_004_u8array() {
         test_a2c("004_cstr").unwrap();
     }
+
+    #[test]
+    fn test_005_pointer() {
+        test_a2c("005_pointer").unwrap();
+    }
 }

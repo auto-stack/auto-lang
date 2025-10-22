@@ -699,55 +699,73 @@ impl<'a> Parser<'a> {
         Ok(Expr::Ident(name))
     }
 
+    pub fn parse_ints(&mut self) -> ParseResult<Expr> {
+        match self.cur.kind {
+            TokenKind::Int => self.parse_int(),
+            TokenKind::Uint => self.parse_uint(),
+            TokenKind::U8 => self.parse_u8(),
+            TokenKind::I8 => self.parse_i8(),
+            _ => return error_pos!("Expected integer, got {:?}", self.kind()),
+        }
+    }
+
+    pub fn parse_int(&mut self) -> ParseResult<Expr> {
+        if self.cur.text.starts_with("0x") {
+            // trim 0x
+            let trim = &self.cur.text[2..];
+            let val = i32::from_str_radix(trim, 16).unwrap();
+            Ok(Expr::Int(val))
+        } else {
+            let val = self.cur.text.as_str().parse::<i32>().unwrap();
+            Ok(Expr::Int(val))
+        }
+    }
+
+    fn parse_uint(&mut self) -> ParseResult<Expr> {
+        if self.cur.text.starts_with("0x") {
+            // trim 0x
+            let trim = &self.cur.text[2..];
+            let val = u32::from_str_radix(trim, 16).unwrap();
+            Ok(Expr::Uint(val))
+        } else {
+            let val = self.cur.text.as_str().parse::<u32>().unwrap();
+            Ok(Expr::Uint(val))
+        }
+    }
+
+    fn parse_u8(&mut self) -> ParseResult<Expr> {
+        if self.cur.text.starts_with("0x") {
+            // trim 0x
+            let trim = &self.cur.text[2..];
+            let val = u8::from_str_radix(trim, 16).unwrap();
+            Ok(Expr::U8(val as u8))
+        } else {
+            let val = self.cur.text.as_str().parse::<u8>().unwrap();
+            Ok(Expr::U8(val as u8))
+        }
+    }
+
+    fn parse_i8(&mut self) -> ParseResult<Expr> {
+        if self.cur.text.starts_with("0x") {
+            // trim 0x
+            let trim = &self.cur.text[2..];
+            let val = i8::from_str_radix(trim, 16).unwrap();
+            Ok(Expr::I8(val as i8))
+        } else {
+            let val = self.cur.text.as_str().parse::<i8>().unwrap();
+            Ok(Expr::I8(val as i8))
+        }
+    }
+
     pub fn atom(&mut self) -> ParseResult<Expr> {
         if self.is_kind(TokenKind::LParen) {
             return self.group();
         }
         let expr = match self.kind() {
-            TokenKind::Uint => {
-                if self.cur.text.starts_with("0x") {
-                    // trim 0x
-                    let trim = &self.cur.text[2..];
-                    let val = u32::from_str_radix(trim, 16).unwrap();
-                    Expr::Uint(val)
-                } else {
-                    let val = self.cur.text.as_str().parse::<u32>().unwrap();
-                    Expr::Uint(val)
-                }
-            }
-            TokenKind::Int => {
-                if self.cur.text.starts_with("0x") {
-                    // trim 0x
-                    let trim = &self.cur.text[2..];
-                    let val = i32::from_str_radix(trim, 16).unwrap();
-                    Expr::Int(val)
-                } else {
-                    let val = self.cur.text.as_str().parse::<i32>().unwrap();
-                    Expr::Int(val)
-                }
-            }
-            TokenKind::U8 => {
-                if self.cur.text.starts_with("0x") {
-                    // trim 0x
-                    let trim = &self.cur.text[2..];
-                    let val = u8::from_str_radix(trim, 16).unwrap();
-                    Expr::U8(val as u8)
-                } else {
-                    let val = self.cur.text.as_str().parse::<u8>().unwrap();
-                    Expr::U8(val as u8)
-                }
-            }
-            TokenKind::I8 => {
-                if self.cur.text.starts_with("0x") {
-                    // trim 0x
-                    let trim = &self.cur.text[2..];
-                    let val = i8::from_str_radix(trim, 16).unwrap();
-                    Expr::I8(val as i8)
-                } else {
-                    let val = self.cur.text.as_str().parse::<i8>().unwrap();
-                    Expr::I8(val as i8)
-                }
-            }
+            TokenKind::Uint => self.parse_uint()?,
+            TokenKind::Int => self.parse_int()?,
+            TokenKind::U8 => self.parse_u8()?,
+            TokenKind::I8 => self.parse_i8()?,
             TokenKind::Float => Expr::Float(
                 self.cur.text.as_str().parse().unwrap(),
                 self.cur.text.clone(),
@@ -1308,17 +1326,24 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn is_type_name(&mut self) -> bool {
+        self.is_kind(TokenKind::Ident) // normal types like `int`
+        || self.is_kind(TokenKind::LSquare) // array types like `[5]int`
+        || self.is_kind(TokenKind::At) // ptr types like `@int`
+    }
+
     pub fn store_stmt(&mut self) -> ParseResult<Stmt> {
         // store kind: var/let/mut
         let store_kind = self.store_kind()?;
         self.next(); // skip var/let/mut
-                     // identifier name
+
+        // identifier name
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
 
         // type (optional)
         let mut ty = Type::Unknown;
-        if self.is_kind(TokenKind::Ident) {
+        if self.is_type_name() {
             ty = self.type_name()?;
         }
 
@@ -1602,21 +1627,105 @@ impl<'a> Parser<'a> {
         Ok(Member::new(name, ty, value))
     }
 
-    pub fn type_expr(&mut self) -> ParseResult<Type> {
-        let type_name = self.ident()?;
-        self.next();
-        match type_name {
-            Expr::Ident(name) => {
-                let meta = self
-                    .lookup_meta(&name)
-                    .ok_or(format!("Undefined type: {}", name))?;
-                if let Meta::Type(ty) = meta.as_ref() {
-                    Ok(ty.clone())
+    fn get_usize(&mut self, size: &Expr) -> ParseResult<usize> {
+        match size {
+            Expr::Int(size) => {
+                if *size <= 0 {
+                    error_pos!("Array size must be greater than 0")
                 } else {
-                    error_pos!("Expected type, got {:?}", meta)
+                    Ok(*size as usize)
                 }
             }
-            _ => error_pos!("Expected type, got {:?}", type_name),
+            Expr::Uint(size) => Ok(*size as usize),
+            Expr::I8(size) => {
+                if *size <= 0 {
+                    error_pos!("Array size must be greater than 0")
+                }
+                Ok(*size as usize)
+            }
+            Expr::U8(size) => Ok(*size as usize),
+            _ => {
+                error_pos!("Invalid array size expression, Not a Integer Number!")
+            }
+        }
+    }
+
+    pub fn type_expr(&mut self) -> ParseResult<Type> {
+        match self.cur.kind {
+            TokenKind::Ident => {
+                let type_name = self.ident()?;
+                self.next();
+                match type_name {
+                    Expr::Ident(name) => {
+                        let meta = self
+                            .lookup_meta(&name)
+                            .ok_or(format!("Undefined type: {}", name))?;
+                        if let Meta::Type(ty) = meta.as_ref() {
+                            Ok(ty.clone())
+                        } else {
+                            error_pos!("Expected type, got {:?}", meta)
+                        }
+                    }
+                    _ => error_pos!("Expected type, got ident {:?}", type_name),
+                }
+            }
+            TokenKind::LSquare => {
+                // parse array type name, e.g. `[10]int`
+                self.next(); // skip `[`
+                let mut array_size = 0;
+                if self.is_kind(TokenKind::Int) {
+                    let size = self.parse_ints()?;
+                    array_size = self.get_usize(&size)?;
+                } else if self.is_kind(TokenKind::RSquare) {
+                    array_size = 0;
+                } else {
+                    return error_pos!("Expected Array Size or Empty, got {}", self.peek().kind);
+                }
+                self.expect(TokenKind::RSquare)?;
+
+                // parse array elem type
+                let type_name = self.parse_ident()?;
+                self.next();
+                match type_name {
+                    Expr::Ident(name) => {
+                        let meta = self
+                            .lookup_meta(&name)
+                            .ok_or(format!("Undefined type: {}", name))?;
+                        if let Meta::Type(ty) = meta.as_ref() {
+                            let array_ty_name = format!("[{}]{}", array_size, name);
+                            let arry_meta = self.lookup_meta(&array_ty_name);
+                            match arry_meta {
+                                Some(meta) => {
+                                    if let Meta::Type(array_ty) = meta.as_ref() {
+                                        return Ok(array_ty.clone());
+                                    } else {
+                                        return error_pos!("Expected array type, got {:?}", meta);
+                                    }
+                                }
+                                None => {
+                                    let array_ty = Type::Array(ArrayType {
+                                        elem: Box::new(ty.clone()),
+                                        len: array_size,
+                                    });
+                                    self.scope.borrow_mut().define_type(
+                                        array_ty_name,
+                                        Rc::new(Meta::Type(array_ty.clone())),
+                                    );
+                                    return Ok(array_ty);
+                                }
+                            }
+                        } else {
+                            return error_pos!("Expected elem type, got {:?}", meta);
+                        }
+                    }
+                    _ => {
+                        return error_pos!("Expected type, got ident {:?}", type_name);
+                    }
+                }
+            }
+            _ => {
+                return error_pos!("Expected type, got {}", self.cur.text);
+            }
         }
     }
 
@@ -2582,6 +2691,19 @@ exe hello {
                 r#"(arrow (to (name State2)) (with (name handler2))) "#,
                 r#"(arrow (to (name State3)) (with (name handler3)))"#,
                 r#"))"#,
+            )
+        )
+    }
+
+    #[test]
+    fn test_array_type() {
+        let code = r#"let arr [3]int = [1, 2, 3]"#;
+        let array_type = parse_once(code);
+        assert_eq!(
+            array_type.to_string(),
+            format!(
+                "{}",
+                "(store (array (int 3) (name int)) (name arr) (array (int 1) (int 2) (int 3)))"
             )
         )
     }

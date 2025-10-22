@@ -17,6 +17,7 @@ pub enum Type {
     Str,
     CStr,
     Array,
+    Ptr,
     User(AutoStr),
 }
 
@@ -100,6 +101,7 @@ impl TypeInfoStore {
             Type::CStr => self.types.get("cstr").unwrap(),
             Type::Char => self.types.get("char").unwrap(),
             Type::Array => self.types.get("array").unwrap(),
+            Type::Ptr => self.types.get("ptr").unwrap(),
             Type::User(name) => self.types.get(name.as_str()).unwrap(),
         }
     }
@@ -188,6 +190,7 @@ impl fmt::Display for Type {
             Type::CStr => write!(f, "cstr"),
             Type::Char => write!(f, "char"),
             Type::Array => write!(f, "array"),
+            Type::Ptr => write!(f, "ptr"),
             Type::User(name) => write!(f, "{}", name),
         }
     }

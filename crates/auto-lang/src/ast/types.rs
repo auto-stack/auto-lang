@@ -1,5 +1,5 @@
 use super::{Expr, Fn, Name};
-use auto_val::AutoStr;
+use auto_val::{AutoStr, Shared};
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -13,6 +13,7 @@ pub enum Type {
     Str,
     CStr,
     Array(ArrayType),
+    Ptr(PtrType),
     User(TypeDecl),
     Void,
     Unknown,
@@ -24,6 +25,17 @@ impl Type {
             Type::User(type_decl) => type_decl.name.clone(),
             _ => "".into(),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PtrType {
+    pub of: Shared<Type>,
+}
+
+impl fmt::Display for PtrType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(ptr-type (of {}))", &self.of.borrow())
     }
 }
 
@@ -51,6 +63,7 @@ impl fmt::Display for Type {
             Type::Str => write!(f, "str"),
             Type::CStr => write!(f, "cstr"),
             Type::Array(array_type) => write!(f, "{}", array_type),
+            Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
             Type::User(type_decl) => write!(f, "{}", type_decl),
             Type::Void => write!(f, "void"),
             Type::Unknown => write!(f, "unknown"),
@@ -70,6 +83,7 @@ impl From<Type> for auto_val::Type {
             Type::Str => auto_val::Type::Str,
             Type::CStr => auto_val::Type::CStr,
             Type::Array(_) => auto_val::Type::Array,
+            Type::Ptr(_) => auto_val::Type::Ptr,
             Type::User(decl) => auto_val::Type::User(decl.name),
             Type::Void => auto_val::Type::Void,
             Type::Unknown => auto_val::Type::Void, // TODO: is this correct?

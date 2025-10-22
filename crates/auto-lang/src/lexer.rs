@@ -547,6 +547,9 @@ impl<'a> Lexer<'a> {
                 '?' => {
                     return self.single(TokenKind::Question, c);
                 }
+                '@' => {
+                    return self.single(TokenKind::At, c);
+                }
                 _ => {
                     if c == self.fstr_note {
                         return self.single(TokenKind::FStrNote, c);
@@ -867,5 +870,12 @@ mod tests {
         let code = "c\"hello\"";
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<cstr:hello>");
+    }
+
+    #[test]
+    fn test_at() {
+        let code = "@int";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<@><ident:int>");
     }
 }

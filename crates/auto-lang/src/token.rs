@@ -59,6 +59,7 @@ pub enum TokenKind {
     Arrow,          // ->
     DoubleArrow,    // =>
     Question,       // ?
+    At,             // @
 
     // Keywords
     True,
@@ -171,6 +172,7 @@ impl fmt::Display for Token {
             TokenKind::Question => write!(f, "<?>"),
             TokenKind::Use => write!(f, "<use>"),
             TokenKind::CStr => write!(f, "<cstr:{}>", self.text),
+            TokenKind::At => write!(f, "<@>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }
     }
