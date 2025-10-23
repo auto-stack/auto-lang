@@ -518,7 +518,7 @@ impl<'a> Lexer<'a> {
                     return self.minus_or_arrow(c);
                 }
                 '*' => {
-                    return self.single(TokenKind::Mul, c);
+                    return self.single(TokenKind::Star, c);
                 }
                 '/' => {
                     return self.slash_or_comment();

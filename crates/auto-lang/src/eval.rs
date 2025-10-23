@@ -190,7 +190,7 @@ impl Evaler {
         }
     }
 
-    fn eval_use(&mut self, use_: &Use) -> Value {
+    fn eval_use(&mut self, _use_: &Use) -> Value {
         Value::Void
     }
 

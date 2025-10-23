@@ -361,7 +361,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::DoubleArrow => break,
                 TokenKind::Add
                 | TokenKind::Sub
-                | TokenKind::Mul
+                | TokenKind::Star
                 | TokenKind::Div
                 | TokenKind::Not => self.op(),
                 TokenKind::Dot => self.op(),
@@ -468,7 +468,7 @@ impl<'a> Parser<'a> {
         match self.kind() {
             TokenKind::Add => Op::Add,
             TokenKind::Sub => Op::Sub,
-            TokenKind::Mul => Op::Mul,
+            TokenKind::Star => Op::Mul,
             TokenKind::Div => Op::Div,
             TokenKind::LSquare => Op::LSquare,
             TokenKind::LParen => Op::LParen,
@@ -935,9 +935,9 @@ impl<'a> Parser<'a> {
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
             TokenKind::Is => Stmt::Is(self.parse_is()?),
-            TokenKind::Var => self.store_stmt()?,
-            TokenKind::Let => self.store_stmt()?,
-            TokenKind::Mut => self.store_stmt()?,
+            TokenKind::Var => self.parse_store_stmt()?,
+            TokenKind::Let => self.parse_store_stmt()?,
+            TokenKind::Mut => self.parse_store_stmt()?,
             TokenKind::Fn => self.fn_decl_stmt("")?,
             TokenKind::Type => self.type_decl_stmt()?,
             TokenKind::LBrace => Stmt::Block(self.body()?),
@@ -1330,13 +1330,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn is_type_name(&mut self) -> bool {
-        self.is_kind(TokenKind::Ident) // normal types like `int`
-        || self.is_kind(TokenKind::LSquare) // array types like `[5]int`
-        || self.is_kind(TokenKind::At) // ptr types like `@int`
-    }
-
-    pub fn store_stmt(&mut self) -> ParseResult<Stmt> {
+    pub fn parse_store_stmt(&mut self) -> ParseResult<Stmt> {
         // store kind: var/let/mut
         let store_kind = self.store_kind()?;
         self.next(); // skip var/let/mut
@@ -1652,7 +1646,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_array_type_name(&mut self) -> ParseResult<Type> {
+    fn parse_ptr_type(&mut self) -> ParseResult<Type> {
+        self.next(); // skip `*`
+        let typ = self.parse_type()?;
+        Ok(Type::Ptr(PtrType { of: shared(typ) }))
+    }
+
+    fn parse_array_type(&mut self) -> ParseResult<Type> {
         // parse array type name, e.g. `[10]int`
         self.next(); // skip `[`
         let array_size = if self.is_kind(TokenKind::Int)
@@ -1709,26 +1709,36 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_type(&mut self) -> ParseResult<Type> {
-        match self.cur.kind {
-            TokenKind::Ident => {
-                let type_name = self.ident()?;
-                self.next();
-                match type_name {
-                    Expr::Ident(name) => {
-                        let meta = self
-                            .lookup_meta(&name)
-                            .ok_or(format!("Undefined type: {}", name))?;
-                        if let Meta::Type(ty) = meta.as_ref() {
-                            Ok(ty.clone())
-                        } else {
-                            error_pos!("Expected type, got {:?}", meta)
-                        }
-                    }
-                    _ => error_pos!("Expected type, got ident {:?}", type_name),
+    fn parse_ident_type(&mut self) -> ParseResult<Type> {
+        let ident = self.ident()?;
+        self.next();
+        match ident {
+            Expr::Ident(name) => {
+                let meta = self
+                    .lookup_meta(&name)
+                    .ok_or(format!("Undefined type: {}", name))?;
+                if let Meta::Type(ty) = meta.as_ref() {
+                    Ok(ty.clone())
+                } else {
+                    error_pos!("Expected type, got ident {:?}", name)
                 }
             }
-            TokenKind::LSquare => self.parse_array_type_name(),
+            _ => error_pos!("Expected type, got ident {:?}", ident),
+        }
+    }
+
+    fn is_type_name(&mut self) -> bool {
+        self.is_kind(TokenKind::Ident) // normal types like `int`
+        || self.is_kind(TokenKind::LSquare) // array types like `[5]int`
+        || self.is_kind(TokenKind::Star) // ptr types like `*int`
+        || self.is_kind(TokenKind::At) // ref types like `@int`
+    }
+
+    pub fn parse_type(&mut self) -> ParseResult<Type> {
+        match self.cur.kind {
+            TokenKind::Ident => self.parse_ident_type(),
+            TokenKind::Star => self.parse_ptr_type(),
+            TokenKind::LSquare => self.parse_array_type(),
             _ => error_pos!("Expected type, got {}", self.cur.text),
         }
     }
@@ -1818,7 +1828,7 @@ impl<'a> Parser<'a> {
         let mut model = Model::default();
         // parse multiple var declarations
         while self.is_kind(TokenKind::Var) {
-            let store = self.store_stmt()?;
+            let store = self.parse_store_stmt()?;
             match store {
                 Stmt::Store(store) => {
                     model.vars.push(store);
@@ -2708,6 +2718,19 @@ exe hello {
             format!(
                 "{}",
                 "(code (let (name arr) (type (array-type (elem int) (len 3))) (array (int 1) (int 2) (int 3))))"
+            )
+        )
+    }
+
+    #[test]
+    fn test_ptr_type() {
+        let code = r#"let ptr *int = 10.ptr"#;
+        let ptr_type = parse_once(code);
+        assert_eq!(
+            ptr_type.to_string(),
+            format!(
+                "{}",
+                "(code (let (name ptr) (type (ptr-type (of int))) (bina (int 10) (op .) (name ptr))))"
             )
         )
     }

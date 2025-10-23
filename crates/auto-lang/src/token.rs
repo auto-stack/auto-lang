@@ -37,7 +37,7 @@ pub enum TokenKind {
     Newline,        // \n
     Add,            // +
     Sub,            // -
-    Mul,            // *
+    Star,           // *
     Div,            // /
     Not,            // !
     Lt,             // <
@@ -127,7 +127,7 @@ impl fmt::Display for Token {
             TokenKind::RBrace => write!(f, "<}}>"),
             TokenKind::Add => write!(f, "<+>"),
             TokenKind::Sub => write!(f, "<->"),
-            TokenKind::Mul => write!(f, "<*>"),
+            TokenKind::Star => write!(f, "<*>"),
             TokenKind::Div => write!(f, "</>"),
             TokenKind::Not => write!(f, "<!>"),
             TokenKind::Lt => write!(f, "<lt>"),
