@@ -700,13 +700,17 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_ints(&mut self) -> ParseResult<Expr> {
-        match self.cur.kind {
+        let res = match self.cur.kind {
             TokenKind::Int => self.parse_int(),
             TokenKind::Uint => self.parse_uint(),
             TokenKind::U8 => self.parse_u8(),
             TokenKind::I8 => self.parse_i8(),
-            _ => return error_pos!("Expected integer, got {:?}", self.kind()),
+            _ => error_pos!("Expected integer, got {:?}", self.kind()),
+        };
+        if res.is_ok() {
+            self.next();
         }
+        res
     }
 
     pub fn parse_int(&mut self) -> ParseResult<Expr> {
@@ -1344,8 +1348,10 @@ impl<'a> Parser<'a> {
         // type (optional)
         let mut ty = Type::Unknown;
         if self.is_type_name() {
-            ty = self.type_name()?;
+            ty = self.parse_type()?;
         }
+
+        println!("Got type: {:?}", ty);
 
         // =
         self.expect(TokenKind::Asn)?;
@@ -1446,7 +1452,7 @@ impl<'a> Parser<'a> {
         let mut ret_type = Type::Unknown;
         // TODO: determine return type with last stmt if it's not specified
         if self.is_kind(TokenKind::Ident) {
-            ret_type = self.type_name()?;
+            ret_type = self.parse_type()?;
         }
 
         // parse function body
@@ -1495,7 +1501,7 @@ impl<'a> Parser<'a> {
                          // param type
             let mut ty = Type::Int;
             if self.is_kind(TokenKind::Ident) {
-                ty = self.type_name()?;
+                ty = self.parse_type()?;
             }
             // default val
             let mut default = None;
@@ -1515,11 +1521,6 @@ impl<'a> Parser<'a> {
             self.sep_params();
         }
         Ok(params)
-    }
-
-    pub fn type_name(&mut self) -> ParseResult<Type> {
-        let ty = self.type_expr()?;
-        Ok(ty)
     }
 
     pub fn expr_stmt(&mut self) -> ParseResult<Stmt> {
@@ -1547,7 +1548,7 @@ impl<'a> Parser<'a> {
                 if !has.is_empty() {
                     self.expect(TokenKind::Colon)?; // skip ,
                 }
-                let typ = self.type_name()?;
+                let typ = self.parse_type()?;
                 has.push(typ);
             }
         }
@@ -1607,7 +1608,7 @@ impl<'a> Parser<'a> {
     pub fn type_member(&mut self) -> ParseResult<Member> {
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
-        let ty = self.type_expr()?;
+        let ty = self.parse_type()?;
         let mut value = None;
         if self.is_kind(TokenKind::Asn) {
             self.next(); // skip =
@@ -1640,8 +1641,9 @@ impl<'a> Parser<'a> {
             Expr::I8(size) => {
                 if *size <= 0 {
                     error_pos!("Array size must be greater than 0")
+                } else {
+                    Ok(*size as usize)
                 }
-                Ok(*size as usize)
             }
             Expr::U8(size) => Ok(*size as usize),
             _ => {
@@ -1650,7 +1652,64 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn type_expr(&mut self) -> ParseResult<Type> {
+    fn parse_array_type_name(&mut self) -> ParseResult<Type> {
+        // parse array type name, e.g. `[10]int`
+        self.next(); // skip `[`
+        let array_size = if self.is_kind(TokenKind::Int)
+            || self.is_kind(TokenKind::Uint)
+            || self.is_kind(TokenKind::I8)
+            || self.is_kind(TokenKind::U8)
+        {
+            let size = self.parse_ints()?;
+            println!("got int {}", size);
+            self.get_usize(&size)?
+        } else if self.is_kind(TokenKind::RSquare) {
+            0
+        } else {
+            return error_pos!("Expected Array Size or Empty, got {}", self.peek().kind);
+        };
+        self.expect(TokenKind::RSquare)?; // skip `]`
+
+        // parse array elem type
+        let type_name = self.parse_ident()?;
+        match type_name {
+            Expr::Ident(name) => {
+                let meta = self
+                    .lookup_meta(&name)
+                    .ok_or(format!("Undefined type: {}", name))?;
+                if let Meta::Type(ty) = meta.as_ref() {
+                    let array_ty_name = format!("[{}]{}", array_size, name);
+                    let arry_meta = self.lookup_meta(&array_ty_name);
+                    match arry_meta {
+                        Some(meta) => {
+                            if let Meta::Type(array_ty) = meta.as_ref() {
+                                return Ok(array_ty.clone());
+                            } else {
+                                return error_pos!("Expected array type, got {:?}", meta);
+                            }
+                        }
+                        None => {
+                            let array_ty = Type::Array(ArrayType {
+                                elem: Box::new(ty.clone()),
+                                len: array_size,
+                            });
+                            self.scope
+                                .borrow_mut()
+                                .define_type(array_ty_name, Rc::new(Meta::Type(array_ty.clone())));
+                            return Ok(array_ty);
+                        }
+                    }
+                } else {
+                    return error_pos!("Expected elem type, got {:?}", meta);
+                }
+            }
+            _ => {
+                return error_pos!("Expected type, got ident {:?}", type_name);
+            }
+        }
+    }
+
+    pub fn parse_type(&mut self) -> ParseResult<Type> {
         match self.cur.kind {
             TokenKind::Ident => {
                 let type_name = self.ident()?;
@@ -1669,63 +1728,8 @@ impl<'a> Parser<'a> {
                     _ => error_pos!("Expected type, got ident {:?}", type_name),
                 }
             }
-            TokenKind::LSquare => {
-                // parse array type name, e.g. `[10]int`
-                self.next(); // skip `[`
-                let mut array_size = 0;
-                if self.is_kind(TokenKind::Int) {
-                    let size = self.parse_ints()?;
-                    array_size = self.get_usize(&size)?;
-                } else if self.is_kind(TokenKind::RSquare) {
-                    array_size = 0;
-                } else {
-                    return error_pos!("Expected Array Size or Empty, got {}", self.peek().kind);
-                }
-                self.expect(TokenKind::RSquare)?;
-
-                // parse array elem type
-                let type_name = self.parse_ident()?;
-                self.next();
-                match type_name {
-                    Expr::Ident(name) => {
-                        let meta = self
-                            .lookup_meta(&name)
-                            .ok_or(format!("Undefined type: {}", name))?;
-                        if let Meta::Type(ty) = meta.as_ref() {
-                            let array_ty_name = format!("[{}]{}", array_size, name);
-                            let arry_meta = self.lookup_meta(&array_ty_name);
-                            match arry_meta {
-                                Some(meta) => {
-                                    if let Meta::Type(array_ty) = meta.as_ref() {
-                                        return Ok(array_ty.clone());
-                                    } else {
-                                        return error_pos!("Expected array type, got {:?}", meta);
-                                    }
-                                }
-                                None => {
-                                    let array_ty = Type::Array(ArrayType {
-                                        elem: Box::new(ty.clone()),
-                                        len: array_size,
-                                    });
-                                    self.scope.borrow_mut().define_type(
-                                        array_ty_name,
-                                        Rc::new(Meta::Type(array_ty.clone())),
-                                    );
-                                    return Ok(array_ty);
-                                }
-                            }
-                        } else {
-                            return error_pos!("Expected elem type, got {:?}", meta);
-                        }
-                    }
-                    _ => {
-                        return error_pos!("Expected type, got ident {:?}", type_name);
-                    }
-                }
-            }
-            _ => {
-                return error_pos!("Expected type, got {}", self.cur.text);
-            }
+            TokenKind::LSquare => self.parse_array_type_name(),
+            _ => error_pos!("Expected type, got {}", self.cur.text),
         }
     }
 
@@ -2703,7 +2707,7 @@ exe hello {
             array_type.to_string(),
             format!(
                 "{}",
-                "(store (array (int 3) (name int)) (name arr) (array (int 1) (int 2) (int 3)))"
+                "(code (let (name arr) (type (array-type (elem int) (len 3))) (array (int 1) (int 2) (int 3))))"
             )
         )
     }
