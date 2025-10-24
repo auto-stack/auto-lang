@@ -47,6 +47,10 @@ pub enum TokenKind {
     Asn,            // =
     Eq,             // ==
     Neq,            // !=
+    AddEq,          // +=
+    SubEq,          // -=
+    MulEq,          // *=
+    DivEq,          // /=
     Dot,            // .
     Range,          // ..
     RangeEq,        // ..=

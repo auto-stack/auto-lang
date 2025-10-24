@@ -58,21 +58,24 @@ const fn infix_prec(n: u8) -> InfixPrec {
 }
 
 const PREC_ASN: InfixPrec = infix_prec(1);
-const PREC_PAIR: PostfixPrec = postfix_prec(2);
-const _PREC_OR: InfixPrec = infix_prec(3);
-const _PREC_AND: InfixPrec = infix_prec(4);
-const PREC_EQ: InfixPrec = infix_prec(5);
-const PREC_CMP: InfixPrec = infix_prec(6);
-const PREC_RANGE: InfixPrec = infix_prec(7);
-const PREC_ADD: InfixPrec = infix_prec(8);
-const PREC_MUL: InfixPrec = infix_prec(9);
-const _PREC_REF: PrefixPrec = prefix_prec(10);
-const PREC_SIGN: PrefixPrec = prefix_prec(11);
-const PREC_NOT: PrefixPrec = prefix_prec(12);
-const PREC_CALL: PostfixPrec = postfix_prec(13);
-const PREC_INDEX: PostfixPrec = postfix_prec(14);
-const PREC_DOT: InfixPrec = infix_prec(15);
-const _PREC_ATOM: InfixPrec = infix_prec(16);
+const PREC_ADDEQ: InfixPrec = infix_prec(2);
+const PREC_MULEQ: InfixPrec = infix_prec(3);
+const PREC_PAIR: PostfixPrec = postfix_prec(4);
+const _PREC_OR: InfixPrec = infix_prec(5);
+const _PREC_AND: InfixPrec = infix_prec(6);
+const PREC_EQ: InfixPrec = infix_prec(7);
+const PREC_CMP: InfixPrec = infix_prec(8);
+const PREC_RANGE: InfixPrec = infix_prec(9);
+const PREC_ADD: InfixPrec = infix_prec(10);
+const PREC_MUL: InfixPrec = infix_prec(11);
+
+const _PREC_REF: PrefixPrec = prefix_prec(12);
+const PREC_SIGN: PrefixPrec = prefix_prec(13);
+const PREC_NOT: PrefixPrec = prefix_prec(14);
+const PREC_CALL: PostfixPrec = postfix_prec(15);
+const PREC_INDEX: PostfixPrec = postfix_prec(16);
+const PREC_DOT: InfixPrec = infix_prec(17);
+const _PREC_ATOM: InfixPrec = infix_prec(18);
 
 fn prefix_power(op: Op) -> ParseResult<PrefixPrec> {
     match op {
@@ -95,6 +98,8 @@ fn infix_power(op: Op) -> ParseResult<InfixPrec> {
     match op {
         Op::Add | Op::Sub => Ok(PREC_ADD),
         Op::Mul | Op::Div => Ok(PREC_MUL),
+        Op::AddEq | Op::SubEq => Ok(PREC_ADDEQ),
+        Op::MulEq | Op::DivEq => Ok(PREC_MULEQ),
         Op::Asn => Ok(PREC_ASN),
         Op::Eq | Op::Neq => Ok(PREC_EQ),
         Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(PREC_CMP),
@@ -364,6 +369,9 @@ impl<'a> Parser<'a> {
                 | TokenKind::Star
                 | TokenKind::Div
                 | TokenKind::Not => self.op(),
+                TokenKind::AddEq | TokenKind::SubEq | TokenKind::MulEq | TokenKind::DivEq => {
+                    self.op()
+                }
                 TokenKind::Dot => self.op(),
                 TokenKind::Colon => self.op(),
                 TokenKind::Range | TokenKind::RangeEq => self.op(),
@@ -470,6 +478,10 @@ impl<'a> Parser<'a> {
             TokenKind::Sub => Op::Sub,
             TokenKind::Star => Op::Mul,
             TokenKind::Div => Op::Div,
+            TokenKind::AddEq => Op::AddEq,
+            TokenKind::SubEq => Op::SubEq,
+            TokenKind::MulEq => Op::MulEq,
+            TokenKind::DivEq => Op::DivEq,
             TokenKind::LSquare => Op::LSquare,
             TokenKind::LParen => Op::LParen,
             TokenKind::LBrace => Op::LBrace,
@@ -2732,6 +2744,29 @@ exe hello {
                 "{}",
                 "(code (let (name ptr) (type (ptr-type (of int))) (bina (int 10) (op .) (name ptr))))"
             )
+        )
+    }
+
+    #[test]
+    fn test_ptr_asn() {
+        let code = r#"let p *int = 10.ptr"#;
+        let ptr_type = parse_once(code);
+        assert_eq!(
+            ptr_type.to_string(),
+            format!(
+                "{}",
+                "(code (let (name p) (type (ptr-type (of int))) (bina (int 10) (op .) (name ptr))))"
+            )
+        )
+    }
+
+    #[test]
+    fn test_ptr_target() {
+        let code = r#"p.tgt += 1"#;
+        let ptr_type = parse_once(code);
+        assert_eq!(
+            ptr_type.to_string(),
+            "(code (bina (bina (name p) (op .) (name tgt)) (op +=) (int 1)))"
         )
     }
 }

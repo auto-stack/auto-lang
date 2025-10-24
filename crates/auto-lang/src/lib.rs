@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn test_if_var() {
-        let code = "var a = 10; if a > 10 { a+1 } else { a-1 }";
+        let code = "var a = 10; if a > 10 { a+1 } else { a-1  }";
         let result = run(code).unwrap();
         assert_eq!(result, "9");
     }

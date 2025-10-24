@@ -417,11 +417,14 @@ impl<'a> Lexer<'a> {
     }
 
     fn minus_or_arrow(&mut self, c: char) -> Token {
-        self.chars.next();
+        self.chars.next(); // skip -
         if let Some(&next) = self.chars.peek() {
             if next == '>' {
                 self.chars.next();
                 Token::new(TokenKind::Arrow, self.pos(2), "->".into())
+            } else if self.peek('=') {
+                self.chars.next(); // skip =
+                return Token::new(TokenKind::SubEq, self.pos(2), "-=".into());
             } else {
                 Token::new(TokenKind::Sub, self.pos(1), c.into())
             }
@@ -512,13 +515,13 @@ impl<'a> Lexer<'a> {
                     return self.single(TokenKind::Newline, c);
                 }
                 '+' => {
-                    return self.single(TokenKind::Add, c);
+                    return self.with_equal(TokenKind::Add, TokenKind::AddEq, c);
                 }
                 '-' => {
                     return self.minus_or_arrow(c);
                 }
                 '*' => {
-                    return self.single(TokenKind::Star, c);
+                    return self.with_equal(TokenKind::Star, TokenKind::MulEq, c);
                 }
                 '/' => {
                     return self.slash_or_comment();
@@ -632,7 +635,7 @@ impl<'a> Lexer<'a> {
             self.buffer.push_back(end);
             tok
         } else {
-            self.single(TokenKind::Div, '/')
+            self.with_equal(TokenKind::Div, TokenKind::DivEq, '/')
         }
     }
 }
@@ -877,5 +880,12 @@ mod tests {
         let code = "@int";
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<@><ident:int>");
+    }
+
+    #[test]
+    fn test_minus_one() {
+        let code = "a-1";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<ident:a><-><int:1>");
     }
 }
