@@ -93,17 +93,49 @@ impl CTrans {
         out.write_all(txt.as_bytes()).to()
     }
 
+    fn gen_dot(&mut self, lhs: &Expr, rhs: &Expr, out: &mut impl Write) -> AutoResult<()> {
+        // if rhs is ptr or tgt
+        match rhs {
+            Expr::Ident(id) => match id.as_str() {
+                "ptr" => {
+                    out.write(b"&").to()?;
+                    self.expr(lhs, out)?;
+                }
+                "tgt" => {
+                    out.write(b"*").to()?;
+                    self.expr(lhs, out)?;
+                }
+                _ => {
+                    self.expr(lhs, out)?;
+                    out.write(format!(".").as_bytes()).to()?;
+                    self.expr(rhs, out)?;
+                }
+            },
+            _ => {
+                self.expr(lhs, out)?;
+                out.write(format!(".").as_bytes()).to()?;
+                self.expr(rhs, out)?;
+            }
+        }
+        Ok(())
+    }
+
     fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
         match expr {
             Expr::Int(i) => out.write_all(i.to_string().as_bytes()).to(),
             Expr::Bina(lhs, op, rhs) => {
                 match op {
                     Op::Range => self.range(lhs, rhs, out)?,
-                    _ => {
-                        self.expr(lhs, out)?;
-                        out.write(format!(" {} ", op.op()).as_bytes()).to()?;
-                        self.expr(rhs, out)?
-                    }
+                    _ => match op {
+                        Op::Dot => {
+                            self.gen_dot(lhs, rhs, out)?;
+                        }
+                        _ => {
+                            self.expr(lhs, out)?;
+                            _ = out.write(format!(" {} ", op.op()).as_bytes()).to()?;
+                            self.expr(rhs, out)?
+                        }
+                    },
                 }
                 Ok(())
             }
@@ -217,6 +249,9 @@ impl CTrans {
                 let elem_type = &array_type.elem;
                 let len = array_type.len;
                 format!("{}[{}]", self.c_type_name(elem_type), len)
+            }
+            Type::Ptr(ptr) => {
+                format!("{}*", self.c_type_name(&ptr.of.borrow()))
             }
             Type::Unknown => "unknown".to_string(),
             _ => {
@@ -707,8 +742,8 @@ int add(int x, int y);
         test_a2c("004_cstr").unwrap();
     }
 
-    // #[test]
-    // fn test_005_pointer() {
-    //     test_a2c("005_pointer").unwrap();
-    // }
+    #[test]
+    fn test_005_pointer() {
+        test_a2c("005_pointer").unwrap();
+    }
 }
