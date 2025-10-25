@@ -64,6 +64,10 @@ impl CTrans {
     fn stmt(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<()> {
         let out = &mut sink.body;
         match stmt {
+            Stmt::TypeDecl(type_decl) => {
+                self.type_decl(type_decl, out)?;
+                self.eos(out)
+            }
             Stmt::Expr(expr) => {
                 self.expr(expr, out)?;
                 self.eos(out)
@@ -80,6 +84,14 @@ impl CTrans {
         }
     }
 
+    fn type_decl(&mut self, type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
+        match type_decl {
+            TypeDecl::Struct(struct_decl) => self.struct_decl(struct_decl, out),
+            TypeDecl::Enum(enum_decl) => self.enum_decl(enum_decl, out),
+            TypeDecl::Union(union_decl) => self.union_decl(union_decl, out),
+        }
+    }
+
     fn use_stmt(&mut self, use_stmt: &Use, _out: &mut impl Write) -> AutoResult<()> {
         for path in use_stmt.paths.iter() {
             if !self.libs.contains(path) {
@@ -93,7 +105,7 @@ impl CTrans {
         out.write_all(txt.as_bytes()).to()
     }
 
-    fn gen_dot(&mut self, lhs: &Expr, rhs: &Expr, out: &mut impl Write) -> AutoResult<()> {
+    fn dot(&mut self, lhs: &Expr, rhs: &Expr, out: &mut impl Write) -> AutoResult<()> {
         // if rhs is ptr or tgt
         match rhs {
             Expr::Ident(id) => match id.as_str() {
@@ -128,7 +140,7 @@ impl CTrans {
                     Op::Range => self.range(lhs, rhs, out)?,
                     _ => match op {
                         Op::Dot => {
-                            self.gen_dot(lhs, rhs, out)?;
+                            self.dot(lhs, rhs, out)?;
                         }
                         _ => {
                             self.expr(lhs, out)?;
@@ -745,5 +757,10 @@ int add(int x, int y);
     #[test]
     fn test_005_pointer() {
         test_a2c("005_pointer").unwrap();
+    }
+
+    #[test]
+    fn test_006_struct() {
+        test_a2c("006_struct").unwrap();
     }
 }
