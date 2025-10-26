@@ -8,6 +8,7 @@ use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::{shared, Shared};
+use serde_json::de;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io::Write;
@@ -65,6 +66,7 @@ impl CTrans {
         let out = &mut sink.body;
         match stmt {
             Stmt::TypeDecl(type_decl) => {
+                println!("Generating C type declaration");
                 self.type_decl(type_decl, out)?;
                 self.eos(out)
             }
@@ -85,11 +87,18 @@ impl CTrans {
     }
 
     fn type_decl(&mut self, type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
-        match type_decl {
-            TypeDecl::Struct(struct_decl) => self.struct_decl(struct_decl, out),
-            TypeDecl::Enum(enum_decl) => self.enum_decl(enum_decl, out),
-            TypeDecl::Union(union_decl) => self.union_decl(union_decl, out),
+        out.write(b"struct ")?;
+        out.write(type_decl.name.as_bytes())?;
+        out.write(b"{\n")?;
+        for field in type_decl.members.iter() {
+            out.write(b"\t")?;
+            out.write(field.ty.unique_name().as_bytes())?;
+            out.write(b" ")?;
+            out.write(field.name.as_bytes())?;
+            out.write(b";\n")?;
         }
+        out.write(b"}\n")?;
+        Ok(())
     }
 
     fn use_stmt(&mut self, use_stmt: &Use, _out: &mut impl Write) -> AutoResult<()> {
@@ -466,6 +475,8 @@ impl Trans for CTrans {
         for stmt in ast.stmts.into_iter() {
             match stmt {
                 Stmt::Fn(_) => decls.push(stmt),
+                Stmt::TypeDecl(_) => decls.push(stmt),
+                Stmt::EnumDecl(_) => decls.push(stmt),
                 Stmt::Store(_) => decls.push(stmt),
                 Stmt::For(_) => main.push(stmt),
                 Stmt::If(_, _) => main.push(stmt),
@@ -707,6 +718,8 @@ int add(int x, int y);
 
     fn test_a2c(case: &str) -> AutoResult<()> {
         use std::fs::read_to_string;
+        use std::fs::File;
+        use std::io::Write;
         use std::path::PathBuf;
 
         // split number from name: 000_hello -> hello
@@ -724,8 +737,17 @@ int add(int x, int y);
         let expected = read_to_string(exp_path.as_path())?;
 
         let mut ccode = transpile_c(name, &src)?;
+        let str = String::from_utf8(ccode.done().clone()).unwrap();
 
-        assert_eq!(String::from_utf8(ccode.done().clone()).unwrap(), expected);
+        if str != expected {
+            // out put generated code to a gen file
+            let gen_path = format!("test/a2c/{}/{}.wrong.c", case, name);
+            let gen_path = d.join(gen_path);
+            let mut file = File::create(gen_path.as_path())?;
+            file.write_all(str.as_bytes())?;
+        }
+
+        assert_eq!(str, expected);
         Ok(())
     }
 
