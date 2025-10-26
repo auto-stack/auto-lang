@@ -240,6 +240,16 @@ impl<'a> Parser<'a> {
     fn lookup_meta(&mut self, name: &str) -> Option<Rc<Meta>> {
         self.scope.borrow().lookup_meta(name)
     }
+
+    fn lookup_type(&mut self, name: &str) -> Shared<Type> {
+        match self.scope.borrow().lookup_type(name) {
+            Some(meta) => match meta.as_ref() {
+                Meta::Type(ty) => shared(ty.clone()),
+                _ => shared(Type::Unknown),
+            },
+            None => shared(Type::Unknown),
+        }
+    }
 }
 
 impl<'a> Parser<'a> {
@@ -1405,6 +1415,9 @@ impl<'a> Parser<'a> {
             Expr::CStr(_) => {
                 ty = Type::CStr;
             }
+            Expr::Node(nd) => {
+                ty = nd.typ.borrow().clone();
+            }
             Expr::Array(arr) => {
                 // check first element
                 if arr.len() > 0 {
@@ -1954,6 +1967,9 @@ impl<'a> Parser<'a> {
                         node.body = self.parse_node_body()?;
                     }
                     node.args = args;
+                    // check node type
+                    let typ = self.lookup_type(&node.name);
+                    node.typ = typ.clone();
                     return Ok(Stmt::Node(node));
                 }
                 _ => {

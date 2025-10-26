@@ -1,4 +1,5 @@
 use super::*;
+use auto_val::{shared, Shared};
 
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -7,6 +8,7 @@ pub struct Node {
     pub args: Args,
     // pub props: BTreeMap<Key, Expr>,
     pub body: Body,
+    pub typ: Shared<Type>,
 }
 
 impl Node {
@@ -16,6 +18,7 @@ impl Node {
             id: Name::new(),
             args: Args::new(),
             body: Body::new(),
+            typ: shared(Type::Unknown),
         }
     }
 }

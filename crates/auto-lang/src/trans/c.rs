@@ -8,7 +8,6 @@ use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::{shared, Shared};
-use serde_json::de;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io::Write;
@@ -89,7 +88,7 @@ impl CTrans {
     fn type_decl(&mut self, type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
         out.write(b"struct ")?;
         out.write(type_decl.name.as_bytes())?;
-        out.write(b"{\n")?;
+        out.write(b" {\n")?; // TODO: no newline for short decls
         for field in type_decl.members.iter() {
             out.write(b"\t")?;
             out.write(field.ty.unique_name().as_bytes())?;
@@ -97,7 +96,7 @@ impl CTrans {
             out.write(field.name.as_bytes())?;
             out.write(b";\n")?;
         }
-        out.write(b"}\n")?;
+        out.write(b"}")?;
         Ok(())
     }
 
@@ -173,8 +172,15 @@ impl CTrans {
             Expr::Float(f, t) => self.float(f, t, out),
             Expr::Double(d, t) => self.float(d, t, out),
             Expr::Index(arr, idx) => self.index(arr, idx, out),
+            Expr::Node(nd) => self.node(nd, out),
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
+    }
+
+    fn node(&mut self, node: &Node, out: &mut impl Write) -> AutoResult<()> {
+        out.write(node.name.as_bytes())?;
+
+        Ok(())
     }
 
     fn index(&mut self, arr: &Box<Expr>, idx: &Box<Expr>, out: &mut impl Write) -> AutoResult<()> {
@@ -286,11 +292,16 @@ impl CTrans {
         if matches!(store.kind, StoreKind::Var) {
             return Err(format!("C Transpiler: unsupported store kind: {:?}", store.kind).into());
         }
+        println!("Store: {:?}", store);
         match &store.ty {
             Type::Array(array_type) => {
                 let elem_type = &array_type.elem;
                 let len = array_type.len;
                 out.write(format!("{} {}[{}] = ", elem_type, store.name, len).as_bytes())
+                    .to()?;
+            }
+            Type::User(usr_type) => {
+                out.write(format!("struct {} {{", usr_type.name).as_bytes())
                     .to()?;
             }
             _ => {

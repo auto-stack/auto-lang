@@ -1,6 +1,6 @@
 use super::{Expr, Fn, Name};
 use auto_val::{AutoStr, Shared};
-use std::fmt;
+use std::{fmt, str::Bytes};
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -22,8 +22,19 @@ pub enum Type {
 impl Type {
     pub fn unique_name(&self) -> AutoStr {
         match self {
+            Type::Int => "int".into(),
+            Type::Float => "float".into(),
+            Type::Bool => "bool".into(),
+            Type::Byte => "byte".into(),
+            Type::Char => "char".into(),
+            Type::Str => "str".into(),
+            Type::CStr => "cstr".into(),
+            Type::Array(array_type) => {
+                format!("[{}]{}", array_type.elem.unique_name(), array_type.len).into()
+            }
+            Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().unique_name()).into(),
             Type::User(type_decl) => type_decl.name.clone(),
-            _ => "".into(),
+            _ => "undefined_name".into(),
         }
     }
 }
