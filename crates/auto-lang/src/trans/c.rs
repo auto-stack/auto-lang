@@ -81,8 +81,22 @@ impl CTrans {
             Stmt::For(for_stmt) => self.for_stmt(for_stmt, sink),
             Stmt::If(branches, otherwise) => self.if_stmt(branches, otherwise, sink),
             Stmt::Use(use_stmt) => self.use_stmt(use_stmt, out),
+            Stmt::EnumDecl(enum_decl) => self.enum_decl(enum_decl, out),
             _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into()),
         }
+    }
+
+    fn enum_decl(&mut self, enum_decl: &EnumDecl, out: &mut impl Write) -> AutoResult<()> {
+        out.write(b"enum ")?;
+        out.write(enum_decl.name.as_bytes())?;
+        out.write(b" {\n")?;
+        for item in enum_decl.items.iter() {
+            out.write(b"    ")?;
+            out.write(item.name.as_bytes())?;
+            out.write(b",")?;
+        }
+        out.write(b"}")?;
+        Ok(())
     }
 
     fn type_decl(&mut self, type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
@@ -820,5 +834,10 @@ int add(int x, int y);
     #[test]
     fn test_006_struct() {
         test_a2c("006_struct").unwrap();
+    }
+
+    #[test]
+    fn test_007_enum() {
+        test_a2c("007_enum").unwrap();
     }
 }
