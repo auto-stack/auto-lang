@@ -90,7 +90,7 @@ impl CTrans {
         out.write(type_decl.name.as_bytes())?;
         out.write(b" {\n")?; // TODO: no newline for short decls
         for field in type_decl.members.iter() {
-            out.write(b"\t")?;
+            out.write(b"    ")?;
             out.write(field.ty.unique_name().as_bytes())?;
             out.write(b" ")?;
             out.write(field.name.as_bytes())?;
@@ -173,13 +173,42 @@ impl CTrans {
             Expr::Double(d, t) => self.float(d, t, out),
             Expr::Index(arr, idx) => self.index(arr, idx, out),
             Expr::Node(nd) => self.node(nd, out),
+            Expr::Pair(pair) => self.pair(pair, out),
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
     }
 
-    fn node(&mut self, node: &Node, out: &mut impl Write) -> AutoResult<()> {
-        out.write(node.name.as_bytes())?;
+    fn key(&mut self, key: &Key, out: &mut impl Write) -> AutoResult<()> {
+        out.write(format!(".{}", key.to_astr()).as_bytes())?;
+        Ok(())
+    }
 
+    fn pair(&mut self, pair: &Pair, out: &mut impl Write) -> AutoResult<()> {
+        self.key(&pair.key, out)?;
+        out.write(b" = ")?;
+        self.expr(&pair.value, out)?;
+        Ok(())
+    }
+
+    fn node(&mut self, node: &Node, out: &mut impl Write) -> AutoResult<()> {
+        // out.write(node.name.as_bytes())?;
+        out.write(b"{")?;
+        for (i, stmt) in node.body.stmts.iter().enumerate() {
+            if i > 0 {
+                out.write(b", ")?;
+            }
+            match stmt {
+                Stmt::Expr(expr) => self.expr(expr, out)?,
+                _ => {
+                    return Err(format!(
+                        "C Transpiler: unsupported statement in node body: {}",
+                        stmt
+                    )
+                    .into())
+                }
+            }
+        }
+        out.write(b"}")?;
         Ok(())
     }
 
@@ -277,6 +306,7 @@ impl CTrans {
                 let len = array_type.len;
                 format!("{}[{}]", self.c_type_name(elem_type), len)
             }
+            Type::User(usr_type) => format!("struct {}", usr_type.name),
             Type::Ptr(ptr) => {
                 format!("{}*", self.c_type_name(&ptr.of.borrow()))
             }
@@ -292,16 +322,11 @@ impl CTrans {
         if matches!(store.kind, StoreKind::Var) {
             return Err(format!("C Transpiler: unsupported store kind: {:?}", store.kind).into());
         }
-        println!("Store: {:?}", store);
         match &store.ty {
             Type::Array(array_type) => {
                 let elem_type = &array_type.elem;
                 let len = array_type.len;
                 out.write(format!("{} {}[{}] = ", elem_type, store.name, len).as_bytes())
-                    .to()?;
-            }
-            Type::User(usr_type) => {
-                out.write(format!("struct {} {{", usr_type.name).as_bytes())
                     .to()?;
             }
             _ => {

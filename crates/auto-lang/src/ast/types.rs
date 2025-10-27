@@ -235,4 +235,19 @@ impl Key {
             _ => None,
         }
     }
+
+    pub fn to_astr(&self) -> AutoStr {
+        match self {
+            Key::StrKey(s) => s.clone(),
+            Key::NamedKey(name) => name.clone(),
+            Key::BoolKey(b) => {
+                if *b {
+                    "true".into()
+                } else {
+                    "false".into()
+                }
+            }
+            Key::IntKey(i) => i.to_string().into(),
+        }
+    }
 }
