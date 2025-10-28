@@ -165,17 +165,24 @@ impl Scope {
 
     pub fn define_type(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
         let name = name.into();
+        println!("Defining type: {} in scope {}", name, self.sid);
         self.types.insert(name, meta);
+        // println!("types: {:?}", self.types);
     }
 
     pub fn lookup_type(&self, name: impl Into<AutoStr>) -> Option<Rc<Meta>> {
         let name = name.into();
+        // println!("Checking type {}", name);
+        // println!("from: {:?}", self.types);
+        // println!("found: {}", self.types.contains_key(&name));
         self.types.get(&name).cloned()
     }
 
     pub fn exists(&self, name: impl Into<AutoStr>) -> bool {
         let name = name.into();
-        self.symbols.contains_key(&name) || self.vals.contains_key(&name)
+        self.symbols.contains_key(&name)
+            || self.vals.contains_key(&name)
+            || self.types.contains_key(&name)
     }
 }
 

@@ -91,11 +91,15 @@ impl CTrans {
         out.write(enum_decl.name.as_bytes())?;
         out.write(b" {\n")?;
         for item in enum_decl.items.iter() {
+            println!("Enum Item: {}", item.name);
             out.write(b"    ")?;
-            out.write(item.name.as_bytes())?;
-            out.write(b",")?;
+            out.write(format!("{}_", enum_decl.name.to_uppercase()).as_bytes())?;
+            out.write(format!("{}", item.name).as_bytes())?;
+            out.write(b" = ")?;
+            out.write(format!("{}", item.value).as_bytes())?;
+            out.write(b",\n")?;
         }
-        out.write(b"}")?;
+        out.write(b"};")?;
         Ok(())
     }
 

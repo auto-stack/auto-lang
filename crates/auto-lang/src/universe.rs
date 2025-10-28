@@ -2,7 +2,9 @@ use super::scope::*;
 use crate::ast;
 use crate::libs;
 use auto_atom::Atom;
-use auto_val::{Args, AutoStr, ExtFn, MetaID, NodeItem, Obj, Sig, TypeInfoStore, Value};
+use auto_val::{
+    shared, Args, AutoStr, ExtFn, MetaID, NodeItem, Obj, Shared, Sig, TypeInfoStore, Value,
+};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -223,11 +225,20 @@ impl Universe {
 
     pub fn define(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
         let name = name.into();
-        if matches!(meta.as_ref(), Meta::Type(_)) {
-            self.current_scope_mut()
-                .define_type(name.clone(), meta.clone());
+        match meta.as_ref() {
+            Meta::Enum(decl) => {
+                let type_meta = Meta::Type(ast::Type::Enum(shared(decl.clone())));
+                self.current_scope_mut()
+                    .define_type(name.clone(), Rc::new(type_meta));
+            }
+            Meta::Type(_) => {
+                self.current_scope_mut()
+                    .define_type(name.clone(), meta.clone());
+            }
+            _ => {
+                self.current_scope_mut().put_symbol(name.as_str(), meta);
+            }
         }
-        self.current_scope_mut().put_symbol(name.as_str(), meta);
     }
 
     pub fn define_type(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
@@ -379,7 +390,7 @@ impl Universe {
     fn lookup_type_recurse(&self, name: impl Into<AutoStr>, sid: &Sid) -> Option<Rc<Meta>> {
         let name = name.into();
         if let Some(scope) = self.scopes.get(sid) {
-            println!("lookup_type in scope: {}", sid.to_string());
+            println!("lookup_type {} in scope: {}", name, sid.to_string());
             if let Some(meta) = scope.lookup_type(name.clone()) {
                 return Some(meta.clone());
             }

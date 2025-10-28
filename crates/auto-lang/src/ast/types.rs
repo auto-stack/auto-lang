@@ -1,3 +1,5 @@
+use crate::ast::EnumDecl;
+
 use super::{Expr, Fn, Name};
 use auto_val::{AutoStr, Shared};
 use std::{fmt, str::Bytes};
@@ -15,6 +17,7 @@ pub enum Type {
     Array(ArrayType),
     Ptr(PtrType),
     User(TypeDecl),
+    Enum(Shared<EnumDecl>),
     Void,
     Unknown,
 }
@@ -34,6 +37,7 @@ impl Type {
             }
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().unique_name()).into(),
             Type::User(type_decl) => type_decl.name.clone(),
+            Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             _ => "undefined_name".into(),
         }
     }
@@ -76,6 +80,7 @@ impl fmt::Display for Type {
             Type::Array(array_type) => write!(f, "{}", array_type),
             Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
             Type::User(type_decl) => write!(f, "{}", type_decl),
+            Type::Enum(enum_decl) => write!(f, "{}", enum_decl.borrow()),
             Type::Void => write!(f, "void"),
             Type::Unknown => write!(f, "unknown"),
         }
@@ -96,6 +101,7 @@ impl From<Type> for auto_val::Type {
             Type::Array(_) => auto_val::Type::Array,
             Type::Ptr(_) => auto_val::Type::Ptr,
             Type::User(decl) => auto_val::Type::User(decl.name),
+            Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
             Type::Void => auto_val::Type::Void,
             Type::Unknown => auto_val::Type::Void, // TODO: is this correct?
         }

@@ -984,28 +984,33 @@ impl<'a> Parser<'a> {
         self.next();
         let mut items = Vec::new();
         self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
         // parse items
         while !self.is_kind(TokenKind::RBrace) {
-            let item = self.cur.text.clone().into();
+            let mut item = EnumItem {
+                name: self.cur.text.clone().into(),
+                value: 0,
+            };
             self.next();
-            items.push(item);
+            if self.is_kind(TokenKind::Asn) {
+                self.next(); // skip =
+                let value = self.parse_ints()?;
+                let value = self.get_int_expr(&value);
+                item.value = value as i32;
+            }
             if self.is_kind(TokenKind::Comma) {
                 self.next(); // skip ,
+            } else if self.is_kind(TokenKind::Newline) {
+                self.next(); // skip newline
+            } else {
+                return error_pos!("expected ',' or newline, got {}", self.cur.text);
             }
+            self.skip_empty_lines();
+            items.push(item);
         }
         self.expect(TokenKind::RBrace)?;
         // make enum ast node
-        let enum_decl = EnumDecl {
-            name,
-            items: items
-                .into_iter()
-                .enumerate()
-                .map(|(i, name)| EnumItem {
-                    name,
-                    value: i as i32,
-                })
-                .collect(),
-        };
+        let enum_decl = EnumDecl { name, items };
         self.define(enum_decl.name.as_str(), Meta::Enum(enum_decl.clone()));
         Ok(Stmt::EnumDecl(enum_decl))
     }
@@ -1367,8 +1372,6 @@ impl<'a> Parser<'a> {
             ty = self.parse_type()?;
         }
 
-        println!("Got type: {:?}", ty);
-
         // =
         self.expect(TokenKind::Asn)?;
 
@@ -1376,8 +1379,10 @@ impl<'a> Parser<'a> {
         let expr = self.rhs_expr()?;
         // TODO: check type compatibility
         if matches!(ty, Type::Unknown) {
-            ty = self.find_expr_type(&expr)?;
+            ty = self.infer_type_expr(&expr);
         }
+
+        println!("Got type of rhs expr: {:?}", ty);
 
         let store = Store {
             kind: store_kind,
@@ -1394,41 +1399,58 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Store(store))
     }
 
-    pub fn find_expr_type(&mut self, expr: &Expr) -> ParseResult<Type> {
-        let mut ty = Type::Unknown;
-        match &expr {
-            Expr::Int(_) => {
-                ty = Type::Int;
+    fn infer_type_expr(&mut self, expr: &Expr) -> Type {
+        let mut typ = Type::Unknown;
+        match expr {
+            Expr::I8(..) => typ = Type::Int,
+            Expr::Int(..) => typ = Type::Int,
+            Expr::Float(..) => typ = Type::Float,
+            Expr::Double(..) => typ = Type::Double,
+            Expr::Bool(..) => typ = Type::Bool,
+            Expr::Str(..) => typ = Type::Str,
+            Expr::CStr(..) => typ = Type::CStr,
+            Expr::Bina(lhs, op, rhs) => {
+                let ltype = self.infer_type_expr(lhs);
+                println!("LTYPE: {}", ltype);
+                println!("OP: {}", op);
+                let rtype = self.infer_type_expr(rhs);
+                println!("RTYPE: {}", rtype);
+                match op {
+                    Op::Dot => {
+                        // TODO
+                        typ = ltype;
+                    }
+                    _ => {
+                        typ = ltype;
+                    }
+                }
             }
-            Expr::Float(_, _) => {
-                ty = Type::Float;
-            }
-            Expr::Double(_, _) => {
-                ty = Type::Double;
-            }
-            Expr::Bool(_) => {
-                ty = Type::Bool;
-            }
-            Expr::Str(_) => {
-                ty = Type::Str;
-            }
-            Expr::CStr(_) => {
-                ty = Type::CStr;
+            Expr::Ident(id) => {
+                println!("Infering type for identifier {}", id);
+                // try to lookup the id as a type name
+                let ltyp = self.lookup_type(id);
+                match *ltyp.borrow() {
+                    Type::Unknown => {}
+                    _ => {
+                        typ = ltyp.borrow().clone();
+                    }
+                }
+                typ = Type::Unknown;
             }
             Expr::Node(nd) => {
-                ty = nd.typ.borrow().clone();
+                typ = nd.typ.borrow().clone();
             }
             Expr::Array(arr) => {
                 // check first element
                 if arr.len() > 0 {
                     let first = &arr[0];
-                    let elem_ty = self.find_expr_type(first)?;
-                    ty = Type::Array(ArrayType {
+                    let elem_ty = self.infer_type_expr(first);
+                    typ = Type::Array(ArrayType {
                         elem: Box::new(elem_ty),
                         len: arr.len(),
                     });
                 } else {
-                    ty = Type::Array(ArrayType {
+                    typ = Type::Array(ArrayType {
                         elem: Box::new(Type::Unknown),
                         len: 0,
                     });
@@ -1436,7 +1458,7 @@ impl<'a> Parser<'a> {
             }
             _ => {}
         }
-        Ok(ty)
+        typ
     }
 
     pub fn store_kind(&mut self) -> ParseResult<StoreKind> {
@@ -1645,6 +1667,16 @@ impl<'a> Parser<'a> {
         };
         self.define(name.as_str(), Meta::Store(store));
         Ok(Member::new(name, ty, value))
+    }
+
+    fn get_int_expr(&mut self, num: &Expr) -> i64 {
+        match num {
+            Expr::Int(n) => *n as i64,
+            Expr::Uint(n) => *n as i64,
+            Expr::I8(n) => *n as i64,
+            Expr::U8(n) => *n as i64,
+            _ => 0,
+        }
     }
 
     fn get_usize(&mut self, size: &Expr) -> ParseResult<usize> {
