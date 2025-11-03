@@ -28,6 +28,7 @@ impl Type {
     pub fn name(&self) -> AutoStr {
         match self {
             Type::User(name) => name.clone(),
+            Type::Enum(en) => en.clone(),
             _ => format!("{:?}", self).to_lowercase().into(),
         }
     }

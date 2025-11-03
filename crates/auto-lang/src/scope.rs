@@ -115,6 +115,7 @@ pub struct Scope {
     pub sid: Sid,            // TODO: should use SharedString?
     pub parent: Option<Sid>, // sid to parent
     pub kids: Vec<Sid>,
+    pub cur_block: usize,
     pub symbols: HashMap<AutoStr, Rc<Meta>>,
     pub types: HashMap<AutoStr, Rc<Meta>>,
     pub vals: HashMap<AutoStr, Value>,
@@ -128,6 +129,7 @@ impl Scope {
             sid,
             parent,
             kids: Vec::new(),
+            cur_block: 0,
             symbols: HashMap::new(),
             types: HashMap::new(),
             vals: HashMap::new(),
@@ -165,7 +167,6 @@ impl Scope {
 
     pub fn define_type(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
         let name = name.into();
-        println!("Defining type: {} in scope {}", name, self.sid);
         self.types.insert(name, meta);
         // println!("types: {:?}", self.types);
     }

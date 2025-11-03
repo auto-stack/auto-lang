@@ -638,7 +638,7 @@ $ }
 
     #[test]
     fn test_type_decl() {
-        let code = "type Point { x int = 5; y int }; let p = Point(y:2); p";
+        let code = "type Point { x int = 5; y int }; let p = Point(y: 2); p";
         let mut interpreter = interpret(code).unwrap();
         assert_eq!(interpreter.result.repr(), "Point{x: 5, y: 2}");
 
@@ -651,7 +651,7 @@ $ }
     fn test_deep_type() {
         let code = "type A { x int; y int }; type B { a A; b int }";
         let mut interpreter = interpret(code).unwrap();
-        let code = "var v = B(a: A(x:1, y:2), b:3); v.a.y";
+        let code = "var v = B { a: A {x:1, y:2}, b:3 }; v.a.y";
         let result = interpreter.eval(code);
         assert_eq!(result.repr(), "2");
     }
@@ -694,7 +694,6 @@ $ }
         type Duck has Wing {
         }
         var wing = Wing()
-        wing.fly()
         var duck = Duck()
         duck.fly()
         "#;

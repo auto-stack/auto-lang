@@ -132,6 +132,25 @@ impl CTrans {
     }
 
     fn dot(&mut self, lhs: &Expr, rhs: &Expr, out: &mut impl Write) -> AutoResult<()> {
+        match lhs {
+            Expr::Ident(ident) => {
+                let ty = self.lookup_type(ident);
+                match ty {
+                    Type::Enum(en) => match rhs {
+                        Expr::Ident(rid) => {
+                            out.write(
+                                format!("{}_{}", ident.to_uppercase(), rid.to_uppercase())
+                                    .as_bytes(),
+                            )?;
+                            return Ok(());
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
         // if rhs is ptr or tgt
         match rhs {
             Expr::Ident(id) => match id.as_str() {
@@ -249,7 +268,10 @@ impl CTrans {
         // source
         self.fn_sig(&fn_decl, out)?;
         out.write(b" ").to()?;
+
+        self.scope.borrow_mut().enter_fn(fn_decl.name.clone());
         self.body(&fn_decl.body, sink, true)?;
+        self.scope.borrow_mut().exit_fn();
         Ok(())
     }
 
@@ -284,6 +306,7 @@ impl CTrans {
     }
 
     fn body(&mut self, body: &Body, sink: &mut Sink, has_return: bool) -> AutoResult<()> {
+        self.scope.borrow_mut().enter_scope();
         sink.body.write(b"{\n").to()?;
         self.indent();
         for (i, stmt) in body.stmts.iter().enumerate() {
@@ -308,6 +331,7 @@ impl CTrans {
         }
         self.dedent();
         sink.body.write(b"}").to()?;
+        self.scope.borrow_mut().exit_scope();
         Ok(())
     }
 
@@ -327,6 +351,9 @@ impl CTrans {
             Type::User(usr_type) => format!("struct {}", usr_type.name),
             Type::Ptr(ptr) => {
                 format!("{}*", self.c_type_name(&ptr.of.borrow()))
+            }
+            Type::Enum(en) => {
+                format!("enum {}", en.borrow().name)
             }
             Type::Unknown => "unknown".to_string(),
             _ => {
@@ -398,15 +425,12 @@ impl CTrans {
         Ok(())
     }
 
+    fn lookup_meta(&self, ident: &AutoStr) -> Option<Rc<Meta>> {
+        self.scope.borrow().lookup_meta(ident)
+    }
+
     fn lookup_type(&self, ident: &AutoStr) -> Type {
-        let meta = self.scope.borrow().lookup_meta(ident);
-        match meta {
-            Some(meta) => match meta.as_ref() {
-                Meta::Store(s) => s.ty.clone(),
-                _ => Type::CStr,
-            },
-            None => Type::Unknown,
-        }
+        self.scope.borrow().lookup_type(ident)
     }
 
     fn process_print(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
@@ -424,14 +448,28 @@ impl CTrans {
                         Expr::Float(_, _) => arg_types.push("%f"),
                         // TODO: check the actual type of the identifier
                         Expr::Ident(ident) => {
-                            println!("lookup type for {}", ident);
-                            let typ = self.lookup_type(ident);
-                            match typ {
-                                Type::CStr => arg_types.push("%s"),
-                                _ => arg_types.push("%d"),
+                            let meta = self.lookup_meta(ident);
+                            if let Some(meta) = meta {
+                                match meta.as_ref() {
+                                    Meta::Store(st) => match st.ty {
+                                        Type::Str | Type::CStr => {
+                                            arg_types.push("%s");
+                                        }
+                                        _ => {
+                                            println!("Got store: {:?}", st);
+                                            arg_types.push("%d");
+                                        }
+                                    },
+                                    _ => {
+                                        arg_types.push("%d");
+                                    }
+                                }
+                            } else {
+                                arg_types.push("%d");
                             }
                         }
                         _ => {
+                            println!("Other expr types: {:?}", expr);
                             // other types are now viewed as ints
                             arg_types.push("%d");
                         }
@@ -826,7 +864,7 @@ int add(int x, int y);
     }
 
     #[test]
-    fn test_004_u8array() {
+    fn test_004_cstr() {
         test_a2c("004_cstr").unwrap();
     }
 

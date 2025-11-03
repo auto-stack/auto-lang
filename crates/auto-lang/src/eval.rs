@@ -571,6 +571,9 @@ impl Evaler {
         }
 
         match name {
+            Value::Type(Type::User(u)) => {
+                return self.eval_type_new(&u, &call.args);
+            }
             Value::Meta(meta_id) => match meta_id {
                 MetaID::Fn(sig) => {
                     return self.eval_fn_call_with_sig(&sig, &call.args);
@@ -632,20 +635,13 @@ impl Evaler {
     }
 
     pub fn eval_type_new(&mut self, name: &str, args: &Args) -> Value {
-        let meta = self.universe.borrow().lookup_meta(name);
-        if let Some(meta) = meta {
-            match meta.as_ref() {
-                scope::Meta::Type(ty) => match ty {
-                    ast::Type::User(type_decl) => {
-                        let instance = self.eval_instance(type_decl, args);
-                        return instance;
-                    }
-                    _ => Value::error(format!("Invalid type instance of {}", name)),
-                },
-                _ => Value::error(format!("Invalid type {}", name)),
+        let typ = self.universe.borrow().lookup_type(name);
+        match typ {
+            ast::Type::User(type_decl) => {
+                let instance = self.eval_instance(&type_decl, args);
+                return instance;
             }
-        } else {
-            return Value::error(format!("Invalid type {}", name));
+            _ => Value::error(format!("Invalid type instance of {}", name)),
         }
     }
 
@@ -882,6 +878,12 @@ impl Evaler {
                 target_val
             }
             Value::Nil => {
+                // Try types
+                let typ = self.universe.borrow().lookup_type(name);
+                if !matches!(typ, ast::Type::Unknown) {
+                    let vty: auto_val::Type = typ.into();
+                    return Value::Type(vty);
+                }
                 // try to lookup in meta and builtins
                 let meta = self.universe.borrow().lookup_meta(&name);
                 if let Some(meta) = meta {
@@ -949,15 +951,42 @@ impl Evaler {
         }
     }
 
+    fn enum_val(&mut self, en: &AutoStr, name: &AutoStr) -> Value {
+        // find enum's decl
+        let typ = self.universe.borrow().lookup_type(en);
+        match typ {
+            ast::Type::Enum(en) => {
+                // lookup enum value in Enum's items
+                match en.borrow().get_item(name) {
+                    Some(item) => Value::Int(item.value),
+                    None => Value::Nil,
+                }
+            }
+            _ => Value::Nil,
+        }
+    }
+
     fn dot(&mut self, left: &Expr, right: &Expr) -> Value {
         let left_value = self.eval_expr(left);
         let res: Option<Value> = match &left_value {
+            Value::Type(typ) => {
+                match typ {
+                    Type::Enum(en) => {
+                        // lookup enum value in Enum's items
+                        match right {
+                            Expr::Ident(name) => Some(self.enum_val(en, name)),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                }
+            }
             Value::Meta(meta_id) => {
                 // lookup meta
                 match meta_id {
                     MetaID::Enum(name) => {
                         let right_name = right.repr();
-                        self.enum_val(name, &AutoStr::from(right_name))
+                        Some(self.enum_val(name, &AutoStr::from(right_name)))
                     }
                     _ => None,
                 }
@@ -1013,6 +1042,7 @@ impl Evaler {
             },
 
             _ => {
+                println!("Left value unknown: {:?}", left_value);
                 // try to lookup method
                 match right {
                     Expr::Ident(name) => {
@@ -1038,24 +1068,6 @@ impl Evaler {
             left_value.name(),
             right
         )))
-    }
-
-    fn enum_val(&mut self, enum_name: &AutoStr, item_name: &AutoStr) -> Option<Value> {
-        let meta = self.universe.borrow().lookup_meta(enum_name);
-        if let Some(meta) = meta {
-            match meta.as_ref() {
-                Meta::Enum(enum_meta) => {
-                    let item = enum_meta.get_item(item_name);
-                    match item {
-                        Some(item) => Some(Value::Int(item.value.clone())),
-                        None => None,
-                    }
-                }
-                _ => None,
-            }
-        } else {
-            None
-        }
     }
 
     fn eval_widget(&mut self, widget: &Widget) -> Value {

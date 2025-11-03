@@ -71,6 +71,10 @@ impl Universe {
         for (name, meta) in self.builtins.iter() {
             println!("Builtin: {} = {}", name, meta);
         }
+        for (name, meta) in self.scopes.iter() {
+            println!("Scope: {} ->", name);
+            meta.dump();
+        }
     }
 
     pub fn chart(&self) -> AutoStr {
@@ -106,6 +110,12 @@ impl Universe {
     fn enter_named_scope(&mut self, name: impl Into<AutoStr>, kind: ScopeKind) {
         // Create a new scope under Global
         let new_sid = Sid::kid_of(&self.cur_spot, name.into());
+        // if new_sid exists, return it
+        if self.scopes.contains_key(&new_sid) {
+            self.cur_spot = new_sid;
+            self.cur_scope_mut().cur_block = 0;
+            return;
+        }
         let new_scope = Scope::new(kind, new_sid.clone());
         self.cur_scope_mut().kids.push(new_sid.clone());
         self.scopes.insert(new_sid.clone(), new_scope);
@@ -133,7 +143,8 @@ impl Universe {
     }
 
     pub fn enter_scope(&mut self) {
-        let name = format!("block_{}", self.cur_scope().kids.len());
+        let name = format!("block_{}", self.cur_scope().cur_block);
+        self.cur_scope_mut().cur_block += 1;
         self.enter_named_scope(name, ScopeKind::Block);
     }
 
@@ -390,7 +401,6 @@ impl Universe {
     fn lookup_type_recurse(&self, name: impl Into<AutoStr>, sid: &Sid) -> Option<Rc<Meta>> {
         let name = name.into();
         if let Some(scope) = self.scopes.get(sid) {
-            println!("lookup_type {} in scope: {}", name, sid.to_string());
             if let Some(meta) = scope.lookup_type(name.clone()) {
                 return Some(meta.clone());
             }
@@ -401,9 +411,19 @@ impl Universe {
         None
     }
 
-    pub fn lookup_type(&self, name: impl Into<AutoStr>) -> Option<Rc<Meta>> {
+    pub fn lookup_type_meta(&self, name: impl Into<AutoStr>) -> Option<Rc<Meta>> {
         let sid = self.cur_spot.clone();
         self.lookup_type_recurse(name, &sid)
+    }
+
+    pub fn lookup_type(&self, name: &str) -> ast::Type {
+        match self.lookup_type_meta(name) {
+            Some(meta) => match meta.as_ref() {
+                Meta::Type(ty) => ty.clone(),
+                _ => ast::Type::Unknown,
+            },
+            None => ast::Type::Unknown,
+        }
     }
 
     pub fn lookup(&self, name: &str, path: AutoStr) -> Option<Rc<Meta>> {
@@ -590,6 +610,7 @@ impl Universe {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
@@ -600,7 +621,7 @@ mod tests {
             .borrow_mut()
             .define_type("int", Rc::new(Meta::Type(ast::Type::Int)));
 
-        let meta = uni.borrow().lookup_type("int");
-        assert!(meta.is_some());
+        let typ = uni.borrow().lookup_type("int");
+        assert!(matches!(typ, ast::Type::Int));
     }
 }

@@ -242,7 +242,7 @@ impl<'a> Parser<'a> {
     }
 
     fn lookup_type(&mut self, name: &str) -> Shared<Type> {
-        match self.scope.borrow().lookup_type(name) {
+        match self.scope.borrow().lookup_type_meta(name) {
             Some(meta) => match meta.as_ref() {
                 Meta::Type(ty) => shared(ty.clone()),
                 _ => shared(Type::Unknown),
@@ -985,6 +985,7 @@ impl<'a> Parser<'a> {
         let mut items = Vec::new();
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
+        let mut last_val = 0;
         // parse items
         while !self.is_kind(TokenKind::RBrace) {
             let mut item = EnumItem {
@@ -997,11 +998,17 @@ impl<'a> Parser<'a> {
                 let value = self.parse_ints()?;
                 let value = self.get_int_expr(&value);
                 item.value = value as i32;
+                last_val = item.value;
+            } else {
+                item.value = last_val;
+                last_val += 1;
             }
             if self.is_kind(TokenKind::Comma) {
                 self.next(); // skip ,
             } else if self.is_kind(TokenKind::Newline) {
                 self.next(); // skip newline
+            } else if self.is_kind(TokenKind::RBrace) {
+                // do nothing
             } else {
                 return error_pos!("expected ',' or newline, got {}", self.cur.text);
             }
@@ -1382,8 +1389,6 @@ impl<'a> Parser<'a> {
             ty = self.infer_type_expr(&expr);
         }
 
-        println!("Got type of rhs expr: {:?}", ty);
-
         let store = Store {
             kind: store_kind,
             name: name.clone(),
@@ -1731,33 +1736,27 @@ impl<'a> Parser<'a> {
         let type_name = self.parse_ident()?;
         match type_name {
             Expr::Ident(name) => {
-                let meta = self
-                    .lookup_meta(&name)
-                    .ok_or(format!("Undefined type: {}", name))?;
-                if let Meta::Type(ty) = meta.as_ref() {
-                    let array_ty_name = format!("[{}]{}", array_size, name);
-                    let arry_meta = self.lookup_meta(&array_ty_name);
-                    match arry_meta {
-                        Some(meta) => {
-                            if let Meta::Type(array_ty) = meta.as_ref() {
-                                return Ok(array_ty.clone());
-                            } else {
-                                return error_pos!("Expected array type, got {:?}", meta);
-                            }
-                        }
-                        None => {
-                            let array_ty = Type::Array(ArrayType {
-                                elem: Box::new(ty.clone()),
-                                len: array_size,
-                            });
-                            self.scope
-                                .borrow_mut()
-                                .define_type(array_ty_name, Rc::new(Meta::Type(array_ty.clone())));
-                            return Ok(array_ty);
+                let ty = self.lookup_type(&name).borrow().clone();
+                let array_ty_name = format!("[{}]{}", array_size, name);
+                let arry_meta = self.lookup_meta(&array_ty_name);
+                match arry_meta {
+                    Some(meta) => {
+                        if let Meta::Type(array_ty) = meta.as_ref() {
+                            return Ok(array_ty.clone());
+                        } else {
+                            return error_pos!("Expected array type, got {:?}", meta);
                         }
                     }
-                } else {
-                    return error_pos!("Expected elem type, got {:?}", meta);
+                    None => {
+                        let array_ty = Type::Array(ArrayType {
+                            elem: Box::new(ty.clone()),
+                            len: array_size,
+                        });
+                        self.scope
+                            .borrow_mut()
+                            .define_type(array_ty_name, Rc::new(Meta::Type(array_ty.clone())));
+                        return Ok(array_ty);
+                    }
                 }
             }
             _ => {
@@ -1770,16 +1769,7 @@ impl<'a> Parser<'a> {
         let ident = self.ident()?;
         self.next();
         match ident {
-            Expr::Ident(name) => {
-                let meta = self
-                    .lookup_meta(&name)
-                    .ok_or(format!("Undefined type: {}", name))?;
-                if let Meta::Type(ty) = meta.as_ref() {
-                    Ok(ty.clone())
-                } else {
-                    error_pos!("Expected type, got ident {:?}", name)
-                }
-            }
+            Expr::Ident(name) => Ok(self.lookup_type(&name).borrow().clone()),
             _ => error_pos!("Expected type, got ident {:?}", ident),
         }
     }

@@ -4,6 +4,7 @@ use crate::node::*;
 use crate::obj::*;
 use crate::pair::*;
 use crate::string::*;
+use crate::types::Type;
 use crate::AutoStr;
 use std::fmt::{self, Display, Formatter};
 
@@ -27,6 +28,7 @@ pub enum Value {
     RangeEq(i32, i32),
     Fn(Fn),
     ExtFn(ExtFn),
+    Type(Type),
     #[default]
     Nil,
     Lambda(AutoStr),
@@ -165,6 +167,7 @@ impl Display for Value {
             Value::Instance(instance) => write!(f, "{}", instance),
             Value::Grid(grid) => write!(f, "{}", grid),
             Value::ConfigBody(body) => write!(f, "{}", body),
+            Value::Type(typ) => write!(f, "{}", typ.name()),
         }
     }
 }
