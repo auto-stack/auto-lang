@@ -3,11 +3,11 @@ type Point {
     y int
 
     fn modulus() int {
-        x * x + y * y
+        .x * .x + .y * .y
     }
 }
 
 fn main() {
-    let point = Point(3, 4)
-    println("Modulus:", point.modulus())
+    let p = Point{x:3, y:4}
+    print("Modulus:", p.modulus())
 }

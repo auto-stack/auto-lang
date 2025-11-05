@@ -357,10 +357,23 @@ impl<'a> Parser<'a> {
             TokenKind::FStrStart => self.fstr()?,
             // grid
             TokenKind::Grid => Expr::Grid(self.grid()?),
+            // dot
+            TokenKind::Dot => self.dot_item()?,
             // normal
             _ => self.atom()?,
         };
         self.expr_pratt_with_left(lhs, min_power)
+    }
+
+    fn dot_item(&mut self) -> ParseResult<Expr> {
+        self.next(); // skip dot
+        let name = self.cur.text.clone();
+        self.next(); // skip name
+        Ok(Expr::Bina(
+            Box::new(Expr::Ident("s".into())),
+            Op::Dot,
+            Box::new(Expr::Ident(name)),
+        ))
     }
 
     fn expr_pratt_with_left(&mut self, mut lhs: Expr, min_power: u8) -> ParseResult<Expr> {
@@ -2588,12 +2601,12 @@ mod tests {
             y int
 
             fn absquare() int {
-                x * x + y * y
+                .x * .x + .y * .y
             }
         }"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int))) (methods (fn (name absquare) (ret int) (body (bina (bina (name x) (op *) (name x)) (op +) (bina (name y) (op *) (name y)))))))");
+        assert_eq!(last.to_string(), "(type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int))) (methods (fn (name absquare) (ret int) (body (bina (bina (bina (name s) (op .) (name x)) (op *) (bina (name s) (op .) (name x))) (op +) (bina (bina (name s) (op .) (name y)) (op *) (bina (name s) (op .) (name y))))))))");
     }
 
     #[test]

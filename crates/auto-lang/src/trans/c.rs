@@ -64,11 +64,7 @@ impl CTrans {
     fn stmt(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<()> {
         let out = &mut sink.body;
         match stmt {
-            Stmt::TypeDecl(type_decl) => {
-                println!("Generating C type declaration");
-                self.type_decl(type_decl, out)?;
-                self.eos(out)
-            }
+            Stmt::TypeDecl(type_decl) => self.type_decl(type_decl, sink),
             Stmt::Expr(expr) => {
                 self.expr(expr, out)?;
                 self.eos(out)
@@ -103,7 +99,9 @@ impl CTrans {
         Ok(())
     }
 
-    fn type_decl(&mut self, type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
+    fn type_decl(&mut self, type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        // write type body
         out.write(b"struct ")?;
         out.write(type_decl.name.as_bytes())?;
         out.write(b" {\n")?; // TODO: no newline for short decls
@@ -114,7 +112,39 @@ impl CTrans {
             out.write(field.name.as_bytes())?;
             out.write(b";\n")?;
         }
-        out.write(b"}")?;
+        out.write(b"};\n")?;
+
+        // write methods
+        if !type_decl.methods.is_empty() {
+            out.write(b"\n")?;
+        }
+        for method in type_decl.methods.iter() {
+            let out = &mut sink.body;
+            out.write(method.ret.unique_name().as_bytes())?;
+            out.write(b" ")?;
+            out.write(method.name.as_bytes())?;
+            out.write(b"(")?;
+            // self
+            out.write(b"struct ")?;
+            out.write(type_decl.name.as_bytes())?;
+            out.write(b" *s")?;
+            if !method.params.is_empty() {
+                out.write(b", ")?;
+            }
+            out.write(
+                method
+                    .params
+                    .iter()
+                    .map(|p| p.ty.unique_name())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+                    .as_bytes(),
+            )?;
+            out.write(b") ")?;
+            // method body
+            self.body(&method.body, sink, !matches!(method.ret, Type::Void));
+            sink.body.write(b"\n")?;
+        }
         Ok(())
     }
 
@@ -134,6 +164,11 @@ impl CTrans {
     fn dot(&mut self, lhs: &Expr, rhs: &Expr, out: &mut impl Write) -> AutoResult<()> {
         match lhs {
             Expr::Ident(ident) => {
+                if ident == "s" {
+                    out.write(b"s->")?;
+                    self.expr(rhs, out)?;
+                    return Ok(());
+                }
                 let ty = self.lookup_type(ident);
                 match ty {
                     Type::Enum(en) => match rhs {
@@ -169,6 +204,7 @@ impl CTrans {
                 }
             },
             _ => {
+                println!("got {:?}", rhs);
                 self.expr(lhs, out)?;
                 out.write(format!(".").as_bytes()).to()?;
                 self.expr(rhs, out)?;
@@ -485,6 +521,54 @@ impl CTrans {
     }
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+        // method call
+        if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
+            if matches!(op, Op::Dot) {
+                // get type decl of lhs
+                match lhs.as_ref() {
+                    Expr::Ident(name) => {
+                        let meta = self.lookup_meta(name);
+                        if let Some(meta) = meta {
+                            match meta.as_ref() {
+                                Meta::Store(store) => {
+                                    if let Type::User(decl) = &store.ty {
+                                        // check rhs is a method call
+                                        if let Expr::Ident(method_name) = rhs.as_ref() {
+                                            // write the method call as method_name(&s, args...)
+                                            out.write(method_name.as_bytes())?;
+                                            out.write(b"(")?;
+                                            for m in decl.methods.iter() {
+                                                if m.name == *method_name {
+                                                    out.write(b"&")?;
+                                                    out.write(name.as_bytes())?;
+                                                    if !call.args.is_empty() {
+                                                        out.write(b", ")?;
+                                                        for (i, arg) in
+                                                            call.args.args.iter().enumerate()
+                                                        {
+                                                            if i > 0 {
+                                                                out.write(b", ")?;
+                                                            }
+                                                            self.expr(&arg.get_expr(), out)?;
+                                                        }
+                                                    }
+                                                    out.write(b")").to()?;
+                                                }
+                                            }
+                                            return Ok(());
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // normal call
         if let Expr::Ident(name) = &call.name.as_ref() {
             if name == "print" {
                 self.process_print(call, out)?;
@@ -881,5 +965,10 @@ int add(int x, int y);
     #[test]
     fn test_007_enum() {
         test_a2c("007_enum").unwrap();
+    }
+
+    #[test]
+    fn test_008_method() {
+        test_a2c("008_method").unwrap();
     }
 }
