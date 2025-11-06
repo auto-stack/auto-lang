@@ -86,6 +86,7 @@ pub enum TokenKind {
     As,
     Enum,
     On,
+    Alias,
 
     // Format Str
     FStrStart,
@@ -159,6 +160,7 @@ impl fmt::Display for Token {
             TokenKind::Model => write!(f, "<model>"),
             TokenKind::View => write!(f, "<view>"),
             TokenKind::Style => write!(f, "<style>"),
+            TokenKind::Alias => write!(f, "<alias>"),
             TokenKind::FStrNote => write!(f, "<{}>", self.text),
             TokenKind::FStrStart => write!(f, "<fstrs>"),
             TokenKind::FStrEnd => write!(f, "<fstre>"),
@@ -261,6 +263,7 @@ impl Token {
             "as" => Some(TokenKind::As),
             "enum" => Some(TokenKind::Enum),
             "grid" => Some(TokenKind::Grid),
+            "alias" => Some(TokenKind::Alias),
             _ => None,
         }
     }

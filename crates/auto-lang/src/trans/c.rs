@@ -49,10 +49,17 @@ impl CTrans {
 }
 
 impl CTrans {
-    pub fn code(&mut self, code: &Code, sink: &mut Sink) -> AutoResult<()> {
-        for stmt in code.stmts.iter() {
+    pub fn code(&mut self, code: Code, sink: &mut Sink) -> AutoResult<()> {
+        for (i, stmt) in code.stmts.iter().enumerate() {
+            if i > 0 {
+                sink.body.write(b"\n")?;
+            }
             self.stmt(stmt, sink)?;
-            sink.body.write(b"\n").to()?;
+        }
+        if let Some(stmt) = code.stmts.last() {
+            if !stmt.is_new_block() {
+                sink.body.write(b"\n")?;
+            }
         }
         Ok(())
     }
@@ -78,8 +85,18 @@ impl CTrans {
             Stmt::If(branches, otherwise) => self.if_stmt(branches, otherwise, sink),
             Stmt::Use(use_stmt) => self.use_stmt(use_stmt, out),
             Stmt::EnumDecl(enum_decl) => self.enum_decl(enum_decl, out),
+            Stmt::Alias(alias) => self.alias(alias, out),
             _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into()),
         }
+    }
+
+    fn alias(&mut self, alias: &Alias, out: &mut impl Write) -> AutoResult<()> {
+        out.write(b"#define ")?;
+        out.write(alias.target.as_bytes())?;
+        out.write(b" ")?;
+        out.write(alias.alias.as_bytes())?;
+        out.write(b"\n")?;
+        Ok(())
     }
 
     fn enum_decl(&mut self, enum_decl: &EnumDecl, out: &mut impl Write) -> AutoResult<()> {
@@ -308,6 +325,8 @@ impl CTrans {
         self.scope.borrow_mut().enter_fn(fn_decl.name.clone());
         self.body(&fn_decl.body, sink, true)?;
         self.scope.borrow_mut().exit_fn();
+
+        sink.body.write(b"\n")?;
         Ok(())
     }
 
@@ -649,28 +668,28 @@ impl Trans for CTrans {
 
         // preprocess
         for stmt in ast.stmts.into_iter() {
-            match stmt {
-                Stmt::Fn(_) => decls.push(stmt),
-                Stmt::TypeDecl(_) => decls.push(stmt),
-                Stmt::EnumDecl(_) => decls.push(stmt),
-                Stmt::Store(_) => decls.push(stmt),
-                Stmt::For(_) => main.push(stmt),
-                Stmt::If(_, _) => main.push(stmt),
-                Stmt::Expr(ref expr) => {
-                    match expr {
-                        Expr::Call(call) => {
-                            if let Expr::Ident(name) = &call.name.as_ref() {
-                                if name == "print" {
-                                    self.libs.insert("<stdio.h>".into());
+            if stmt.is_decl() {
+                decls.push(stmt);
+            } else {
+                match stmt {
+                    Stmt::For(_) => main.push(stmt),
+                    Stmt::If(_, _) => main.push(stmt),
+                    Stmt::Expr(ref expr) => {
+                        match expr {
+                            Expr::Call(call) => {
+                                if let Expr::Ident(name) = &call.name.as_ref() {
+                                    if name == "print" {
+                                        self.libs.insert("<stdio.h>".into());
+                                    }
                                 }
                             }
+                            _ => {}
                         }
-                        _ => {}
+                        main.push(stmt);
                     }
-                    main.push(stmt);
+                    Stmt::Use(use_stmt) => self.use_stmt(&use_stmt, &mut sink.body)?,
+                    _ => {}
                 }
-                Stmt::Use(use_stmt) => self.use_stmt(&use_stmt, &mut sink.body)?,
-                _ => {}
             }
         }
 
@@ -694,9 +713,11 @@ impl Trans for CTrans {
         // }
 
         // Decls
-        for decl in decls.iter() {
+        for (i, decl) in decls.iter().enumerate() {
+            if i > 0 {
+                sink.body.write(b"\n").to()?;
+            }
             self.stmt(decl, sink)?;
-            sink.body.write(b"\n").to()?;
         }
 
         // Main
@@ -741,6 +762,7 @@ impl Trans for CTrans {
             sink.includes.write(path.as_bytes()).to()?;
             sink.includes.write(b"\n").to()?;
         }
+
         Ok(())
     }
 }
@@ -751,7 +773,7 @@ pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     let mut parser = Parser::new(code, scope);
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut out = Sink::new();
-    transpiler.code(&ast, &mut out)?;
+    transpiler.code(ast, &mut out)?;
     Ok(String::from_utf8(out.body).unwrap().into())
 }
 
@@ -970,5 +992,10 @@ int add(int x, int y);
     #[test]
     fn test_008_method() {
         test_a2c("008_method").unwrap();
+    }
+
+    #[test]
+    fn test_009_alias() {
+        test_a2c("009_alias").unwrap();
     }
 }

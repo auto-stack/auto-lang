@@ -165,6 +165,11 @@ impl Scope {
         self.symbols.get(&name.into()).cloned()
     }
 
+    pub fn define_alias(&mut self, alias: AutoStr, target: AutoStr) {
+        self.symbols
+            .insert(alias.into(), Rc::new(Meta::Alias(target.into())));
+    }
+
     pub fn define_type(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
         let name = name.into();
         self.types.insert(name, meta);
@@ -201,6 +206,7 @@ pub enum Meta {
     Body(ast::Body),
     Use(String),
     Node(ast::Node),
+    Alias(AutoStr),
 }
 
 impl fmt::Display for Meta {
@@ -218,6 +224,7 @@ impl fmt::Display for Meta {
             Meta::Body(_) => write!(f, "BoDY"),
             Meta::Node(nd) => write!(f, "{}", nd),
             Meta::Use(name) => write!(f, "USE {}", name),
+            Meta::Alias(alias) => write!(f, "ALIAS {}", alias),
         }
     }
 }

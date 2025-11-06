@@ -485,6 +485,10 @@ impl Universe {
         view
     }
 
+    pub fn define_alias(&mut self, alias: AutoStr, target: AutoStr) {
+        self.cur_scope_mut().define_alias(alias, target);
+    }
+
     pub fn define_var(&mut self, name: &str, expr: ast::Expr) {
         // Add meta to current scope
         let ast_name = name.into();

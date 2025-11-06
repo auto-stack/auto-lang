@@ -13,7 +13,7 @@ mod parsers;
 
 use auto_val::{AutoStr, Op};
 use serde::Serialize;
-use std::fmt;
+use std::fmt::{self, write};
 
 pub type Name = AutoStr;
 
@@ -164,6 +164,13 @@ pub enum Stmt {
     Use(Use),
     OnEvents(OnEvents),
     Comment(AutoStr),
+    Alias(Alias),
+}
+
+#[derive(Debug, Clone)]
+pub struct Alias {
+    pub alias: Name,
+    pub target: Name,
 }
 
 #[derive(Debug, Clone)]
@@ -238,6 +245,24 @@ impl Stmt {
             _ => None,
         }
     }
+
+    pub fn is_decl(&self) -> bool {
+        match self {
+            Stmt::Fn(_)
+            | Stmt::TypeDecl(_)
+            | Stmt::EnumDecl(_)
+            | Stmt::Store(_)
+            | Stmt::Alias(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_new_block(&self) -> bool {
+        match self {
+            Stmt::Block(_) | Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) => true,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Stmt {
@@ -266,7 +291,14 @@ impl fmt::Display for Stmt {
             Stmt::Node(node) => write!(f, "{}", node),
             Stmt::OnEvents(on_events) => write!(f, "{}", on_events),
             Stmt::Comment(cmt) => write!(f, "{}", cmt),
+            Stmt::Alias(alias) => write!(f, "{}", alias),
         }
+    }
+}
+
+impl fmt::Display for Alias {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(alias (name {}) (target {}))", self.alias, self.target)
     }
 }
 

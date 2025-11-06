@@ -221,6 +221,10 @@ impl<'a> Parser<'a> {
         self.scope.borrow_mut().define(name, Rc::new(meta));
     }
 
+    fn define_alias(&mut self, alias: AutoStr, target: AutoStr) {
+        self.scope.borrow_mut().define_alias(alias, target);
+    }
+
     fn define_rc(&mut self, name: &str, meta: Rc<Meta>) {
         self.scope.borrow_mut().define(name, meta);
     }
@@ -984,10 +988,24 @@ impl<'a> Parser<'a> {
             TokenKind::Enum => self.enum_stmt()?,
             // On Events Switch
             TokenKind::On => Stmt::OnEvents(self.parse_on_events()?),
+            // Alias stmt
+            TokenKind::Alias => self.parse_alias_stmt()?,
             // Otherwise, try to parse as an expression
             _ => self.expr_stmt()?,
         };
         Ok(stmt)
+    }
+
+    fn parse_alias_stmt(&mut self) -> ParseResult<Stmt> {
+        self.next(); // skip alias
+        let alias = self.cur.text.clone();
+        self.next();
+        self.expect(TokenKind::Asn)?;
+        let target = self.cur.text.clone();
+        self.next();
+        // define alias meta in scope
+        self.define_alias(alias.clone(), target.clone());
+        Ok(Stmt::Alias(Alias { alias, target }))
     }
 
     /// Format: enum { item1, item2, item3 }
@@ -2026,6 +2044,13 @@ impl<'a> Parser<'a> {
                 Ok(Stmt::Expr(expr))
             } else {
                 // Something else with a starting Ident
+                if id.is_some() {
+                    return error_pos!(
+                        "Expected simple expression, got `{} {}`",
+                        ident.repr(),
+                        id.unwrap()
+                    );
+                }
                 let expr = self.expr_pratt_with_left(ident, 0)?;
                 let expr = self.check_symbol(expr)?;
                 Ok(Stmt::Expr(expr))
@@ -2818,6 +2843,16 @@ exe hello {
         assert_eq!(
             ptr_type.to_string(),
             "(code (bina (bina (name p) (op .) (name tgt)) (op +=) (int 1)))"
+        )
+    }
+
+    #[test]
+    fn test_alias_stmt() {
+        let code = r#"alias cc = my_add"#;
+        let alias_stmt = parse_once(code);
+        assert_eq!(
+            alias_stmt.to_string(),
+            format!("{}", "(code (alias (name cc) (target my_add)))")
         )
     }
 }

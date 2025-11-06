@@ -187,6 +187,7 @@ impl Evaler {
             Stmt::EnumDecl(_) => Value::Nil,
             Stmt::OnEvents(on) => self.eval_on_events(on),
             Stmt::Comment(_) => Value::Nil,
+            Stmt::Alias(_) => Value::Void,
         }
     }
 

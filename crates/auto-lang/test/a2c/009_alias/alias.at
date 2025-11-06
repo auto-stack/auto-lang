@@ -1,0 +1,10 @@
+fn my_add(a int, b int) int {
+    a + b
+}
+
+alias add = my_add
+
+fn main() {
+    let s int = add(3, 5)
+    print("Sum:", s)
+}
