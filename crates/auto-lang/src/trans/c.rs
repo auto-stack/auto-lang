@@ -82,7 +82,7 @@ impl CTrans {
             }
             Stmt::Fn(fn_decl) => self.fn_decl(fn_decl, sink),
             Stmt::For(for_stmt) => self.for_stmt(for_stmt, sink),
-            Stmt::If(branches, otherwise) => self.if_stmt(branches, otherwise, sink),
+            Stmt::If(if_) => self.if_stmt(if_, sink),
             Stmt::Use(use_stmt) => self.use_stmt(use_stmt, out),
             Stmt::EnumDecl(enum_decl) => self.enum_decl(enum_decl, out),
             Stmt::Alias(alias) => self.alias(alias, out),
@@ -457,23 +457,18 @@ impl CTrans {
         Ok(())
     }
 
-    fn if_stmt(
-        &mut self,
-        branches: &Vec<Branch>,
-        otherwise: &Option<Body>,
-        sink: &mut Sink,
-    ) -> AutoResult<()> {
+    fn if_stmt(&mut self, if_: &If, sink: &mut Sink) -> AutoResult<()> {
         sink.body.write(b"if ").to()?;
-        for (i, branch) in branches.iter().enumerate() {
+        for (i, branch) in if_.branches.iter().enumerate() {
             sink.body.write(b"(").to()?;
             self.expr(&branch.cond, &mut sink.body)?;
             sink.body.write(b") ").to()?;
             self.body(&branch.body, sink, false)?;
-            if i < branches.len() - 1 {
+            if i < if_.branches.len() - 1 {
                 sink.body.write(b" else ").to()?;
             }
         }
-        if let Some(body) = otherwise {
+        if let Some(body) = &if_.else_ {
             sink.body.write(b" else ").to()?;
             self.body(body, sink, false)?;
         }
@@ -673,7 +668,7 @@ impl Trans for CTrans {
             } else {
                 match stmt {
                     Stmt::For(_) => main.push(stmt),
-                    Stmt::If(_, _) => main.push(stmt),
+                    Stmt::If(_) => main.push(stmt),
                     Stmt::Expr(ref expr) => {
                         match expr {
                             Expr::Call(call) => {

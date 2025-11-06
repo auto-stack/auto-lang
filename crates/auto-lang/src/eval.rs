@@ -175,13 +175,12 @@ impl Evaler {
         match stmt {
             Stmt::Use(use_stmt) => self.eval_use(use_stmt),
             Stmt::Expr(expr) => self.eval_expr(expr),
-            Stmt::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
+            Stmt::If(if_) => self.eval_if(if_),
             Stmt::For(for_stmt) => self.eval_for(for_stmt),
             Stmt::Block(body) => self.eval_body(body),
             Stmt::Store(store) => self.eval_store(store),
             Stmt::Fn(_) => Value::Nil,
             Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
-            Stmt::Widget(widget) => self.eval_widget(widget),
             Stmt::Node(node) => self.eval_node(node),
             Stmt::Is(stmt) => self.eval_is(stmt),
             Stmt::EnumDecl(_) => Value::Nil,
@@ -277,14 +276,14 @@ impl Evaler {
         Value::Void
     }
 
-    fn eval_if(&mut self, branches: &Vec<Branch>, else_stmt: &Option<Body>) -> Value {
-        for branch in branches.iter() {
+    fn eval_if(&mut self, if_: &If) -> Value {
+        for branch in if_.branches.iter() {
             let cond = self.eval_expr(&branch.cond);
             if cond.is_true() {
                 return self.eval_body(&branch.body);
             }
         }
-        if let Some(else_stmt) = else_stmt {
+        if let Some(else_stmt) = &if_.else_ {
             return self.eval_body(else_stmt);
         }
         Value::Void
@@ -856,7 +855,7 @@ impl Evaler {
             Expr::Ident(name) => self.eval_ident(name),
             Expr::Unary(op, e) => self.eval_una(op, e),
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
-            Expr::If(branches, else_stmt) => self.eval_if(branches, else_stmt),
+            Expr::If(if_) => self.eval_if(if_),
             Expr::Array(elems) => self.eval_array(elems),
             Expr::Call(call) => self.eval_call(call),
             Expr::Node(node) => self.eval_node(node),
@@ -1069,34 +1068,6 @@ impl Evaler {
             left_value.name(),
             right
         )))
-    }
-
-    fn eval_widget(&mut self, widget: &Widget) -> Value {
-        let name = &widget.name;
-        // model
-        let mut vars = Vec::new();
-        for var in widget.model.vars.iter() {
-            let value = self.eval_expr(&var.expr);
-            vars.push((ValueKey::Str(var.name.clone().into()), value.clone()));
-            self.universe.borrow_mut().set_local_val(&var.name, value);
-        }
-        let model = auto_val::Model { values: vars };
-        // view
-        let view_id = format!("{}.view", name).into();
-        self.universe
-            .borrow_mut()
-            .define(&view_id, Rc::new(Meta::View(widget.view.clone())));
-        let widget_value = auto_val::Widget {
-            name: name.clone(),
-            model,
-            view_id: MetaID::View(view_id),
-        };
-        let value = Value::Widget(widget_value);
-        self.universe
-            .borrow_mut()
-            .set_local_val(name, value.clone());
-        self.universe.borrow_mut().widget = value.clone();
-        value
     }
 
     fn eval_mid(&mut self, node: &Node) -> Value {

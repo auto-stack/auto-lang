@@ -2,7 +2,7 @@ use super::scope::*;
 use crate::ast;
 use crate::libs;
 use auto_atom::Atom;
-use auto_val::{shared, Args, AutoStr, ExtFn, MetaID, NodeItem, Obj, Sig, TypeInfoStore, Value};
+use auto_val::{shared, Args, AutoStr, ExtFn, NodeItem, Obj, Sig, TypeInfoStore, Value};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -19,7 +19,6 @@ pub struct Universe {
     pub args: Obj,
     lambda_counter: usize,
     pub cur_spot: Sid,
-    pub widget: Value,
 }
 
 impl Default for Universe {
@@ -46,7 +45,6 @@ impl Universe {
             types: TypeInfoStore::new(),
             lambda_counter: 0,
             cur_spot: SID_PATH_GLOBAL.clone(),
-            widget: Value::Nil,
             args: Obj::new(),
         };
         uni.define_sys_types();
@@ -437,52 +435,6 @@ impl Universe {
         self.builtins.get(name).cloned()
     }
 
-    // TODO: return a RC of view instead of clone
-    pub fn lookup_view(&self, id: &MetaID) -> Option<ast::View> {
-        match id {
-            MetaID::View(viewid) => {
-                let meta = self.lookup_meta(viewid);
-                match meta {
-                    Some(meta) => match meta.as_ref() {
-                        Meta::View(view) => Some(view.clone()),
-                        _ => None,
-                    },
-                    None => None,
-                }
-            }
-            MetaID::Body(bodyid) => {
-                let meta = self.lookup_meta(bodyid);
-                match meta {
-                    Some(meta) => match meta.as_ref() {
-                        Meta::Body(body) => Some(Self::body_to_view(body)),
-                        _ => None,
-                    },
-                    None => None,
-                }
-            }
-            _ => None,
-        }
-    }
-
-    pub fn body_to_view(body: &ast::Body) -> ast::View {
-        let mut view = ast::View::default();
-        // view.body = body.clone();
-        for stmt in body.stmts.iter() {
-            match stmt {
-                ast::Stmt::Node(node) => {
-                    view.nodes.push((node.name.clone(), node.clone()));
-                }
-                ast::Stmt::Expr(ast::Expr::Call(call)) => {
-                    let call = call.clone();
-                    let node: ast::Node = call.into();
-                    view.nodes.push((node.name.clone(), node));
-                }
-                _ => (),
-            }
-        }
-        view
-    }
-
     pub fn define_alias(&mut self, alias: AutoStr, target: AutoStr) {
         self.cur_scope_mut().define_alias(alias, target);
     }
@@ -502,10 +454,6 @@ impl Universe {
     pub fn import(&mut self, path: AutoStr, ast: ast::Code) {
         let sid = Sid::new(path.as_str());
         self.asts.insert(sid, ast);
-    }
-
-    pub fn widget(&self) -> Value {
-        self.widget.clone()
     }
 
     // TODO: support nested nodes

@@ -881,7 +881,10 @@ impl<'a> Parser<'a> {
 
     pub fn if_expr(&mut self) -> ParseResult<Expr> {
         let (branches, else_stmt) = self.if_contents()?;
-        Ok(Expr::If(branches, else_stmt))
+        Ok(Expr::If(If {
+            branches,
+            else_: else_stmt,
+        }))
     }
 
     pub fn cond_expr(&mut self) -> ParseResult<Expr> {
@@ -980,8 +983,6 @@ impl<'a> Parser<'a> {
             TokenKind::Fn => self.fn_decl_stmt("")?,
             TokenKind::Type => self.type_decl_stmt()?,
             TokenKind::LBrace => Stmt::Block(self.body()?),
-            // AutoUI Stmts
-            TokenKind::Widget => self.widget_stmt()?,
             // Node Instance?
             TokenKind::Ident => self.parse_node_or_call_stmt()?,
             // Enum Definition
@@ -1294,7 +1295,10 @@ impl<'a> Parser<'a> {
 
     pub fn if_stmt(&mut self) -> ParseResult<Stmt> {
         let (branches, else_stmt) = self.if_contents()?;
-        Ok(Stmt::If(branches, else_stmt))
+        Ok(Stmt::If(If {
+            branches,
+            else_: else_stmt,
+        }))
     }
 
     pub fn for_stmt(&mut self) -> ParseResult<Stmt> {
@@ -1303,9 +1307,11 @@ impl<'a> Parser<'a> {
         if self.is_kind(TokenKind::Ident) {
             let name = self.cur.text.clone();
             self.enter_scope();
-            let meta = Meta::Var(Var {
+            let meta = Meta::Store(Store {
+                kind: StoreKind::Var,
                 name: name.clone(),
                 expr: Expr::Nil,
+                ty: Type::Int,
             });
             self.define(name.as_str(), meta);
             self.next(); // skip name
@@ -1313,9 +1319,11 @@ impl<'a> Parser<'a> {
             if self.is_kind(TokenKind::Comma) {
                 self.next(); // skip ,
                 let iter_name = self.cur.text.clone();
-                let meta_iter = Meta::Var(Var {
+                let meta_iter = Meta::Store(Store {
+                    kind: StoreKind::Var,
                     name: iter_name.clone(),
                     expr: Expr::Nil,
+                    ty: Type::Int,
                 });
                 self.define(iter_name.as_str(), meta_iter);
                 self.next(); // skip iter name
@@ -1587,12 +1595,14 @@ impl<'a> Parser<'a> {
                 default = Some(expr);
             }
             // define param in current scope (currently in fn scope)
-            let var = Var {
+            let var = Store {
+                kind: StoreKind::Var,
                 name: name.clone(),
                 expr: default.clone().unwrap_or(Expr::Nil),
+                ty: ty.clone(),
             };
             // TODO: should we consider Meta::Param instead of Meta::Var?
-            self.define(name.as_str(), Meta::Var(var.clone()));
+            self.define(name.as_str(), Meta::Store(var));
             params.push(Param { name, ty, default });
             self.sep_params();
         }
@@ -1861,90 +1871,6 @@ impl<'a> Parser<'a> {
             }
             _ => Ok(expr),
         }
-    }
-
-    pub fn widget_stmt(&mut self) -> ParseResult<Stmt> {
-        self.next(); // skip widget
-        let name = self.cur.text.clone();
-        self.expect(TokenKind::Ident)?;
-        let (model, view) = self.widget_body()?;
-        let mut widget = Widget::new(name.clone());
-        widget.model = model;
-        widget.view = view;
-        self.define(name.as_str(), Meta::Widget(widget.clone()));
-        Ok(Stmt::Widget(widget))
-    }
-
-    pub fn widget_body(&mut self) -> ParseResult<(Model, View)> {
-        self.expect(TokenKind::LBrace)?;
-        self.skip_empty_lines();
-        let mut has_content = false;
-        let mut model = Model::default();
-        let mut view = View::default();
-        if self.is_kind(TokenKind::Model) {
-            model = self.model_decl()?;
-            has_content = true;
-        }
-        self.skip_empty_lines();
-        if self.is_kind(TokenKind::View) {
-            view = self.view_decl()?;
-            has_content = true;
-        }
-        if !has_content {
-            return error_pos!("Widget has no model nor view");
-        }
-        self.skip_empty_lines();
-        self.expect(TokenKind::RBrace)?;
-        Ok((model, view))
-    }
-
-    pub fn model_decl(&mut self) -> ParseResult<Model> {
-        self.next(); // skip model
-        self.expect(TokenKind::LBrace)?;
-        self.skip_empty_lines();
-        let mut model = Model::default();
-        // parse multiple var declarations
-        while self.is_kind(TokenKind::Var) {
-            let store = self.parse_store_stmt()?;
-            match store {
-                Stmt::Store(store) => {
-                    model.vars.push(store);
-                }
-                _ => {
-                    return error_pos!("Expected store declaration, got {:?}", store);
-                }
-            }
-            self.expect_eos()?;
-        }
-        self.expect(TokenKind::RBrace)?;
-        Ok(model)
-    }
-
-    pub fn view_decl(&mut self) -> ParseResult<View> {
-        self.next(); // skip view
-        let mut view = View::default();
-        self.expect(TokenKind::LBrace)?; // skip {
-        self.skip_empty_lines();
-        // parse multiple node instances
-        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            let node = self.parse_node_or_call_stmt()?;
-            match node {
-                Stmt::Node(node) => {
-                    view.nodes.push((node.name.clone(), node));
-                }
-                Stmt::Expr(Expr::Call(call)) => {
-                    // Call to node
-                    let node: Node = call.into();
-                    view.nodes.push((node.name.clone(), node));
-                }
-                _ => {
-                    return error_pos!("Expected node in view body, got {:?}", node);
-                }
-            }
-            self.expect_eos()?;
-        }
-        self.expect(TokenKind::RBrace)?;
-        Ok(view)
     }
 
     // 节点实例和函数调用有类似语法：
