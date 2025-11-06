@@ -36,7 +36,11 @@ pub struct Sid {
 
 impl fmt::Display for Sid {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.path)
+        if self.path.is_empty() {
+            write!(f, "🌳")
+        } else {
+            write!(f, "{}", self.path)
+        }
     }
 }
 

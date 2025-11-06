@@ -2493,30 +2493,6 @@ mod tests {
         );
     }
 
-    // #[test]
-    // fn test_app() {
-    //     let code = r#"
-    //     widget hello {
-    //         model {
-    //             var name = ""
-    //         }
-
-    //         view {
-    //             text(f"Hello $name")
-    //         }
-    //     }
-
-    //     app {
-    //         center {
-    //             hello(name:"You")
-    //         }
-    //     }"#;
-    //     let ast = parse_once(code);
-    //     let last = ast.stmts.last().unwrap();
-    //     println!("{}", pretty(&last.to_string()));
-    //     assert_eq!(last.to_string(), "(node (name app) (body (node (name center) (body (call (name hello) (args (pair (name name) (str \"You\"))))))))");
-    // }
-
     #[test]
     fn test_ref() {
         let code = "var a = 1; var b = ref a; b";

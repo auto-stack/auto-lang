@@ -307,7 +307,7 @@ The syntax is similar to Kotlin, and the code organization is similar to Vue.js.
 
 ```rust
 // Define a component
-widget counter(id) {
+widget counter {
     // Model that stores reactive data
     model {
         var count: i32 = 0
@@ -333,8 +333,11 @@ widget counter(id) {
             }
             style {gap-2 w-full}
         }
+    }
+
+    style {
         // Style currently supports Tailwind CSS syntax
-        style {w-24 h-24 border-1 border-color-gray-300}
+        "w-24 h-24 border-1 border-color-gray-300"
     }
 }
 ```

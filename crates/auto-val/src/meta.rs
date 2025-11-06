@@ -151,7 +151,6 @@ pub enum MetaID {
     Lambda(Sig),
     Type(AutoStr),
     Enum(AutoStr),
-    View(AutoStr),
     Node(AutoStr),
     Body(AutoStr),
     Method(MethodMeta),
@@ -175,7 +174,6 @@ impl fmt::Display for MetaID {
         match self {
             MetaID::Fn(sig) => write!(f, "<fn:{}>", sig),
             MetaID::Lambda(sig) => write!(f, "<lambda:{}>", sig),
-            MetaID::View(id) => write!(f, "<view:{}>", id),
             MetaID::Body(id) => write!(f, "<body:{}>", id),
             MetaID::Nil => write!(f, "<meta-nil>"),
             MetaID::Method(method) => write!(f, "<method:{}>", method),
