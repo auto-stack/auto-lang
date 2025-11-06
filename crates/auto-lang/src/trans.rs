@@ -1,6 +1,6 @@
 use super::ast::*;
 use crate::AutoResult;
-use std::io::{self, Write};
+use std::io;
 
 pub mod c;
 pub mod rust;
@@ -9,7 +9,7 @@ pub struct Sink {
     pub includes: Vec<u8>,
     pub body: Vec<u8>,
     pub header: Vec<u8>,
-    pub source: Vec<u8>
+    pub source: Vec<u8>,
 }
 
 impl Sink {
@@ -30,7 +30,6 @@ impl Sink {
         self.source.append(&mut self.body);
         &self.source
     }
-
 }
 
 pub trait Trans {

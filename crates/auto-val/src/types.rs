@@ -1,5 +1,3 @@
-use regex::bytes::CaptureNames;
-
 use crate::AutoStr;
 use crate::Value;
 use std::collections::HashMap;
@@ -55,7 +53,7 @@ impl TypeInfoStore {
         types.insert("byte".into(), type_info_byte());
         types.insert("int".into(), type_info_int());
         types.insert("float".into(), type_info_float());
-        types.insert("double".into(), type_info_float());
+        types.insert("double".into(), type_info_double());
         types.insert("bool".into(), type_info_bool());
         types.insert("str".into(), type_info_str());
         types.insert("char".into(), type_info_char());

@@ -2,7 +2,7 @@ use crate::ast::EnumDecl;
 
 use super::{Expr, Fn, Name};
 use auto_val::{AutoStr, Shared};
-use std::{fmt, str::Bytes};
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum Type {

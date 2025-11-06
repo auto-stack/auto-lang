@@ -107,10 +107,16 @@ impl fmt::Display for Arg {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Fn {
     pub sig: Sig,
     pub fun: fn(&Vec<Value>) -> Value,
+}
+
+impl PartialEq for Fn {
+    fn eq(&self, other: &Self) -> bool {
+        self.sig == other.sig && std::ptr::fn_addr_eq(self.fun, other.fun)
+    }
 }
 
 /// Function signature

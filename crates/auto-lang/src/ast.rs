@@ -8,12 +8,14 @@ mod on;
 pub use on::*;
 mod node;
 pub use node::*;
+mod alias;
+pub use alias::*;
 
 mod parsers;
 
 use auto_val::{AutoStr, Op};
 use serde::Serialize;
-use std::fmt::{self, write};
+use std::fmt;
 
 pub type Name = AutoStr;
 
@@ -168,12 +170,6 @@ pub enum Stmt {
 }
 
 #[derive(Debug, Clone)]
-pub struct Alias {
-    pub alias: Name,
-    pub target: Name,
-}
-
-#[derive(Debug, Clone)]
 pub struct For {
     pub iter: Iter,
     pub range: Expr,
@@ -293,12 +289,6 @@ impl fmt::Display for Stmt {
             Stmt::Comment(cmt) => write!(f, "{}", cmt),
             Stmt::Alias(alias) => write!(f, "{}", alias),
         }
-    }
-}
-
-impl fmt::Display for Alias {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(alias (name {}) (target {}))", self.alias, self.target)
     }
 }
 

@@ -2,9 +2,7 @@ use super::scope::*;
 use crate::ast;
 use crate::libs;
 use auto_atom::Atom;
-use auto_val::{
-    shared, Args, AutoStr, ExtFn, MetaID, NodeItem, Obj, Shared, Sig, TypeInfoStore, Value,
-};
+use auto_val::{shared, Args, AutoStr, ExtFn, MetaID, NodeItem, Obj, Sig, TypeInfoStore, Value};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;

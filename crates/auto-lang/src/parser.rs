@@ -1470,8 +1470,7 @@ impl<'a> Parser<'a> {
                     _ => {
                         typ = ltyp.borrow().clone();
                     }
-                }
-                typ = Type::Unknown;
+                };
             }
             Expr::Node(nd) => {
                 typ = nd.typ.borrow().clone();
@@ -1966,12 +1965,10 @@ impl<'a> Parser<'a> {
         let ident = self.ident()?;
         self.next();
 
-        let mut has_id = false;
         let mut has_paren = false;
 
         // 节点实例的id
-        let mut id = if self.is_kind(TokenKind::Ident) {
-            has_id = true;
+        let id = if self.is_kind(TokenKind::Ident) {
             let id = self.ident_name()?;
             self.next();
             Some(id)

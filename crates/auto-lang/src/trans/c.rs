@@ -159,7 +159,7 @@ impl CTrans {
             )?;
             out.write(b") ")?;
             // method body
-            self.body(&method.body, sink, !matches!(method.ret, Type::Void));
+            self.body(&method.body, sink, !matches!(method.ret, Type::Void))?;
             sink.body.write(b"\n")?;
         }
         Ok(())
@@ -174,7 +174,7 @@ impl CTrans {
         Ok(())
     }
 
-    fn float(&mut self, f: &f64, txt: &str, out: &mut impl Write) -> AutoResult<()> {
+    fn float(&mut self, _f: &f64, txt: &str, out: &mut impl Write) -> AutoResult<()> {
         out.write_all(txt.as_bytes()).to()
     }
 
@@ -188,7 +188,7 @@ impl CTrans {
                 }
                 let ty = self.lookup_type(ident);
                 match ty {
-                    Type::Enum(en) => match rhs {
+                    Type::Enum(_) => match rhs {
                         Expr::Ident(rid) => {
                             out.write(
                                 format!("{}_{}", ident.to_uppercase(), rid.to_uppercase())

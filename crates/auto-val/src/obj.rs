@@ -30,7 +30,7 @@ impl Obj {
         values: BTreeMap::new(),
     };
 
-    pub fn iter(&self) -> Iter<ValueKey, Value> {
+    pub fn iter(&self) -> Iter<'_, ValueKey, Value> {
         self.values.iter()
     }
 }
