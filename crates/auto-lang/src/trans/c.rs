@@ -993,4 +993,9 @@ int add(int x, int y);
     fn test_009_alias() {
         test_a2c("009_alias").unwrap();
     }
+
+    #[test]
+    fn test_010_if() {
+        test_a2c("010_if").unwrap();
+    }
 }
