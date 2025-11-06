@@ -92,9 +92,9 @@ impl CTrans {
 
     fn alias(&mut self, alias: &Alias, out: &mut impl Write) -> AutoResult<()> {
         out.write(b"#define ")?;
-        out.write(alias.target.as_bytes())?;
-        out.write(b" ")?;
         out.write(alias.alias.as_bytes())?;
+        out.write(b" ")?;
+        out.write(alias.target.as_bytes())?;
         out.write(b"\n")?;
         Ok(())
     }

@@ -4,7 +4,7 @@ int my_add(int a, int b) {
     return a + b;
 }
 
-#define my_add add
+#define add my_add
 
 int main(void) {
     int s = add(3, 5);
