@@ -948,20 +948,24 @@ impl<'a> Parser<'a> {
 // Statements
 impl<'a> Parser<'a> {
     // End of statement
-    pub fn expect_eos(&mut self) -> ParseResult<()> {
+    pub fn expect_eos(&mut self) -> ParseResult<usize> {
         let mut has_sep = false;
+        let mut newline_count = 0;
         while self.is_kind(TokenKind::Semi)
             || self.is_kind(TokenKind::Newline)
             || self.is_kind(TokenKind::Comma)
         {
             has_sep = true;
+            if self.is_kind(TokenKind::Newline) {
+                newline_count += 1;
+            }
             self.next();
         }
         if self.is_kind(TokenKind::EOF) || self.is_kind(TokenKind::RBrace) {
-            return Ok(());
+            return Ok(newline_count);
         }
         if has_sep {
-            Ok(())
+            Ok(newline_count)
         } else {
             error_pos!(
                 "Expected end of statement, got {:?}, {}",
@@ -1234,6 +1238,9 @@ impl<'a> Parser<'a> {
         self.enter_scope();
         let mut stmts = Vec::new();
         let new_lines = self.skip_empty_lines();
+        if new_lines > 1 {
+            stmts.push(Stmt::EmptyLine(new_lines - 1));
+        }
         let has_new_line = new_lines > 0;
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             let stmt = self.parse_stmt()?;
@@ -1250,7 +1257,10 @@ impl<'a> Parser<'a> {
                 }
             }
             stmts.push(stmt);
-            self.expect_eos()?;
+            let newline_count = self.expect_eos()?;
+            if newline_count > 1 {
+                stmts.push(Stmt::EmptyLine(newline_count - 1));
+            }
         }
         stmts = self.convert_last_block(stmts)?;
         self.exit_scope();

@@ -4,9 +4,9 @@ int main(void) {
     int x = 2;
 
     if (x > 1) {
-        printf("Great!");
+        printf("%s\n", "Great!");
     } else {
-        printf("Small!");
+        printf("%s\n", "Small!");
     }
 
     return 0;

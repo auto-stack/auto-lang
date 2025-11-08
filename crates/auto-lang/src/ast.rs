@@ -88,6 +88,7 @@ pub enum Stmt {
     OnEvents(OnEvents),
     Comment(AutoStr),
     Alias(Alias),
+    EmptyLine(usize),
 }
 
 impl Stmt {
@@ -134,6 +135,7 @@ impl fmt::Display for Stmt {
             Stmt::OnEvents(on_events) => write!(f, "{}", on_events),
             Stmt::Comment(cmt) => write!(f, "{}", cmt),
             Stmt::Alias(alias) => write!(f, "{}", alias),
+            Stmt::EmptyLine(n) => write!(f, "(nl*{})", n),
         }
     }
 }

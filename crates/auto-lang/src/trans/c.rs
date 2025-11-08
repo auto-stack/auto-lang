@@ -86,8 +86,17 @@ impl CTrans {
             Stmt::Use(use_stmt) => self.use_stmt(use_stmt, out),
             Stmt::EnumDecl(enum_decl) => self.enum_decl(enum_decl, out),
             Stmt::Alias(alias) => self.alias(alias, out),
+            Stmt::EmptyLine(n) => self.empty_line(n, out),
             _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into()),
         }
+    }
+
+    fn empty_line(&mut self, n: &usize, out: &mut impl Write) -> AutoResult<()> {
+        // empty_line itself is a stmt, and we have a \n for one stme already
+        for _ in 0..*n - 1 {
+            out.write(b"---------\n")?;
+        }
+        Ok(())
     }
 
     fn alias(&mut self, alias: &Alias, out: &mut impl Write) -> AutoResult<()> {
@@ -362,30 +371,33 @@ impl CTrans {
 
     fn body(&mut self, body: &Body, sink: &mut Sink, has_return: bool) -> AutoResult<()> {
         self.scope.borrow_mut().enter_scope();
-        sink.body.write(b"{\n").to()?;
+        sink.body.write(b"{\n")?;
         self.indent();
         for (i, stmt) in body.stmts.iter().enumerate() {
-            self.print_indent(&mut sink.body)?;
+            if !matches!(stmt, Stmt::EmptyLine(_)) {
+                self.print_indent(&mut sink.body)?;
+            }
             if i < body.stmts.len() - 1 {
                 self.stmt(stmt, sink)?;
-                sink.body.write(b"\n").to()?;
+                sink.body.write(b"\n")?;
             } else {
                 // last stmt
                 if has_return {
                     if self.is_returnable(stmt) {
-                        sink.body.write(b"return ").to()?;
+                        sink.body.write(b"return ")?;
                     }
                 }
                 self.stmt(stmt, sink)?;
-                sink.body.write(b"\n").to()?;
+                sink.body.write(b"\n")?;
                 if has_return && !self.is_returnable(stmt) {
                     self.print_indent(&mut sink.body)?;
-                    sink.body.write(b"return 0;\n").to()?;
+                    sink.body.write(b"return 0;\n")?;
                 }
             }
         }
         self.dedent();
-        sink.body.write(b"}").to()?;
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"}")?;
         self.scope.borrow_mut().exit_scope();
         Ok(())
     }
@@ -465,7 +477,7 @@ impl CTrans {
             sink.body.write(b") ").to()?;
             self.body(&branch.body, sink, false)?;
             if i < if_.branches.len() - 1 {
-                sink.body.write(b" else ").to()?;
+                sink.body.write(b" else ")?;
             }
         }
         if let Some(body) = &if_.else_ {
