@@ -1010,4 +1010,9 @@ int add(int x, int y);
     fn test_010_if() {
         test_a2c("010_if").unwrap();
     }
+
+    #[test]
+    fn test_011_for() {
+        test_a2c("011_for").unwrap();
+    }
 }
