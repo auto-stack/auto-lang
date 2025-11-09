@@ -1,5 +1,6 @@
 fn main() {
     let x = 10
+
     is x {
         0 => print("X is ZERO")
         1 => print("X is ONE")

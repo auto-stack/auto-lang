@@ -46,6 +46,14 @@ impl CTrans {
         }
         Ok(())
     }
+
+    fn print_with_indent(&mut self, out: &mut impl Write, text: &str) -> AutoResult<()> {
+        for _ in 0..self.indent {
+            out.write(b"    ").to()?;
+        }
+        out.write(text.as_bytes())?;
+        Ok(())
+    }
 }
 
 impl CTrans {
@@ -83,6 +91,7 @@ impl CTrans {
             Stmt::Fn(fn_decl) => self.fn_decl(fn_decl, sink),
             Stmt::For(for_stmt) => self.for_stmt(for_stmt, sink),
             Stmt::If(if_) => self.if_stmt(if_, sink),
+            Stmt::Is(is_stmt) => self.is_stmt(is_stmt, sink),
             Stmt::Use(use_stmt) => self.use_stmt(use_stmt, out),
             Stmt::EnumDecl(enum_decl) => self.enum_decl(enum_decl, out),
             Stmt::Alias(alias) => self.alias(alias, out),
@@ -448,6 +457,51 @@ impl CTrans {
             }
         }
         self.expr(&store.expr, out)?;
+        Ok(())
+    }
+
+    fn is_stmt(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
+        sink.body.write(b"switch (")?;
+        self.expr(&is_stmt.target, &mut sink.body)?;
+        sink.body.write(b") {\n")?;
+        for case in &is_stmt.branches {
+            self.print_indent(&mut sink.body)?;
+            match case {
+                IsBranch::EqBranch(expr, body) => {
+                    sink.body.write(b"case ")?;
+                    self.expr(expr, &mut sink.body)?;
+                    sink.body.write(b":\n")?;
+                    self.indent();
+                    self.print_indent(&mut sink.body)?;
+                    self.body(body, sink, false)?;
+                    sink.body.write(b"\n")?;
+                    self.print_with_indent(&mut sink.body, "break;\n")?;
+                    self.dedent();
+                }
+                IsBranch::IfBranch(expr, body) => {
+                    sink.body.write(b"case ")?;
+                    self.expr(expr, &mut sink.body)?;
+                    sink.body.write(b": \n")?;
+                    self.indent();
+                    self.print_indent(&mut sink.body)?;
+                    self.body(body, sink, false)?;
+                    sink.body.write(b"\n")?;
+                    self.print_with_indent(&mut sink.body, "break;\n")?;
+                    self.dedent();
+                }
+                IsBranch::ElseBranch(body) => {
+                    sink.body.write(b"default:\n")?;
+                    self.indent();
+                    self.print_indent(&mut sink.body)?;
+                    self.body(body, sink, false)?;
+                    sink.body.write(b"\n")?;
+                    self.print_with_indent(&mut sink.body, "break;\n")?;
+                    self.dedent();
+                }
+            }
+        }
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"}")?;
         Ok(())
     }
 
