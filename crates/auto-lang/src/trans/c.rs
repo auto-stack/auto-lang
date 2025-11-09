@@ -337,12 +337,27 @@ impl CTrans {
         self.header.write(b";\n").to()?;
 
         // source
-        self.fn_sig(&fn_decl, out)?;
-        out.write(b" ").to()?;
+        if matches!(fn_decl.kind, FnKind::CFunction) {
+            // add "extern"
+            out.write(b"extern ")?;
+        }
 
-        self.scope.borrow_mut().enter_fn(fn_decl.name.clone());
-        self.body(&fn_decl.body, sink, true)?;
-        self.scope.borrow_mut().exit_fn();
+        // function signature
+        self.fn_sig(&fn_decl, out)?;
+
+        // function body
+        match fn_decl.kind {
+            // C Functin Decl has no body
+            FnKind::CFunction => {
+                sink.body.write(b";")?;
+            }
+            _ => {
+                out.write(b" ").to()?;
+                self.scope.borrow_mut().enter_fn(fn_decl.name.clone());
+                self.body(&fn_decl.body, sink, true)?;
+                self.scope.borrow_mut().exit_fn();
+            }
+        }
 
         sink.body.write(b"\n")?;
         Ok(())
@@ -369,7 +384,7 @@ impl CTrans {
         let params = fn_decl
             .params
             .iter()
-            .map(|p| format!("int {}", p.name))
+            .map(|p| format!("{} {}", p.ty, p.name))
             .collect::<Vec<_>>()
             .join(", ");
         out.write(params.as_bytes()).to()?;

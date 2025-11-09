@@ -823,8 +823,6 @@ impl<'a> Parser<'a> {
             TokenKind::CStr => Expr::CStr(self.cur.text.clone()),
             TokenKind::Char => Expr::Char(self.cur.text.chars().nth(0).unwrap()),
             TokenKind::Ident => self.ident()?,
-            TokenKind::Model => Expr::Ident("model".into()),
-            TokenKind::View => Expr::Ident("view".into()),
             TokenKind::Nil => Expr::Nil,
             _ => {
                 return error_pos!(
@@ -926,11 +924,19 @@ impl<'a> Parser<'a> {
         let id = self.scope.borrow_mut().gen_lambda_id();
         let lambda = if self.is_kind(TokenKind::LBrace) {
             let body = self.body()?;
-            Fn::new(id.clone(), None, params, body, Type::Unknown)
+            Fn::new(
+                FnKind::Lambda,
+                id.clone(),
+                None,
+                params,
+                body,
+                Type::Unknown,
+            )
         } else {
             // single expression
             let expr = self.parse_expr()?;
             Fn::new(
+                FnKind::Lambda,
                 id.clone(),
                 None,
                 params,
@@ -1523,16 +1529,59 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn fn_cdecl_stmt(&mut self) -> ParseResult<Stmt> {
+        self.next(); // skip keyword `c`
+
+        // parse function name
+        let name = self.cur.text.clone();
+        self.expect(TokenKind::Ident)?;
+
+        // enter function scope
+        self.scope.borrow_mut().enter_fn(name.clone());
+
+        // parse function parameters
+        self.expect(TokenKind::LParen)?;
+        let params = self.fn_params()?;
+        self.expect(TokenKind::RParen)?;
+
+        // parse return type
+        let mut ret_type = Type::Unknown;
+        // TODO: determine return type with last stmt if it's not specified
+        if self.is_kind(TokenKind::Ident) {
+            ret_type = self.parse_type()?;
+        }
+
+        // exit function scope
+        self.exit_scope();
+
+        // no body for c fn decl
+        let body = Body::new();
+        let fn_expr = Fn::new(
+            FnKind::CFunction,
+            name.clone(),
+            None,
+            params,
+            body,
+            ret_type,
+        );
+        let fn_stmt = Stmt::Fn(fn_expr.clone());
+
+        // define function in scope
+        self.define(name.as_str(), Meta::Fn(fn_expr));
+        Ok(fn_stmt)
+    }
+
     // Function Declaration
     pub fn fn_decl_stmt(&mut self, parent_name: &str) -> ParseResult<Stmt> {
         self.next(); // skip keyword `fn`
-                     // parse function name
+
+        // parse function name
         let name = self.cur.text.clone();
-        if self.is_kind(TokenKind::View) {
-            self.next(); // skip view
-        } else {
-            self.expect(TokenKind::Ident)?;
+        // special case for `fn c` cdecl statement
+        if name == "c" {
+            return self.fn_cdecl_stmt();
         }
+        self.expect(TokenKind::Ident)?;
 
         // enter function scope
         self.scope.borrow_mut().enter_fn(name.clone());
@@ -1561,7 +1610,14 @@ impl<'a> Parser<'a> {
         } else {
             Some(parent_name.into())
         };
-        let fn_expr = Fn::new(name.clone(), parent, params, body, ret_type);
+        let fn_expr = Fn::new(
+            FnKind::Function,
+            name.clone(),
+            parent,
+            params,
+            body,
+            ret_type,
+        );
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         let unique_name = if parent_name.is_empty() {
             name

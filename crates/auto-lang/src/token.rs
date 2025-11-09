@@ -97,12 +97,6 @@ pub enum TokenKind {
     // Keywords For AutoData
     Grid,
 
-    // Keywords For AutoUI
-    Widget,
-    Model,
-    View,
-    Style,
-
     // EOF
     EOF,
 }
@@ -156,10 +150,6 @@ impl fmt::Display for Token {
             TokenKind::In => write!(f, "<in>"),
             TokenKind::Fn => write!(f, "<fn>"),
             TokenKind::Type => write!(f, "<type>"),
-            TokenKind::Widget => write!(f, "<widget>"),
-            TokenKind::Model => write!(f, "<model>"),
-            TokenKind::View => write!(f, "<view>"),
-            TokenKind::Style => write!(f, "<style>"),
             TokenKind::Alias => write!(f, "<alias>"),
             TokenKind::FStrNote => write!(f, "<{}>", self.text),
             TokenKind::FStrStart => write!(f, "<fstrs>"),

@@ -3,8 +3,17 @@ use serde::Serialize;
 use std::fmt;
 
 #[derive(Debug, Clone)]
+pub enum FnKind {
+    Function,
+    Lambda,
+    Method,
+    CFunction, // C function declaration
+}
+
+#[derive(Debug, Clone)]
 pub struct Fn {
     // TODO: add FnKind to differ Fn/Lambda/Method?
+    pub kind: FnKind,
     pub name: Name,
     pub parent: Option<Name>, // for method
     pub params: Vec<Param>,
@@ -49,8 +58,16 @@ impl fmt::Display for Fn {
 }
 
 impl Fn {
-    pub fn new(name: Name, parent: Option<Name>, params: Vec<Param>, body: Body, ret: Type) -> Fn {
+    pub fn new(
+        kind: FnKind,
+        name: Name,
+        parent: Option<Name>,
+        params: Vec<Param>,
+        body: Body,
+        ret: Type,
+    ) -> Fn {
         Fn {
+            kind,
             name,
             parent,
             params,
