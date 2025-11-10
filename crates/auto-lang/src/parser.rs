@@ -992,7 +992,7 @@ impl<'a> Parser<'a> {
             TokenKind::Use => self.use_stmt()?,
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
-            TokenKind::Is => Stmt::Is(self.parse_is()?),
+            TokenKind::Is => self.is_stmt()?,
             TokenKind::Var => self.parse_store_stmt()?,
             TokenKind::Let => self.parse_store_stmt()?,
             TokenKind::Mut => self.parse_store_stmt()?,
@@ -1366,6 +1366,10 @@ impl<'a> Parser<'a> {
             }));
         }
         error_pos!("Expected for loop, got {:?}", self.kind())
+    }
+
+    pub fn is_stmt(&mut self) -> ParseResult<Stmt> {
+        Ok(Stmt::Is(self.parse_is()?))
     }
 
     pub fn parse_is(&mut self) -> ParseResult<Is> {
@@ -1819,20 +1823,25 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Tag)?;
         let name = self.parse_name()?;
         self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
         let mut fields = Vec::new();
         while !self.is_kind(TokenKind::RBrace) {
             let member = self.tag_field()?;
             fields.push(member);
-            if self.is_kind(TokenKind::Comma) {
-                self.next();
-            }
+            self.expect_eos()?;
         }
         self.expect(TokenKind::RBrace)?;
+        self.define(
+            name.as_str(),
+            Meta::Type(Type::Tag(Tag {
+                name: name.clone(),
+                fields: fields.clone(),
+            })),
+        );
         Ok(Stmt::Tag(Tag { name, fields }))
     }
 
     pub fn tag_field(&mut self) -> ParseResult<TagField> {
-        self.expect(TokenKind::Tag)?;
         let name = self.parse_name()?;
         let ty = self.parse_type()?;
         Ok(TagField { name, ty })
@@ -1982,6 +1991,8 @@ impl<'a> Parser<'a> {
             Expr::Call(call) => {
                 if let Expr::Ident(name) = call.name.as_ref() {
                     if !self.exists(&name) {
+                        // Check if it's a destructuring
+                        //
                         return error_pos!("Function {} not define!", name);
                     }
                     // if !self.exists(&name) {
@@ -2067,6 +2078,7 @@ impl<'a> Parser<'a> {
                     }
                     node.args = args;
                     // check node type
+                    println!("Looking up type for node: {}", &node.name);
                     let typ = self.lookup_type(&node.name);
                     println!("Got node type: {:?}", typ);
                     node.typ = typ.clone();

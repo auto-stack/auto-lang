@@ -1,15 +1,15 @@
 tag Atom {
     Int int
     Char char
-    Bool bool
+    Float float
 }
 
 fn main() {
     let atom = Atom { Int: 11 }
 
     is atom {
-        Int(i) => print("Got Int:", i)
-        Char(c) => print("Got Char:", c)
-        Bool(b) => print("Got Bool:", b)
+        Atom.Int(i) => print("Got Int:", i)
+        Atom.Char(c) => print("Got Char:", c)
+        Atom.Float(f) => print("Got Float:", f)
     }
 }

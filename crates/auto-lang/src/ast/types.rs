@@ -1,6 +1,6 @@
 use crate::ast::EnumDecl;
 
-use super::{Expr, Fn, Name, Union};
+use super::{Expr, Fn, Name, Tag, Union};
 use auto_val::{AutoStr, Shared};
 use std::fmt;
 
@@ -18,6 +18,7 @@ pub enum Type {
     Ptr(PtrType),
     User(TypeDecl),
     Union(Union),
+    Tag(Tag),
     Enum(Shared<EnumDecl>),
     Void,
     Unknown,
@@ -81,8 +82,9 @@ impl fmt::Display for Type {
             Type::Array(array_type) => write!(f, "{}", array_type),
             Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
             Type::User(type_decl) => write!(f, "{}", type_decl),
-            Type::Union(u) => write!(f, "{}", u),
             Type::Enum(enum_decl) => write!(f, "{}", enum_decl.borrow()),
+            Type::Union(u) => write!(f, "{}", u),
+            Type::Tag(t) => write!(f, "{}", t),
             Type::Void => write!(f, "void"),
             Type::Unknown => write!(f, "unknown"),
         }
@@ -103,8 +105,9 @@ impl From<Type> for auto_val::Type {
             Type::Array(_) => auto_val::Type::Array,
             Type::Ptr(_) => auto_val::Type::Ptr,
             Type::User(decl) => auto_val::Type::User(decl.name),
-            Type::Union(u) => auto_val::Type::Union(u.name),
             Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
+            Type::Union(u) => auto_val::Type::Union(u.name),
+            Type::Tag(t) => auto_val::Type::Tag(t.name),
             Type::Void => auto_val::Type::Void,
             Type::Unknown => auto_val::Type::Void, // TODO: is this correct?
         }

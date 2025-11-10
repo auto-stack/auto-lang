@@ -7,6 +7,7 @@ use crate::universe::Universe;
 use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
+use auto_val::StrExt;
 use auto_val::{shared, Shared};
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -97,8 +98,75 @@ impl CTrans {
             Stmt::Alias(alias) => self.alias(alias, out),
             Stmt::EmptyLine(n) => self.empty_line(n, out),
             Stmt::Union(union) => self.union(union, sink),
+            Stmt::Tag(tag) => self.tag(tag, sink),
             _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into()),
         }
+    }
+
+    fn tag(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
+        self.tag_enum(tag, sink)?;
+        sink.body.write(b"\n")?;
+        self.tag_struct(tag, sink)?;
+        Ok(())
+    }
+
+    fn tag_enum(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
+        sink.body.write(b"enum ")?;
+        sink.body.write(format!("{}Kind", tag.name).as_bytes())?;
+        sink.body.write(b" {\n")?;
+        self.indent();
+        for field in &tag.fields {
+            self.print_indent(&mut sink.body)?;
+            self.tag_field(tag, field, sink)?;
+        }
+        self.dedent();
+        sink.body.write(b"};\n")?;
+        Ok(())
+    }
+
+    fn tag_field(&mut self, tag: &Tag, field: &TagField, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        out.write(format!("{}_{}", tag.name.to_uppercase(), field.name.to_uppercase()).as_bytes())?;
+        out.write(b",\n")?;
+        Ok(())
+    }
+
+    fn tag_struct(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
+        sink.body.write(b"struct ")?;
+        sink.body.write(tag.name.as_bytes())?;
+        sink.body.write(b" {\n")?;
+        self.indent();
+        // enam tag
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"enum ")?;
+        // Type is tagName + Kind
+        sink.body.write(format!("{}Kind", tag.name).as_bytes())?;
+        sink.body.write(b" tag;\n")?;
+
+        // union data
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"union {\n")?;
+        self.indent();
+
+        for field in &tag.fields {
+            self.print_indent(&mut sink.body)?;
+            self.tag_struct_field(field, sink)?;
+        }
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"} as;\n")?;
+        self.dedent();
+        sink.body.write(b"};\n")?;
+        Ok(())
+    }
+
+    fn tag_struct_field(&mut self, field: &TagField, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        out.write(field.ty.unique_name().as_bytes())?;
+        out.write(b" ")?;
+        out.write(field.name.as_bytes())?;
+        out.write(b";\n")?;
+        Ok(())
     }
 
     fn union(&mut self, union: &Union, sink: &mut Sink) -> AutoResult<()> {
@@ -472,6 +540,9 @@ impl CTrans {
             }
             Type::Union(u) => {
                 format!("union {}", u.name)
+            }
+            Type::Tag(t) => {
+                format!("struct {}", t.name)
             }
             Type::Unknown => "unknown".to_string(),
             _ => {
@@ -1120,5 +1191,10 @@ int add(int x, int y);
     #[test]
     fn test_013_union() {
         test_a2c("013_union").unwrap();
+    }
+
+    #[test]
+    fn test_014_tag() {
+        test_a2c("014_tag").unwrap();
     }
 }
