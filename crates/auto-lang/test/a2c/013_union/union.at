@@ -1,0 +1,10 @@
+union MyUnion {
+    i int
+    f float
+    c char
+}
+
+fn main() {
+    let my_union = MyUnion { i: 42 }
+    print("int value:", my_union.i);
+}

@@ -188,6 +188,8 @@ impl Evaler {
             Stmt::Comment(_) => Value::Nil,
             Stmt::Alias(_) => Value::Void,
             Stmt::EmptyLine(_) => Value::Void,
+            Stmt::Union(_) => Value::Void,
+            Stmt::Tag(_) => Value::Void,
         }
     }
 

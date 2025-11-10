@@ -26,15 +26,19 @@ mod on;
 pub use on::*;
 mod store;
 pub use store::*;
+mod tag;
+pub use tag::*;
 mod types;
 pub use types::*;
+mod union;
+pub use union::*;
 mod use_;
 pub use use_::*;
 
 mod parsers;
 
 use auto_val::{AutoStr, Op};
-use std::fmt;
+use std::fmt::{self, write};
 
 pub type Name = AutoStr;
 
@@ -83,6 +87,8 @@ pub enum Stmt {
     Fn(Fn),
     EnumDecl(EnumDecl),
     TypeDecl(TypeDecl),
+    Union(Union),
+    Tag(Tag),
     Node(Node),
     Use(Use),
     OnEvents(OnEvents),
@@ -136,6 +142,8 @@ impl fmt::Display for Stmt {
             Stmt::Comment(cmt) => write!(f, "{}", cmt),
             Stmt::Alias(alias) => write!(f, "{}", alias),
             Stmt::EmptyLine(n) => write!(f, "(nl*{})", n),
+            Stmt::Union(u) => write!(f, "{}", u),
+            Stmt::Tag(tag) => write!(f, "{}", tag),
         }
     }
 }

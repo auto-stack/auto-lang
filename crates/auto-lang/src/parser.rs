@@ -738,6 +738,12 @@ impl<'a> Parser<'a> {
         Ok(Expr::Ident(name))
     }
 
+    pub fn parse_name(&mut self) -> ParseResult<Name> {
+        let name = self.cur.text.clone();
+        self.next();
+        Ok(name)
+    }
+
     pub fn parse_ints(&mut self) -> ParseResult<Expr> {
         let res = match self.cur.kind {
             TokenKind::Int => self.parse_int(),
@@ -992,6 +998,8 @@ impl<'a> Parser<'a> {
             TokenKind::Mut => self.parse_store_stmt()?,
             TokenKind::Fn => self.fn_decl_stmt("")?,
             TokenKind::Type => self.type_decl_stmt()?,
+            TokenKind::Union => self.union_stmt()?,
+            TokenKind::Tag => self.tag_stmt()?,
             TokenKind::LBrace => Stmt::Block(self.body()?),
             // Node Instance?
             TokenKind::Ident => self.parse_node_or_call_stmt()?,
@@ -1778,6 +1786,51 @@ impl<'a> Parser<'a> {
         };
         self.define(name.as_str(), Meta::Store(store));
         Ok(Member::new(name, ty, value))
+    }
+
+    pub fn union_stmt(&mut self) -> ParseResult<Stmt> {
+        self.expect(TokenKind::Union)?;
+        let name = self.parse_name()?;
+        self.expect(TokenKind::LBrace)?;
+        let mut fields = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            let f = self.union_field()?;
+            fields.push(f);
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(Stmt::Union(Union { name, fields }))
+    }
+
+    pub fn union_field(&mut self) -> ParseResult<UnionField> {
+        let name = self.parse_name()?;
+        let ty = self.parse_type()?;
+        Ok(UnionField { name, ty })
+    }
+
+    pub fn tag_stmt(&mut self) -> ParseResult<Stmt> {
+        self.expect(TokenKind::Tag)?;
+        let name = self.parse_name()?;
+        self.expect(TokenKind::LBrace)?;
+        let mut fields = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            let member = self.tag_field()?;
+            fields.push(member);
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(Stmt::Tag(Tag { name, fields }))
+    }
+
+    pub fn tag_field(&mut self) -> ParseResult<TagField> {
+        self.expect(TokenKind::Tag)?;
+        let name = self.parse_name()?;
+        let ty = self.parse_type()?;
+        Ok(TagField { name, ty })
     }
 
     fn get_int_expr(&mut self, num: &Expr) -> i64 {
