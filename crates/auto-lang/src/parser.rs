@@ -980,7 +980,7 @@ impl<'a> Parser<'a> {
             Ok(newline_count)
         } else {
             error_pos!(
-                "Expected end of statement, got {:?}, {}",
+                "Expected end of statement, got {:?}<{}>",
                 self.kind(),
                 self.cur.text
             )
@@ -1766,8 +1766,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn type_member(&mut self) -> ParseResult<Member> {
-        let name = self.cur.text.clone();
-        self.expect(TokenKind::Ident)?;
+        let name = self.parse_name()?;
         let ty = self.parse_type()?;
         let mut value = None;
         if self.is_kind(TokenKind::Asn) {
@@ -1792,15 +1791,21 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Union)?;
         let name = self.parse_name()?;
         self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
         let mut fields = Vec::new();
         while !self.is_kind(TokenKind::RBrace) {
             let f = self.union_field()?;
             fields.push(f);
-            if self.is_kind(TokenKind::Comma) {
-                self.next();
-            }
+            self.expect_eos()?;
         }
         self.expect(TokenKind::RBrace)?;
+
+        let union = Union {
+            name: name.clone(),
+            fields: fields.clone(),
+        };
+
+        self.define(name.as_str(), Meta::Type(Type::Union(union)));
         Ok(Stmt::Union(Union { name, fields }))
     }
 
@@ -1925,8 +1930,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_ident_type(&mut self) -> ParseResult<Type> {
-        let ident = self.ident()?;
-        self.next();
+        let ident = self.parse_ident()?;
         match ident {
             Expr::Ident(name) => Ok(self.lookup_type(&name).borrow().clone()),
             _ => error_pos!("Expected type, got ident {:?}", ident),
@@ -2064,6 +2068,7 @@ impl<'a> Parser<'a> {
                     node.args = args;
                     // check node type
                     let typ = self.lookup_type(&node.name);
+                    println!("Got node type: {:?}", typ);
                     node.typ = typ.clone();
                     return Ok(Stmt::Node(node));
                 }

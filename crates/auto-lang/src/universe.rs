@@ -101,6 +101,7 @@ impl Universe {
         self.define("str", Rc::new(Meta::Type(ast::Type::Str)));
         self.define("cstr", Rc::new(Meta::Type(ast::Type::CStr)));
         self.define("byte", Rc::new(Meta::Type(ast::Type::Byte)));
+        self.define("char", Rc::new(Meta::Type(ast::Type::Char)));
     }
 
     fn enter_named_scope(&mut self, name: impl Into<AutoStr>, kind: ScopeKind) {

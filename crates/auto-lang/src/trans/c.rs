@@ -96,8 +96,32 @@ impl CTrans {
             Stmt::EnumDecl(enum_decl) => self.enum_decl(enum_decl, out),
             Stmt::Alias(alias) => self.alias(alias, out),
             Stmt::EmptyLine(n) => self.empty_line(n, out),
+            Stmt::Union(union) => self.union(union, sink),
             _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into()),
         }
+    }
+
+    fn union(&mut self, union: &Union, sink: &mut Sink) -> AutoResult<()> {
+        sink.body.write(b"union ")?;
+        sink.body.write(union.name.as_bytes())?;
+        sink.body.write(b" {\n")?;
+        self.indent();
+        for field in &union.fields {
+            self.print_indent(&mut sink.body)?;
+            self.union_field(field, sink)?;
+        }
+        self.dedent();
+        sink.body.write(b"};\n")?;
+        Ok(())
+    }
+
+    fn union_field(&mut self, field: &UnionField, sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut sink.body;
+        out.write(field.ty.unique_name().as_bytes())?;
+        out.write(b" ")?;
+        out.write(field.name.as_bytes())?;
+        out.write(b";\n")?;
+        Ok(())
     }
 
     fn empty_line(&mut self, n: &usize, out: &mut impl Write) -> AutoResult<()> {
@@ -445,6 +469,9 @@ impl CTrans {
             }
             Type::Enum(en) => {
                 format!("enum {}", en.borrow().name)
+            }
+            Type::Union(u) => {
+                format!("union {}", u.name)
             }
             Type::Unknown => "unknown".to_string(),
             _ => {
@@ -1088,5 +1115,10 @@ int add(int x, int y);
     #[test]
     fn test_012_is() {
         test_a2c("012_is").unwrap();
+    }
+
+    #[test]
+    fn test_013_union() {
+        test_a2c("013_union").unwrap();
     }
 }

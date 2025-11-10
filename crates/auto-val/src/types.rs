@@ -20,6 +20,7 @@ pub enum Type {
     Ptr,
     User(AutoStr),
     Enum(AutoStr),
+    Union(AutoStr),
 }
 
 impl Type {
@@ -105,6 +106,7 @@ impl TypeInfoStore {
             Type::Array => self.types.get("array").unwrap(),
             Type::Ptr => self.types.get("ptr").unwrap(),
             Type::User(name) => self.types.get(name.as_str()).unwrap(),
+            Type::Union(name) => self.types.get(name.as_str()).unwrap(),
             Type::Enum(name) => self.types.get(name.as_str()).unwrap(),
         }
     }
@@ -195,6 +197,7 @@ impl fmt::Display for Type {
             Type::Array => write!(f, "array"),
             Type::Ptr => write!(f, "ptr"),
             Type::User(name) => write!(f, "{}", name),
+            Type::Union(name) => write!(f, "{}", name),
             Type::Enum(name) => write!(f, "enum {}", name),
         }
     }

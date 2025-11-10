@@ -1472,6 +1472,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Array(_) => auto_val::Type::Array,
         ast::Type::Ptr(_) => auto_val::Type::Ptr,
         ast::Type::User(type_decl) => auto_val::Type::User(type_decl.name.clone()),
+        ast::Type::Union(u) => auto_val::Type::Union(u.name.clone()),
         ast::Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
         ast::Type::Void => auto_val::Type::Void,
         ast::Type::Unknown => auto_val::Type::Any,

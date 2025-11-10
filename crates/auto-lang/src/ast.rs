@@ -38,7 +38,7 @@ pub use use_::*;
 mod parsers;
 
 use auto_val::{AutoStr, Op};
-use std::fmt::{self, write};
+use std::fmt;
 
 pub type Name = AutoStr;
 
@@ -111,6 +111,8 @@ impl Stmt {
             | Stmt::TypeDecl(_)
             | Stmt::EnumDecl(_)
             | Stmt::Store(_)
+            | Stmt::Union(_)
+            | Stmt::Tag(_)
             | Stmt::Alias(_) => true,
             _ => false,
         }
