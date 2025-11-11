@@ -5,7 +5,7 @@ tag Atom {
 }
 
 fn main() {
-    let atom = Atom { Int: 11 }
+    let atom = Atom.Int(11)
 
     is atom {
         Atom.Int(i) => print("Got Int:", i)

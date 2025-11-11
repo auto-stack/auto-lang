@@ -1989,17 +1989,29 @@ impl<'a> Parser<'a> {
                 Ok(expr)
             }
             Expr::Call(call) => {
-                if let Expr::Ident(name) = call.name.as_ref() {
-                    if !self.exists(&name) {
-                        // Check if it's a destructuring
-                        //
-                        return error_pos!("Function {} not define!", name);
+                match call.name.as_ref() {
+                    Expr::Ident(name) => {
+                        if !self.exists(&name) {
+                            // Check if it's a destructuring
+                            //
+                            return error_pos!("Function {} not define!", name);
+                        }
                     }
-                    // if !self.exists(&name) {
-                    //     // 表示是一个节点实例
-                    //     let node = Node::from(call.clone());
-                    //     return Ok(Expr::Node(node));
-                    // }
+                    Expr::Bina(lhs, op, rhs) => {
+                        // check tag creation
+                        if let Op::Dot = op {
+                            if let Expr::Ident(lname) = lhs.as_ref() {
+                                let ltype = self.lookup_type(lname);
+                                match *ltype.borrow() {
+                                    Type::Tag(ref t) => {
+                                        println!("left: <{}> {:?}", lname, t);
+                                    }
+                                    _ => {}
+                                };
+                            }
+                        }
+                    }
+                    _ => {}
                 }
                 Ok(expr)
             }
@@ -2438,6 +2450,17 @@ mod tests {
         let ast = parse_once(code);
         let call = ast.stmts[1].clone();
         assert_eq!(call.to_string(), "(call (name add) (args (int 1) (int 2)))");
+    }
+
+    #[test]
+    fn test_tag_new() {
+        let code = "tag Atom {Int int, Char char}; Atom.Int(5)";
+        let ast = parse_once(code);
+        let call = ast.stmts[1].clone();
+        assert_eq!(
+            call.to_string(),
+            "(call (bina (name Atom) (op .) (name Int)) (args (int 5)))"
+        );
     }
 
     #[test]
