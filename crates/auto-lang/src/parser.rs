@@ -2177,6 +2177,27 @@ impl<'a> Parser<'a> {
         Ok(Type::Unknown)
     }
 
+    fn parse_node(&mut self, name: &AutoStr, id: Option<AutoStr>, args: Args) -> ParseResult<Node> {
+        let n = name.clone().into();
+        let mut node = Node::new(name.clone());
+        if let Some(id) = id {
+            // define a variable for this node instance with id
+            self.define(id.as_str(), Meta::Node(node.clone()));
+            node.id = id;
+        }
+        if self.special_blocks.contains_key(&n) {
+            node.body = self.special_block(&n)?;
+        } else {
+            node.body = self.parse_node_body()?;
+        }
+        node.args = args;
+        // check node type
+        let typ = self.lookup_type(&node.name);
+        node.typ = typ.clone();
+
+        Ok(node)
+    }
+
     // 节点实例和函数调用有类似语法：
     // 函数调用：
     // 1. hello(x, y)， 这个是函数调用
@@ -2234,25 +2255,7 @@ impl<'a> Parser<'a> {
             }
             match ident {
                 Expr::Ident(name) => {
-                    let n = name.clone().into();
-                    let mut node = Node::new(name.clone());
-                    if let Some(id) = id {
-                        // define a variable for this node instance with id
-                        self.define(id.as_str(), Meta::Node(node.clone()));
-                        node.id = id;
-                    }
-                    if self.special_blocks.contains_key(&n) {
-                        node.body = self.special_block(&n)?;
-                    } else {
-                        node.body = self.parse_node_body()?;
-                    }
-                    node.args = args;
-                    // check node type
-                    println!("Looking up type for node: {}", &node.name);
-                    let typ = self.lookup_type(&node.name);
-                    println!("Got node type: {:?}", typ);
-                    node.typ = typ.clone();
-                    return Ok(Stmt::Node(node));
+                    return Ok(Stmt::Node(self.parse_node(&name, id, args)?));
                 }
                 _ => {
                     return error_pos!("Expected node name, got {:?}", ident);
