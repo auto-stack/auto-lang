@@ -1,5 +1,6 @@
 use super::scope::*;
 use crate::ast;
+use crate::ast::FnKind;
 use crate::libs;
 use auto_atom::Atom;
 use auto_val::{shared, Args, AutoStr, ExtFn, NodeItem, Obj, Sig, TypeInfoStore, Value};
@@ -48,6 +49,7 @@ impl Universe {
             args: Obj::new(),
         };
         uni.define_sys_types();
+        uni.define_builtin_funcs();
         uni
     }
 
@@ -91,6 +93,20 @@ impl Universe {
     pub fn gen_lambda_id(&mut self) -> AutoStr {
         self.lambda_counter += 1;
         format!("lambda_{}", self.lambda_counter).into()
+    }
+
+    pub fn define_builtin_funcs(&mut self) {
+        self.define(
+            "print",
+            Rc::new(Meta::Fn(ast::Fn::new(
+                FnKind::Function,
+                "print".into(),
+                None,
+                vec![],
+                ast::Body::new(),
+                ast::Type::Void,
+            ))),
+        );
     }
 
     pub fn define_sys_types(&mut self) {
@@ -242,6 +258,9 @@ impl Universe {
             Meta::Type(_) => {
                 self.current_scope_mut()
                     .define_type(name.clone(), meta.clone());
+                // also put the Type name as a symbol into the scope
+                // used for static method calls
+                self.current_scope_mut().put_symbol(name.as_str(), meta);
             }
             _ => {
                 self.current_scope_mut().put_symbol(name.as_str(), meta);

@@ -800,9 +800,19 @@ square(15)
 
     #[test]
     fn test_methods_in_template() {
+        use super::ast::{Expr, Store, StoreKind, Type};
         let code = r#"<div>${name.upper()}</div>"#;
         let mut scope = Universe::new();
         scope.set_global("name", Value::str("hello"));
+        scope.define(
+            "name",
+            Rc::new(Meta::Store(Store {
+                kind: StoreKind::Var,
+                name: "name".into(),
+                ty: Type::Str,
+                expr: Expr::Str("hello".into()),
+            })),
+        );
         let result = eval_template(code, scope).unwrap();
         assert_eq!(result.result.repr(), "<div>HELLO</div>");
     }

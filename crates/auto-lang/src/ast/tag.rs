@@ -1,4 +1,5 @@
 use super::{Name, Type};
+use auto_val::AutoStr;
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -16,6 +17,22 @@ pub struct TagField {
 impl Tag {
     pub fn new(name: Name, fields: Vec<TagField>) -> Self {
         Self { name, fields }
+    }
+
+    pub fn enum_name(&self, field_name: &str) -> AutoStr {
+        format!("{}_{}", self.name.to_uppercase(), field_name.to_uppercase()).into()
+    }
+
+    pub fn has_field(&self, name: &Name) -> bool {
+        self.fields.iter().any(|f| f.name == *name)
+    }
+
+    pub fn get_field_type(&self, name: &Name) -> Type {
+        self.fields
+            .iter()
+            .find(|f| f.name == *name)
+            .map(|f| f.ty.clone())
+            .unwrap_or(Type::Unknown)
     }
 }
 

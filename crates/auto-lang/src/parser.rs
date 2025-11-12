@@ -436,10 +436,7 @@ impl<'a> Parser<'a> {
                     // Call or Node Instance
                     Op::LParen => {
                         let args = self.args()?;
-                        lhs = Expr::Call(Call {
-                            name: Box::new(lhs),
-                            args,
-                        });
+                        lhs = self.call(lhs, args)?;
                         continue;
                     }
                     // Pair
@@ -912,10 +909,44 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn tag_cover(&mut self, tag_name: &Name) -> ParseResult<Expr> {
+        self.expect(TokenKind::Dot)?;
+        // tag field
+        let tag_field = self.parse_name()?;
+        self.expect(TokenKind::LParen)?;
+        let elem = self.parse_name()?;
+        self.expect(TokenKind::RParen)?;
+        // define elem
+        return Ok(Expr::Cover(Cover::Tag(TagCover {
+            kind: tag_name.clone(),
+            tag: tag_field,
+            elem,
+        })));
+    }
+
+    pub fn is_branch_cond_expr(&mut self) -> ParseResult<Expr> {
+        if self.is_kind(TokenKind::Ident) {
+            self.lhs_expr()
+        } else {
+            self.atom()
+        }
+    }
+
     pub fn lhs_expr(&mut self) -> ParseResult<Expr> {
-        let expr = self.ident()?;
-        self.next();
-        Ok(expr)
+        if !self.is_kind(TokenKind::Ident) {
+            return error_pos!("Expected LHS expr with ident, got {}", self.peek().kind);
+        }
+        let name = self.parse_name()?;
+
+        // if expr is A Tag, could be a Tag Creation Expr,
+        // format is: TagName.Tag(elem)
+        let typ = self.lookup_type(&name);
+        match *typ.borrow() {
+            Type::Tag(ref _t) => return self.tag_cover(&name),
+            _ => {
+                return Ok(Expr::Ident(name));
+            }
+        };
     }
 
     pub fn iterable_expr(&mut self) -> ParseResult<Expr> {
@@ -1382,7 +1413,7 @@ impl<'a> Parser<'a> {
         let mut branches = Vec::new();
 
         while !self.is_kind(TokenKind::RBrace) {
-            let branch = self.parse_is_branch()?;
+            let branch = self.parse_is_branch(&target)?;
             branches.push(branch);
         }
         self.expect(TokenKind::RBrace)?;
@@ -1401,7 +1432,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_is_branch(&mut self) -> ParseResult<IsBranch> {
+    pub fn parse_is_branch(&mut self, tgt: &Expr) -> ParseResult<IsBranch> {
         match self.cur.kind {
             TokenKind::If => {
                 self.next(); // skip is
@@ -1421,9 +1452,37 @@ impl<'a> Parser<'a> {
                 return Ok(branch);
             }
             _ => {
-                let expr = self.cond_expr()?;
+                let expr = self.is_branch_cond_expr()?;
                 self.expect(TokenKind::DoubleArrow)?;
-                let body = self.parse_expr_or_body()?;
+                let body = if let Expr::Cover(Cover::Tag(cover)) = &expr {
+                    self.enter_scope();
+                    let tag_typ = self.lookup_type(&cover.kind);
+                    let tag_field_type = match *tag_typ.borrow() {
+                        Type::Tag(ref t) => t.borrow().get_field_type(&cover.tag),
+                        _ => {
+                            return error_pos!("Invalid tag type: {}", cover.kind);
+                        }
+                    };
+
+                    self.define(
+                        cover.elem.as_str(),
+                        Meta::Store(Store {
+                            name: cover.elem.clone(),
+                            kind: StoreKind::Let,
+                            ty: tag_field_type,
+                            expr: Expr::Uncover(TagUncover {
+                                src: tgt.repr(),
+                                cover: cover.clone(),
+                            }),
+                        }),
+                    );
+                    let body = self.parse_expr_or_body()?;
+                    self.exit_scope();
+                    body
+                } else {
+                    let body = self.parse_expr_or_body()?;
+                    body
+                };
                 let branch = IsBranch::EqBranch(expr, body);
                 self.skip_empty_lines();
                 return Ok(branch);
@@ -1526,6 +1585,9 @@ impl<'a> Parser<'a> {
                         len: 0,
                     });
                 }
+            }
+            Expr::Call(call) => {
+                typ = call.ret.clone();
             }
             _ => {}
         }
@@ -1833,10 +1895,10 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::RBrace)?;
         self.define(
             name.as_str(),
-            Meta::Type(Type::Tag(Tag {
+            Meta::Type(Type::Tag(shared(Tag {
                 name: name.clone(),
                 fields: fields.clone(),
-            })),
+            }))),
         );
         Ok(Stmt::Tag(Tag { name, fields }))
     }
@@ -1997,15 +2059,13 @@ impl<'a> Parser<'a> {
                             return error_pos!("Function {} not define!", name);
                         }
                     }
-                    Expr::Bina(lhs, op, rhs) => {
+                    Expr::Bina(lhs, op, _rhs) => {
                         // check tag creation
                         if let Op::Dot = op {
                             if let Expr::Ident(lname) = lhs.as_ref() {
                                 let ltype = self.lookup_type(lname);
                                 match *ltype.borrow() {
-                                    Type::Tag(ref t) => {
-                                        println!("left: <{}> {:?}", lname, t);
-                                    }
+                                    Type::Tag(ref _t) => {}
                                     _ => {}
                                 };
                             }
@@ -2017,6 +2077,104 @@ impl<'a> Parser<'a> {
             }
             _ => Ok(expr),
         }
+    }
+
+    pub fn find_type_for_expr(&mut self, expr: &Expr) -> ParseResult<Type> {
+        match expr {
+            // function name, find it's decl
+            Expr::Ident(ident) => {
+                let meta = self.lookup_meta(ident);
+                let Some(meta) = meta else {
+                    return error_pos!("Function name not found! {}", ident);
+                };
+                match meta.as_ref() {
+                    Meta::Fn(fun) => {
+                        return Ok(fun.ret.clone());
+                    }
+                    _ => {}
+                }
+            }
+            // method or function in a struct
+            Expr::Bina(lhs, op, rhs) => {
+                if let Op::Dot = op {
+                    match &**lhs {
+                        Expr::Ident(lname) => {
+                            // lookup meta for left name
+                            let meta = self.lookup_meta(lname.as_str());
+                            let Some(meta) = meta else {
+                                return error_pos!("Left name not found! {}.{}", lname, rhs);
+                            };
+                            match meta.as_ref() {
+                                Meta::Type(typ) => match typ {
+                                    Type::Tag(tag) => {
+                                        if let Expr::Ident(rname) = &**rhs {
+                                            let rtype = tag.borrow().get_field_type(rname);
+                                            return Ok(rtype);
+                                        }
+                                    }
+                                    _ => {}
+                                },
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+        error_pos!("Meta not found! {}", expr)
+    }
+
+    pub fn return_type(&mut self, call_name: &Expr) -> ParseResult<Type> {
+        match call_name {
+            // function name, find it's decl
+            Expr::Ident(ident) => {
+                let meta = self.lookup_meta(ident);
+                let Some(meta) = meta else {
+                    return Ok(Type::Unknown);
+                };
+                match meta.as_ref() {
+                    Meta::Fn(fun) => {
+                        return Ok(fun.ret.clone());
+                    }
+                    _ => {}
+                }
+            }
+            // method or function in a struct
+            Expr::Bina(lhs, op, rhs) => {
+                if let Op::Dot = op {
+                    match &**lhs {
+                        Expr::Ident(lname) => {
+                            // lookup meta for left name
+                            let meta = self.lookup_meta(lname.as_str());
+                            let Some(meta) = meta else {
+                                return error_pos!("Left name not found! {}.{}", lname, rhs);
+                            };
+                            match meta.as_ref() {
+                                Meta::Type(typ) => match typ {
+                                    Type::Tag(tag) => {
+                                        if let Expr::Ident(rname) = &**rhs {
+                                            if tag.borrow().has_field(rname) {
+                                                return Ok(typ.clone());
+                                            }
+                                            let rtype = tag.borrow().get_field_type(rname);
+                                            return Ok(rtype);
+                                        }
+                                    }
+                                    _ => {}
+                                },
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+        // TODO: should check all types or print error
+        Ok(Type::Unknown)
     }
 
     // 节点实例和函数调用有类似语法：
@@ -2104,13 +2262,7 @@ impl<'a> Parser<'a> {
             // no brace, might be a call or simple expression
             if has_paren {
                 // call
-                let mut expr = Expr::Call(Call {
-                    name: Box::new(ident),
-                    args,
-                });
-                expr = self.check_symbol(expr)?;
-                // if let Expr::Node(node) = expr {
-                // return Ok(Stmt::Node(node));
+                let expr = self.call(ident, args)?;
                 // }
                 Ok(Stmt::Expr(expr))
             } else {
@@ -2127,6 +2279,16 @@ impl<'a> Parser<'a> {
                 Ok(Stmt::Expr(expr))
             }
         }
+    }
+
+    fn call(&mut self, ident: Expr, args: Args) -> ParseResult<Expr> {
+        let ret_type = self.return_type(&ident)?;
+        let expr = Expr::Call(Call {
+            name: Box::new(ident),
+            args,
+            ret: ret_type,
+        });
+        self.check_symbol(expr)
     }
 
     fn special_block(&mut self, name: &AutoStr) -> ParseResult<Body> {
@@ -2912,5 +3074,31 @@ exe hello {
             alias_stmt.to_string(),
             format!("{}", "(code (alias (name cc) (target my_add)))")
         )
+    }
+
+    #[test]
+    fn test_tag_cover() {
+        let code = r#"
+            tag Atom {
+                Int int
+                Float float
+            }
+
+            let atom = Atom.Int(12)
+
+            is atom {
+                Atom.Int(i) => i
+                Atom.Float(f) => f
+            }
+        "#;
+        let code = parse_once(code);
+        assert_eq!(
+            code.stmts[2].to_string(),
+            format!(
+                "{}{}",
+                "(is (name atom) (eq (tag-cover (kind Atom) (tag Int) (elem i)) (body (name i)))",
+                " (eq (tag-cover (kind Atom) (tag Float) (elem f)) (body (name f))))"
+            )
+        );
     }
 }

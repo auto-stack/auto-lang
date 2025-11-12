@@ -856,6 +856,7 @@ impl Evaler {
                 target_val
             }
             Expr::Ident(name) => self.eval_ident(name),
+            Expr::GenName(name) => Value::Str(name.into()),
             Expr::Unary(op, e) => self.eval_una(op, e),
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
             Expr::If(if_) => self.eval_if(if_),
@@ -869,8 +870,14 @@ impl Evaler {
             Expr::Lambda(lambda) => Value::Lambda(lambda.name.clone().into()),
             Expr::FStr(fstr) => self.fstr(fstr),
             Expr::Grid(grid) => self.grid(grid),
+            Expr::Cover(cover) => self.cover(cover),
+            Expr::Uncover(_) => Value::Void,
             Expr::Nil => Value::Nil,
         }
+    }
+
+    fn cover(&mut self, _cover: &Cover) -> Value {
+        Value::Void
     }
 
     fn eval_ident(&mut self, name: &AutoStr) -> Value {
@@ -1474,7 +1481,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::User(type_decl) => auto_val::Type::User(type_decl.name.clone()),
         ast::Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
         ast::Type::Union(u) => auto_val::Type::Union(u.name.clone()),
-        ast::Type::Tag(tag) => auto_val::Type::Tag(tag.name.clone()),
+        ast::Type::Tag(tag) => auto_val::Type::Tag(tag.borrow().name.clone()),
         ast::Type::Void => auto_val::Type::Void,
         ast::Type::Unknown => auto_val::Type::Any,
     }

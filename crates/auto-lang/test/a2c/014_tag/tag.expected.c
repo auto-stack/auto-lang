@@ -16,10 +16,7 @@ struct Atom {
 };
 
 int main(void) {
-    struct Atom atom = {
-        .tag = ATOM_INT,
-        .as.Int = 42
-    };
+    struct Atom atom = {.tag = ATOM_INT, .as.Int = 11};
 
     switch (atom.tag) {
     case ATOM_INT:
@@ -38,6 +35,5 @@ int main(void) {
         }
         break;
     }
-
     return 0;
 }

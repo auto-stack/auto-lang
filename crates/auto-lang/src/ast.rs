@@ -6,6 +6,8 @@ mod branch;
 pub use branch::*;
 mod call;
 pub use call::*;
+mod cover;
+pub use cover::*;
 mod enums;
 pub use enums::*;
 mod fun;
@@ -165,6 +167,7 @@ pub enum Expr {
     Str(AutoStr),
     CStr(AutoStr),
     Ident(Name),
+    GenName(Name), // names that is generated during parsing or gen that need not to be stored in SymbolTable
     // composite exprs
     Ref(Name),
     Unary(Op, Box<Expr>),
@@ -179,6 +182,8 @@ pub enum Expr {
     Lambda(Fn),
     FStr(FStr),
     Grid(Grid),
+    Cover(Cover),
+    Uncover(TagUncover),
     // stmt exprs
     If(If),
     Nil,
@@ -239,6 +244,9 @@ impl fmt::Display for Expr {
             Expr::Lambda(lambda) => write!(f, "{}", lambda),
             Expr::FStr(fstr) => write!(f, "{}", fstr),
             Expr::Grid(grid) => write!(f, "{}", grid),
+            Expr::Cover(cover) => write!(f, "{}", cover),
+            Expr::Uncover(uncover) => write!(f, "{}", uncover),
+            Expr::GenName(name) => write!(f, "(gen-name {})", name),
             Expr::Nil => write!(f, "(nil)"),
         }
     }

@@ -18,7 +18,7 @@ pub enum Type {
     Ptr(PtrType),
     User(TypeDecl),
     Union(Union),
-    Tag(Tag),
+    Tag(Shared<Tag>),
     Enum(Shared<EnumDecl>),
     Void,
     Unknown,
@@ -84,7 +84,7 @@ impl fmt::Display for Type {
             Type::User(type_decl) => write!(f, "{}", type_decl),
             Type::Enum(enum_decl) => write!(f, "{}", enum_decl.borrow()),
             Type::Union(u) => write!(f, "{}", u),
-            Type::Tag(t) => write!(f, "{}", t),
+            Type::Tag(t) => write!(f, "{}", t.borrow()),
             Type::Void => write!(f, "void"),
             Type::Unknown => write!(f, "unknown"),
         }
@@ -107,7 +107,7 @@ impl From<Type> for auto_val::Type {
             Type::User(decl) => auto_val::Type::User(decl.name),
             Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
             Type::Union(u) => auto_val::Type::Union(u.name),
-            Type::Tag(t) => auto_val::Type::Tag(t.name),
+            Type::Tag(t) => auto_val::Type::Tag(t.borrow().name.clone()),
             Type::Void => auto_val::Type::Void,
             Type::Unknown => auto_val::Type::Void, // TODO: is this correct?
         }

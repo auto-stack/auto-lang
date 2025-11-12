@@ -7,7 +7,6 @@ use crate::universe::Universe;
 use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
-use auto_val::StrExt;
 use auto_val::{shared, Shared};
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -364,7 +363,8 @@ impl CTrans {
                 self.expr(expr, out)?;
                 Ok(())
             }
-            Expr::Ident(name) => out.write_all(name.as_bytes()).to(),
+            Expr::Ident(name) => self.ident(name, out),
+            Expr::GenName(name) => out.write(name.as_bytes()).to(),
             Expr::Str(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::CStr(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::Call(call) => self.call(call, out),
@@ -374,8 +374,43 @@ impl CTrans {
             Expr::Index(arr, idx) => self.index(arr, idx, out),
             Expr::Node(nd) => self.node(nd, out),
             Expr::Pair(pair) => self.pair(pair, out),
+            Expr::Cover(cover) => self.cover(cover, out),
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
+    }
+
+    fn ident(&mut self, name: &AutoStr, out: &mut impl Write) -> AutoResult<()> {
+        // if ident is Uncover
+        let meta = self.lookup_meta(name);
+        let Some(meta) = meta else {
+            // TODO: check all names, include B in A.B
+            out.write(name.as_bytes())?;
+            return Ok(());
+        };
+        match meta.as_ref() {
+            Meta::Store(store) => match &store.expr {
+                Expr::Uncover(un) => {
+                    out.write(format!("{}.as.{}", un.src, un.cover.tag).as_bytes())?;
+                    return Ok(());
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+
+        out.write(name.as_bytes())?;
+        Ok(())
+    }
+
+    fn cover(&mut self, cover: &Cover, out: &mut impl Write) -> AutoResult<()> {
+        let Cover::Tag(c) = cover;
+        let typ = self.lookup_type(&c.kind);
+        let Type::Tag(t) = typ else {
+            return Err(format!("C Transpiler: unsupported cover type: {}", typ).into());
+        };
+        let enum_name = t.borrow().enum_name(&c.tag);
+        out.write(enum_name.as_bytes())?;
+        Ok(())
     }
 
     fn key(&mut self, key: &Key, out: &mut impl Write) -> AutoResult<()> {
@@ -542,7 +577,7 @@ impl CTrans {
                 format!("union {}", u.name)
             }
             Type::Tag(t) => {
-                format!("struct {}", t.name)
+                format!("struct {}", t.borrow().name)
             }
             Type::Unknown => "unknown".to_string(),
             _ => {
@@ -573,9 +608,35 @@ impl CTrans {
         Ok(())
     }
 
+    fn is_stmt_target(&mut self, target: &Expr, sink: &mut Sink) -> AutoResult<()> {
+        match target {
+            Expr::Ident(name) => {
+                // lookup name's meta
+                let meta = self.lookup_meta(name);
+                let Some(meta) = meta else {
+                    return Err(format!("is-stmt target not found {}", name).into());
+                };
+                match meta.as_ref() {
+                    Meta::Store(store) => match &store.ty {
+                        Type::Tag(_) => {
+                            sink.body.write(format!("{}.tag", name).as_bytes())?;
+                            return Ok(());
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        self.expr(target, &mut sink.body)?;
+        Ok(())
+    }
+
     fn is_stmt(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
         sink.body.write(b"switch (")?;
-        self.expr(&is_stmt.target, &mut sink.body)?;
+        self.is_stmt_target(&is_stmt.target, sink)?;
+        // self.expr(&is_stmt.target, &mut sink.body)?;
         sink.body.write(b") {\n")?;
         for case in &is_stmt.branches {
             self.print_indent(&mut sink.body)?;
@@ -675,6 +736,7 @@ impl CTrans {
                         Expr::Str(_) => arg_types.push("%s"),
                         Expr::CStr(_) => arg_types.push("%s"),
                         Expr::Float(_, _) => arg_types.push("%f"),
+                        Expr::Char(_) => arg_types.push("%c"),
                         // TODO: check the actual type of the identifier
                         Expr::Ident(ident) => {
                             let meta = self.lookup_meta(ident);
@@ -684,8 +746,13 @@ impl CTrans {
                                         Type::Str | Type::CStr => {
                                             arg_types.push("%s");
                                         }
+                                        Type::Float => {
+                                            arg_types.push("%f");
+                                        }
+                                        Type::Char => {
+                                            arg_types.push("%c");
+                                        }
                                         _ => {
-                                            println!("Got store: {:?}", st);
                                             arg_types.push("%d");
                                         }
                                     },
@@ -713,50 +780,108 @@ impl CTrans {
         out.write(fmt.as_bytes()).to()
     }
 
+    fn method_call(
+        &mut self,
+        lhs: &Box<Expr>,
+        rhs: &Box<Expr>,
+        call: &Call,
+        out: &mut impl Write,
+    ) -> AutoResult<bool> {
+        // get type decl of lhs
+        let Expr::Ident(lname) = lhs.as_ref() else {
+            return Ok(false);
+        };
+        let Some(meta) = self.lookup_meta(lname) else {
+            return Ok(false);
+        };
+        match meta.as_ref() {
+            // Tag.Class(data)
+            Meta::Type(typ) => match typ {
+                Type::Tag(tag) => {
+                    let Expr::Ident(rname) = rhs.as_ref() else {
+                        return Ok(false);
+                    };
+                    let ftype = tag.borrow().get_field_type(rname);
+                    if let Type::Unknown = ftype {
+                        return Ok(false);
+                    }
+
+                    let mut rtext: Vec<u8> = Vec::new();
+                    self.expr(&call.args.first_arg().unwrap(), &mut rtext)?;
+
+                    // transform this method call into a node creation
+                    let node = Node {
+                        name: lname.clone(),
+                        id: lname.clone(),
+                        args: Args::new(),
+                        body: Body {
+                            stmts: vec![
+                                // kind
+                                Stmt::Expr(Expr::Pair(Pair {
+                                    key: Key::NamedKey("tag".into()),
+                                    value: Box::new(Expr::GenName(tag.borrow().enum_name(rname))),
+                                })),
+                                // value
+                                Stmt::Expr(Expr::Pair(Pair {
+                                    key: Key::NamedKey(format!("as.{}", rname).into()),
+                                    value: Box::new(Expr::GenName(
+                                        String::from_utf8(rtext).unwrap().into(),
+                                    )),
+                                })),
+                            ],
+                            has_new_line: true,
+                        },
+                        typ: shared(typ.clone()),
+                    };
+                    self.node(&node, out)?;
+                    return Ok(true);
+                }
+                _ => {
+                    return Ok(false);
+                }
+            },
+            // instance.method_name(&s, args...)
+            Meta::Store(store) => {
+                let Type::User(decl) = &store.ty else {
+                    return Ok(false);
+                };
+                // check rhs is a method call
+                let Expr::Ident(method_name) = rhs.as_ref() else {
+                    return Ok(false);
+                };
+                // write the method call as method_name(&s, args...)
+                out.write(method_name.as_bytes())?;
+                out.write(b"(")?;
+                for m in decl.methods.iter() {
+                    if m.name == *method_name {
+                        out.write(b"&")?;
+                        out.write(lname.as_bytes())?;
+                        if !call.args.is_empty() {
+                            out.write(b", ")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 {
+                                    out.write(b", ")?;
+                                }
+                                self.expr(&arg.get_expr(), out)?;
+                            }
+                        }
+                        out.write(b")").to()?;
+                    }
+                }
+                return Ok(true);
+            }
+            _ => {
+                return Ok(false);
+            }
+        }
+    }
+
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         // method call
         if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
             if matches!(op, Op::Dot) {
-                // get type decl of lhs
-                match lhs.as_ref() {
-                    Expr::Ident(name) => {
-                        let meta = self.lookup_meta(name);
-                        if let Some(meta) = meta {
-                            match meta.as_ref() {
-                                Meta::Store(store) => {
-                                    if let Type::User(decl) = &store.ty {
-                                        // check rhs is a method call
-                                        if let Expr::Ident(method_name) = rhs.as_ref() {
-                                            // write the method call as method_name(&s, args...)
-                                            out.write(method_name.as_bytes())?;
-                                            out.write(b"(")?;
-                                            for m in decl.methods.iter() {
-                                                if m.name == *method_name {
-                                                    out.write(b"&")?;
-                                                    out.write(name.as_bytes())?;
-                                                    if !call.args.is_empty() {
-                                                        out.write(b", ")?;
-                                                        for (i, arg) in
-                                                            call.args.args.iter().enumerate()
-                                                        {
-                                                            if i > 0 {
-                                                                out.write(b", ")?;
-                                                            }
-                                                            self.expr(&arg.get_expr(), out)?;
-                                                        }
-                                                    }
-                                                    out.write(b")").to()?;
-                                                }
-                                            }
-                                            return Ok(());
-                                        }
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    _ => {}
+                if self.method_call(lhs, rhs, call, out)? {
+                    return Ok(());
                 }
             }
         }

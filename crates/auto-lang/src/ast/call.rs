@@ -1,4 +1,4 @@
-use super::{Expr, Name};
+use super::{Expr, Name, Type};
 use auto_val::AutoStr;
 use std::fmt;
 
@@ -6,6 +6,7 @@ use std::fmt;
 pub struct Call {
     pub name: Box<Expr>,
     pub args: Args,
+    pub ret: Type,
 }
 
 impl Call {
