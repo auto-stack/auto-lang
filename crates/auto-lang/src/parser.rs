@@ -1223,21 +1223,22 @@ impl<'a> Parser<'a> {
     // TODO: clean up code
     // TODO: search path from System Env, Default Locations and etc.
     pub fn import(&mut self, uses: &Use) -> ParseResult<()> {
+        println!("Trying to import use library");
         let path = uses.paths.join(".");
         // locate file from path
         let base_path = std::env::current_dir().unwrap();
         let base_path = base_path.as_path();
-        let mut std_path = base_path.join("std");
+        let mut std_path = base_path.join("stdlib").join("auto");
         if !std_path.is_dir() {
             println!("debug: std lib location: {}", std_path.to_str().unwrap());
             let pa = base_path.parent().unwrap();
-            std_path = pa.parent().unwrap().join("std");
+            std_path = pa.parent().unwrap().join("stdlib").join("auto");
         }
         println!("debug: std lib location: {}", std_path.to_str().unwrap());
-        if !path.starts_with("std.") {
+        if !path.starts_with("auto.") {
             return error_pos!("Invalid import path: {}", path);
         }
-        let path = path.replace("std.", "");
+        let path = path.replace("auto.", "");
         // println!("path: {}", path);
         let file_path = std_path.join(Path::new(path.as_str()));
         // println!("file_path: {}", file_path.display());

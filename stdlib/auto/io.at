@@ -1,0 +1,3 @@
+fn say(msg str) {
+    print(msg)
+}

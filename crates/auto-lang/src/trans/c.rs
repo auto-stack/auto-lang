@@ -1221,7 +1221,8 @@ int add(int x, int y);
 
         // split number from name: 000_hello -> hello
         let parts: Vec<&str> = case.split("_").collect();
-        let name = parts[1];
+        let name = parts[1..].join("_");
+        let name = name.as_str();
 
         let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
@@ -1321,5 +1322,12 @@ int add(int x, int y);
     #[test]
     fn test_014_tag() {
         test_a2c("014_tag").unwrap();
+    }
+
+    // ===================== test cases for Auto's stdlib =======================
+
+    #[test]
+    fn test_100_std_hello() {
+        test_a2c("100_std_hello").unwrap();
     }
 }
