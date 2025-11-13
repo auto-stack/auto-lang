@@ -13,15 +13,16 @@ pub mod trans;
 mod universe;
 pub mod util;
 
-use crate::eval::EvalMode;
-use crate::parser::Parser;
 use crate::scope::Meta;
+use crate::trans::c::CTrans;
 pub use crate::universe::Universe;
+use crate::{eval::EvalMode, trans::Sink};
+use crate::{parser::Parser, trans::Trans};
 use auto_val::Obj;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use auto_val::AutoResult;
+use auto_val::{AutoResult, AutoStr};
 
 pub fn run(code: &str) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::new();
@@ -99,6 +100,27 @@ pub fn eval_config(code: &str, args: &Obj) -> AutoResult<interp::Interpreter> {
     let mut interpreter = interp::Interpreter::with_scope(scope).with_eval_mode(EvalMode::CONFIG);
     interpreter.interpret(code)?;
     Ok(interpreter)
+}
+
+pub fn trans_c(path: &str) -> AutoResult<String> {
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))
+        .unwrap();
+
+    let cname = path.replace(".at", ".c");
+
+    let scope = Rc::new(RefCell::new(Universe::new()));
+    let mut parser = Parser::new(code.as_str(), scope);
+    let ast = parser.parse().map_err(|e| e.to_string())?;
+    let mut sink = Sink::new();
+    let mut trans = CTrans::new(cname.clone().into());
+    trans.set_scope(parser.scope.clone());
+    trans.trans(ast, &mut sink)?;
+
+    // convert sink to .c/.h files
+    std::fs::write(&cname, sink.done())?;
+
+    Ok(format!("[trans] {} -> {}", path, cname))
 }
 
 #[cfg(test)]

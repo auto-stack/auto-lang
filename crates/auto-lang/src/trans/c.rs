@@ -32,6 +32,10 @@ impl CTrans {
         }
     }
 
+    pub fn set_scope(&mut self, scope: Shared<Universe>) {
+        self.scope = scope;
+    }
+
     fn indent(&mut self) {
         self.indent += 1;
     }
