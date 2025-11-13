@@ -1,7 +1,11 @@
 #include <stdio.h>
 
+void println(char* msg) {
+    printf("%s\n", msg);
+}
+
 int main(void) {
     char* s = "Hello!";
-    printf("%s\n", s);
+    println(s);
     return 0;
 }

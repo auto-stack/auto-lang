@@ -43,6 +43,23 @@ impl Type {
             _ => "undefined_name".into(),
         }
     }
+
+    pub fn default_value(&self) -> AutoStr {
+        match self {
+            Type::Int => "0".into(),
+            Type::Float => "0.0".into(),
+            Type::Bool => "false".into(),
+            Type::Byte => "0".into(),
+            Type::Char => "0".into(),
+            Type::Str => "\"\"".into(),
+            Type::CStr => "\"\"".into(),
+            Type::Array(_) => "[]".into(),
+            Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
+            Type::User(_) => "{}".into(),
+            Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
+            _ => "undefined_name".into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

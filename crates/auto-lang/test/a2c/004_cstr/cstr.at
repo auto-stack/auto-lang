@@ -1,4 +1,12 @@
+use c <stdio.h>
+
+fn c printf(fmt cstr, arg cstr)
+
+fn println(msg cstr) {
+    printf(c"%s\n", msg)
+}
+
 fn main() {
     let s = c"Hello!"
-    print(s)
+    println(s)
 }

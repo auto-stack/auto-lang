@@ -2921,11 +2921,11 @@ exe hello {
 
     #[test]
     fn test_use() {
-        let code = "use std.math.square; square(16)";
+        let code = "use auto.math.square; square(16)";
         let ast = parse_once(code);
         assert_eq!(
             ast.to_string(),
-            "(code (use (path std.math) (items square)) (call (name square) (args (int 16))))"
+            "(code (use (path auto.math) (items square)) (call (name square) (args (int 16))))"
         );
     }
 
@@ -2938,12 +2938,12 @@ exe hello {
 
     #[test]
     fn test_import() {
-        let code = "use std.math: square";
+        let code = "use auto.math: square";
         let mut parser = Parser::from(&code);
         let ast = parser.parse().unwrap();
         assert_eq!(
             ast.to_string(),
-            "(code (use (path std.math) (items square)))"
+            "(code (use (path auto.math) (items square)))"
         );
     }
 

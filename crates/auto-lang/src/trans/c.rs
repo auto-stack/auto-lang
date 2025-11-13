@@ -76,30 +76,59 @@ impl CTrans {
         out.write(b";").to()
     }
 
-    fn stmt(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<()> {
+    fn stmt(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<bool> {
         let out = &mut sink.body;
         match stmt {
-            Stmt::TypeDecl(type_decl) => self.type_decl(type_decl, sink),
+            Stmt::TypeDecl(type_decl) => {
+                self.type_decl(type_decl, sink)?;
+            }
             Stmt::Expr(expr) => {
                 self.expr(expr, out)?;
-                self.eos(out)
+                self.eos(out)?;
             }
             Stmt::Store(store) => {
                 self.store(store, out)?;
-                self.eos(out)
+                self.eos(out)?;
             }
-            Stmt::Fn(fn_decl) => self.fn_decl(fn_decl, sink),
-            Stmt::For(for_stmt) => self.for_stmt(for_stmt, sink),
-            Stmt::If(if_) => self.if_stmt(if_, sink),
-            Stmt::Is(is_stmt) => self.is_stmt(is_stmt, sink),
-            Stmt::Use(use_stmt) => self.use_stmt(use_stmt, out),
-            Stmt::EnumDecl(enum_decl) => self.enum_decl(enum_decl, out),
-            Stmt::Alias(alias) => self.alias(alias, out),
-            Stmt::EmptyLine(n) => self.empty_line(n, out),
-            Stmt::Union(union) => self.union(union, sink),
-            Stmt::Tag(tag) => self.tag(tag, sink),
-            _ => Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into()),
+            Stmt::Fn(fn_decl) => {
+                // No need to generate extern C function declarations
+                if matches!(fn_decl.kind, FnKind::CFunction) {
+                    return Ok(false);
+                }
+                self.fn_decl(fn_decl, sink)?;
+            }
+            Stmt::For(for_stmt) => {
+                self.for_stmt(for_stmt, sink)?;
+            }
+            Stmt::If(if_) => {
+                self.if_stmt(if_, sink)?;
+            }
+            Stmt::Is(is_stmt) => {
+                self.is_stmt(is_stmt, sink)?;
+            }
+            Stmt::Use(use_stmt) => {
+                self.use_stmt(use_stmt, out)?;
+            }
+            Stmt::EnumDecl(enum_decl) => {
+                self.enum_decl(enum_decl, out)?;
+            }
+            Stmt::Alias(alias) => {
+                self.alias(alias, out)?;
+            }
+            Stmt::EmptyLine(n) => {
+                self.empty_line(n, out)?;
+            }
+            Stmt::Union(union) => {
+                self.union(union, sink)?;
+            }
+            Stmt::Tag(tag) => {
+                self.tag(tag, sink)?;
+            }
+            _ => {
+                return Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into());
+            }
         }
+        Ok(true)
     }
 
     fn tag(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
@@ -268,16 +297,28 @@ impl CTrans {
             )?;
             out.write(b") ")?;
             // method body
-            self.body(&method.body, sink, !matches!(method.ret, Type::Void))?;
+            self.body(&method.body, sink, &method.ret)?;
             sink.body.write(b"\n")?;
         }
         Ok(())
     }
 
     fn use_stmt(&mut self, use_stmt: &Use, _out: &mut impl Write) -> AutoResult<()> {
-        for path in use_stmt.paths.iter() {
-            if !self.libs.contains(path) {
-                self.libs.insert(path.clone());
+        println!("use_stmt: {:?}", use_stmt);
+        match use_stmt.kind {
+            UseKind::Auto => {
+                let path = use_stmt.paths.join("/");
+                self.libs.insert(format!("\"{}.h\"", path).into());
+            }
+            UseKind::C => {
+                for path in use_stmt.paths.iter() {
+                    if !self.libs.contains(path) {
+                        self.libs.insert(path.clone());
+                    }
+                }
+            }
+            UseKind::Rust => {
+                // do nothing
             }
         }
         Ok(())
@@ -481,7 +522,11 @@ impl CTrans {
             _ => {
                 out.write(b" ").to()?;
                 self.scope.borrow_mut().enter_fn(fn_decl.name.clone());
-                self.body(&fn_decl.body, sink, true)?;
+                if fn_decl.name == "main" {
+                    self.body(&fn_decl.body, sink, &Type::Int)?;
+                } else {
+                    self.body(&fn_decl.body, sink, &fn_decl.ret)?;
+                }
                 self.scope.borrow_mut().exit_fn();
             }
         }
@@ -497,6 +542,7 @@ impl CTrans {
             out.write(b"int main(void)").to()?;
             return Ok(());
         }
+        println!("Return type: {:?}", fn_decl.ret);
         // return type
         if !matches!(fn_decl.ret, Type::Unknown) {
             out.write(format!("{} ", fn_decl.ret).as_bytes()).to()?;
@@ -511,7 +557,7 @@ impl CTrans {
         let params = fn_decl
             .params
             .iter()
-            .map(|p| format!("{} {}", p.ty, p.name))
+            .map(|p| format!("{} {}", self.c_type_name(&p.ty), p.name))
             .collect::<Vec<_>>()
             .join(", ");
         out.write(params.as_bytes()).to()?;
@@ -520,7 +566,8 @@ impl CTrans {
         Ok(())
     }
 
-    fn body(&mut self, body: &Body, sink: &mut Sink, has_return: bool) -> AutoResult<()> {
+    fn body(&mut self, body: &Body, sink: &mut Sink, ret_type: &Type) -> AutoResult<()> {
+        let has_return = !matches!(ret_type, Type::Void | Type::Unknown { .. });
         self.scope.borrow_mut().enter_scope();
         sink.body.write(b"{\n")?;
         self.indent();
@@ -541,8 +588,15 @@ impl CTrans {
                 self.stmt(stmt, sink)?;
                 sink.body.write(b"\n")?;
                 if has_return && !self.is_returnable(stmt) {
-                    self.print_indent(&mut sink.body)?;
-                    sink.body.write(b"return 0;\n")?;
+                    match ret_type {
+                        Type::Void | Type::Unknown { .. } => {}
+                        _ => {
+                            self.print_indent(&mut sink.body)?;
+                            sink.body.write(
+                                format!("return {};\n", ret_type.default_value()).as_bytes(),
+                            )?;
+                        }
+                    }
                 }
             }
         }
@@ -647,7 +701,7 @@ impl CTrans {
                     sink.body.write(b":\n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, false)?;
+                    self.body(body, sink, &Type::Void)?;
                     sink.body.write(b"\n")?;
                     self.print_with_indent(&mut sink.body, "break;\n")?;
                     self.dedent();
@@ -658,7 +712,7 @@ impl CTrans {
                     sink.body.write(b": \n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, false)?;
+                    self.body(body, sink, &Type::Void)?;
                     sink.body.write(b"\n")?;
                     self.print_with_indent(&mut sink.body, "break;\n")?;
                     self.dedent();
@@ -667,7 +721,7 @@ impl CTrans {
                     sink.body.write(b"default:\n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, false)?;
+                    self.body(body, sink, &Type::Void)?;
                     sink.body.write(b"\n")?;
                     self.print_with_indent(&mut sink.body, "break;\n")?;
                     self.dedent();
@@ -683,7 +737,7 @@ impl CTrans {
         sink.body.write(b"for (").to()?;
         self.expr(&for_stmt.range, &mut sink.body)?;
         sink.body.write(b") ").to()?;
-        self.body(&for_stmt.body, sink, false)?;
+        self.body(&for_stmt.body, sink, &Type::Void)?;
         Ok(())
     }
 
@@ -703,14 +757,14 @@ impl CTrans {
             sink.body.write(b"(").to()?;
             self.expr(&branch.cond, &mut sink.body)?;
             sink.body.write(b") ").to()?;
-            self.body(&branch.body, sink, false)?;
+            self.body(&branch.body, sink, &Type::Void)?;
             if i < if_.branches.len() - 1 {
                 sink.body.write(b" else ")?;
             }
         }
         if let Some(body) = &if_.else_ {
             sink.body.write(b" else ").to()?;
-            self.body(body, sink, false)?;
+            self.body(body, sink, &Type::Void)?;
         }
         Ok(())
     }
@@ -949,6 +1003,13 @@ impl CTrans {
                             return false;
                         }
                     }
+                    // check return type of call
+                    match &call.ret {
+                        Type::Void | Type::Unknown => {
+                            return false;
+                        }
+                        _ => {}
+                    }
                     true
                 }
                 _ => true,
@@ -1013,10 +1074,10 @@ impl Trans for CTrans {
 
         // Decls
         for (i, decl) in decls.iter().enumerate() {
-            if i > 0 {
+            let generated = self.stmt(decl, sink)?;
+            if i < decls.len() - 1 && generated {
                 sink.body.write(b"\n").to()?;
             }
-            self.stmt(decl, sink)?;
         }
 
         // Main

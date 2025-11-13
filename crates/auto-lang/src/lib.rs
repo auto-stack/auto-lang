@@ -781,7 +781,7 @@ exe(hello) {
     #[test]
     fn test_std() {
         let code = r#"
-use std.math: square
+use auto.math: square
 
 square(15)
 "#;

@@ -45,4 +45,8 @@ impl EnumDecl {
     pub fn get_item(&self, name: &str) -> Option<&EnumItem> {
         self.items.iter().find(|item| item.name == name)
     }
+
+    pub fn default_value(&self) -> i32 {
+        self.items.first().map_or(0, |item| item.value)
+    }
 }
