@@ -1,6 +1,6 @@
 use super::ast::*;
 use crate::AutoResult;
-use std::io;
+use std::io::{self, Write};
 
 pub mod c;
 pub mod rust;
@@ -20,6 +20,17 @@ impl Sink {
             header: Vec::new(),
             source: Vec::new(),
         }
+    }
+
+    pub fn print(&mut self, data: &[u8]) -> AutoResult<()> {
+        self.body.write(data)?;
+        Ok(())
+    }
+
+    pub fn println(&mut self, data: &[u8]) -> AutoResult<()> {
+        self.body.write(data)?;
+        self.body.write(b"\n")?;
+        Ok(())
     }
 
     pub fn done(&mut self) -> &Vec<u8> {
