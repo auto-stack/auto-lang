@@ -8,6 +8,7 @@ auto-lang = { path = "crates/auto-lang" }
 auto-val = { path = "crates/auto-val" }
 auto-atom = { path = "crates/auto-atom" }
 auto-gen = { path = "crates/auto-gen" }
+dirs = "6.0.0"
 clap = { version = "4.5.17", features = ["derive"] }
 rustyline = { version = "14.0.0", features = ["with-file-history"] }
 strum = "0.26"

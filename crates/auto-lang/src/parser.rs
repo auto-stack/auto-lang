@@ -4,13 +4,15 @@ use crate::lexer::Lexer;
 use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
 use crate::universe::Universe;
+use auto_val::AutoPath;
 use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::{shared, Shared};
+use dirs;
 use std::backtrace::Backtrace;
 use std::collections::HashMap;
 use std::i32;
-use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 pub type ParseError = AutoStr;
@@ -1219,37 +1221,57 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Use(uses))
     }
 
+    fn find_std_lib(&self) -> ParseResult<AutoStr> {
+        let home_dir = dirs::home_dir().unwrap();
+        let auto_std = home_dir.join(".auto/libs/");
+        let search_dirs = vec![
+            auto_std.to_str().unwrap(),
+            "/usr/local/lib/auto",
+            "/usr/lib/auto",
+        ];
+        let std_lib_pat = "stdlib/auto";
+
+        for dir in search_dirs {
+            let std_path = PathBuf::from(dir).join(std_lib_pat);
+            println!("Checking {}", std_path.display());
+            if std_path.is_dir() {
+                println!("debug: std lib location: {}", std_path.to_str().unwrap());
+                return Ok(AutoStr::from(std_path.to_str().unwrap()));
+            }
+        }
+
+        return error_pos!("stdlib not found");
+    }
+
     /// Import a path from `use` statement
     // TODO: clean up code
     // TODO: search path from System Env, Default Locations and etc.
     pub fn import(&mut self, uses: &Use) -> ParseResult<()> {
         println!("Trying to import use library");
         let path = uses.paths.join(".");
-        // locate file from path
-        let base_path = std::env::current_dir().unwrap();
-        let base_path = base_path.as_path();
-        let mut std_path = base_path.join("stdlib").join("auto");
-        if !std_path.is_dir() {
-            println!("debug: std lib location: {}", std_path.to_str().unwrap());
-            let pa = base_path.parent().unwrap();
-            std_path = pa.parent().unwrap().join("stdlib").join("auto");
-        }
-        println!("debug: std lib location: {}", std_path.to_str().unwrap());
+
+        // try to find stdlib in following locations
+        // 1. ~/.auto/stdlib
+        // 2. /usr/local/lib/auto
+        // 3. /usr/lib/auto
+        let std_path = self.find_std_lib()?;
+        println!("debug: std lib location: {}", std_path);
+
         if !path.starts_with("auto.") {
             return error_pos!("Invalid import path: {}", path);
         }
         let path = path.replace("auto.", "");
         // println!("path: {}", path);
-        let file_path = std_path.join(Path::new(path.as_str()));
+        let file_path = AutoPath::new(std_path).join(path.clone());
         // println!("file_path: {}", file_path.display());
-        let dir = file_path.parent().unwrap();
-        let name = file_path.file_name().unwrap();
+        let dir = file_path.parent();
+        let name = file_path.path().file_name().unwrap();
         if !dir.exists() {
             return error_pos!("Invalid import path: {}", path);
         }
         // Read file
         let file_path = dir.join(name.to_str().unwrap().to_string() + ".at");
-        let file_content = std::fs::read_to_string(file_path).unwrap();
+        let file_content = std::fs::read_to_string(file_path.path()).unwrap();
 
         let mut new_parser = Parser::new(file_content.as_str(), self.scope.clone());
         let ast = new_parser.parse().unwrap();

@@ -24,3 +24,4 @@ serde = { workspace = true, features = ["derive"] }
 ecow = { workspace = true }
 normalize-path = { workspace = true }
 roxmltree = { workspace = true }
+dirs = { workspace = true }
