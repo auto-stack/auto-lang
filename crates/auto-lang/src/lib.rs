@@ -22,7 +22,7 @@ use auto_val::Obj;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use auto_val::{AutoResult, AutoStr};
+use auto_val::AutoResult;
 
 pub fn run(code: &str) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::new();
@@ -272,6 +272,13 @@ mod tests {
         let result = run(code).unwrap();
         // TODO: capture stdout and assert
         assert_eq!(result, "void");
+    }
+
+    #[test]
+    fn test_range_eq() {
+        let code = "var sum = 0; for i in 0..=10 { sum = sum + i }; sum";
+        let result = run(code).unwrap();
+        assert_eq!(result, "55");
     }
 
     #[test]

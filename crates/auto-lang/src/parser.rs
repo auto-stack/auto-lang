@@ -352,13 +352,6 @@ impl<'a> Parser<'a> {
             TokenKind::LBrace => Expr::Object(self.object()?),
             // lambda
             TokenKind::VBar => self.lambda()?,
-            // ref
-            TokenKind::Ref => {
-                self.next(); // skip ref
-                let name = self.cur.text.clone();
-                self.next(); // skip name
-                Expr::Ref(name)
-            }
             // fstr
             TokenKind::FStrStart => self.fstr()?,
             // grid
@@ -761,11 +754,19 @@ impl<'a> Parser<'a> {
         if self.cur.text.starts_with("0x") {
             // trim 0x
             let trim = &self.cur.text[2..];
-            let val = i32::from_str_radix(trim, 16).unwrap();
-            Ok(Expr::Int(val))
+            let val = i64::from_str_radix(trim, 16).unwrap();
+            if val > i32::MAX as i64 {
+                Ok(Expr::I64(val))
+            } else {
+                Ok(Expr::Int(val as i32))
+            }
         } else {
-            let val = self.cur.text.as_str().parse::<i32>().unwrap();
-            Ok(Expr::Int(val))
+            let val = self.cur.text.as_str().parse::<i64>().unwrap();
+            if val > i32::MAX as i64 {
+                Ok(Expr::I64(val))
+            } else {
+                Ok(Expr::Int(val as i32))
+            }
         }
     }
 
@@ -2200,7 +2201,13 @@ impl<'a> Parser<'a> {
         Ok(Type::Unknown)
     }
 
-    fn parse_node(&mut self, name: &AutoStr, id: Option<AutoStr>, args: Args) -> ParseResult<Node> {
+    fn parse_node(
+        &mut self,
+        name: &AutoStr,
+        id: Option<AutoStr>,
+        mut args: Args,
+        kind: &AutoStr,
+    ) -> ParseResult<Node> {
         let n = name.clone().into();
         let mut node = Node::new(name.clone());
         if let Some(id) = id {
@@ -2208,12 +2215,23 @@ impl<'a> Parser<'a> {
             self.define(id.as_str(), Meta::Node(node.clone()));
             node.id = id;
         }
-        if self.special_blocks.contains_key(&n) {
-            node.body = self.special_block(&n)?;
-        } else {
-            node.body = self.parse_node_body()?;
+
+        // optional kind argument
+        if !kind.is_empty() {
+            args.args
+                .push(Arg::Pair("kind".into(), Expr::Str(kind.into())));
         }
         node.args = args;
+
+        if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
+        } else {
+            if self.special_blocks.contains_key(&n) {
+                node.body = self.special_block(&n)?;
+            } else {
+                node.body = self.parse_node_body()?;
+            }
+        }
+
         // check node type
         let typ = self.lookup_type(&node.name);
         node.typ = typ.clone();
@@ -2278,7 +2296,12 @@ impl<'a> Parser<'a> {
             }
             match ident {
                 Expr::Ident(name) => {
-                    return Ok(Stmt::Node(self.parse_node(&name, id, args)?));
+                    return Ok(Stmt::Node(self.parse_node(
+                        &name,
+                        id,
+                        args,
+                        &AutoStr::new(),
+                    )?));
                 }
                 _ => {
                     return error_pos!("Expected node name, got {:?}", ident);
@@ -2294,6 +2317,33 @@ impl<'a> Parser<'a> {
             } else {
                 // Something else with a starting Ident
                 if id.is_some() {
+                    if self.is_kind(TokenKind::Ident) {
+                        let kind = self.parse_name()?;
+                        if self.is_kind(TokenKind::LBrace)
+                            || self.is_kind(TokenKind::Newline)
+                            || self.is_kind(TokenKind::Semi)
+                            || self.is_kind(TokenKind::RBrace)
+                        {
+                            let nd = self.parse_node(&ident.repr(), id, args, &kind)?;
+                            return Ok(Stmt::Node(nd));
+                        } else {
+                            return error_pos!(
+                                "expect node, got {} {} {}",
+                                ident.repr(),
+                                id.unwrap(),
+                                kind
+                            );
+                        }
+                    } else {
+                        // name id <nl>
+                        if self.is_kind(TokenKind::Newline)
+                            || self.is_kind(TokenKind::Semi)
+                            || self.is_kind(TokenKind::RBrace)
+                        {
+                            let nd = self.parse_node(&ident.repr(), id, args, &"".into())?;
+                            return Ok(Stmt::Node(nd));
+                        }
+                    }
                     return error_pos!(
                         "Expected simple expression, got `{} {}`",
                         ident.repr(),
@@ -2837,16 +2887,6 @@ mod tests {
         assert_eq!(
             ast.to_string(),
             "(code (node (name center) (body (node (name text) (args (str \"Hello\"))))))"
-        );
-    }
-
-    #[test]
-    fn test_ref() {
-        let code = "var a = 1; var b = ref a; b";
-        let ast = parse_once(code);
-        assert_eq!(
-            ast.to_string(),
-            "(code (var (name a) (int 1)) (var (name b) (ref a)) (name b))"
         );
     }
 

@@ -49,6 +49,14 @@ impl Args {
 
     pub const EMPTY: Self = Self { args: vec![] };
 
+    pub fn get_arg(&self, key: &AutoStr) -> Option<&Arg> {
+        self.args.iter().find(|arg| match arg {
+            Arg::Name(name) => name == key,
+            Arg::Pair(k, _) => &k.to_astr() == key,
+            _ => false,
+        })
+    }
+
     pub fn get_val(&self, index: usize) -> Value {
         self.args
             .get(index)

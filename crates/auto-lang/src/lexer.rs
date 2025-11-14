@@ -99,6 +99,8 @@ impl<'a> Lexer<'a> {
             if c.is_digit(10) {
                 text.push(c);
                 self.chars.next();
+            } else if c == '_' {
+                self.chars.next();
             } else if c == '.' {
                 let mut more = self.chars.clone();
                 more.next();

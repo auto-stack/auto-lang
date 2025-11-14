@@ -844,6 +844,7 @@ impl Evaler {
             Expr::Int(value) => Value::Int(*value),
             Expr::I8(value) => Value::I8(*value),
             Expr::U8(value) => Value::U8(*value),
+            Expr::I64(value) => Value::I64(*value),
             Expr::Float(value, _) => Value::Float(*value),
             Expr::Double(value, _) => Value::Double(*value),
             // Why not move here?
@@ -1188,7 +1189,7 @@ impl Evaler {
     }
 
     // TODO: should node only be used in config mode?
-    fn eval_node(&mut self, node: &Node) -> Value {
+    pub fn eval_node(&mut self, node: &Node) -> Value {
         let args = self.eval_args(&node.args);
         let mut nodes = Vec::new();
         let mut props = Obj::new();
