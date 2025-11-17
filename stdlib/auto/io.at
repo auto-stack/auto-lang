@@ -1,3 +1,15 @@
+# AUTO
+
 fn say(msg str) {
     print(msg)
+}
+
+# C
+
+use c <stdio.h>
+fn c printf(fmt cstr, arg cstr)
+
+fn say(msg str) {
+
+    printf(c"%s\n", msg)
 }

@@ -64,6 +64,7 @@ pub enum TokenKind {
     DoubleArrow,    // =>
     Question,       // ?
     At,             // @
+    Hash,           // #
 
     // Keywords
     True,
@@ -139,6 +140,7 @@ impl fmt::Display for Token {
             TokenKind::Neq => write!(f, "<!=>"),
             TokenKind::Arrow => write!(f, "<->>"),
             TokenKind::DoubleArrow => write!(f, "<=>>"),
+            TokenKind::Hash => write!(f, "<#>"),
             TokenKind::True => write!(f, "<true>"),
             TokenKind::False => write!(f, "<false>"),
             TokenKind::Nil => write!(f, "<nil>"),

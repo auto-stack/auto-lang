@@ -9,9 +9,18 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+#[derive(Debug, Clone)]
+pub struct CodePak {
+    pub sid: Sid,
+    pub text: AutoStr,
+    pub ast: ast::Code,
+    pub file: AutoStr,
+}
+
 pub struct Universe {
     pub scopes: HashMap<Sid, Scope>,   // sid -> scope
     pub asts: HashMap<Sid, ast::Code>, // sid -> ast
+    pub code_paks: HashMap<Sid, CodePak>,
     // pub stack: Vec<StackedScope>,
     pub env_vals: HashMap<AutoStr, Box<dyn Any>>,
     pub shared_vals: HashMap<AutoStr, Rc<RefCell<Value>>>,
@@ -39,6 +48,7 @@ impl Universe {
         let mut uni = Self {
             scopes,
             asts: HashMap::new(),
+            code_paks: HashMap::new(),
             // stack: vec![StackedScope::new()],
             env_vals: HashMap::new(),
             shared_vals: HashMap::new(),
@@ -479,8 +489,17 @@ impl Universe {
         self.define(name, Rc::new(Meta::Store(store)));
     }
 
-    pub fn import(&mut self, path: AutoStr, ast: ast::Code) {
+    pub fn import(&mut self, path: AutoStr, ast: ast::Code, file: AutoStr, text: AutoStr) {
         let sid = Sid::new(path.as_str());
+        self.code_paks.insert(
+            sid.clone(),
+            CodePak {
+                sid: sid.clone(),
+                ast: ast.clone(),
+                file: file.clone(),
+                text: text.clone(),
+            },
+        );
         self.asts.insert(sid, ast);
     }
 

@@ -11,6 +11,7 @@ use auto_val::{shared, Shared};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io::Write;
+use std::path::Path;
 use std::rc::Rc;
 
 pub struct CTrans {
@@ -1150,11 +1151,28 @@ pub struct CCode {
 pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> {
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
+    parser.set_dest(crate::parser::CompileDest::TransC);
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut out = Sink::new();
     let mut transpiler = CTrans::new(name.into());
     transpiler.scope = parser.scope.clone();
     transpiler.trans(ast, &mut out)?;
+
+    let uni = parser.scope.clone();
+    let paks = std::mem::take(&mut parser.scope.borrow_mut().code_paks);
+    // let paks = parser.scope.borrow().code_paks.clone();
+    for (sid, pak) in paks.iter() {
+        let mut out = Sink::new();
+        let mut transpiler = CTrans::new(sid.name().into());
+        transpiler.scope = uni.clone();
+        transpiler.trans(pak.ast.clone(), &mut out)?;
+
+        let str = String::from_utf8(out.done().clone()).unwrap();
+        let file = pak.file.replace(".at", ".c");
+        println!("Translating {} to {}", pak.file, file);
+        std::fs::write(Path::new(file.as_str()), str)?;
+    }
+    parser.scope.borrow_mut().code_paks = paks;
     Ok(out)
 }
 

@@ -44,7 +44,7 @@ use std::fmt;
 
 pub type Name = AutoStr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Code {
     pub stmts: Vec<Stmt>,
 }

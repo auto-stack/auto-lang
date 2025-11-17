@@ -5,6 +5,7 @@ use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
 use crate::universe::Universe;
 use auto_val::AutoPath;
+use auto_val::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::{shared, Shared};
@@ -14,6 +15,7 @@ use std::collections::HashMap;
 use std::i32;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::thread::current;
 
 pub type ParseError = AutoStr;
 pub type ParseResult<T> = Result<T, ParseError>;
@@ -120,12 +122,20 @@ pub trait BlockParser {
 // parser.parse()
 // }
 
+#[derive(Debug, Clone)]
+pub enum CompileDest {
+    Interp,    // for interperter
+    TransC,    // for tranpiler to C
+    TransRust, // for tranpiler to Rust
+}
+
 pub struct Parser<'a> {
     pub scope: Shared<Universe>,
     lexer: Lexer<'a>,
     pub cur: Token,
     pub special_blocks: HashMap<AutoStr, Box<dyn BlockParser>>,
     pub skip_check: bool,
+    pub compile_dest: CompileDest,
 }
 
 impl<'a> Parser<'a> {
@@ -140,11 +150,16 @@ impl<'a> Parser<'a> {
             scope,
             lexer,
             cur,
+            compile_dest: CompileDest::Interp,
             special_blocks: HashMap::new(),
             skip_check: false,
         };
         parser.skip_comments();
         parser
+    }
+
+    pub fn set_dest(&mut self, dest: CompileDest) {
+        self.compile_dest = dest;
     }
 
     pub fn add_special_block(&mut self, block: AutoStr, parser: Box<dyn BlockParser>) {
@@ -159,6 +174,7 @@ impl<'a> Parser<'a> {
             scope,
             lexer,
             cur,
+            compile_dest: CompileDest::Interp,
             special_blocks: HashMap::new(),
             skip_check: false,
         };
@@ -258,11 +274,69 @@ impl<'a> Parser<'a> {
     }
 }
 
+pub enum CodeSection {
+    None,
+    C,
+    Rust,
+    Auto,
+}
+
 impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> ParseResult<Code> {
         let mut stmts = Vec::new();
         self.skip_empty_lines();
+        let mut current_section = CodeSection::None;
         while !self.is_kind(TokenKind::EOF) {
+            println!("Line: {}", self.cur.text);
+            // deal with sections
+            if self.is_kind(TokenKind::Hash) {
+                self.next();
+                let section = self.parse_name()?;
+                println!("Section: {}", section);
+                match section.as_str() {
+                    "C" => {
+                        current_section = CodeSection::C;
+                    }
+                    "RUST" => {
+                        current_section = CodeSection::Rust;
+                    }
+                    "AUTO" => {
+                        current_section = CodeSection::Auto;
+                    }
+                    _ => {
+                        return error_pos!("Unknown section {}", section);
+                    }
+                }
+                // skip until newline
+                println!("Got section, skipping line");
+                self.skip_line()?;
+                continue;
+            } else {
+                match self.compile_dest {
+                    CompileDest::Interp => match current_section {
+                        CodeSection::None | CodeSection::Auto => {}
+                        _ => {
+                            self.skip_line()?;
+                            continue;
+                        }
+                    },
+                    CompileDest::TransC => match current_section {
+                        CodeSection::None | CodeSection::C => {}
+                        _ => {
+                            self.skip_line()?;
+                            continue;
+                        }
+                    },
+                    CompileDest::TransRust => match current_section {
+                        CodeSection::None | CodeSection::Rust => {}
+                        _ => {
+                            self.skip_line()?;
+                            continue;
+                        }
+                    },
+                }
+            }
+
             let stmt = self.parse_stmt()?;
             // First level pairs are viewed as variable declarations
             // TODO: this should only happen in a Config scenario
@@ -284,6 +358,15 @@ impl<'a> Parser<'a> {
         }
         stmts = self.convert_last_block(stmts)?;
         Ok(Code { stmts })
+    }
+
+    fn skip_line(&mut self) -> ParseResult<()> {
+        println!("Skiipping line");
+        while !self.is_kind(TokenKind::Newline) {
+            self.next();
+        }
+        self.skip_empty_lines();
+        Ok(())
     }
 
     fn convert_last_block(&mut self, mut stmts: Vec<Stmt>) -> ParseResult<Vec<Stmt>> {
@@ -1280,8 +1363,14 @@ impl<'a> Parser<'a> {
 
         self.scope.borrow_mut().enter_mod(scope_name.clone());
         let mut new_parser = Parser::new(file_content.as_str(), self.scope.clone());
+        new_parser.set_dest(self.compile_dest.clone());
         let ast = new_parser.parse().unwrap();
-        self.scope.borrow_mut().import(scope_name.clone(), ast);
+        self.scope.borrow_mut().import(
+            scope_name.clone(),
+            ast,
+            file_path.to_astr(),
+            file_content.into(),
+        );
 
         self.scope.borrow_mut().set_spot(cur_spot);
         // Define items in scope

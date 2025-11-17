@@ -480,6 +480,9 @@ impl<'a> Lexer<'a> {
                 '"' => {
                     return self.str();
                 }
+                '#' => {
+                    return self.single(TokenKind::Hash, c);
+                }
                 'c' => {
                     let mut iter_copy = self.chars.clone();
                     iter_copy.next();
