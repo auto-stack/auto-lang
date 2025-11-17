@@ -1184,9 +1184,9 @@ impl<'a> Parser<'a> {
     }
 
     // There are three kinds of import
-    // 1. auto: import std.io: println
-    // 2. c: import c <stdio.h>
-    // 3. rust: import rust std::fs
+    // 1. auto: use std.io: println
+    // 2. c: use c <stdio.h>
+    // 3. rust: use rust std::fs
     pub fn use_stmt(&mut self) -> ParseResult<Stmt> {
         self.next(); // skip use
 
@@ -1261,6 +1261,7 @@ impl<'a> Parser<'a> {
         if !path.starts_with("auto.") {
             return error_pos!("Invalid import path: {}", path);
         }
+        let scope_name: AutoStr = path.clone().into();
         let path = path.replace("auto.", "");
         // println!("path: {}", path);
         let file_path = AutoPath::new(std_path).join(path.clone());
@@ -1274,20 +1275,24 @@ impl<'a> Parser<'a> {
         let file_path = dir.join(name.to_str().unwrap().to_string() + ".at");
         let file_content = std::fs::read_to_string(file_path.path()).unwrap();
 
+        let cur_spot = self.scope.borrow().cur_spot.clone();
+        self.scope.borrow_mut().reset_spot();
+
+        self.scope.borrow_mut().enter_mod(scope_name.clone());
         let mut new_parser = Parser::new(file_content.as_str(), self.scope.clone());
         let ast = new_parser.parse().unwrap();
-        let path: AutoStr = path.into();
-        self.scope.borrow_mut().import(path.clone(), ast);
+        self.scope.borrow_mut().import(scope_name.clone(), ast);
+
+        self.scope.borrow_mut().set_spot(cur_spot);
         // Define items in scope
         for item in uses.items.iter() {
             // lookup item's meta from its mod
             let meta = self
                 .scope
                 .borrow()
-                .lookup(item.as_str(), path.clone())
+                .lookup(item.as_str(), scope_name.clone())
                 .unwrap();
-            // println!("meta: {:?}", meta);
-            // define iten with its name in current scope
+            // define item with its name in current scope
             self.define_rc(item.as_str(), meta);
         }
         Ok(())

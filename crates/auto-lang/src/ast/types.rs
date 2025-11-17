@@ -143,6 +143,12 @@ pub struct TypeDecl {
     pub methods: Vec<Fn>,
 }
 
+impl TypeDecl {
+    pub fn find_member(&self, name: &str) -> Option<&Member> {
+        self.members.iter().find(|m| m.name == name)
+    }
+}
+
 impl fmt::Display for TypeDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(type-decl (name {})", self.name)?;

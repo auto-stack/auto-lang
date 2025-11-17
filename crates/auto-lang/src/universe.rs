@@ -182,6 +182,14 @@ impl Universe {
         }
     }
 
+    pub fn reset_spot(&mut self) {
+        self.cur_spot = SID_PATH_GLOBAL.clone();
+    }
+
+    pub fn set_spot(&mut self, spot: Sid) {
+        self.cur_spot = spot;
+    }
+
     pub fn current_scope(&self) -> &Scope {
         self.scopes.get(&self.cur_spot).expect("No scope left")
     }

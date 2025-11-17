@@ -757,7 +757,7 @@ $ }
             [4, 5, 6]
             [7, 8, 9]
         }
-        ref g
+        g
         "#;
         let result = run(code).unwrap();
         assert_eq!(

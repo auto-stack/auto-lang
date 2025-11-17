@@ -308,7 +308,6 @@ impl CTrans {
     }
 
     fn use_stmt(&mut self, use_stmt: &Use, _out: &mut impl Write) -> AutoResult<()> {
-        println!("use_stmt: {:?}", use_stmt);
         match use_stmt.kind {
             UseKind::Auto => {
                 let path = use_stmt.paths.join("/");

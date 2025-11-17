@@ -66,6 +66,10 @@ impl Array {
         self.values.len()
     }
 
+    pub fn get(&self, index: usize) -> Option<&Value> {
+        self.values.get(index)
+    }
+
     pub fn push(&mut self, value: impl Into<Value>) {
         self.values.push(value.into());
     }
