@@ -5,7 +5,6 @@ use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
 use crate::universe::Universe;
 use auto_val::AutoPath;
-use auto_val::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::{shared, Shared};
@@ -15,7 +14,6 @@ use std::collections::HashMap;
 use std::i32;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::thread::current;
 
 pub type ParseError = AutoStr;
 pub type ParseResult<T> = Result<T, ParseError>;
