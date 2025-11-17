@@ -1,7 +1,31 @@
+use auto_val::AutoResult;
 use auto_val::AutoStr;
 use normalize_path::NormalizePath;
 use roxmltree::{Document, NodeType};
 use std::path::Path;
+use std::path::PathBuf;
+
+pub fn find_std_lib() -> AutoResult<AutoStr> {
+    let home_dir = dirs::home_dir().unwrap();
+    let auto_std = home_dir.join(".auto/libs/");
+    let search_dirs = vec![
+        auto_std.to_str().unwrap(),
+        "/usr/local/lib/auto",
+        "/usr/lib/auto",
+    ];
+    let std_lib_pat = "stdlib/auto";
+
+    for dir in search_dirs {
+        let std_path = PathBuf::from(dir).join(std_lib_pat);
+        println!("Checking {}", std_path.display());
+        if std_path.is_dir() {
+            println!("debug: std lib location: {}", std_path.to_str().unwrap());
+            return Ok(AutoStr::from(std_path.to_str().unwrap()));
+        }
+    }
+
+    return Err("stdlib not found".into());
+}
 
 /// Get the file name from a path.
 pub fn file_name(path: &str) -> &str {

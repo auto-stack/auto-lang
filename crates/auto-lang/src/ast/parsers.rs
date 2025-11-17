@@ -1,8 +1,9 @@
 use super::*;
-use crate::parser::{ParseResult, Parser, ParserExt};
+use crate::parser::{Parser, ParserExt};
+use auto_val::AutoResult;
 
 impl ParserExt for Code {
-    fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
+    fn parse(code: impl Into<AutoStr>) -> AutoResult<Self> {
         let code = code.into();
         let mut parser = Parser::from(code.as_str());
         let ast = parser.parse()?;
@@ -11,14 +12,14 @@ impl ParserExt for Code {
 }
 
 impl ParserExt for Name {
-    fn parse(name: impl Into<AutoStr>) -> ParseResult<Self> {
+    fn parse(name: impl Into<AutoStr>) -> AutoResult<Self> {
         let n = Name::from(name.into());
         Ok(n)
     }
 }
 
 impl ParserExt for Expr {
-    fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
+    fn parse(code: impl Into<AutoStr>) -> AutoResult<Self> {
         let code = code.into();
         let mut parser = Parser::from(code.as_str());
         let ast = parser.parse_expr()?;
@@ -27,7 +28,7 @@ impl ParserExt for Expr {
 }
 
 impl ParserExt for Is {
-    fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
+    fn parse(code: impl Into<AutoStr>) -> AutoResult<Self> {
         let code = code.into();
         let mut parser = Parser::from(code.as_str());
         parser.parse_is()
@@ -35,7 +36,7 @@ impl ParserExt for Is {
 }
 
 impl ParserExt for Arrow {
-    fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
+    fn parse(code: impl Into<AutoStr>) -> AutoResult<Self> {
         let code = code.into();
         let mut parser = Parser::from(code.as_str());
         let ev = parser.parse_event_src()?;
@@ -45,7 +46,7 @@ impl ParserExt for Arrow {
 }
 
 impl ParserExt for OnEvents {
-    fn parse(code: impl Into<AutoStr>) -> ParseResult<Self> {
+    fn parse(code: impl Into<AutoStr>) -> AutoResult<Self> {
         let code = code.into();
         let mut parser = Parser::from(code.as_str()).skip_check();
         parser.parse_on_events()

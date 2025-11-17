@@ -66,7 +66,7 @@ impl Interpreter {
         self.evaler.skip_check();
     }
 
-    pub fn interpret(&mut self, code: &str) -> Result<(), String> {
+    pub fn interpret(&mut self, code: &str) -> AutoResult<()> {
         let mut parser = Parser::new_with_note(code, self.scope.clone(), self.fstr_note);
         if self.skip_check {
             parser = parser.skip_check();
@@ -77,7 +77,7 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn eval_template(&mut self, code: impl Into<AutoStr>) -> Result<Value, String> {
+    pub fn eval_template(&mut self, code: impl Into<AutoStr>) -> AutoResult<Value> {
         self.eval_template_with_note(code, self.fstr_note)
     }
 
@@ -85,7 +85,7 @@ impl Interpreter {
         &mut self,
         code: impl Into<AutoStr>,
         note: char,
-    ) -> Result<Value, String> {
+    ) -> AutoResult<Value> {
         self.evaler.set_mode(EvalMode::TEMPLATE);
         let code = code.into();
         let flipped = flip_template(code.as_str(), note);
@@ -95,7 +95,7 @@ impl Interpreter {
         Ok(result)
     }
 
-    pub fn load_file(&mut self, filename: &str) -> Result<Value, String> {
+    pub fn load_file(&mut self, filename: &str) -> AutoResult<Value> {
         let code =
             std::fs::read_to_string(filename).map_err(|e| format!("Failed to read file: {}", e))?;
         self.interpret(&code)?;
@@ -131,7 +131,10 @@ impl Interpreter {
                 }
                 val
             }
-            Err(err) => Value::Error(err),
+            Err(err) => {
+                let msg = format!("AutoError: {}", err);
+                Value::Error(msg.into())
+            }
         }
     }
 }

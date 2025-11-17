@@ -1121,7 +1121,11 @@ impl Trans for CTrans {
         sink.header = self.header.clone();
 
         // includes
-        for path in self.libs.iter() {
+        let libs_set = std::mem::take(&mut self.libs);
+        let mut libs = libs_set.into_iter().collect::<Vec<_>>();
+        libs.sort();
+
+        for path in libs.iter() {
             sink.includes.write(b"#include ").to()?;
             sink.includes.write(path.as_bytes()).to()?;
             sink.includes.write(b"\n").to()?;
@@ -1171,6 +1175,13 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> {
         let file = pak.file.replace(".at", ".c");
         println!("Translating {} to {}", pak.file, file);
         std::fs::write(Path::new(file.as_str()), str)?;
+
+        let header = out.header;
+        if header.is_empty() {
+            continue;
+        }
+        let header_file = pak.file.replace(".at", ".h");
+        std::fs::write(Path::new(header_file.as_str()), header)?;
     }
     parser.scope.borrow_mut().code_paks = paks;
     Ok(out)
@@ -1307,13 +1318,19 @@ int add(int x, int y);
         let name = name.as_str();
 
         let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        println!("Directory of cargo : {}", d.display());
 
         let src_path = format!("test/a2c/{}/{}.at", case, name);
         let src_path = d.join(src_path);
+
+        println!("src_path: {}", src_path.display());
         let src = read_to_string(src_path.as_path())?;
 
         let exp_path = format!("test/a2c/{}/{}.expected.c", case, name);
         let exp_path = d.join(exp_path);
+        if !exp_path.is_file() {
+            panic!("Expected file not found: {}", exp_path.display());
+        }
         let expected = read_to_string(exp_path.as_path())?;
 
         let mut ccode = transpile_c(name, &src)?;
@@ -1411,5 +1428,10 @@ int add(int x, int y);
     #[test]
     fn test_100_std_hello() {
         test_a2c("100_std_hello").unwrap();
+    }
+
+    #[test]
+    fn test_101_std_getpid() {
+        test_a2c("101_std_getpid").unwrap();
     }
 }
