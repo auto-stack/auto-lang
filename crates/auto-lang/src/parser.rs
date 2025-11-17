@@ -282,12 +282,10 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         let mut current_section = CodeSection::None;
         while !self.is_kind(TokenKind::EOF) {
-            println!("Line: {}", self.cur.text);
             // deal with sections
             if self.is_kind(TokenKind::Hash) {
                 self.next();
                 let section = self.parse_name()?;
-                println!("Section: {}", section);
                 match section.as_str() {
                     "C" => {
                         current_section = CodeSection::C;
@@ -303,7 +301,6 @@ impl<'a> Parser<'a> {
                     }
                 }
                 // skip until newline
-                println!("Got section, skipping line");
                 self.skip_line()?;
                 continue;
             } else {
