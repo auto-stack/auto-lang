@@ -15,6 +15,8 @@ pub struct CodePak {
     pub text: AutoStr,
     pub ast: ast::Code,
     pub file: AutoStr,
+    pub cfile: AutoStr,
+    pub header: AutoStr,
 }
 
 pub struct Universe {
@@ -497,6 +499,8 @@ impl Universe {
                 sid: sid.clone(),
                 ast: ast.clone(),
                 file: file.clone(),
+                cfile: file.replace(".at", ".c"),
+                header: file.replace(".at", ".h"),
                 text: text.clone(),
             },
         );

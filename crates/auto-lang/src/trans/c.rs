@@ -1152,7 +1152,7 @@ pub struct CCode {
 }
 
 // Transpile the code into a whole C program
-pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> {
+pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Shared<Universe>)> {
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
     parser.set_dest(crate::parser::CompileDest::TransC);
@@ -1180,11 +1180,11 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> {
         if header.is_empty() {
             continue;
         }
-        let header_file = pak.file.replace(".at", ".h");
+        let header_file = &pak.header;
         std::fs::write(Path::new(header_file.as_str()), header)?;
     }
     parser.scope.borrow_mut().code_paks = paks;
-    Ok(out)
+    Ok((out, parser.scope.clone()))
 }
 
 #[cfg(test)]
@@ -1273,7 +1273,7 @@ if (x > 0) {
     #[test]
     fn test_c_return_42() {
         let code = r#"42"#;
-        let mut sink = transpile_c("test", code).unwrap();
+        let (mut sink, _) = transpile_c("test", code).unwrap();
         let expected = r#"int main(void) {
     return 42;
 }
@@ -1285,7 +1285,7 @@ if (x > 0) {
     fn test_math() {
         let code = r#"fn add(x int, y int) int { x+y }
 add(1, 2)"#;
-        let mut sink = transpile_c("test", code).unwrap();
+        let (mut sink, _) = transpile_c("test", code).unwrap();
         let expected = r#"int add(int x, int y) {
     return x + y;
 }
@@ -1333,7 +1333,7 @@ int add(int x, int y);
         }
         let expected = read_to_string(exp_path.as_path())?;
 
-        let mut ccode = transpile_c(name, &src)?;
+        let (mut ccode, _) = transpile_c(name, &src)?;
         let str = String::from_utf8(ccode.done().clone()).unwrap();
 
         if str != expected {
