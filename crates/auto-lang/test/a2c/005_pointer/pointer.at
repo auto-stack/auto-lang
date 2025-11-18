@@ -1,8 +1,15 @@
+fn inc(a *int) {
+    a.tgt += 1
+}
+
 fn main() {
     mut x = 5;
     print("x = ", x)
     mut y *int = x.ptr
     print("y = ", y.tgt)
     y.tgt += 1
+    print("now x is", x)
+
+    inc(x.ptr)
     print("now x is", x)
 }

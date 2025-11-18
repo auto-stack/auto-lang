@@ -1580,12 +1580,17 @@ impl<'a> Parser<'a> {
 
     pub fn parse_store_stmt(&mut self) -> AutoResult<Stmt> {
         // store kind: var/let/mut
-        let store_kind = self.store_kind()?;
+        let mut store_kind = self.store_kind()?;
         self.next(); // skip var/let/mut
 
         // identifier name
-        let name = self.cur.text.clone();
-        self.expect(TokenKind::Ident)?;
+        let mut name = self.parse_name()?;
+
+        // special case: c decl
+        if name == "c" {
+            name = self.parse_name()?;
+            store_kind = StoreKind::CVar;
+        }
 
         // type (optional)
         let mut ty = Type::Unknown;
@@ -1593,15 +1598,19 @@ impl<'a> Parser<'a> {
             ty = self.parse_type()?;
         }
 
-        // =
-        self.expect(TokenKind::Asn)?;
-
-        // inital value: expression
-        let expr = self.rhs_expr()?;
-        // TODO: check type compatibility
-        if matches!(ty, Type::Unknown) {
-            ty = self.infer_type_expr(&expr);
-        }
+        // `=`, a store stmt must have an assignment unless it's a C variable decl
+        let expr = if matches!(store_kind, StoreKind::CVar) {
+            Expr::Nil
+        } else {
+            self.expect(TokenKind::Asn)?;
+            // inital value: expression
+            let expr = self.rhs_expr()?;
+            // TODO: check type compatibility
+            if matches!(ty, Type::Unknown) {
+                ty = self.infer_type_expr(&expr);
+            }
+            expr
+        };
 
         let store = Store {
             kind: store_kind,
@@ -1812,7 +1821,7 @@ impl<'a> Parser<'a> {
             self.next(); // skip name
                          // param type
             let mut ty = Type::Int;
-            if self.is_kind(TokenKind::Ident) {
+            if self.is_type_name() {
                 ty = self.parse_type()?;
             }
             // default val

@@ -1434,4 +1434,9 @@ int add(int x, int y);
     fn test_101_std_getpid() {
         test_a2c("101_std_getpid").unwrap();
     }
+
+    #[test]
+    fn test_102_std_getline() {
+        test_a2c("102_std_getline").unwrap();
+    }
 }

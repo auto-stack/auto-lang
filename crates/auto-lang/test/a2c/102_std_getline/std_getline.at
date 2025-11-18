@@ -1,0 +1,23 @@
+use c <stdio.h>
+use c <stdlib.h>
+
+fn c getline(lineptr *cstr, n *int, stream *FILE) int
+fn c free(p cstr)
+let c stdin *FILE
+
+fn main() {
+    mut lineptr cstr
+    mut n int = 0
+
+    print(c"Enter a line of text: ")
+
+    let charsRead = getline(lineptr.ptr, n.ptr, stdin);
+
+    if charsRead != -1 {
+        print("You entered:", lineptr)
+    } else {
+        print("Error reading line")
+    }
+
+    free(lineptr)
+}

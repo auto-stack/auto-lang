@@ -6,6 +6,7 @@ pub enum StoreKind {
     Let,
     Mut,
     Var,
+    CVar,  // C variable declaration
     Field, // field of struct
 }
 
@@ -29,6 +30,7 @@ impl fmt::Display for Store {
             StoreKind::Mut => write!(f, "(mut (name {}){}{})", self.name, ty_str, self.expr),
             StoreKind::Var => write!(f, "(var (name {}) {})", self.name, self.expr),
             StoreKind::Field => write!(f, "(field (name {}) {})", self.name, self.expr),
+            StoreKind::CVar => write!(f, "(cvar (name {}))", self.name),
         }
     }
 }
