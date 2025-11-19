@@ -69,7 +69,8 @@ pub enum TokenKind {
     // Keywords
     True,
     False,
-    Nil,
+    Nil,  // nil for variables
+    Null, // null for pointers
     If,
     Else,
     For,
@@ -240,6 +241,7 @@ impl Token {
             "true" => Some(TokenKind::True),
             "false" => Some(TokenKind::False),
             "nil" => Some(TokenKind::Nil),
+            "null" => Some(TokenKind::Null),
             "if" => Some(TokenKind::If),
             "else" => Some(TokenKind::Else),
             "for" => Some(TokenKind::For),

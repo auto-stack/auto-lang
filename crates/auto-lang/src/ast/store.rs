@@ -34,3 +34,15 @@ impl fmt::Display for Store {
         }
     }
 }
+
+impl fmt::Display for StoreKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            StoreKind::Let => write!(f, "let"),
+            StoreKind::Mut => write!(f, "mut"),
+            StoreKind::Var => write!(f, "var"),
+            StoreKind::Field => write!(f, "field"),
+            StoreKind::CVar => write!(f, "cvar"),
+        }
+    }
+}

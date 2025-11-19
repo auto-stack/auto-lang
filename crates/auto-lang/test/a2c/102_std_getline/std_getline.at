@@ -1,15 +1,16 @@
 use c <stdio.h>
 use c <stdlib.h>
 
+type c FILE
 fn c getline(lineptr *cstr, n *int, stream *FILE) int
 fn c free(p cstr)
 let c stdin *FILE
 
 fn main() {
-    mut lineptr cstr
+    mut lineptr *char = null
     mut n int = 0
 
-    print(c"Enter a line of text: ")
+    print(c"Enter a line of text: ") // TODO: print without newline
 
     let charsRead = getline(lineptr.ptr, n.ptr, stdin);
 

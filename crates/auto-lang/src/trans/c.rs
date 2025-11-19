@@ -85,6 +85,9 @@ impl CTrans {
         let out = &mut sink.body;
         match stmt {
             Stmt::TypeDecl(type_decl) => {
+                if matches!(type_decl.kind, TypeDeclKind::CType) {
+                    return Ok(false);
+                }
                 self.type_decl(type_decl, sink)?;
             }
             Stmt::Expr(expr) => {
@@ -92,6 +95,9 @@ impl CTrans {
                 self.eos(out)?;
             }
             Stmt::Store(store) => {
+                if matches!(store.kind, StoreKind::CVar) {
+                    return Ok(false);
+                }
                 self.store(store, out)?;
                 self.eos(out)?;
             }
@@ -228,7 +234,7 @@ impl CTrans {
     fn empty_line(&mut self, n: &usize, out: &mut impl Write) -> AutoResult<()> {
         // empty_line itself is a stmt, and we have a \n for one stme already
         for _ in 0..*n - 1 {
-            out.write(b"---------\n")?;
+            out.write(b"\n")?;
         }
         Ok(())
     }
@@ -420,8 +426,20 @@ impl CTrans {
             Expr::Node(nd) => self.node(nd, out),
             Expr::Pair(pair) => self.pair(pair, out),
             Expr::Cover(cover) => self.cover(cover, out),
+            Expr::Null => self.null(out),
+            Expr::Nil => self.nil(out),
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
+    }
+
+    fn null(&mut self, out: &mut impl Write) -> AutoResult<()> {
+        out.write(b"NULL")?;
+        Ok(())
+    }
+
+    fn nil(&mut self, out: &mut impl Write) -> AutoResult<()> {
+        out.write(b"NULL")?;
+        Ok(())
     }
 
     fn ident(&mut self, name: &AutoStr, out: &mut impl Write) -> AutoResult<()> {
@@ -638,6 +656,8 @@ impl CTrans {
                 format!("struct {}", t.borrow().name)
             }
             Type::Unknown => "unknown".to_string(),
+            Type::CStruct(decl) => format!("{}", decl.name),
+            Type::Char => "char".to_string(),
             _ => {
                 println!("Unsupported type for C transpiler: {}", ty);
                 panic!("Unsupported type for C transpiler: {}", ty);
@@ -648,6 +668,10 @@ impl CTrans {
     fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
         if matches!(store.kind, StoreKind::Var) {
             return Err(format!("C Transpiler: unsupported store kind: {:?}", store.kind).into());
+        }
+        if matches!(store.kind, StoreKind::CVar) {
+            // skip C variables declaration
+            return Ok(());
         }
         match &store.ty {
             Type::Array(array_type) => {
@@ -800,7 +824,7 @@ impl CTrans {
                             let meta = self.lookup_meta(ident);
                             if let Some(meta) = meta {
                                 match meta.as_ref() {
-                                    Meta::Store(st) => match st.ty {
+                                    Meta::Store(st) => match &st.ty {
                                         Type::Str | Type::CStr => {
                                             arg_types.push("%s");
                                         }
@@ -810,6 +834,14 @@ impl CTrans {
                                         Type::Char => {
                                             arg_types.push("%c");
                                         }
+                                        Type::Ptr(ptr) => match *ptr.of.borrow() {
+                                            Type::Char => {
+                                                arg_types.push("%s");
+                                            }
+                                            _ => {
+                                                arg_types.push("%d");
+                                            }
+                                        },
                                         _ => {
                                             arg_types.push("%d");
                                         }

@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 int main(void) {
-    char* lineptr = "";
+    char* lineptr = NULL;
     int n = 0;
 
     printf("%s\n", "Enter a line of text: ");
@@ -10,7 +10,7 @@ int main(void) {
     int charsRead = getline(&lineptr, &n, stdin);
 
     if (charsRead != -1) {
-        printf("%s %s\n", "You entered: ", lineptr); // lineptr already contains the newline
+        printf("%s %s\n", "You entered:", lineptr);
     } else {
         printf("%s\n", "Error reading line");
     }

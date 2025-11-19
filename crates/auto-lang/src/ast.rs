@@ -188,6 +188,7 @@ pub enum Expr {
     // stmt exprs
     If(If),
     Nil,
+    Null,
 }
 
 fn fmt_array(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
@@ -250,6 +251,7 @@ impl fmt::Display for Expr {
             Expr::Uncover(uncover) => write!(f, "{}", uncover),
             Expr::GenName(name) => write!(f, "(gen-name {})", name),
             Expr::Nil => write!(f, "(nil)"),
+            Expr::Null => write!(f, "(null)"),
         }
     }
 }

@@ -22,6 +22,7 @@ pub enum Type {
     Enum(Shared<EnumDecl>),
     Void,
     Unknown,
+    CStruct(TypeDecl),
 }
 
 impl Type {
@@ -40,6 +41,7 @@ impl Type {
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().unique_name()).into(),
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
+            Type::CStruct(type_decl) => format!("struct {}", type_decl.name).into(),
             _ => "undefined_name".into(),
         }
     }
@@ -57,6 +59,7 @@ impl Type {
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
             Type::User(_) => "{}".into(),
             Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
+            Type::CStruct(_) => "{}".into(),
             _ => "undefined_name".into(),
         }
     }
@@ -104,6 +107,7 @@ impl fmt::Display for Type {
             Type::Tag(t) => write!(f, "{}", t.borrow()),
             Type::Void => write!(f, "void"),
             Type::Unknown => write!(f, "unknown"),
+            Type::CStruct(type_decl) => write!(f, "struct {}", type_decl.name),
         }
     }
 }
@@ -127,6 +131,7 @@ impl From<Type> for auto_val::Type {
             Type::Tag(t) => auto_val::Type::Tag(t.borrow().name.clone()),
             Type::Void => auto_val::Type::Void,
             Type::Unknown => auto_val::Type::Void, // TODO: is this correct?
+            Type::CStruct(_) => auto_val::Type::Void,
         }
     }
 }
@@ -135,8 +140,15 @@ impl From<Type> for auto_val::Type {
 pub type Spec = AutoStr;
 
 #[derive(Debug, Clone)]
+pub enum TypeDeclKind {
+    UserType,
+    CType,
+}
+
+#[derive(Debug, Clone)]
 pub struct TypeDecl {
     pub name: Name,
+    pub kind: TypeDeclKind,
     pub has: Vec<Type>,
     pub specs: Vec<Spec>,
     pub members: Vec<Member>,

@@ -32,6 +32,7 @@ pub enum Value {
     Type(Type),
     #[default]
     Nil,
+    Null,
     Lambda(AutoStr),
     Void,
     Widget(Widget),
@@ -148,6 +149,7 @@ impl Display for Value {
             Value::Double(value) => write!(f, "{}", value),
             Value::Bool(value) => write!(f, "{}", value),
             Value::Nil => write!(f, "nil"),
+            Value::Null => write!(f, "null"),
             Value::Void => write!(f, "void"),
             Value::Array(value) => print_array(f, value),
             Value::Range(left, right) => write!(f, "{}..{}", left, right),

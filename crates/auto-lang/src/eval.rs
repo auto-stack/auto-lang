@@ -873,6 +873,7 @@ impl Evaler {
             Expr::Grid(grid) => self.grid(grid),
             Expr::Cover(cover) => self.cover(cover),
             Expr::Uncover(_) => Value::Void,
+            Expr::Null => Value::Null,
             Expr::Nil => Value::Nil,
         }
     }
@@ -1485,6 +1486,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Tag(tag) => auto_val::Type::Tag(tag.borrow().name.clone()),
         ast::Type::Void => auto_val::Type::Void,
         ast::Type::Unknown => auto_val::Type::Any,
+        ast::Type::CStruct(_) => auto_val::Type::Void,
     }
 }
 

@@ -905,6 +905,7 @@ impl<'a> Parser<'a> {
             TokenKind::Char => Expr::Char(self.cur.text.chars().nth(0).unwrap()),
             TokenKind::Ident => self.ident()?,
             TokenKind::Nil => Expr::Nil,
+            TokenKind::Null => Expr::Null,
             _ => {
                 return error_pos!(
                     "Expected term, got {:?}, pos: {}, next: {}",
@@ -1853,8 +1854,24 @@ impl<'a> Parser<'a> {
     pub fn type_decl_stmt(&mut self) -> AutoResult<Stmt> {
         // TODO: deal with scope
         self.next(); // skip `type` keyword
-        let name = self.cur.text.clone();
-        self.expect(TokenKind::Ident)?;
+        let mut name = self.parse_name()?;
+
+        if name == "c" {
+            name = self.parse_name()?;
+
+            let decl = TypeDecl {
+                kind: TypeDeclKind::CType,
+                name: name.clone(),
+                has: Vec::new(),
+                specs: Vec::new(),
+                members: Vec::new(),
+                methods: Vec::new(),
+            };
+            // put type in scope
+            self.define(name.as_str(), Meta::Type(Type::CStruct(decl.clone())));
+            return Ok(Stmt::TypeDecl(decl));
+        }
+
         // deal with `as` keyword
         let mut specs = Vec::new();
         if self.is_kind(TokenKind::As) {
@@ -1917,6 +1934,7 @@ impl<'a> Parser<'a> {
             }
         }
         let decl = TypeDecl {
+            kind: TypeDeclKind::UserType,
             name: name.clone(),
             specs,
             has,
