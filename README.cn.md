@@ -17,15 +17,22 @@ Auto语言是Soutek公司推出的技术产品Soutek AutoStack的开源版本。
 
 ## 用途
 
-Auto语言可用于如下场景：
-- 作为`Better C`，生成C/Rust源码
+Auto语言现在已经用于下列场景：
+
+- 作为`Better C`，生成C源码
+  - 支持Auto/C混合工程
 - 作为配置语言，替代JSON/XML/YAML
-- 作为数据格式语言，替代JSON/ProtoBuf
+  - 用于多种XML类型文件的生成，如XDM，ARXML等
 - 作为构建工具，替代CMake/XMake
+  - [AutoMan](https://gitee.com/auto-stack/auto-man)：用Auto语言描述的构建工具
 - 作为UI界面描述语言，替代QML/XAML/Vue
+  - [AutoUI](https://gitee.com/auto-stack/auto-ui): 用Auto语言描述的UI界面框架
 - 作为脚本语言，替代Python/Javascript
+  - Auto语言本身支持类似Python的脚本模式和REPL，未来也会制作Notebook
 - 作为模板语言，替代Jinja2/Mustache
+  - [AutoGen](https://gitee.com/auto-stack/auto-gen)：用Auto语言描述任意代码生成模板
 - 作为跨平台Shell，替代Bash/PowerShell
+  - [AutoShell](https://gitee.com/auto-stack/auto-shell)：跨平台命令行工具，可直接执行，未来也能生成Bash/PowerShell脚本执行
 
 ### 1. AutoLang生成C源码
 
@@ -155,19 +162,19 @@ parent(k1: v1, k2: v2) {
 
 ```rust
 class(name: "三3班", count: 55) {
-    student(name: "张三", age: 18) {
+    student(name: "子涵", age: 18) {
         score(subject: "语文", score: 80) {}
         score(subject: "数学", score: 90) {}
         score(subject: "英语", score: 85) {}
     }
 
-    student(name: "李四", age: 19) {
+    student(name: "翌晨", age: 19) {
         score(subject: "语文", score: 85) {}
         score(subject: "数学", score: 95) {}
         score(subject: "英语", score: 80) {}
     }
 
-    student(name: "王五", age: 20) {
+    student(name: "小明", age: 20) {
         score(subject: "语文", score: 85) {}
         score(subject: "数学", score: 95) {}
         score(subject: "英语", score: 80) {}
@@ -179,12 +186,17 @@ class(name: "三3班", count: 55) {
 
 ```xml
 <class name="三3班" count="55">
-    <student name="张三" age="18">
+    <student name="子涵" age="18">
         <score subject="语文" score="80" />
         <score subject="数学" score="90" />
         <score subject="英语" score="85" />
     </student>
-    <student name="李四" age="19">
+    <student name="翌晨" age="19">
+        <score subject="语文" score="85" />
+        <score subject="数学" score="95" />
+        <score subject="英语" score="80" />
+    </student>
+    <student name="小明" age="20">
         <score subject="语文" score="85" />
         <score subject="数学" score="95" />
         <score subject="英语" score="80" />
@@ -226,18 +238,18 @@ project: "osal"
 version: "v0.0.1"
 
 // 依赖项目，可以指定参数
-dep("FreeRTOS", "v0.0.3") {
+dep(FreeRTOS, "v0.0.3") {
     heap: "heap_5"
     config_inc: "demo/inc"
 }
 
 // 本工程中的库
-lib("osal") {
+lib osal {
     // 子目录
-    dir("hsm") {
-        skip: ["hsm_test.h", "hsm_test.c"]
+    dir hsm {
+        skips: ["hsm_test.h", "hsm_test.c"]
     }
-    dir("log") {}
+    dir log
     link: FreeRTOS
 }
 
@@ -250,7 +262,7 @@ port("iar", "ls1480") {
 }
 
 // 可执行文件
-app("demo") {
+app demo {
     // 静态链接
     links: ["osal"]
     // 指定输出文件名
