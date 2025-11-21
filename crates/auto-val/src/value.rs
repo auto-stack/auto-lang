@@ -201,6 +201,7 @@ pub enum Op {
     RangeEq,
     Dot,
     Colon,
+    In,
 }
 
 impl Value {
@@ -476,6 +477,7 @@ impl fmt::Display for Op {
             Op::LParen => write!(f, "(op ()"),
             Op::LBrace => write!(f, "(op {{)"),
             Op::Colon => write!(f, "(op :)"),
+            Op::In => write!(f, "(op in)"),
         }
     }
 }
@@ -511,6 +513,7 @@ impl Op {
             Op::RangeEq => "..=",
             Op::Dot => ".",
             Op::Colon => ":",
+            Op::In => "in",
         }
     }
 }

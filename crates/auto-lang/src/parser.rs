@@ -1448,18 +1448,33 @@ impl<'a> Parser<'a> {
     pub fn for_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip `for`
                      // enumerator
-        if self.is_kind(TokenKind::Ident) {
-            let name = self.cur.text.clone();
+        let ident = self.parse_name()?;
+        if self.is_kind(TokenKind::LParen) {
+            let args = self.args()?;
+            let call = self.call(Expr::Ident(ident), args)?;
+            let Expr::Call(call) = call else {
+                return error_pos!("Strange call in for statement");
+            };
+            self.expect(TokenKind::Question)?;
+            self.enter_scope();
+            let body = self.body()?;
+            self.exit_scope();
+            return Ok(Stmt::For(For {
+                iter: Iter::Call(call),
+                range: Expr::Nil,
+                body,
+                new_line: false,
+            }));
+        } else {
             self.enter_scope();
             let meta = Meta::Store(Store {
                 kind: StoreKind::Var,
-                name: name.clone(),
+                name: ident.clone(),
                 expr: Expr::Nil,
                 ty: Type::Int,
             });
-            self.define(name.as_str(), meta);
-            self.next(); // skip name
-            let mut iter = Iter::Named(name.clone());
+            self.define(ident.as_str(), meta);
+            let mut iter = Iter::Named(ident.clone());
             if self.is_kind(TokenKind::Comma) {
                 self.next(); // skip ,
                 let iter_name = self.cur.text.clone();
@@ -1471,7 +1486,7 @@ impl<'a> Parser<'a> {
                 });
                 self.define(iter_name.as_str(), meta_iter);
                 self.next(); // skip iter name
-                iter = Iter::Indexed(name.clone(), iter_name.clone());
+                iter = Iter::Indexed(ident.clone(), iter_name.clone());
             }
             self.expect(TokenKind::In)?;
             let range = self.iterable_expr()?;
@@ -1485,7 +1500,6 @@ impl<'a> Parser<'a> {
                 new_line: has_new_line,
             }));
         }
-        error_pos!("Expected for loop, got {:?}", self.kind())
     }
 
     pub fn is_stmt(&mut self) -> AutoResult<Stmt> {
@@ -1719,7 +1733,7 @@ impl<'a> Parser<'a> {
         // parse return type
         let mut ret_type = Type::Unknown;
         // TODO: determine return type with last stmt if it's not specified
-        if self.is_kind(TokenKind::Ident) {
+        if self.is_type_name() {
             ret_type = self.parse_type()?;
         }
 
@@ -2345,6 +2359,14 @@ impl<'a> Parser<'a> {
     // 8. hello name { ... } 参数可以省略
     // 总之，节点实例的关键特征是`{}`，而函数调用没有`{}`
     pub fn parse_node_or_call_stmt(&mut self) -> AutoResult<Stmt> {
+        let expr = self.node_or_call_expr()?;
+        match expr {
+            Expr::Node(node) => Ok(Stmt::Node(node)),
+            _ => Ok(Stmt::Expr(expr)),
+        }
+    }
+
+    pub fn node_or_call_expr(&mut self) -> AutoResult<Expr> {
         let ident = self.ident()?;
         self.next();
 
@@ -2387,7 +2409,7 @@ impl<'a> Parser<'a> {
             }
             match ident {
                 Expr::Ident(name) => {
-                    return Ok(Stmt::Node(self.parse_node(
+                    return Ok(Expr::Node(self.parse_node(
                         &name,
                         id,
                         args,
@@ -2404,7 +2426,7 @@ impl<'a> Parser<'a> {
                 // call
                 let expr = self.call(ident, args)?;
                 // }
-                Ok(Stmt::Expr(expr))
+                Ok(expr)
             } else {
                 // Something else with a starting Ident
                 if id.is_some() {
@@ -2416,7 +2438,7 @@ impl<'a> Parser<'a> {
                             || self.is_kind(TokenKind::RBrace)
                         {
                             let nd = self.parse_node(&ident.repr(), id, args, &kind)?;
-                            return Ok(Stmt::Node(nd));
+                            return Ok(Expr::Node(nd));
                         } else {
                             return error_pos!(
                                 "expect node, got {} {} {}",
@@ -2432,7 +2454,7 @@ impl<'a> Parser<'a> {
                             || self.is_kind(TokenKind::RBrace)
                         {
                             let nd = self.parse_node(&ident.repr(), id, args, &"".into())?;
-                            return Ok(Stmt::Node(nd));
+                            return Ok(Expr::Node(nd));
                         }
                     }
                     return error_pos!(
@@ -2443,7 +2465,7 @@ impl<'a> Parser<'a> {
                 }
                 let expr = self.expr_pratt_with_left(ident, 0)?;
                 let expr = self.check_symbol(expr)?;
-                Ok(Stmt::Expr(expr))
+                Ok(expr)
             }
         }
     }

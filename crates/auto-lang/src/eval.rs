@@ -302,6 +302,7 @@ impl Evaler {
                 self.universe.borrow_mut().set_local_val(&iter, item);
             }
             Iter::Named(iter) => self.universe.borrow_mut().set_local_val(&iter, item),
+            Iter::Call(_) => {}
         }
     }
 

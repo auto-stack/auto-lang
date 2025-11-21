@@ -1,4 +1,4 @@
-use super::{Body, Expr, Name};
+use super::{Body, Call, Expr, Name};
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -14,6 +14,7 @@ pub struct For {
 pub enum Iter {
     Indexed(/*index*/ Name, /*iter*/ Name),
     Named(/*iter*/ Name),
+    Call(Call),
 }
 
 impl fmt::Display for For {
@@ -27,6 +28,7 @@ impl fmt::Display for Iter {
         match self {
             Iter::Indexed(index, iter) => write!(f, "((name {}) (name {}))", index, iter),
             Iter::Named(iter) => write!(f, "(name {})", iter),
+            Iter::Call(call) => write!(f, "(call {})", call),
         }
     }
 }

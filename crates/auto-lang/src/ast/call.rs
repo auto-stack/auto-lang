@@ -18,6 +18,12 @@ impl Call {
     }
 }
 
+impl fmt::Display for Call {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(call {})", self.args)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Args {
     // pub array: Vec<Expr>,

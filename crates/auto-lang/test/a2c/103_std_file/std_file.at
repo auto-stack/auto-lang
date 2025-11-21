@@ -1,0 +1,19 @@
+use c <stdio.h>
+
+type c FILE
+fn c fopen(filename cstr, mode cstr) *FILE
+fn c fclose(stream *FILE)
+fn c fgets(buf cstr, n int, stream *FILE) cstr
+fn c printf(format cstr, arg cstr)
+
+fn main() {
+    mut fp *FILE = null
+    fp = fopen(c"Cargo.toml", c"r")
+
+    mut buf [100]char = [0]
+    for fgets(buf, 100, fp) ? {
+        printf(c"%s", buf)
+    }
+
+    fclose(fp)
+}

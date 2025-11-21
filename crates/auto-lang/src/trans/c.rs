@@ -762,10 +762,26 @@ impl CTrans {
     }
 
     fn for_stmt(&mut self, for_stmt: &For, sink: &mut Sink) -> AutoResult<()> {
-        sink.body.write(b"for (").to()?;
-        self.expr(&for_stmt.range, &mut sink.body)?;
+        if matches!(for_stmt.iter, Iter::Call(_)) {
+            sink.body.write(b"while (").to()?;
+            self.iter(&for_stmt.iter, &mut sink.body)?;
+        } else {
+            sink.body.write(b"for (").to()?;
+            self.expr(&for_stmt.range, &mut sink.body)?;
+        }
         sink.body.write(b") ").to()?;
         self.body(&for_stmt.body, sink, &Type::Void)?;
+        Ok(())
+    }
+
+    fn iter(&mut self, iter: &Iter, out: &mut impl Write) -> AutoResult<()> {
+        match iter {
+            Iter::Indexed(_i, _iter) => {}
+            Iter::Named(_) => {}
+            Iter::Call(call) => {
+                self.call(call, out)?;
+            }
+        }
         Ok(())
     }
 
@@ -835,6 +851,14 @@ impl CTrans {
                                             arg_types.push("%c");
                                         }
                                         Type::Ptr(ptr) => match *ptr.of.borrow() {
+                                            Type::Char => {
+                                                arg_types.push("%s");
+                                            }
+                                            _ => {
+                                                arg_types.push("%d");
+                                            }
+                                        },
+                                        Type::Array(arr) => match *arr.elem {
                                             Type::Char => {
                                                 arg_types.push("%s");
                                             }
@@ -1470,5 +1494,10 @@ int add(int x, int y);
     #[test]
     fn test_102_std_getline() {
         test_a2c("102_std_getline").unwrap();
+    }
+
+    #[test]
+    fn test_103_std_file() {
+        test_a2c("103_std_file").unwrap();
     }
 }
