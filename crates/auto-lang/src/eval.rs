@@ -1055,7 +1055,6 @@ impl Evaler {
             },
 
             _ => {
-                println!("Left value unknown: {:?}", left_value);
                 // try to lookup method
                 match right {
                     Expr::Ident(name) => {

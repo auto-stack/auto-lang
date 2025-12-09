@@ -108,6 +108,20 @@ impl Value {
     pub fn is_void(&self) -> bool {
         matches!(self, Value::Void)
     }
+
+    pub fn get_type(&self) -> Type {
+        match self {
+            Value::Str(_) => Type::Str,
+            Value::Int(_) => Type::Int,
+            Value::Uint(_) => Type::Int,
+            Value::Float(_) => Type::Float,
+            Value::Bool(_) => Type::Bool,
+            Value::Char(_) => Type::Char,
+            Value::Array(_) => Type::Array,
+            Value::Void => Type::Void,
+            _ => Type::Any,
+        }
+    }
 }
 
 // arithmetic

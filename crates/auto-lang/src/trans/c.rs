@@ -1500,4 +1500,9 @@ int add(int x, int y);
     fn test_103_std_file() {
         test_a2c("103_std_file").unwrap();
     }
+
+    #[test]
+    fn test_104_std_repl() {
+        test_a2c("104_std_repl").unwrap();
+    }
 }
