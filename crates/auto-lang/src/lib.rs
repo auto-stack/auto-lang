@@ -20,6 +20,7 @@ use crate::{eval::EvalMode, trans::Sink};
 use crate::{parser::Parser, trans::Trans};
 use auto_val::Obj;
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 
 use auto_val::AutoResult;
@@ -119,6 +120,9 @@ pub fn trans_c(path: &str) -> AutoResult<String> {
 
     // convert sink to .c/.h files
     std::fs::write(&cname, sink.done())?;
+    // write the header file
+    let h_path = path.replace(".at", ".h");
+    std::fs::write(Path::new(h_path.as_str()), sink.header)?;
 
     Ok(format!("[trans] {} -> {}", path, cname))
 }

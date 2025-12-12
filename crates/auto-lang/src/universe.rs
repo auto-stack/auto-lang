@@ -123,6 +123,7 @@ impl Universe {
 
     pub fn define_sys_types(&mut self) {
         self.define("int", Rc::new(Meta::Type(ast::Type::Int)));
+        self.define("uint", Rc::new(Meta::Type(ast::Type::Uint)));
         self.define("float", Rc::new(Meta::Type(ast::Type::Float)));
         self.define("double", Rc::new(Meta::Type(ast::Type::Double)));
         self.define("bool", Rc::new(Meta::Type(ast::Type::Bool)));

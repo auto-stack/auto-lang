@@ -1,0 +1,5 @@
+name: "auto"
+version: "0.3.0"
+
+app auto {
+}

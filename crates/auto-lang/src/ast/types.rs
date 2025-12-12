@@ -8,6 +8,8 @@ use std::fmt;
 pub enum Type {
     Byte,
     Int,
+    Uint,
+    USize,
     Float,
     Double,
     Bool,
@@ -29,6 +31,8 @@ impl Type {
     pub fn unique_name(&self) -> AutoStr {
         match self {
             Type::Int => "int".into(),
+            Type::Uint => "uint".into(),
+            Type::USize => "usize".into(),
             Type::Float => "float".into(),
             Type::Bool => "bool".into(),
             Type::Byte => "byte".into(),
@@ -42,13 +46,16 @@ impl Type {
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             Type::CStruct(type_decl) => format!("struct {}", type_decl.name).into(),
-            _ => "undefined_name".into(),
+            Type::Unknown => "<unknown>".into(),
+            _ => format!("undefined_type_name<{}>", self).into(),
         }
     }
 
     pub fn default_value(&self) -> AutoStr {
         match self {
             Type::Int => "0".into(),
+            Type::Uint => "0".into(),
+            Type::USize => "0".into(),
             Type::Float => "0.0".into(),
             Type::Bool => "false".into(),
             Type::Byte => "0".into(),
@@ -60,7 +67,8 @@ impl Type {
             Type::User(_) => "{}".into(),
             Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
             Type::CStruct(_) => "{}".into(),
-            _ => "undefined_name".into(),
+            Type::Unknown => "<unknown>".into(),
+            _ => "<unknown_type>".into(),
         }
     }
 }
@@ -93,6 +101,8 @@ impl fmt::Display for Type {
         match self {
             Type::Byte => write!(f, "byte"),
             Type::Int => write!(f, "int"),
+            Type::Uint => write!(f, "uint"),
+            Type::USize => write!(f, "usize"),
             Type::Float => write!(f, "float"),
             Type::Double => write!(f, "double"),
             Type::Bool => write!(f, "bool"),
@@ -117,6 +127,8 @@ impl From<Type> for auto_val::Type {
         match ty {
             Type::Byte => auto_val::Type::Byte,
             Type::Int => auto_val::Type::Int,
+            Type::Uint => auto_val::Type::Uint,
+            Type::USize => auto_val::Type::Uint,
             Type::Float => auto_val::Type::Float,
             Type::Double => auto_val::Type::Double,
             Type::Bool => auto_val::Type::Bool,

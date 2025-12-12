@@ -14,12 +14,20 @@ use std::io::Write;
 use std::path::Path;
 use std::rc::Rc;
 
+pub enum OutKind {
+    Header,
+    Source,
+    Both,
+    None,
+}
+
 pub struct CTrans {
     indent: usize,
     libs: HashSet<AutoStr>,
     pub header: Vec<u8>,
     name: AutoStr,
     scope: Shared<Universe>,
+    last_out: OutKind,
 }
 
 impl CTrans {
@@ -30,6 +38,7 @@ impl CTrans {
             header: Vec::new(),
             name,
             scope: shared(Universe::default()),
+            last_out: OutKind::None,
         }
     }
 
@@ -121,7 +130,7 @@ impl CTrans {
                 self.use_stmt(use_stmt, out)?;
             }
             Stmt::EnumDecl(enum_decl) => {
-                self.enum_decl(enum_decl, out)?;
+                self.enum_decl(enum_decl, sink)?;
             }
             Stmt::Alias(alias) => {
                 self.alias(alias, out)?;
@@ -234,7 +243,19 @@ impl CTrans {
     fn empty_line(&mut self, n: &usize, out: &mut impl Write) -> AutoResult<()> {
         // empty_line itself is a stmt, and we have a \n for one stme already
         for _ in 0..*n - 1 {
-            out.write(b"\n")?;
+            match self.last_out {
+                OutKind::Header => {
+                    self.header.write(b"\n")?;
+                }
+                OutKind::Source => {
+                    out.write(b"\n")?;
+                }
+                OutKind::Both => {
+                    self.header.write(b"\n")?;
+                    out.write(b"\n")?;
+                }
+                OutKind::None => {}
+            }
         }
         Ok(())
     }
@@ -248,7 +269,8 @@ impl CTrans {
         Ok(())
     }
 
-    fn enum_decl(&mut self, enum_decl: &EnumDecl, out: &mut impl Write) -> AutoResult<()> {
+    fn enum_decl(&mut self, enum_decl: &EnumDecl, _sink: &mut Sink) -> AutoResult<()> {
+        let mut out = std::mem::take(&mut self.header);
         out.write(b"enum ")?;
         out.write(enum_decl.name.as_bytes())?;
         out.write(b" {\n")?;
@@ -262,18 +284,21 @@ impl CTrans {
             out.write(b",\n")?;
         }
         out.write(b"};")?;
+        self.header = out;
+
+        self.last_out = OutKind::Header;
         Ok(())
     }
 
     fn type_decl(&mut self, type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
-        let out = &mut sink.body;
+        let mut out = std::mem::take(&mut self.header);
         // write type body
         out.write(b"struct ")?;
         out.write(type_decl.name.as_bytes())?;
         out.write(b" {\n")?; // TODO: no newline for short decls
         for field in type_decl.members.iter() {
             out.write(b"    ")?;
-            out.write(field.ty.unique_name().as_bytes())?;
+            out.write(self.c_type_name(&field.ty).as_bytes())?;
             out.write(b" ")?;
             out.write(field.name.as_bytes())?;
             out.write(b";\n")?;
@@ -284,6 +309,32 @@ impl CTrans {
         if !type_decl.methods.is_empty() {
             out.write(b"\n")?;
         }
+        for method in type_decl.methods.iter() {
+            out.write(method.ret.unique_name().as_bytes())?;
+            out.write(b" ")?;
+            out.write(method.name.as_bytes())?;
+            out.write(b"(")?;
+            // self
+            out.write(b"struct ")?;
+            out.write(type_decl.name.as_bytes())?;
+            out.write(b" *s")?;
+            if !method.params.is_empty() {
+                out.write(b", ")?;
+            }
+            out.write(
+                method
+                    .params
+                    .iter()
+                    .map(|p| p.ty.unique_name())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+                    .as_bytes(),
+            )?;
+            out.write(b");\n")?;
+        }
+
+        self.header = out;
+
         for method in type_decl.methods.iter() {
             let out = &mut sink.body;
             out.write(method.ret.unique_name().as_bytes())?;
@@ -310,6 +361,12 @@ impl CTrans {
             // method body
             self.body(&method.body, sink, &method.ret)?;
             sink.body.write(b"\n")?;
+        }
+
+        if type_decl.members.len() > 0 {
+            self.last_out = OutKind::Both;
+        } else {
+            self.last_out = OutKind::Header;
         }
         Ok(())
     }
@@ -523,8 +580,10 @@ impl CTrans {
         // header
         let mut header = Vec::new();
         self.fn_sig(&fn_decl, &mut header)?;
-        self.header.extend(header);
-        self.header.write(b";\n").to()?;
+        if fn_decl.name != "main" {
+            self.header.extend(header);
+            self.header.write(b";\n").to()?;
+        }
 
         // source
         if matches!(fn_decl.kind, FnKind::CFunction) {
@@ -632,6 +691,7 @@ impl CTrans {
     fn c_type_name(&self, ty: &Type) -> String {
         match ty {
             Type::Int => "int".to_string(),
+            Type::Uint => "unsigned int".to_string(),
             Type::Float => "float".to_string(),
             Type::Double => "double".to_string(),
             Type::Bool => "bool".to_string(),
@@ -1113,15 +1173,6 @@ impl Trans for CTrans {
             }
         }
 
-        // write header guards
-        let upper = self.name.to_uppercase();
-        let name_bytes = upper.as_bytes();
-        self.header.write(b"#ifndef ").to()?;
-        self.header.write(name_bytes).to()?;
-        self.header.write(b"_H\n#define ").to()?;
-        self.header.write(name_bytes).to()?;
-        self.header.write(b"_H\n\n").to()?;
-
         // // TODO: Includes on demand
         // if !self.libs.is_empty() {
         //     for path in self.libs.iter() {
@@ -1171,10 +1222,22 @@ impl Trans for CTrans {
             sink.body.write(b"}\n").to()?;
         }
 
-        // header guard end
-        self.header.write(b"\n#endif\n\n").to()?;
+        println!("GOt HEADER: {}", String::from_utf8_lossy(&self.header));
 
-        sink.header = self.header.clone();
+        // write header if header content is not empty
+        if !self.header.is_empty() {
+            // write header guards
+            let upper = self.name.to_uppercase();
+            let name_bytes = upper.as_bytes();
+            sink.header.write(b"#ifndef ").to()?;
+            sink.header.write(name_bytes).to()?;
+            sink.header.write(b"_H\n#define ").to()?;
+            sink.header.write(name_bytes).to()?;
+            sink.header.write(b"_H\n\n").to()?;
+            sink.header.write_all(&self.header)?;
+            // header guard end
+            sink.header.write(b"\n#endif\n\n").to()?;
+        }
 
         // includes
         let libs_set = std::mem::take(&mut self.libs);
@@ -1384,23 +1447,43 @@ int add(int x, int y);
 
         let exp_path = format!("test/a2c/{}/{}.expected.c", case, name);
         let exp_path = d.join(exp_path);
-        if !exp_path.is_file() {
-            panic!("Expected file not found: {}", exp_path.display());
-        }
-        let expected = read_to_string(exp_path.as_path())?;
+        let expected_src = if !exp_path.is_file() {
+            "".to_string()
+        } else {
+            read_to_string(exp_path.as_path())?
+        };
+
+        let exph_path = format!("test/a2c/{}/{}.expected.h", case, name);
+        let exph_path = d.join(exph_path);
+        let expected_header = if !exph_path.is_file() {
+            "".to_string()
+        } else {
+            read_to_string(exp_path.as_path())?
+        };
 
         let (mut ccode, _) = transpile_c(name, &src)?;
-        let str = String::from_utf8(ccode.done().clone()).unwrap();
 
-        if str != expected {
+        let src = ccode.done();
+
+        if src != expected_src.as_bytes() {
             // out put generated code to a gen file
             let gen_path = format!("test/a2c/{}/{}.wrong.c", case, name);
             let gen_path = d.join(gen_path);
             let mut file = File::create(gen_path.as_path())?;
-            file.write_all(str.as_bytes())?;
+            file.write_all(src)?;
         }
 
-        assert_eq!(str, expected);
+        assert_eq!(String::from_utf8_lossy(src), expected_src);
+
+        let header = ccode.header;
+        if header != expected_header.as_bytes() {
+            // out put generated code to a gen file
+            let gen_path = format!("test/a2c/{}/{}.wrong.h", case, name);
+            let gen_path = d.join(gen_path);
+            let mut file = File::create(gen_path.as_path())?;
+            file.write_all(&header)?;
+        }
+        assert_eq!(String::from_utf8_lossy(&header), expected_header);
         Ok(())
     }
 

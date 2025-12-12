@@ -1472,6 +1472,8 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
     match ty {
         ast::Type::Byte => auto_val::Type::Byte,
         ast::Type::Int => auto_val::Type::Int,
+        ast::Type::Uint => auto_val::Type::Uint,
+        ast::Type::USize => auto_val::Type::Uint, // TODO: should be U64?
         ast::Type::Float => auto_val::Type::Float,
         ast::Type::Double => auto_val::Type::Double,
         ast::Type::Bool => auto_val::Type::Bool,

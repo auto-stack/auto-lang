@@ -1,8 +1,5 @@
 #include <stdio.h>
-
-int add(int a, int b) {
-    return a + b;
-}
+#include "func.h"
 
 int main(void) {
     int result = add(5, 3);

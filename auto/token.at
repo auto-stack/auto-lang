@@ -1,0 +1,29 @@
+type Pos {
+    line uint
+    pos uint
+}
+
+enum TokenKind {
+    // Literals
+    Int // i32
+    UInt  // u32
+
+    I8 // i8
+    U8 // u8
+
+    Float // f32
+    Double // f64
+
+    Str // string
+    CStr // cstr
+    Char // char
+    Rune // rune for unicode
+
+    // Operators
+    LParen // (
+    RParen // )
+    LSquare // [
+    RSquare // ]
+    LBrace // {
+    RBrace // }
+}
