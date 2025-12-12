@@ -1,4 +1,4 @@
-#include <math.h>
+#include "sqrt.h"
 
 int main(void) {
     double x = 4.0;

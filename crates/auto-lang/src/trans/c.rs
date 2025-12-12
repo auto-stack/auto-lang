@@ -22,6 +22,11 @@ pub enum OutKind {
     None,
 }
 
+pub enum CStyle {
+    Tradition,
+    Modern,
+}
+
 pub struct CTrans {
     indent: usize,
     libs: HashSet<AutoStr>,
@@ -29,6 +34,7 @@ pub struct CTrans {
     name: AutoStr,
     scope: Shared<Universe>,
     last_out: OutKind,
+    style: CStyle,
 }
 
 impl CTrans {
@@ -40,11 +46,16 @@ impl CTrans {
             name,
             scope: shared(Universe::default()),
             last_out: OutKind::None,
+            style: CStyle::Modern,
         }
     }
 
     pub fn set_scope(&mut self, scope: Shared<Universe>) {
         self.scope = scope;
+    }
+
+    pub fn set_stayle(&mut self, style: CStyle) {
+        self.style = style;
     }
 
     fn indent(&mut self) {
@@ -57,7 +68,14 @@ impl CTrans {
 
     fn print_indent(&self, out: &mut impl Write) -> AutoResult<()> {
         for _ in 0..self.indent {
-            out.write(b"    ").to()?;
+            out.write(b"    ")?;
+        }
+        Ok(())
+    }
+
+    fn print_indent_header(&mut self) -> AutoResult<()> {
+        for _ in 0..self.indent {
+            self.header.write(b"    ")?;
         }
         Ok(())
     }
@@ -67,6 +85,34 @@ impl CTrans {
             out.write(b"    ").to()?;
         }
         out.write(text.as_bytes())?;
+        Ok(())
+    }
+
+    fn header_guard_start(&self, header: &mut impl Write) -> AutoResult<()> {
+        match self.style {
+            CStyle::Tradition => {
+                let upper = self.name.to_uppercase();
+                let name_bytes = upper.as_bytes();
+                header.write(b"#ifndef ")?;
+                header.write(name_bytes)?;
+                header.write(b"_H\n#define ")?;
+                header.write(name_bytes)?;
+                header.write(b"_H\n\n")?;
+            }
+            CStyle::Modern => {
+                header.write(b"#pragma once\n\n")?;
+            }
+        }
+        Ok(())
+    }
+
+    fn header_guard_end(&self, header: &mut impl Write) -> AutoResult<()> {
+        match self.style {
+            CStyle::Tradition => {
+                header.write(b"\n#endif\n").to()?;
+            }
+            CStyle::Modern => {}
+        }
         Ok(())
     }
 }
@@ -154,63 +200,65 @@ impl CTrans {
 
     fn tag(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
         self.tag_enum(tag, sink)?;
-        sink.body.write(b"\n")?;
+        self.header.write(b"\n")?;
         self.tag_struct(tag, sink)?;
         Ok(())
     }
 
     fn tag_enum(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
-        sink.body.write(b"enum ")?;
-        sink.body.write(format!("{}Kind", tag.name).as_bytes())?;
-        sink.body.write(b" {\n")?;
+        self.header.write(b"enum ")?;
+        self.header.write(format!("{}Kind", tag.name).as_bytes())?;
+        self.header.write(b" {\n")?;
         self.indent();
         for field in &tag.fields {
-            self.print_indent(&mut sink.body)?;
+            let mut header = std::mem::take(&mut self.header);
+            self.print_indent(&mut header)?;
+            self.header = header;
             self.tag_field(tag, field, sink)?;
         }
         self.dedent();
-        sink.body.write(b"};\n")?;
+        self.header.write(b"};\n")?;
         Ok(())
     }
 
-    fn tag_field(&mut self, tag: &Tag, field: &TagField, sink: &mut Sink) -> AutoResult<()> {
-        let out = &mut sink.body;
+    fn tag_field(&mut self, tag: &Tag, field: &TagField, _sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut self.header;
         out.write(format!("{}_{}", tag.name.to_uppercase(), field.name.to_uppercase()).as_bytes())?;
         out.write(b",\n")?;
         Ok(())
     }
 
     fn tag_struct(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
-        sink.body.write(b"struct ")?;
-        sink.body.write(tag.name.as_bytes())?;
-        sink.body.write(b" {\n")?;
+        self.header.write(b"struct ")?;
+        self.header.write(tag.name.as_bytes())?;
+        self.header.write(b" {\n")?;
         self.indent();
         // enam tag
-        self.print_indent(&mut sink.body)?;
-        sink.body.write(b"enum ")?;
+        self.print_indent_header()?;
+        self.header.write(b"enum ")?;
         // Type is tagName + Kind
-        sink.body.write(format!("{}Kind", tag.name).as_bytes())?;
-        sink.body.write(b" tag;\n")?;
+        self.header.write(format!("{}Kind", tag.name).as_bytes())?;
+        self.header.write(b" tag;\n")?;
 
         // union data
-        self.print_indent(&mut sink.body)?;
-        sink.body.write(b"union {\n")?;
+        self.print_indent_header()?;
+        self.header.write(b"union {\n")?;
         self.indent();
 
         for field in &tag.fields {
-            self.print_indent(&mut sink.body)?;
+            self.print_indent_header()?;
             self.tag_struct_field(field, sink)?;
         }
         self.dedent();
-        self.print_indent(&mut sink.body)?;
-        sink.body.write(b"} as;\n")?;
+        self.print_indent_header()?;
+        self.header.write(b"} as;\n")?;
         self.dedent();
-        sink.body.write(b"};\n")?;
+        self.header.write(b"};\n")?;
         Ok(())
     }
 
-    fn tag_struct_field(&mut self, field: &TagField, sink: &mut Sink) -> AutoResult<()> {
-        let out = &mut sink.body;
+    fn tag_struct_field(&mut self, field: &TagField, _sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut self.header;
         out.write(field.ty.unique_name().as_bytes())?;
         out.write(b" ")?;
         out.write(field.name.as_bytes())?;
@@ -219,21 +267,23 @@ impl CTrans {
     }
 
     fn union(&mut self, union: &Union, sink: &mut Sink) -> AutoResult<()> {
-        sink.body.write(b"union ")?;
-        sink.body.write(union.name.as_bytes())?;
-        sink.body.write(b" {\n")?;
+        self.header.write(b"union ")?;
+        self.header.write(union.name.as_bytes())?;
+        self.header.write(b" {\n")?;
         self.indent();
         for field in &union.fields {
-            self.print_indent(&mut sink.body)?;
+            let mut header = std::mem::take(&mut self.header);
+            self.print_indent(&mut header)?;
+            self.header = header;
             self.union_field(field, sink)?;
         }
         self.dedent();
-        sink.body.write(b"};\n")?;
+        self.header.write(b"};\n")?;
         Ok(())
     }
 
-    fn union_field(&mut self, field: &UnionField, sink: &mut Sink) -> AutoResult<()> {
-        let out = &mut sink.body;
+    fn union_field(&mut self, field: &UnionField, _sink: &mut Sink) -> AutoResult<()> {
+        let out = &mut self.header;
         out.write(field.ty.unique_name().as_bytes())?;
         out.write(b" ")?;
         out.write(field.name.as_bytes())?;
@@ -284,7 +334,7 @@ impl CTrans {
             out.write(format!("{}", item.value).as_bytes())?;
             out.write(b",\n")?;
         }
-        out.write(b"};")?;
+        out.write(b"};\n")?;
         self.header = out;
 
         self.last_out = OutKind::Header;
@@ -1233,13 +1283,7 @@ impl Trans for CTrans {
         // write header if header content is not empty
         if !self.header.is_empty() || !self.libs.is_empty() {
             // write header guards
-            let upper = self.name.to_uppercase();
-            let name_bytes = upper.as_bytes();
-            sink.header.write(b"#ifndef ")?;
-            sink.header.write(name_bytes)?;
-            sink.header.write(b"_H\n#define ")?;
-            sink.header.write(name_bytes)?;
-            sink.header.write(b"_H\n\n")?;
+            self.header_guard_start(&mut sink.header)?;
             // includes
             let libs_set = std::mem::take(&mut self.libs);
             let mut libs = libs_set.into_iter().collect::<Vec<_>>();
@@ -1251,13 +1295,13 @@ impl Trans for CTrans {
                 sink.header.write(b"\n")?;
             }
 
-            if !libs.is_empty() {
+            if !libs.is_empty() && !self.header.is_empty() {
                 sink.header.write(b"\n")?;
             }
 
             sink.header.write_all(&self.header)?;
             // header guard end
-            sink.header.write(b"\n#endif\n").to()?;
+            self.header_guard_end(&mut sink.header)?;
         }
 
         Ok(())

@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include "if.h"
 
 int main(void) {
     int x = 2;

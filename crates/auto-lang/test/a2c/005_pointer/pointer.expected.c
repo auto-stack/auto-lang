@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include "pointer.h"
 
 void inc(int* a) {
     *a += 1;

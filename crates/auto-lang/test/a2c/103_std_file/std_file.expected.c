@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include "std_file.h"
 
 int main(void) {
     FILE* fp = NULL;

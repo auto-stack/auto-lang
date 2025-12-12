@@ -1,7 +1,5 @@
-#ifndef SYS_H
-#define SYS_H
+#pragma once
+
+#include <unistd.h>
 
 int get_pid();
-
-#endif
-

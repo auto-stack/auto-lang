@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include "alias.h"
 
 int my_add(int a, int b) {
     return a + b;

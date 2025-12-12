@@ -1,5 +1,4 @@
-#include "auto/sys.h"
-#include <stdio.h>
+#include "std_getpid.h"
 
 int main(void) {
     int pid = get_pid();

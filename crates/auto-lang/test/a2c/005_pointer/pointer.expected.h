@@ -2,4 +2,4 @@
 
 #include <stdio.h>
 
-void println(char* msg);
+void inc(int* a);

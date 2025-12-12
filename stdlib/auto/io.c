@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include "io.h"
 
 void say(char* msg) {
 

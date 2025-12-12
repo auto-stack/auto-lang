@@ -2,4 +2,4 @@
 
 #include <stdio.h>
 
-void println(char* msg);
+int my_add(int a, int b);

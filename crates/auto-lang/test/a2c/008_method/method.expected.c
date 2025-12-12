@@ -1,9 +1,4 @@
-#include <stdio.h>
-
-struct Point {
-    int x;
-    int y;
-};
+#include "method.h"
 
 int modulus(struct Point *s) {
     return s->x * s->x + s->y * s->y;

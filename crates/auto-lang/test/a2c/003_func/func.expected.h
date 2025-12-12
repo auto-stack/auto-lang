@@ -1,8 +1,5 @@
-#ifndef FUNC_H
-#define FUNC_H
+#pragma once
 
 #include <stdio.h>
 
 int add(int a, int b);
-
-#endif

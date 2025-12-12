@@ -1,7 +1,5 @@
-#ifndef IO_H
-#define IO_H
+#pragma once
+
+#include <stdio.h>
 
 void say(char* msg);
-
-#endif
-

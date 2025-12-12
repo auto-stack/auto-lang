@@ -1,5 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include "std_repl.h"
 
 int main(void) {
     char* lineptr = NULL;

@@ -1,4 +1,4 @@
-#include "auto/io.h"
+#include "std_hello.h"
 
 int main(void) {
     say("hello!");

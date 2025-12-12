@@ -1,10 +1,5 @@
-#include <stdio.h>
+#include "union.h"
 
-union MyUnion {
-    int i;
-    float f;
-    char c;
-};
 
 int main(void) {
     union MyUnion my_union = {.i = 42};
