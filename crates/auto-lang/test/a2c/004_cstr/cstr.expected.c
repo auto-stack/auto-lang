@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include "cstr.h"
 
 void println(char* msg) {
     printf("%s\n", msg);

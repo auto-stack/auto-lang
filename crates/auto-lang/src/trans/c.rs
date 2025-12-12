@@ -9,6 +9,7 @@ use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::{shared, Shared};
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::Path;
@@ -1139,8 +1140,25 @@ impl CTrans {
     }
 }
 
+fn cmp_include_name(a: &AutoStr, b: &AutoStr) -> Ordering {
+    let sa = a.as_bytes()[0];
+    let sb = b.as_bytes()[0];
+    match (sa, sb) {
+        (b'<', b'"') => {
+            return std::cmp::Ordering::Less;
+        }
+        (b'"', b'<') => {
+            return std::cmp::Ordering::Greater;
+        }
+        _ => {
+            return a.to_string().cmp(&b.to_string());
+        }
+    }
+}
+
 impl Trans for CTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
+        sink.name = self.name.clone();
         // Split stmts into decls and main
         // TODO: handle potential includes when needed
         let mut decls: Vec<Stmt> = Vec::new();
@@ -1172,16 +1190,6 @@ impl Trans for CTrans {
                 }
             }
         }
-
-        // // TODO: Includes on demand
-        // if !self.libs.is_empty() {
-        //     for path in self.libs.iter() {
-        //         sink.body.write(b"#include ").to()?;
-        //         sink.body.write(path.as_bytes()).to()?;
-        //         sink.body.write(b"\n").to()?;
-        //     }
-        //     sink.body.write(b"\n").to()?;
-        // }
 
         // Decls
         for (i, decl) in decls.iter().enumerate() {
@@ -1222,32 +1230,34 @@ impl Trans for CTrans {
             sink.body.write(b"}\n").to()?;
         }
 
-        println!("GOt HEADER: {}", String::from_utf8_lossy(&self.header));
-
         // write header if header content is not empty
-        if !self.header.is_empty() {
+        if !self.header.is_empty() || !self.libs.is_empty() {
             // write header guards
             let upper = self.name.to_uppercase();
             let name_bytes = upper.as_bytes();
-            sink.header.write(b"#ifndef ").to()?;
-            sink.header.write(name_bytes).to()?;
-            sink.header.write(b"_H\n#define ").to()?;
-            sink.header.write(name_bytes).to()?;
-            sink.header.write(b"_H\n\n").to()?;
+            sink.header.write(b"#ifndef ")?;
+            sink.header.write(name_bytes)?;
+            sink.header.write(b"_H\n#define ")?;
+            sink.header.write(name_bytes)?;
+            sink.header.write(b"_H\n\n")?;
+            // includes
+            let libs_set = std::mem::take(&mut self.libs);
+            let mut libs = libs_set.into_iter().collect::<Vec<_>>();
+            libs.sort_by(cmp_include_name);
+
+            for path in libs.iter() {
+                sink.header.write(b"#include ")?;
+                sink.header.write(path.as_bytes())?;
+                sink.header.write(b"\n")?;
+            }
+
+            if !libs.is_empty() {
+                sink.header.write(b"\n")?;
+            }
+
             sink.header.write_all(&self.header)?;
             // header guard end
-            sink.header.write(b"\n#endif\n\n").to()?;
-        }
-
-        // includes
-        let libs_set = std::mem::take(&mut self.libs);
-        let mut libs = libs_set.into_iter().collect::<Vec<_>>();
-        libs.sort();
-
-        for path in libs.iter() {
-            sink.includes.write(b"#include ").to()?;
-            sink.includes.write(path.as_bytes()).to()?;
-            sink.includes.write(b"\n").to()?;
+            sink.header.write(b"\n#endif\n").to()?;
         }
 
         Ok(())
@@ -1290,7 +1300,9 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Sh
         transpiler.scope = uni.clone();
         transpiler.trans(pak.ast.clone(), &mut out)?;
 
-        let str = String::from_utf8(out.done().clone()).unwrap();
+        let src = out.done()?.clone();
+
+        let str = String::from_utf8(src).unwrap();
         let file = pak.file.replace(".at", ".c");
         println!("Translating {} to {}", pak.file, file);
         std::fs::write(Path::new(file.as_str()), str)?;
@@ -1397,7 +1409,8 @@ if (x > 0) {
     return 42;
 }
 "#;
-        assert_eq!(String::from_utf8(sink.done().clone()).unwrap(), expected);
+        let src = sink.done().unwrap();
+        assert_eq!(String::from_utf8(src.clone()).unwrap(), expected);
     }
 
     #[test]
@@ -1421,7 +1434,10 @@ int add(int x, int y);
 #endif
 
 "#;
-        assert_eq!(String::from_utf8(sink.done().clone()).unwrap(), expected);
+        assert_eq!(
+            String::from_utf8(sink.done().unwrap().clone()).unwrap(),
+            expected
+        );
         assert_eq!(String::from_utf8(sink.header).unwrap(), expected_header);
     }
 
@@ -1458,12 +1474,12 @@ int add(int x, int y);
         let expected_header = if !exph_path.is_file() {
             "".to_string()
         } else {
-            read_to_string(exp_path.as_path())?
+            read_to_string(exph_path.as_path())?
         };
 
         let (mut ccode, _) = transpile_c(name, &src)?;
 
-        let src = ccode.done();
+        let src = ccode.done()?;
 
         if src != expected_src.as_bytes() {
             // out put generated code to a gen file

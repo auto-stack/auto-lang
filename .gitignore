@@ -22,3 +22,7 @@ history.txt
 # Test related
 
 *.wrong.c
+*.wrong.h
+
+.am/
+build/

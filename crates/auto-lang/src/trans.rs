@@ -1,11 +1,13 @@
 use super::ast::*;
 use crate::AutoResult;
+use auto_val::AutoStr;
 use std::io::{self, Write};
 
 pub mod c;
 pub mod rust;
 
 pub struct Sink {
+    pub name: AutoStr,
     pub includes: Vec<u8>,
     pub body: Vec<u8>,
     pub header: Vec<u8>,
@@ -15,6 +17,7 @@ pub struct Sink {
 impl Sink {
     pub fn new() -> Self {
         Self {
+            name: AutoStr::new(),
             includes: Vec::new(),
             body: Vec::new(),
             header: Vec::new(),
@@ -33,13 +36,14 @@ impl Sink {
         Ok(())
     }
 
-    pub fn done(&mut self) -> &Vec<u8> {
-        if self.includes.len() > 0 {
-            self.source.append(&mut self.includes);
-            self.source.push('\n' as u8);
+    pub fn done(&mut self) -> AutoResult<&Vec<u8>> {
+        if !self.header.is_empty() && !self.body.is_empty() {
+            self.source.write(b"#include \"")?;
+            self.source.write(self.name.as_bytes())?;
+            self.source.write(b".h\"\n\n")?;
         }
         self.source.append(&mut self.body);
-        &self.source
+        Ok(&self.source)
     }
 }
 

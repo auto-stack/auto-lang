@@ -119,7 +119,7 @@ pub fn trans_c(path: &str) -> AutoResult<String> {
     trans.trans(ast, &mut sink)?;
 
     // convert sink to .c/.h files
-    std::fs::write(&cname, sink.done())?;
+    std::fs::write(&cname, sink.done()?)?;
     // write the header file
     let h_path = path.replace(".at", ".h");
     std::fs::write(Path::new(h_path.as_str()), sink.header)?;
