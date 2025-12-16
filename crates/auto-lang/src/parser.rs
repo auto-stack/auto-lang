@@ -1283,11 +1283,8 @@ impl<'a> Parser<'a> {
             paths.push(name);
         }
 
-        let mut items = self.parse_use_items()?;
+        let items = self.parse_use_items()?;
 
-        if items.is_empty() && !paths.is_empty() {
-            items.push(paths.pop().unwrap());
-        }
         // import the path into scope
         let uses = Use {
             kind: UseKind::Auto,
@@ -1316,6 +1313,7 @@ impl<'a> Parser<'a> {
             return error_pos!("Invalid import path: {}", path);
         }
         let scope_name: AutoStr = path.clone().into();
+        println!("scope_name: {}", scope_name);
         let path = path.replace("auto.", "");
         // println!("path: {}", path);
         let file_path = AutoPath::new(std_path).join(path.clone());
@@ -1332,7 +1330,12 @@ impl<'a> Parser<'a> {
         let cur_spot = self.scope.borrow().cur_spot.clone();
         self.scope.borrow_mut().reset_spot();
 
-        self.scope.borrow_mut().enter_mod(scope_name.clone());
+        for path in scope_name.split(".").into_iter() {
+            self.scope.borrow_mut().enter_mod(path.to_string());
+        }
+        println!("cur spot: {:?}", self.scope.borrow().cur_spot);
+
+        // self.scope.borrow_mut().enter_mod(scope_name.clone());
         let mut new_parser = Parser::new(file_content.as_str(), self.scope.clone());
         new_parser.set_dest(self.compile_dest.clone());
         let ast = new_parser.parse().unwrap();
@@ -1344,8 +1347,14 @@ impl<'a> Parser<'a> {
         );
 
         self.scope.borrow_mut().set_spot(cur_spot);
+        let mut items = uses.items.clone();
+        // if item is empty, use last part of paths as an defined item in the scope
+        if items.is_empty() && !uses.paths.is_empty() {
+            items.push(uses.paths.last().unwrap().clone());
+        }
+        println!("items: {:?}", items);
         // Define items in scope
-        for item in uses.items.iter() {
+        for item in items.iter() {
             // lookup item's meta from its mod
             let meta = self
                 .scope

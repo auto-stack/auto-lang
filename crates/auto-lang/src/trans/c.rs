@@ -1462,7 +1462,9 @@ if (x > 0) {
         let code = r#"fn add(x int, y int) int { x+y }
 add(1, 2)"#;
         let (mut sink, _) = transpile_c("test", code).unwrap();
-        let expected = r#"int add(int x, int y) {
+        let expected = r#"#include "test.h"
+
+int add(int x, int y) {
     return x + y;
 }
 
@@ -1470,13 +1472,9 @@ int main(void) {
     return add(1, 2);
 }
 "#;
-        let expected_header = r#"#ifndef TEST_H
-#define TEST_H
+        let expected_header = r#"#pragma once
 
 int add(int x, int y);
-
-#endif
-
 "#;
         assert_eq!(
             String::from_utf8(sink.done().unwrap().clone()).unwrap(),
