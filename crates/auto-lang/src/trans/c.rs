@@ -873,12 +873,18 @@ impl CTrans {
     }
 
     fn for_stmt(&mut self, for_stmt: &For, sink: &mut Sink) -> AutoResult<()> {
-        if matches!(for_stmt.iter, Iter::Call(_)) {
-            sink.body.write(b"while (").to()?;
-            self.iter(&for_stmt.iter, &mut sink.body)?;
-        } else {
-            sink.body.write(b"for (").to()?;
-            self.expr(&for_stmt.range, &mut sink.body)?;
+        match for_stmt.iter {
+            Iter::Call(_) => {
+                sink.body.write(b"while (").to()?;
+                self.iter(&for_stmt.iter, &mut sink.body)?;
+            }
+            Iter::Ever => {
+                sink.body.write(b"while (true").to()?;
+            }
+            _ => {
+                sink.body.write(b"for (").to()?;
+                self.expr(&for_stmt.range, &mut sink.body)?;
+            }
         }
         sink.body.write(b") ").to()?;
         self.body(&for_stmt.body, sink, &Type::Void)?;
@@ -889,6 +895,7 @@ impl CTrans {
         match iter {
             Iter::Indexed(_i, _iter) => {}
             Iter::Named(_) => {}
+            Iter::Ever => {}
             Iter::Call(call) => {
                 self.call(call, out)?;
             }

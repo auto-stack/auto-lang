@@ -75,6 +75,7 @@ pub enum TokenKind {
     Else,
     For,
     When,
+    Break,
     Is,
     Var,
     In,
@@ -261,6 +262,7 @@ impl Token {
             "enum" => Some(TokenKind::Enum),
             "grid" => Some(TokenKind::Grid),
             "alias" => Some(TokenKind::Alias),
+            "break" => Some(TokenKind::Break),
             _ => None,
         }
     }

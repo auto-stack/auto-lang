@@ -226,7 +226,12 @@ impl<'a> Parser<'a> {
             Ok(())
         } else {
             println!("{}", Backtrace::capture());
-            error_pos!("Expected token kind: {:?}, got [{:?}]", kind, self.cur.text)
+            error_pos!(
+                "Expected token kind: {:?}, got [{:?}] at position {:?}",
+                kind,
+                self.cur.text,
+                self.cur.pos,
+            )
         }
     }
 
@@ -266,6 +271,10 @@ impl<'a> Parser<'a> {
             },
             None => shared(Type::Unknown),
         }
+    }
+
+    fn break_stmt(&self) -> AutoResult<()> {
+        Ok(())
     }
 }
 
@@ -1099,6 +1108,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_stmt(&mut self) -> AutoResult<Stmt> {
         let stmt = match self.kind() {
+            TokenKind::Break => self.break_stmt()?,
             TokenKind::Use => self.use_stmt()?,
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
@@ -1456,9 +1466,20 @@ impl<'a> Parser<'a> {
 
     pub fn for_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip `for`
-                     // enumerator
+        if self.is_kind(TokenKind::LBrace) {
+            // for {...}
+            let body = self.body()?;
+            let has_new_line = body.has_new_line;
+            return Ok(Stmt::For(For {
+                iter: Iter::Ever,
+                range: Expr::Nil,
+                body,
+                new_line: has_new_line,
+            }));
+        }
         let ident = self.parse_name()?;
         if self.is_kind(TokenKind::LParen) {
+            // for call(args)? { ... }
             let args = self.args()?;
             let call = self.call(Expr::Ident(ident), args)?;
             let Expr::Call(call) = call else {
@@ -1475,6 +1496,7 @@ impl<'a> Parser<'a> {
                 new_line: false,
             }));
         } else {
+            // for ident in range { ... }
             self.enter_scope();
             let meta = Meta::Store(Store {
                 kind: StoreKind::Var,

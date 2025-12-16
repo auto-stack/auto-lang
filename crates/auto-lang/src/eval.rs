@@ -190,6 +190,7 @@ impl Evaler {
             Stmt::EmptyLine(_) => Value::Void,
             Stmt::Union(_) => Value::Void,
             Stmt::Tag(_) => Value::Void,
+            Stmt::Break => Value::Void,
         }
     }
 
@@ -302,7 +303,12 @@ impl Evaler {
                 self.universe.borrow_mut().set_local_val(&iter, item);
             }
             Iter::Named(iter) => self.universe.borrow_mut().set_local_val(&iter, item),
-            Iter::Call(_) => {}
+            Iter::Call(_) => {
+                todo!()
+            }
+            Iter::Ever => {
+                todo!()
+            }
         }
     }
 

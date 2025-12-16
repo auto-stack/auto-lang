@@ -15,6 +15,12 @@ pub enum Iter {
     Indexed(/*index*/ Name, /*iter*/ Name),
     Named(/*iter*/ Name),
     Call(Call),
+    Ever,
+}
+
+#[derive(Debug, Clone)]
+pub enum Break {
+    // TODO: maybe we could put mid block here
 }
 
 impl fmt::Display for For {
@@ -29,6 +35,13 @@ impl fmt::Display for Iter {
             Iter::Indexed(index, iter) => write!(f, "((name {}) (name {}))", index, iter),
             Iter::Named(iter) => write!(f, "(name {})", iter),
             Iter::Call(call) => write!(f, "(call {})", call),
+            Iter::Ever => write!(f, "(ever)"),
         }
+    }
+}
+
+impl fmt::Display for Break {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(break)")
     }
 }

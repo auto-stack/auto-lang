@@ -97,6 +97,7 @@ pub enum Stmt {
     Comment(AutoStr),
     Alias(Alias),
     EmptyLine(usize),
+    Break,
 }
 
 impl Stmt {

@@ -6,14 +6,20 @@ fn main() {
     mut lineptr *char = null
     mut n int = 0
 
-    print(c"Enter a line of text: ") // TODO: print without newline
+    for {
+        print(c"Enter a line of text: ") // TODO: print without newline
 
-    let charsRead = getline(lineptr.ptr, n.ptr, stdin);
+        let charsRead = getline(lineptr.ptr, n.ptr, stdin)
 
-    if charsRead != -1 {
-        print("You entered:", lineptr)
-    } else {
-        print("Error reading line")
+        if charsRead != -1 {
+            if lineptr[0] == 'q' {
+                break
+            } else {
+                print("You entered:", lineptr)
+            }
+        } else {
+            print("Error reading line")
+        }
     }
 
     free(lineptr)
