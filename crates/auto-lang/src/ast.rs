@@ -149,6 +149,7 @@ impl fmt::Display for Stmt {
             Stmt::EmptyLine(n) => write!(f, "(nl*{})", n),
             Stmt::Union(u) => write!(f, "{}", u),
             Stmt::Tag(tag) => write!(f, "{}", tag),
+            Stmt::Break => write!(f, "(break)"),
         }
     }
 }

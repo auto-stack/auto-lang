@@ -273,8 +273,9 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn break_stmt(&self) -> AutoResult<()> {
-        Ok(())
+    fn break_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next();
+        Ok(Stmt::Break)
     }
 }
 

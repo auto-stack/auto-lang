@@ -191,6 +191,9 @@ impl CTrans {
             Stmt::Tag(tag) => {
                 self.tag(tag, sink)?;
             }
+            Stmt::Break => {
+                sink.body.write(b"break;")?;
+            }
             _ => {
                 return Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into());
             }
@@ -526,6 +529,7 @@ impl CTrans {
             Expr::GenName(name) => out.write(name.as_bytes()).to(),
             Expr::Str(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::CStr(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
+            Expr::Char(ch) => out.write_all(format!("'{}'", ch).as_bytes()).to(),
             Expr::Call(call) => self.call(call, out),
             Expr::Array(array) => self.array(array, out),
             Expr::Float(f, t) => self.float(f, t, out),
@@ -879,7 +883,7 @@ impl CTrans {
                 self.iter(&for_stmt.iter, &mut sink.body)?;
             }
             Iter::Ever => {
-                sink.body.write(b"while (true").to()?;
+                sink.body.write(b"while (1").to()?;
             }
             _ => {
                 sink.body.write(b"for (").to()?;

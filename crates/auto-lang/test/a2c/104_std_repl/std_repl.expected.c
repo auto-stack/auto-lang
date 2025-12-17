@@ -4,14 +4,20 @@ int main(void) {
     char* lineptr = NULL;
     int n = 0;
 
-    printf("%s\n", "Enter a line of text: ");
+    while (1) {
+        printf("%s\n", "Enter a line of text: ");
 
-    int charsRead = getline(&lineptr, &n, stdin);
+        int charsRead = getline(&lineptr, &n, stdin);
 
-    if (charsRead != -1) {
-        printf("%s %s\n", "You entered:", lineptr);
-    } else {
-        printf("%s\n", "Error reading line");
+        if (charsRead != -1) {
+            if (lineptr[0] == 'q') {
+                break;
+            } else {
+                printf("%s %s\n", "You entered:", lineptr);
+            }
+        } else {
+            printf("%s\n", "Error reading line");
+        }
     }
 
     free(lineptr);
