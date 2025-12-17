@@ -3128,7 +3128,7 @@ exe hello {
 
     #[test]
     fn test_use() {
-        let code = "use auto.math.square; square(16)";
+        let code = "use auto.math:square; square(16)";
         let ast = parse_once(code);
         assert_eq!(
             ast.to_string(),

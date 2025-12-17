@@ -1,5 +1,4 @@
-#ifndef AUTO_H
-#define AUTO_H
+#pragma once
 
 struct Pos {
     unsigned int line;
@@ -23,5 +22,3 @@ enum TokenKind {
     TOKENKIND_LBrace = 14,
     TOKENKIND_RBrace = 15,
 };
-#endif
-

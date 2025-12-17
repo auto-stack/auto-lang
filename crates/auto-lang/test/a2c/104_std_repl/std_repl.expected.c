@@ -7,9 +7,9 @@ int main(void) {
     while (1) {
         printf("%s\n", "Enter a line of text: ");
 
-        int charsRead = getline(&lineptr, &n, stdin);
+        int rn = getline(&lineptr, &n, stdin);
 
-        if (charsRead != -1) {
+        if (rn != -1) {
             if (lineptr[0] == 'q') {
                 break;
             } else {
