@@ -28,4 +28,8 @@ enum TokenKind {
     RBrace // }
 }
 
-
+type Token {
+    kind TokenKind
+    pos Pos
+    text str
+}

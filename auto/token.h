@@ -22,3 +22,8 @@ enum TokenKind {
     TOKENKIND_LBrace = 14,
     TOKENKIND_RBrace = 15,
 };
+struct Token {
+    enum TokenKind kind;
+    struct Pos pos;
+    char* text;
+};
