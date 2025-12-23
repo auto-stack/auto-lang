@@ -6,6 +6,10 @@ pub trait StrExt {
     fn to_camel(&self) -> AutoStr;
 }
 
+pub fn astr_empty() -> AutoStr {
+    ASTR_EMPTY.clone()
+}
+
 impl StrExt for AutoStr {
     fn to_camel(&self) -> AutoStr {
         let mut camel = AutoStr::new();
