@@ -1312,23 +1312,24 @@ impl<'a> Parser<'a> {
     pub fn import(&mut self, uses: &Use) -> AutoResult<()> {
         println!("Trying to import use library");
         let path = uses.paths.join(".");
+        let scope_name: AutoStr = path.clone().into();
+        println!("scope_name: {}", scope_name);
 
         // try to find stdlib in following locations
         // 1. ~/.auto/stdlib
         // 2. /usr/local/lib/auto
         // 3. /usr/lib/auto
-        let std_path = crate::util::find_std_lib()?;
-        println!("debug: std lib location: {}", std_path);
 
-        if !path.starts_with("auto.") {
-            return error_pos!("Invalid import path: {}", path);
-        }
-        let scope_name: AutoStr = path.clone().into();
-        println!("scope_name: {}", scope_name);
-        let path = path.replace("auto.", "");
-        // println!("path: {}", path);
-        let file_path = AutoPath::new(std_path).join(path.clone());
-        // println!("file_path: {}", file_path.display());
+        let file_path = if path.starts_with("auto.") {
+            // stdlib
+            let std_path = crate::util::find_std_lib()?;
+            println!("debug: std lib location: {}", std_path);
+            let path = path.replace("auto.", "");
+            AutoPath::new(std_path).join(path.clone())
+        } else {
+            // local lib
+            AutoPath::new(".").join(path.clone())
+        };
         let dir = file_path.parent();
         let name = file_path.path().file_name().unwrap();
         if !dir.exists() {
