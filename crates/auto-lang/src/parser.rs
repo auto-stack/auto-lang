@@ -2819,7 +2819,7 @@ mod tests {
         let code = "var a = { 1: 2, 3: 4 }; a.1";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(bina (name a) (op .) (int 1))");
+        assert_eq!(last.to_string(), "(bina (name a) (op .) (name 1))");
     }
 
     #[test]

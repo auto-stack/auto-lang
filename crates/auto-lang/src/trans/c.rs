@@ -1,7 +1,6 @@
 use super::{Sink, ToStrError, Trans};
 use crate::ast::Type;
 use crate::ast::*;
-use crate::libs::builtin::print;
 use crate::parser::Parser;
 use crate::scope::Meta;
 use crate::universe::Universe;
