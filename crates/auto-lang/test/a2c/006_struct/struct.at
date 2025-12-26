@@ -4,7 +4,7 @@ type Point {
 }
 
 fn main() {
-    mut p = Point {x: 1, y: 2}
+    mut p = Point(1, 2)
     p.x = 3
     print("P: ", p.x, ", ", p.y)
 }

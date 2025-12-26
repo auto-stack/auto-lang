@@ -2237,6 +2237,11 @@ impl<'a> Parser<'a> {
             Expr::Call(call) => {
                 match call.name.as_ref() {
                     Expr::Ident(name) => {
+                        let meta = self.lookup_meta(name);
+                        // If the name is a type name, then this call is a constructor
+                        if let Some(m) = meta {
+                            // TODO:
+                        }
                         if !self.exists(&name) {
                             // Check if it's a destructuring
                             //
