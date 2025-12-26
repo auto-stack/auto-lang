@@ -1,6 +1,7 @@
 use super::{Sink, ToStrError, Trans};
 use crate::ast::Type;
 use crate::ast::*;
+use crate::libs::builtin::print;
 use crate::parser::Parser;
 use crate::scope::Meta;
 use crate::universe::Universe;
@@ -951,6 +952,7 @@ impl CTrans {
         for arg in call.args.args.iter() {
             match arg {
                 Arg::Pos(expr) => {
+                    println!("Printing arg {}", expr);
                     match expr {
                         Expr::Int(_) => arg_types.push("%d"),
                         Expr::Str(_) => arg_types.push("%s"),
@@ -1000,6 +1002,29 @@ impl CTrans {
                                 arg_types.push("%d");
                             }
                         }
+                        Expr::Index(arr, _idx) => match &**arr {
+                            Expr::Ident(n) => {
+                                let meta = self.lookup_meta(&n);
+                                if let Some(m) = meta {
+                                    match m.as_ref() {
+                                        Meta::Store(s) => match s.ty {
+                                            Type::Str => {
+                                                arg_types.push("%c");
+                                            }
+                                            _ => {
+                                                arg_types.push("%d");
+                                            }
+                                        },
+                                        _ => {
+                                            arg_types.push("%d");
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {
+                                arg_types.push("%d");
+                            }
+                        },
                         _ => {
                             println!("Other expr types: {:?}", expr);
                             // other types are now viewed as ints
@@ -1219,7 +1244,6 @@ fn cmp_include_name(a: &AutoStr, b: &AutoStr) -> Ordering {
 
 impl Trans for CTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
-        sink.name = self.name.clone();
         // Split stmts into decls and main
         // TODO: handle potential includes when needed
         let mut decls: Vec<Stmt> = Vec::new();
@@ -1324,7 +1348,7 @@ pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
     let ast = parser.parse().map_err(|e| e.to_string())?;
-    let mut out = Sink::new();
+    let mut out = Sink::new(AutoStr::from(""));
     transpiler.code(ast, &mut out)?;
     Ok(String::from_utf8(out.body).unwrap().into())
 }
@@ -1337,12 +1361,13 @@ pub struct CCode {
 
 // Transpile the code into a whole C program
 pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Shared<Universe>)> {
+    let name = name.into();
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
     parser.set_dest(crate::parser::CompileDest::TransC);
     let ast = parser.parse().map_err(|e| e.to_string())?;
-    let mut out = Sink::new();
-    let mut transpiler = CTrans::new(name.into());
+    let mut out = Sink::new(name.clone());
+    let mut transpiler = CTrans::new(name);
     transpiler.scope = parser.scope.clone();
     transpiler.trans(ast, &mut out)?;
 
@@ -1350,7 +1375,8 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Sh
     let paks = std::mem::take(&mut parser.scope.borrow_mut().code_paks);
     // let paks = parser.scope.borrow().code_paks.clone();
     for (sid, pak) in paks.iter() {
-        let mut out = Sink::new();
+        let name = sid.name();
+        let mut out = Sink::new(name.clone());
         let mut transpiler = CTrans::new(sid.name().into());
         transpiler.scope = uni.clone();
         transpiler.trans(pak.ast.clone(), &mut out)?;
@@ -1629,6 +1655,11 @@ int add(int x, int y);
     #[test]
     fn test_014_tag() {
         test_a2c("014_tag").unwrap();
+    }
+
+    #[test]
+    fn test_015_str() {
+        test_a2c("015_str").unwrap();
     }
 
     // ===================== test cases for Auto's stdlib =======================

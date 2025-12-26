@@ -1,4 +1,11 @@
+use token: Pos
+use lexer: Src
 
 fn main() {
     print("Hello, world!")
+
+    let code = "print('Hello, world!')"
+    let src = Src { content: code, pos: Pos { line: 0, lpos: 0, spos: 0}}
+    let ch char = src.next_char()
+    print(ch)
 }

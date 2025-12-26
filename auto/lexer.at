@@ -1,5 +1,18 @@
 use token: Pos
 
+/// Source code abstraction
+// TODO: extend to StrSource, FileSrc and even remote StreamSrc
+type Src {
+    content str
+    pos Pos
+
+    fn next_char() char {
+        let p uint = .pos.spos
+        .pos.spos = .pos.spos + 1
+        .content[p]
+    }
+}
+
 type Lexer {
     pos Pos
 }

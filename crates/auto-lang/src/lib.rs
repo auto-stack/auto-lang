@@ -18,7 +18,7 @@ use crate::trans::c::CTrans;
 pub use crate::universe::Universe;
 use crate::{eval::EvalMode, trans::Sink};
 use crate::{parser::Parser, trans::Trans};
-use auto_val::Obj;
+use auto_val::{AutoPath, Obj};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -110,10 +110,13 @@ pub fn trans_c(path: &str) -> AutoResult<String> {
 
     let cname = path.replace(".at", ".c");
 
+    let fname = AutoPath::new(path).filename();
+    println!("trans_C fname: {}", fname);
+
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code.as_str(), scope);
     let ast = parser.parse().map_err(|e| e.to_string())?;
-    let mut sink = Sink::new();
+    let mut sink = Sink::new(fname);
     let mut trans = CTrans::new(cname.clone().into());
     trans.set_scope(parser.scope.clone());
     trans.trans(ast, &mut sink)?;

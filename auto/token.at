@@ -44,8 +44,9 @@ enum TokenKind {
 }
 
 type Pos {
-    line uint
-    pos uint
+    line uint // number of line
+    lpos uint // posnfrom start of line
+    spos uint // pos from start of src
 }
 
 type Token {

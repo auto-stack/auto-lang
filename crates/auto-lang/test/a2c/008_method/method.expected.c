@@ -6,6 +6,7 @@ int modulus(struct Point *s) {
 
 int main(void) {
     struct Point p = {.x = 3, .y = 4};
-    printf("%s %d\n", "Modulus:", modulus(&p));
+    int m = modulus(&p);
+    printf("%s %d\n", "Modulus:", m);
     return 0;
 }

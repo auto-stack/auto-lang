@@ -94,6 +94,16 @@ impl AutoPath {
         false
     }
 
+    pub fn basename(&self) -> AutoStr {
+        let s = self.path.file_stem();
+        if let Some(s) = s {
+            if let Some(s) = s.to_str() {
+                return s.into();
+            }
+        }
+        AutoStr::default()
+    }
+
     pub fn ext(&self) -> AutoStr {
         let s = self.path.extension();
         if let Some(s) = s {

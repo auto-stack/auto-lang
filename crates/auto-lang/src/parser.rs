@@ -1630,6 +1630,7 @@ impl<'a> Parser<'a> {
         // store kind: var/let/mut
         let mut store_kind = self.store_kind()?;
         self.next(); // skip var/let/mut
+        println!("STORE KIND {:?}", store_kind);
 
         // identifier name
         let mut name = self.parse_name()?;
@@ -1651,8 +1652,10 @@ impl<'a> Parser<'a> {
             Expr::Nil
         } else {
             self.expect(TokenKind::Asn)?;
+            println!("Expected '='");
             // inital value: expression
             let expr = self.rhs_expr()?;
+            println!("RHS EXPR: {}", expr);
             // TODO: check type compatibility
             if matches!(ty, Type::Unknown) {
                 ty = self.infer_type_expr(&expr);
@@ -1702,15 +1705,25 @@ impl<'a> Parser<'a> {
                 }
             }
             Expr::Ident(id) => {
-                println!("Infering type for identifier {}", id);
-                // try to lookup the id as a type name
-                let ltyp = self.lookup_type(id);
-                match *ltyp.borrow() {
-                    Type::Unknown => {}
-                    _ => {
-                        typ = ltyp.borrow().clone();
+                println!("Infering type for identifier: {}", id);
+                let meta = self.lookup_meta(id);
+                if let Some(m) = meta {
+                    match m.as_ref() {
+                        Meta::Store(store) => {
+                            typ = store.ty.clone();
+                        }
+                        _ => {}
                     }
-                };
+                } else {
+                    // try to lookup the id as a type name
+                    let ltyp = self.lookup_type(id);
+                    match *ltyp.borrow() {
+                        Type::Unknown => {}
+                        _ => {
+                            typ = ltyp.borrow().clone();
+                        }
+                    };
+                }
             }
             Expr::Node(nd) => {
                 typ = nd.typ.borrow().clone();
@@ -1733,6 +1746,15 @@ impl<'a> Parser<'a> {
             }
             Expr::Call(call) => {
                 typ = call.ret.clone();
+            }
+            Expr::Index(arr, _idx) => {
+                let arr_typ = self.infer_type_expr(arr);
+                match arr_typ {
+                    Type::Array(arr_ty) => {
+                        typ = (*arr_ty.elem).clone();
+                    }
+                    _ => {}
+                };
             }
             _ => {}
         }
@@ -2400,8 +2422,14 @@ impl<'a> Parser<'a> {
     }
 
     pub fn node_or_call_expr(&mut self) -> AutoResult<Expr> {
-        let ident = self.ident()?;
+        let mut ident = self.ident()?;
         self.next();
+
+        while self.is_kind(TokenKind::Dot) {
+            self.next(); // skip dot
+            let next_ident = self.parse_ident()?;
+            ident = Expr::Bina(Box::new(ident), Op::Dot, Box::new(next_ident));
+        }
 
         let mut has_paren = false;
 

@@ -15,9 +15,9 @@ pub struct Sink {
 }
 
 impl Sink {
-    pub fn new() -> Self {
+    pub fn new(name: AutoStr) -> Self {
         Self {
-            name: AutoStr::new(),
+            name,
             includes: Vec::new(),
             body: Vec::new(),
             header: Vec::new(),
@@ -37,6 +37,8 @@ impl Sink {
     }
 
     pub fn done(&mut self) -> AutoResult<&Vec<u8>> {
+        // add include to self.h
+        println!("Sink Name: {}", self.name);
         if !self.header.is_empty() && !self.body.is_empty() {
             self.source.write(b"#include \"")?;
             self.source.write(self.name.as_bytes())?;

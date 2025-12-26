@@ -33,7 +33,8 @@ enum TokenKind {
 };
 struct Pos {
     unsigned int line;
-    unsigned int pos;
+    unsigned int lpos;
+    unsigned int spos;
 };
 struct Token {
     enum TokenKind kind;
