@@ -8,5 +8,6 @@ struct Point {
 };
 struct Circle {
     float radius;
+    unsigned int border;
     struct Point center;
 };

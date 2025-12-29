@@ -5,6 +5,7 @@ type Point {
 
 type Circle {
     radius float
+    border uint
     center Point
 }
 
@@ -13,6 +14,6 @@ fn main() {
     p.x = 3
     print("P: ", p.x, ", ", p.y)
 
-    let circle = Circle(5.0, Point(50, 50))
+    let circle = Circle(5.0, 1, Point(50, 50))
     print("C: ", circle.center.x, ", ", circle.center.y, ", ", circle.radius)
 }

@@ -1696,6 +1696,7 @@ impl<'a> Parser<'a> {
             Expr::Bool(..) => typ = Type::Bool,
             Expr::Str(..) => typ = Type::Str,
             Expr::CStr(..) => typ = Type::CStr,
+            Expr::FStr(..) => typ = Type::Str,
             Expr::Bina(lhs, op, rhs) => {
                 let ltype = self.infer_type_expr(lhs);
                 println!("LTYPE: {}", ltype);

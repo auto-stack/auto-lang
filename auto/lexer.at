@@ -4,11 +4,15 @@ use token: Pos
 // TODO: extend to StrSource, FileSrc and even remote StreamSrc
 type Src {
     content str
+    len uint
     pos Pos
 
     fn next_char() char {
         let p uint = .pos.spos
         .pos.spos = .pos.spos + 1
+        if p >= .len {
+            return -1
+        }
         .content[p]
     }
 }

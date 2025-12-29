@@ -4,6 +4,7 @@
 
 struct Src {
     char* content;
+    unsigned int len;
     struct Pos pos;
 };
 

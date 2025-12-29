@@ -529,6 +529,7 @@ impl CTrans {
             Expr::GenName(name) => out.write(name.as_bytes()).to(),
             Expr::Str(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::CStr(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
+            Expr::FStr(fs) => self.fstr(fs, out),
             Expr::Char(ch) => out.write_all(format!("'{}'", ch).as_bytes()).to(),
             Expr::Call(call) => self.call(call, out),
             Expr::Array(array) => self.array(array, out),
@@ -542,6 +543,18 @@ impl CTrans {
             Expr::Nil => self.nil(out),
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
+    }
+
+    fn fstr(&mut self, fs: &FStr, out: &mut impl Write) -> AutoResult<()> {
+        for p in &fs.parts {
+            match p {
+                Expr::Str(s) => {
+                    out.write_all(format!("\"{}\"", s.replace("\"", "\\\"")).as_bytes())?;
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     fn null(&mut self, out: &mut impl Write) -> AutoResult<()> {

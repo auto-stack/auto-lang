@@ -4,8 +4,13 @@ use lexer: Src
 fn main() {
     print("Hello, world!")
 
-    let code = "print('Hello, world!')"
-    let src = Src(code, Pos(line: 0, lpos: 0, spos: 0){})
-    let ch char = src.next_char()
-    print(ch)
+    let code = `print("Hello, world!")`
+    let src = Src(code, 22, Pos(0, 0, 0))
+    for {
+        let ch char = src.next_char()
+        if ch == -1 {
+            break
+        }
+        print(ch)
+    }
 }
