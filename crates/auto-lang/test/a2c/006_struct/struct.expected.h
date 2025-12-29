@@ -6,3 +6,7 @@ struct Point {
     int x;
     int y;
 };
+struct Circle {
+    float radius;
+    struct Point center;
+};

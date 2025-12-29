@@ -1,6 +1,6 @@
 use super::scope::*;
-use crate::ast;
 use crate::ast::FnKind;
+use crate::ast::{self, Type};
 use crate::libs;
 use auto_atom::Atom;
 use auto_val::{shared, Args, AutoStr, ExtFn, NodeItem, Obj, Sig, TypeInfoStore, Value};
@@ -433,6 +433,16 @@ impl Universe {
     pub fn lookup_meta(&self, name: &str) -> Option<Rc<Meta>> {
         let sid = self.cur_spot.clone();
         self.lookup_meta_recurse(name, &sid)
+    }
+
+    pub fn lookup_ident_type(&self, name: &str) -> Option<Type> {
+        let meta = self.lookup_meta(name);
+        if let Some(meta) = meta {
+            if let Meta::Type(ty) = meta.as_ref() {
+                return Some(ty.clone());
+            }
+        }
+        None
     }
 
     fn lookup_type_recurse(&self, name: impl Into<AutoStr>, sid: &Sid) -> Option<Rc<Meta>> {

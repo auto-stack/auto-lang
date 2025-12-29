@@ -600,9 +600,74 @@ impl CTrans {
         Ok(())
     }
 
+    fn node_arg(
+        &mut self,
+        typ: &Type,
+        arg: &Arg,
+        idx: usize,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        let Type::User(type_decl) = typ else {
+            return Err(format!("Type is not a user type for node: {}", typ).into());
+        };
+        match arg {
+            Arg::Pos(expr) => {
+                if let Some(f) = type_decl.members.get(idx) {
+                    out.write(b".")?;
+                    out.write(f.name.as_bytes())?;
+                    out.write(b" = ")?;
+                    self.expr(expr, out)?;
+                } else {
+                    return Err(
+                        format!("Field [{}] not found for type: {}", idx, type_decl.name).into(),
+                    );
+                };
+            }
+            Arg::Name(n) => {
+                let Some(f) = type_decl.find_member(n) else {
+                    return Err(
+                        format!("Field {} not found for type: {}", n, type_decl.name).into(),
+                    );
+                };
+                // named arg is actually an identifier
+                out.write(b".")?;
+                out.write(f.name.as_bytes())?;
+                out.write(b" = ")?;
+                let ident = Expr::Ident(n.clone());
+                self.expr(&ident, out)?;
+            }
+            Arg::Pair(k, v) => {
+                let Some(f) = type_decl.find_member(k) else {
+                    return Err(
+                        format!("Field {} not found for type: {}", k, type_decl.name).into(),
+                    );
+                };
+                out.write(b".")?;
+                out.write(f.name.as_bytes())?;
+                out.write(b" = ")?;
+                self.expr(v, out)?;
+            }
+        }
+        Ok(())
+    }
+
     fn node(&mut self, node: &Node, out: &mut impl Write) -> AutoResult<()> {
-        // out.write(node.name.as_bytes())?;
+        println!("GOT NOD: {:?}", node);
+
+        // lookup type meta and find field name for each arg
+        let Some(typ) = self.scope.borrow().lookup_ident_type(&node.name) else {
+            return Err(format!("Type not found for node: {}", node.name).into());
+        };
+
         out.write(b"{")?;
+        // translate args to pairs in body
+        for (i, arg) in node.args.args.iter().enumerate() {
+            if i > 0 {
+                out.write(b", ")?;
+            }
+            self.node_arg(&typ, arg, i, out)?;
+        }
+        // out.write(node.name.as_bytes())?;
         for (i, stmt) in node.body.stmts.iter().enumerate() {
             if i > 0 {
                 out.write(b", ")?;

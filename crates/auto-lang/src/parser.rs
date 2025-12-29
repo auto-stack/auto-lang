@@ -654,18 +654,24 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LParen)?;
         let mut args = Args::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RParen) {
-            // TODO: this is a temp fix for identifier as string in arg
             let expr = if self.is_kind(TokenKind::Ident) {
-                let name = Expr::Ident(self.cur.text.clone());
-                self.next();
-                if self.is_kind(TokenKind::Comma) {
-                    name
-                } else {
-                    self.expr_pratt_with_left(name, 0)?
-                }
+                println!("Try to parse arg with ident {}", self.cur.text);
+                let e = self.node_or_call_expr()?;
+                println!("Got expr: {}", e);
+                e
+            // } else {
+            // let name = Expr::Ident(self.cur.text.clone());
+            // self.next();
+            // if self.is_kind(TokenKind::Comma) {
+            //     name
+            // } else {
+            //     self.expr_pratt_with_left(name, 0)?
+            // }
             } else {
+                println!("Try to parse arg with token {}", self.cur.text);
                 self.parse_expr()?
             };
+            println!("Got ARG ExPR: {}", expr);
             match &expr {
                 // Named args
                 Expr::Pair(p) => {
@@ -986,13 +992,14 @@ impl<'a> Parser<'a> {
         if self.is_kind(TokenKind::If) {
             self.if_expr()
         } else if self.is_kind(TokenKind::Ident) {
+            self.node_or_call_expr()
             // TODO: should have a node_or_call_expr()
-            let stmt = self.parse_node_or_call_stmt()?;
-            match stmt {
-                Stmt::Expr(expr) => Ok(expr),
-                Stmt::Node(node) => Ok(Expr::Node(node)),
-                _ => error_pos!("Expected expression, got {:?}", stmt),
-            }
+            // let stmt = self.parse_node_or_call_stmt()?;
+            // match stmt {
+            // Stmt::Expr(expr) => Ok(expr),
+            // Stmt::Node(node) => Ok(Expr::Node(node)),
+            // _ => error_pos!("Expected expression, got {:?}", stmt),
+            // }
         } else {
             self.parse_expr()
         }
@@ -1634,6 +1641,7 @@ impl<'a> Parser<'a> {
 
         // identifier name
         let mut name = self.parse_name()?;
+        println!("SToreVAR: {}", name);
 
         // special case: c decl
         if name == "c" {
@@ -2237,14 +2245,7 @@ impl<'a> Parser<'a> {
             Expr::Call(call) => {
                 match call.name.as_ref() {
                     Expr::Ident(name) => {
-                        let meta = self.lookup_meta(name);
-                        // If the name is a type name, then this call is a constructor
-                        if let Some(m) = meta {
-                            // TODO:
-                        }
                         if !self.exists(&name) {
-                            // Check if it's a destructuring
-                            //
                             return error_pos!("Function {} not define!", name);
                         }
                     }
@@ -2390,10 +2391,12 @@ impl<'a> Parser<'a> {
 
         if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
         } else {
-            if self.special_blocks.contains_key(&n) {
-                node.body = self.special_block(&n)?;
-            } else {
-                node.body = self.parse_node_body()?;
+            if self.is_kind(TokenKind::LBrace) {
+                if self.special_blocks.contains_key(&n) {
+                    node.body = self.special_block(&n)?;
+                } else {
+                    node.body = self.parse_node_body()?;
+                }
             }
         }
 
@@ -2429,12 +2432,28 @@ impl<'a> Parser<'a> {
     pub fn node_or_call_expr(&mut self) -> AutoResult<Expr> {
         let mut ident = self.ident()?;
         self.next();
+        println!("First Ident: {}", ident);
 
         while self.is_kind(TokenKind::Dot) {
             self.next(); // skip dot
             let next_ident = self.parse_ident()?;
             ident = Expr::Bina(Box::new(ident), Op::Dot, Box::new(next_ident));
         }
+
+        let is_constructor = match &ident {
+            Expr::Ident(n) => {
+                let meta = self.lookup_meta(n);
+                if let Some(m) = meta {
+                    match m.as_ref() {
+                        Meta::Type(_) => true,
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
 
         let mut has_paren = false;
 
@@ -2454,12 +2473,10 @@ impl<'a> Parser<'a> {
             has_paren = true;
         }
 
-        // if !has_id && !args.is_empty() {
-        // id = Some(args.id());
-        // }
+        println!("Is constructor: {}", is_constructor);
 
         // If has brace, must be a node instance
-        if self.is_kind(TokenKind::LBrace) {
+        if self.is_kind(TokenKind::LBrace) || id.is_some() || is_constructor {
             // node instance
             // with node instance, pair args also defines as properties
             for arg in &args.args {
@@ -2487,9 +2504,8 @@ impl<'a> Parser<'a> {
                 }
             }
         } else {
-            // no brace, might be a call or simple expression
+            // no brace, might be a function call, constructor call or simple expression
             if has_paren {
-                // call
                 let expr = self.call(ident, args)?;
                 // }
                 Ok(expr)
