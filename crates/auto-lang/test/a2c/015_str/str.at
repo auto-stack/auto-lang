@@ -2,4 +2,5 @@ fn main() {
     let s = "Hello!"
     print(s)
     print(s[0])
+    print(s[1..3])
 }

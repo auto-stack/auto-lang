@@ -403,6 +403,14 @@ impl Evaler {
         Value::Void
     }
 
+    fn eval_range(&mut self, range: &Range) -> Value {
+        if range.eq {
+            self.range_eq(&range.start, &range.end)
+        } else {
+            self.range(&range.start, &range.end)
+        }
+    }
+
     fn eval_bina(&mut self, left: &Expr, op: &Op, right: &Expr) -> Value {
         let left_value = self.eval_expr(left);
         let right_value = self.eval_expr(right);
@@ -581,16 +589,16 @@ impl Evaler {
         }
 
         match name {
-            Value::Type(Type::User(u)) => {
-                return self.eval_type_new(&u, &call.args);
-            }
+            // Value::Type(Type::User(u)) => {
+                // return self.eval_type_new(&u, &call.args);
+            // }
             Value::Meta(meta_id) => match meta_id {
                 MetaID::Fn(sig) => {
                     return self.eval_fn_call_with_sig(&sig, &call.args);
                 }
-                MetaID::Type(name) => {
-                    return self.eval_type_new(&name, &call.args);
-                }
+                // MetaID::Type(name) => {
+                    // return self.eval_type_new(&name, &call.args);
+                // }
                 _ => {
                     println!("Strange function call {}", meta_id);
                 }
@@ -644,7 +652,7 @@ impl Evaler {
         }
     }
 
-    pub fn eval_type_new(&mut self, name: &str, args: &Args) -> Value {
+    pub fn eval_type_new(&mut self, name: &str, args: &auto_val::Args) -> Value {
         let typ = self.universe.borrow().lookup_type(name);
         match typ {
             ast::Type::User(type_decl) => {
@@ -655,7 +663,7 @@ impl Evaler {
         }
     }
 
-    fn eval_instance(&mut self, type_decl: &TypeDecl, args: &Args) -> Value {
+    fn eval_instance(&mut self, type_decl: &TypeDecl, args: &auto_val::Args) -> Value {
         let ty = self.eval_type(&type_decl);
         let fields = self.eval_fields(&type_decl, args);
         Value::Instance(auto_val::Instance { ty, fields })
@@ -665,13 +673,13 @@ impl Evaler {
         Type::User(type_decl.name.clone())
     }
 
-    fn eval_fields(&mut self, type_decl: &TypeDecl, args: &Args) -> Obj {
+    fn eval_fields(&mut self, type_decl: &TypeDecl, args: &auto_val::Args) -> Obj {
         let members = &type_decl.members;
         // TODO: remove unnecessary clone
         let mut fields = Obj::new();
         for (j, arg) in args.args.iter().enumerate() {
-            let val_arg = self.eval_arg(arg);
-            match val_arg {
+            // let val_arg = self.eval_arg(arg);
+            match arg {
                 auto_val::Arg::Pair(key, val) => {
                     for member in members.iter() {
                         if key.to_string() == member.name {
@@ -682,12 +690,12 @@ impl Evaler {
                 auto_val::Arg::Pos(value) => {
                     if j < members.len() {
                         let member = &members[j];
-                        fields.set(member.name.clone(), value);
+                        fields.set(member.name.clone(), value.clone());
                     }
                 }
                 auto_val::Arg::Name(name) => {
                     for member in members.iter() {
-                        if name == member.name {
+                        if *name == member.name {
                             fields.set(member.name.clone(), Value::Str(name.clone()));
                         }
                     }
@@ -867,6 +875,7 @@ impl Evaler {
             Expr::GenName(name) => Value::Str(name.into()),
             Expr::Unary(op, e) => self.eval_una(op, e),
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
+            Expr::Range(range) => self.eval_range(range),
             Expr::If(if_) => self.eval_if(if_),
             Expr::Array(elems) => self.eval_array(elems),
             Expr::Call(call) => self.eval_call(call),
@@ -987,6 +996,7 @@ impl Evaler {
 
     fn dot(&mut self, left: &Expr, right: &Expr) -> Value {
         let left_value = self.eval_expr(left);
+        println!("Left value: {}", left_value);
         let res: Option<Value> = match &left_value {
             Value::Type(typ) => {
                 match typ {
@@ -1035,6 +1045,7 @@ impl Evaler {
             },
             Value::Instance(instance) => match right {
                 Expr::Ident(name) => {
+                    println!("Looku p feld or method");
                     let f = instance.fields.lookup(&name);
                     match f {
                         Some(v) => Some(v),
@@ -1197,7 +1208,14 @@ impl Evaler {
 
     // TODO: should node only be used in config mode?
     pub fn eval_node(&mut self, node: &Node) -> Value {
+        let name = node.name.clone();
+        let expr = Expr::Ident(name);
+        let name_expr = self.eval_expr(&expr);
         let args = self.eval_args(&node.args);
+        if let Value::Type(Type::User(type_decl)) = name_expr {
+            return self.eval_type_new(&type_decl, &args);
+        }
+
         let mut nodes = Vec::new();
         let mut props = Obj::new();
         let mut body = MetaID::Nil;
@@ -1484,7 +1502,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Double => auto_val::Type::Double,
         ast::Type::Bool => auto_val::Type::Bool,
         ast::Type::Char => auto_val::Type::Char,
-        ast::Type::Str => auto_val::Type::Str,
+        ast::Type::Str(_) => auto_val::Type::Str,
         ast::Type::CStr => auto_val::Type::CStr,
         ast::Type::Array(_) => auto_val::Type::Array,
         ast::Type::Ptr(_) => auto_val::Type::Ptr,

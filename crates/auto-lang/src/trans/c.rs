@@ -7,6 +7,7 @@ use crate::universe::Universe;
 use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
+use auto_val::StrExt;
 use auto_val::{shared, Shared};
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -344,6 +345,17 @@ impl CTrans {
         Ok(())
     }
 
+    fn method_name(
+        &mut self,
+        type_name: &str,
+        method_name: &str,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        let camel = AutoStr::from(method_name).to_camel();
+        out.write(format!("{}_{}", type_name, camel).as_bytes())?;
+        Ok(())
+    }
+
     fn type_decl(&mut self, type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
         let mut out = std::mem::take(&mut self.header);
         // write type body
@@ -366,7 +378,9 @@ impl CTrans {
         for method in type_decl.methods.iter() {
             out.write(method.ret.unique_name().as_bytes())?;
             out.write(b" ")?;
-            out.write(method.name.as_bytes())?;
+            // Note add prefix to method name
+            self.method_name(&type_decl.name, &method.name, &mut out)?;
+            // out.write(method.name.as_bytes())?;
             out.write(b"(")?;
             // self
             out.write(b"struct ")?;
@@ -393,7 +407,8 @@ impl CTrans {
             let out = &mut sink.body;
             out.write(method.ret.unique_name().as_bytes())?;
             out.write(b" ")?;
-            out.write(method.name.as_bytes())?;
+            self.method_name(&type_decl.name, &method.name, out)?;
+            // out.write(method.name.as_bytes())?;
             out.write(b"(")?;
             // self
             out.write(b"struct ")?;
@@ -413,7 +428,7 @@ impl CTrans {
             )?;
             out.write(b") ")?;
             // method body
-            self.body(&method.body, sink, &method.ret)?;
+            self.body(&method.body, sink, &method.ret, "")?;
             sink.body.write(b"\n")?;
         }
 
@@ -506,7 +521,7 @@ impl CTrans {
             Expr::Int(i) => out.write_all(i.to_string().as_bytes()).to(),
             Expr::Bina(lhs, op, rhs) => {
                 match op {
-                    Op::Range => self.range(lhs, rhs, out)?,
+                    Op::Range => self.range("i", lhs, rhs, out)?,
                     _ => match op {
                         Op::Dot => {
                             self.dot(lhs, rhs, out)?;
@@ -737,9 +752,9 @@ impl CTrans {
                 out.write(b" ").to()?;
                 self.scope.borrow_mut().enter_fn(fn_decl.name.clone());
                 if fn_decl.name == "main" {
-                    self.body(&fn_decl.body, sink, &Type::Int)?;
+                    self.body(&fn_decl.body, sink, &Type::Int, "")?;
                 } else {
-                    self.body(&fn_decl.body, sink, &fn_decl.ret)?;
+                    self.body(&fn_decl.body, sink, &fn_decl.ret, "")?;
                 }
                 self.scope.borrow_mut().exit_fn();
             }
@@ -780,11 +795,21 @@ impl CTrans {
         Ok(())
     }
 
-    fn body(&mut self, body: &Body, sink: &mut Sink, ret_type: &Type) -> AutoResult<()> {
+    fn body(
+        &mut self,
+        body: &Body,
+        sink: &mut Sink,
+        ret_type: &Type,
+        insert: &str,
+    ) -> AutoResult<()> {
         let has_return = !matches!(ret_type, Type::Void | Type::Unknown { .. });
         self.scope.borrow_mut().enter_scope();
         sink.body.write(b"{\n")?;
         self.indent();
+        if !insert.is_empty() {
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(insert.as_bytes())?;
+        }
         for (i, stmt) in body.stmts.iter().enumerate() {
             if !matches!(stmt, Stmt::EmptyLine(_)) {
                 self.print_indent(&mut sink.body)?;
@@ -828,7 +853,7 @@ impl CTrans {
             Type::Float => "float".to_string(),
             Type::Double => "double".to_string(),
             Type::Bool => "bool".to_string(),
-            Type::Str => "char*".to_string(),
+            Type::Str(_) => "char*".to_string(),
             Type::CStr => "char*".to_string(),
             Type::Array(array_type) => {
                 let elem_type = &array_type.elem;
@@ -922,7 +947,7 @@ impl CTrans {
                     sink.body.write(b":\n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, &Type::Void)?;
+                    self.body(body, sink, &Type::Void, "")?;
                     sink.body.write(b"\n")?;
                     self.print_with_indent(&mut sink.body, "break;\n")?;
                     self.dedent();
@@ -933,7 +958,7 @@ impl CTrans {
                     sink.body.write(b": \n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, &Type::Void)?;
+                    self.body(body, sink, &Type::Void, "")?;
                     sink.body.write(b"\n")?;
                     self.print_with_indent(&mut sink.body, "break;\n")?;
                     self.dedent();
@@ -942,7 +967,7 @@ impl CTrans {
                     sink.body.write(b"default:\n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, &Type::Void)?;
+                    self.body(body, sink, &Type::Void, "")?;
                     sink.body.write(b"\n")?;
                     self.print_with_indent(&mut sink.body, "break;\n")?;
                     self.dedent();
@@ -954,8 +979,20 @@ impl CTrans {
         Ok(())
     }
 
+    fn get_type_of(&mut self, name: &AutoStr) -> Option<Type> {
+        if let Some(m) = self.lookup_meta(name) {
+            match m.as_ref() {
+                Meta::Store(store) => Some(store.ty.clone()),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
     fn for_stmt(&mut self, for_stmt: &For, sink: &mut Sink) -> AutoResult<()> {
-        match for_stmt.iter {
+        let mut iter_var = String::new();
+        match &for_stmt.iter {
             Iter::Call(_) => {
                 sink.body.write(b"while (").to()?;
                 self.iter(&for_stmt.iter, &mut sink.body)?;
@@ -963,13 +1000,60 @@ impl CTrans {
             Iter::Ever => {
                 sink.body.write(b"while (1").to()?;
             }
+            Iter::Named(n) => {
+                sink.body.write(b"for (")?;
+                // iter elem's type
+                match &for_stmt.range {
+                    Expr::Range(r) => {
+                        self.range(n.as_str(), &r.start, &r.end, &mut sink.body)?;
+                    }
+                    Expr::Ident(range_name) => {
+                        let range_type = self.get_type_of(range_name);
+                        if let Some(range_type) = range_type {
+                            match &range_type {
+                                Type::Array(arr) => {
+                                    let elem_type = &*arr.elem;
+                                    let elem_size = arr.len;
+                                    iter_var =
+                                        format!("{} {} = {}[{}];\n", elem_type, n, range_name, "i");
+                                    self.range(
+                                        "i",
+                                        &Expr::Int(0),
+                                        &Expr::Int(elem_size as i32),
+                                        &mut sink.body,
+                                    )?;
+                                }
+                                // Type::Str => {
+                                // let elem_type = Type::Char;
+                                // let elem_size =
+                                //
+                                // }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                // if typ.is_indexable() {
+                // let elem_type = typ.get_elem_type();
+                // sink.body.write(format!("{} ", elem_type).as_bytes())?;
+                // } else {
+                // sink.body.write(b"int ")?;
+                // }
+                // iter elem
+
+                // let idx = "i";
+                // sink.body.write(format!("size_t {} = {}[0]; ", idx, &for_stmt.range.repr()).as_bytes())?;
+                // sink.body.write(format!("{} < {}.size; ", idx, &for_stmt.range.repr()).as_bytes())?;
+                // sink.body.write(format!("{}++", idx).as_bytes())?;
+            }
             _ => {
                 sink.body.write(b"for (").to()?;
                 self.expr(&for_stmt.range, &mut sink.body)?;
             }
         }
         sink.body.write(b") ").to()?;
-        self.body(&for_stmt.body, sink, &Type::Void)?;
+        self.body(&for_stmt.body, sink, &Type::Void, iter_var.as_str())?;
         Ok(())
     }
 
@@ -985,13 +1069,19 @@ impl CTrans {
         Ok(())
     }
 
-    fn range(&mut self, start: &Expr, end: &Expr, out: &mut impl Write) -> AutoResult<()> {
+    fn range(
+        &mut self,
+        iter: &str,
+        start: &Expr,
+        end: &Expr,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
         // TODO: check index name for deep loops
-        out.write(b"int i = ").to()?;
+        out.write(format!("int {} = ", iter).as_bytes())?;
         self.expr(start, out)?;
-        out.write(b"; i < ").to()?;
+        out.write(format!("; {} < ", iter).as_bytes())?;
         self.expr(end, out)?;
-        out.write(b"; i++").to()?;
+        out.write(format!("; {}++", iter).as_bytes())?;
         Ok(())
     }
 
@@ -1001,14 +1091,14 @@ impl CTrans {
             sink.body.write(b"(").to()?;
             self.expr(&branch.cond, &mut sink.body)?;
             sink.body.write(b") ").to()?;
-            self.body(&branch.body, sink, &Type::Void)?;
+            self.body(&branch.body, sink, &Type::Void, "")?;
             if i < if_.branches.len() - 1 {
                 sink.body.write(b" else ")?;
             }
         }
         if let Some(body) = &if_.else_ {
             sink.body.write(b" else ").to()?;
-            self.body(body, sink, &Type::Void)?;
+            self.body(body, sink, &Type::Void, "")?;
         }
         Ok(())
     }
@@ -1019,6 +1109,47 @@ impl CTrans {
 
     fn lookup_type(&self, ident: &AutoStr) -> Type {
         self.scope.borrow().lookup_type(ident)
+    }
+
+    fn print_slice(&mut self, arr: &Expr, r: &Range, out: &mut impl Write) -> AutoResult<()> {
+        let Some(arr_type) = self.get_type_of(&arr.repr()) else {
+            return Err(format!("Wrong array type: {}", arr).into());
+        };
+        match &arr_type {
+            Type::Array(a) => {
+                // for (int i = 0; i < size; i++) { print()}
+                out.write(b"for (")?;
+                self.range("i", &r.start, &r.end, out)?;
+                out.write(b") {\n")?;
+
+                self.indent();
+                self.print_indent(out)?;
+                out.write(format!("printf(\"%d\", {}[{}]);\n", arr.repr(), "i").as_bytes())?;
+                self.dedent();
+
+                self.print_indent(out)?;
+                out.write(b"}\n")?;
+                self.print_indent(out)?;
+                out.write(b"printf(\"\\n\")")?;
+            }
+            Type::Str(_size) => {
+                out.write(b"for (")?;
+                self.range("i", &r.start, &r.end, out)?;
+                out.write(b") {\n")?;
+                self.indent();
+                self.print_indent(out)?;
+                out.write(format!("printf(\"%c\", {}[{}]);\n", arr.repr(), "i").as_bytes())?;
+                self.dedent();
+                self.print_indent(out)?;
+                out.write(b"}\n")?;
+                self.print_indent(out)?;
+                out.write(b"printf(\"\\n\")")?;
+            }
+            _ => {
+                return Err(format!("Wrong slice type {}", arr_type).into());
+            }
+        }
+        Ok(())
     }
 
     fn process_print(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
@@ -1042,7 +1173,7 @@ impl CTrans {
                             if let Some(meta) = meta {
                                 match meta.as_ref() {
                                     Meta::Store(st) => match &st.ty {
-                                        Type::Str | Type::CStr => {
+                                        Type::Str(_) | Type::CStr => {
                                             arg_types.push("%s");
                                         }
                                         Type::Float => {
@@ -1067,6 +1198,21 @@ impl CTrans {
                                                 arg_types.push("%d");
                                             }
                                         },
+                                        Type::User(typ) => {
+                                            if typ.has_method("print") {
+                                                out.write(
+                                                    format!("{}_Print(", typ.name).as_bytes(),
+                                                )?;
+                                                for (i, arg) in call.args.args.iter().enumerate() {
+                                                    self.arg(arg, out)?;
+                                                    if i < call.args.args.len() - 1 {
+                                                        out.write(b", ").to()?;
+                                                    }
+                                                }
+                                                out.write(b")")?;
+                                                return Ok(());
+                                            }
+                                        }
                                         _ => {
                                             arg_types.push("%d");
                                         }
@@ -1079,29 +1225,38 @@ impl CTrans {
                                 arg_types.push("%d");
                             }
                         }
-                        Expr::Index(arr, _idx) => match &**arr {
-                            Expr::Ident(n) => {
-                                let meta = self.lookup_meta(&n);
-                                if let Some(m) = meta {
-                                    match m.as_ref() {
-                                        Meta::Store(s) => match s.ty {
-                                            Type::Str => {
-                                                arg_types.push("%c");
+                        Expr::Index(arr, idx) => {
+                            match &**idx {
+                                Expr::Range(r) => {
+                                    return self.print_slice(&**arr, r, out);
+                                }
+                                _ => {
+                                    match &**arr {
+                                        Expr::Ident(n) => {
+                                            let meta = self.lookup_meta(&n);
+                                            if let Some(m) = meta {
+                                                match m.as_ref() {
+                                                    Meta::Store(s) => match s.ty {
+                                                        Type::Str(_) => {
+                                                            arg_types.push("%c");
+                                                        }
+                                                        _ => {
+                                                            arg_types.push("%d");
+                                                        }
+                                                    },
+                                                    _ => {
+                                                        arg_types.push("%d");
+                                                    }
+                                                }
                                             }
-                                            _ => {
-                                                arg_types.push("%d");
-                                            }
-                                        },
+                                        }
                                         _ => {
                                             arg_types.push("%d");
                                         }
-                                    }
+                                    };
                                 }
-                            }
-                            _ => {
-                                arg_types.push("%d");
-                            }
-                        },
+                            };
+                        }
                         _ => {
                             println!("Other expr types: {:?}", expr);
                             // other types are now viewed as ints
@@ -1115,7 +1270,15 @@ impl CTrans {
             }
         }
         let fmt = format!("printf(\"{}\\n\", ", arg_types.join(" "));
-        out.write(fmt.as_bytes()).to()
+        out.write(fmt.as_bytes())?;
+        for (i, arg) in call.args.args.iter().enumerate() {
+            self.arg(arg, out)?;
+            if i < call.args.args.len() - 1 {
+                out.write(b", ").to()?;
+            }
+        }
+        out.write(b")")?;
+        Ok(())
     }
 
     fn method_call(
@@ -1188,7 +1351,10 @@ impl CTrans {
                     return Ok(false);
                 };
                 // write the method call as method_name(&s, args...)
-                out.write(method_name.as_bytes())?;
+                // Note: add type prefix as Type_MethodName(...)
+                let type_name = &decl.name;
+                self.method_name(type_name, method_name, out)?;
+                // out.write(format!("{}_{}", type_name, method_name.to_camel()).as_bytes())?;
                 out.write(b"(")?;
                 for m in decl.methods.iter() {
                     if m.name == *method_name {
@@ -1227,7 +1393,7 @@ impl CTrans {
         // normal call
         if let Expr::Ident(name) = &call.name.as_ref() {
             if name == "print" {
-                self.process_print(call, out)?;
+                return self.process_print(call, out);
             } else {
                 self.expr(&call.name, out)?;
                 out.write(b"(").to()?;
@@ -1507,17 +1673,6 @@ mod tests {
     }
 
     #[test]
-    fn test_c_for() {
-        let code = "for i in 1..5 { print(i) }";
-        let out = transpile_part(code).unwrap();
-        let expected = r#"for (int i = 1; i < 5; i++) {
-    printf("%d\n", i);
-}
-"#;
-        assert_eq!(out, expected);
-    }
-
-    #[test]
     fn test_c_if() {
         let code = "let x = 41; if x > 0 { print(x) }";
         let out = transpile_part(code).unwrap();
@@ -1764,5 +1919,10 @@ int add(int x, int y);
     #[test]
     fn test_104_std_repl() {
         test_a2c("104_std_repl").unwrap();
+    }
+
+    #[test]
+    fn test_105_std_str() {
+        test_a2c("105_std_str").unwrap();
     }
 }

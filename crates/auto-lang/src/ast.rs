@@ -36,6 +36,8 @@ mod union;
 pub use union::*;
 mod use_;
 pub use use_::*;
+mod range;
+pub use range::*;
 
 mod parsers;
 
@@ -175,6 +177,7 @@ pub enum Expr {
     Ref(Name),
     Unary(Op, Box<Expr>),
     Bina(Box<Expr>, Op, Box<Expr>),
+    Range(Range),
     Array(Vec<Expr>),
     Pair(Pair),
     Block(Body),
@@ -254,6 +257,7 @@ impl fmt::Display for Expr {
             Expr::GenName(name) => write!(f, "(gen-name {})", name),
             Expr::Nil => write!(f, "(nil)"),
             Expr::Null => write!(f, "(null)"),
+            Expr::Range(r) => write!(f, "{}", r),
         }
     }
 }

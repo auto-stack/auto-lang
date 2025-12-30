@@ -1,4 +1,36 @@
-type str {
+/// Static string
+type sstr {
+    size usize
+    data [size]char
+
+    fn print() {
+        for ch in .data[0...size] {
+            print(ch)
+        }
+    }
+}
+
+/// dynamic string
+type dstr {
+    size usize
     data []char
 
+    fn print() {
+        for ch in .data[0...size] {
+
+        }
+
+    }
 }
+
+/// view string / virtual string / slice
+type vstr {
+    size usize
+    data *char
+}
+
+/// 
+// spec.T slice {
+    // size usize
+    // data *T
+// }

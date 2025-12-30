@@ -14,7 +14,7 @@ pub enum Type {
     Double,
     Bool,
     Char, // char is actually u8/ubyte
-    Str,
+    Str(usize),
     CStr,
     Array(ArrayType),
     Ptr(PtrType),
@@ -37,7 +37,7 @@ impl Type {
             Type::Bool => "bool".into(),
             Type::Byte => "byte".into(),
             Type::Char => "char".into(),
-            Type::Str => "str".into(),
+            Type::Str(_) => "str".into(),
             Type::CStr => "cstr".into(),
             Type::Array(array_type) => {
                 format!("[{}]{}", array_type.elem.unique_name(), array_type.len).into()
@@ -46,6 +46,7 @@ impl Type {
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             Type::CStruct(type_decl) => format!("struct {}", type_decl.name).into(),
+            Type::Void => "void".into(),
             Type::Unknown => "<unknown>".into(),
             _ => format!("undefined_type_name<{}>", self).into(),
         }
@@ -60,7 +61,7 @@ impl Type {
             Type::Bool => "false".into(),
             Type::Byte => "0".into(),
             Type::Char => "0".into(),
-            Type::Str => "\"\"".into(),
+            Type::Str(_) => "\"\"".into(),
             Type::CStr => "\"\"".into(),
             Type::Array(_) => "[]".into(),
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
@@ -107,7 +108,7 @@ impl fmt::Display for Type {
             Type::Double => write!(f, "double"),
             Type::Bool => write!(f, "bool"),
             Type::Char => write!(f, "char"),
-            Type::Str => write!(f, "str"),
+            Type::Str(_) => write!(f, "str"),
             Type::CStr => write!(f, "cstr"),
             Type::Array(array_type) => write!(f, "{}", array_type),
             Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
@@ -133,7 +134,7 @@ impl From<Type> for auto_val::Type {
             Type::Double => auto_val::Type::Double,
             Type::Bool => auto_val::Type::Bool,
             Type::Char => auto_val::Type::Char,
-            Type::Str => auto_val::Type::Str,
+            Type::Str(_) => auto_val::Type::Str,
             Type::CStr => auto_val::Type::CStr,
             Type::Array(_) => auto_val::Type::Array,
             Type::Ptr(_) => auto_val::Type::Ptr,
@@ -170,6 +171,10 @@ pub struct TypeDecl {
 impl TypeDecl {
     pub fn find_member(&self, name: &str) -> Option<&Member> {
         self.members.iter().find(|m| m.name == name)
+    }
+
+    pub fn has_method(&self, name: &str) -> bool {
+        self.methods.iter().find(|m| m.name == name).is_some()
     }
 }
 

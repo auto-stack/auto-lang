@@ -687,7 +687,7 @@ $ }
     fn test_deep_type() {
         let code = "type A { x int; y int }; type B { a A; b int }";
         let mut interpreter = interpret(code).unwrap();
-        let code = "var v = B { a: A {x:1, y:2}, b:3 }; v.a.y";
+        let code = "var v = B(a: A(x:1, y:2), b:3); v.a.y";
         let result = interpreter.eval(code);
         assert_eq!(result.repr(), "2");
     }
@@ -779,7 +779,7 @@ $ }
 name: "hello"
 version: "0.1.0"
 
-exe(hello) {
+exe hello {
     dir: "src"
     main: "main.c"
 }"#;
@@ -787,7 +787,7 @@ exe(hello) {
         let result = interp.result;
         assert_eq!(
             result.repr(),
-            r#"root {name: "hello"; version: "0.1.0"; exe(hello) {dir: "src"; main: "main.c"; }; }"#
+            r#"root {name: "hello"; version: "0.1.0"; exe hello {dir: "src"; main: "main.c"; }; }"#
         );
     }
 
@@ -845,7 +845,7 @@ square(15)
             Rc::new(Meta::Store(Store {
                 kind: StoreKind::Var,
                 name: "name".into(),
-                ty: Type::Str,
+                ty: Type::Str("hello".len()),
                 expr: Expr::Str("hello".into()),
             })),
         );

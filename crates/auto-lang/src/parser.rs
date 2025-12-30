@@ -553,7 +553,25 @@ impl<'a> Parser<'a> {
                 _ => {}
             }
             let rhs = self.expr_pratt(power.r)?;
-            lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
+            match op {
+                Op::Range => {
+                    lhs = Expr::Range(Range {
+                        start: Box::new(lhs),
+                        end: Box::new(rhs),
+                        eq: false,
+                    });
+                },
+                Op::RangeEq => {
+                    lhs = Expr::Range(Range {
+                        start: Box::new(lhs),
+                        end: Box::new(rhs),
+                        eq: true,
+                    });
+                }
+                _ => {
+                    lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
+                }
+            }
         }
         Ok(lhs)
     }
@@ -1694,9 +1712,9 @@ impl<'a> Parser<'a> {
             Expr::Float(..) => typ = Type::Float,
             Expr::Double(..) => typ = Type::Double,
             Expr::Bool(..) => typ = Type::Bool,
-            Expr::Str(..) => typ = Type::Str,
+            Expr::Str(n) => typ = Type::Str(n.len()),
             Expr::CStr(..) => typ = Type::CStr,
-            Expr::FStr(..) => typ = Type::Str,
+            Expr::FStr(..) => typ = Type::Str(0),
             Expr::Bina(lhs, op, rhs) => {
                 let ltype = self.infer_type_expr(lhs);
                 println!("LTYPE: {}", ltype);
@@ -1846,6 +1864,8 @@ impl<'a> Parser<'a> {
         // TODO: determine return type with last stmt if it's not specified
         if self.is_kind(TokenKind::Ident) {
             ret_type = self.parse_type()?;
+        } else if self.is_kind(TokenKind::LBrace) {
+            ret_type = Type::Void;
         }
 
         // parse function body
@@ -2155,6 +2175,28 @@ impl<'a> Parser<'a> {
             self.get_usize(&size)?
         } else if self.is_kind(TokenKind::RSquare) {
             0
+        } else if self.is_kind(TokenKind::Ident) {
+            // may be an ident to int variable
+            // NOTE: the value should be determined at compile time
+            let name = self.parse_name()?;
+            let meta = self.lookup_meta(&name);
+            let Some(m) = meta else {
+                return error_pos!("Array Size of {} is not found", name);
+            };
+            match m.as_ref() {
+                Meta::Store(store) => {
+                    // evaluate store value at compile time
+                    // TODO: maybe recursive
+                    match store.expr {
+                        Expr::Int(n) => n as usize,
+                        Expr::Uint(n) => n as usize,
+                        Expr::U8(n) => n as usize,
+                        Expr::I8(n) => n as usize,
+                        _ => 0 as usize,
+                    }
+                }
+                _ => 0,
+            }
         } else {
             return error_pos!("Expected Array Size or Empty, got {}", self.peek().kind);
         };
@@ -2785,7 +2827,7 @@ mod tests {
     fn test_range() {
         let code = "1..5";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (bina (int 1) (op ..) (int 5)))");
+        assert_eq!(ast.to_string(), "(code (range (start (int 1)) (end (int 5)) (eq false)))");
     }
 
     #[test]
@@ -2794,14 +2836,14 @@ mod tests {
         let ast = parse_once(code);
         assert_eq!(
             ast.to_string(),
-            "(code (for (name i) (bina (int 1) (op ..) (int 5)) (body (name i))))"
+            "(code (for (name i) (range (start (int 1)) (end (int 5)) (eq false)) (body (name i))))"
         );
 
         let code = "for i, x in 1..5 {x}";
         let ast = parse_once(code);
         assert_eq!(
             ast.to_string(),
-            "(code (for ((name i) (name x)) (bina (int 1) (op ..) (int 5)) (body (name x))))"
+            "(code (for ((name i) (name x)) (range (start (int 1)) (end (int 5)) (eq false)) (body (name x))))"
         );
     }
 
@@ -2810,7 +2852,7 @@ mod tests {
         let code = "for i in 0..10 { print(i); print(i+1) }";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(for (name i) (bina (int 0) (op ..) (int 10)) (body (call (name print) (args (name i))) (call (name print) (args (bina (name i) (op +) (int 1))))))");
+        assert_eq!(last.to_string(), "(for (name i) (range (start (int 0)) (end (int 10)) (eq false)) (body (call (name print) (args (name i))) (call (name print) (args (bina (name i) (op +) (int 1))))))");
     }
 
     #[test]
@@ -2818,7 +2860,7 @@ mod tests {
         let code = r#"for i in 0..10 { print(i); mid{ print(",") } }"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(for (name i) (bina (int 0) (op ..) (int 10)) (body (call (name print) (args (name i))) (node (name mid) (body (call (name print) (args (str \",\")))))))");
+        assert_eq!(last.to_string(), "(for (name i) (range (start (int 0)) (end (int 10)) (eq false)) (body (call (name print) (args (name i))) (node (name mid) (body (call (name print) (args (str \",\")))))))");
     }
 
     #[test]
@@ -2826,7 +2868,7 @@ mod tests {
         let code = r#"for i in 0..10 { `$i`; mid{","} }"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(for (name i) (bina (int 0) (op ..) (int 10)) (body (fstr (str \"\") (name i)) (node (name mid) (body (str \",\")))))");
+        assert_eq!(last.to_string(), "(for (name i) (range (start (int 0)) (end (int 10)) (eq false)) (body (fstr (str \"\") (name i)) (node (name mid) (body (str \",\")))))");
     }
 
     #[test]
@@ -2846,10 +2888,10 @@ mod tests {
 
     #[test]
     fn test_fn() {
-        let code = "fn add(x, y) { x+y }";
+        let code = "fn add(x, y) int { x+y }";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(fn (name add) (params (param (name x) (type int)) (param (name y) (type int))) (body (bina (name x) (op +) (name y))))");
+        assert_eq!(last.to_string(), "(fn (name add) (params (param (name x) (type int)) (param (name y) (type int))) (ret int) (body (bina (name x) (op +) (name y))))");
     }
 
     #[test]
@@ -2864,7 +2906,7 @@ mod tests {
         let code = "fn say(msg str) { print(msg) }";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(fn (name say) (params (param (name msg) (type str))) (body (call (name print) (args (name msg)))))");
+        assert_eq!(last.to_string(), "(fn (name say) (params (param (name msg) (type str))) (ret void) (body (call (name print) (args (name msg)))))");
     }
 
     #[test]
@@ -2910,7 +2952,7 @@ mod tests {
         let ast = parse_once(code);
         let mid = ast.stmts[1].clone();
         let last = ast.stmts.last().unwrap();
-        assert_eq!(mid.to_string(), "(var (name p) (call (name Point) (args (pair (name x) (int 1)) (pair (name y) (int 2)))))");
+        assert_eq!(mid.to_string(), "(var (name p) (node (name Point) (args (pair (name x) (int 1)) (pair (name y) (int 2)))))");
         assert_eq!(last.to_string(), "(bina (name p) (op .) (name x))");
     }
 
@@ -3097,7 +3139,7 @@ mod tests {
         let last = ast.stmts.last().unwrap();
         assert_eq!(
             last.to_string(),
-            "(call (name A) (args (pair (name x) (int 1)) (pair (name y) (int 2))))"
+            "(node (name A) (args (pair (name x) (int 1)) (pair (name y) (int 2))))"
         );
     }
 
@@ -3129,20 +3171,20 @@ mod tests {
         let last = ast.stmts.last().unwrap();
         assert_eq!(
             last.to_string(),
-            "(type-decl (name Duck) (has (type Wing)) (methods (fn (name fly) (body ))))"
+            "(type-decl (name Duck) (has (type Wing)) (methods (fn (name fly) (ret void) (body ))))"
         );
     }
 
     #[test]
     fn test_grid() {
         let code = r#"
-        grid(a, b, c) {
+        grid("a", "b", "c") {
             [1, 2, 3]
             [4, 5, 6]
             [7, 8, 9]
         }"#;
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (grid (head (name a) (name b) (name c)) (data (row (int 1) (int 2) (int 3)) (row (int 4) (int 5) (int 6)) (row (int 7) (int 8) (int 9)))))");
+        assert_eq!(ast.to_string(), "(code (grid (head (str \"a\") (str \"b\") (str \"c\")) (data (row (int 1) (int 2) (int 3)) (row (int 4) (int 5) (int 6)) (row (int 7) (int 8) (int 9)))))");
     }
 
     #[test]

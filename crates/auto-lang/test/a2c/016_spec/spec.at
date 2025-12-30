@@ -1,0 +1,26 @@
+spec Flyer {
+    fn fly()
+}
+
+type Pigeon {
+    fn fly() {
+        print("Flap Flap")
+    }
+}
+
+type Hawk {
+    fn fly() {
+        print("Gawk! Gawk!")
+    }
+}
+
+fn main() {
+    let b1 = Pigeon()
+    let b2 = Hawk()
+
+    let arr []Flyer = [b1, b2]
+    for b in arr {
+        b.fly()
+    }
+}
+

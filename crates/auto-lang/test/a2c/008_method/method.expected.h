@@ -7,4 +7,4 @@ struct Point {
     int y;
 };
 
-int modulus(struct Point *s);
+int Point_Modulus(struct Point *s);
