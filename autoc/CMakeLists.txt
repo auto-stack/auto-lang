@@ -68,3 +68,16 @@ add_executable(test_ast_repr
     trans_c.c
     test_ast_repr.c
 )
+
+# Parser test runner executable
+add_executable(test_parser
+    astr.c
+    ast.c
+    value.c
+    lexer.c
+    parser.c
+    universe.c
+    eval.c
+    trans_c.c
+    test_parser.c
+)
