@@ -262,7 +262,7 @@ const char* value_repr_recurse(Value* value, char* buffer, size_t buffer_size) {
     }
 }
 
-const char* value_repr(Value* value, char* buffer, size_t buffer_size) {
+const char* value_repr(Value* value) {
     value_repr_recurse(value, repr_buffer, repr_buffer_size);
 }
 

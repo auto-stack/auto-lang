@@ -243,12 +243,14 @@ Value* evaler_eval_expr(Evaler* evaler, Expr* expr) {
         case EXPR_INDEX: {
             Value* array = evaler_eval_expr(evaler, expr->u.index.array);
             Value* index = evaler_eval_expr(evaler, expr->u.index.index);
+            printf("indexed index: %s\n", value_repr(index));
 
             Value* result = value_nil();
 
             if (array && array->kind == VAL_ARRAY && index && index->kind == VAL_INT) {
                 int32_t idx = index->u.int_val;
                 if (idx >= 0 && idx < (int32_t)array->u.array_val.count) {
+                    printf("indexed value: %s\n", value_repr(array->u.array_val.values[idx]));
                     result = value_clone(array->u.array_val.values[idx]);
                 } else {
                     result = value_error("index out of bounds");

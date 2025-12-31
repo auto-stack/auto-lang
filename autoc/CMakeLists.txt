@@ -7,6 +7,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Source files
 set(AUTOC_SOURCES
     astr.c
+    ast.c
     value.c
     lexer.c
     parser.c
@@ -27,6 +28,7 @@ add_executable(autoc ${AUTOC_SOURCES} ${AUTOC_HEADERS})
 # Test executable
 add_executable(autoc_test
     astr.c
+    ast.c
     value.c
     lexer.c
     parser.c
@@ -53,3 +55,16 @@ install(TARGETS autoc DESTINATION bin)
 # Enable testing
 enable_testing()
 add_test(NAME autoc_test COMMAND autoc_test)
+
+# AST representation test executable
+add_executable(test_ast_repr
+    astr.c
+    ast.c
+    value.c
+    lexer.c
+    parser.c
+    universe.c
+    eval.c
+    trans_c.c
+    test_ast_repr.c
+)

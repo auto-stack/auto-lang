@@ -196,4 +196,24 @@ typedef struct {
     size_t capacity;
 } Code;
 
+// ============================================================================
+// AST String Representation
+// ============================================================================
+
+// Type representation
+const char* type_repr(Type* type);
+char* type_to_string(Type* type);
+
+// Expression representation
+const char* expr_repr(Expr* expr);
+char* expr_to_string(Expr* expr);
+
+// Statement representation
+const char* stmt_repr(Stmt* stmt);
+char* stmt_to_string(Stmt* stmt);
+
+// Code representation
+const char* code_repr(Code* code);
+char* code_to_string(Code* code);
+
 #endif // AST_H
