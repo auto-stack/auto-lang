@@ -208,8 +208,10 @@ bool value_is_error(Value* value) {
 // Value Representation
 // ============================================================================
 
-const char* value_repr(Value* value) {
-    static char buffer[4096];
+#define REPR_BUFFER_SIZE 4096
+static const repr_buffer_size = REPR_BUFFER_SIZE;
+static char repr_buffer[REPR_BUFFER_SIZE];
+const char* value_repr_recurse(Value* value, char* buffer, size_t buffer_size) {
     if (!value) return "(null)";
     switch (value->kind) {
         case VAL_NIL: return "nil";
@@ -217,33 +219,33 @@ const char* value_repr(Value* value) {
         case VAL_BOOL:
             return value->u.bool_val ? "true" : "false";
         case VAL_BYTE:
-            snprintf(buffer, sizeof(buffer), "0x%02X", value->u.byte_val);
+            snprintf(buffer, buffer_size, "0x%02X", value->u.byte_val);
             return buffer;
         case VAL_INT:
-            snprintf(buffer, sizeof(buffer), "%d", value->u.int_val);
+            snprintf(buffer, buffer_size, "%d", value->u.int_val);
             return buffer;
         case VAL_UINT:
-            snprintf(buffer, sizeof(buffer), "%uu", value->u.uint_val);
+            snprintf(buffer, buffer_size, "%uu", value->u.uint_val);
             return buffer;
         case VAL_DOUBLE:
-            snprintf(buffer, sizeof(buffer), "%g", value->u.float_val);
+            snprintf(buffer, buffer_size, "%g", value->u.float_val);
             return buffer;
         case VAL_CHAR:
-            snprintf(buffer, sizeof(buffer), "'%c'", value->u.char_val);
+            snprintf(buffer, buffer_size, "'%c'", value->u.char_val);
             return buffer;
         case VAL_STR:
             return value->u.str_val.data;
         case VAL_ARRAY: {
             // Build array representation like [1, 2, 3]
-            int offset = snprintf(buffer, sizeof(buffer), "[");
+            int offset = snprintf(buffer, buffer_size, "[");
             for (size_t i = 0; i < value->u.array_val.count; i++) {
                 if (i > 0) {
-                    offset += snprintf(buffer + offset, sizeof(buffer) - offset, ", ");
+                    offset += snprintf(buffer + offset, buffer_size - offset, ", ");
                 }
-                const char* elem_repr = value_repr(value->u.array_val.values[i]);
-                offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", elem_repr);
+                const char* elem_repr = value_repr_recurse(value->u.array_val.values[i], buffer+offset, buffer_size - offset);
+                offset += snprintf(buffer + offset, buffer_size - offset, "%s", elem_repr);
             }
-            snprintf(buffer + offset, sizeof(buffer) - offset, "]");
+            snprintf(buffer + offset, buffer_size - offset, "]");
             return buffer;
         }
         case VAL_RANGE:
@@ -258,6 +260,10 @@ const char* value_repr(Value* value) {
         default:
             return "(unknown)";
     }
+}
+
+const char* value_repr(Value* value, char* buffer, size_t buffer_size) {
+    value_repr_recurse(value, repr_buffer, repr_buffer_size);
 }
 
 // ============================================================================
