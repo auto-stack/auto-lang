@@ -9,6 +9,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stddef.h>
+
+#define MAX_TEST_NAME 256
+#define MAX_CODE_LENGTH 8192
+#define MAX_EXPECTED_LENGTH 16384
+
+// ============================================================================
+// Legacy Test Framework (for test.c)
+// ============================================================================
 
 // Test statistics
 static int tests_run = 0;
@@ -77,7 +86,47 @@ typedef struct {
     } while(0)
 
 // ============================================================================
-// Test Cases
+// Markdown Test Framework (for test_parser.c, test_lexer.c, etc.)
+// ============================================================================
+
+// Generic markdown test case structure
+typedef struct {
+    char name[MAX_TEST_NAME];
+    char input[MAX_CODE_LENGTH];
+    char expected[MAX_EXPECTED_LENGTH];
+} MarkdownTestCase;
+
+// Test statistics for markdown tests
+typedef struct {
+    int run;
+    int passed;
+    int failed;
+} TestStatistics;
+
+// Test runner function type
+typedef bool (*markdown_test_func_t)(MarkdownTestCase* tc, TestStatistics* stats);
+
+// Read the entire content of a file
+char* read_file(const char* filename, size_t* out_size);
+
+// Parse test cases from markdown content
+MarkdownTestCase* parse_markdown_tests(const char* content, size_t* out_count);
+
+// Compare strings (exact match)
+bool compare_exact(const char* actual, const char* expected);
+
+// Compare strings ignoring whitespace
+bool compare_ignore_ws(const char* actual, const char* expected);
+
+// Run markdown test suite
+int run_markdown_test_suite(
+    const char* test_filename,
+    const char* suite_name,
+    markdown_test_func_t test_func
+);
+
+// ============================================================================
+// Test Cases (for test.c)
 // ============================================================================
 
 // Basic arithmetic tests

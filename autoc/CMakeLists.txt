@@ -79,5 +79,33 @@ add_executable(test_parser
     universe.c
     eval.c
     trans_c.c
+    test_markdown.c
     test_parser.c
+)
+
+# Lexer test runner executable
+add_executable(test_lexer
+    astr.c
+    ast.c
+    value.c
+    lexer.c
+    parser.c
+    universe.c
+    eval.c
+    trans_c.c
+    test_markdown.c
+    test_lexer.c
+)
+
+# Simple f-string test
+add_executable(test_fstr_simple
+    astr.c
+    ast.c
+    value.c
+    lexer.c
+    parser.c
+    universe.c
+    eval.c
+    trans_c.c
+    test_fstr_simple.c
 )

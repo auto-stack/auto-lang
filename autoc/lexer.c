@@ -22,6 +22,7 @@ Lexer* lexer_new(const char* input) {
     lexer->line = 1;
     lexer->at = 0;
     lexer->fstr_note = '$';
+    lexer->in_fstr_expr = false;
     lexer->buffer = NULL;
     lexer->buffer_count = 0;
     lexer->buffer_capacity = 0;
@@ -325,21 +326,33 @@ static Token lexer_fstr(Lexer* lexer) {
 
             // Check for ${expr}
             if (lexer_current(lexer) == '{') {
-                // Push tokens until matching }
+                lexer_advance(lexer);  // skip {
+
+                // Set flag to prevent re-entering f-string mode
+                lexer->in_fstr_expr = true;
+
+                // Collect tokens in a temporary array to avoid buffer conflicts
+                Token expr_tokens[100];
+                int expr_count = 0;
                 int depth = 1;
-                lexer_buffer_push(lexer, lexer_make_token(lexer, TOKEN_LBRACE, "{", 1));
-                lexer_advance(lexer);
 
-                while (lexer->pos < lexer->input_len && depth > 0) {
-                    char bc = lexer_current(lexer);
-                    if (bc == '{') depth++;
-                    if (bc == '}') depth--;
-
+                while (lexer->pos < lexer->input_len && depth > 0 && expr_count < 99) {
                     Token t = lexer_next(lexer);
-                    lexer_buffer_push(lexer, t);
+                    expr_tokens[expr_count++] = t;
 
-                    if (depth == 0) break;
+                    // Check depth AFTER getting the token
+                    if (t.kind == TOKEN_LBRACE) depth++;
+                    if (t.kind == TOKEN_RBRACE) depth--;
                 }
+
+                // Now push all collected tokens to the buffer (including initial {)
+                lexer_buffer_push(lexer, lexer_make_token(lexer, TOKEN_LBRACE, "{", 1));
+                for (int i = 0; i < expr_count; i++) {
+                    lexer_buffer_push(lexer, expr_tokens[i]);
+                }
+
+                // Clear flag
+                lexer->in_fstr_expr = false;
             } else {
                 // Simple identifier
                 size_t ident_start = lexer->pos;
@@ -552,6 +565,24 @@ Token lexer_next(Lexer* lexer) {
 
     char c = lexer_current(lexer);
 
+    // Check for f"..." and c"..." BEFORE identifier check
+    // to prevent consuming 'f' or 'c' as identifiers
+    if ((c == 'f' || c == 'c') && lexer->pos + 1 < lexer->input_len) {
+        char next = lexer->input[lexer->pos + 1];
+        if (next == '"') {
+            // This is f"..." or c"..."
+            if (c == 'f' && !lexer->in_fstr_expr) {
+                Token token = lexer_fstr(lexer);
+                lexer->last = token;
+                return token;
+            } else {
+                Token token = lexer_cstring(lexer);
+                lexer->last = token;
+                return token;
+            }
+        }
+    }
+
     // Newline
     if (c == '\n') {
         lexer->line++;
@@ -572,30 +603,19 @@ Token lexer_next(Lexer* lexer) {
 
     // Strings and chars
     if (c == '"') {
-        // Check for c"..." string
-        if (lexer_peek(lexer, -1) == 'c' && lexer->pos > 0 && lexer->input[lexer->pos - 1] == 'c') {
-            // Adjust for the already consumed 'c'
-            lexer->pos--;
-            Token token = lexer_cstring(lexer);
-            lexer->last = token;
-            return token;
-        }
-        // Check for f"..." format string
-        if (lexer_peek(lexer, -1) == 'f' && lexer->pos > 0 && lexer->input[lexer->pos - 1] == 'f') {
-            lexer->pos--;
-            Token token = lexer_fstr(lexer);
-            lexer->last = token;
-            return token;
-        }
         Token token = lexer_string(lexer);
         lexer->last = token;
         return token;
     }
 
     if (c == '`') {
-        Token token = lexer_fstr(lexer);
-        lexer->last = token;
-        return token;
+        // Only process tick strings if not in f-string expression
+        if (!lexer->in_fstr_expr) {
+            Token token = lexer_fstr(lexer);
+            lexer->last = token;
+            return token;
+        }
+        // Otherwise fall through to error handling below
     }
 
     if (c == '\'') {

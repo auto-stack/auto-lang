@@ -15,6 +15,7 @@ typedef struct {
     size_t line;
     size_t at;
     char fstr_note;
+    bool in_fstr_expr;  // Flag to prevent re-entering f-string mode
     Token* buffer;
     size_t buffer_count;
     size_t buffer_capacity;

@@ -9,6 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+// ============================================================================
+// Legacy Test Functions
+// ============================================================================
+
 // Helper function to run code and get result
 static const char* run_code(const char* code) {
     static char* result = NULL;
