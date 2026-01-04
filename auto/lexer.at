@@ -1,4 +1,4 @@
-use token: Pos
+use pos:Pos
 
 /// Source code abstraction
 // TODO: extend to StrSource, FileSrc and even remote StreamSrc
@@ -7,13 +7,25 @@ type Src {
     len uint
     pos Pos
 
+    /// Get next charactor from source
+    /// It actually returns the `current` character
     fn next_char() char {
-        let p uint = .pos.spos
-        .pos.spos = .pos.spos + 1
-        if p >= .len {
+        // check total length
+        if .pos.total >= .len {
             return -1
         }
-        .content[p]
+        // get current charactor
+        let n = .content[.pos.at]
+        // check newline
+        if n == '\n' {
+            .pos.line = .pos.line + 1
+            .pos.at = 0
+        } else {
+            .pos.at = .pos.at + 1
+        }
+        .pos.total = .pos.total + 1
+        // return current charactor
+        n
     }
 }
 

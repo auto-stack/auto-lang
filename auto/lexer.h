@@ -1,6 +1,6 @@
 #pragma once
 
-#include "token.h"
+#include "pos.h"
 
 struct Src {
     char* content;
@@ -8,7 +8,7 @@ struct Src {
     struct Pos pos;
 };
 
-char next_char(struct Src *s);
+char Src_NextChar(struct Src *self);
 struct Lexer {
     struct Pos pos;
 };

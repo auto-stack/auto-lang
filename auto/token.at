@@ -1,3 +1,4 @@
+use pos: Pos
 enum TokenKind {
     // Literals
     I8Lit // i8 literal
@@ -41,12 +42,6 @@ enum TokenKind {
     // Local Keywords
     Mut // mut
     Out // out
-}
-
-type Pos {
-    line uint // number of line
-    lpos uint // posnfrom start of line
-    spos uint // pos from start of src
 }
 
 type Token {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pos.h"
+
 enum TokenKind {
     TOKENKIND_I8Lit = 0,
     TOKENKIND_U8Lit = 1,
@@ -30,11 +32,6 @@ enum TokenKind {
     TOKENKIND_In = 26,
     TOKENKIND_Mut = 27,
     TOKENKIND_Out = 28,
-};
-struct Pos {
-    unsigned int line;
-    unsigned int lpos;
-    unsigned int spos;
 };
 struct Token {
     enum TokenKind kind;

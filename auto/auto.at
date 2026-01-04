@@ -1,5 +1,4 @@
-use token: Pos
-use lexer: Src
+use lexer: Src, Pos
 
 fn main() {
     print("Hello, world!")

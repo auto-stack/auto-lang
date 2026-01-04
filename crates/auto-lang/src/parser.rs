@@ -454,7 +454,7 @@ impl<'a> Parser<'a> {
         let name = self.cur.text.clone();
         self.next(); // skip name
         Ok(Expr::Bina(
-            Box::new(Expr::Ident("s".into())),
+            Box::new(Expr::Ident("self".into())),
             Op::Dot,
             Box::new(Expr::Ident(name)),
         ))
@@ -560,7 +560,7 @@ impl<'a> Parser<'a> {
                         end: Box::new(rhs),
                         eq: false,
                     });
-                },
+                }
                 Op::RangeEq => {
                     lhs = Expr::Range(Range {
                         start: Box::new(lhs),
@@ -1724,7 +1724,7 @@ impl<'a> Parser<'a> {
                 match op {
                     Op::Dot => {
                         // TODO
-                        typ = ltype;
+                        typ = rtype;
                     }
                     _ => {
                         typ = ltype;
@@ -1774,11 +1774,16 @@ impl<'a> Parser<'a> {
             Expr::Call(call) => {
                 typ = call.ret.clone();
             }
-            Expr::Index(arr, _idx) => {
+            Expr::Index(arr, idx) => {
+                println!("Indexing expression type, {}, {}", arr, idx);
                 let arr_typ = self.infer_type_expr(arr);
+                println!("Arra_TYUPE: {}", arr_typ);
                 match arr_typ {
                     Type::Array(arr_ty) => {
                         typ = (*arr_ty.elem).clone();
+                    }
+                    Type::Str(..) => {
+                        typ = Type::Char;
                     }
                     _ => {}
                 };
@@ -1859,6 +1864,8 @@ impl<'a> Parser<'a> {
         let params = self.fn_params()?;
         self.expect(TokenKind::RParen)?;
 
+        //
+
         // parse return type
         let mut ret_type = Type::Unknown;
         // TODO: determine return type with last stmt if it's not specified
@@ -1866,6 +1873,22 @@ impl<'a> Parser<'a> {
             ret_type = self.parse_type()?;
         } else if self.is_kind(TokenKind::LBrace) {
             ret_type = Type::Void;
+        }
+
+        // if has parent_name, define `self` in current scope
+        if !parent_name.is_empty() {
+            let parent_type = self.scope.borrow().find_type_for_name(parent_name);
+            if let Some(parent_type) = parent_type {
+                self.define(
+                    "self",
+                    Meta::Store(Store {
+                        kind: StoreKind::Let,
+                        name: "self".into(),
+                        ty: parent_type.clone(),
+                        expr: Expr::Ident(parent_name.into()),
+                    }),
+                );
+            }
         }
 
         // parse function body
@@ -1970,6 +1993,18 @@ impl<'a> Parser<'a> {
             return Ok(Stmt::TypeDecl(decl));
         }
 
+        let mut decl = TypeDecl {
+            kind: TypeDeclKind::UserType,
+            name: name.clone(),
+            specs: Vec::new(),
+            has: Vec::new(),
+            members: Vec::new(),
+            methods: Vec::new(),
+        };
+
+        // put type in scope
+        self.define(name.as_str(), Meta::Type(Type::User(decl.clone())));
+
         // deal with `as` keyword
         let mut specs = Vec::new();
         if self.is_kind(TokenKind::As) {
@@ -1978,6 +2013,8 @@ impl<'a> Parser<'a> {
             self.next(); // skip spec
             specs.push(spec.into());
         }
+        decl.specs = specs;
+
         // deal with `has` keyword
         let mut has = Vec::new();
         if self.is_kind(TokenKind::Has) {
@@ -1990,6 +2027,8 @@ impl<'a> Parser<'a> {
                 has.push(typ);
             }
         }
+        decl.has = has;
+
         // type body
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
@@ -2010,7 +2049,7 @@ impl<'a> Parser<'a> {
         }
         self.expect(TokenKind::RBrace)?;
         // add members and methods of compose types
-        for comp in has.iter() {
+        for comp in decl.has.iter() {
             match comp {
                 Type::User(decl) => {
                     for m in decl.members.iter() {
@@ -2031,15 +2070,9 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        let decl = TypeDecl {
-            kind: TypeDeclKind::UserType,
-            name: name.clone(),
-            specs,
-            has,
-            members,
-            methods,
-        };
-        // put type in scope
+        decl.members = members;
+        decl.methods = methods;
+
         self.define(name.as_str(), Meta::Type(Type::User(decl.clone())));
         Ok(Stmt::TypeDecl(decl))
     }
@@ -2827,7 +2860,10 @@ mod tests {
     fn test_range() {
         let code = "1..5";
         let ast = parse_once(code);
-        assert_eq!(ast.to_string(), "(code (range (start (int 1)) (end (int 5)) (eq false)))");
+        assert_eq!(
+            ast.to_string(),
+            "(code (range (start (int 1)) (end (int 5)) (eq false)))"
+        );
     }
 
     #[test]

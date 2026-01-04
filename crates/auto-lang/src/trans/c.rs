@@ -385,7 +385,7 @@ impl CTrans {
             // self
             out.write(b"struct ")?;
             out.write(type_decl.name.as_bytes())?;
-            out.write(b" *s")?;
+            out.write(b" *self")?;
             if !method.params.is_empty() {
                 out.write(b", ")?;
             }
@@ -413,7 +413,7 @@ impl CTrans {
             // self
             out.write(b"struct ")?;
             out.write(type_decl.name.as_bytes())?;
-            out.write(b" *s")?;
+            out.write(b" *self")?;
             if !method.params.is_empty() {
                 out.write(b", ")?;
             }
@@ -467,8 +467,8 @@ impl CTrans {
     fn dot(&mut self, lhs: &Expr, rhs: &Expr, out: &mut impl Write) -> AutoResult<()> {
         match lhs {
             Expr::Ident(ident) => {
-                if ident == "s" {
-                    out.write(b"s->")?;
+                if ident == "self" {
+                    out.write(b"self->")?;
                     self.expr(rhs, out)?;
                     return Ok(());
                 }
@@ -545,7 +545,7 @@ impl CTrans {
             Expr::Str(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::CStr(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::FStr(fs) => self.fstr(fs, out),
-            Expr::Char(ch) => out.write_all(format!("'{}'", ch).as_bytes()).to(),
+            Expr::Char(ch) => self.char(ch, out),
             Expr::Call(call) => self.call(call, out),
             Expr::Array(array) => self.array(array, out),
             Expr::Float(f, t) => self.float(f, t, out),
@@ -557,6 +557,16 @@ impl CTrans {
             Expr::Null => self.null(out),
             Expr::Nil => self.nil(out),
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
+        }
+    }
+
+    fn char(&mut self, ch: &char, out: &mut impl Write) -> AutoResult<()> {
+        if *ch == '\n' {
+            out.write_all(b"'\\n'").to()
+        } else if *ch == '\t' {
+            out.write_all(b"'\\t'").to()
+        } else {
+            out.write_all(format!("'{}'", ch).as_bytes()).to()
         }
     }
 

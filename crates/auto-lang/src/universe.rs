@@ -436,6 +436,22 @@ impl Universe {
         self.lookup_meta_recurse(name, &sid)
     }
 
+    pub fn find_type_for_name(&self, name: &str) -> Option<Type> {
+        let meta = self.lookup_meta(name);
+        if let Some(meta) = meta {
+            match meta.as_ref() {
+                Meta::Store(s) => {
+                    return Some(s.ty.clone());
+                }
+                Meta::Type(s) => {
+                    return Some(s.clone());
+                }
+                _ => return None,
+            }
+        }
+        None
+    }
+
     pub fn lookup_ident_type(&self, name: &str) -> Option<Type> {
         let meta = self.lookup_meta(name);
         if let Some(meta) = meta {

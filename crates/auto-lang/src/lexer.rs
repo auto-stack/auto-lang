@@ -169,14 +169,42 @@ impl<'a> Lexer<'a> {
     fn char(&mut self) -> Token {
         self.chars.next(); // skip '
         if let Some(&c) = self.chars.peek() {
-            let tok = Token::char(self.pos(1), c.into());
-            self.chars.next(); // skip char
-            if self.peek('\'') {
-                self.chars.next(); // skip '
+            // deal with escapes
+            if self.peek('\\') {
+                self.chars.next(); // skip \
+                if self.peek('n') {
+                    // \n
+                    self.chars.next(); // skip char
+                    self.chars.next(); // skip '
+                    return Token::char(self.pos(1), '\n'.into());
+                } else if self.peek('t') {
+                    // \t
+                    self.chars.next(); // skip char
+                    self.chars.next(); // skip '
+                    return Token::char(self.pos(1), '\t'.into());
+                } else if self.peek('r') {
+                    // \r
+                    self.chars.next(); // skip char
+                    self.chars.next(); // skip '
+                    return Token::char(self.pos(1), '\r'.into());
+                } else if self.peek('0') {
+                    // \0
+                    self.chars.next(); // skip char
+                    self.chars.next(); // skip '
+                    return Token::char(self.pos(1), '\0'.into());
+                } else {
+                    panic!("unknown escape sequence: {}", self.chars.peek().unwrap());
+                }
             } else {
-                panic!("char must be ended by a '");
+                let tok = Token::char(self.pos(1), c.into());
+                self.chars.next(); // skip char
+                if self.peek('\'') {
+                    self.chars.next(); // skip '
+                } else {
+                    panic!("char must be ended by a '");
+                }
+                tok
             }
-            tok
         } else {
             panic!("char must be followed by a character");
         }
