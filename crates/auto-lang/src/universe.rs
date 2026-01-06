@@ -136,6 +136,7 @@ impl Universe {
 
     fn enter_named_scope(&mut self, name: impl Into<AutoStr>, kind: ScopeKind) {
         // Create a new scope under Global
+        println!("Scope before enter: {}", self.cur_spot);
         let new_sid = Sid::kid_of(&self.cur_spot, name.into());
         // if new_sid exists, return it
         if self.scopes.contains_key(&new_sid) {
@@ -278,6 +279,7 @@ impl Universe {
                     .define_type(name.clone(), Rc::new(type_meta));
             }
             Meta::Type(_) => {
+                println!("Defining type {} in scope {}", name, self.cur_spot);
                 self.current_scope_mut()
                     .define_type(name.clone(), meta.clone());
                 // also put the Type name as a symbol into the scope

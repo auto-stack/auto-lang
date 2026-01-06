@@ -5,6 +5,8 @@ fn say(msg str) {
 }
 
 # C
+use.c <stdlib.h>
+fn.c exit(status int) void
 
 use.c <stdio.h>
 
@@ -19,4 +21,23 @@ fn.c fgets(buf cstr, n int, stream *FILE) cstr
 
 fn say(msg str) {
     printf(c"%s\n", msg)
+}
+
+type File {
+    path str
+    file *FILE
+
+    fn close() {
+        fclose(.file)
+    }
+}
+
+fn open(path str) File {
+    let f *FILE = fopen(path, c"r")
+    if f == nil {
+        printf(c"Failed to open file")
+        exit(1)
+    }
+    let file = File(path, f)
+    file
 }

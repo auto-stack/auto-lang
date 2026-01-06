@@ -693,6 +693,7 @@ impl CTrans {
         println!("GOT NOD: {:?}", node);
 
         // lookup type meta and find field name for each arg
+        println!("cur sid: {}", self.scope.borrow().cur_spot);
         let Some(typ) = self.scope.borrow().lookup_ident_type(&node.name) else {
             return Err(format!("Type not found for node: {}", node.name).into());
         };
@@ -734,6 +735,7 @@ impl CTrans {
     }
 
     fn fn_decl(&mut self, fn_decl: &Fn, sink: &mut Sink) -> AutoResult<()> {
+        println!("Transpiling function declaration: {}", fn_decl.name);
         let out = &mut sink.body;
         // header
         let mut header = Vec::new();
@@ -784,7 +786,7 @@ impl CTrans {
         println!("Return type: {:?}", fn_decl.ret);
         // return type
         if !matches!(fn_decl.ret, Type::Unknown) {
-            out.write(format!("{} ", fn_decl.ret).as_bytes()).to()?;
+            out.write(format!("{} ", self.c_type_name(&fn_decl.ret)).as_bytes()).to()?;
         } else {
             out.write(b"void ").to()?;
         }
@@ -886,6 +888,7 @@ impl CTrans {
             Type::Unknown => "unknown".to_string(),
             Type::CStruct(decl) => format!("{}", decl.name),
             Type::Char => "char".to_string(),
+            Type::Void => "void".to_string(),
             _ => {
                 println!("Unsupported type for C transpiler: {}", ty);
                 panic!("Unsupported type for C transpiler: {}", ty);
@@ -1623,14 +1626,17 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Sh
     let mut transpiler = CTrans::new(name);
     transpiler.scope = parser.scope.clone();
     transpiler.trans(ast, &mut out)?;
+    println!("Trans self finished!!!!!!!!!!!!!!");
 
     let uni = parser.scope.clone();
     let paks = std::mem::take(&mut parser.scope.borrow_mut().code_paks);
     // let paks = parser.scope.borrow().code_paks.clone();
     for (sid, pak) in paks.iter() {
         let name = sid.name();
+        println!("pack : {}, {}", sid, pak.text);
         let mut out = Sink::new(name.clone());
         let mut transpiler = CTrans::new(sid.name().into());
+        uni.borrow_mut().set_spot(sid.clone());
         transpiler.scope = uni.clone();
         transpiler.trans(pak.ast.clone(), &mut out)?;
 

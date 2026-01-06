@@ -1424,6 +1424,7 @@ impl<'a> Parser<'a> {
             self.scope.borrow_mut().enter_mod(path.to_string());
         }
         println!("cur spot: {:?}", self.scope.borrow().cur_spot);
+        println!("parsing file content: {}", file_content);
 
         // self.scope.borrow_mut().enter_mod(scope_name.clone());
         let mut new_parser = Parser::new(file_content.as_str(), self.scope.clone());
@@ -1894,7 +1895,7 @@ impl<'a> Parser<'a> {
 
         if self.is_kind(TokenKind::Dot) {
             self.next(); // skipt .
-            // parse fn sub kind
+                         // parse fn sub kind
             let sub_kind = self.cur.text.clone();
             // special case for `fn c` cdecl statement
             if sub_kind == "c" {
@@ -2027,7 +2028,7 @@ impl<'a> Parser<'a> {
 
         if self.is_kind(TokenKind::Dot) {
             self.next();
-            let mut sub_kind = self.parse_name()?;
+            let sub_kind = self.parse_name()?;
             if sub_kind == "c" {
                 let name = self.parse_name()?;
 
@@ -2045,7 +2046,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let mut name = self.parse_name()?;
+        let name = self.parse_name()?;
         let mut decl = TypeDecl {
             kind: TypeDeclKind::UserType,
             name: name.clone(),
@@ -2054,6 +2055,11 @@ impl<'a> Parser<'a> {
             members: Vec::new(),
             methods: Vec::new(),
         };
+        println!(
+            "Defining type {} in scope {}",
+            name,
+            self.scope.borrow().cur_spot
+        );
 
         // put type in scope
         self.define(name.as_str(), Meta::Type(Type::User(decl.clone())));
