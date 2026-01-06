@@ -1126,7 +1126,7 @@ impl CTrans {
             return Err(format!("Wrong array type: {}", arr).into());
         };
         match &arr_type {
-            Type::Array(a) => {
+            Type::Array(_a) => {
                 // for (int i = 0; i < size; i++) { print()}
                 out.write(b"for (")?;
                 self.range("i", &r.start, &r.end, out)?;

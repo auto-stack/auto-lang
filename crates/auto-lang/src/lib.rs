@@ -278,7 +278,7 @@ mod tests {
         let code = r#"for i in 0..10 { print(i) }"#;
         let result = run(code).unwrap();
         // TODO: capture stdout and assert
-        assert_eq!(result, "void");
+        assert_eq!(result, "");
     }
 
     #[test]
@@ -343,8 +343,7 @@ $ }"#;
 
         let code = "fn hi(s str) { print(s) }; hi(\"hello\")";
         let result = run(code).unwrap();
-        // TODO: capture stdout and assert
-        assert_eq!(result, "void");
+        assert_eq!(result, "");
     }
 
     #[test]
@@ -571,7 +570,7 @@ $ }
         }
         "#;
         let result = run(code).unwrap();
-        assert_eq!(result, "void");
+        assert_eq!(result, "");
     }
 
     #[test]
@@ -734,7 +733,7 @@ $ }
         duck.fly()
         "#;
         let result = run(code).unwrap();
-        assert_eq!(result, "void");
+        assert_eq!(result, "");
     }
 
     #[test]

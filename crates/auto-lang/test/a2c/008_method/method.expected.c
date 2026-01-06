@@ -1,7 +1,7 @@
 #include "method.h"
 
-int Point_Modulus(struct Point *s) {
-    return s->x * s->x + s->y * s->y;
+int Point_Modulus(struct Point *self) {
+    return self->x * self->x + self->y * self->y;
 }
 
 int main(void) {

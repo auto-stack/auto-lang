@@ -1,12 +1,12 @@
 #include "str.h"
 
-void sstr_Print(struct sstr *s) {
+void sstr_Print(struct sstr *self) {
     for () {
         printf("%d\n", ch);
     }
 }
 
-void dstr_Print(struct dstr *s) {
+void dstr_Print(struct dstr *self) {
     for () {
 
     }

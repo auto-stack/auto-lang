@@ -7,13 +7,13 @@ struct sstr {
     char[0] data;
 };
 
-void sstr_Print(struct sstr *s);
+void sstr_Print(struct sstr *self);
 struct dstr {
     unknown size;
     char[0] data;
 };
 
-void dstr_Print(struct dstr *s);
+void dstr_Print(struct dstr *self);
 struct vstr {
     unknown size;
     char* data;

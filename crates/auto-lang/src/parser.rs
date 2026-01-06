@@ -673,9 +673,7 @@ impl<'a> Parser<'a> {
         let mut args = Args::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RParen) {
             let expr = if self.is_kind(TokenKind::Ident) {
-                println!("Try to parse arg with ident {}", self.cur.text);
                 let e = self.node_or_call_expr()?;
-                println!("Got expr: {}", e);
                 e
             // } else {
             // let name = Expr::Ident(self.cur.text.clone());
@@ -3186,7 +3184,7 @@ mod tests {
         }"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int))) (methods (fn (name absquare) (ret int) (body (bina (bina (bina (name s) (op .) (name x)) (op *) (bina (name s) (op .) (name x))) (op +) (bina (bina (name s) (op .) (name y)) (op *) (bina (name s) (op .) (name y))))))))");
+        assert_eq!(last.to_string(), "(type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int))) (methods (fn (name absquare) (ret int) (body (bina (bina (bina (name self) (op .) (name x)) (op *) (bina (name self) (op .) (name x))) (op +) (bina (bina (name self) (op .) (name y)) (op *) (bina (name self) (op .) (name y))))))))");
     }
 
     #[test]
