@@ -686,10 +686,8 @@ impl<'a> Parser<'a> {
             //     self.expr_pratt_with_left(name, 0)?
             // }
             } else {
-                println!("Try to parse arg with token {}", self.cur.text);
                 self.parse_expr()?
             };
-            println!("Got ARG ExPR: {}", expr);
             match &expr {
                 // Named args
                 Expr::Pair(p) => {
@@ -2508,7 +2506,6 @@ impl<'a> Parser<'a> {
     pub fn node_or_call_expr(&mut self) -> AutoResult<Expr> {
         let mut ident = self.ident()?;
         self.next();
-        println!("First Ident: {}", ident);
 
         while self.is_kind(TokenKind::Dot) {
             self.next(); // skip dot
@@ -2548,8 +2545,6 @@ impl<'a> Parser<'a> {
             args = self.args()?;
             has_paren = true;
         }
-
-        println!("Is constructor: {}", is_constructor);
 
         // If has brace, must be a node instance
         if self.is_kind(TokenKind::LBrace) || id.is_some() || is_constructor {

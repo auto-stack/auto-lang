@@ -435,6 +435,7 @@ impl Value {
         match self {
             Value::Str(s) => s.clone(),
             Value::Nil => "".into(),
+            Value::Void => "".into(),
             _ => self.to_string().into(),
         }
     }
