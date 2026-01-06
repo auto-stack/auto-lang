@@ -1,5 +1,5 @@
-use c <stdio.h>
-use c <stdlib.h>
+use.c <stdio.h>
+use.c <stdlib.h>
 
 type c FILE
 fn c getline(lineptr *cstr, n *int, stream *FILE) int

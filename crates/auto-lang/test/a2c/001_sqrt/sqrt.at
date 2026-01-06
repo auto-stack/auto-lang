@@ -1,4 +1,4 @@
-use c <math.h>
+use.c <math.h>
 
 fn c sqrt(x double) double
 

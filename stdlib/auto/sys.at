@@ -1,6 +1,6 @@
 # C
 
-use c <unistd.h>
+use.c <unistd.h>
 
 fn c getpid() int
 

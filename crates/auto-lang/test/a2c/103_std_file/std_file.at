@@ -1,4 +1,4 @@
-use c <stdio.h>
+use.c <stdio.h>
 
 type c FILE
 fn c fopen(filename cstr, mode cstr) *FILE

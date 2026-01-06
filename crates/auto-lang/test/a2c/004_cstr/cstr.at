@@ -1,4 +1,4 @@
-use c <stdio.h>
+use.c <stdio.h>
 
 fn c printf(fmt cstr, arg cstr)
 

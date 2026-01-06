@@ -6,7 +6,7 @@ fn say(msg str) {
 
 # C
 
-use c <stdio.h>
+use.c <stdio.h>
 
 fn c printf(fmt cstr, arg cstr)
 type c FILE
@@ -14,6 +14,5 @@ fn c getline(lineptr *cstr, n *int, stream *FILE) int
 let c stdin *FILE
 
 fn say(msg str) {
-
     printf(c"%s\n", msg)
 }

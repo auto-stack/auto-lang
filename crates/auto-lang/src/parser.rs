@@ -1347,17 +1347,25 @@ impl<'a> Parser<'a> {
     pub fn use_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip use
 
-        // check c/rust
-        let name = self.expect_ident_str()?;
+        let mut paths = Vec::new();
 
-        if name == "c" {
-            return self.use_c_stmt();
-        } else if name == "rust" {
-            return self.use_rust_stmt();
+        // check user.c or use.rust
+        if self.is_kind(TokenKind::Dot) {
+            self.next(); // skip .
+            let name = self.expect_ident_str()?;
+
+            if name == "c" {
+                return self.use_c_stmt();
+            } else if name == "rust" {
+                return self.use_rust_stmt();
+            } else {
+                paths.push(name);
+            }
+        } else {
+            let name = self.expect_ident_str()?;
+            paths.push(name);
         }
 
-        let mut paths = Vec::new();
-        paths.push(name);
         while self.is_kind(TokenKind::Dot) {
             self.next(); // skip .
             let name = self.expect_ident_str()?;
@@ -3310,7 +3318,7 @@ exe hello {
 
     #[test]
     fn test_use_c() {
-        let code = "use c <stdio.h>";
+        let code = "use.c <stdio.h>";
         let ast = parse_once(code);
         assert_eq!(ast.to_string(), "(code (use (kind c) (path <stdio.h>)))");
     }

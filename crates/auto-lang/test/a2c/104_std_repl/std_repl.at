@@ -1,5 +1,5 @@
 use auto.io: getline, stdin
-use c <stdlib.h>
+use.c <stdlib.h>
 fn c free(p cstr)
 
 fn main() {
