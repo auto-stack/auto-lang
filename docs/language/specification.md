@@ -16,8 +16,11 @@
 8. [Control Flow](#control-flow)
 9. [Functions](#functions)
 10. [Data Structures](#data-structures)
-11. [Memory Management](#memory-management)
-12. [Implementation Comparison](#implementation-comparison)
+11. [Type Definitions](#type-definitions)
+12. [Unions and Tags](#unions-and-tags)
+13. [Nodes (Atom Format)](#nodes-atom-format)
+14. [Memory Management](#memory-management)
+15. [Implementation Comparison](#implementation-comparison)
 
 ---
 
@@ -142,7 +145,7 @@ The following keywords are reserved:
 | `.` | Member access |
 | `->` | Arrow (patterns/events) |
 | `=>` | Double arrow (patterns) |
-| `:` | Colon (type annotation, pairs) |
+| `:` | Colon (object field-value pairs) |
 | `|` | Vertical bar |
 | `?` | Question mark |
 | `@` | At sign |
@@ -363,11 +366,11 @@ Auto has a hybrid type system:
 // Type inference
 let x = 42
 
-// Explicit type annotation
-let y: int = 42
+// Explicit type annotation (space-separated)
+let y int = 42
 
-// Function with type annotations
-fn add(a: int, b: int) int {
+// Function with type annotations (space-separated)
+fn add(a int, b int) int {
     a + b
 }
 ```
@@ -377,8 +380,8 @@ fn add(a: int, b: int) int {
 Auto performs automatic type coercion for assignments:
 
 ```auto
-let b: byte = 42    // OK: int coerced to byte
-let i: int = b      // OK: byte promoted to int
+let b byte = 42    // OK: int coerced to byte
+let i int = b      // OK: byte promoted to int
 ```
 
 ---
@@ -688,7 +691,7 @@ let result = add(1, 2)
 ### Lambda Functions
 
 ```auto
-let multiply = |a int, b int| a * b
+let multiply = |a int, b int| (int) a * b
 multiply(3, 4)    // 12
 ```
 
@@ -787,6 +790,416 @@ let grid = grid(a:"first", b:"second", c:"third") {
 
 // Convert to JSON
 let json = grid.to_json()
+```
+
+---
+
+## Type Definitions
+
+### Type Modifiers
+
+Auto uses postfix type modifiers that follow C/C++ conventions for better compatibility:
+
+#### Array Types
+
+```auto
+// Dynamic array
+let arr int[] = [1, 2, 3]
+
+// Fixed-size array
+let fixed int[10] = [0..10]
+
+// Multi-dimensional arrays
+let matrix int[3][10] = [
+    [0..10],
+    [1..11],
+    [2..12]
+]
+
+// Multi-dimensional dynamic arrays
+let cube int[][][]
+```
+
+Array dimensions are declared left-to-right (outermost to innermost), matching C/C++:
+
+```auto
+let arr int[3][10]
+let last = arr[2][9]    // Access: outer dimension first
+```
+
+#### Pointer Types
+
+```auto
+// Pointer
+let p int*
+
+// Multi-level pointer
+let pp char**
+
+// Array of pointers
+let ap int*[3]
+
+// Pointer to array
+let pa int[]*
+```
+
+#### Reference Types
+
+```auto
+// Reference
+let r int&
+
+// Multi-level reference
+let rr char&&
+
+// Array of references
+let ar int&[3]
+
+// Pointer to reference
+let pr int&*
+```
+
+#### Optional Types
+
+```auto
+// Optional value
+let opt int?
+
+// Multi-level optional
+let optopt char??
+
+// Array of optionals
+let aopt int?[3]
+
+// Pointer to optional
+let popt int?*
+```
+
+### Type Definitions
+
+Use the `type` keyword to define custom types:
+
+```auto
+type Point {
+    x int
+    y int
+}
+
+type Rectangle {
+    top_left Point
+    bottom_right Point
+}
+
+// Using custom types
+let p Point = { x: 10, y: 20 }
+let rect Rectangle = {
+    top_left: { x: 0, y: 0 },
+    bottom_right: { x: 100, y: 100 }
+}
+```
+
+### Type Aliases
+
+Create type aliases with `alias`:
+
+```auto
+alias UserID = int
+alias Name = str
+alias Coordinate = float
+
+let uid UserID = 12345
+let name Name = "Alice"
+let coord Coordinate = 45.5
+```
+
+---
+
+## Unions and Tags
+
+Auto provides both C-style unions and tagged unions for different use cases.
+
+### Unions (C-style)
+
+Unions provide memory reuse where the same memory can be accessed as different types:
+
+```auto
+union MyUnion {
+    i int
+    f float
+    c char
+}
+
+let u MyUnion
+sys {
+    u.i = 42              // Store as int
+    println(u.f)          // Access as float (undefined behavior)
+}
+```
+
+**Warning**: Direct union access is unsafe and should be only used in `sys` blocks.
+
+A safe version to use a `Tagged Union`, or a `Tag` in Auto lang.
+
+
+### Tags (Tagged Unions)
+
+Tags provide type-safe discriminated unions (similar to Rust enums):
+
+```auto
+tag MyTag {
+    i int
+    f float
+    c char
+}
+
+let value MyTag = MyTag.i(42)
+
+// Pattern matching with `is`
+is value {
+    i -> println(`int: {i}`),
+    f -> println(`float: {f}`),
+    c -> println(`char: {c}`)
+}
+
+let i = value.i? // 42
+let f = value.f // nil
+let c = value.c? // value.c is nil, so value.c? will trigger nil-return
+```
+
+#### Tag Definition Semantics
+
+The tag definition:
+
+```auto
+tag MyTag {
+    i int
+    f float
+    c char
+}
+```
+
+Translates to C as:
+
+```c
+typedef enum {
+    MyTag_i,
+    MyTag_f,
+    MyTag_c,
+} MyTagKind;
+
+typedef struct {
+    MyTagKind tag;
+    union {
+        int i;
+        float f;
+        char c;
+    } as;
+} MyTag;
+```
+
+---
+
+## Nodes
+
+Nodes are Auto's XML-like tree structure for data representation, combining JSON's simplicity with XML's hierarchical nature. Auto can be compiled down to Atom format.
+
+### Basic Node Syntax
+
+```auto
+node_name(a: 1, b: "hello") {
+    // children
+    sub_node(c: 2) {
+        // ...
+    }
+
+    // children 
+    sub_node2() {
+        // ...
+    }
+}
+```
+
+这个结构和XML的树状结构基本一致，例如，上面的代码用XML可以表示为：
+
+```xml
+<node_name a="1" b="hello">
+    <sub_node c="2">
+        <!-- more content -->
+    </sub_node>
+    <sub_node2>
+        <!-- more content -->
+    </sub_node2>
+</node_name>
+```
+
+可以看到，这里节点名称，属性参数（在XML中叫`attribute`）和子节点的定义，
+信息量上是完全对等的。
+
+相比于XML，Auto的节点定义格式有如下优点：
+
+1. 更加紧凑，没有冗余的尖括号和结束标签。
+2. 形式上更接近于C系列语言的风格，可以和其他Auto代码良好地融合在一起
+3. 还有简化空间。
+
+### Simplifications to node syntax
+
+当某个节点没有属性时，可以省略括号：
+
+```auto
+root {
+    // subnodes
+}
+```
+
+当节点没有子节点时，可以省略掉`{..}`：
+
+```auto
+leaf(id: "my_leaf")
+```
+
+此时，节点的定义从语法上就和函数调用基本一致了，从语法上来看，产生了歧义。
+
+Auto语言从语义上来解决这个歧义：
+
+1. 节点的定义其实也是一种函数调用，相当于一个构造函数
+2. 节点的名称如果定义为`fn`，则这个表达式是函数调用；如果是一个类型`type`，则为该类型的构造函数。
+
+这样设计的话，节点表达式和类型的实例化就统一起来了。
+
+当节点的定义很明确时，我们可以忽略掉属性的名字，直接调用参数值：
+
+```auto
+type Point {
+    x int
+    y int
+}
+
+let p = Point(10, 20)
+```
+
+如果节点的类型本身有一个主属性（一般是`id`或`name`），
+那么可以用节点声明表达式来定义一个实体：
+
+```auto
+type User {
+    @primary
+    name str
+
+    age int
+}
+
+User XiaoMing {
+    age: 18
+}
+
+// 相当于：
+let XiaoMing = User(name: "Xiaoming", age: 18)
+```
+
+这种方式可以直接定义一个变量，在结构化的配置文件中很好用。
+
+### Examples
+
+```auto
+// Simple node
+root(id: "123") {
+    name("Puming")
+    age(41)
+}
+
+// Nested nodes
+root(id: "123") {
+    name("Puming") {
+        surname("Zhao") {
+            // More nested content
+        }
+    }
+    age(41)
+}
+```
+
+### Node vs Object
+
+In Auto, object is actually a subset of node.
+
+You can view object as a special type of node that is:
+
+1. Anonymous: the node type is not specified, or actally put as an property inside the `{}`
+2. Single: no directy sub-nodes are specified, i.e. subnodes are specifed as properity values.
+
+**Object** (data):
+```auto
+let obj = {
+    name: "value",
+    count: 42
+}
+```
+
+**Node** (structure):
+```auto
+node(attr: "value") {
+    child()
+}
+```
+
+Key differences:
+- Nodes use `()` for attributes, `{}` for children
+- Nodes represent tree structures (like XML)
+- Objects represent key-value mappings (like JSON)
+
+### Use Cases
+
+Nodes are commonly used in:
+
+1. **UI Description** (AutoUI):
+```auto
+window(title: "My App") {
+    button(label: "Click me") {
+        onclick: || println("clicked")
+    }
+    textbox(placeholder: "Enter text")
+}
+```
+
+2. **Configuration** (AutoConfig):
+```auto
+config(version: "1.0") {
+    database(host: "localhost", port: 5432) {
+        credentials(user: "admin", pass: "secret")
+    }
+}
+```
+
+3. **Code Generation** (AutoGen):
+```auto
+for student in students {
+    student(name: student.name, age: student.age) {
+        for course in student.courses {
+            course(name: course.name, score: course.score)
+        }
+    }
+}
+```
+
+### Node Compilation
+
+Dynamic Auto code compiles to static Atom:
+
+**Input** (Auto):
+```auto
+var name = "Puming"
+root(id: "123") {
+    name(name)
+    age(41)
+}
+```
+
+**Output** (Atom):
+```auto
+root(id: "123") {
+    name("Puming")
+    age(41)
+}
 ```
 
 ---
