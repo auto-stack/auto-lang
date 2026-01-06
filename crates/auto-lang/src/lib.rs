@@ -974,4 +974,20 @@ square(15)
         let result = run(code).unwrap();
         assert_eq!(result, "3");
     }
+
+    #[test]
+    fn test_atom_query() {
+        let code = r#"
+            var atom = root {
+                header "This is header"
+                body {
+                    p "This is a paragraph"
+                    p "This is another paragraph"
+                }
+            }
+            atom.body.p[1].content
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "This is another paragraph");
+    }
 }

@@ -911,6 +911,61 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn is_literal(&mut self) -> bool {
+        self.is_kind(TokenKind::Uint)
+            || self.is_kind(TokenKind::Int)
+            || self.is_kind(TokenKind::U8)
+            || self.is_kind(TokenKind::I8)
+            || self.is_kind(TokenKind::Float)
+            || self.is_kind(TokenKind::Double)
+            || self.is_kind(TokenKind::True)
+            || self.is_kind(TokenKind::False)
+            || self.is_kind(TokenKind::Nil)
+            || self.is_kind(TokenKind::Str)
+            || self.is_kind(TokenKind::CStr)
+            || self.is_kind(TokenKind::FStrStart)
+            || self.is_kind(TokenKind::Char)
+    }
+
+    pub fn literal(&mut self) -> AutoResult<Expr> {
+        let e = match self.kind() {
+            TokenKind::FStrStart => self.fstr(),
+            TokenKind::Uint => self.parse_int(),
+            TokenKind::Int => self.parse_int(),
+            TokenKind::U8 => self.parse_u8(),
+            TokenKind::I8 => self.parse_i8(),
+            TokenKind::Float => self.parse_float(),
+            TokenKind::Double => self.parse_double(),
+            TokenKind::True => Ok(Expr::Bool(true)),
+            TokenKind::False => Ok(Expr::Bool(false)),
+            TokenKind::Nil => Ok(Expr::Nil),
+            TokenKind::Str => self.parse_str(),
+            TokenKind::CStr => Ok(Expr::CStr(self.cur.text.clone())),
+            TokenKind::Char => Ok(Expr::Char(self.cur.text.chars().nth(0).unwrap())),
+            _ => Err(format!("UnexpectedToken {}", self.cur).into()),
+        };
+        self.next();
+        e
+    }
+
+    fn parse_float(&mut self) -> AutoResult<Expr> {
+        Ok(Expr::Float(
+            self.cur.text.as_str().parse().unwrap(),
+            self.cur.text.clone(),
+        ))
+    }
+
+    fn parse_double(&mut self) -> AutoResult<Expr> {
+        Ok(Expr::Double(
+            self.cur.text.as_str().parse().unwrap(),
+            self.cur.text.clone(),
+        ))
+    }
+
+    fn parse_str(&mut self) -> AutoResult<Expr> {
+        Ok(Expr::Str(self.cur.text.clone()))
+    }
+
     pub fn atom(&mut self) -> AutoResult<Expr> {
         if self.is_kind(TokenKind::LParen) {
             return self.group();
@@ -920,17 +975,11 @@ impl<'a> Parser<'a> {
             TokenKind::Int => self.parse_int()?,
             TokenKind::U8 => self.parse_u8()?,
             TokenKind::I8 => self.parse_i8()?,
-            TokenKind::Float => Expr::Float(
-                self.cur.text.as_str().parse().unwrap(),
-                self.cur.text.clone(),
-            ),
-            TokenKind::Double => Expr::Double(
-                self.cur.text.as_str().parse().unwrap(),
-                self.cur.text.clone(),
-            ),
+            TokenKind::Float => self.parse_float()?,
+            TokenKind::Double => self.parse_double()?,
+            TokenKind::Str => self.parse_str()?,
             TokenKind::True => Expr::Bool(true),
             TokenKind::False => Expr::Bool(false),
-            TokenKind::Str => Expr::Str(self.cur.text.clone()),
             TokenKind::CStr => Expr::CStr(self.cur.text.clone()),
             TokenKind::Char => Expr::Char(self.cur.text.chars().nth(0).unwrap()),
             TokenKind::Ident => self.ident()?,
@@ -1651,11 +1700,9 @@ impl<'a> Parser<'a> {
         // store kind: var/let/mut
         let mut store_kind = self.store_kind()?;
         self.next(); // skip var/let/mut
-        println!("STORE KIND {:?}", store_kind);
 
         // identifier name
         let mut name = self.parse_name()?;
-        println!("SToreVAR: {}", name);
 
         // special case: c decl
         if name == "c" {
@@ -1674,10 +1721,8 @@ impl<'a> Parser<'a> {
             Expr::Nil
         } else {
             self.expect(TokenKind::Asn)?;
-            println!("Expected '='");
             // inital value: expression
             let expr = self.rhs_expr()?;
-            println!("RHS EXPR: {}", expr);
             // TODO: check type compatibility
             if matches!(ty, Type::Unknown) {
                 ty = self.infer_type_expr(&expr);
@@ -1713,10 +1758,7 @@ impl<'a> Parser<'a> {
             Expr::FStr(..) => typ = Type::Str(0),
             Expr::Bina(lhs, op, rhs) => {
                 let ltype = self.infer_type_expr(lhs);
-                println!("LTYPE: {}", ltype);
-                println!("OP: {}", op);
                 let rtype = self.infer_type_expr(rhs);
-                println!("RTYPE: {}", rtype);
                 match op {
                     Op::Dot => {
                         // TODO
@@ -1770,10 +1812,8 @@ impl<'a> Parser<'a> {
             Expr::Call(call) => {
                 typ = call.ret.clone();
             }
-            Expr::Index(arr, idx) => {
-                println!("Indexing expression type, {}, {}", arr, idx);
+            Expr::Index(arr, _idx) => {
                 let arr_typ = self.infer_type_expr(arr);
-                println!("Arra_TYUPE: {}", arr_typ);
                 match arr_typ {
                     Type::Array(arr_ty) => {
                         typ = (*arr_ty.elem).clone();
@@ -2442,16 +2482,23 @@ impl<'a> Parser<'a> {
     fn parse_node(
         &mut self,
         name: &AutoStr,
-        id: Option<AutoStr>,
+        primary: Option<Expr>,
         mut args: Args,
         kind: &AutoStr,
     ) -> AutoResult<Node> {
         let n = name.clone().into();
         let mut node = Node::new(name.clone());
-        if let Some(id) = id {
-            // define a variable for this node instance with id
-            self.define(id.as_str(), Meta::Node(node.clone()));
-            node.id = id;
+        if let Some(prime) = primary {
+            match prime {
+                Expr::Ident(id) => {
+                    // define a variable for this node instance with id
+                    self.define(id.as_str(), Meta::Node(node.clone()));
+                    node.id = id;
+                }
+                _ => {
+                    node.args.args.push(Arg::Pair("content".into(), prime));
+                }
+            }
         }
 
         // optional kind argument
@@ -2459,7 +2506,7 @@ impl<'a> Parser<'a> {
             args.args
                 .push(Arg::Pair("kind".into(), Expr::Str(kind.into())));
         }
-        node.args = args;
+        node.args.args.extend(args.args);
 
         if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
         } else {
@@ -2528,11 +2575,13 @@ impl<'a> Parser<'a> {
 
         let mut has_paren = false;
 
-        // 节点实例的id
-        let id = if self.is_kind(TokenKind::Ident) {
+        // 节点实例的primary prop
+        let primary_prop = if self.is_kind(TokenKind::Ident) {
             let id = self.ident_name()?;
             self.next();
-            Some(id)
+            Some(Expr::Ident(id))
+        } else if self.is_literal() {
+            Some(self.literal()?)
         } else {
             None
         };
@@ -2545,7 +2594,7 @@ impl<'a> Parser<'a> {
         }
 
         // If has brace, must be a node instance
-        if self.is_kind(TokenKind::LBrace) || id.is_some() || is_constructor {
+        if self.is_kind(TokenKind::LBrace) || primary_prop.is_some() || is_constructor {
             // node instance
             // with node instance, pair args also defines as properties
             for arg in &args.args {
@@ -2563,7 +2612,7 @@ impl<'a> Parser<'a> {
                 Expr::Ident(name) => {
                     return Ok(Expr::Node(self.parse_node(
                         &name,
-                        id,
+                        primary_prop,
                         args,
                         &AutoStr::new(),
                     )?));
@@ -2580,7 +2629,7 @@ impl<'a> Parser<'a> {
                 Ok(expr)
             } else {
                 // Something else with a starting Ident
-                if id.is_some() {
+                if primary_prop.is_some() {
                     if self.is_kind(TokenKind::Ident) {
                         let kind = self.parse_name()?;
                         if self.is_kind(TokenKind::LBrace)
@@ -2588,13 +2637,13 @@ impl<'a> Parser<'a> {
                             || self.is_kind(TokenKind::Semi)
                             || self.is_kind(TokenKind::RBrace)
                         {
-                            let nd = self.parse_node(&ident.repr(), id, args, &kind)?;
+                            let nd = self.parse_node(&ident.repr(), primary_prop, args, &kind)?;
                             return Ok(Expr::Node(nd));
                         } else {
                             return error_pos!(
                                 "expect node, got {} {} {}",
                                 ident.repr(),
-                                id.unwrap(),
+                                primary_prop.unwrap().repr(),
                                 kind
                             );
                         }
@@ -2604,14 +2653,15 @@ impl<'a> Parser<'a> {
                             || self.is_kind(TokenKind::Semi)
                             || self.is_kind(TokenKind::RBrace)
                         {
-                            let nd = self.parse_node(&ident.repr(), id, args, &"".into())?;
+                            let nd =
+                                self.parse_node(&ident.repr(), primary_prop, args, &"".into())?;
                             return Ok(Expr::Node(nd));
                         }
                     }
                     return error_pos!(
                         "Expected simple expression, got `{} {}`",
                         ident.repr(),
-                        id.unwrap()
+                        primary_prop.unwrap()
                     );
                 }
                 let expr = self.expr_pratt_with_left(ident, 0)?;

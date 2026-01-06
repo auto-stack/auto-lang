@@ -176,6 +176,11 @@ impl Node {
     }
 
     pub fn get_prop(&self, key: &str) -> Value {
+        // find from args
+        let a = self.args.get_arg(&key.into());
+        if let Some(a) = a {
+            return a.get_val();
+        }
         let v = match self.props.get(key) {
             Some(value) => value.clone(),
             None => Value::Nil,

@@ -590,14 +590,14 @@ impl Evaler {
 
         match name {
             // Value::Type(Type::User(u)) => {
-                // return self.eval_type_new(&u, &call.args);
+            // return self.eval_type_new(&u, &call.args);
             // }
             Value::Meta(meta_id) => match meta_id {
                 MetaID::Fn(sig) => {
                     return self.eval_fn_call_with_sig(&sig, &call.args);
                 }
                 // MetaID::Type(name) => {
-                    // return self.eval_type_new(&name, &call.args);
+                // return self.eval_type_new(&name, &call.args);
                 // }
                 _ => {
                     println!("Strange function call {}", meta_id);
@@ -942,10 +942,6 @@ impl Evaler {
     }
 
     fn dot_node(&mut self, node: &auto_val::Node, right: &Expr) -> Option<Value> {
-        // println!(
-        //     "===================== dot node {} ====================",
-        //     node.main_arg()
-        // );
         let Expr::Ident(name) = right else {
             return None;
         };
@@ -961,16 +957,20 @@ impl Evaler {
         if v.is_nil() {
             // 2.1 check if nodes with the name exists
             let nodes = node.get_nodes(&name);
-            if nodes.len() > 0 {
+            if nodes.len() > 1 {
                 return Some(Value::array_of(nodes.iter().map(|n| n.clone()).collect()));
+            } else if nodes.len() == 1 {
+                return Some(Value::Node(nodes[0].clone()));
             }
             // 2.2 lookup in sub nodes
             if name.ends_with("s") {
                 name = name[..name.len() - 1].into();
             }
             let nodes = node.get_nodes(&name);
-            if nodes.len() > 0 {
+            if nodes.len() > 1 {
                 Some(Value::array_of(nodes.iter().map(|n| n.clone()).collect()))
+            } else if nodes.len() == 1 {
+                Some(Value::Node(nodes[0].clone()))
             } else {
                 None
             }
@@ -996,7 +996,6 @@ impl Evaler {
 
     fn dot(&mut self, left: &Expr, right: &Expr) -> Value {
         let left_value = self.eval_expr(left);
-        println!("Left value: {}", left_value);
         let res: Option<Value> = match &left_value {
             Value::Type(typ) => {
                 match typ {
