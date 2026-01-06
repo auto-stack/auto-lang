@@ -2,7 +2,7 @@
 
 use.c <unistd.h>
 
-fn c getpid() int
+fn.c getpid() int
 
 fn get_pid() int {
     getpid()

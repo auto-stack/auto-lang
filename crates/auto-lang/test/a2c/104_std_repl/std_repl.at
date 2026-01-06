@@ -1,6 +1,6 @@
 use auto.io: getline, stdin
 use.c <stdlib.h>
-fn c free(p cstr)
+fn.c free(p cstr)
 
 fn main() {
     mut lineptr *char = null

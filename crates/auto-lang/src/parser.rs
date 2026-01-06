@@ -1892,13 +1892,18 @@ impl<'a> Parser<'a> {
     pub fn fn_decl_stmt(&mut self, parent_name: &str) -> AutoResult<Stmt> {
         self.next(); // skip keyword `fn`
 
-        // parse function name
-        let name = self.cur.text.clone();
-        // special case for `fn c` cdecl statement
-        if name == "c" {
-            return self.fn_cdecl_stmt();
+        if self.is_kind(TokenKind::Dot) {
+            self.next(); // skipt .
+            // parse fn sub kind
+            let sub_kind = self.cur.text.clone();
+            // special case for `fn c` cdecl statement
+            if sub_kind == "c" {
+                return self.fn_cdecl_stmt();
+            }
         }
-        self.expect(TokenKind::Ident)?;
+
+        // parse function name
+        let name = self.parse_name()?;
 
         // enter function scope
         self.scope.borrow_mut().enter_fn(name.clone());
@@ -2019,24 +2024,28 @@ impl<'a> Parser<'a> {
     pub fn type_decl_stmt(&mut self) -> AutoResult<Stmt> {
         // TODO: deal with scope
         self.next(); // skip `type` keyword
-        let mut name = self.parse_name()?;
 
-        if name == "c" {
-            name = self.parse_name()?;
+        if self.is_kind(TokenKind::Dot) {
+            self.next();
+            let mut sub_kind = self.parse_name()?;
+            if sub_kind == "c" {
+                let name = self.parse_name()?;
 
-            let decl = TypeDecl {
-                kind: TypeDeclKind::CType,
-                name: name.clone(),
-                has: Vec::new(),
-                specs: Vec::new(),
-                members: Vec::new(),
-                methods: Vec::new(),
-            };
-            // put type in scope
-            self.define(name.as_str(), Meta::Type(Type::CStruct(decl.clone())));
-            return Ok(Stmt::TypeDecl(decl));
+                let decl = TypeDecl {
+                    kind: TypeDeclKind::CType,
+                    name: name.clone(),
+                    has: Vec::new(),
+                    specs: Vec::new(),
+                    members: Vec::new(),
+                    methods: Vec::new(),
+                };
+                // put type in scope
+                self.define(name.as_str(), Meta::Type(Type::CStruct(decl.clone())));
+                return Ok(Stmt::TypeDecl(decl));
+            }
         }
 
+        let mut name = self.parse_name()?;
         let mut decl = TypeDecl {
             kind: TypeDeclKind::UserType,
             name: name.clone(),

@@ -1,6 +1,6 @@
 use.c <math.h>
 
-fn c sqrt(x double) double
+fn.c sqrt(x double) double
 
 fn main() {
     let x = 4.0d

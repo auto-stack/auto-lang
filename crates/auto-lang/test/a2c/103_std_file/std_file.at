@@ -1,10 +1,5 @@
-use.c <stdio.h>
+use auto.io: fopen, fgets, printf, FILE, fclose
 
-type c FILE
-fn c fopen(filename cstr, mode cstr) *FILE
-fn c fclose(stream *FILE)
-fn c fgets(buf cstr, n int, stream *FILE) cstr
-fn c printf(format cstr, arg cstr)
 
 fn main() {
     mut fp *FILE = null

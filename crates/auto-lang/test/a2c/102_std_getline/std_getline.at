@@ -1,10 +1,7 @@
-use.c <stdio.h>
-use.c <stdlib.h>
+use auto.io: getline, stdin
 
-type c FILE
-fn c getline(lineptr *cstr, n *int, stream *FILE) int
-fn c free(p cstr)
-let c stdin *FILE
+use.c <stdlib.h>
+fn.c free(p cstr)
 
 fn main() {
     mut lineptr *char = null

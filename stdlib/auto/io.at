@@ -8,10 +8,14 @@ fn say(msg str) {
 
 use.c <stdio.h>
 
-fn c printf(fmt cstr, arg cstr)
-type c FILE
-fn c getline(lineptr *cstr, n *int, stream *FILE) int
+fn.c printf(fmt cstr, arg cstr)
+type.c FILE
+fn.c getline(lineptr *cstr, n *int, stream *FILE) int
 let c stdin *FILE
+
+fn.c fopen(filename cstr, mode cstr) *FILE
+fn.c fclose(stream *FILE)
+fn.c fgets(buf cstr, n int, stream *FILE) cstr
 
 fn say(msg str) {
     printf(c"%s\n", msg)
