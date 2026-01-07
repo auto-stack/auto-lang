@@ -416,13 +416,26 @@ impl Evaler {
         let left_value = self.eval_expr(left);
         let right_value = self.eval_expr(right);
 
+        // Resolve ValueRef for arithmetic operations
+        let left_resolved = self.resolve_or_clone(&left_value);
+        let right_resolved = self.resolve_or_clone(&right_value);
+
         match op {
-            Op::Add => add(left_value, right_value),
-            Op::Sub => sub(left_value, right_value),
-            Op::Mul => mul(left_value, right_value),
-            Op::Div => div(left_value, right_value),
+            Op::Add => {
+                // Convert resolved ValueData back to Value for add()
+                add(Value::from_data(left_resolved.clone()), Value::from_data(right_resolved.clone()))
+            }
+            Op::Sub => {
+                sub(Value::from_data(left_resolved.clone()), Value::from_data(right_resolved.clone()))
+            }
+            Op::Mul => {
+                mul(Value::from_data(left_resolved.clone()), Value::from_data(right_resolved.clone()))
+            }
+            Op::Div => {
+                div(Value::from_data(left_resolved.clone()), Value::from_data(right_resolved.clone()))
+            }
             Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => {
-                comp(&left_value, &op, &right_value)
+                comp(&Value::from_data(left_resolved), &op, &Value::from_data(right_resolved))
             }
             Op::Asn => self.eval_asn(left, right_value),
             Op::Range => self.range(left, right),
@@ -434,6 +447,7 @@ impl Evaler {
 
     fn eval_asn(&mut self, left: &Expr, val: Value) -> Value {
         match left {
+            // Case 1: Simple identifier: x = value
             Expr::Ident(name) => {
                 // check ref
                 let left_val = self.lookup(&name);
@@ -459,34 +473,82 @@ impl Evaler {
                 }
                 Value::Void
             }
-            Expr::Bina(left, op, right) => {
-                match op {
-                    Op::Dot => {
-                        // a.b = expr
-                        match left.as_ref() {
-                            Expr::Ident(name) => {
-                                // find object `left`
-                                self.update_obj(&name, move |o| match right.as_ref() {
-                                    Expr::Ident(rname) => o.set(rname.clone(), val),
-                                    _ => {}
-                                });
-                                Value::Void
+
+            // Case 2: Nested access: obj.field = value
+            Expr::Bina(left_obj, op, right_field) if *op == Op::Dot => {
+                // Convert right-hand side to ValueData and allocate (only for nested assignment)
+                let right_data = val.into_data();
+                let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+
+                match left_obj.as_ref() {
+                    Expr::Ident(obj_name) => {
+                        if let Some(obj_vid) = self.lookup_vid(obj_name) {
+                            let field_name = self.expr_to_astr(right_field);
+                            let path = auto_val::AccessPath::Field(field_name);
+                            match self
+                                .universe
+                                .borrow_mut()
+                                .update_nested(obj_vid, &path, right_vid)
+                            {
+                                Ok(()) => Value::Void,
+                                Err(e) => Value::error(format!(
+                                    "Failed to assign to field: {:?}",
+                                    e
+                                )),
                             }
-                            _ => Value::error(format!("Invalid assignment {}", left)),
+                        } else {
+                            Value::error(format!("Variable not found: {}", obj_name))
                         }
                     }
-                    _ => Value::error(format!("Invalid bina target of asn {} = {}", left, val)),
+                    _ => Value::error(format!("Invalid assignment target")),
                 }
             }
-            Expr::Index(array, index) => match array.as_ref() {
-                Expr::Ident(name) => {
-                    let idx = self.eval_expr(index);
-                    self.update_array(&name, idx, val);
-                    Value::Void
+
+            // Case 3: Array index: arr[0] = value
+            Expr::Index(array, index) => {
+                // Convert right-hand side to ValueData and allocate (only for nested assignment)
+                let right_data = val.into_data();
+                let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+
+                match array.as_ref() {
+                    Expr::Ident(arr_name) => {
+                        if let Some(arr_vid) = self.lookup_vid(arr_name) {
+                            let idx_val = self.eval_expr(index);
+                            if let Value::Int(i) = idx_val {
+                                let path = auto_val::AccessPath::Index(i as usize);
+                                match self
+                                    .universe
+                                    .borrow_mut()
+                                    .update_nested(arr_vid, &path, right_vid)
+                                {
+                                    Ok(()) => Value::Void,
+                                    Err(e) => Value::error(format!(
+                                        "Failed to assign to index: {:?}",
+                                        e
+                                    )),
+                                }
+                            } else {
+                                Value::error("Array index must be integer")
+                            }
+                        } else {
+                            Value::error(format!("Array not found: {}", arr_name))
+                        }
+                    }
+                    _ => Value::error(format!("Invalid assignment target")),
                 }
-                _ => Value::error(format!("Invalid target of asn index {} = {}", left, val)),
-            },
+            }
+
             _ => Value::error(format!("Invalid target of asn {} = {}", left, val)),
+        }
+    }
+
+    /// Helper: Convert expression to AutoStr (for field names)
+    fn expr_to_astr(&self, expr: &Expr) -> AutoStr {
+        match expr {
+            Expr::Ident(name) => name.clone(),
+            Expr::Str(s) => s.clone().into(),
+            Expr::Int(i) => i.to_string().into(),
+            _ => expr.repr().into(),
         }
     }
 
@@ -529,11 +591,38 @@ impl Evaler {
     }
 
     fn lookup(&self, name: &str) -> Value {
-        // lookup value
+        // lookup value - now returns Value::ValueRef(vid)
         self.universe
             .borrow()
             .lookup_val(name)
             .unwrap_or(Value::Nil)
+    }
+
+    /// Get value ID directly without wrapping
+    fn lookup_vid(&self, name: &str) -> Option<auto_val::ValueID> {
+        self.universe.borrow().lookup_val_id(name)
+    }
+
+    /// Resolve Value::Ref to actual data
+    fn resolve_value(&self, value: &Value) -> Option<Rc<RefCell<auto_val::ValueData>>> {
+        match value {
+            Value::ValueRef(vid) => self.universe.borrow().get_value(*vid),
+            _ => None, // Inline values don't have stored data
+        }
+    }
+
+    /// Helper: Resolve Ref or clone inline value
+    fn resolve_or_clone(&self, val: &Value) -> auto_val::ValueData {
+        match val {
+            Value::ValueRef(vid) => {
+                self.universe
+                    .borrow()
+                    .get_value(*vid)
+                    .map(|cell| cell.borrow().clone())
+                    .unwrap_or(auto_val::ValueData::Nil)
+            }
+            _ => val.clone().into_data(),
+        }
     }
 
     fn eval_array(&mut self, elems: &Vec<Expr>) -> Value {
@@ -849,7 +938,7 @@ impl Evaler {
     }
 
     fn index(&mut self, array: &Expr, index: &Expr) -> Value {
-        let array = self.eval_expr(array);
+        let mut array_value = self.eval_expr(array);
         let index_value = self.eval_expr(index);
         let mut idx = match index_value {
             Value::Int(index) => index,
@@ -857,7 +946,18 @@ impl Evaler {
             // TODO: support range index
             _ => return Value::error(format!("Invalid index {}", index_value)),
         };
-        match array {
+
+        // Resolve ValueRef to actual value
+        if let Value::ValueRef(vid) = &array_value {
+            if let Some(data) = self.resolve_value(&array_value) {
+                let borrowed_data = data.borrow();
+                let data_clone = borrowed_data.clone();
+                drop(borrowed_data);
+                array_value = Value::from_data(data_clone);
+            }
+        }
+
+        match array_value {
             Value::Array(values) => {
                 let len = values.len();
                 if idx >= len as i32 {
@@ -878,7 +978,7 @@ impl Evaler {
                 }
                 Value::Char(s.chars().nth(idx).unwrap())
             }
-            _ => Value::error(format!("Invalid array {}", array)),
+            _ => Value::error(format!("Invalid array {}", array_value)),
         }
     }
 
@@ -1034,6 +1134,17 @@ impl Evaler {
         println!("Left of dot: {}", left);
         let mut left_value = self.eval_expr(left);
         println!("Left Val: {}", left_value);
+
+        // Resolve ValueRef to actual value
+        if let Value::ValueRef(vid) = &left_value {
+            if let Some(data) = self.resolve_value(&left_value) {
+                let borrowed_data = data.borrow();
+                let data_clone = borrowed_data.clone();
+                drop(borrowed_data);
+                left_value = Value::from_data(data_clone);
+            }
+        }
+
         let res: Option<Value> = match &left_value {
             Value::Type(typ) => {
                 match typ {

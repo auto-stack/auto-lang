@@ -3,11 +3,12 @@ use crate::ast::FnKind;
 use crate::ast::{self, Type};
 use crate::libs;
 use auto_atom::Atom;
-use auto_val::{Args, AutoStr, ExtFn, NodeItem, Obj, Sig, TypeInfoStore, Value, shared};
+use auto_val::{Args, AutoStr, ExtFn, NodeItem, Obj, Sig, TypeInfoStore, Value, ValueID, ValueData, AccessPath, AccessError, shared};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::rc::Weak;
 
 #[derive(Debug, Clone)]
 pub struct CodePak {
@@ -33,6 +34,11 @@ pub struct Universe {
     lambda_counter: usize,
     pub cur_spot: Sid,
     vmref_counter: usize,
+
+    // NEW: Central value storage for reference-based system
+    value_counter: usize,
+    pub values: HashMap<ValueID, Rc<RefCell<ValueData>>>,
+    weak_refs: HashMap<ValueID, Weak<RefCell<ValueData>>>,
 }
 
 impl Default for Universe {
@@ -63,6 +69,10 @@ impl Universe {
             vmref_counter: 0,
             cur_spot: SID_PATH_GLOBAL.clone(),
             args: Obj::new(),
+            // NEW: Initialize value storage
+            value_counter: 0,
+            values: HashMap::new(),
+            weak_refs: HashMap::new(),
         };
         uni.define_sys_types();
         uni.define_builtin_funcs();
@@ -229,7 +239,10 @@ impl Universe {
     }
 
     pub fn set_local_val(&mut self, name: &str, value: Value) {
-        self.current_scope_mut().set_val(name, value);
+        // Convert Value to ValueData and allocate
+        let data = value.into_data();
+        let vid = self.alloc_value(data);
+        self.current_scope_mut().set_val(name, vid);
     }
 
     pub fn set_local_obj(&mut self, obj: &Obj) {
@@ -237,8 +250,11 @@ impl Universe {
         for key in obj.keys() {
             let val = obj.get(key.clone());
             if let Some(v) = val {
+                // Convert Value to ValueData and allocate
+                let data = v.into_data();
+                let vid = self.alloc_value(data);
                 self.current_scope_mut()
-                    .set_val(key.to_string().as_str(), v);
+                    .set_val(key.to_string().as_str(), vid);
             }
         }
     }
@@ -256,21 +272,40 @@ impl Universe {
     }
 
     pub fn set_global(&mut self, name: impl Into<String>, value: Value) {
-        self.global_scope_mut().set_val(name.into(), value);
+        // Convert Value to ValueData and allocate
+        let data = value.into_data();
+        let vid = self.alloc_value(data);
+        self.global_scope_mut().set_val(name.into(), vid);
     }
 
     pub fn add_global_fn(&mut self, name: &str, f: fn(&Args) -> Value) {
-        self.global_scope_mut().set_val(
-            name,
-            Value::ExtFn(ExtFn {
-                fun: f,
-                name: name.into(),
-            }),
-        );
+        // Convert Value to ValueData and allocate
+        let value = Value::ExtFn(ExtFn {
+            fun: f,
+            name: name.into(),
+        });
+        let data = value.into_data();
+        let vid = self.alloc_value(data);
+        self.global_scope_mut().set_val(name, vid);
     }
 
     pub fn get_global(&self, name: &str) -> Value {
-        self.global_scope().get_val(name).unwrap_or(Value::Nil)
+        // TODO: Update to use ValueID resolution
+        // For now, this is a compatibility shim
+        self.global_scope().get_val_id(name)
+            .and_then(|vid| self.get_value(vid))
+            .map(|cell| {
+                let data = cell.borrow();
+                // Convert ValueData back to Value (simplified)
+                match &*data {
+                    ValueData::Int(i) => Value::Int(*i),
+                    ValueData::Str(s) => Value::Str(s.clone()),
+                    ValueData::Bool(b) => Value::Bool(*b),
+                    ValueData::Nil => Value::Nil,
+                    _ => Value::Nil, // TODO: handle other cases
+                }
+            })
+            .unwrap_or(Value::Nil)
     }
 
     pub fn define(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
@@ -356,15 +391,17 @@ impl Universe {
     }
 
     pub fn get_mut_val(&mut self, name: &str) -> Option<&mut Value> {
-        let scope = self.find_scope_for(name)?;
-        scope.get_val_mut(name)
+        // DEPRECATED: Use the new value storage system instead
+        // This method is kept for backward compatibility during migration
+        None
     }
 
     fn lookup_val_recurse(&self, name: &str, sid: &Sid) -> Option<Value> {
+        // First try to get ValueID from scopes
         if let Some(scope) = self.scopes.get(sid) {
-            let val = scope.get_val(name);
-            if let Some(val) = val {
-                return Some(val);
+            if let Some(vid) = scope.get_val_id(name) {
+                // Resolve ValueID to Value (using ValueRef wrapper)
+                return Some(Value::ValueRef(vid));
             }
         }
         if let Some(parent) = sid.parent() {
@@ -374,39 +411,32 @@ impl Universe {
     }
 
     pub fn lookup_val(&self, name: &str) -> Option<Value> {
+        // Try scopes first (returns Value::ValueRef)
         if let Some(val) = self.lookup_val_recurse(name, &self.cur_spot) {
             return Some(val);
         }
+        // Fallback to shared_vals (legacy)
         let shared = self.shared_vals.get(name);
         if let Some(shared) = shared {
             return Some(shared.borrow().clone());
         }
+        // Fallback to builtins
         self.builtins.get(name).cloned()
     }
 
     fn update_obj_recurse(&mut self, name: &str, f: impl FnOnce(&mut Obj)) {
-        if let Some(value) = self.lookup_val_mut(name) {
-            if let Value::Obj(o) = value {
-                f(o);
-                return;
-            }
-        }
+        // DEPRECATED: Use update_nested instead
+        // This is a no-op during migration
     }
 
     pub fn update_obj(&mut self, name: &str, f: impl FnOnce(&mut Obj)) {
-        self.update_obj_recurse(name, f);
+        // DEPRECATED: Use update_nested instead
+        eprintln!("Warning: update_obj is deprecated. Use update_nested instead.");
     }
 
     fn update_array_recurse(&mut self, name: &str, idx: Value, val: Value) {
-        if let Some(value) = self.lookup_val_mut(name) {
-            if let Value::Array(a) = value {
-                match idx {
-                    Value::Int(i) => a[i as usize] = val,
-                    Value::Uint(i) => a[i as usize] = val,
-                    _ => {}
-                }
-            }
-        }
+        // DEPRECATED: Use update_nested instead
+        eprintln!("Warning: update_array_recurse is deprecated. Use update_nested instead.");
     }
 
     pub fn update_array(&mut self, name: &str, idx: Value, val: Value) {
@@ -414,31 +444,87 @@ impl Universe {
     }
 
     fn lookup_val_mut_recurse(&mut self, name: &str, sid: &Sid) -> Option<&mut Value> {
+        // DEPRECATED: Use get_value_mut with ValueID instead
         if !self.scopes.contains_key(sid) {
             if let Some(parent) = sid.parent() {
                 return self.lookup_val_mut_recurse(name, &parent);
             }
         }
-        if let Some(scope) = self.scopes.get_mut(sid) {
-            return scope.get_val_mut(name);
-        }
+        // This method is deprecated - return None
         None
     }
 
     pub fn lookup_val_mut(&mut self, name: &str) -> Option<&mut Value> {
+        // DEPRECATED: Use get_value_mut with ValueID instead
         let sid = self.cur_spot.clone();
         self.lookup_val_mut_recurse(name, &sid)
     }
 
     fn update_val_recurse(&mut self, name: &str, value: Value, sid: &Sid) {
-        if let Some(scope) = self.scopes.get_mut(sid) {
-            if scope.exists(name) {
-                scope.set_val(name, value);
-                return;
+        let exists = if let Some(scope) = self.scopes.get(sid) {
+            scope.exists(name)
+        } else {
+            false
+        };
+
+        if exists {
+            // Convert Value to ValueData with proper nested allocation
+            let data = self.value_to_data_allocated(value);
+            let vid = self.alloc_value(data);
+            // Now get scope again after alloc_value
+            if let Some(scope) = self.scopes.get_mut(sid) {
+                scope.set_val(name, vid);
             }
+            return;
         }
+
         if let Some(parent) = sid.parent() {
             self.update_val_recurse(name, value, &parent);
+        }
+    }
+
+    /// Helper: Convert Value to ValueData, allocating nested values
+    fn value_to_data_allocated(&mut self, value: Value) -> auto_val::ValueData {
+        use auto_val::Value;
+        match value {
+            Value::Byte(v) => auto_val::ValueData::Byte(v),
+            Value::Int(v) => auto_val::ValueData::Int(v),
+            Value::Uint(v) => auto_val::ValueData::Uint(v),
+            Value::USize(v) => auto_val::ValueData::USize(v),
+            Value::I8(v) => auto_val::ValueData::I8(v),
+            Value::U8(v) => auto_val::ValueData::U8(v),
+            Value::I64(v) => auto_val::ValueData::I64(v),
+            Value::Float(v) => auto_val::ValueData::Float(v),
+            Value::Double(v) => auto_val::ValueData::Double(v),
+            Value::Bool(v) => auto_val::ValueData::Bool(v),
+            Value::Char(v) => auto_val::ValueData::Char(v),
+            Value::Nil => auto_val::ValueData::Nil,
+            Value::Str(v) => auto_val::ValueData::Str(v),
+            Value::Array(v) => {
+                // Allocate each element
+                let vids: Vec<auto_val::ValueID> = v.iter()
+                    .map(|val| {
+                        let data = self.value_to_data_allocated(val.clone());
+                        self.alloc_value(data)
+                    })
+                    .collect();
+                auto_val::ValueData::Array(vids)
+            }
+            Value::Obj(obj) => {
+                // Allocate each field value
+                let fields: Vec<(auto_val::ValueKey, auto_val::ValueID)> = obj.iter()
+                    .map(|(k, val)| {
+                        let data = self.value_to_data_allocated(val.clone());
+                        let vid = self.alloc_value(data);
+                        (k.clone(), vid)
+                    })
+                    .collect();
+                auto_val::ValueData::Obj(fields)
+            }
+            Value::Range(l, r) => auto_val::ValueData::Range(l, r),
+            Value::RangeEq(l, r) => auto_val::ValueData::RangeEq(l, r),
+            // Other variants - simplified
+            _ => auto_val::ValueData::Nil,
         }
     }
 
@@ -677,6 +763,155 @@ impl Universe {
 
     pub fn drop_vmref(&mut self, refid: usize) {
         self.vm_refs.remove(&refid);
+    }
+
+    // =========================================================================
+    // NEW: Value Storage Methods (Reference-based system)
+    // =========================================================================
+
+    /// Allocate a new value and return its ID
+    pub fn alloc_value(&mut self, data: ValueData) -> ValueID {
+        self.value_counter += 1;
+        let vid = ValueID(self.value_counter);
+        let rc = Rc::new(RefCell::new(data));
+        self.values.insert(vid, rc);
+        vid
+    }
+
+    /// Allocate a value with parent tracking (for cycle detection)
+    pub fn alloc_value_with_parent(&mut self, data: ValueData, parent: ValueID) -> ValueID {
+        self.value_counter += 1;
+        let vid = ValueID(self.value_counter);
+        let rc = Rc::new(RefCell::new(data));
+
+        // Store weak reference to parent for cycle detection
+        if let Some(parent_rc) = self.values.get(&parent) {
+            self.weak_refs.insert(vid, Rc::downgrade(parent_rc));
+        }
+
+        self.values.insert(vid, rc);
+        vid
+    }
+
+    /// Get immutable reference to value data by ID
+    pub fn get_value(&self, vid: ValueID) -> Option<Rc<RefCell<ValueData>>> {
+        self.values.get(&vid).cloned()
+    }
+
+    /// Clone value data (for when you actually need a copy)
+    pub fn clone_value(&self, vid: ValueID) -> Option<ValueData> {
+        self.values.get(&vid).map(|v| v.borrow().clone())
+    }
+
+    /// Get mutable access to value data
+    pub fn get_value_mut(&mut self, vid: ValueID) -> Option<std::cell::RefMut<ValueData>> {
+        self.values.get(&vid).map(|v| v.borrow_mut())
+    }
+
+    /// Update value data directly
+    pub fn update_value(&mut self, vid: ValueID, new_data: ValueData) {
+        if let Some(cell) = self.values.get(&vid) {
+            *cell.borrow_mut() = new_data;
+        }
+    }
+
+    /// Update nested field: obj.field = value
+    pub fn update_nested(&mut self, vid: ValueID, path: &AccessPath, new_vid: ValueID) -> Result<(), AccessError> {
+        let cell = self.values.get(&vid).ok_or(AccessError::FieldNotFound)?;
+        let mut data = cell.borrow_mut();
+
+        match path {
+            AccessPath::Field(field) => {
+                if let ValueData::Obj(ref mut fields) = &mut *data {
+                    fields.push((auto_val::ValueKey::Str(field.clone()), new_vid));
+                    Ok(())
+                } else {
+                    Err(AccessError::NotAnObject)
+                }
+            }
+            AccessPath::Index(idx) => {
+                if let ValueData::Array(ref mut elems) = &mut *data {
+                    if *idx < elems.len() {
+                        elems[*idx] = new_vid;
+                        Ok(())
+                    } else {
+                        Err(AccessError::IndexOutOfBounds)
+                    }
+                } else {
+                    Err(AccessError::NotAnArray)
+                }
+            }
+            AccessPath::Nested(parent_path, child_path) => {
+                // First resolve parent, then recurse
+                let parent_vid = match &*data {
+                    ValueData::Obj(fields) => {
+                        let key = match &**parent_path {
+                            AccessPath::Field(f) => f.clone(),
+                            _ => return Err(AccessError::NotAnObject),
+                        };
+                        fields.iter()
+                            .find(|(k, _)| k == &auto_val::ValueKey::Str(key.clone()))
+                            .map(|(_, vid)| *vid)
+                            .ok_or(AccessError::FieldNotFound)?
+                    }
+                    ValueData::Array(elems) => {
+                        let idx = match &**parent_path {
+                            AccessPath::Index(i) => *i,
+                            _ => return Err(AccessError::NotAnArray),
+                        };
+                        *elems.get(idx).ok_or(AccessError::IndexOutOfBounds)?
+                    }
+                    _ => return Err(AccessError::NotAnObject),
+                };
+                drop(data); // Release borrow before recursion
+                self.update_nested(parent_vid, child_path, new_vid)
+            }
+        }
+    }
+
+    /// Check if creating an edge would create a cycle
+    pub fn would_create_cycle(&self, parent: ValueID, child: ValueID) -> bool {
+        self.has_path(child, parent)
+    }
+
+    fn has_path(&self, from: ValueID, to: ValueID) -> bool {
+        if from == to {
+            return true;
+        }
+        if let Some(cell) = self.get_value(from) {
+            let data = cell.borrow();
+            match &*data {
+                ValueData::Array(elems) => {
+                    elems.iter().any(|&vid| self.has_path(vid, to))
+                }
+                ValueData::Obj(fields) => {
+                    fields.iter().any(|(_, vid)| self.has_path(*vid, to))
+                }
+                ValueData::Pair(left, right) => {
+                    self.has_path(**left, to) || self.has_path(**right, to)
+                }
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Lookup value ID by name (NEW)
+    pub fn lookup_val_id(&self, name: &str) -> Option<ValueID> {
+        self.lookup_val_id_recurse(name, &self.cur_spot)
+    }
+
+    fn lookup_val_id_recurse(&self, name: &str, sid: &Sid) -> Option<ValueID> {
+        if let Some(scope) = self.scopes.get(sid) {
+            if let Some(vid) = scope.get_val_id(name) {
+                return Some(vid);
+            }
+        }
+        if let Some(parent) = sid.parent() {
+            return self.lookup_val_id_recurse(name, &parent);
+        }
+        None
     }
 }
 

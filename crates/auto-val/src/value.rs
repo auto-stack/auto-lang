@@ -6,8 +6,65 @@ use crate::pair::*;
 use crate::string::*;
 use crate::types::Type;
 use crate::AutoStr;
-use std::cell::RefMut;
 use std::fmt::{self, Display, Formatter};
+
+/// Unique identifier for a value stored in Universe
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ValueID(pub usize);
+
+impl Display for ValueID {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "VID({})", self.0)
+    }
+}
+
+/// Actual value data (stored in Universe, separate from ID)
+/// This is the same as Value but with nested references replaced by ValueIDs
+#[derive(Debug, Clone)]
+pub enum ValueData {
+    // Primitives (same as Value)
+    Byte(u8),
+    Int(i32),
+    Uint(u32),
+    USize(usize),
+    I8(i8),
+    U8(u8),
+    I64(i64),
+    Float(f64),
+    Double(f64),
+    Bool(bool),
+    Char(char),
+    Nil,
+    Str(AutoStr),
+
+    // Complex types with nested IDs (CHANGED from Value)
+    Array(Vec<ValueID>),
+    Obj(Vec<(ValueKey, ValueID)>),
+    Pair(Box<ValueID>, Box<ValueID>),
+
+    // Other variants (from Value, to be expanded as needed)
+    Range(i32, i32),
+    RangeEq(i32, i32),
+
+    // TODO: Add more variants as needed during implementation
+    // Fn, ExtFn, Type, Node, Widget, Model, View, Meta, Method, Instance, Args, etc.
+}
+
+/// Path for nested mutation (obj.field = value, arr[0] = value)
+#[derive(Debug, Clone)]
+pub enum AccessPath {
+    Field(AutoStr),
+    Index(usize),
+    Nested(Box<AccessPath>, Box<AccessPath>),
+}
+
+#[derive(Debug)]
+pub enum AccessError {
+    NotAnObject,
+    NotAnArray,
+    IndexOutOfBounds,
+    FieldNotFound,
+}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct VmRef {
@@ -54,6 +111,8 @@ pub enum Value {
     Grid(Grid),
     ConfigBody(ConfigBody),
     VmRef(VmRef),
+    /// Reference to value stored in Universe (NEW)
+    ValueRef(ValueID),
 }
 
 // constructors
@@ -109,6 +168,86 @@ impl Value {
 
     pub fn is_error(&self) -> bool {
         matches!(self, Value::Error(_))
+    }
+
+    /// Convert Value to ValueData (for storage in Universe)
+    pub fn into_data(self) -> ValueData {
+        match self {
+            Value::Byte(v) => ValueData::Byte(v),
+            Value::Int(v) => ValueData::Int(v),
+            Value::Uint(v) => ValueData::Uint(v),
+            Value::USize(v) => ValueData::USize(v),
+            Value::I8(v) => ValueData::I8(v),
+            Value::U8(v) => ValueData::U8(v),
+            Value::I64(v) => ValueData::I64(v),
+            Value::Float(v) => ValueData::Float(v),
+            Value::Double(v) => ValueData::Double(v),
+            Value::Bool(v) => ValueData::Bool(v),
+            Value::Char(v) => ValueData::Char(v),
+            Value::Nil => ValueData::Nil,
+            Value::Str(v) => ValueData::Str(v),
+            Value::Array(v) => {
+                // Convert Array values to ValueIDs (simplified - allocates each)
+                // TODO: This is inefficient - needs batch allocation
+                let vids = v.iter().map(|_| ValueID(0)).collect();
+                ValueData::Array(vids)
+            }
+            Value::Obj(v) => {
+                // Convert Obj values to ValueIDs (simplified)
+                let fields = v.iter().map(|(k, _)| (k.clone(), ValueID(0))).collect();
+                ValueData::Obj(fields)
+            }
+            Value::Pair(_k, _v) => {
+                // TODO: Convert nested values
+                ValueData::Pair(Box::new(ValueID(0)), Box::new(ValueID(0)))
+            }
+            Value::Range(l, r) => ValueData::Range(l, r),
+            Value::RangeEq(l, r) => ValueData::RangeEq(l, r),
+            // Other variants not yet supported in ValueData
+            _ => ValueData::Nil,
+        }
+    }
+
+
+    /// Convert ValueData to Value (for reading from Universe)
+    /// Note: Nested ValueIDs remain as references, not fully resolved
+    pub fn from_data(data: ValueData) -> Self {
+        match data {
+            ValueData::Byte(v) => Value::Byte(v),
+            ValueData::Int(v) => Value::Int(v),
+            ValueData::Uint(v) => Value::Uint(v),
+            ValueData::USize(v) => Value::USize(v),
+            ValueData::I8(v) => Value::I8(v),
+            ValueData::U8(v) => Value::U8(v),
+            ValueData::I64(v) => Value::I64(v),
+            ValueData::Float(v) => Value::Float(v),
+            ValueData::Double(v) => Value::Double(v),
+            ValueData::Bool(v) => Value::Bool(v),
+            ValueData::Char(v) => Value::Char(v),
+            ValueData::Nil => Value::Nil,
+            ValueData::Str(v) => Value::Str(v),
+            ValueData::Array(vids) => {
+                // Convert ValueIDs to ValueRefs for later resolution
+                let values: Vec<Value> = vids.iter().map(|vid| Value::ValueRef(*vid)).collect();
+                Value::Array(values.into())
+            }
+            ValueData::Obj(fields) => {
+                // Convert ValueIDs to ValueRefs for later resolution
+                let mut obj = Obj::new();
+                for (k, vid) in fields.iter() {
+                    obj.set(k.clone(), Value::ValueRef(*vid));
+                }
+                Value::Obj(obj)
+            }
+            ValueData::Pair(_l, _r) => {
+                // TODO: This needs proper resolution via Universe
+                Value::Pair(ValueKey::Int(0), Box::new(Value::Nil))
+            }
+            ValueData::Range(l, r) => Value::Range(l, r),
+            ValueData::RangeEq(l, r) => Value::RangeEq(l, r),
+            // Other variants
+            _ => Value::Nil,
+        }
     }
 }
 
@@ -200,11 +339,12 @@ impl Display for Value {
             Value::ConfigBody(body) => write!(f, "{}", body),
             Value::Type(typ) => write!(f, "{}", typ.name()),
             Value::VmRef(_) => write!(f, "<vmref>"),
+            Value::ValueRef(vid) => write!(f, "{}", vid), // NEW: Display ValueID
         }
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Op {
     Add,
     Sub,

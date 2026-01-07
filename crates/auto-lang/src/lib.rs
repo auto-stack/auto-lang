@@ -19,7 +19,7 @@ use crate::trans::c::CTrans;
 pub use crate::universe::Universe;
 use crate::{eval::EvalMode, trans::Sink};
 use crate::{parser::Parser, trans::Trans};
-use auto_val::{AutoPath, Obj};
+use auto_val::{AutoPath, Obj, Value};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -29,13 +29,51 @@ use auto_val::AutoResult;
 pub fn run(code: &str) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::new();
     interpreter.interpret(code)?;
-    Ok(interpreter.result.repr().to_string())
+    // Resolve any ValueRef in the result before converting to string
+    let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
+    Ok(resolved.repr().to_string())
+}
+
+/// Helper: Resolve ValueRef to actual value (for test output)
+fn resolve_value_in_result(value: Value, universe: &std::rc::Rc<std::cell::RefCell<Universe>>) -> Value {
+    match value {
+        Value::ValueRef(vid) => {
+            if let Some(data) = universe.borrow().get_value(vid) {
+                let borrowed_data = data.borrow();
+                let data_clone = borrowed_data.clone();
+                drop(borrowed_data);
+                // Convert ValueData to Value, which will create nested ValueRefs
+                let val = Value::from_data(data_clone);
+                // Recursively resolve nested ValueRefs
+                resolve_value_in_result(val, universe)
+            } else {
+                Value::Nil
+            }
+        }
+        Value::Array(arr) => {
+            let resolved_vals: Vec<Value> = arr.values.into_iter()
+                .map(|v| resolve_value_in_result(v, universe))
+                .collect();
+            Value::Array(resolved_vals.into())
+        }
+        Value::Obj(obj) => {
+            let mut new_obj = auto_val::Obj::new();
+            for (k, v) in obj.iter() {
+                let resolved_v = resolve_value_in_result(v.clone(), universe);
+                new_obj.set(k.clone(), resolved_v);
+            }
+            Value::Obj(new_obj)
+        }
+        _ => value,
+    }
 }
 
 pub fn run_with_scope(code: &str, scope: Universe) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::with_scope(scope);
     interpreter.interpret(code)?;
-    Ok(interpreter.result.repr().to_string())
+    // Resolve any ValueRef in the result before converting to string
+    let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
+    Ok(resolved.repr().to_string())
 }
 
 pub fn parse(code: &str) -> AutoResult<ast::Code> {
@@ -972,5 +1010,55 @@ square(15)
         "#;
         let result = run(code).unwrap();
         assert_eq!(result, "This is another paragraph");
+    }
+
+    // ===== Integration Tests for Nested Mutation (Phase 2) =====
+
+    #[test]
+    fn test_object_field_mutation() {
+        let code = r#"
+            mut obj = {x: 10, y: 20}
+            obj.x = 30
+            obj.x
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "30");
+    }
+
+    #[test]
+    fn test_array_element_mutation() {
+        let code = r#"
+            mut arr = [1, 2, 3]
+            arr[0] = 10
+            arr[0]
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "10");
+    }
+
+    #[test]
+    fn test_multiple_field_mutations() {
+        let code = r#"
+            mut obj = {x: 10, y: 20, z: 30}
+            obj.x = 100
+            obj.y = 200
+            obj.z = 300
+            obj.x + obj.y + obj.z
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "600");
+    }
+
+    #[test]
+    fn test_multiple_array_mutations() {
+        let code = r#"
+            mut arr = [1, 2, 3]
+            arr[0] = 10
+            arr[1] = 20
+            arr[2] = 30
+            arr[0] + arr[1] + arr[2]
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "60");
     }
 }

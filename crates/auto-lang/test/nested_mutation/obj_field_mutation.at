@@ -1,0 +1,4 @@
+// Test object field mutation
+mut obj = {x: 10, y: 20}
+obj.x = 30
+obj.x

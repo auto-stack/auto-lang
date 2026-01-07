@@ -1,0 +1,4 @@
+// Test array element mutation
+mut arr = [1, 2, 3]
+arr[0] = 10
+arr[0]

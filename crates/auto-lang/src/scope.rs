@@ -1,5 +1,5 @@
 use crate::ast;
-use auto_val::Value;
+use auto_val::{Value, ValueID};
 use ecow::EcoString as AutoStr;
 use std::collections::HashMap;
 use std::fmt;
@@ -122,7 +122,7 @@ pub struct Scope {
     pub cur_block: usize,
     pub symbols: HashMap<AutoStr, Rc<Meta>>,
     pub types: HashMap<AutoStr, Rc<Meta>>,
-    pub vals: HashMap<AutoStr, Value>,
+    pub vals: HashMap<AutoStr, ValueID>,  // CHANGED: Now stores ValueID instead of Value
 }
 
 impl Scope {
@@ -149,17 +149,22 @@ impl Scope {
         println!("Symbols: {:?}", self.symbols);
     }
 
-    pub fn set_val(&mut self, name: impl Into<AutoStr>, value: Value) {
-        self.vals.insert(name.into(), value);
+    pub fn set_val(&mut self, name: impl Into<AutoStr>, vid: ValueID) {
+        self.vals.insert(name.into(), vid);
     }
 
     pub fn get_val(&self, name: impl Into<AutoStr>) -> Option<Value> {
-        self.vals.get(&name.into()).cloned()
+        // TODO: This needs to resolve the ValueID to actual Value
+        // For now, return None - this will be updated when Universe is connected
+        None
     }
 
-    pub fn get_val_mut(&mut self, name: &str) -> Option<&mut Value> {
-        self.vals.get_mut(name)
+    /// Get value ID (NEW)
+    pub fn get_val_id(&self, name: impl Into<AutoStr>) -> Option<ValueID> {
+        self.vals.get(&name.into()).copied()
     }
+
+    // REMOVED: get_val_mut - no longer needed with reference-based system
 
     pub fn put_symbol(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
         self.symbols.insert(name.into(), meta);
