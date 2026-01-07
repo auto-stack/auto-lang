@@ -368,6 +368,7 @@ impl Universe {
         is_builtin
     }
 
+    #[allow(dead_code)]
     fn find_scope_for(&mut self, name: &str) -> Option<&mut Scope> {
         let mut sid = self.cur_spot.clone();
         loop {
@@ -386,7 +387,7 @@ impl Universe {
         self.scopes.get_mut(&sid)
     }
 
-    pub fn get_mut_val(&mut self, name: &str) -> Option<&mut Value> {
+    pub fn get_mut_val(&mut self, _name: &str) -> Option<&mut Value> {
         // DEPRECATED: Use the new value storage system instead
         // This method is kept for backward compatibility during migration
         None
@@ -420,17 +421,18 @@ impl Universe {
         self.builtins.get(name).cloned()
     }
 
-    fn update_obj_recurse(&mut self, name: &str, f: impl FnOnce(&mut Obj)) {
+    #[allow(dead_code)]
+    fn update_obj_recurse(&mut self, _name: &str, _f: impl FnOnce(&mut Obj)) {
         // DEPRECATED: Use update_nested instead
         // This is a no-op during migration
     }
 
-    pub fn update_obj(&mut self, name: &str, f: impl FnOnce(&mut Obj)) {
+    pub fn update_obj(&mut self, _name: &str, _f: impl FnOnce(&mut Obj)) {
         // DEPRECATED: Use update_nested instead
         eprintln!("Warning: update_obj is deprecated. Use update_nested instead.");
     }
 
-    fn update_array_recurse(&mut self, name: &str, idx: Value, val: Value) {
+    fn update_array_recurse(&mut self, _name: &str, _idx: Value, _val: Value) {
         // DEPRECATED: Use update_nested instead
         eprintln!("Warning: update_array_recurse is deprecated. Use update_nested instead.");
     }
@@ -873,7 +875,7 @@ impl Universe {
     }
 
     /// Get mutable access to value data
-    pub fn get_value_mut(&mut self, vid: ValueID) -> Option<std::cell::RefMut<ValueData>> {
+    pub fn get_value_mut(&mut self, vid: ValueID) -> Option<std::cell::RefMut<'_, ValueData>> {
         self.values.get(&vid).map(|v| v.borrow_mut())
     }
 
@@ -891,12 +893,29 @@ impl Universe {
 
         match path {
             AccessPath::Field(field) => {
+                // Check if it's an Obj
                 if let ValueData::Obj(ref mut fields) = &mut *data {
                     fields.push((auto_val::ValueKey::Str(field.clone()), new_vid));
-                    Ok(())
-                } else {
-                    Err(AccessError::NotAnObject)
+                    return Ok(());
                 }
+
+                // Check if it's an Opaque Instance
+                if let ValueData::Opaque(_) = &*data {
+                    // Need to use a different approach - get mutable access to the opaque value
+                    drop(data); // Release the borrow
+                    let cell = self.values.get(&vid).ok_or(AccessError::FieldNotFound)?;
+                    let mut data = cell.borrow_mut();
+                    if let ValueData::Opaque(ref mut opaque_val) = &mut *data {
+                        if let auto_val::Value::Instance(ref mut instance) = &mut **opaque_val {
+                            // Update the field in the instance
+                            instance.fields.set(auto_val::ValueKey::Str(field.clone()),
+                                               auto_val::Value::ValueRef(new_vid));
+                            return Ok(());
+                        }
+                    }
+                }
+
+                Err(AccessError::NotAnObject)
             }
             AccessPath::Index(idx) => {
                 if let ValueData::Array(ref mut elems) = &mut *data {

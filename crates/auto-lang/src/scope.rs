@@ -153,7 +153,7 @@ impl Scope {
         self.vals.insert(name.into(), vid);
     }
 
-    pub fn get_val(&self, name: impl Into<AutoStr>) -> Option<Value> {
+    pub fn get_val(&self, _name: impl Into<AutoStr>) -> Option<Value> {
         // TODO: This needs to resolve the ValueID to actual Value
         // For now, return None - this will be updated when Universe is connected
         None

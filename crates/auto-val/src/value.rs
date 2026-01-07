@@ -251,8 +251,6 @@ impl Value {
             ValueData::RangeEq(l, r) => Value::RangeEq(l, r),
             // Opaque values - unwrap and return the stored Value
             ValueData::Opaque(v) => *v,
-            // Other variants
-            _ => Value::Nil,
         }
     }
 }

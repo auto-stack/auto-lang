@@ -10,7 +10,6 @@ use auto_val::{
     ValueData, ValueKey,
 };
 use std::cell::RefCell;
-use std::cell::RefMut;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -298,7 +297,7 @@ impl Evaler {
 
             // Resolve ValueRef before checking truthiness
             let cond_is_true = match &cond {
-                Value::ValueRef(vid) => {
+                Value::ValueRef(_vid) => {
                     if let Some(data) = self.resolve_value(&cond) {
                         let borrowed_data = data.borrow();
                         match &*borrowed_data {
@@ -354,7 +353,7 @@ impl Evaler {
 
         // Resolve ValueRef for range/array operations
         let range_resolved = match &range {
-            Value::ValueRef(vid) => {
+            Value::ValueRef(_vid) => {
                 if let Some(data) = self.resolve_value(&range) {
                     let borrowed_data = data.borrow();
                     let data_clone = borrowed_data.clone();
@@ -606,11 +605,13 @@ impl Evaler {
         }
     }
 
+    #[allow(dead_code)]
     fn update_obj(&mut self, name: &str, f: impl FnOnce(&mut Obj)) -> Value {
         self.universe.borrow_mut().update_obj(name, f);
         Value::Void
     }
 
+    #[allow(dead_code)]
     fn update_array(&mut self, name: &str, idx: Value, val: Value) -> Value {
         self.universe.borrow_mut().update_array(name, idx, val);
         Value::Void
@@ -748,7 +749,7 @@ impl Evaler {
 
         // Resolve ValueRef before matching on function type
         let name_resolved = match &name {
-            Value::ValueRef(vid) => {
+            Value::ValueRef(_vid) => {
                 if let Some(data) = self.resolve_value(&name) {
                     let borrowed_data = data.borrow();
                     let data_clone = borrowed_data.clone();
@@ -990,7 +991,7 @@ impl Evaler {
         }
     }
 
-    pub fn eval_vm_fn_call(&mut self, fn_decl: &Fn, args: &Vec<Value>) -> Value {
+    pub fn eval_vm_fn_call(&mut self, _fn_decl: &Fn, _args: &Vec<Value>) -> Value {
         // TODO:
         Value::Str("Not implemented yet".into())
     }
@@ -1036,7 +1037,7 @@ impl Evaler {
         };
 
         // Resolve ValueRef to actual value
-        if let Value::ValueRef(vid) = &array_value {
+        if let Value::ValueRef(_vid) = &array_value {
             if let Some(data) = self.resolve_value(&array_value) {
                 let borrowed_data = data.borrow();
                 let data_clone = borrowed_data.clone();
@@ -1071,7 +1072,6 @@ impl Evaler {
     }
 
     pub fn eval_expr(&mut self, expr: &Expr) -> Value {
-        println!("Eval expr: {}", expr);
         match expr {
             Expr::Byte(value) => Value::Byte(*value),
             Expr::Uint(value) => Value::Uint(*value),
@@ -1123,7 +1123,6 @@ impl Evaler {
         // return Some(RefMut::map(univ, |map| map.get_mut_val(name).unwrap()));
 
         let res = self.lookup(&name);
-        println!("Eval ident: {} = {:?}", name, res);
         match res {
             Value::Ref(target) => {
                 let target_val = self.eval_expr(&Expr::Ident(target));
@@ -1219,12 +1218,10 @@ impl Evaler {
     }
 
     fn dot(&mut self, left: &Expr, right: &Expr) -> Value {
-        println!("Left of dot: {}", left);
         let mut left_value = self.eval_expr(left);
-        println!("Left Val: {}", left_value);
 
         // Resolve ValueRef to actual value
-        if let Value::ValueRef(vid) = &left_value {
+        if let Value::ValueRef(_vid) = &left_value {
             if let Some(data) = self.resolve_value(&left_value) {
                 let borrowed_data = data.borrow();
                 let data_clone = borrowed_data.clone();
@@ -1327,7 +1324,6 @@ impl Evaler {
             },
             Value::Instance(instance) => match right {
                 Expr::Ident(name) => {
-                    println!("Looku p feld or method");
                     let f = instance.fields.lookup(&name);
                     match f {
                         Some(v) => Some(v),
@@ -1391,7 +1387,7 @@ impl Evaler {
             .unwrap_or(Value::Bool(false));
 
         let is_mid = match &is_mid_value {
-            Value::ValueRef(vid) => {
+            Value::ValueRef(_vid) => {
                 if let Some(data) = self.resolve_value(&is_mid_value) {
                     let borrowed_data = data.borrow();
                     match &*borrowed_data {
@@ -1686,7 +1682,7 @@ impl Evaler {
                 match val {
                     Value::Str(s) => s,
                     // Resolve ValueRef before converting to string
-                    Value::ValueRef(vid) => {
+                    Value::ValueRef(_vid) => {
                         if let Some(data) = self.resolve_value(&val) {
                             let borrowed_data = data.borrow();
                             let data_clone = borrowed_data.clone();
