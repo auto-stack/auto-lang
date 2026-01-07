@@ -46,6 +46,10 @@ pub enum ValueData {
     Range(i32, i32),
     RangeEq(i32, i32),
 
+    /// Opaque value storage for types that don't need deep mutation
+    /// Stores the full Value inline (functions, types, nodes, etc.)
+    Opaque(Box<Value>),
+
     // TODO: Add more variants as needed during implementation
     // Fn, ExtFn, Type, Node, Widget, Model, View, Meta, Method, Instance, Args, etc.
 }
@@ -245,6 +249,8 @@ impl Value {
             }
             ValueData::Range(l, r) => Value::Range(l, r),
             ValueData::RangeEq(l, r) => Value::RangeEq(l, r),
+            // Opaque values - unwrap and return the stored Value
+            ValueData::Opaque(v) => *v,
             // Other variants
             _ => Value::Nil,
         }

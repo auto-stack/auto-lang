@@ -239,9 +239,8 @@ impl Universe {
     }
 
     pub fn set_local_val(&mut self, name: &str, value: Value) {
-        // Convert Value to ValueData and allocate
-        let data = value.into_data();
-        let vid = self.alloc_value(data);
+        // Allocate value with proper nested allocation
+        let vid = self.alloc_value_from_value(value);
         self.current_scope_mut().set_val(name, vid);
     }
 
@@ -250,9 +249,8 @@ impl Universe {
         for key in obj.keys() {
             let val = obj.get(key.clone());
             if let Some(v) = val {
-                // Convert Value to ValueData and allocate
-                let data = v.into_data();
-                let vid = self.alloc_value(data);
+                // Allocate value with proper nested allocation
+                let vid = self.alloc_value_from_value(v.clone());
                 self.current_scope_mut()
                     .set_val(key.to_string().as_str(), vid);
             }
@@ -272,20 +270,18 @@ impl Universe {
     }
 
     pub fn set_global(&mut self, name: impl Into<String>, value: Value) {
-        // Convert Value to ValueData and allocate
-        let data = value.into_data();
-        let vid = self.alloc_value(data);
+        // Allocate value with proper nested allocation
+        let vid = self.alloc_value_from_value(value);
         self.global_scope_mut().set_val(name.into(), vid);
     }
 
     pub fn add_global_fn(&mut self, name: &str, f: fn(&Args) -> Value) {
-        // Convert Value to ValueData and allocate
+        // Allocate function value with proper nested allocation
         let value = Value::ExtFn(ExtFn {
             fun: f,
             name: name.into(),
         });
-        let data = value.into_data();
-        let vid = self.alloc_value(data);
+        let vid = self.alloc_value_from_value(value);
         self.global_scope_mut().set_val(name, vid);
     }
 
@@ -793,9 +789,82 @@ impl Universe {
         vid
     }
 
+    /// Allocate a Value, properly handling nested arrays/objects
+    /// This replaces into_data() for Values that contain nested structures
+    pub fn alloc_value_from_value(&mut self, value: Value) -> ValueID {
+        match value {
+            // Primitives - simple allocation
+            Value::Byte(v) => self.alloc_value(ValueData::Byte(v)),
+            Value::Int(v) => self.alloc_value(ValueData::Int(v)),
+            Value::Uint(v) => self.alloc_value(ValueData::Uint(v)),
+            Value::USize(v) => self.alloc_value(ValueData::USize(v)),
+            Value::I8(v) => self.alloc_value(ValueData::I8(v)),
+            Value::U8(v) => self.alloc_value(ValueData::U8(v)),
+            Value::I64(v) => self.alloc_value(ValueData::I64(v)),
+            Value::Float(v) => self.alloc_value(ValueData::Float(v)),
+            Value::Double(v) => self.alloc_value(ValueData::Double(v)),
+            Value::Bool(v) => self.alloc_value(ValueData::Bool(v)),
+            Value::Char(v) => self.alloc_value(ValueData::Char(v)),
+            Value::Nil => self.alloc_value(ValueData::Nil),
+            Value::Str(v) => self.alloc_value(ValueData::Str(v)),
+            Value::Range(l, r) => self.alloc_value(ValueData::Range(l, r)),
+            Value::RangeEq(l, r) => self.alloc_value(ValueData::RangeEq(l, r)),
+
+            // Array - allocate each element
+            Value::Array(arr) => {
+                let vids: Vec<ValueID> = arr.iter()
+                    .map(|v| self.alloc_value_from_value(v.clone()))
+                    .collect();
+                self.alloc_value(ValueData::Array(vids))
+            }
+
+            // Object - allocate each field value
+            Value::Obj(obj) => {
+                let mut fields = Vec::new();
+                for (k, v) in obj.iter() {
+                    let vid = self.alloc_value_from_value(v.clone());
+                    fields.push((k.clone(), vid));
+                }
+                self.alloc_value(ValueData::Obj(fields))
+            }
+
+            // Pair - allocate both key and value
+            Value::Pair(k, v) => {
+                // Convert ValueKey to Value for allocation
+                let k_value = match k {
+                    auto_val::ValueKey::Str(s) => Value::Str(s.clone()),
+                    auto_val::ValueKey::Int(i) => Value::Int(i),
+                    auto_val::ValueKey::Bool(b) => Value::Bool(b),
+                };
+                let k_vid = self.alloc_value_from_value(k_value);
+                let v_vid = self.alloc_value_from_value(*v.clone());
+                self.alloc_value(ValueData::Pair(Box::new(k_vid), Box::new(v_vid)))
+            }
+
+            // For ValueRef, just return the ID (already allocated)
+            Value::ValueRef(vid) => vid,
+
+            // Other types not yet supported - store as Opaque
+            // This preserves the full Value for functions, types, nodes, etc.
+            _ => self.alloc_value(ValueData::Opaque(Box::new(value))),
+        }
+    }
+
     /// Get immutable reference to value data by ID
     pub fn get_value(&self, vid: ValueID) -> Option<Rc<RefCell<ValueData>>> {
         self.values.get(&vid).cloned()
+    }
+
+    pub fn deref_val(&self, val: Value) -> Value {
+        if let Value::ValueRef(vid) = val {
+            if let Some(d) = self.clone_value(vid) {
+                Value::from_data(d)
+            } else {
+                Value::Nil
+            }
+        } else {
+            val
+        }
     }
 
     /// Clone value data (for when you actually need a copy)

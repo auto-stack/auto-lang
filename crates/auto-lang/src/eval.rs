@@ -7,7 +7,7 @@ use auto_val;
 use auto_val::{add, comp, div, mul, sub};
 use auto_val::{
     Array, AutoStr, ConfigBody, ConfigItem, MetaID, Method, Obj, Op, Pair, Sig, Type, Value,
-    ValueKey,
+    ValueData, ValueKey,
 };
 use std::cell::RefCell;
 use std::cell::RefMut;
@@ -267,7 +267,18 @@ impl Evaler {
         for br in &stmt.branches {
             match br {
                 IsBranch::EqBranch(expr, body) => {
-                    let cond = self.eval_expr(t) == self.eval_expr(&expr);
+                    // Resolve ValueRefs before comparison
+                    let target_val = self.eval_expr(t);
+                    let expr_val = self.eval_expr(&expr);
+
+                    let target_resolved = self.resolve_or_clone(&target_val);
+                    let expr_resolved = self.resolve_or_clone(&expr_val);
+
+                    // Convert back to Value for comparison
+                    let target_value = Value::from_data(target_resolved);
+                    let expr_value = Value::from_data(expr_resolved);
+
+                    let cond = target_value == expr_value;
                     if cond {
                         return self.eval_body(&body);
                     }
@@ -284,7 +295,29 @@ impl Evaler {
     fn eval_if(&mut self, if_: &If) -> Value {
         for branch in if_.branches.iter() {
             let cond = self.eval_expr(&branch.cond);
-            if cond.is_true() {
+
+            // Resolve ValueRef before checking truthiness
+            let cond_is_true = match &cond {
+                Value::ValueRef(vid) => {
+                    if let Some(data) = self.resolve_value(&cond) {
+                        let borrowed_data = data.borrow();
+                        match &*borrowed_data {
+                            ValueData::Bool(b) => *b,
+                            ValueData::Int(i) => *i > 0,
+                            ValueData::Uint(u) => *u > 0,
+                            ValueData::Float(f) => *f > 0.0,
+                            ValueData::Str(s) => s.len() > 0,
+                            ValueData::Byte(b) => *b > 0,
+                            _ => false,
+                        }
+                    } else {
+                        false
+                    }
+                }
+                _ => cond.is_true(),
+            };
+
+            if cond_is_true {
                 return self.eval_body(&branch.body);
             }
         }
@@ -318,12 +351,33 @@ impl Evaler {
         let body = &for_stmt.body;
         let mut max_loop = 1000;
         let range = self.eval_expr(&for_stmt.range);
+
+        // Resolve ValueRef for range/array operations
+        let range_resolved = match &range {
+            Value::ValueRef(vid) => {
+                if let Some(data) = self.resolve_value(&range) {
+                    let borrowed_data = data.borrow();
+                    let data_clone = borrowed_data.clone();
+                    drop(borrowed_data);
+                    Some(Value::from_data(data_clone))
+                } else {
+                    None
+                }
+            }
+            _ => Some(range.clone()),
+        };
+
+        let range_final = match range_resolved {
+            Some(v) => v,
+            None => return Value::error(format!("Invalid range {}", range)),
+        };
+
         let mut res = Array::new();
         let mut is_mid = true;
         let is_new_line = for_stmt.new_line;
         let sep = if for_stmt.new_line { "\n" } else { "" };
         self.universe.borrow_mut().enter_scope();
-        match range {
+        match range_final {
             Value::Range(start, end) => {
                 let len = (end - start) as usize;
                 for (idx, n) in (start..end).enumerate() {
@@ -359,7 +413,7 @@ impl Evaler {
                 }
             }
             _ => {
-                return Value::error(format!("Invalid range {}", range));
+                return Value::error(format!("Invalid range {}", range_final));
             }
         }
         self.universe.borrow_mut().exit_scope();
@@ -565,8 +619,15 @@ impl Evaler {
     fn range(&mut self, left: &Expr, right: &Expr) -> Value {
         let left_value = self.eval_expr(left);
         let right_value = self.eval_expr(right);
-        match (&left_value, &right_value) {
-            (Value::Int(left), Value::Int(right)) => Value::Range(*left, *right),
+
+        // Resolve ValueRef for range operations
+        let left_resolved = self.resolve_or_clone(&left_value);
+        let right_resolved = self.resolve_or_clone(&right_value);
+
+        match (&left_resolved, &right_resolved) {
+            (auto_val::ValueData::Int(left), auto_val::ValueData::Int(right)) => {
+                Value::Range(*left, *right)
+            }
             _ => Value::error(format!("Invalid range {}..{}", left_value, right_value)),
         }
     }
@@ -574,8 +635,15 @@ impl Evaler {
     fn range_eq(&mut self, left: &Expr, right: &Expr) -> Value {
         let left_value = self.eval_expr(left);
         let right_value = self.eval_expr(right);
-        match (&left_value, &right_value) {
-            (Value::Int(left), Value::Int(right)) => Value::RangeEq(*left, *right),
+
+        // Resolve ValueRef for range operations
+        let left_resolved = self.resolve_or_clone(&left_value);
+        let right_resolved = self.resolve_or_clone(&right_value);
+
+        match (&left_resolved, &right_resolved) {
+            (auto_val::ValueData::Int(left), auto_val::ValueData::Int(right)) => {
+                Value::RangeEq(*left, *right)
+            }
             _ => Value::error(format!("Invalid range {}..={}", left_value, right_value)),
         }
     }
@@ -678,7 +746,27 @@ impl Evaler {
             return Value::error(format!("Invalid function name to call {}", call.name));
         }
 
-        match name {
+        // Resolve ValueRef before matching on function type
+        let name_resolved = match &name {
+            Value::ValueRef(vid) => {
+                if let Some(data) = self.resolve_value(&name) {
+                    let borrowed_data = data.borrow();
+                    let data_clone = borrowed_data.clone();
+                    drop(borrowed_data);
+                    Some(Value::from_data(data_clone))
+                } else {
+                    None
+                }
+            }
+            _ => Some(name.clone()),
+        };
+
+        let name_final = match name_resolved {
+            Some(v) => v,
+            None => return Value::error(format!("Invalid function name to call {}", call.name)),
+        };
+
+        match name_final {
             // Value::Type(Type::User(u)) => {
             // return self.eval_type_new(&u, &call.args);
             // }
@@ -921,7 +1009,7 @@ impl Evaler {
             arg_vals.push(self.eval_fn_arg(arg, i, &fn_decl.params));
         }
         match fn_decl.kind {
-            FnKind::Function => {
+            FnKind::Function | FnKind::Lambda => {
                 let result = self.eval_body(&fn_decl.body);
                 self.exit_scope();
                 result
@@ -1169,9 +1257,55 @@ impl Evaler {
                 }
             }
             Value::Obj(obj) => match right {
-                Expr::Ident(name) => obj.lookup(&name),
-                Expr::Int(key) => obj.lookup(&key.to_string()),
-                Expr::Bool(key) => obj.lookup(&key.to_string()),
+                Expr::Ident(name) => {
+                    let field_value = obj.lookup(&name);
+                    // Recursively resolve ValueRef from field lookup
+                    match &field_value {
+                        Some(Value::ValueRef(vid)) => {
+                            if let Some(data) = self.resolve_value(&Value::ValueRef(*vid)) {
+                                let borrowed_data = data.borrow();
+                                let data_clone = borrowed_data.clone();
+                                drop(borrowed_data);
+                                Some(Value::from_data(data_clone))
+                            } else {
+                                field_value.clone()
+                            }
+                        }
+                        _ => field_value
+                    }
+                }
+                Expr::Int(key) => {
+                    let field_value = obj.lookup(&key.to_string());
+                    match &field_value {
+                        Some(Value::ValueRef(vid)) => {
+                            if let Some(data) = self.resolve_value(&Value::ValueRef(*vid)) {
+                                let borrowed_data = data.borrow();
+                                let data_clone = borrowed_data.clone();
+                                drop(borrowed_data);
+                                Some(Value::from_data(data_clone))
+                            } else {
+                                field_value.clone()
+                            }
+                        }
+                        _ => field_value
+                    }
+                }
+                Expr::Bool(key) => {
+                    let field_value = obj.lookup(&key.to_string());
+                    match &field_value {
+                        Some(Value::ValueRef(vid)) => {
+                            if let Some(data) = self.resolve_value(&Value::ValueRef(*vid)) {
+                                let borrowed_data = data.borrow();
+                                let data_clone = borrowed_data.clone();
+                                drop(borrowed_data);
+                                Some(Value::from_data(data_clone))
+                            } else {
+                                field_value.clone()
+                            }
+                        }
+                        _ => field_value
+                    }
+                }
                 _ => None,
             },
             Value::Node(node) => self.dot_node(node, right),
@@ -1249,12 +1383,29 @@ impl Evaler {
     }
 
     fn eval_mid(&mut self, node: &Node) -> Value {
-        let is_mid = self
+        // Resolve ValueRef before converting to bool
+        let is_mid_value = self
             .universe
             .borrow()
             .lookup_val("is_mid")
-            .unwrap_or(Value::Bool(false))
-            .as_bool();
+            .unwrap_or(Value::Bool(false));
+
+        let is_mid = match &is_mid_value {
+            Value::ValueRef(vid) => {
+                if let Some(data) = self.resolve_value(&is_mid_value) {
+                    let borrowed_data = data.borrow();
+                    match &*borrowed_data {
+                        ValueData::Bool(b) => *b,
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+            Value::Bool(b) => *b,
+            _ => false,
+        };
+
         let args = &node.args.args;
         let mut res = Value::Str("".into());
         if args.len() >= 1 {
@@ -1475,7 +1626,11 @@ impl Evaler {
         } else {
             let first_arg = node.args.first_arg();
             if let Some(Expr::Ident(ident)) = first_arg {
-                nd.id = self.eval_ident(&ident).as_astr().clone();
+                let v = self.eval_ident(&ident);
+                let v = self.universe.borrow().deref_val(v);
+                if let Value::Str(s) = v {
+                    nd.id = s;
+                }
             }
         }
         let ndid = nd.id.clone();
@@ -1530,6 +1685,18 @@ impl Evaler {
                 let val = self.eval_expr(part);
                 match val {
                     Value::Str(s) => s,
+                    // Resolve ValueRef before converting to string
+                    Value::ValueRef(vid) => {
+                        if let Some(data) = self.resolve_value(&val) {
+                            let borrowed_data = data.borrow();
+                            let data_clone = borrowed_data.clone();
+                            drop(borrowed_data);
+                            let resolved_val = Value::from_data(data_clone);
+                            resolved_val.to_astr()
+                        } else {
+                            val.to_astr()
+                        }
+                    }
                     _ => val.to_astr(),
                 }
             })

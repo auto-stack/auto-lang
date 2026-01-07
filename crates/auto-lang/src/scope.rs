@@ -281,6 +281,8 @@ impl StackedScope {
 
 #[cfg(test)]
 mod tests {
+    use auto_val::ValueData;
+
     use super::*;
 
     #[test]
@@ -317,23 +319,26 @@ mod tests {
         let mut uni = crate::Universe::new();
         uni.enter_mod("std");
         uni.enter_mod("math");
+
+        // Test 1: Define and lookup metadata
         let val_expr = ast::Expr::Int(32);
         uni.define_var("a", val_expr);
         uni.enter_fn("add");
-        let meta = uni.lookup_meta("a");
-        // TODO: Meta destructureing is a mess
-        let mut succ = false;
-        if let Some(meta) = meta {
-            if let Meta::Store(store) = meta.as_ref() {
-                if let ast::Expr::Int(32) = store.expr {
-                    succ = true;
-                }
-            }
-        }
-        assert!(succ);
 
+        let meta = uni.lookup_meta("a");
+        assert!(matches!(meta.as_deref(), Some(Meta::Store(s)) if matches!(s.expr, ast::Expr::Int(32))));
+
+        // Test 2: Set and lookup value with ValueRef resolution
         uni.set_local_val("x", Value::Int(12));
         let val = uni.lookup_val("x");
-        assert_eq!(val, Some(Value::Int(12)));
+
+        // Resolve ValueRef and check the actual value data
+        match val {
+            Some(Value::ValueRef(vid)) => {
+                let data = uni.get_value(vid).unwrap();
+                assert!(matches!(*data.borrow(), ValueData::Int(12)));
+            }
+            other => panic!("Expected ValueRef, got {:?}", other),
+        }
     }
 }

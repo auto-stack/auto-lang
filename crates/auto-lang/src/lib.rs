@@ -31,6 +31,7 @@ pub fn run(code: &str) -> AutoResult<String> {
     interpreter.interpret(code)?;
     // Resolve any ValueRef in the result before converting to string
     let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
+    println!("Resolved: {:?}", resolved);
     Ok(resolved.repr().to_string())
 }
 
