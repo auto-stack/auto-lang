@@ -3,7 +3,7 @@ use crate::ast::FnKind;
 use crate::ast::{self, Type};
 use crate::libs;
 use auto_atom::Atom;
-use auto_val::{shared, Args, AutoStr, ExtFn, NodeItem, Obj, Sig, TypeInfoStore, Value};
+use auto_val::{Args, AutoStr, ExtFn, NodeItem, Obj, Sig, TypeInfoStore, Value, shared};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -27,10 +27,12 @@ pub struct Universe {
     pub env_vals: HashMap<AutoStr, Box<dyn Any>>,
     pub shared_vals: HashMap<AutoStr, Rc<RefCell<Value>>>,
     pub builtins: HashMap<AutoStr, Value>, // Value of builtin functions
+    pub vm_refs: HashMap<usize, Box<dyn Any>>,
     pub types: TypeInfoStore,
     pub args: Obj,
     lambda_counter: usize,
     pub cur_spot: Sid,
+    vmref_counter: usize,
 }
 
 impl Default for Universe {
@@ -55,8 +57,10 @@ impl Universe {
             env_vals: HashMap::new(),
             shared_vals: HashMap::new(),
             builtins,
+            vm_refs: HashMap::new(),
             types: TypeInfoStore::new(),
             lambda_counter: 0,
+            vmref_counter: 0,
             cur_spot: SID_PATH_GLOBAL.clone(),
             args: Obj::new(),
         };
@@ -136,7 +140,6 @@ impl Universe {
 
     fn enter_named_scope(&mut self, name: impl Into<AutoStr>, kind: ScopeKind) {
         // Create a new scope under Global
-        println!("Scope before enter: {}", self.cur_spot);
         let new_sid = Sid::kid_of(&self.cur_spot, name.into());
         // if new_sid exists, return it
         if self.scopes.contains_key(&new_sid) {
@@ -279,7 +282,7 @@ impl Universe {
                     .define_type(name.clone(), Rc::new(type_meta));
             }
             Meta::Type(_) => {
-                println!("Defining type {} in scope {}", name, self.cur_spot);
+                // println!("Defining type {} in scope {}", name, self.cur_spot);
                 self.current_scope_mut()
                     .define_type(name.clone(), meta.clone());
                 // also put the Type name as a symbol into the scope
@@ -332,6 +335,29 @@ impl Universe {
         // check for builtins
         let is_builtin = self.builtins.contains_key(name);
         is_builtin
+    }
+
+    fn find_scope_for(&mut self, name: &str) -> Option<&mut Scope> {
+        let mut sid = self.cur_spot.clone();
+        loop {
+            {
+                let scope = self.scopes.get(&sid)?;
+                if scope.exists(name) {
+                    break;
+                }
+            }
+            if let Some(parent) = sid.parent() {
+                sid = parent;
+            } else {
+                return None;
+            }
+        }
+        self.scopes.get_mut(&sid)
+    }
+
+    pub fn get_mut_val(&mut self, name: &str) -> Option<&mut Value> {
+        let scope = self.find_scope_for(name)?;
+        scope.get_val_mut(name)
     }
 
     fn lookup_val_recurse(&self, name: &str, sid: &Sid) -> Option<Value> {
@@ -636,6 +662,21 @@ impl Universe {
             }
             _ => {}
         }
+    }
+
+    pub fn add_vmref(&mut self, data: Box<dyn Any>) -> usize{
+        self.vmref_counter += 1;
+        let refid = self.vmref_counter;
+        self.vm_refs.insert(refid, data);
+        refid
+    }
+
+    pub fn get_vmref(&mut self, refid: usize) -> Option<&mut Box<dyn Any>> {
+        self.vm_refs.get_mut(&refid)
+    }
+
+    pub fn drop_vmref(&mut self, refid: usize) {
+        self.vm_refs.remove(&refid);
     }
 }
 

@@ -12,6 +12,7 @@ pub mod token;
 pub mod trans;
 mod universe;
 pub mod util;
+pub mod vm;
 
 use crate::scope::Meta;
 use crate::trans::c::CTrans;

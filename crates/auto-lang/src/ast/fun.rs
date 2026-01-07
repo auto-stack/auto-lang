@@ -8,6 +8,7 @@ pub enum FnKind {
     Lambda,
     Method,
     CFunction, // C function declaration
+    VmFunction, // VM implemented function declaration
 }
 
 #[derive(Debug, Clone)]

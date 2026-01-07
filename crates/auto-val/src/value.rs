@@ -6,13 +6,20 @@ use crate::pair::*;
 use crate::string::*;
 use crate::types::Type;
 use crate::AutoStr;
+use std::cell::RefMut;
 use std::fmt::{self, Display, Formatter};
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct VmRef {
+    pub id: usize,
+}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum Value {
     Byte(u8),
     Int(i32),
     Uint(u32),
+    USize(usize),
     I8(i8),
     U8(u8),
     I64(i64),
@@ -46,12 +53,17 @@ pub enum Value {
     Error(AutoStr),
     Grid(Grid),
     ConfigBody(ConfigBody),
+    VmRef(VmRef),
 }
 
 // constructors
 impl Value {
     pub fn str(text: impl Into<AutoStr>) -> Self {
         Value::Str(text.into())
+    }
+
+    pub fn empty_str() -> Self {
+        Value::Str(ASTR_EMPTY.clone())
     }
 
     pub fn error(text: impl Into<AutoStr>) -> Self {
@@ -155,6 +167,7 @@ impl Display for Value {
             Value::Str(value) => write!(f, "\"{}\"", value),
             Value::Int(value) => write!(f, "{}", value),
             Value::Uint(value) => write!(f, "{}u", value),
+            Value::USize(value) => write!(f, "{}", value),
             Value::I8(value) => write!(f, "{}", value),
             Value::U8(value) => write!(f, "{}", value),
             Value::I64(value) => write!(f, "{}", value),
@@ -186,6 +199,7 @@ impl Display for Value {
             Value::Grid(grid) => write!(f, "{}", grid),
             Value::ConfigBody(body) => write!(f, "{}", body),
             Value::Type(typ) => write!(f, "{}", typ.name()),
+            Value::VmRef(_) => write!(f, "<vmref>"),
         }
     }
 }

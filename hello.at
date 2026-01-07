@@ -1,0 +1,29 @@
+// use auto.io: open, File
+
+// let file = open("pac.at")
+// file.read_text()
+
+// type G {
+//     content str
+
+//     fn hi() str {
+//         .content
+//     }
+// }
+
+// let g = G("hello")
+// g.hi()
+
+
+type X {
+    a int
+
+    fn inc() {
+        .a += 1
+    }
+}
+
+let x = X(0)
+// x.inc()
+x.a = 5
+x.a

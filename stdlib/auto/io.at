@@ -4,6 +4,13 @@ fn say(msg str) {
     print(msg)
 }
 
+type File {
+    fn.vm close()
+    fn.vm read_text() str
+}
+
+fn.vm open(path str) File
+
 # C
 use.c <stdlib.h>
 fn.c exit(status int) void

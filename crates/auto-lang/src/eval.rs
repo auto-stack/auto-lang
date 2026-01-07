@@ -10,6 +10,7 @@ use auto_val::{
     ValueKey,
 };
 use std::cell::RefCell;
+use std::cell::RefMut;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -735,14 +736,20 @@ impl Evaler {
                 }
             }
             Value::Instance(inst) => {
-                let method = self.universe.borrow().lookup_meta(&method.name);
-                if let Some(meta) = method {
+                let meth = self.universe.borrow().lookup_meta(&method.name);
+                if let Some(meta) = meth {
                     match meta.as_ref() {
                         Meta::Fn(fn_decl) => {
-                            self.enter_scope();
+                            println!("Eval Method: {}", fn_decl.name);
+                            println!("Current Scope: {}", self.universe.borrow().cur_spot);
+                            // self.enter_scope();
                             self.universe.borrow_mut().set_local_obj(&inst.fields);
-                            let res = self.eval_fn_call(fn_decl, args);
-                            self.exit_scope();
+                            let mut args = args.clone();
+                            let self_ref = Arg::Pair("self".into(), Expr::Ident("x".into()));
+                            args.args.insert(0, self_ref);
+                            // args.args.push(Arg::Pair("self".into(), inst));
+                            let res = self.eval_fn_call(fn_decl, &args);
+                            // self.exit_scope();
                             return res;
                         }
                         _ => {
@@ -783,39 +790,62 @@ impl Evaler {
         self.universe.borrow_mut().exit_scope();
     }
 
-    fn eval_fn_arg(&mut self, arg: &Arg, i: usize, params: &Vec<Param>) {
+    fn eval_fn_arg(&mut self, arg: &Arg, i: usize, params: &Vec<Param>) -> Value {
         match arg {
             Arg::Pair(name, expr) => {
                 let val = self.eval_expr(expr);
                 let name = &name;
                 self.universe.borrow_mut().set_local_val(&name, val.clone());
+                val
             }
             Arg::Pos(expr) => {
                 let val = self.eval_expr(expr);
                 let name = &params[i].name;
                 self.universe.borrow_mut().set_local_val(&name, val.clone());
+                val
             }
             Arg::Name(name) => {
                 self.universe
                     .borrow_mut()
                     .set_local_val(name.as_str(), Value::Str(name.clone()));
+                Value::Str(name.clone())
             }
         }
     }
 
+    pub fn eval_vm_fn_call(&mut self, fn_decl: &Fn, args: &Vec<Value>) -> Value {
+        // TODO:
+        Value::Str("Not implemented yet".into())
+    }
+
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
         // TODO: 需不需要一个单独的 enter_call()
-        self.enter_scope();
+        println!("scope before enter: {}", self.universe.borrow().cur_spot);
+        self.universe.borrow_mut().enter_fn(&fn_decl.name);
+        println!("scope after enter: {}", self.universe.borrow().cur_spot);
         // println!(
         //     "enter call scope {}",
         //     self.universe.borrow().current_scope().sid
         // );
+        let mut arg_vals = Vec::new();
         for (i, arg) in args.args.iter().enumerate() {
-            self.eval_fn_arg(arg, i, &fn_decl.params);
+            arg_vals.push(self.eval_fn_arg(arg, i, &fn_decl.params));
         }
-        let result = self.eval_body(&fn_decl.body);
-        self.exit_scope();
-        result
+        match fn_decl.kind {
+            FnKind::Function => {
+                let result = self.eval_body(&fn_decl.body);
+                self.exit_scope();
+                result
+            }
+            FnKind::VmFunction => {
+                let result = self.eval_vm_fn_call(fn_decl, &arg_vals);
+                self.exit_scope();
+                result
+            }
+            _ => {
+                Value::Error(format!("Fn {} eval not supported ", fn_decl.name).into())
+            }
+        }
     }
 
     fn index(&mut self, array: &Expr, index: &Expr) -> Value {
@@ -853,6 +883,7 @@ impl Evaler {
     }
 
     pub fn eval_expr(&mut self, expr: &Expr) -> Value {
+        println!("Eval expr: {}", expr);
         match expr {
             Expr::Byte(value) => Value::Byte(*value),
             Expr::Uint(value) => Value::Uint(*value),
@@ -899,7 +930,12 @@ impl Evaler {
     }
 
     fn eval_ident(&mut self, name: &AutoStr) -> Value {
+
+        // let univ = self.universe.borrow_mut();
+        // return Some(RefMut::map(univ, |map| map.get_mut_val(name).unwrap()));
+
         let res = self.lookup(&name);
+        println!("Eval ident: {} = {:?}", name, res);
         match res {
             Value::Ref(target) => {
                 let target_val = self.eval_expr(&Expr::Ident(target));
@@ -995,7 +1031,9 @@ impl Evaler {
     }
 
     fn dot(&mut self, left: &Expr, right: &Expr) -> Value {
-        let left_value = self.eval_expr(left);
+        println!("Left of dot: {}", left);
+        let mut left_value = self.eval_expr(left);
+        println!("Left Val: {}", left_value);
         let res: Option<Value> = match &left_value {
             Value::Type(typ) => {
                 match typ {
@@ -1052,6 +1090,7 @@ impl Evaler {
                             // not a field, try method
                             let typ = instance.ty.name();
                             let combined_name: AutoStr = format!("{}::{}", typ, name).into();
+                            println!("Combined name: {}", combined_name);
                             let method = self.universe.borrow().lookup_meta(&combined_name);
                             if let Some(meta) = method {
                                 match meta.as_ref() {

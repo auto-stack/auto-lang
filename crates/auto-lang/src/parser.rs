@@ -1893,6 +1893,8 @@ impl<'a> Parser<'a> {
     pub fn fn_decl_stmt(&mut self, parent_name: &str) -> AutoResult<Stmt> {
         self.next(); // skip keyword `fn`
 
+        let mut is_vm = false;
+
         if self.is_kind(TokenKind::Dot) {
             self.next(); // skipt .
                          // parse fn sub kind
@@ -1900,6 +1902,9 @@ impl<'a> Parser<'a> {
             // special case for `fn c` cdecl statement
             if sub_kind == "c" {
                 return self.fn_cdecl_stmt();
+            } else if sub_kind == "vm" {
+                is_vm = true;
+                self.next();
             }
         }
 
@@ -1929,20 +1934,25 @@ impl<'a> Parser<'a> {
         if !parent_name.is_empty() {
             let parent_type = self.scope.borrow().find_type_for_name(parent_name);
             if let Some(parent_type) = parent_type {
+                println!("defining self for method: {}", name);
                 self.define(
                     "self",
                     Meta::Store(Store {
                         kind: StoreKind::Let,
                         name: "self".into(),
                         ty: parent_type.clone(),
-                        expr: Expr::Ident(parent_name.into()),
+                        expr: Expr::Ident("self".into()),
                     }),
                 );
             }
         }
 
         // parse function body
-        let body = self.body()?;
+        let body = if !is_vm {
+            self.body()?
+        } else {
+            Body::new()
+        };
 
         // exit function scope
         self.exit_scope();
@@ -1953,8 +1963,13 @@ impl<'a> Parser<'a> {
         } else {
             Some(parent_name.into())
         };
+        let kind = if is_vm {
+            FnKind::VmFunction
+        } else {
+            FnKind::Function
+        };
         let fn_expr = Fn::new(
-            FnKind::Function,
+            kind,
             name.clone(),
             parent,
             params,
@@ -2055,11 +2070,11 @@ impl<'a> Parser<'a> {
             members: Vec::new(),
             methods: Vec::new(),
         };
-        println!(
-            "Defining type {} in scope {}",
-            name,
-            self.scope.borrow().cur_spot
-        );
+        // println!(
+        //     "Defining type {} in scope {}",
+        //     name,
+        //     self.scope.borrow().cur_spot
+        // );
 
         // put type in scope
         self.define(name.as_str(), Meta::Type(Type::User(decl.clone())));
