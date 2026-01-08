@@ -33,9 +33,10 @@ impl AtomWriter for If {
             write!(f, " {}", branch.to_atom_str())?;
         }
         if let Some(else_body) = &self.else_ {
-            write!(f, " else {{ {} }}", else_body.to_atom_str())?;
+            // else is inside the if braces
+            write!(f, "\nelse {{ {} }}", else_body.to_atom_str())?;
         }
-        write!(f, " }}")?;
+        write!(f, "\n }}")?;
         Ok(())
     }
 }

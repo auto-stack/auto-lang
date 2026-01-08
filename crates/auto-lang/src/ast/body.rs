@@ -86,28 +86,14 @@ mod tests {
     fn test_body_to_atom_empty() {
         let body = Body::new();
         let atom = body.to_atom();
-        // Should be in format "(body)"
-        assert!(
-            atom.contains("body"),
-            "Expected atom to contain 'body', got: {}",
-            atom
-        );
+        // Should be in format "{}"
+        assert_eq!(atom, "{}")
     }
 
     #[test]
     fn test_body_to_atom_single_expr() {
         let body = Body::single_expr(Expr::Int(42));
         let atom = body.to_atom();
-        // Should be in format "(body int(42))"
-        assert!(
-            atom.contains("body"),
-            "Expected atom to contain 'body', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("int(42)"),
-            "Expected atom to contain 'int(42)', got: {}",
-            atom
-        );
+        assert_eq!(atom, "{42}");
     }
 }

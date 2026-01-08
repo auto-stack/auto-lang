@@ -331,7 +331,36 @@ impl ToNode for Type {
 
 impl AtomWriter for Type {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "{}", self.unique_name())?;
+        match self {
+            Type::Byte => write!(f, "byte")?,
+            Type::Int => write!(f, "int")?,
+            Type::Uint => write!(f, "uint")?,
+            Type::USize => write!(f, "usize")?,
+            Type::Float => write!(f, "float")?,
+            Type::Double => write!(f, "double")?,
+            Type::Bool => write!(f, "bool")?,
+            Type::Char => write!(f, "char")?,
+            Type::Str(_) => write!(f, "str")?,
+            Type::CStr => write!(f, "cstr")?,
+            Type::Array(array_type) => {
+                write!(
+                    f,
+                    "array({}, {})",
+                    array_type.elem.to_atom_str(),
+                    array_type.len
+                )?;
+            }
+            Type::Ptr(ptr_type) => {
+                write!(f, "ptr({})", ptr_type.of.borrow().to_atom_str())?;
+            }
+            Type::User(type_decl) => write!(f, "{}", type_decl.name)?,
+            Type::Enum(enum_decl) => write!(f, "{}", enum_decl.borrow().name)?,
+            Type::Union(u) => write!(f, "{}", u.name)?,
+            Type::Tag(t) => write!(f, "{}", t.borrow().name)?,
+            Type::Void => write!(f, "void")?,
+            Type::Unknown => write!(f, "unknown")?,
+            Type::CStruct(type_decl) => write!(f, "struct {}", type_decl.name)?,
+        }
         Ok(())
     }
 }

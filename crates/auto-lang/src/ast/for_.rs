@@ -1,4 +1,4 @@
-use super::{Body, Call, Expr, Name};
+use super::{Arg, Body, Call, Expr, Name};
 use crate::ast::{AtomWriter, ToAtomStr};
 use std::{fmt, io as stdio};
 
@@ -86,12 +86,75 @@ impl ToNode for For {
 
 impl AtomWriter for For {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(
-            f,
-            "for(iter({})) {{ {} }}",
-            self.iter.to_atom_str(),
-            self.body.to_atom_str()
-        )?;
+        write!(f, "for in (")?;
+        match &self.iter {
+            Iter::Indexed(index, _iter_name) => {
+                // Special handling for Call expressions in range - output as "name(args)" not "call name (args)"
+                let mut range_str = if let Expr::Call(call) = &self.range {
+                    if let Expr::Ident(name) = call.name.as_ref() {
+                        format!("{}(", name)
+                    } else {
+                        format!("{}", call.name.to_atom_str())
+                    }
+                } else {
+                    self.range.to_atom_str().to_string()
+                };
+
+                // Add arguments if it's a Call
+                if let Expr::Call(call) = &self.range {
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        match arg {
+                            Arg::Pos(expr) => range_str.push_str(&expr.to_atom_str()),
+                            Arg::Name(name) => range_str.push_str(name),
+                            Arg::Pair(name, expr) => {
+                                range_str.push_str(&format!("{}: {}", name, expr.to_atom_str()))
+                            }
+                        }
+                        if i < call.args.args.len() - 1 {
+                            range_str.push_str(", ");
+                        }
+                    }
+                    range_str.push(')');
+                    write!(f, "{}, {}", index, range_str)?;
+                } else {
+                    write!(f, "{}, {}", index, range_str)?;
+                }
+            }
+            Iter::Named(name) => {
+                // Special handling for Call expressions in range
+                let range_str = if let Expr::Call(call) = &self.range {
+                    if let Expr::Ident(func_name) = call.name.as_ref() {
+                        let mut s = format!("{}(", func_name);
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            match arg {
+                                Arg::Pos(expr) => s.push_str(&expr.to_atom_str()),
+                                Arg::Name(arg_name) => s.push_str(arg_name),
+                                Arg::Pair(pair_name, expr) => {
+                                    s.push_str(&format!("{}: {}", pair_name, expr.to_atom_str()))
+                                }
+                            }
+                            if i < call.args.args.len() - 1 {
+                                s.push_str(", ");
+                            }
+                        }
+                        s.push(')');
+                        s
+                    } else {
+                        call.to_atom_str().to_string()
+                    }
+                } else {
+                    self.range.to_atom_str().to_string()
+                };
+                write!(f, "{}, {}", name, range_str)?;
+            }
+            Iter::Call(call) => {
+                write!(f, "{}", call.to_atom_str())?;
+            }
+            Iter::Ever => {
+                write!(f, "ever")?;
+            }
+        }
+        write!(f, ") {{ {} }}", self.body.to_atom_str())?;
         Ok(())
     }
 }

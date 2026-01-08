@@ -6,8 +6,8 @@ fn add(a int, b int) int {
 
 ---
 
-fn add (param(a, int), param(b, int)) ret(int) {
-    expr.bina("+", a, b)
+fn add ((a, int), (b, int)) int {
+    bina(+, a, b)
 }
 
 ## C Function Decl
@@ -16,7 +16,7 @@ fn.c square(n double) double
 
 ---
 
-fn.c square (param(n, double))
+fn.c square (n, double) double
 
 ## Function Call
 
@@ -24,7 +24,4 @@ add(1, 2)
 
 ---
 
-call add {
-    int(1)
-    int(2)
-}
+call add (1, 2)

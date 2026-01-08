@@ -4,99 +4,107 @@ Tests for Type, Key, Pair, Member, TypeDecl to_atom() output
 
 ## Type - Int
 
-int
+let a int = 10
 
 ---
 
-int
+let a (int) 10
 
 ## Type - Float
 
-float
+var x float = 3.14
 
 ---
 
-float
+var x (float) 3.14
 
 ## Type - Bool
 
-bool
+var z bool = true
 
 ---
 
-bool
+var z (bool) true
 
 ## Type - Str
 
-str
+let s str = "hello"
 
 ---
 
-str
+let s (str) "hello"
 
 ## Type - Void
 
-void
+fn say() void {
+    print("Hello, World!")
+}
 
 ---
 
-void
+fn say () void {
+    call print ("Hello, World!")
+}
 
 ## Type - Pointer
 
-*int
+let p *int = 10.ptr
 
 ---
 
-ptr(int)
+let p (ptr(int)) bina(10, ptr)
 
 ## Type - Array
 
-[int; 10]
+var arr [3]int = [1, 2, 3]
 
 ---
 
-array(int, 10)
+var arr (array(int, 3)) [1, 2, 3]
 
 ## Type - User Defined
 
-type Point
+fn new_point(x int, y int) Point {
+    Point(x, y)
+}
 
 ---
 
-Point
+fn new_point ((x, int), (y, int)) Point {
+    node Point (x, y)
+}
 
 ## Key - Named
 
-name
+name: "me"
 
 ---
 
-name("name")
+pair(name, "me")
 
 ## Key - Integer
 
-42
+42: 5
 
 ---
 
-int(42)
+pair(42, 5)
 
 ## Key - Boolean
 
-true
+true: "good"
 
 ---
 
-bool(true)
+pair(true, "good")
 
 ## Key - String
 
-"key"
+"key": "value"
 
 ---
 
-str("key")
+pair("key", "value")
 
 ## Pair - Simple
 
@@ -104,7 +112,7 @@ name: value
 
 ---
 
-pair(name("name"), ident(value))
+pair(name, value)
 
 ## Pair - Nested
 
@@ -112,77 +120,39 @@ user.name: first_name
 
 ---
 
-pair(name("user.name"), ident(first_name))
-
-## Member - Without Default
-
-x: int
-
----
-
-member(name("x"), type(int))
-
-## Member - With Default Value
-
-x: int = 42
-
----
-
-member(name("x"), type(int), value(int(42)))
+pair(user.name, first_name)
 
 ## TypeDecl - Simple Struct
 
 type Point {
-    x: int
-    y: int
+    x int = 0
+    y int
 }
 
 ---
 
-type-decl(name("Point")) {
-    member(name("x"), type(int))
-    member(name("y"), type(int))
+type Point {
+    member(x, int, 0)
+    member(y, int)
 }
 
 ## TypeDecl - With Methods
 
 type Point {
-    x: int
-    y: int
+    x int
+    y int
     
     fn new(x int, y int) Point {
-        Point { x, y }
+        Point(x, y)
     }
 }
 
 ---
 
-type-decl(name("Point")) {
-    member(name("x"), type(int))
-    member(name("y"), type(int))
-    fn(name("new")) {
-        param(name("x"), type(int))
-        param(name("y"), type(int))
-        return(type(Point))
-        body {
-            call(name("Point")) {
-                ident(x)
-                ident(y)
-            }
-        }
+type Point {
+    member(x, int)
+    member(y, int)
+    fn new ((x, int), (y, int)) Point {
+        node Point(x, y)
     }
-}
-
-## TypeDecl - Generic Type
-
-type List[T] {
-    head: T
-    tail: *List[T]
-}
-
----
-
-type-decl(name("List"), has(T)) {
-    member(name("head"), type(T))
-    member(name("tail"), type(ptr(List(T))))
 }

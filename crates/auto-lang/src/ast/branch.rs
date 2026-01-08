@@ -21,9 +21,10 @@ use auto_val::{AutoStr, Node as AutoNode, Value};
 
 impl AtomWriter for Branch {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        // Output condition, opening brace, body, and closing brace
         write!(
             f,
-            "branch({}) {{ {} }}",
+            "{} {{ {} }}",
             self.cond.to_atom_str(),
             self.body.to_atom_str()
         )?;

@@ -149,23 +149,58 @@ impl ToAtom for Param {
 
 impl AtomWriter for Fn {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        let name = match self.kind {
-            FnKind::Lambda => "lambda",
-            _ => "fn",
-        };
-        write!(f, "{} (", name)?;
-        for (i, param) in self.params.iter().enumerate() {
-            write!(f, "{}", param.name)?;
-            if i < self.params.len() - 1 {
-                write!(f, ", ")?;
+        match self.kind {
+            FnKind::Lambda => {
+                // Lambda format: lambda(x, y) { body }
+                write!(f, "lambda(")?;
+                for (i, param) in self.params.iter().enumerate() {
+                    write!(f, "{}", param.name)?;
+                    if i < self.params.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, ") {{")?;
+                if !matches!(self.body.stmts.len(), 0) {
+                    write!(f, " {}", self.body.to_atom_str())?;
+                }
+                write!(f, " }}")?;
             }
-        }
-        write!(f, ") {{")?;
-        if !matches!(self.body.stmts.len(), 0) {
-            write!(f, "\n    {}", self.body.to_atom_str())?;
-            write!(f, "\n}}")?;
-        } else {
-            write!(f, " }}")?;
+            FnKind::CFunction => {
+                // C Function format: fn.c name (n, double) double
+                write!(f, "fn.c {}", self.name)?;
+                write!(f, " (")?;
+                for (i, param) in self.params.iter().enumerate() {
+                    write!(f, "{}", param.name)?;
+                    if i < self.params.len() - 1 || !matches!(self.ret, Type::Unknown) {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", param.ty)?;
+                }
+                write!(f, ")")?;
+                if !matches!(self.ret, Type::Unknown) {
+                    write!(f, " {}", self.ret)?;
+                }
+            }
+            _ => {
+                // Function format: fn name ((a, int), (b, int)) int { body }
+                write!(f, "fn {}", self.name)?;
+                write!(f, " (")?;
+                for (i, param) in self.params.iter().enumerate() {
+                    write!(f, "({}, {})", param.name, param.ty)?;
+                    if i < self.params.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, ")")?;
+                if !matches!(self.ret, Type::Unknown) {
+                    write!(f, " {}", self.ret)?;
+                }
+                write!(f, " {{")?;
+                if !matches!(self.body.stmts.len(), 0) {
+                    write!(f, " {}", self.body.to_atom_str())?;
+                }
+                write!(f, " }}")?;
+            }
         }
         Ok(())
     }

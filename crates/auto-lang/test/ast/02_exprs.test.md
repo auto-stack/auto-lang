@@ -66,6 +66,6 @@ obj {
 
 ---
 
-lambda (x, y) {
+lambda(x, y) {
     bina(+, x, y)
 }

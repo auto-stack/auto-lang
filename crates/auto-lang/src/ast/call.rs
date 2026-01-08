@@ -268,11 +268,25 @@ impl ToAtom for Args {
 
 impl AtomWriter for Call {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "call(name(\"{}\")) {{", self.name.to_atom_str())?;
-        for arg in &self.args.args {
-            write!(f, " {}", arg.to_atom_str())?;
+        // Get the function name
+        let name_str = match self.name.as_ref() {
+            Expr::Ident(name) => name.clone(),
+            _ => self.name.to_atom_str(),
+        };
+        write!(f, "call {}", name_str)?;
+        // Output arguments in parentheses with space before (
+        write!(f, " (")?;
+        for (i, arg) in self.args.args.iter().enumerate() {
+            match arg {
+                Arg::Pos(expr) => write!(f, "{}", expr.to_atom_str())?,
+                Arg::Name(name) => write!(f, "{}", name)?,
+                Arg::Pair(name, expr) => write!(f, "{}: {}", name, expr.to_atom_str())?,
+            }
+            if i < self.args.args.len() - 1 {
+                write!(f, ", ")?;
+            }
         }
-        write!(f, " }}")?;
+        write!(f, ")")?;
         Ok(())
     }
 }

@@ -434,33 +434,37 @@ impl AtomWriter for Expr {
             Expr::Ident(n) => write!(f, "{}", n)?,
             Expr::Ref(n) => write!(f, "ref({})", n)?,
             Expr::Bina(l, op, r) => {
-                let op_str = match op {
-                    auto_val::Op::Add => "+",
-                    auto_val::Op::Sub => "-",
-                    auto_val::Op::Mul => "*",
-                    auto_val::Op::Div => "/",
-                    auto_val::Op::Eq => "==",
-                    auto_val::Op::Neq => "!=",
-                    auto_val::Op::Lt => "<",
-                    auto_val::Op::Le => "<=",
-                    auto_val::Op::Gt => ">",
-                    auto_val::Op::Ge => ">=",
-                    auto_val::Op::AddEq => "+=",
-                    auto_val::Op::SubEq => "-=",
-                    auto_val::Op::MulEq => "*=",
-                    auto_val::Op::DivEq => "/=",
-                    auto_val::Op::Range => "..",
-                    auto_val::Op::RangeEq => "..=",
-                    auto_val::Op::Dot => ".",
-                    _ => "?",
-                };
-                write!(
-                    f,
-                    "bina({}, {}, {})",
-                    op_str,
-                    l.to_atom_str(),
-                    r.to_atom_str()
-                )?;
+                // Special case for dot operator (field access): output as "bina(left, right)"
+                if *op == auto_val::Op::Dot {
+                    write!(f, "bina({}, {})", l.to_atom_str(), r.to_atom_str())?;
+                } else {
+                    let op_str = match op {
+                        auto_val::Op::Add => "'+'",
+                        auto_val::Op::Sub => "'-'",
+                        auto_val::Op::Mul => "'*'",
+                        auto_val::Op::Div => "'/'",
+                        auto_val::Op::Eq => "'=='",
+                        auto_val::Op::Neq => "'!='",
+                        auto_val::Op::Lt => "'<'",
+                        auto_val::Op::Le => "'<='",
+                        auto_val::Op::Gt => "'>'",
+                        auto_val::Op::Ge => "'>='",
+                        auto_val::Op::AddEq => "'+='",
+                        auto_val::Op::SubEq => "'-='",
+                        auto_val::Op::MulEq => "'*='",
+                        auto_val::Op::DivEq => "'/='",
+                        auto_val::Op::Range => "'..'",
+                        auto_val::Op::RangeEq => "'..='",
+                        _ => "'?'",
+                    };
+                    write!(
+                        f,
+                        "bina({}, {}, {})",
+                        op_str,
+                        l.to_atom_str(),
+                        r.to_atom_str()
+                    )?;
+                }
             }
             Expr::Unary(op, e) => {
                 let op_str = match op {
@@ -473,14 +477,8 @@ impl AtomWriter for Expr {
                 write!(f, "una({}, {})", op_str, e.to_atom_str())?;
             }
             Expr::Array(elems) => {
-                write!(f, "array(")?;
-                for (i, elem) in elems.iter().enumerate() {
-                    write!(f, "{}", elem.to_atom_str())?;
-                    if i < elems.len() - 1 {
-                        write!(f, ", ")?;
-                    }
-                }
-                write!(f, ")")?;
+                // Delegate to Vec<Expr> AtomWriter which outputs [elem1, elem2, ...]
+                write!(f, "{}", elems.to_atom_str())?;
             }
             Expr::Pair(pair) => {
                 write!(f, "pair({}, ", pair.key)?;
@@ -490,17 +488,17 @@ impl AtomWriter for Expr {
             Expr::Object(pairs) => {
                 write!(f, "obj {{")?;
                 for (i, pair) in pairs.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " ")?;
+                    }
                     write!(
                         f,
-                        "\n    pair({}, {})",
+                        "pair({}, {})",
                         pair.key.to_atom_str(),
                         pair.value.to_atom_str()
                     )?;
-                    if i < pairs.len() - 1 {
-                        write!(f, "")?;
-                    }
                 }
-                write!(f, "\n}}")?;
+                write!(f, "}}")?;
             }
             Expr::FStr(fstr) => fstr.write_atom(f)?,
             Expr::Index(array, index) => {
@@ -885,6 +883,50 @@ mod markdown_tests {
 
         while let Some(c) = chars.next() {
             match c {
+                '\n' => {
+                    if !in_string {
+                        // Check if next word is "else" and add proper indentation
+                        let mut lookahead = chars.clone();
+                        while let Some(next) = lookahead.next() {
+                            if next == ' ' {
+                                continue;
+                            } else if next.is_alphabetic() {
+                                // Check if this spells "else"
+                                let mut word = String::new();
+                                word.push(next);
+                                let mut more_lookahead = lookahead.clone();
+                                let mut found_else = true;
+                                for expected in "else".chars().skip(1) {
+                                    if let Some(next_char) = more_lookahead.next() {
+                                        if next_char == expected {
+                                            word.push(next_char);
+                                        } else {
+                                            found_else = false;
+                                            break;
+                                        }
+                                    } else {
+                                        found_else = false;
+                                        break;
+                                    }
+                                }
+                                if found_else {
+                                    result.push('\n');
+                                    for _ in 0..indent {
+                                        result.push(' ');
+                                    }
+                                } else {
+                                    result.push(c);
+                                }
+                                break;
+                            } else {
+                                result.push(c);
+                                break;
+                            }
+                        }
+                    } else {
+                        result.push(c);
+                    }
+                }
                 '"' => {
                     result.push(c);
                     in_string = !in_string;
@@ -892,12 +934,20 @@ mod markdown_tests {
                 '{' => {
                     if !in_string {
                         in_braces = true;
-                        result.push(' ');
                         result.push(c);
+                        // Add newline and indentation after opening brace
                         result.push('\n');
                         indent += 4;
                         for _ in 0..indent {
                             result.push(' ');
+                        }
+                        // Consume any spaces that immediately follow { to avoid double spacing
+                        while let Some(&next) = chars.peek() {
+                            if next == ' ' {
+                                chars.next();
+                            } else {
+                                break;
+                            }
                         }
                     } else {
                         result.push(c);
@@ -907,7 +957,7 @@ mod markdown_tests {
                     if in_string {
                         result.push(c);
                     } else if in_braces {
-                        // Trim trailing spaces/newlines before closing brace
+                        // Only trim trailing whitespace on the current line
                         while result.ends_with(' ') || result.ends_with('\n') {
                             result.pop();
                         }
@@ -933,33 +983,63 @@ mod markdown_tests {
                     if !in_string {
                         paren_depth -= 1;
                         // Add newline after ) if we're in braces and not inside another function call
+                        // Check if next chars are space followed by alphabetic (start of new statement)
                         if in_braces && paren_depth == 0 {
-                            result.push('\n');
-                            for _ in 0..indent {
-                                result.push(' ');
+                            if let Some(&next) = chars.peek() {
+                                if next.is_alphabetic() {
+                                    // Case: `)call` - direct alphabetic after )
+                                    result.push('\n');
+                                    for _ in 0..indent {
+                                        result.push(' ');
+                                    }
+                                } else if next == ' ' {
+                                    // Case: `) call` - space after ), check if it's followed by alphabetic
+                                    // Peek ahead to see what comes after the space
+                                    let mut chars_copy = chars.clone();
+                                    chars_copy.next(); // Skip the space
+                                    if let Some(&after_space) = chars_copy.peek() {
+                                        if after_space.is_alphabetic() {
+                                            // This is `) <space> <alphabetic>` - skip the space and add newline
+                                            chars.next(); // Consume the space
+                                            result.push('\n');
+                                            for _ in 0..indent {
+                                                result.push(' ');
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
                 ',' => {
                     result.push(c);
-                    // Only add newline after comma if we're in braces AND not inside parens or strings
+                    // Add newline after comma if we're in braces AND not inside parens or strings
+                    // But if we're inside parens (like in function calls), add a space instead
                     if in_braces && !in_string && paren_depth == 0 {
                         result.push('\n');
                         for _ in 0..indent {
                             result.push(' ');
                         }
                     } else if !in_string {
-                        result.push(' ');
+                        // Only add space if next char is not already a space
+                        if let Some(&next) = chars.peek() {
+                            if next != ' ' && next != '\n' {
+                                result.push(' ');
+                            }
+                        } else {
+                            result.push(' ');
+                        }
                     }
                 }
                 ' ' => {
                     // Preserve spaces inside strings
                     if in_string {
                         result.push(c);
-                    } else if !in_braces && !result.ends_with('\n') && !result.is_empty() {
+                    } else if !result.ends_with('\n') && !result.is_empty() {
                         if let Some(&next) = chars.peek() {
-                            if next != ' ' && next != '{' && next != '}' && next != ',' {
+                            // Skip space if next char is certain punctuation
+                            if next != ' ' && next != '}' && next != ',' {
                                 result.push(c);
                             }
                         }
@@ -995,17 +1075,7 @@ mod markdown_tests {
                 code.to_atom()
             };
 
-            // Debug: print the raw atom output before pretty printing
-            #[cfg(debug_assertions)]
-            if tc.name == "fstr" {
-                eprintln!("DEBUG raw atom: {}", actual);
-                eprintln!(
-                    "DEBUG pretty: {}",
-                    pretty_atom(&actual.replace("\r\n", "\n"))
-                );
-            }
-
-            let actual_normalized = actual.replace("\r\n", "\n").trim().to_string();
+            let actual_normalized = pretty_atom(&actual.replace("\r\n", "\n"));
             let expected_normalized = tc.expected.replace("\r\n", "\n");
 
             if actual_normalized != expected_normalized {
