@@ -824,22 +824,33 @@ mod markdown_tests {
         let mut indent = 0;
         let mut in_braces = false;
         let mut paren_depth = 0; // Track parenthesis depth
+        let mut in_string = false; // Track if we're inside a string literal
         let mut chars = atom.chars().peekable();
 
         while let Some(c) = chars.next() {
             match c {
-                '{' => {
-                    in_braces = true;
-                    result.push(' ');
+                '"' => {
                     result.push(c);
-                    result.push('\n');
-                    indent += 4;
-                    for _ in 0..indent {
+                    in_string = !in_string;
+                }
+                '{' => {
+                    if !in_string {
+                        in_braces = true;
                         result.push(' ');
+                        result.push(c);
+                        result.push('\n');
+                        indent += 4;
+                        for _ in 0..indent {
+                            result.push(' ');
+                        }
+                    } else {
+                        result.push(c);
                     }
                 }
                 '}' => {
-                    if in_braces {
+                    if in_string {
+                        result.push(c);
+                    } else if in_braces {
                         // Trim trailing spaces/newlines before closing brace
                         while result.ends_with(' ') || result.ends_with('\n') {
                             result.pop();
@@ -849,40 +860,48 @@ mod markdown_tests {
                         for _ in 0..indent {
                             result.push(' ');
                         }
+                        result.push(c);
+                        in_braces = false;
+                    } else {
+                        result.push(c);
                     }
-                    result.push(c);
-                    in_braces = false;
                 }
                 '(' => {
                     result.push(c);
-                    paren_depth += 1;
+                    if !in_string {
+                        paren_depth += 1;
+                    }
                 }
                 ')' => {
                     result.push(c);
-                    paren_depth -= 1;
-                    // Add newline after ) if we're in braces and not inside another function call
-                    if in_braces && paren_depth == 0 {
-                        result.push('\n');
-                        for _ in 0..indent {
-                            result.push(' ');
+                    if !in_string {
+                        paren_depth -= 1;
+                        // Add newline after ) if we're in braces and not inside another function call
+                        if in_braces && paren_depth == 0 {
+                            result.push('\n');
+                            for _ in 0..indent {
+                                result.push(' ');
+                            }
                         }
                     }
                 }
                 ',' => {
                     result.push(c);
-                    // Only add newline after comma if we're in braces AND not inside parens
-                    if in_braces && paren_depth == 0 {
+                    // Only add newline after comma if we're in braces AND not inside parens or strings
+                    if in_braces && !in_string && paren_depth == 0 {
                         result.push('\n');
                         for _ in 0..indent {
                             result.push(' ');
                         }
-                    } else {
+                    } else if !in_string {
                         result.push(' ');
                     }
                 }
                 ' ' => {
-                    // Skip spaces in braces
-                    if !in_braces && !result.ends_with('\n') && !result.is_empty() {
+                    // Preserve spaces inside strings
+                    if in_string {
+                        result.push(c);
+                    } else if !in_braces && !result.ends_with('\n') && !result.is_empty() {
                         if let Some(&next) = chars.peek() {
                             if next != ' ' && next != '{' && next != '}' && next != ',' {
                                 result.push(c);
@@ -919,6 +938,17 @@ mod markdown_tests {
             } else {
                 code.to_atom()
             };
+
+            // Debug: print the raw atom output before pretty printing
+            #[cfg(debug_assertions)]
+            if tc.name == "fstr" {
+                eprintln!("DEBUG raw atom: {}", actual);
+                eprintln!(
+                    "DEBUG pretty: {}",
+                    pretty_atom(&actual.replace("\r\n", "\n"))
+                );
+            }
+
             let actual_normalized = pretty_atom(&actual.replace("\r\n", "\n"));
             let expected_normalized = tc.expected.replace("\r\n", "\n");
 

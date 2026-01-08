@@ -4,7 +4,7 @@
 
 ---
 
-unary("-", int(1))
+una(-, int(1))
 
 
 ## binary expr
@@ -13,7 +13,7 @@ unary("-", int(1))
 
 ---
 
-binary("+", int(1), int(2))
+bina(+, int(1), int(2))
 
 
 ## index expr
