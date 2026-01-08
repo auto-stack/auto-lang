@@ -1,6 +1,6 @@
-use super::{Expr, ToNode};
+use super::{AtomWriter, Expr, ToAtom, ToAtomStr, ToNode};
 use auto_val::Node as AutoNode;
-use std::fmt;
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub struct FStr {
@@ -30,5 +30,22 @@ impl ToNode for FStr {
             node.add_kid(part.to_node());
         }
         node
+    }
+}
+
+impl AtomWriter for FStr {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "fstr {{")?;
+        for part in &self.parts {
+            write!(f, " {}", part.to_atom_str())?;
+        }
+        write!(f, " }}")?;
+        Ok(())
+    }
+}
+
+impl ToAtom for FStr {
+    fn to_atom(&self) -> auto_val::AutoStr {
+        self.to_atom_str()
     }
 }

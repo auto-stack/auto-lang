@@ -424,25 +424,77 @@ impl AtomWriter for Pair {
 
 impl AtomWriter for Expr {
     fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
-        // Delegate to ToAtom and write the resulting Value
         match self {
             Expr::Int(i) => write!(f, "int({})", i)?,
             Expr::Uint(u) => write!(f, "uint({})", u)?,
             Expr::Float(fl, _) => write!(f, "float({})", fl)?,
             Expr::Bool(b) => write!(f, "bool({})", b)?,
             Expr::Char(c) => write!(f, "char({})", c)?,
-            Expr::Str(s) => write!(f, "str({})", s)?,
+            Expr::Str(s) => write!(f, "str(\"{}\")", s)?,
             Expr::Ident(n) => write!(f, "ident({})", n)?,
             Expr::Ref(n) => write!(f, "ref({})", n)?,
-            Expr::Bina(l, op, r) => write!(f, "bina({}, {}, {})", op, l, r)?,
-            Expr::Unary(op, e) => write!(f, "una({}, {})", op, e)?,
-            Expr::Array(elems) => elems.write_atom(f)?,
+            Expr::Bina(l, op, r) => {
+                let op_str = match op {
+                    auto_val::Op::Add => "+",
+                    auto_val::Op::Sub => "-",
+                    auto_val::Op::Mul => "*",
+                    auto_val::Op::Div => "/",
+                    auto_val::Op::Eq => "==",
+                    auto_val::Op::Neq => "!=",
+                    auto_val::Op::Lt => "<",
+                    auto_val::Op::Le => "<=",
+                    auto_val::Op::Gt => ">",
+                    auto_val::Op::Ge => ">=",
+                    auto_val::Op::AddEq => "+=",
+                    auto_val::Op::SubEq => "-=",
+                    auto_val::Op::MulEq => "*=",
+                    auto_val::Op::DivEq => "/=",
+                    auto_val::Op::Range => "..",
+                    auto_val::Op::RangeEq => "..=",
+                    auto_val::Op::Dot => ".",
+                    _ => "?",
+                };
+                write!(
+                    f,
+                    "binary(\"{}\", {}, {})",
+                    op_str,
+                    l.to_atom_str(),
+                    r.to_atom_str()
+                )?;
+            }
+            Expr::Unary(op, e) => {
+                let op_str = match op {
+                    auto_val::Op::Not => "!",
+                    auto_val::Op::Sub => "-",
+                    auto_val::Op::Mul => "*",
+                    auto_val::Op::Add => "&",
+                    _ => "?",
+                };
+                write!(f, "unary(\"{}\", {})", op_str, e.to_atom_str())?;
+            }
+            Expr::Array(elems) => {
+                write!(f, "array(")?;
+                for (i, elem) in elems.iter().enumerate() {
+                    elem.write_atom(f)?;
+                    if i < elems.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, ")")?;
+            }
             Expr::Pair(pair) => {
                 write!(f, "pair({}, ", pair.key)?;
                 pair.value.write_atom(f)?;
                 write!(f, ")")?;
             }
-            Expr::Object(pairs) => pairs.write_atom(f)?,
+            Expr::Object(pairs) => {
+                write!(f, "object {{")?;
+                for pair in pairs {
+                    write!(f, " {}", pair.to_atom_str())?;
+                }
+                write!(f, " }}")?;
+            }
+            Expr::FStr(fstr) => fstr.write_atom(f)?,
             _ => write!(f, "{}", self)?,
         }
         Ok(())
