@@ -631,6 +631,22 @@ impl Universe {
         self.define(name, Rc::new(Meta::Store(store)));
     }
 
+    /// Update the type of an existing store in the current scope
+    /// Used by the C transpiler when it infers types from expressions
+    pub fn update_store_type(&mut self, name: &str, new_ty: ast::Type) {
+        if let Some(meta) = self.lookup_meta(name) {
+            if let Meta::Store(store) = meta.as_ref() {
+                let updated_store = ast::Store {
+                    kind: store.kind.clone(),
+                    name: store.name.clone(),
+                    ty: new_ty,
+                    expr: store.expr.clone(),
+                };
+                self.define(name, Rc::new(Meta::Store(updated_store)));
+            }
+        }
+    }
+
     pub fn import(&mut self, path: AutoStr, ast: ast::Code, file: AutoStr, text: AutoStr) {
         let sid = Sid::new(path.as_str());
         self.code_paks.insert(

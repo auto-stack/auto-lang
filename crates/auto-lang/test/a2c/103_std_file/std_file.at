@@ -1,7 +1,13 @@
-use auto.io: fopen, fgets, printf, FILE, fclose
+use auto.io: fopen, fgets, printf, FILE, fclose, File, open
 
+fn test_file_method() {
+    let file = open(c"Cargo.toml")
+    let line = file.read_text()
+    print(line)
+    file.close()
+}
 
-fn main() {
+fn test_c_file_functions() {
     mut fp *FILE = null
     fp = fopen(c"Cargo.toml", c"r")
 
@@ -10,5 +16,10 @@ fn main() {
         printf(c"%s", buf)
     }
 
-    fclose(fp)
+    fclose(fp);
+}
+
+fn main() {
+    test_file_method()
+    test_c_file_functions()
 }

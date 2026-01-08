@@ -34,6 +34,13 @@ type File {
     path str
     file *FILE
 
+    fn read_text() str {
+        // Read a single line - simple implementation
+        let buf cstr = c"                                        "
+        fgets(buf, 40, .file)
+        buf
+    }
+
     fn close() {
         fclose(.file)
     }

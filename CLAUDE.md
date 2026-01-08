@@ -233,6 +233,22 @@ This creates a self-sustaining ecosystem where AutoLang can compile itself.
 
 ## Common Development Tasks
 
+### ⚠️ CRITICAL: Never Edit Generated C Files
+
+**DO NOT manually edit `.c` or `.h` files in `stdlib/auto/`** - These are **auto-generated** by the C transpiler from `.at` source files.
+
+**Example:**
+- ❌ **WRONG**: Edit `stdlib/auto/io.c` or `stdlib/auto/io.h`
+- ✅ **RIGHT**: Edit `stdlib/auto/io.at` → Transpiler generates `.c`/`.h` automatically
+
+**Why:** The C transpiler regenerates these files from `.at` sources. Manual edits will be overwritten!
+
+**How to add C functions:**
+1. Edit the `.at` file in `stdlib/auto/` (e.g., `io.at`)
+2. Add your function in the `# C` section
+3. Run `auto.exe c your_file.at` to regenerate C code
+4. The transpiler will create/update the corresponding `.c` and `.h` files
+
 ### Adding a New Test
 ```bash
 # Add test case to tests/lexer_tests.md or tests/parser_tests.md
@@ -240,6 +256,95 @@ This creates a self-sustaining ecosystem where AutoLang can compile itself.
 ./build/Debug/test_lexer.exe
 ./build/Debug/test_parser.exe
 ```
+
+### Adding a2c (Auto-to-C) Test Cases
+
+The C transpiler test framework (a2c tests) validates AutoLang-to-C transpilation through numbered test cases.
+
+**Test Location**: `crates/auto-lang/test/a2c/`
+
+**Directory Structure**:
+```
+crates/auto-lang/test/a2c/
+├── 000_hello/
+│   ├── hello.at              # AutoLang source input
+│   ├── hello.expected.c      # Expected C output
+│   └── hello.expected.h      # Expected header output
+├── 100_std_hello/
+│   ├── std_hello.at
+│   ├── std_hello.expected.c
+│   └── std_hello.expected.h
+└── ...
+```
+
+**Test Naming Convention**:
+- `000-099_*`: Core language features (hello, array, func, struct, etc.)
+- `100-199_*`: Standard library tests (std_hello, std_getpid, std_file, etc.)
+
+**How Tests Work**:
+1. Test functions are defined in `crates/auto-lang/src/trans/c.rs` as `test_XXX_name()`
+2. Each test calls `test_a2c("XXX_name")` with the test case identifier
+3. The test runner:
+   - Reads the `.at` source file
+   - Transpiles it to C using `transpile_c()`
+   - Compares generated C code with `.expected.c` and `.expected.h`
+   - If output differs, creates `.wrong.c` and `.wrong.h` files for comparison
+
+**Creating a New Test**:
+```bash
+# 1. Create test directory
+mkdir crates/auto-lang/test/a2c/106_my_test
+
+# 2. Create input file
+# Edit: crates/auto-lang/test/a2c/106_my_test/my_test.at
+
+# 3. Generate expected output (first run - will create .wrong files)
+cargo test -p auto-lang test_106_my_test
+
+# 4. Review .wrong.c and .wrong.h, if correct rename to .expected.*
+mv crates/auto-lang/test/a2c/106_my_test/my_test.wrong.c \
+   crates/auto-lang/test/a2c/106_my_test/my_test.expected.c
+mv crates/auto-lang/test/a2c/106_my_test/my_test.wrong.h \
+   crates/auto-lang/test/a2c/106_my_test/my_test.expected.h
+
+# 5. Add test function to crates/auto-lang/src/trans/c.rs
+# Add at end of test module:
+#[test]
+fn test_106_my_test() {
+    test_a2c("106_my_test").unwrap();
+}
+```
+
+**Running Tests**:
+```bash
+# Run all a2c tests
+cargo test -p auto-lang -- trans
+
+# Run specific test
+cargo test -p auto-lang test_100_std_hello
+
+# Run test and see comparison if it fails
+cargo test -p auto-lang test_106_my_test
+# Then compare: fc /b my_test.wrong.c my_test.expected.c (Windows)
+# Or use: diff my_test.wrong.c my_test.expected.c (Unix)
+```
+
+**Test Case Example** (`100_std_hello`):
+- **Input** (`std_hello.at`):
+  ```auto
+  use auto.io: say
+  fn main() { say("hello!") }
+  ```
+- **Expected C** (`std_hello.expected.c`):
+  ```c
+  #include "std_hello.h"
+  int main(void) { say("hello!"); return 0; }
+  ```
+- **Expected Header** (`std_hello.expected.h`):
+  ```c
+  #pragma once
+  #include "auto/io.h"
+  ```
 
 ### Debugging Tokenization
 ```c

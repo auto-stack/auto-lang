@@ -1,6 +1,13 @@
 #include "std_file.h"
 
-int main(void) {
+void test_file_method(void) {
+    struct File file = open("Cargo.toml");
+    char* line = File_ReadText(&file);
+    printf("%s\n", line);
+    File_Close(&file);
+}
+
+void test_c_file_functions(void) {
     FILE* fp = NULL;
     fp = fopen("Cargo.toml", "r");
 
@@ -10,5 +17,10 @@ int main(void) {
     }
 
     fclose(fp);
+}
+
+int main(void) {
+    test_file_method();
+    test_c_file_functions();
     return 0;
 }

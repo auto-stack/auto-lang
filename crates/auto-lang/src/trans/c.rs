@@ -795,13 +795,17 @@ impl CTrans {
         out.write(name.as_bytes()).to()?;
         // params
         out.write(b"(").to()?;
-        let params = fn_decl
-            .params
-            .iter()
-            .map(|p| format!("{} {}", self.c_type_name(&p.ty), p.name))
-            .collect::<Vec<_>>()
-            .join(", ");
-        out.write(params.as_bytes()).to()?;
+        if fn_decl.params.is_empty() {
+            out.write(b"void").to()?;
+        } else {
+            let params = fn_decl
+                .params
+                .iter()
+                .map(|p| format!("{} {}", self.c_type_name(&p.ty), p.name))
+                .collect::<Vec<_>>()
+                .join(", ");
+            out.write(params.as_bytes()).to()?;
+        }
         out.write(b")").to()?;
 
         Ok(())
@@ -904,17 +908,33 @@ impl CTrans {
             // skip C variables declaration
             return Ok(());
         }
-        match &store.ty {
-            Type::Array(array_type) => {
-                let elem_type = &array_type.elem;
-                let len = array_type.len;
-                out.write(format!("{} {}[{}] = ", elem_type, store.name, len).as_bytes())
+
+        // If type is Unknown, try to infer it and update the scope
+        if matches!(store.ty, Type::Unknown) {
+            if let Some(inferred_type) = self.infer_expr_type(&store.expr) {
+                // Update the scope with the inferred type for future lookups
+                self.scope.borrow_mut().update_store_type(&store.name, inferred_type.clone());
+                let type_name = self.c_type_name(&inferred_type);
+                out.write(format!("{} {} = ", type_name, store.name).as_bytes())
                     .to()?;
-            }
-            _ => {
+            } else {
                 let type_name = self.c_type_name(&store.ty);
                 out.write(format!("{} {} = ", type_name, store.name).as_bytes())
                     .to()?;
+            }
+        } else {
+            match &store.ty {
+                Type::Array(array_type) => {
+                    let elem_type = &array_type.elem;
+                    let len = array_type.len;
+                    out.write(format!("{} {}[{}] = ", elem_type, store.name, len).as_bytes())
+                        .to()?;
+                }
+                _ => {
+                    let type_name = self.c_type_name(&store.ty);
+                    out.write(format!("{} {} = ", type_name, store.name).as_bytes())
+                        .to()?;
+                }
             }
         }
         self.expr(&store.expr, out)?;
@@ -1000,6 +1020,38 @@ impl CTrans {
             }
         } else {
             None
+        }
+    }
+
+    /// Infer the return type of an expression if possible
+    fn infer_expr_type(&mut self, expr: &Expr) -> Option<Type> {
+        match expr {
+            // For method calls like file.read_text()
+            Expr::Call(call) => {
+                if let Expr::Bina(lhs, Op::Dot, rhs) = call.name.as_ref() {
+                    if let Expr::Ident(obj_name) = lhs.as_ref() {
+                        if let Expr::Ident(method_name) = rhs.as_ref() {
+                            // Get the type of the object
+                            if let Some(obj_meta) = self.lookup_meta(obj_name) {
+                                if let Meta::Store(store) = obj_meta.as_ref() {
+                                    if let Type::User(decl) = &store.ty {
+                                        // Find the method and return its type
+                                        for method in &decl.methods {
+                                            if method.name == *method_name {
+                                                return Some(method.ret.clone());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                None
+            }
+            // For direct identifier lookups
+            Expr::Ident(name) => self.get_type_of(name),
+            _ => None,
         }
     }
 
