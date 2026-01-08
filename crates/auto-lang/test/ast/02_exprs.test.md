@@ -4,7 +4,7 @@
 
 ---
 
-una(-, int(1))
+una(-, 1)
 
 
 ## binary expr
@@ -13,7 +13,7 @@ una(-, int(1))
 
 ---
 
-bina(+, int(1), int(2))
+bina(+, 1, 2)
 
 
 ## index expr
@@ -22,7 +22,7 @@ a[1]
 
 ---
 
-index(a, int(1))
+index(a, 1)
 
 
 ## slice expr
@@ -31,7 +31,7 @@ arr[1..10]
 
 ---
 
-slice(arr, int(1), int(10))
+slice(arr, 1, 10)
 
 ## slice expr - with step
 
@@ -39,7 +39,7 @@ arr[0..10..2]
 
 ---
 
-slice(arr, int(0), int(10), int(2))
+slice(arr, 0, 10, 2)
 
 ## array literal
 
@@ -47,7 +47,7 @@ slice(arr, int(0), int(10), int(2))
 
 ---
 
-array(int(1), int(2), int(3))
+array(1, 2, 3)
 
 ## object literal
 
@@ -55,17 +55,17 @@ array(int(1), int(2), int(3))
 
 ---
 
-object {
-    pair(name, str("John"))
-    pair(age, int(30))
+obj {
+    pair(name, "John")
+    pair(age, 30)
 }
 
 ## lambda
 
-fn(x, y) { x + y }
+|x, y| { x + y }
 
 ---
 
-fn (x, y) {
+lambda (x, y) {
     bina(+, x, y)
 }

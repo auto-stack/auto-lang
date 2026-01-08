@@ -473,14 +473,14 @@ impl AtomWriter for Expr {
                 write!(f, "una({}, {})", op_str, e.to_atom_str())?;
             }
             Expr::Array(elems) => {
-                write!(f, "[")?;
+                write!(f, "array(")?;
                 for (i, elem) in elems.iter().enumerate() {
-                    elem.write_atom(f)?;
+                    write!(f, "{}", elem.to_atom_str())?;
                     if i < elems.len() - 1 {
                         write!(f, ", ")?;
                     }
                 }
-                write!(f, "]")?;
+                write!(f, ")")?;
             }
             Expr::Pair(pair) => {
                 write!(f, "pair({}, ", pair.key)?;
@@ -488,18 +488,71 @@ impl AtomWriter for Expr {
                 write!(f, ")")?;
             }
             Expr::Object(pairs) => {
-                write!(f, "{{")?;
+                write!(f, "obj {{")?;
                 for (i, pair) in pairs.iter().enumerate() {
-                    write!(f, "{}: {}", pair.key, pair.value.to_atom_str())?;
+                    write!(
+                        f,
+                        "\n    pair({}, {})",
+                        pair.key.to_atom_str(),
+                        pair.value.to_atom_str()
+                    )?;
                     if i < pairs.len() - 1 {
-                        write!(f, ", ")?;
+                        write!(f, "")?;
                     }
                 }
-                write!(f, "}}")?;
+                write!(f, "\n}}")?;
             }
             Expr::FStr(fstr) => fstr.write_atom(f)?,
             Expr::Index(array, index) => {
-                write!(f, "index({}, {})", array.to_atom_str(), index.to_atom_str())?;
+                // Check if this is a slice expression (index with range or range with step)
+                match &**index {
+                    Expr::Range(range) => {
+                        // Check if start is itself a Range (which means this is a slice with step)
+                        if let Expr::Range(inner_range) = &*range.start {
+                            // Slice with step: arr[0..10..2] parses as Range(Range(0, 10), 2)
+                            let start_str = match &*inner_range.start {
+                                Expr::Int(i) => i.to_string(),
+                                _ => inner_range.start.to_atom_str().to_string(),
+                            };
+                            let end_str = match &*inner_range.end {
+                                Expr::Int(i) => i.to_string(),
+                                _ => inner_range.end.to_atom_str().to_string(),
+                            };
+                            let step_str = match &*range.end {
+                                Expr::Int(i) => i.to_string(),
+                                _ => range.end.to_atom_str().to_string(),
+                            };
+                            write!(
+                                f,
+                                "slice({}, {}, {}, {})",
+                                array.to_atom_str(),
+                                start_str,
+                                end_str,
+                                step_str
+                            )?;
+                        } else {
+                            // Simple slice: arr[0..10]
+                            let start_str = match &*range.start {
+                                Expr::Int(i) => i.to_string(),
+                                _ => range.start.to_atom_str().to_string(),
+                            };
+                            let end_str = match &*range.end {
+                                Expr::Int(i) => i.to_string(),
+                                _ => range.end.to_atom_str().to_string(),
+                            };
+                            write!(
+                                f,
+                                "slice({}, {}, {})",
+                                array.to_atom_str(),
+                                start_str,
+                                end_str
+                            )?;
+                        }
+                    }
+                    _ => {
+                        write!(f, "index({}, {})", array.to_atom_str(), index.to_atom_str())?;
+                    }
+                }
             }
             Expr::Lambda(lambda) => lambda.write_atom(f)?,
             Expr::Call(call) => call.write_atom(f)?,

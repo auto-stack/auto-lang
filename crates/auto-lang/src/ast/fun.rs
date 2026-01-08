@@ -149,17 +149,24 @@ impl ToAtom for Param {
 
 impl AtomWriter for Fn {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "fn(name(\"{}\")) {{", self.name)?;
-        for param in &self.params {
-            write!(f, " {}", param.to_atom_str())?;
+        let name = match self.kind {
+            FnKind::Lambda => "lambda",
+            _ => "fn",
+        };
+        write!(f, "{} (", name)?;
+        for (i, param) in self.params.iter().enumerate() {
+            write!(f, "{}", param.name)?;
+            if i < self.params.len() - 1 {
+                write!(f, ", ")?;
+            }
         }
-        if !matches!(self.ret, Type::Unknown) {
-            write!(f, " return(type({}))", self.ret.to_atom_str())?;
-        }
+        write!(f, ") {{")?;
         if !matches!(self.body.stmts.len(), 0) {
-            write!(f, " body {{{}}}", self.body.to_atom_str())?;
+            write!(f, "\n    {}", self.body.to_atom_str())?;
+            write!(f, "\n}}")?;
+        } else {
+            write!(f, " }}")?;
         }
-        write!(f, " }}")?;
         Ok(())
     }
 }

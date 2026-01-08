@@ -351,10 +351,10 @@ impl ToAtom for Key {
 impl AtomWriter for Key {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         match self {
-            Key::NamedKey(name) => write!(f, "name({})", name)?,
-            Key::IntKey(i) => write!(f, "int({})", i)?,
-            Key::BoolKey(b) => write!(f, "bool({})", b)?,
-            Key::StrKey(s) => write!(f, "str({})", s)?,
+            Key::NamedKey(name) => write!(f, "{}", name)?,
+            Key::IntKey(i) => write!(f, "{}", i)?,
+            Key::BoolKey(b) => write!(f, "{}", b)?,
+            Key::StrKey(s) => write!(f, "\"{}\"", s)?,
         }
         Ok(())
     }
