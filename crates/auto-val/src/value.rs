@@ -70,6 +70,13 @@ pub enum AccessError {
     FieldNotFound,
 }
 
+/// Component of a flattened access path for iterative processing
+#[derive(Debug, Clone)]
+pub enum PathComponent {
+    Field(AutoStr),
+    Index(usize),
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct VmRef {
     pub id: usize,

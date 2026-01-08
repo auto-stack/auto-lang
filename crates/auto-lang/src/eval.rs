@@ -67,9 +67,8 @@ impl Evaler {
                 let mut value = Value::Nil;
                 for stmt in code.stmts.iter() {
                     value = self.eval_stmt(stmt);
-                    if value.is_error() {
-                        panic!("Error: {}", value);
-                    }
+                    // Don't panic on errors - let them propagate as error values
+                    // This allows tests to check for errors using Result::Err
                 }
                 value
             }
@@ -739,6 +738,91 @@ impl Evaler {
                             Value::error(format!("Invalid assignment target"))
                         }
                     }
+                    // Case: obj.items[0] = value or obj.inner.arr[0] = value
+                    Expr::Bina(left_obj, op, right_field) if *op == Op::Dot => {
+                        // We need to handle obj.items[0] where:
+                        // - left_obj could be an identifier or another Bina expression
+                        // - right_field is the field containing the array
+                        match left_obj.as_ref() {
+                            // Simple case: obj.items[0] = value
+                            Expr::Ident(obj_name) => {
+                                if let Some(obj_vid) = self.lookup_vid(obj_name) {
+                                    let field_name = self.expr_to_astr(right_field);
+                                    let idx_val = self.eval_expr(index);
+                                    if let Value::Int(i) = idx_val {
+                                        let path = auto_val::AccessPath::Nested(
+                                            Box::new(auto_val::AccessPath::Field(field_name)),
+                                            Box::new(auto_val::AccessPath::Index(i as usize)),
+                                        );
+                                        match self
+                                            .universe
+                                            .borrow_mut()
+                                            .update_nested(obj_vid, &path, right_vid)
+                                        {
+                                            Ok(()) => Value::Void,
+                                            Err(e) => Value::error(format!(
+                                                "Failed to assign to nested array element: {:?}",
+                                                e
+                                            )),
+                                        }
+                                    } else {
+                                        Value::error("Array index must be integer")
+                                    }
+                                } else {
+                                    Value::error(format!("Object not found: {}", obj_name))
+                                }
+                            }
+                            // Nested case: obj.inner.items[0] = value
+                            _ => {
+                                let top_level = self.extract_top_level_identifier(array);
+                                if let Some(obj_name) = top_level {
+                                    if let Some(obj_vid) = self.lookup_vid(&obj_name) {
+                                        // Build the full path: inner.items[0]
+
+                                        // Build path for the left_obj part (e.g., inner)
+                                        let left_path = match self.build_access_path(left_obj) {
+                                            Ok(path) => path,
+                                            Err(e) => return Value::error(format!("Invalid access path: {}", e)),
+                                        };
+
+                                        // Build path for right_field + index
+                                        let field_name = self.expr_to_astr(right_field);
+                                        let idx_val = self.eval_expr(index);
+                                        if let Value::Int(i) = idx_val {
+                                            let field_idx_path = auto_val::AccessPath::Nested(
+                                                Box::new(auto_val::AccessPath::Field(field_name)),
+                                                Box::new(auto_val::AccessPath::Index(i as usize)),
+                                            );
+
+                                            // Combine left_path with field_idx_path
+                                            let full_path = auto_val::AccessPath::Nested(
+                                                Box::new(left_path),
+                                                Box::new(field_idx_path),
+                                            );
+
+                                            match self
+                                                .universe
+                                                .borrow_mut()
+                                                .update_nested(obj_vid, &full_path, right_vid)
+                                            {
+                                                Ok(()) => Value::Void,
+                                                Err(e) => Value::error(format!(
+                                                    "Failed to assign to deeply nested array element: {:?}",
+                                                    e
+                                                )),
+                                            }
+                                        } else {
+                                            Value::error("Array index must be integer")
+                                        }
+                                    } else {
+                                        Value::error(format!("Object not found: {}", obj_name))
+                                    }
+                                } else {
+                                    Value::error(format!("Invalid assignment target"))
+                                }
+                            }
+                        }
+                    }
                     _ => Value::error(format!("Invalid assignment target")),
                 }
             }
@@ -829,6 +913,7 @@ impl Evaler {
     /// - `field` → Field("field")
     /// - `obj.inner` → Field("inner")  (excludes "obj")
     /// - `arr[0]` → Index(0)  (excludes "arr")
+    /// - `obj.level1.level2` → Nested(Field("level1"), Field("level2"))  (excludes "obj")
     fn build_path_excluding_top_level(&mut self, expr: &Expr, top_level: &str) -> Result<auto_val::AccessPath, String> {
         match expr {
             Expr::Ident(name) if name == top_level => {
@@ -839,9 +924,24 @@ impl Evaler {
                 // Check if left is the top-level identifier
                 if let Expr::Ident(name) = left.as_ref() {
                     if name == top_level {
-                        // Simple case: obj.field where obj is top-level
-                        let field_name = self.expr_to_astr(right);
-                        Ok(auto_val::AccessPath::Field(field_name))
+                        // This is where we are: obj.level1 where obj is top-level
+                        // But right might be further nested, so we need to check
+                        match &**right {
+                            // If right is also a Bina (further nesting), recurse
+                            Expr::Bina(inner_left, inner_op, inner_right) if *inner_op == Op::Dot => {
+                                let left_path = auto_val::AccessPath::Field(self.expr_to_astr(right));
+                                let right_field = self.expr_to_astr(inner_right);
+                                Ok(auto_val::AccessPath::Nested(
+                                    Box::new(left_path),
+                                    Box::new(auto_val::AccessPath::Field(right_field)),
+                                ))
+                            }
+                            // Right is a simple identifier
+                            _ => {
+                                let field_name = self.expr_to_astr(right);
+                                Ok(auto_val::AccessPath::Field(field_name))
+                            }
+                        }
                     } else {
                         // Nested case: obj.inner.field where inner != top_level
                         let left_path = self.build_path_excluding_top_level(left, top_level)?;

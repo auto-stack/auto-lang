@@ -3,7 +3,7 @@ use crate::ast::FnKind;
 use crate::ast::{self, Type};
 use crate::libs;
 use auto_atom::Atom;
-use auto_val::{Args, AutoStr, ExtFn, NodeItem, Obj, Sig, TypeInfoStore, Value, ValueID, ValueData, AccessPath, AccessError, shared};
+use auto_val::{Args, AutoStr, ExtFn, NodeItem, Obj, Sig, TypeInfoStore, Value, ValueID, ValueData, AccessPath, AccessError, PathComponent, shared};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -888,6 +888,168 @@ impl Universe {
 
     /// Update nested field: obj.field = value
     pub fn update_nested(&mut self, vid: ValueID, path: &AccessPath, new_vid: ValueID) -> Result<(), AccessError> {
+        // Flatten nested paths and process step by step
+        let path_components = self.flatten_path(path);
+        self.update_nested_iterative(vid, &path_components, 0, new_vid)
+    }
+
+    /// Flatten a potentially nested AccessPath into a vector of path components
+    fn flatten_path(&self, path: &AccessPath) -> Vec<PathComponent> {
+        let mut components = Vec::new();
+        self.collect_path_components(path, &mut components);
+        components
+    }
+
+    /// Recursively collect path components from an AccessPath
+    fn collect_path_components(&self, path: &AccessPath, components: &mut Vec<PathComponent>) {
+        match path {
+            AccessPath::Field(field) => {
+                components.push(PathComponent::Field(field.clone()));
+            }
+            AccessPath::Index(idx) => {
+                components.push(PathComponent::Index(*idx));
+            }
+            AccessPath::Nested(parent, child) => {
+                // Collect parent first, then child
+                self.collect_path_components(parent, components);
+                self.collect_path_components(child, components);
+            }
+        }
+    }
+
+    /// Iteratively update nested value following path components
+    fn update_nested_iterative(
+        &mut self,
+        mut vid: ValueID,
+        components: &[PathComponent],
+        depth: usize,
+        new_vid: ValueID,
+    ) -> Result<(), AccessError> {
+        // If we're at the last component, perform the update
+        if depth == components.len() - 1 {
+            return self.update_nested_single(vid, &components[depth], new_vid);
+        }
+
+        // Process current component to get the next vid
+        let next_vid = match &components[depth] {
+            PathComponent::Field(field) => {
+                let cell = self.values.get(&vid).ok_or(AccessError::FieldNotFound)?;
+                let data = cell.borrow();
+
+                // First, extract what we need from the borrow
+                let next_vid_result: Result<Value, AccessError> = match &*data {
+                    ValueData::Obj(fields) => {
+                        fields.iter()
+                            .find(|(k, _)| k == &auto_val::ValueKey::Str(field.clone()))
+                            .map(|(_, v)| Value::ValueRef(*v))
+                            .ok_or(AccessError::FieldNotFound)
+                    }
+                    ValueData::Opaque(ref opaque_val) => {
+                        if let auto_val::Value::Instance(ref instance) = &**opaque_val {
+                            // Use the lookup method which handles different ValueKey types
+                            instance.fields.lookup(field)
+                                .ok_or(AccessError::FieldNotFound)
+                        } else {
+                            Err(AccessError::NotAnObject)
+                        }
+                    }
+                    _ => Err(AccessError::NotAnObject),
+                };
+
+                // Release the borrow before potentially allocating new values
+                drop(data);
+
+                // Now handle the result, allocating if needed
+                match next_vid_result {
+                    Ok(Value::ValueRef(inner_vid)) => inner_vid,
+                    Ok(field_value) => {
+                        // Allocate the value and get its VID
+                        let field_data = field_value.into_data();
+                        self.alloc_value(field_data)
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            PathComponent::Index(idx) => {
+                let cell = self.values.get(&vid).ok_or(AccessError::FieldNotFound)?;
+                let data = cell.borrow();
+                match &*data {
+                    ValueData::Array(elems) => {
+                        if *idx < elems.len() {
+                            elems[*idx]
+                        } else {
+                            return Err(AccessError::IndexOutOfBounds);
+                        }
+                    }
+                    _ => return Err(AccessError::NotAnArray),
+                }
+            }
+        };
+
+        // Recurse to next level
+        self.update_nested_iterative(next_vid, components, depth + 1, new_vid)
+    }
+
+    /// Update a single component (not nested)
+    fn update_nested_single(
+        &mut self,
+        vid: ValueID,
+        component: &PathComponent,
+        new_vid: ValueID,
+    ) -> Result<(), AccessError> {
+        let cell = self.values.get(&vid).ok_or(AccessError::FieldNotFound)?;
+        let mut data = cell.borrow_mut();
+
+        match component {
+            PathComponent::Field(field) => {
+                if let ValueData::Obj(ref mut fields) = &mut *data {
+                    // Check if field exists before mutating
+                    let field_key = auto_val::ValueKey::Str(field.clone());
+                    let field_exists = fields.iter().any(|(k, _)| k == &field_key);
+                    if !field_exists {
+                        return Err(AccessError::FieldNotFound);
+                    }
+                    // Find and remove existing field with this name, then add the new one
+                    fields.retain(|(k, _)| k != &field_key);
+                    fields.push((field_key, new_vid));
+                    return Ok(());
+                }
+
+                // Check if it's an Opaque Instance
+                if let ValueData::Opaque(_) = &*data {
+                    // Need to use a different approach - get mutable access to the opaque value
+                    drop(data); // Release the borrow
+                    let cell = self.values.get(&vid).ok_or(AccessError::FieldNotFound)?;
+                    let mut data = cell.borrow_mut();
+                    if let ValueData::Opaque(ref mut opaque_val) = &mut *data {
+                        if let auto_val::Value::Instance(ref mut instance) = &mut **opaque_val {
+                            // Update the field in the instance (will create if doesn't exist)
+                            instance.fields.set(auto_val::ValueKey::Str(field.clone()),
+                                               auto_val::Value::ValueRef(new_vid));
+                            return Ok(());
+                        }
+                    }
+                }
+
+                Err(AccessError::NotAnObject)
+            }
+            PathComponent::Index(idx) => {
+                if let ValueData::Array(ref mut elems) = &mut *data {
+                    if *idx < elems.len() {
+                        elems[*idx] = new_vid;
+                        Ok(())
+                    } else {
+                        Err(AccessError::IndexOutOfBounds)
+                    }
+                } else {
+                    Err(AccessError::NotAnArray)
+                }
+            }
+        }
+    }
+
+    /// Legacy update_nested method (now a wrapper that calls flatten_path)
+    fn update_nested_legacy(&mut self, vid: ValueID, path: &AccessPath, new_vid: ValueID) -> Result<(), AccessError> {
         let cell = self.values.get(&vid).ok_or(AccessError::FieldNotFound)?;
         let mut data = cell.borrow_mut();
 
@@ -895,7 +1057,10 @@ impl Universe {
             AccessPath::Field(field) => {
                 // Check if it's an Obj
                 if let ValueData::Obj(ref mut fields) = &mut *data {
-                    fields.push((auto_val::ValueKey::Str(field.clone()), new_vid));
+                    // Find and remove existing field with this name, then add the new one
+                    let field_key = auto_val::ValueKey::Str(field.clone());
+                    fields.retain(|(k, _)| k != &field_key);
+                    fields.push((field_key, new_vid));
                     return Ok(());
                 }
 

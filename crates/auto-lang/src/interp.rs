@@ -73,6 +73,10 @@ impl Interpreter {
         }
         let ast = parser.parse()?;
         let result = self.evaler.eval(&ast);
+        // Check if result is an error and return it as a Result error
+        if result.is_error() {
+            return Err(format!("Evaluation error: {}", result).into());
+        }
         let derefed = self.scope.borrow().deref_val(result);
         self.result = derefed;
         Ok(())
