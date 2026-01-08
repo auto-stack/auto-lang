@@ -30,7 +30,4 @@ str("hello")
 
 ---
 
-fstr {
-    str("1 + 2 = ")
-    binary("+", int(1), int(2))
-}
+fstr { str("1 + 2 = ") binary("+", int(1), int(2)) }
