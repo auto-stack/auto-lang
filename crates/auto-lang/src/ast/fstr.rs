@@ -42,7 +42,7 @@ impl AtomWriter for FStr {
                 write!(f, ", ")?;
             }
         }
-        // Note: closing parenthesis omitted per test specification
+        write!(f, ")")?;
         Ok(())
     }
 }
