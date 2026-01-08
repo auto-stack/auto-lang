@@ -1,0 +1,53 @@
+// Test file to demonstrate to_atom() functionality
+// This file can be used to manually verify ATOM output
+
+// Simple expression
+let x = 42
+
+// Function declaration
+fn add(a int, b int) int {
+    a + b
+}
+
+// If statement
+if x > 0 {
+    x + 1
+} else {
+    x - 1
+}
+
+// For loop
+for i in 0..10 {
+    i * 2
+}
+
+// Type declaration
+type Point {
+    x int
+    y int
+}
+
+// Enum declaration
+enum Color {
+    Red 0
+    Green 1
+    Blue 2
+}
+
+// Union type
+union Number {
+    int intVal
+    float floatVal
+}
+
+// Tag type
+tag Option {
+    Some value
+    None none
+}
+
+// Use statement
+use auto.io: say
+
+// Alias
+alias int = i32

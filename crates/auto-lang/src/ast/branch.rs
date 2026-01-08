@@ -13,17 +13,23 @@ impl fmt::Display for Branch {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Node, Value};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Node as AutoNode, Value};
+
+impl ToNode for Branch {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("branch");
+        node.add_kid(self.cond.to_atom().to_node());
+        node.add_kid(self.body.to_node());
+        node
+    }
+}
 
 impl ToAtom for Branch {
     fn to_atom(&self) -> Value {
-        let mut node = Node::new("branch");
-        node.add_kid(self.cond.to_atom().to_node());
-        node.add_kid(self.body.to_atom().to_node());
-        Value::Node(node)
+        Value::Node(self.to_node())
     }
 }
 

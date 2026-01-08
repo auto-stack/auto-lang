@@ -46,69 +46,83 @@ impl fmt::Display for Break {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Node, Value};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Node as AutoNode, Value};
 
-impl ToAtom for For {
-    fn to_atom(&self) -> Value {
-        let mut node = Node::new("for");
+impl ToNode for For {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("for");
 
         // Add iterator based on type
         match &self.iter {
             Iter::Indexed(index, iter_name) => {
-                let mut iter_node = Node::new("iter");
+                let mut iter_node = AutoNode::new("iter");
                 iter_node.set_prop("index", Value::str(index.as_str()));
                 iter_node.set_prop("name", Value::str(iter_name.as_str()));
                 node.add_kid(iter_node);
             }
             Iter::Named(name) => {
-                let mut iter_node = Node::new("iter");
+                let mut iter_node = AutoNode::new("iter");
                 iter_node.set_prop("name", Value::str(name.as_str()));
                 node.add_kid(iter_node);
             }
             Iter::Call(call) => {
-                node.add_kid(call.to_atom().to_node());
+                node.add_kid(call.to_node());
             }
             Iter::Ever => {
-                let iter_node = Node::new("ever");
+                let iter_node = AutoNode::new("ever");
                 node.add_kid(iter_node);
             }
         }
 
         node.add_kid(self.range.to_atom().to_node());
-        node.add_kid(self.body.to_atom().to_node());
-        Value::Node(node)
+        node.add_kid(self.body.to_node());
+        node
+    }
+}
+
+impl ToAtom for For {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
+    }
+}
+
+impl ToNode for Iter {
+    fn to_node(&self) -> AutoNode {
+        match self {
+            Iter::Indexed(index, iter_name) => {
+                let mut node = AutoNode::new("iter");
+                node.set_prop("index", Value::str(index.as_str()));
+                node.set_prop("name", Value::str(iter_name.as_str()));
+                node
+            }
+            Iter::Named(name) => {
+                let mut node = AutoNode::new("iter");
+                node.set_prop("name", Value::str(name.as_str()));
+                node
+            }
+            Iter::Call(call) => call.to_node(),
+            Iter::Ever => AutoNode::new("ever"),
+        }
     }
 }
 
 impl ToAtom for Iter {
     fn to_atom(&self) -> Value {
-        match self {
-            Iter::Indexed(index, iter_name) => {
-                let mut node = Node::new("iter");
-                node.set_prop("index", Value::str(index.as_str()));
-                node.set_prop("name", Value::str(iter_name.as_str()));
-                Value::Node(node)
-            }
-            Iter::Named(name) => {
-                let mut node = Node::new("iter");
-                node.set_prop("name", Value::str(name.as_str()));
-                Value::Node(node)
-            }
-            Iter::Call(call) => call.to_atom(),
-            Iter::Ever => {
-                let node = Node::new("ever");
-                Value::Node(node)
-            }
-        }
+        Value::Node(self.to_node())
+    }
+}
+
+impl ToNode for Break {
+    fn to_node(&self) -> AutoNode {
+        AutoNode::new("break")
     }
 }
 
 impl ToAtom for Break {
     fn to_atom(&self) -> Value {
-        let node = Node::new("break");
-        Value::Node(node)
+        Value::Node(self.to_node())
     }
 }

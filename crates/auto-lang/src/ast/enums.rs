@@ -51,29 +51,41 @@ impl EnumDecl {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Node, Value};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Node as AutoNode, Value};
 
-impl ToAtom for EnumDecl {
-    fn to_atom(&self) -> Value {
-        let mut node = Node::new("enum");
+impl ToNode for EnumDecl {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("enum");
         node.set_prop("name", Value::str(self.name.as_str()));
 
         for item in &self.items {
-            node.add_kid(item.to_atom().to_node());
+            node.add_kid(item.to_node());
         }
 
-        Value::Node(node)
+        node
+    }
+}
+
+impl ToAtom for EnumDecl {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
+    }
+}
+
+impl ToNode for EnumItem {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("item");
+        node.set_prop("name", Value::str(self.name.as_str()));
+        node.set_prop("value", Value::Int(self.value));
+        node
     }
 }
 
 impl ToAtom for EnumItem {
     fn to_atom(&self) -> Value {
-        let mut node = Node::new("item");
-        node.set_prop("name", Value::str(self.name.as_str()));
-        node.set_prop("value", Value::Int(self.value));
-        Value::Node(node)
+        Value::Node(self.to_node())
     }
 }

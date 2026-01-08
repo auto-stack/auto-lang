@@ -44,29 +44,46 @@ pub use atom_helpers::*;
 
 mod parsers;
 
-use auto_val::{AutoStr, Op, Value};
+use auto_val::{AutoStr, Node as AutoNode, Op, Value};
 use std::fmt;
 
 pub type Name = AutoStr;
 
-/// Converts AST node to ATOM format Value.
+/// Converts AST node to ATOM format Value (for primitive/atomic types)
 ///
-/// # ATOM Format
+/// # When to Implement ToAtom vs ToNode
 ///
-/// The ATOM format represents AST as a tree of nodes, arrays, and objects.
-/// This is used for ASTL (Auto Syntax Tree Language) representation.
+/// - **ToNode**: For AST types that are naturally represented as nodes
+///   with children, properties, and arguments (If, For, Fn, Store, etc.)
+///
+/// - **ToAtom**: For primitive/atomic types that map to simple values
+///   (Type → Value::Str, Key → Value::Int/Bool/Str, Pair → Value::Pair)
 ///
 /// # Example
 ///
 /// ```rust
 /// use auto_lang::ast::*;
 ///
-/// let expr = Expr::Int(42);
-/// let atom = expr.to_atom();
-/// // Returns: Value::Node(Node { name: "int", args: [42], ... })
+/// let ty = Type::Int;
+/// let value = ty.to_atom();  // Returns Value::Str("int")
 /// ```
 pub trait ToAtom {
     fn to_atom(&self) -> Value;
+}
+
+/// Converts AST node to ATOM format Node directly (for complex structures)
+///
+/// # When to Implement ToNode vs ToAtom
+///
+/// - **ToNode**: For AST types that are naturally represented as nodes
+///   with children, properties, and arguments (If, For, Fn, Store, etc.)
+///
+/// - **ToAtom**: For primitive/atomic types that map to simple values
+///   (Type → Value::Str, Key → Value::Int/Bool/Str, Pair → Value::Pair)
+///
+/// ```
+pub trait ToNode {
+    fn to_node(&self) -> AutoNode;
 }
 
 #[derive(Debug, Clone)]
@@ -518,6 +535,39 @@ impl ToAtom for Expr {
     }
 }
 
+impl ToNode for Stmt {
+    fn to_node(&self) -> AutoNode {
+        match self {
+            Stmt::Expr(expr) => expr.to_atom().to_node(),
+            Stmt::If(if_) => if_.to_node(),
+            Stmt::For(for_) => for_.to_node(),
+            Stmt::Is(is) => is.to_node(),
+            Stmt::Store(store) => store.to_node(),
+            Stmt::Block(body) => body.to_node(),
+            Stmt::Fn(fn_) => fn_.to_node(),
+            Stmt::EnumDecl(enum_decl) => enum_decl.to_node(),
+            Stmt::TypeDecl(type_decl) => type_decl.to_node(),
+            Stmt::Union(union) => union.to_node(),
+            Stmt::Tag(tag) => tag.to_node(),
+            Stmt::Node(node) => node.to_node(),
+            Stmt::Use(use_) => use_.to_node(),
+            Stmt::OnEvents(on_events) => on_events.to_node(),
+            Stmt::Comment(comment) => {
+                let mut node = AutoNode::new("comment");
+                node.add_arg(auto_val::Arg::Pos(Value::str(comment.as_str())));
+                node
+            }
+            Stmt::Alias(alias) => alias.to_node(),
+            Stmt::EmptyLine(n) => {
+                let mut node = AutoNode::new("nl");
+                node.set_prop("count", Value::Int(*n as i32));
+                node
+            }
+            Stmt::Break => AutoNode::new("break"),
+        }
+    }
+}
+
 impl ToAtom for Stmt {
     fn to_atom(&self) -> Value {
         match self {
@@ -550,13 +600,19 @@ impl ToAtom for Stmt {
     }
 }
 
-impl ToAtom for Code {
-    fn to_atom(&self) -> Value {
-        let mut node = auto_val::Node::new("code");
+impl ToNode for Code {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("code");
         for stmt in &self.stmts {
             let stmt_node = stmt.to_atom().to_node();
             node.add_kid(stmt_node);
         }
-        Value::Node(node)
+        node
+    }
+}
+
+impl ToAtom for Code {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
     }
 }

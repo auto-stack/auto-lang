@@ -20,22 +20,28 @@ impl fmt::Display for If {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Node, Value};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Node as AutoNode, Value};
+
+impl ToNode for If {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("if");
+        for branch in &self.branches {
+            node.add_kid(branch.to_node());
+        }
+        if let Some(else_body) = &self.else_ {
+            let mut else_node = AutoNode::new("else");
+            else_node.add_kid(else_body.to_node());
+            node.add_kid(else_node);
+        }
+        node
+    }
+}
 
 impl ToAtom for If {
     fn to_atom(&self) -> Value {
-        let mut node = Node::new("if");
-        for branch in &self.branches {
-            node.add_kid(branch.to_atom().to_node());
-        }
-        if let Some(else_body) = &self.else_ {
-            let mut else_node = Node::new("else");
-            else_node.add_kid(else_body.to_atom().to_node());
-            node.add_kid(else_node);
-        }
-        Value::Node(node)
+        Value::Node(self.to_node())
     }
 }

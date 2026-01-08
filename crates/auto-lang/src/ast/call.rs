@@ -188,10 +188,29 @@ pub fn fmt_call(f: &mut fmt::Formatter, call: &Call) -> fmt::Result {
     Ok(())
 }
 
-// ToAtom implementations
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Array, Arg as AutoValArg, Node, Value, ValueKey};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Array, Arg as AutoValArg, Node as AutoNode, Value, ValueKey};
+
+impl ToNode for Arg {
+    fn to_node(&self) -> AutoNode {
+        match self {
+            Arg::Pos(expr) => expr.to_atom().to_node(),
+            Arg::Name(name) => {
+                let mut node = AutoNode::new("name");
+                node.add_arg(AutoValArg::Pos(Value::Str(name.clone())));
+                node
+            }
+            Arg::Pair(key, expr) => {
+                let mut node = AutoNode::new("pair");
+                node.add_arg(AutoValArg::Pos(Value::str(key.as_str())));
+                node.add_arg(AutoValArg::Pos(expr.to_atom()));
+                node
+            }
+        }
+    }
+}
 
 impl ToAtom for Arg {
     fn to_atom(&self) -> Value {
@@ -203,27 +222,38 @@ impl ToAtom for Arg {
     }
 }
 
-impl ToAtom for Args {
-    fn to_atom(&self) -> Value {
-        // Convert args to an array of values
+impl ToNode for Args {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("args");
         let items: Vec<Value> = self.args.iter().map(|arg| arg.to_atom()).collect();
-        let mut node = Node::new("args");
         node.add_arg(AutoValArg::Pos(Value::array(Array::from_vec(items))));
-        Value::Node(node)
+        node
     }
 }
 
-impl ToAtom for Call {
+impl ToAtom for Args {
     fn to_atom(&self) -> Value {
-        let mut node = Node::new("call");
+        Value::Node(self.to_node())
+    }
+}
+
+impl ToNode for Call {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("call");
         node.add_kid(self.name.to_atom().to_node());
-        node.add_kid(self.args.to_atom().to_node());
+        node.add_kid(self.args.to_node());
 
         if !matches!(self.ret, Type::Unknown) {
             node.set_prop("return", self.ret.to_atom());
         }
 
-        Value::Node(node)
+        node
+    }
+}
+
+impl ToAtom for Call {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
     }
 }
 

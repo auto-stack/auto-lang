@@ -15,17 +15,23 @@ impl fmt::Display for Range {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Node, Value};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Node as AutoNode, Value};
 
-impl ToAtom for Range {
-    fn to_atom(&self) -> Value {
-        let mut node = Node::new("range");
+impl ToNode for Range {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("range");
         node.set_prop("eq", Value::Bool(self.eq));
         node.add_kid(self.start.to_atom().to_node());
         node.add_kid(self.end.to_atom().to_node());
-        Value::Node(node)
+        node
+    }
+}
+
+impl ToAtom for Range {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
     }
 }

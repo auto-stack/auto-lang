@@ -51,14 +51,14 @@ impl fmt::Display for Node {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::Value;
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Node as AutoNode, Value};
 
-impl ToAtom for Node {
-    fn to_atom(&self) -> Value {
-        let mut node = auto_val::Node::new("node");
+impl ToNode for Node {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("node");
         node.set_prop("name", Value::str(self.name.as_str()));
 
         if !self.id.is_empty() {
@@ -66,13 +66,19 @@ impl ToAtom for Node {
         }
 
         if !self.args.is_empty() {
-            node.add_kid(self.args.to_atom().to_node());
+            node.add_kid(self.args.to_node());
         }
 
         if !self.body.stmts.is_empty() {
-            node.add_kid(self.body.to_atom().to_node());
+            node.add_kid(self.body.to_node());
         }
 
-        Value::Node(node)
+        node
+    }
+}
+
+impl ToAtom for Node {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
     }
 }

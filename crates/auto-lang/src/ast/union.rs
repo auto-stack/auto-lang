@@ -29,29 +29,41 @@ impl fmt::Display for Union {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Node, Value};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Node as AutoNode, Value};
 
-impl ToAtom for Union {
-    fn to_atom(&self) -> Value {
-        let mut node = Node::new("union");
+impl ToNode for Union {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("union");
         node.set_prop("name", Value::str(self.name.as_str()));
 
         for field in &self.fields {
-            node.add_kid(field.to_atom().to_node());
+            node.add_kid(field.to_node());
         }
 
-        Value::Node(node)
+        node
+    }
+}
+
+impl ToAtom for Union {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
+    }
+}
+
+impl ToNode for UnionField {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("field");
+        node.set_prop("name", Value::str(self.name.as_str()));
+        node.set_prop("type", self.ty.to_atom());
+        node
     }
 }
 
 impl ToAtom for UnionField {
     fn to_atom(&self) -> Value {
-        let mut node = Node::new("field");
-        node.set_prop("name", Value::str(self.name.as_str()));
-        node.set_prop("type", self.ty.to_atom());
-        Value::Node(node)
+        Value::Node(self.to_node())
     }
 }

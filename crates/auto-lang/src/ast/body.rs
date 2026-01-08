@@ -36,18 +36,24 @@ impl fmt::Display for Body {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Array, Arg as AutoValArg, Node, Value};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Array, Arg as AutoValArg, Node as AutoNode, Value};
 
-impl ToAtom for Body {
-    fn to_atom(&self) -> Value {
-        let mut node = Node::new("body");
+impl ToNode for Body {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("body");
         // Convert statements to an array
         let stmts: Vec<Value> = self.stmts.iter().map(|stmt| stmt.to_atom()).collect();
         node.add_arg(AutoValArg::Pos(Value::array(Array::from_vec(stmts))));
-        Value::Node(node)
+        node
+    }
+}
+
+impl ToAtom for Body {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
     }
 }
 

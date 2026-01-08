@@ -13,16 +13,22 @@ impl fmt::Display for Alias {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Node, Value};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Node as AutoNode, Value};
+
+impl ToNode for Alias {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("alias");
+        node.set_prop("name", Value::str(self.alias.as_str()));
+        node.set_prop("target", Value::str(self.target.as_str()));
+        node
+    }
+}
 
 impl ToAtom for Alias {
     fn to_atom(&self) -> Value {
-        let mut node = Node::new("alias");
-        node.set_prop("name", Value::str(self.alias.as_str()));
-        node.set_prop("target", Value::str(self.target.as_str()));
-        Value::Node(node)
+        Value::Node(self.to_node())
     }
 }

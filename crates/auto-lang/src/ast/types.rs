@@ -316,9 +316,9 @@ impl Key {
     }
 }
 
-// ToAtom implementations
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
+use crate::ast::{ToAtom, ToNode};
 use auto_val::{Node, Value, ValueKey};
 
 impl ToAtom for Type {
@@ -353,20 +353,26 @@ impl ToAtom for Pair {
     }
 }
 
-impl ToAtom for Member {
-    fn to_atom(&self) -> Value {
+impl ToNode for Member {
+    fn to_node(&self) -> Node {
         let mut node = Node::new("member");
         node.set_prop("name", Value::str(self.name.as_str()));
         node.set_prop("type", self.ty.to_atom());
         if let Some(value) = &self.value {
             node.set_prop("value", value.to_atom());
         }
-        Value::Node(node)
+        node
     }
 }
 
-impl ToAtom for TypeDecl {
+impl ToAtom for Member {
     fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
+    }
+}
+
+impl ToNode for TypeDecl {
+    fn to_node(&self) -> Node {
         let mut node = Node::new("type-decl");
         node.set_prop("name", Value::str(self.name.as_str()));
         node.set_prop("kind", Value::str(match &self.kind {
@@ -380,14 +386,20 @@ impl ToAtom for TypeDecl {
         }
 
         for member in &self.members {
-            node.add_kid(member.to_atom().to_node());
+            node.add_kid(member.to_node());
         }
 
         for method in &self.methods {
-            node.add_kid(method.to_atom().to_node());
+            node.add_kid(method.to_node());
         }
 
-        Value::Node(node)
+        node
+    }
+}
+
+impl ToAtom for TypeDecl {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
     }
 }
 

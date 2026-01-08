@@ -33,14 +33,14 @@ impl fmt::Display for Use {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Array, Arg as AutoValArg, Node, Value};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Array, Arg as AutoValArg, Node as AutoNode, Value};
 
-impl ToAtom for Use {
-    fn to_atom(&self) -> Value {
-        let mut node = Node::new("use");
+impl ToNode for Use {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("use");
 
         // Only set kind property if not Auto (default)
         match self.kind {
@@ -59,6 +59,12 @@ impl ToAtom for Use {
             node.add_arg(AutoValArg::Pos(Value::array(Array::from_vec(items))));
         }
 
-        Value::Node(node)
+        node
+    }
+}
+
+impl ToAtom for Use {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
     }
 }

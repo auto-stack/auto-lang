@@ -107,26 +107,32 @@ impl Param {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Node, Value};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Node as AutoNode, Value};
 
-impl ToAtom for Param {
-    fn to_atom(&self) -> Value {
-        let mut node = Node::new("param");
+impl ToNode for Param {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("param");
         node.set_prop("name", Value::str(self.name.as_str()));
         node.set_prop("type", self.ty.to_atom());
         if let Some(default) = &self.default {
             node.set_prop("default", default.to_atom());
         }
-        Value::Node(node)
+        node
     }
 }
 
-impl ToAtom for Fn {
+impl ToAtom for Param {
     fn to_atom(&self) -> Value {
-        let mut node = Node::new("fn");
+        Value::Node(self.to_node())
+    }
+}
+
+impl ToNode for Fn {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("fn");
         node.set_prop("name", Value::str(self.name.as_str()));
         node.set_prop("kind", Value::str(format!("{:?}", self.kind).as_str()));
 
@@ -140,13 +146,19 @@ impl ToAtom for Fn {
 
         // Add params as children
         for param in &self.params {
-            node.add_kid(param.to_atom().to_node());
+            node.add_kid(param.to_node());
         }
 
         // Add body
-        node.add_kid(self.body.to_atom().to_node());
+        node.add_kid(self.body.to_node());
 
-        Value::Node(node)
+        node
+    }
+}
+
+impl ToAtom for Fn {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
     }
 }
 

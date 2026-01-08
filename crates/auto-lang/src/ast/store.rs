@@ -47,13 +47,13 @@ impl fmt::Display for StoreKind {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Node, Value};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Node as AutoNode, Value};
 
-impl ToAtom for Store {
-    fn to_atom(&self) -> Value {
+impl ToNode for Store {
+    fn to_node(&self) -> AutoNode {
         let node_name = match &self.kind {
             StoreKind::Let => "let",
             StoreKind::Mut => "mut",
@@ -62,7 +62,7 @@ impl ToAtom for Store {
             StoreKind::Field => "field",
         };
 
-        let mut node = Node::new(node_name);
+        let mut node = AutoNode::new(node_name);
         node.set_prop("name", Value::str(self.name.as_str()));
 
         if !matches!(self.ty, Type::Unknown) {
@@ -70,6 +70,12 @@ impl ToAtom for Store {
         }
 
         node.add_kid(self.expr.to_atom().to_node());
-        Value::Node(node)
+        node
+    }
+}
+
+impl ToAtom for Store {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
     }
 }

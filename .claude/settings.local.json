@@ -60,7 +60,8 @@
       "Bash(RUST_BACKTRACE=1 ./target/debug/auto.exe run:*)",
       "Bash(./target/release/auto.exe:*)",
       "Bash(git add:*)",
-      "Bash(\"/c/Program Files/tcc/tcc\" -o test_read_text_c.exe test_read_text_c.c -I.)"
+      "Bash(\"/c/Program Files/tcc/tcc\" -o test_read_text_c.exe test_read_text_c.c -I.)",
+      "Bash(powershell -Command:*)"
     ]
   }
 }

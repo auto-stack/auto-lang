@@ -93,35 +93,47 @@ impl fmt::Display for OnEvents {
     }
 }
 
-// ToAtom implementation
+// ToAtom and ToNode implementations
 
-use crate::ast::ToAtom;
-use auto_val::{Node, Value};
+use crate::ast::{ToAtom, ToNode};
+use auto_val::{Node as AutoNode, Value};
+
+impl ToNode for OnEvents {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("on");
+
+        for branch in &self.branches {
+            node.add_kid(branch.to_node());
+        }
+
+        node
+    }
+}
 
 impl ToAtom for OnEvents {
     fn to_atom(&self) -> Value {
-        let mut node = Node::new("on");
+        Value::Node(self.to_node())
+    }
+}
 
-        for branch in &self.branches {
-            node.add_kid(branch.to_atom().to_node());
+impl ToNode for Event {
+    fn to_node(&self) -> AutoNode {
+        match self {
+            Event::Arrow(arrow) => arrow.to_node(),
+            Event::CondArrow(cond_arrow) => cond_arrow.to_node(),
         }
-
-        Value::Node(node)
     }
 }
 
 impl ToAtom for Event {
     fn to_atom(&self) -> Value {
-        match self {
-            Event::Arrow(arrow) => arrow.to_atom(),
-            Event::CondArrow(cond_arrow) => cond_arrow.to_atom(),
-        }
+        Value::Node(self.to_node())
     }
 }
 
-impl ToAtom for Arrow {
-    fn to_atom(&self) -> Value {
-        let mut node = Node::new("arrow");
+impl ToNode for Arrow {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("arrow");
 
         if let Some(src) = &self.src {
             node.set_prop("from", src.to_atom());
@@ -133,13 +145,19 @@ impl ToAtom for Arrow {
             node.set_prop("with", with.to_atom());
         }
 
-        Value::Node(node)
+        node
     }
 }
 
-impl ToAtom for CondArrow {
+impl ToAtom for Arrow {
     fn to_atom(&self) -> Value {
-        let mut node = Node::new("cond-arrow");
+        Value::Node(self.to_node())
+    }
+}
+
+impl ToNode for CondArrow {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("cond-arrow");
 
         if let Some(src) = &self.src {
             node.set_prop("from", src.to_atom());
@@ -148,9 +166,15 @@ impl ToAtom for CondArrow {
         node.set_prop("cond", self.cond.to_atom());
 
         for sub in &self.subs {
-            node.add_kid(sub.to_atom().to_node());
+            node.add_kid(sub.to_node());
         }
 
-        Value::Node(node)
+        node
+    }
+}
+
+impl ToAtom for CondArrow {
+    fn to_atom(&self) -> Value {
+        Value::Node(self.to_node())
     }
 }
