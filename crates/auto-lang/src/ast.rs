@@ -378,11 +378,50 @@ impl Expr {
     }
 }
 
+impl <T: AtomWriter> AtomWriter for Vec<T> {
+    fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
+        write!(f, "[");
+        for (i, elem) in self.iter().enumerate() {
+            elem.write_atom(f)?;
+            if i < self.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, "]")?;
+        Ok(())
+    }
+}
+
+impl AtomWriter for Pair {
+    fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
+        write!(f, "{}:{}", self.key, self.value)?;
+        Ok(())
+    }
+}
+
 impl AtomWriter for Expr {
     fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
         // Delegate to ToAtom and write the resulting Value
-        let atom = self.to_atom();
-        write!(f, "{}", atom)?;
+        match self {
+            Expr::Int(i) => write!(f, "int({})", i)?,
+            Expr::Uint(u) => write!(f, "uint({})", u)?,
+            Expr::Float(fl, _) => write!(f, "float({})", fl)?,
+            Expr::Bool(b) => write!(f, "bool({})", b)?,
+            Expr::Char(c) => write!(f, "char({})", c)?,
+            Expr::Str(s) => write!(f, "str({})", s)?,
+            Expr::Ident(n) => write!(f, "ident({})", n)?,
+            Expr::Ref(n) => write!(f, "ref({})", n)?,
+            Expr::Bina(l, op, r) => write!(f, "bina({}, {}, {})", op, l,  r)?,
+            Expr::Unary(op, e) => write!(f, "una({}, {})", op, e)?,
+            Expr::Array(elems) => elems.write_atom(f)?,
+            Expr::Pair(pair) => {
+                write!(f, "pair({}, ", pair.key)?;
+                pair.value.write_atom(f)?;
+                write!(f, ")")?;
+            }
+            Expr::Object(pairs) => pairs.write_atom(f)?,
+            _ => write!(f, "{}", self)?,
+        }
         Ok(())
     }
 }
@@ -391,160 +430,11 @@ impl AtomWriter for Expr {
 
 impl ToAtom for Expr {
     fn to_atom(&self) -> Value {
-        match self {
-            // Literals - simple wrapper nodes
-            Expr::Int(i) => {
-                let mut node = auto_val::Node::new("int");
-                node.add_arg(auto_val::Arg::Pos(Value::Int(*i)));
-                Value::Node(node)
-            }
-            Expr::Uint(u) => {
-                let mut node = auto_val::Node::new("uint");
-                node.add_arg(auto_val::Arg::Pos(Value::Uint(*u)));
-                Value::Node(node)
-            }
-            Expr::I8(i) => {
-                let mut node = auto_val::Node::new("i8");
-                node.add_arg(auto_val::Arg::Pos(Value::Int(*i as i32)));
-                Value::Node(node)
-            }
-            Expr::U8(u) => {
-                let mut node = auto_val::Node::new("u8");
-                node.add_arg(auto_val::Arg::Pos(Value::Uint(*u as u32)));
-                Value::Node(node)
-            }
-            Expr::I64(i) => {
-                let mut node = auto_val::Node::new("i64");
-                node.add_arg(auto_val::Arg::Pos(Value::Int(*i as i32)));
-                Value::Node(node)
-            }
-            Expr::Byte(b) => {
-                let mut node = auto_val::Node::new("byte");
-                node.add_arg(auto_val::Arg::Pos(Value::Uint(*b as u32)));
-                Value::Node(node)
-            }
-            Expr::Float(f, _) => {
-                let mut node = auto_val::Node::new("float");
-                node.add_arg(auto_val::Arg::Pos(Value::Float(*f)));
-                Value::Node(node)
-            }
-            Expr::Double(d, _) => {
-                let mut node = auto_val::Node::new("double");
-                node.add_arg(auto_val::Arg::Pos(Value::Float(*d)));
-                Value::Node(node)
-            }
-            Expr::Bool(b) => {
-                let mut node = auto_val::Node::new("bool");
-                node.add_arg(auto_val::Arg::Pos(Value::Bool(*b)));
-                Value::Node(node)
-            }
-            Expr::Char(c) => {
-                let mut node = auto_val::Node::new("char");
-                node.add_arg(auto_val::Arg::Pos(Value::Char(*c)));
-                Value::Node(node)
-            }
-            Expr::Str(s) => {
-                let mut node = auto_val::Node::new("str");
-                node.add_arg(auto_val::Arg::Pos(Value::str(s)));
-                Value::Node(node)
-            }
-            Expr::CStr(s) => {
-                let mut node = auto_val::Node::new("cstr");
-                node.add_arg(auto_val::Arg::Pos(Value::str(s)));
-                Value::Node(node)
-            }
-            Expr::Nil => {
-                let node = auto_val::Node::new("nil");
-                Value::Node(node)
-            }
-            Expr::Null => {
-                let node = auto_val::Node::new("null");
-                Value::Node(node)
-            }
-
-            // Identifiers
-            Expr::Ident(name) => {
-                let mut node = auto_val::Node::new("name");
-                node.add_arg(auto_val::Arg::Pos(Value::str(name)));
-                Value::Node(node)
-            }
-            Expr::Ref(name) => {
-                let mut node = auto_val::Node::new("ref");
-                node.add_arg(auto_val::Arg::Pos(Value::str(name)));
-                Value::Node(node)
-            }
-            Expr::GenName(name) => {
-                let mut node = auto_val::Node::new("gen-name");
-                node.add_arg(auto_val::Arg::Pos(Value::str(name)));
-                Value::Node(node)
-            }
-
-            // Operators
-            Expr::Unary(op, expr) => {
-                let mut node = auto_val::Node::new("una");
-                node.set_prop("op", Value::str(op.to_string().as_str()));
-                node.add_kid(expr.to_atom().to_node());
-                Value::Node(node)
-            }
-            Expr::Bina(left, op, right) => {
-                let mut node = auto_val::Node::new("bina");
-                node.set_prop("op", Value::str(op.to_string().as_str()));
-                node.add_kid(left.to_atom().to_node());
-                node.add_kid(right.to_atom().to_node());
-                Value::Node(node)
-            }
-
-            // Containers
-            Expr::Array(elems) => {
-                let items: Vec<Value> = elems.iter().map(|e| e.to_atom()).collect();
-                let mut node = auto_val::Node::new("array");
-                node.add_arg(auto_val::Arg::Pos(Value::array(auto_val::Array::from_vec(items))));
-                Value::Node(node)
-            }
-            Expr::Object(pairs) => {
-                let mut obj = auto_val::Obj::new();
-                for pair in pairs {
-                    let value_key = match &pair.key {
-                        Key::NamedKey(k) => auto_val::ValueKey::Str(k.clone()),
-                        Key::IntKey(i) => auto_val::ValueKey::Int(*i),
-                        Key::BoolKey(b) => auto_val::ValueKey::Bool(*b),
-                        Key::StrKey(s) => auto_val::ValueKey::Str(s.clone()),
-                    };
-                    obj.set(value_key, pair.value.to_atom());
-                }
-                let mut node = auto_val::Node::new("object");
-                node.add_arg(auto_val::Arg::Pos(Value::Obj(obj)));
-                Value::Node(node)
-            }
-
-            // Control flow and calls
-            Expr::Call(call) => {
-                let mut node = auto_val::Node::new("call");
-                node.add_kid(call.name.to_atom().to_node());
-                node.add_kid(call.args.to_atom().to_node());
-                Value::Node(node)
-            }
-            Expr::Index(array, index) => {
-                let mut node = auto_val::Node::new("index");
-                node.add_kid(array.to_atom().to_node());
-                node.add_kid(index.to_atom().to_node());
-                Value::Node(node)
-            }
-            Expr::If(if_) => {
-                // Delegate to If::to_atom() (will be implemented in Step 5)
-                if_.to_atom()
-            }
-            Expr::Range(range) => range.to_atom(),
-            Expr::Block(body) => body.to_atom(),
-            Expr::Pair(pair) => pair.to_atom(),
-            Expr::Node(node) => {
-                // Delegate to Node::to_atom() (will be implemented later)
-                Value::str(node.to_string().as_str())
-            }
-
-            // For complex expressions, use stub for now (will be fully implemented later)
-            _ => Value::str(self.to_string().as_str()),
-        }
+        let mut s = Vec::new();
+        if self.write_atom(&mut s).is_err() {
+            return Value::empty_str();
+        };
+        Value::Str(String::from_utf8(s).unwrap_or("".into()).into())
     }
 }
 
