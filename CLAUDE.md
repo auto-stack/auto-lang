@@ -233,6 +233,17 @@ This creates a self-sustaining ecosystem where AutoLang can compile itself.
 
 ## Common Development Tasks
 
+### ⚠️ CRITICAL: Test Expectation Rules
+
+**IMPORTANT**: When fixing failing tests, you have two options:
+
+1. **Fix the implementation** to match the expected output (PREFERRED)
+2. **Ask for permission** before changing test expectations
+
+**NEVER modify test expected output without explicit user permission.**
+
+Test expectations define the correct behavior. If tests fail, the implementation is wrong, not the test. Always fix the code to match the test, unless the test itself is demonstrably incorrect (e.g., testing for a bug).
+
 ### Creating Plans for Complex Tasks
 
 When working on complex features or refactoring tasks that require planning:

@@ -501,6 +501,7 @@ impl AtomWriter for Expr {
             Expr::Lambda(lambda) => lambda.write_atom(f)?,
             Expr::Call(call) => call.write_atom(f)?,
             Expr::Node(node) => node.write_atom(f)?,
+            Expr::Range(range) => range.write_atom(f)?,
             _ => write!(f, "{}", self)?,
         }
         Ok(())
