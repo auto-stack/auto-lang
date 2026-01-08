@@ -249,6 +249,23 @@ This creates a self-sustaining ecosystem where AutoLang can compile itself.
 3. Run `auto.exe c your_file.at` to regenerate C code
 4. The transpiler will create/update the corresponding `.c` and `.h` files
 
+### Commit Message Guidelines
+
+**Keep commit messages concise and focused.**
+
+**Example:**
+```
+Fix C transpiler: void params and type inference
+```
+
+**Not:**
+```
+Fix C transpiler to generate void for functions with no parameters
+and infer return types from method calls like File.read_text()
+```
+
+**Why:** Shorter commit messages are easier to read in git logs and PR histories. Focus on what changed and why, not implementation details.
+
 ### Adding a New Test
 ```bash
 # Add test case to tests/lexer_tests.md or tests/parser_tests.md
