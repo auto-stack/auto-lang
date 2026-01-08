@@ -857,15 +857,57 @@ impl Universe {
         self.values.get(&vid).cloned()
     }
 
+    /// Recursively dereference all VIDs in a value, replacing them with actual values
     pub fn deref_val(&self, val: Value) -> Value {
-        if let Value::ValueRef(vid) = val {
-            if let Some(d) = self.clone_value(vid) {
-                Value::from_data(d)
-            } else {
-                Value::Nil
+        match val {
+            // Case 1: ValueRef - dereference and recursively process
+            Value::ValueRef(vid) => {
+                if let Some(d) = self.clone_value(vid) {
+                    self.deref_val(Value::from_data(d))
+                } else {
+                    Value::Nil
+                }
             }
-        } else {
-            val
+
+            // Case 2: Instance - recursively dereference all fields
+            Value::Instance(instance) => {
+                let mut dereferenced_fields = auto_val::Obj::new();
+                for (key, field_val) in instance.fields.iter() {
+                    let deref_field_val = self.deref_val(field_val.clone());
+                    dereferenced_fields.set(key.clone(), deref_field_val);
+                }
+                Value::Instance(auto_val::Instance {
+                    ty: instance.ty,
+                    fields: dereferenced_fields,
+                })
+            }
+
+            // Case 3: Array - recursively dereference all elements
+            Value::Array(arr) => {
+                let dereferenced_elems: Vec<Value> = arr.iter()
+                    .map(|elem| self.deref_val(elem.clone()))
+                    .collect();
+                Value::Array(dereferenced_elems.into())
+            }
+
+            // Case 4: Obj (plain object) - recursively dereference all fields
+            Value::Obj(obj) => {
+                let mut dereferenced_obj = auto_val::Obj::new();
+                for (key, field_val) in obj.iter() {
+                    let deref_field_val = self.deref_val(field_val.clone());
+                    dereferenced_obj.set(key.clone(), deref_field_val);
+                }
+                Value::Obj(dereferenced_obj)
+            }
+
+            // Case 5: Pair - recursively dereference both elements
+            Value::Pair(key, val) => {
+                let deref_val = self.deref_val(*val);
+                Value::Pair(key, Box::new(deref_val))
+            }
+
+            // Case 6: All other value types - return as-is (no nested VIDs)
+            _ => val,
         }
     }
 

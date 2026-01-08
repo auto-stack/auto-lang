@@ -701,6 +701,10 @@ $ }
         let code = "p.x";
         let result = interpreter.eval(code);
         assert_eq!(result.repr(), "5");
+
+        let code = "p.y";
+        let result = interpreter.eval(code);
+        assert_eq!(result.repr(), "2");
     }
 
     #[test]
@@ -1125,23 +1129,18 @@ square(15)
 
     // ===== Level 2: Type Instance Nested Fields =====
 
-    // NOTE: This test is disabled because type instances are currently created
-    // without their fields being populated (Outer{} instead of Outer{inner: ...}).
-    // This is a bug in type instance creation, not in nested mutation logic.
-    // Once type instance fields are properly populated, this test can be re-enabled.
-    //
-    // #[test]
-    // fn test_type_instance_nested_field_mutation() {
-    //     let code = r#"
-    //         type Inner { x int }
-    //         type Outer { inner Inner }
-    //         mut obj = Outer { inner: Inner { x: 10 } }
-    //         obj.inner.x = 20
-    //         obj.inner.x
-    //     "#;
-    //     let result = run(code).unwrap();
-    //     assert_eq!(result, "20");
-    // }
+    #[test]
+    fn test_type_instance_nested_field_mutation() {
+        let code = r#"
+            type Inner { x int }
+            type Outer { inner Inner }
+            mut obj = Outer(inner: Inner(x: 10))
+            obj.inner.x = 20
+            obj.inner.x
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "20");
+    }
 
     // ===== Level 3: Complex Nested Mutations (3+ Level Depth) =====
 
@@ -1213,5 +1212,56 @@ square(15)
         "#;
         let result = run(code);
         assert!(result.is_err());
+    }
+
+    // ===== Type Instance Creation Diagnostic Tests =====
+
+    #[test]
+    fn test_simple_nested_type_instance_creation() {
+        let code = r#"
+            type Inner { x int }
+            type Outer { inner Inner }
+            var obj = Outer(inner: Inner(x: 10))
+            obj.inner.x
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "10");
+    }
+
+    #[test]
+    fn test_nested_type_instance_field_access() {
+        let code = r#"
+            type Inner { x int }
+            type Outer { inner Inner }
+            var obj = Outer(inner: Inner(x: 10))
+            obj.inner.x
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "10");
+    }
+
+    #[test]
+    fn test_type_instance_field_value() {
+        let code = r#"
+            type Inner { x int }
+            type Outer { inner Inner }
+            var inner = Inner(x: 10)
+            var obj = Outer(inner: inner)
+            obj.inner.x
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "10");
+    }
+
+    #[test]
+    fn test_nested_type_instance_positional_args() {
+        let code = r#"
+            type Inner { x int }
+            type Outer { inner Inner }
+            var v = Outer(inner: Inner(x: 10))
+            v.inner.x
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "10");
     }
 }

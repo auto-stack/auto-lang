@@ -1251,14 +1251,50 @@ impl Evaler {
                 auto_val::Arg::Pair(key, val) => {
                     for member in members.iter() {
                         if key.to_string() == member.name {
-                            fields.set(member.name.clone(), val.clone());
+                            // If val is a ValueRef, we need to get the actual value from universe
+                            let val_to_store = match val {
+                                auto_val::Value::ValueRef(vid) => {
+                                    if let Some(data) = self.resolve_value(val) {
+                                        let borrowed = data.borrow();
+                                        let cloned = borrowed.clone();
+                                        drop(borrowed);
+                                        Some(Value::from_data(cloned))
+                                    } else {
+                                        None
+                                    }
+                                }
+                                _ => Some(val.clone()),
+                            };
+                            if let Some(v) = val_to_store {
+                                let val_data = v.into_data();
+                                let vid = self.universe.borrow_mut().alloc_value(val_data);
+                                fields.set(member.name.clone(), auto_val::Value::ValueRef(vid));
+                            }
                         }
                     }
                 }
                 auto_val::Arg::Pos(value) => {
                     if j < members.len() {
                         let member = &members[j];
-                        fields.set(member.name.clone(), value.clone());
+                        // If value is a ValueRef, we need to get the actual value from universe
+                        let val_to_store = match value {
+                            auto_val::Value::ValueRef(vid) => {
+                                if let Some(data) = self.resolve_value(value) {
+                                    let borrowed = data.borrow();
+                                    let cloned = borrowed.clone();
+                                    drop(borrowed);
+                                    Some(Value::from_data(cloned))
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => Some(value.clone()),
+                        };
+                        if let Some(v) = val_to_store {
+                            let val_data = v.into_data();
+                            let vid = self.universe.borrow_mut().alloc_value(val_data);
+                            fields.set(member.name.clone(), auto_val::Value::ValueRef(vid));
+                        }
                     }
                 }
                 auto_val::Arg::Name(name) => {
@@ -1277,7 +1313,9 @@ impl Evaler {
                     if fields.has(member.name.clone()) {
                         continue;
                     }
-                    fields.set(member.name.clone(), self.eval_expr(value));
+                    let val_data = self.eval_expr(value).into_data();
+                    let vid = self.universe.borrow_mut().alloc_value(val_data);
+                    fields.set(member.name.clone(), auto_val::Value::ValueRef(vid));
                 }
                 None => {}
             }
@@ -1715,6 +1753,17 @@ impl Evaler {
                 Expr::Ident(name) => {
                     let f = instance.fields.lookup(&name);
                     match f {
+                        Some(Value::ValueRef(vid)) => {
+                            // Dereference the ValueRef to get the actual value
+                            if let Some(data) = self.resolve_value(&Value::ValueRef(vid)) {
+                                let borrowed_data = data.borrow();
+                                let data_clone = borrowed_data.clone();
+                                drop(borrowed_data);
+                                Some(Value::from_data(data_clone))
+                            } else {
+                                None
+                            }
+                        }
                         Some(v) => Some(v),
                         None => {
                             // not a field, try method
