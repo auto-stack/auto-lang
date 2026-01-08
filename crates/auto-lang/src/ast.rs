@@ -44,8 +44,8 @@ pub use atom_helpers::*;
 
 mod parsers;
 
-use auto_val::{AutoStr, Node as AutoNode, Op, Value};
-use std::fmt;
+use auto_val::{AutoResult, AutoStr, Node as AutoNode, Op, Value};
+use std::{fmt, io};
 
 pub type Name = AutoStr;
 
@@ -69,6 +69,10 @@ pub type Name = AutoStr;
 /// ```
 pub trait ToAtom {
     fn to_atom(&self) -> Value;
+}
+
+pub trait AtomWriter {
+    fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()>;
 }
 
 /// Converts AST node to ATOM format Node directly (for complex structures)
@@ -371,6 +375,15 @@ impl Expr {
             .into(),
             _ => self.to_string().into(),
         }
+    }
+}
+
+impl AtomWriter for Expr {
+    fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
+        // Delegate to ToAtom and write the resulting Value
+        let atom = self.to_atom();
+        write!(f, "{}", atom)?;
+        Ok(())
     }
 }
 
