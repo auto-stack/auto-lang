@@ -22,7 +22,7 @@ a[1]
 
 ---
 
-index(a, int(1))
+index(ident(a), int(1))
 
 
 ## slice expr
