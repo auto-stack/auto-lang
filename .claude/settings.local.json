@@ -44,7 +44,11 @@
       "Bash(taskkill:*)",
       "Bash(printf:*)",
       "Bash(\"build\\\\Debug\\\\test_fstr_simple.exe\")",
-      "Bash(\"build\\\\Debug\\\\test_parser.exe\")"
+      "Bash(\"build\\\\Debug\\\\test_parser.exe\")",
+      "Bash(cargo check:*)",
+      "Bash(cargo run:*)",
+      "Bash(cargo test:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

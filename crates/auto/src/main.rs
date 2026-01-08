@@ -31,9 +31,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!("{}", json);
         }
         Some(Commands::Run { path }) => {
+            println!("----------------------");
             println!("Running Auto {} ", path);
+            println!("----------------------");
             let result = auto_lang::run_file(&path)?;
             println!("{}", result);
+            println!();
         }
         Some(Commands::Repl) => {
             repl::main_loop()?;

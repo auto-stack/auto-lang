@@ -31,7 +31,6 @@ pub fn run(code: &str) -> AutoResult<String> {
     interpreter.interpret(code)?;
     // Resolve any ValueRef in the result before converting to string
     let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
-    println!("Resolved: {:?}", resolved);
     Ok(resolved.repr().to_string())
 }
 
@@ -1061,5 +1060,153 @@ square(15)
         "#;
         let result = run(code).unwrap();
         assert_eq!(result, "60");
+    }
+
+    #[test]
+    fn test_type_field_mutation() {
+        let code = r#"
+            type Point {
+                x int
+                y int
+            }
+            mut p = Point {x: 10, y: 20}
+            p.x = 30
+            p.x
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "30");
+    }
+
+    // ===== Level 1: Basic Nested Mutations (2-Level Depth) =====
+
+    #[test]
+    fn test_nested_object_field_mutation() {
+        let code = r#"
+            mut obj = { inner: { x: 10, y: 20 } }
+            obj.inner.x = 30
+            obj.inner.x
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "30");
+    }
+
+    #[test]
+    fn test_array_element_field_mutation() {
+        let code = r#"
+            mut arr = [{x: 1}, {x: 2}, {x: 3}]
+            arr[0].x = 10
+            arr[0].x
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "10");
+    }
+
+    #[test]
+    fn test_object_array_element_mutation() {
+        let code = r#"
+            mut obj = { items: [1, 2, 3] }
+            obj.items[0] = 10
+            obj.items[0]
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "10");
+    }
+
+    #[test]
+    fn test_nested_array_element_mutation() {
+        let code = r#"
+            mut matrix = [[1, 2], [3, 4]]
+            matrix[0][1] = 20
+            matrix[0][1]
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "20");
+    }
+
+    // ===== Level 2: Type Instance Nested Fields =====
+
+    #[test]
+    fn test_type_instance_nested_field_mutation() {
+        let code = r#"
+            type Inner { x int }
+            type Outer { inner Inner }
+            mut obj = Outer { inner: Inner { x: 10 } }
+            obj.inner.x = 20
+            obj.inner.x
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "20");
+    }
+
+    // ===== Level 3: Complex Nested Mutations (3+ Level Depth) =====
+
+    #[test]
+    fn test_three_level_object_nesting() {
+        let code = r#"
+            mut obj = { level1: { level2: { value: 100 } } }
+            obj.level1.level2.value = 200
+            obj.level1.level2.value
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "200");
+    }
+
+    #[test]
+    fn test_deep_array_of_objects_mutation() {
+        let code = r#"
+            mut data = [
+                { info: { name: "Alice", age: 20 } },
+                { info: { name: "Bob", age: 21 } }
+            ]
+            data[0].info.age = 25
+            data[0].info.age
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "25");
+    }
+
+    // ===== Level 4: Structure Preservation =====
+
+    #[test]
+    fn test_nested_structure_preservation() {
+        let code = r#"
+            mut obj = { a: { x: 1, y: 2 }, b: { x: 3, y: 4 } }
+            obj.a.x = 10
+            [obj.a.y, obj.b.x, obj.b.y]
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "[2, 3, 4]");
+    }
+
+    // ===== Level 5: Error Cases =====
+
+    #[test]
+    fn test_nested_out_of_bounds_index() {
+        let code = r#"
+            mut obj = { items: [1, 2, 3] }
+            obj.items[10] = 100
+        "#;
+        let result = run(code);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_nested_invalid_field_access() {
+        let code = r#"
+            mut obj = { inner: { x: 10 } }
+            obj.inner.nonexistent = 20
+        "#;
+        let result = run(code);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_nested_type_mismatch() {
+        let code = r#"
+            mut obj = { items: [1, 2, 3] }
+            obj.items.invalid_field = 10
+        "#;
+        let result = run(code);
+        assert!(result.is_err());
     }
 }

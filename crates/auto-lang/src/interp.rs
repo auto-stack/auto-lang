@@ -73,7 +73,8 @@ impl Interpreter {
         }
         let ast = parser.parse()?;
         let result = self.evaler.eval(&ast);
-        self.result = result;
+        let derefed = self.scope.borrow().deref_val(result);
+        self.result = derefed;
         Ok(())
     }
 
@@ -129,7 +130,13 @@ impl Interpreter {
                 for stmt in ast.stmts {
                     val = self.evaler.eval_stmt(&stmt);
                 }
-                val
+                if let Value::ValueRef(id) = val {
+                    // lookup ValueData as Value
+                    let data = self.scope.borrow().clone_value(id).unwrap();
+                    Value::from_data(data)
+                } else {
+                    val
+                }
             }
             Err(err) => {
                 let msg = format!("AutoError: {}", err);

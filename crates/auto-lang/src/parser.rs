@@ -1934,7 +1934,6 @@ impl<'a> Parser<'a> {
         if !parent_name.is_empty() {
             let parent_type = self.scope.borrow().find_type_for_name(parent_name);
             if let Some(parent_type) = parent_type {
-                println!("defining self for method: {}", name);
                 self.define(
                     "self",
                     Meta::Store(Store {

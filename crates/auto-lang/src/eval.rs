@@ -527,43 +527,157 @@ impl Evaler {
                 Value::Void
             }
 
-            // Case 2: Nested access: obj.field = value
+            // Case 2: Nested access: obj.field = value or obj.inner.field = value or obj.arr[0] = value
             Expr::Bina(left_obj, op, right_field) if *op == Op::Dot => {
                 // Convert right-hand side to ValueData and allocate (only for nested assignment)
                 let right_data = val.into_data();
                 let right_vid = self.universe.borrow_mut().alloc_value(right_data);
 
                 match left_obj.as_ref() {
+                    // Simple case: obj.field = value
                     Expr::Ident(obj_name) => {
                         if let Some(obj_vid) = self.lookup_vid(obj_name) {
-                            let field_name = self.expr_to_astr(right_field);
-                            let path = auto_val::AccessPath::Field(field_name);
-                            match self
-                                .universe
-                                .borrow_mut()
-                                .update_nested(obj_vid, &path, right_vid)
-                            {
-                                Ok(()) => Value::Void,
-                                Err(e) => Value::error(format!(
-                                    "Failed to assign to field: {:?}",
-                                    e
-                                )),
+                            // Check if right_field is an index expression (obj.arr[0] = value)
+                            match &**right_field {
+                                Expr::Index(arr_field, index_expr) => {
+                                    if let Expr::Ident(arr_name) = &**arr_field {
+                                        let idx_val = self.eval_expr(index_expr);
+                                        if let Value::Int(i) = idx_val {
+                                            let path = auto_val::AccessPath::Nested(
+                                                Box::new(auto_val::AccessPath::Field(arr_name.clone())),
+                                                Box::new(auto_val::AccessPath::Index(i as usize)),
+                                            );
+                                            match self
+                                                .universe
+                                                .borrow_mut()
+                                                .update_nested(obj_vid, &path, right_vid)
+                                            {
+                                                Ok(()) => Value::Void,
+                                                Err(e) => Value::error(format!(
+                                                    "Failed to assign to array element: {:?}",
+                                                    e
+                                                )),
+                                            }
+                                        } else {
+                                            Value::error("Array index must be integer")
+                                        }
+                                    } else {
+                                        Value::error(format!("Invalid array target"))
+                                    }
+                                }
+                                _ => {
+                                    // Regular field access: obj.field = value
+                                    let field_name = self.expr_to_astr(right_field);
+                                    let path = auto_val::AccessPath::Field(field_name);
+                                    match self
+                                        .universe
+                                        .borrow_mut()
+                                        .update_nested(obj_vid, &path, right_vid)
+                                    {
+                                        Ok(()) => Value::Void,
+                                        Err(e) => Value::error(format!(
+                                            "Failed to assign to field: {:?}",
+                                            e
+                                        )),
+                                    }
+                                }
                             }
                         } else {
                             Value::error(format!("Variable not found: {}", obj_name))
                         }
                     }
-                    _ => Value::error(format!("Invalid assignment target")),
+                    // Nested case: obj.inner.field = value or arr[0].field = value
+                    _ => {
+                        // Extract the top-level identifier from the nested path
+                        // We need to rebuild the path as Nested(top_level_field, rest_of_path)
+                        // Actually, for cases like obj.inner.field, we need to:
+                        // 1. Look up obj (top-level identifier)
+                        // 2. Build path for inner.field
+                        // So we need to extract the first component separately
+
+                        // For now, handle the common case: arr[0].field
+                        // The left_obj is arr[0] (Index expression)
+                        // We need to get the array name and index
+                        if let Expr::Index(array, index) = left_obj.as_ref() {
+                            if let Expr::Ident(arr_name) = array.as_ref() {
+                                if let Some(arr_vid) = self.lookup_vid(arr_name) {
+                                    let idx_val = self.eval_expr(index);
+                                    if let Value::Int(i) = idx_val {
+                                        let field_name = self.expr_to_astr(right_field);
+                                        let path = auto_val::AccessPath::Nested(
+                                            Box::new(auto_val::AccessPath::Index(i as usize)),
+                                            Box::new(auto_val::AccessPath::Field(field_name)),
+                                        );
+                                        match self
+                                            .universe
+                                            .borrow_mut()
+                                            .update_nested(arr_vid, &path, right_vid)
+                                        {
+                                            Ok(()) => Value::Void,
+                                            Err(e) => Value::error(format!(
+                                                "Failed to assign to nested field: {:?}",
+                                                e
+                                            )),
+                                        }
+                                    } else {
+                                        Value::error("Array index must be integer")
+                                    }
+                                } else {
+                                    Value::error(format!("Array not found: {}", arr_name))
+                                }
+                            } else {
+                                Value::error(format!("Invalid assignment target: {}", left_obj))
+                            }
+                        } else {
+                            // Handle obj.inner.field case
+                            // left_obj is obj.inner (Bina expression)
+                            // We need to find the top-level identifier
+                            let top_level = self.extract_top_level_identifier(left_obj);
+                            if let Some(obj_name) = top_level {
+                                if let Some(obj_vid) = self.lookup_vid(&obj_name) {
+                                    // Build path for the rest (inner), excluding the top-level identifier
+                                    let inner_path = match self.build_path_excluding_top_level(left_obj, &obj_name) {
+                                        Ok(path) => path,
+                                        Err(e) => return Value::error(format!("Invalid access path: {}", e)),
+                                    };
+
+                                    // Add the rightmost field to complete the path
+                                    let right_field_name = self.expr_to_astr(right_field);
+                                    let full_path = auto_val::AccessPath::Nested(
+                                        Box::new(inner_path),
+                                        Box::new(auto_val::AccessPath::Field(right_field_name)),
+                                    );
+
+                                    match self
+                                        .universe
+                                        .borrow_mut()
+                                        .update_nested(obj_vid, &full_path, right_vid)
+                                    {
+                                        Ok(()) => Value::Void,
+                                        Err(e) => Value::error(format!(
+                                            "Failed to assign to nested field: {:?}",
+                                            e
+                                        )),
+                                    }
+                                } else {
+                                    Value::error(format!("Variable not found: {}", obj_name))
+                                }
+                            } else {
+                                Value::error(format!("Invalid assignment target"))
+                            }
+                        }
+                    }
                 }
             }
 
-            // Case 3: Array index: arr[0] = value
+            // Case 3: Array index: arr[0] = value or matrix[0][1] = value
             Expr::Index(array, index) => {
                 // Convert right-hand side to ValueData and allocate (only for nested assignment)
                 let right_data = val.into_data();
                 let right_vid = self.universe.borrow_mut().alloc_value(right_data);
 
                 match array.as_ref() {
+                    // Simple case: arr[0] = value
                     Expr::Ident(arr_name) => {
                         if let Some(arr_vid) = self.lookup_vid(arr_name) {
                             let idx_val = self.eval_expr(index);
@@ -587,6 +701,44 @@ impl Evaler {
                             Value::error(format!("Array not found: {}", arr_name))
                         }
                     }
+                    // Nested case: matrix[0][1] = value
+                    Expr::Index(nested_array, nested_index) => {
+                        // Extract top-level array name
+                        if let Expr::Ident(arr_name) = nested_array.as_ref() {
+                            if let Some(arr_vid) = self.lookup_vid(arr_name) {
+                                let idx_val = self.eval_expr(index);
+                                if let Value::Int(i) = idx_val {
+                                    // Build nested path: [nested_index][i]
+                                    let nested_idx_val = self.eval_expr(nested_index);
+                                    if let Value::Int(nested_i) = nested_idx_val {
+                                        let path = auto_val::AccessPath::Nested(
+                                            Box::new(auto_val::AccessPath::Index(nested_i as usize)),
+                                            Box::new(auto_val::AccessPath::Index(i as usize)),
+                                        );
+                                        match self
+                                            .universe
+                                            .borrow_mut()
+                                            .update_nested(arr_vid, &path, right_vid)
+                                        {
+                                            Ok(()) => Value::Void,
+                                            Err(e) => Value::error(format!(
+                                                "Failed to assign to nested index: {:?}",
+                                                e
+                                            )),
+                                        }
+                                    } else {
+                                        Value::error("Nested array index must be integer")
+                                    }
+                                } else {
+                                    Value::error("Array index must be integer")
+                                }
+                            } else {
+                                Value::error(format!("Array not found: {}", arr_name))
+                            }
+                        } else {
+                            Value::error(format!("Invalid assignment target"))
+                        }
+                    }
                     _ => Value::error(format!("Invalid assignment target")),
                 }
             }
@@ -602,6 +754,143 @@ impl Evaler {
             Expr::Str(s) => s.clone().into(),
             Expr::Int(i) => i.to_string().into(),
             _ => expr.repr().into(),
+        }
+    }
+
+    /// Helper: Recursively build AccessPath from expression (without top-level identifier)
+    /// Examples:
+    /// - `field` → Field("field")
+    /// - `inner.field` → Nested(Field("inner"), Field("field"))
+    /// - `arr[0]` → Index(0)
+    /// - `arr[0].field` → Nested(Index(0), Field("field"))
+    /// - `matrix[0][1]` → Nested(Index(0), Index(1))
+    fn build_access_path(&mut self, expr: &Expr) -> Result<auto_val::AccessPath, String> {
+        match expr {
+            // Case 1: Simple field access (base case for recursion)
+            Expr::Ident(name) => {
+                Ok(auto_val::AccessPath::Field(name.clone()))
+            }
+
+            // Case 2: Nested field access: obj.field or arr[0].field
+            Expr::Bina(left, op, right) if *op == Op::Dot => {
+                // Recursively build path for left side, then add right side
+                let left_path = self.build_access_path(left)?;
+                let right_field = self.expr_to_astr(right);
+                Ok(auto_val::AccessPath::Nested(
+                    Box::new(left_path),
+                    Box::new(auto_val::AccessPath::Field(right_field)),
+                ))
+            }
+
+            // Case 3: Array indexing: arr[0] or matrix[0][1]
+            Expr::Index(array, index_expr) => {
+                // Evaluate the index expression
+                let idx_val = self.eval_expr(index_expr);
+                if let Value::Int(i) = idx_val {
+                    // Check if the array itself is indexed (for matrix[0][1])
+                    if matches!(array.as_ref(), Expr::Index(_, _)) {
+                        // Nested array indexing
+                        let left_path = self.build_access_path(array)?;
+                        Ok(auto_val::AccessPath::Nested(
+                            Box::new(left_path),
+                            Box::new(auto_val::AccessPath::Index(i as usize)),
+                        ))
+                    } else {
+                        // Simple array indexing
+                        Ok(auto_val::AccessPath::Index(i as usize))
+                    }
+                } else {
+                    Err(format!("Array index must be integer, got {}", idx_val))
+                }
+            }
+
+            _ => Err(format!("Invalid access path expression: {}", expr)),
+        }
+    }
+
+    /// Helper: Extract top-level identifier from a nested expression
+    /// Examples:
+    /// - `obj` → Some("obj")
+    /// - `obj.field` → Some("obj")
+    /// - `obj.inner.field` → Some("obj")
+    /// - `arr[0]` → Some("arr")
+    /// - `arr[0].field` → Some("arr")
+    fn extract_top_level_identifier(&self, expr: &Expr) -> Option<AutoStr> {
+        match expr {
+            Expr::Ident(name) => Some(name.clone()),
+            Expr::Bina(left, _, _) => self.extract_top_level_identifier(left),
+            Expr::Index(array, _) => self.extract_top_level_identifier(array),
+            _ => None,
+        }
+    }
+
+    /// Helper: Build path from expression, excluding the top-level identifier
+    /// Examples:
+    /// - `field` → Field("field")
+    /// - `obj.inner` → Field("inner")  (excludes "obj")
+    /// - `arr[0]` → Index(0)  (excludes "arr")
+    fn build_path_excluding_top_level(&mut self, expr: &Expr, top_level: &str) -> Result<auto_val::AccessPath, String> {
+        match expr {
+            Expr::Ident(name) if name == top_level => {
+                Err(format!("Expression is just the top-level identifier: {}", name))
+            }
+            Expr::Ident(name) => Ok(auto_val::AccessPath::Field(name.clone())),
+            Expr::Bina(left, op, right) if *op == Op::Dot => {
+                // Check if left is the top-level identifier
+                if let Expr::Ident(name) = left.as_ref() {
+                    if name == top_level {
+                        // Simple case: obj.field where obj is top-level
+                        let field_name = self.expr_to_astr(right);
+                        Ok(auto_val::AccessPath::Field(field_name))
+                    } else {
+                        // Nested case: obj.inner.field where inner != top_level
+                        let left_path = self.build_path_excluding_top_level(left, top_level)?;
+                        let right_field = self.expr_to_astr(right);
+                        Ok(auto_val::AccessPath::Nested(
+                            Box::new(left_path),
+                            Box::new(auto_val::AccessPath::Field(right_field)),
+                        ))
+                    }
+                } else {
+                    // Recursively handle nested left side
+                    let left_path = self.build_path_excluding_top_level(left, top_level)?;
+                    let right_field = self.expr_to_astr(right);
+                    Ok(auto_val::AccessPath::Nested(
+                        Box::new(left_path),
+                        Box::new(auto_val::AccessPath::Field(right_field)),
+                    ))
+                }
+            }
+            Expr::Index(array, index_expr) => {
+                // Check if array is the top-level identifier
+                if let Expr::Ident(name) = array.as_ref() {
+                    if name == top_level {
+                        // Simple case: arr[0] where arr is top-level
+                        let idx_val = self.eval_expr(index_expr);
+                        if let Value::Int(i) = idx_val {
+                            Ok(auto_val::AccessPath::Index(i as usize))
+                        } else {
+                            Err(format!("Array index must be integer, got {}", idx_val))
+                        }
+                    } else {
+                        // Nested case: shouldn't happen normally
+                        Err(format!("Unexpected nested index"))
+                    }
+                } else {
+                    // Nested case: matrix[0][1]
+                    let left_path = self.build_path_excluding_top_level(array, top_level)?;
+                    let idx_val = self.eval_expr(index_expr);
+                    if let Value::Int(i) = idx_val {
+                        Ok(auto_val::AccessPath::Nested(
+                            Box::new(left_path),
+                            Box::new(auto_val::AccessPath::Index(i as usize)),
+                        ))
+                    } else {
+                        Err(format!("Array index must be integer, got {}", idx_val))
+                    }
+                }
+            }
+            _ => Err(format!("Invalid expression: {}", expr)),
         }
     }
 
