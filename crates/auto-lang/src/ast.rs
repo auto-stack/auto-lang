@@ -818,6 +818,87 @@ mod markdown_tests {
         cases
     }
 
+    /// Format ATOM output with proper indentation and newlines for readability
+    fn pretty_atom(atom: &str) -> String {
+        let mut result = String::new();
+        let mut indent = 0;
+        let mut in_braces = false;
+        let mut paren_depth = 0; // Track parenthesis depth
+        let mut chars = atom.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            match c {
+                '{' => {
+                    in_braces = true;
+                    result.push(' ');
+                    result.push(c);
+                    result.push('\n');
+                    indent += 4;
+                    for _ in 0..indent {
+                        result.push(' ');
+                    }
+                }
+                '}' => {
+                    if in_braces {
+                        // Trim trailing spaces/newlines before closing brace
+                        while result.ends_with(' ') || result.ends_with('\n') {
+                            result.pop();
+                        }
+                        result.push('\n');
+                        indent -= 4;
+                        for _ in 0..indent {
+                            result.push(' ');
+                        }
+                    }
+                    result.push(c);
+                    in_braces = false;
+                }
+                '(' => {
+                    result.push(c);
+                    paren_depth += 1;
+                }
+                ')' => {
+                    result.push(c);
+                    paren_depth -= 1;
+                    // Add newline after ) if we're in braces and not inside another function call
+                    if in_braces && paren_depth == 0 {
+                        result.push('\n');
+                        for _ in 0..indent {
+                            result.push(' ');
+                        }
+                    }
+                }
+                ',' => {
+                    result.push(c);
+                    // Only add newline after comma if we're in braces AND not inside parens
+                    if in_braces && paren_depth == 0 {
+                        result.push('\n');
+                        for _ in 0..indent {
+                            result.push(' ');
+                        }
+                    } else {
+                        result.push(' ');
+                    }
+                }
+                ' ' => {
+                    // Skip spaces in braces
+                    if !in_braces && !result.ends_with('\n') && !result.is_empty() {
+                        if let Some(&next) = chars.peek() {
+                            if next != ' ' && next != '{' && next != '}' && next != ',' {
+                                result.push(c);
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    result.push(c);
+                }
+            }
+        }
+
+        result.trim().to_string()
+    }
+
     fn run_markdown_test_file(path: &str) {
         let full_path = Path::new("test/ast").join(path);
         let content = fs::read_to_string(&full_path)
@@ -838,7 +919,7 @@ mod markdown_tests {
             } else {
                 code.to_atom()
             };
-            let actual_normalized = actual.replace("\r\n", "\n").trim().to_string();
+            let actual_normalized = pretty_atom(&actual.replace("\r\n", "\n"));
             let expected_normalized = tc.expected.replace("\r\n", "\n");
 
             if actual_normalized != expected_normalized {
