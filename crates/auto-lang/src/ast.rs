@@ -678,3 +678,171 @@ impl ToAtom for Code {
         self.to_atom_str()
     }
 }
+
+// ============================================================
+// Markdown Test Infrastructure for to_atom() tests
+// ============================================================
+
+#[cfg(test)]
+mod markdown_tests {
+    use super::*;
+    use crate::parser::Parser;
+    use crate::Universe;
+    use std::cell::RefCell;
+    use std::fs;
+    use std::path::Path;
+    use std::rc::Rc;
+
+    #[derive(Debug)]
+    struct TestCase {
+        name: String,
+        input: String,
+        expected: String,
+    }
+
+    fn parse_markdown_tests(content: &str) -> Vec<TestCase> {
+        let mut cases = Vec::new();
+        let lines: Vec<&str> = content.lines().collect();
+        let mut i = 0;
+
+        while i < lines.len() {
+            // Look for "##" to start a test case
+            if lines[i].starts_with("## ") {
+                let name = lines[i][3..].trim().to_string();
+                i += 1;
+
+                // Skip empty lines
+                while i < lines.len() && lines[i].trim().is_empty() {
+                    i += 1;
+                }
+
+                // Read input code until we hit "---"
+                let mut input = String::new();
+                while i < lines.len() && !lines[i].starts_with("---") {
+                    if !input.is_empty() {
+                        input.push('\n');
+                    }
+                    input.push_str(lines[i]);
+                    i += 1;
+                }
+
+                // Skip "---" line
+                if i < lines.len() && lines[i].starts_with("---") {
+                    i += 1;
+                }
+
+                // Skip empty lines
+                while i < lines.len() && lines[i].trim().is_empty() {
+                    i += 1;
+                }
+
+                // Read expected output until next "##" or end
+                let mut expected = String::new();
+                while i < lines.len() && !lines[i].starts_with("##") {
+                    if !expected.is_empty() {
+                        expected.push('\n');
+                    }
+                    expected.push_str(lines[i]);
+                    i += 1;
+                }
+
+                cases.push(TestCase {
+                    name,
+                    input: input.trim().to_string(),
+                    expected: expected.trim().to_string(),
+                });
+            } else {
+                i += 1;
+            }
+        }
+
+        cases
+    }
+
+    fn run_markdown_test_file(path: &str) {
+        let full_path = Path::new("test/ast").join(path);
+        let content = fs::read_to_string(&full_path)
+            .unwrap_or_else(|_| panic!("Failed to read test file: {:?}", full_path));
+
+        let cases = parse_markdown_tests(&content);
+
+        for tc in cases {
+            let scope = Rc::new(RefCell::new(Universe::new()));
+            let mut parser = Parser::new(&tc.input, scope.clone());
+            let code = parser
+                .parse()
+                .unwrap_or_else(|e| panic!("{}: Parse failed: {:?}", tc.name, e));
+
+            // Extract the first statement's atom representation
+            let actual = if code.stmts.len() == 1 {
+                code.stmts[0].to_atom()
+            } else {
+                code.to_atom()
+            };
+            let actual_normalized = actual.replace("\r\n", "\n").trim().to_string();
+            let expected_normalized = tc.expected.replace("\r\n", "\n");
+
+            if actual_normalized != expected_normalized {
+                panic!(
+                    "\nTest '{}' failed:\nInput:\n{}\n\nExpected:\n{}\n\nActual:\n{}\n",
+                    tc.name, tc.input, expected_normalized, actual_normalized
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_01_literals() {
+        run_markdown_test_file("01_literals.test.md");
+    }
+
+    #[test]
+    fn test_02_exprs() {
+        run_markdown_test_file("02_exprs.test.md");
+    }
+
+    #[test]
+    fn test_03_functions() {
+        run_markdown_test_file("03_functions.test.md");
+    }
+
+    #[test]
+    fn test_04_controls() {
+        run_markdown_test_file("04_controls.test.md");
+    }
+
+    #[test]
+    fn test_05_types() {
+        run_markdown_test_file("05_types.test.md");
+    }
+
+    #[test]
+    fn test_06_declarations() {
+        run_markdown_test_file("06_declarations.test.md");
+    }
+
+    #[test]
+    fn test_07_advanced_control() {
+        run_markdown_test_file("07_advanced_control.test.md");
+    }
+
+    #[test]
+    fn test_08_statements() {
+        run_markdown_test_file("08_statements.test.md");
+    }
+
+    #[test]
+    fn test_09_events() {
+        run_markdown_test_file("09_events.test.md");
+    }
+
+    #[test]
+    fn test_10_complex_cases() {
+        run_markdown_test_file("10_complex_cases.test.md");
+    }
+
+    #[test]
+    fn test_11_more_expressions() {
+        run_markdown_test_file("11_more_expressions.test.md");
+    }
+}
