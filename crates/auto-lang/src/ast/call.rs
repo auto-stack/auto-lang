@@ -151,7 +151,14 @@ impl Args {
         match arg {
             Arg::Pos(expr) => Some(expr.clone()),
             Arg::Name(n) => Some(Expr::Ident(n.clone())),
-            _ => None,
+            Arg::Pair(key, expr) => {
+                // If it's an id: value pair, return the value
+                if key == "id" {
+                    Some(expr.clone())
+                } else {
+                    None
+                }
+            }
         }
     }
 }

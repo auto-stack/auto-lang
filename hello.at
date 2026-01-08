@@ -1,6 +1,14 @@
-use auto.io: open
+// use auto.io: open
 
-let file = open("table.at")
-let s = file.read_text()
-file.close()
-s
+// let file = open("table.at")
+// let s = file.read_text()
+// file.close()
+// s
+
+let dirs = ["a" , "b", "c"]
+
+for d in dirs {
+    dir(id: d) {
+        at: d
+    }
+}

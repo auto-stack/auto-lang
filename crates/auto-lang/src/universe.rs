@@ -922,7 +922,72 @@ impl Universe {
                 Value::Pair(key, Box::new(deref_val))
             }
 
-            // Case 6: All other value types - return as-is (no nested VIDs)
+            // Case 6: Node - recursively dereference args, props, nodes, and body
+            Value::Node(node) => {
+                // Clone fields we need before creating new node
+                let name = node.name.clone();
+                let id = node.id.clone();
+                let text = node.text.clone();
+                let body_ref = node.body_ref.clone();
+                let args = &node.args;
+                let nodes = &node.nodes;
+                let body = &node.body;
+
+                // Create new node with same name and id
+                let mut dereferenced_node = auto_val::Node::new(name);
+                dereferenced_node.id = id;
+                dereferenced_node.text = text;
+                dereferenced_node.body_ref = body_ref;
+
+                // Dereference all args
+                for arg in args.args.iter() {
+                    match arg {
+                        auto_val::Arg::Pos(val) => {
+                            let deref_val = self.deref_val(val.clone());
+                            dereferenced_node.args.args.push(auto_val::Arg::Pos(deref_val));
+                        }
+                        auto_val::Arg::Name(name) => {
+                            dereferenced_node.args.args.push(auto_val::Arg::Name(name.clone()));
+                        }
+                        auto_val::Arg::Pair(key, val) => {
+                            let deref_val = self.deref_val(val.clone());
+                            dereferenced_node.args.args.push(auto_val::Arg::Pair(key.clone(), deref_val));
+                        }
+                    }
+                }
+
+                // Dereference all props
+                for (key, prop_val) in node.props_iter() {
+                    let deref_prop_val = self.deref_val(prop_val.clone());
+                    dereferenced_node.set_prop(key.clone(), deref_prop_val);
+                }
+
+                // Dereference all child nodes
+                for child_node in nodes.iter() {
+                    let deref_child = self.deref_val(Value::Node(child_node.clone()));
+                    dereferenced_node.nodes.push(deref_child.to_node().clone());
+                }
+
+                // Dereference all items in body
+                for (key, body_item) in body.map.iter() {
+                    let dereferenced_item = match body_item {
+                        auto_val::NodeItem::Prop(pair) => {
+                            let deref_val = self.deref_val(pair.value.clone());
+                            auto_val::NodeItem::Prop(auto_val::Pair::new(pair.key.clone(), deref_val))
+                        }
+                        auto_val::NodeItem::Node(child_node) => {
+                            let deref_node = self.deref_val(Value::Node(child_node.clone()));
+                            auto_val::NodeItem::Node(deref_node.to_node().clone())
+                        }
+                    };
+                    dereferenced_node.body.map.insert(key.clone(), dereferenced_item);
+                }
+                dereferenced_node.body.index = body.index.clone();
+
+                Value::Node(dereferenced_node)
+            }
+
+            // Case 7: All other value types - return as-is (no nested VIDs)
             _ => val,
         }
     }

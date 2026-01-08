@@ -1267,4 +1267,17 @@ square(15)
         let result = run(code).unwrap();
         assert_eq!(result, "10");
     }
+
+    #[test]
+    fn test_config_with_deep_data() {
+        let code = r#"let dirs = ["a" , "b", "c"]
+for d in dirs {
+    dir(id: d) {
+        at: d
+    }
+}
+"#;
+        let interp = eval_config(code, &auto_val::Obj::new()).unwrap();
+        assert_eq!(interp.result.repr(), r#"root {dir a {at: "a"; }; dir b {at: "b"; }; dir c {at: "c"; }; }"#);
+    }
 }

@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 clap = { workspace = true }
 auto-lang = { path = "../auto-lang" }
+auto-val = { path = "../auto-val" }

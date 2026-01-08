@@ -19,6 +19,8 @@ enum Commands {
     Run { path: String },
     #[command(about = "Evaluate Auto expression")]
     Eval { code: String },
+    #[command(about= "Treat File as AutoConfig")]
+    Config { path: String },
     #[command(about = "Transpile Auto to C")]
     C { path: String },
 }
@@ -46,6 +48,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         Some(Commands::Repl) => {
             repl::main_loop()?;
+        }
+        Some(Commands::Config { path }) => {
+            let code = std::fs::read_to_string(path.as_str())?;
+            let args = auto_val::Obj::new();
+            let c = auto_lang::eval_config(code.as_str(), &args)?;
+            println!("{}", c.result.repr());
         }
         Some(Commands::C { path }) => {
             let c = auto_lang::trans_c(path.as_str())?;
