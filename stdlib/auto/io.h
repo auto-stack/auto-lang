@@ -9,5 +9,6 @@ struct File {
     FILE* file;
 };
 
+str File_ReadText(struct File *self);
 void File_Close(struct File *self);
 struct File open(char* path);

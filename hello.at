@@ -1,4 +1,6 @@
 use auto.io: open
 
 let file = open("table.at")
-file.read_text()
+let s = file.read_text()
+file.close()
+s

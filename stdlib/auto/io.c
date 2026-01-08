@@ -4,6 +4,12 @@ void say(char* msg) {
     printf("%s\n", msg);
 }
 
+str File_ReadText(struct File *self) {
+
+    char* buf = "                                        ";
+    fgets(buf, 40, self->file);
+    return buf;
+}
 void File_Close(struct File *self) {
     fclose(self->file);
 }

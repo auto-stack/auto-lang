@@ -1,5 +1,5 @@
 #include "sys.h"
 
-int get_pid() {
+int get_pid(void) {
     return getpid();
 }
