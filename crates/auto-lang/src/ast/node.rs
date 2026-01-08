@@ -65,7 +65,7 @@ impl AtomWriter for Node {
         }
         // Handle additional props from args
         for arg in &self.args.args {
-            if let auto_val::Arg::Pair(key, value) = arg {
+            if let crate::ast::call::Arg::Pair(key, value) = arg {
                 write!(f, ", {}(\"{}\")", key, value.to_atom_str())?;
             }
         }

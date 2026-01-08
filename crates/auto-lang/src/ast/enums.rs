@@ -72,11 +72,11 @@ impl ToNode for EnumDecl {
 
 impl AtomWriter for EnumDecl {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(enum (name {})", self.name)?;
+        write!(f, "enum(name(\"{}\")) {{", self.name)?;
         for item in &self.items {
             write!(f, " {}", item.to_atom_str())?;
         }
-        write!(f, ")")?;
+        write!(f, " }}")?;
         Ok(())
     }
 }
@@ -89,7 +89,11 @@ impl ToAtom for EnumDecl {
 
 impl AtomWriter for EnumItem {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(item (name {}) (value {}))", self.name, self.value)?;
+        write!(
+            f,
+            "item(name(\"{}\"), value(int({})))",
+            self.name, self.value
+        )?;
         Ok(())
     }
 }

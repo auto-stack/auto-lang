@@ -73,11 +73,11 @@ impl ToNode for Tag {
 
 impl AtomWriter for Tag {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(tag (name {})", self.name)?;
+        write!(f, "tag(name(\"{}\")) {{", self.name)?;
         for field in &self.fields {
             write!(f, " {}", field.to_atom_str())?;
         }
-        write!(f, ")")?;
+        write!(f, " }}")?;
         Ok(())
     }
 }
@@ -92,7 +92,7 @@ impl AtomWriter for TagField {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         write!(
             f,
-            "(field (name {}) (type {}))",
+            "field(name(\"{}\"), type({}))",
             self.name,
             self.ty.to_atom_str()
         )?;

@@ -66,17 +66,20 @@ impl ToNode for Use {
 
 impl AtomWriter for Use {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(use")?;
+        write!(f, "use(")?;
         match self.kind {
-            UseKind::C => write!(f, " (kind c)")?,
-            UseKind::Rust => write!(f, " (kind rust)")?,
+            UseKind::C => write!(f, "kind(\"c\"), ")?,
+            UseKind::Rust => write!(f, "kind(\"rust\"), ")?,
             UseKind::Auto => {}
         }
         if !self.paths.is_empty() {
-            write!(f, " (path {})", self.paths.join("."))?;
+            write!(f, "path(\"{}\")", self.paths.join("."))?;
         }
         if !self.items.is_empty() {
-            write!(f, " (items {})", self.items.join(","))?;
+            if !self.paths.is_empty() {
+                write!(f, ", ")?;
+            }
+            write!(f, "items([{}])", self.items.join(", "))?;
         }
         write!(f, ")")?;
         Ok(())

@@ -113,11 +113,11 @@ impl ToNode for OnEvents {
 
 impl AtomWriter for OnEvents {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(on")?;
+        write!(f, "on {{")?;
         for branch in &self.branches {
             write!(f, " {}", branch.to_atom_str())?;
         }
-        write!(f, ")")?;
+        write!(f, " }}")?;
         Ok(())
     }
 }
@@ -172,15 +172,15 @@ impl ToNode for Arrow {
 
 impl AtomWriter for Arrow {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(arrow")?;
+        write!(f, "arrow(")?;
         if let Some(src) = &self.src {
-            write!(f, " (from {})", src.to_atom_str())?;
+            write!(f, "from({})", src.to_atom_str())?;
         }
         if let Some(dest) = &self.dest {
-            write!(f, " (to {})", dest.to_atom_str())?;
-        }
-        if let Some(with) = &self.with {
-            write!(f, " (with {})", with.to_atom_str())?;
+            if self.src.is_some() {
+                write!(f, ", ")?;
+            }
+            write!(f, "to({})", dest.to_atom_str())?;
         }
         write!(f, ")")?;
         Ok(())
@@ -213,15 +213,15 @@ impl ToNode for CondArrow {
 
 impl AtomWriter for CondArrow {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(cond-arrow")?;
+        write!(f, "cond-arrow(")?;
         if let Some(src) = &self.src {
-            write!(f, " (from {})", src.to_atom_str())?;
+            write!(f, "from({}), ", src.to_atom_str())?;
         }
-        write!(f, " (cond {})", self.cond.to_atom_str())?;
+        write!(f, "cond({})) {{", self.cond.to_atom_str())?;
         for sub in &self.subs {
             write!(f, " {}", sub.to_atom_str())?;
         }
-        write!(f, ")")?;
+        write!(f, " }}")?;
         Ok(())
     }
 }

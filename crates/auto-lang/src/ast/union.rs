@@ -50,11 +50,11 @@ impl ToNode for Union {
 
 impl AtomWriter for Union {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(union (name {})", self.name)?;
+        write!(f, "union(name(\"{}\")) {{", self.name)?;
         for field in &self.fields {
             write!(f, " {}", field.to_atom_str())?;
         }
-        write!(f, ")")?;
+        write!(f, " }}")?;
         Ok(())
     }
 }
@@ -69,7 +69,7 @@ impl AtomWriter for UnionField {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         write!(
             f,
-            "(field (name {}) (type {}))",
+            "field(name(\"{}\"), type({}))",
             self.name,
             self.ty.to_atom_str()
         )?;

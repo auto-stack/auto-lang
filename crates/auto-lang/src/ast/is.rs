@@ -54,11 +54,11 @@ use auto_val::{AutoStr, Node as AutoNode, Value};
 
 impl AtomWriter for Is {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(is {}", self.target.to_atom_str())?;
+        write!(f, "is({}) {{", self.target.to_atom_str())?;
         for branch in &self.branches {
             write!(f, " {}", branch.to_atom_str())?;
         }
-        write!(f, ")")?;
+        write!(f, " }}")?;
         Ok(())
     }
 }
@@ -86,13 +86,13 @@ impl AtomWriter for IsBranch {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         match self {
             IsBranch::EqBranch(expr, body) => {
-                write!(f, "(eq {} {})", expr.to_atom_str(), body.to_atom_str())?;
+                write!(f, "eq({}) {{ {} }}", expr.to_atom_str(), body.to_atom_str())?;
             }
             IsBranch::IfBranch(expr, body) => {
-                write!(f, "(if {} {})", expr.to_atom_str(), body.to_atom_str())?;
+                write!(f, "if({}) {{ {} }}", expr.to_atom_str(), body.to_atom_str())?;
             }
             IsBranch::ElseBranch(body) => {
-                write!(f, "(else {})", body.to_atom_str())?;
+                write!(f, "else {{ {} }}", body.to_atom_str())?;
             }
         }
         Ok(())

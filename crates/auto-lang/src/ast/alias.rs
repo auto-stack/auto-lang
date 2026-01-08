@@ -21,7 +21,11 @@ use auto_val::{AutoStr, Node as AutoNode, Value};
 
 impl AtomWriter for Alias {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(alias (name {}) (target {}))", self.alias, self.target)?;
+        write!(
+            f,
+            "alias(name(\"{}\"), target(\"{}\"))",
+            self.alias, self.target
+        )?;
         Ok(())
     }
 }
