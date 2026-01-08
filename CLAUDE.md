@@ -233,6 +233,29 @@ This creates a self-sustaining ecosystem where AutoLang can compile itself.
 
 ## Common Development Tasks
 
+### Creating Plans for Complex Tasks
+
+When working on complex features or refactoring tasks that require planning:
+
+1. **Create a plan file** in `docs/plans/` with:
+   - Consecutive numbering (e.g., `006-my-plan.md`)
+   - Descriptive name (kebab-case)
+   - Comprehensive but concise content
+
+2. **Plan file format**:
+   - Objective/Goal
+   - Current state/Problem
+   - Proposed solution/Design
+   - Implementation steps
+   - Testing strategy
+   - Success criteria
+
+3. **Example plan names**:
+   - `006-to-atom-comprehensive-tests.md`
+   - `007-refactor-parser-memory.md`
+
+**Why**: Plans provide context, enable review, and create a historical record of design decisions.
+
 ### ⚠️ CRITICAL: Never Edit Generated C Files
 
 **DO NOT manually edit `.c` or `.h` files in `stdlib/auto/`** - These are **auto-generated** by the C transpiler from `.at` source files.

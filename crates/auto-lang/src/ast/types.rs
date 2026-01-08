@@ -351,10 +351,10 @@ impl ToAtom for Key {
 impl AtomWriter for Key {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         match self {
-            Key::NamedKey(name) => write!(f, "(name {})", name)?,
-            Key::IntKey(i) => write!(f, "{}", i)?,
-            Key::BoolKey(b) => write!(f, "{}", b)?,
-            Key::StrKey(s) => write!(f, "\"{}\"", s)?,
+            Key::NamedKey(name) => write!(f, "name({})", name)?,
+            Key::IntKey(i) => write!(f, "int({})", i)?,
+            Key::BoolKey(b) => write!(f, "bool({})", b)?,
+            Key::StrKey(s) => write!(f, "str({})", s)?,
         }
         Ok(())
     }
@@ -408,12 +408,12 @@ impl AtomWriter for Member {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         write!(
             f,
-            "(member (name {}) (type {})",
+            "member(name(\"{}\"), type({}))",
             self.name,
             self.ty.to_atom_str()
         )?;
         if let Some(value) = &self.value {
-            write!(f, " (value {})", value.to_atom_str())?;
+            write!(f, ", value({})", value.to_atom_str())?;
         }
         write!(f, ")")?;
         Ok(())
@@ -440,28 +440,10 @@ impl ToAtom for Member {
 
 impl AtomWriter for TypeDecl {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        let kind_str = match &self.kind {
-            TypeDeclKind::UserType => "user",
-            TypeDeclKind::CType => "c",
-        };
-
-        write!(f, "(type-decl (name {}) (kind {})", self.name, kind_str)?;
-
-        if !self.has.is_empty() {
-            write!(f, " (has")?;
-            for ty in &self.has {
-                write!(f, " {}", ty.to_atom_str())?;
-            }
-            write!(f, ")")?;
-        }
+        write!(f, "type-decl(name(\"{}\"))", self.name)?;
 
         for member in &self.members {
             write!(f, " {}", member.to_atom_str())?;
-        }
-
-        for method in &self.methods {
-            // TODO: Use method.to_atom_str() once Method implements AtomWriter
-            write!(f, " {:?}", method.to_atom())?;
         }
 
         write!(f, ")")?;

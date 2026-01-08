@@ -412,7 +412,12 @@ impl<T: AtomWriter> AtomWriter for Vec<T> {
 
 impl AtomWriter for Pair {
     fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
-        write!(f, "{}:{}", self.key, self.value)?;
+        write!(
+            f,
+            "pair({}, {})",
+            self.key.to_atom_str(),
+            self.value.to_atom_str()
+        )?;
         Ok(())
     }
 }

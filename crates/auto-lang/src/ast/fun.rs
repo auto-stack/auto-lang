@@ -117,12 +117,12 @@ impl AtomWriter for Param {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         write!(
             f,
-            "(param (name {}) (type {})",
+            "param(name(\"{}\"), type({}))",
             self.name,
             self.ty.to_atom_str()
         )?;
         if let Some(default) = &self.default {
-            write!(f, " (default {})", default.to_atom_str())?;
+            write!(f, ", default({})", default.to_atom_str())?;
         }
         write!(f, ")")?;
         Ok(())
@@ -149,15 +149,17 @@ impl ToAtom for Param {
 
 impl AtomWriter for Fn {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(fn (name {}) (params", self.name)?;
+        write!(f, "fn(name(\"{}\")) {{", self.name)?;
         for param in &self.params {
             write!(f, " {}", param.to_atom_str())?;
         }
-        write!(f, ")")?;
         if !matches!(self.ret, Type::Unknown) {
-            write!(f, " (return {})", self.ret.to_atom_str())?;
+            write!(f, " return(type({}))", self.ret.to_atom_str())?;
         }
-        write!(f, " {})", self.body.to_atom_str())?;
+        if !matches!(self.body.stmts.len(), 0) {
+            write!(f, " body {{{}}}", self.body.to_atom_str())?;
+        }
+        write!(f, " }}")?;
         Ok(())
     }
 }

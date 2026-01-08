@@ -205,8 +205,8 @@ impl AtomWriter for Arg {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         match self {
             Arg::Pos(expr) => write!(f, "{}", expr.to_atom_str())?,
-            Arg::Name(name) => write!(f, "(name {})", name)?,
-            Arg::Pair(key, expr) => write!(f, "(pair {} {})", key, expr.to_atom_str())?,
+            Arg::Name(name) => write!(f, "name(\"{}\")", name)?,
+            Arg::Pair(key, expr) => write!(f, "pair(name(\"{}\"), {})", key, expr.to_atom_str())?,
         }
         Ok(())
     }
@@ -239,11 +239,10 @@ impl ToAtom for Arg {
 
 impl AtomWriter for Args {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(args")?;
+        write!(f, "args")?;
         for arg in &self.args {
-            write!(f, " {}", arg.to_atom_str())?;
+            write!(f, "({})", arg.to_atom_str())?;
         }
-        write!(f, ")")?;
         Ok(())
     }
 }
@@ -269,16 +268,11 @@ impl ToAtom for Args {
 
 impl AtomWriter for Call {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(
-            f,
-            "(call {} {}",
-            self.name.to_atom_str(),
-            self.args.to_atom_str()
-        )?;
-        if !matches!(self.ret, Type::Unknown) {
-            write!(f, " (return {})", self.ret.to_atom_str())?;
+        write!(f, "call(name(\"{}\")) {{", self.name.to_atom_str())?;
+        for arg in &self.args.args {
+            write!(f, " {}", arg.to_atom_str())?;
         }
-        write!(f, ")")?;
+        write!(f, " }}")?;
         Ok(())
     }
 }

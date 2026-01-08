@@ -28,14 +28,14 @@ use auto_val::{AutoStr, Node as AutoNode, Value};
 
 impl AtomWriter for If {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(if")?;
+        write!(f, "if {{")?;
         for branch in &self.branches {
             write!(f, " {}", branch.to_atom_str())?;
         }
         if let Some(else_body) = &self.else_ {
-            write!(f, " (else {})", else_body.to_atom_str())?;
+            write!(f, " else {{ {} }}", else_body.to_atom_str())?;
         }
-        write!(f, ")")?;
+        write!(f, " }}")?;
         Ok(())
     }
 }
