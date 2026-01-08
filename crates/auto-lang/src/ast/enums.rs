@@ -50,3 +50,30 @@ impl EnumDecl {
         self.items.first().map_or(0, |item| item.value)
     }
 }
+
+// ToAtom implementation
+
+use crate::ast::ToAtom;
+use auto_val::{Node, Value};
+
+impl ToAtom for EnumDecl {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("enum");
+        node.set_prop("name", Value::str(self.name.as_str()));
+
+        for item in &self.items {
+            node.add_kid(item.to_atom().to_node());
+        }
+
+        Value::Node(node)
+    }
+}
+
+impl ToAtom for EnumItem {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("item");
+        node.set_prop("name", Value::str(self.name.as_str()));
+        node.set_prop("value", Value::Int(self.value));
+        Value::Node(node)
+    }
+}

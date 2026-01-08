@@ -45,3 +45,70 @@ impl fmt::Display for Break {
         write!(f, "(break)")
     }
 }
+
+// ToAtom implementation
+
+use crate::ast::ToAtom;
+use auto_val::{Node, Value};
+
+impl ToAtom for For {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("for");
+
+        // Add iterator based on type
+        match &self.iter {
+            Iter::Indexed(index, iter_name) => {
+                let mut iter_node = Node::new("iter");
+                iter_node.set_prop("index", Value::str(index.as_str()));
+                iter_node.set_prop("name", Value::str(iter_name.as_str()));
+                node.add_kid(iter_node);
+            }
+            Iter::Named(name) => {
+                let mut iter_node = Node::new("iter");
+                iter_node.set_prop("name", Value::str(name.as_str()));
+                node.add_kid(iter_node);
+            }
+            Iter::Call(call) => {
+                node.add_kid(call.to_atom().to_node());
+            }
+            Iter::Ever => {
+                let iter_node = Node::new("ever");
+                node.add_kid(iter_node);
+            }
+        }
+
+        node.add_kid(self.range.to_atom().to_node());
+        node.add_kid(self.body.to_atom().to_node());
+        Value::Node(node)
+    }
+}
+
+impl ToAtom for Iter {
+    fn to_atom(&self) -> Value {
+        match self {
+            Iter::Indexed(index, iter_name) => {
+                let mut node = Node::new("iter");
+                node.set_prop("index", Value::str(index.as_str()));
+                node.set_prop("name", Value::str(iter_name.as_str()));
+                Value::Node(node)
+            }
+            Iter::Named(name) => {
+                let mut node = Node::new("iter");
+                node.set_prop("name", Value::str(name.as_str()));
+                Value::Node(node)
+            }
+            Iter::Call(call) => call.to_atom(),
+            Iter::Ever => {
+                let node = Node::new("ever");
+                Value::Node(node)
+            }
+        }
+    }
+}
+
+impl ToAtom for Break {
+    fn to_atom(&self) -> Value {
+        let node = Node::new("break");
+        Value::Node(node)
+    }
+}

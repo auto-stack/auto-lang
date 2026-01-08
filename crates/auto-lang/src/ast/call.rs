@@ -187,3 +187,185 @@ pub fn fmt_call(f: &mut fmt::Formatter, call: &Call) -> fmt::Result {
     write!(f, ")")?;
     Ok(())
 }
+
+// ToAtom implementations
+
+use crate::ast::ToAtom;
+use auto_val::{Array, Arg as AutoValArg, Node, Value, ValueKey};
+
+impl ToAtom for Arg {
+    fn to_atom(&self) -> Value {
+        match self {
+            Arg::Pos(expr) => expr.to_atom(),
+            Arg::Name(name) => Value::Str(name.clone()),
+            Arg::Pair(key, expr) => Value::Pair(ValueKey::Str(key.clone()), Box::new(expr.to_atom())),
+        }
+    }
+}
+
+impl ToAtom for Args {
+    fn to_atom(&self) -> Value {
+        // Convert args to an array of values
+        let items: Vec<Value> = self.args.iter().map(|arg| arg.to_atom()).collect();
+        let mut node = Node::new("args");
+        node.add_arg(AutoValArg::Pos(Value::array(Array::from_vec(items))));
+        Value::Node(node)
+    }
+}
+
+impl ToAtom for Call {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("call");
+        node.add_kid(self.name.to_atom().to_node());
+        node.add_kid(self.args.to_atom().to_node());
+
+        if !matches!(self.ret, Type::Unknown) {
+            node.set_prop("return", self.ret.to_atom());
+        }
+
+        Value::Node(node)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_arg_to_atom_pos() {
+        let arg = Arg::Pos(Expr::Int(42));
+        let atom = arg.to_atom();
+
+        match atom {
+            Value::Node(node) => {
+                assert_eq!(node.name, "int");
+            }
+            _ => panic!("Expected Node, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_arg_to_atom_name() {
+        let arg = Arg::Name("x".into());
+        let atom = arg.to_atom();
+
+        match atom {
+            Value::Str(s) => assert_eq!(s, "x"),
+            _ => panic!("Expected Str, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_arg_to_atom_pair() {
+        let arg = Arg::Pair("key".into(), Expr::Int(42));
+        let atom = arg.to_atom();
+
+        match atom {
+            Value::Pair(key, value) => {
+                match key {
+                    ValueKey::Str(s) => assert_eq!(s, "key"),
+                    _ => panic!("Expected Str key"),
+                }
+                match &*value {
+                    Value::Node(node) => assert_eq!(node.name, "int"),
+                    _ => panic!("Expected Node value"),
+                }
+            }
+            _ => panic!("Expected Pair, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_args_to_atom_empty() {
+        let args = Args::new();
+        let atom = args.to_atom();
+
+        match atom {
+            Value::Node(node) => {
+                assert_eq!(node.name, "args");
+                assert_eq!(node.args.args.len(), 1); // Has empty array arg
+            }
+            _ => panic!("Expected Node, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_args_to_atom_with_args() {
+        let mut args = Args::new();
+        args.args.push(Arg::Pos(Expr::Int(1)));
+        args.args.push(Arg::Pos(Expr::Int(2)));
+        let atom = args.to_atom();
+
+        match atom {
+            Value::Node(node) => {
+                assert_eq!(node.name, "args");
+                assert_eq!(node.args.args.len(), 1);
+                match &node.args.args[0] {
+                    AutoValArg::Pos(Value::Array(arr)) => {
+                        assert_eq!(arr.len(), 2);
+                    }
+                    _ => panic!("Expected Array arg"),
+                }
+            }
+            _ => panic!("Expected Node, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_call_to_atom_simple() {
+        let call = Call {
+            name: Box::new(Expr::Ident("print".into())),
+            args: Args::new(),
+            ret: Type::Unknown,
+        };
+        let atom = call.to_atom();
+
+        match atom {
+            Value::Node(node) => {
+                assert_eq!(node.name, "call");
+                assert_eq!(node.nodes.len(), 2); // name + args
+                assert!(!node.has_prop("return")); // Unknown omitted
+            }
+            _ => panic!("Expected Node, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_call_to_atom_with_return_type() {
+        let call = Call {
+            name: Box::new(Expr::Ident("getInt".into())),
+            args: Args::new(),
+            ret: Type::Int,
+        };
+        let atom = call.to_atom();
+
+        match atom {
+            Value::Node(node) => {
+                assert_eq!(node.name, "call");
+                assert_eq!(node.get_prop("return"), Value::str("int"));
+            }
+            _ => panic!("Expected Node, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_call_to_atom_with_args() {
+        let mut args = Args::new();
+        args.args.push(Arg::Pos(Expr::Int(42)));
+
+        let call = Call {
+            name: Box::new(Expr::Ident("print".into())),
+            args,
+            ret: Type::Unknown,
+        };
+        let atom = call.to_atom();
+
+        match atom {
+            Value::Node(node) => {
+                assert_eq!(node.name, "call");
+                assert_eq!(node.nodes.len(), 2);
+            }
+            _ => panic!("Expected Node, got {:?}", atom),
+        }
+    }
+}

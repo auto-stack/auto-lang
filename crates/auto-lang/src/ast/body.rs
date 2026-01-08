@@ -35,3 +35,56 @@ impl fmt::Display for Body {
         write!(f, ")")
     }
 }
+
+// ToAtom implementation
+
+use crate::ast::ToAtom;
+use auto_val::{Array, Arg as AutoValArg, Node, Value};
+
+impl ToAtom for Body {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("body");
+        // Convert statements to an array
+        let stmts: Vec<Value> = self.stmts.iter().map(|stmt| stmt.to_atom()).collect();
+        node.add_arg(AutoValArg::Pos(Value::array(Array::from_vec(stmts))));
+        Value::Node(node)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_body_to_atom_empty() {
+        let body = Body::new();
+        let atom = body.to_atom();
+
+        match atom {
+            Value::Node(node) => {
+                assert_eq!(node.name, "body");
+                assert_eq!(node.args.args.len(), 1);
+            }
+            _ => panic!("Expected Node, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_body_to_atom_single_expr() {
+        let body = Body::single_expr(Expr::Int(42));
+        let atom = body.to_atom();
+
+        match atom {
+            Value::Node(node) => {
+                assert_eq!(node.name, "body");
+                match &node.args.args[0] {
+                    AutoValArg::Pos(Value::Array(arr)) => {
+                        assert_eq!(arr.len(), 1);
+                    }
+                    _ => panic!("Expected Array arg"),
+                }
+            }
+            _ => panic!("Expected Node, got {:?}", atom),
+        }
+    }
+}

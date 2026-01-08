@@ -315,3 +315,190 @@ impl Key {
         }
     }
 }
+
+// ToAtom implementations
+
+use crate::ast::ToAtom;
+use auto_val::{Node, Value, ValueKey};
+
+impl ToAtom for Type {
+    fn to_atom(&self) -> Value {
+        // Convert Type to a simple string value representing the type name
+        Value::str(self.unique_name().as_str())
+    }
+}
+
+impl ToAtom for Key {
+    fn to_atom(&self) -> Value {
+        // Convert Key to ValueKey for use in objects/pairs
+        match self {
+            Key::NamedKey(name) => Value::Str(name.clone()),
+            Key::IntKey(i) => Value::Int(*i),
+            Key::BoolKey(b) => Value::Bool(*b),
+            Key::StrKey(s) => Value::Str(s.clone()),
+        }
+    }
+}
+
+impl ToAtom for Pair {
+    fn to_atom(&self) -> Value {
+        // Convert Pair to a Value::Pair
+        let value_key = match &self.key {
+            Key::NamedKey(name) => ValueKey::Str(name.clone()),
+            Key::IntKey(i) => ValueKey::Int(*i),
+            Key::BoolKey(b) => ValueKey::Bool(*b),
+            Key::StrKey(s) => ValueKey::Str(s.clone()),
+        };
+        Value::Pair(value_key, Box::new(self.value.to_atom()))
+    }
+}
+
+impl ToAtom for Member {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("member");
+        node.set_prop("name", Value::str(self.name.as_str()));
+        node.set_prop("type", self.ty.to_atom());
+        if let Some(value) = &self.value {
+            node.set_prop("value", value.to_atom());
+        }
+        Value::Node(node)
+    }
+}
+
+impl ToAtom for TypeDecl {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("type-decl");
+        node.set_prop("name", Value::str(self.name.as_str()));
+        node.set_prop("kind", Value::str(match &self.kind {
+            TypeDeclKind::UserType => "user",
+            TypeDeclKind::CType => "c",
+        }));
+
+        if !self.has.is_empty() {
+            let has_types: Vec<Value> = self.has.iter().map(|t| t.to_atom()).collect();
+            node.set_prop("has", Value::array(auto_val::Array::from_vec(has_types)));
+        }
+
+        for member in &self.members {
+            node.add_kid(member.to_atom().to_node());
+        }
+
+        for method in &self.methods {
+            node.add_kid(method.to_atom().to_node());
+        }
+
+        Value::Node(node)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_type_to_atom_int() {
+        let ty = Type::Int;
+        let atom = ty.to_atom();
+
+        match atom {
+            Value::Str(s) => assert_eq!(s, "int"),
+            _ => panic!("Expected Str, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_type_to_atom_bool() {
+        let ty = Type::Bool;
+        let atom = ty.to_atom();
+
+        match atom {
+            Value::Str(s) => assert_eq!(s, "bool"),
+            _ => panic!("Expected Str, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_key_to_atom_named() {
+        let key = Key::NamedKey("x".into());
+        let atom = key.to_atom();
+
+        match atom {
+            Value::Str(s) => assert_eq!(s, "x"),
+            _ => panic!("Expected Str, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_key_to_atom_int() {
+        let key = Key::IntKey(42);
+        let atom = key.to_atom();
+
+        match atom {
+            Value::Int(i) => assert_eq!(i, 42),
+            _ => panic!("Expected Int, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_pair_to_atom() {
+        let pair = Pair {
+            key: Key::NamedKey("x".into()),
+            value: Box::new(Expr::Int(42)),
+        };
+        let atom = pair.to_atom();
+
+        match atom {
+            Value::Pair(key, value) => {
+                match key {
+                    ValueKey::Str(s) => assert_eq!(s, "x"),
+                    _ => panic!("Expected Str key"),
+                }
+                match &*value {
+                    Value::Node(node) => assert_eq!(node.name, "int"),
+                    _ => panic!("Expected Node value"),
+                }
+            }
+            _ => panic!("Expected Pair, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_member_to_atom() {
+        let member = Member {
+            name: "x".into(),
+            ty: Type::Int,
+            value: Some(Expr::Int(42)),
+        };
+        let atom = member.to_atom();
+
+        match atom {
+            Value::Node(node) => {
+                assert_eq!(node.name, "member");
+                assert_eq!(node.get_prop("name"), Value::str("x"));
+                assert!(node.has_prop("value"));
+            }
+            _ => panic!("Expected Node, got {:?}", atom),
+        }
+    }
+
+    #[test]
+    fn test_type_decl_to_atom() {
+        let type_decl = TypeDecl {
+            name: "Point".into(),
+            kind: TypeDeclKind::UserType,
+            has: vec![],
+            specs: vec![],
+            members: vec![Member::new("x".into(), Type::Int, None)],
+            methods: vec![],
+        };
+        let atom = type_decl.to_atom();
+
+        match atom {
+            Value::Node(node) => {
+                assert_eq!(node.name, "type-decl");
+                assert_eq!(node.get_prop("name"), Value::str("Point"));
+            }
+            _ => panic!("Expected Node, got {:?}", atom),
+        }
+    }
+}

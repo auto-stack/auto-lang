@@ -92,3 +92,65 @@ impl fmt::Display for OnEvents {
         write!(f, ")")
     }
 }
+
+// ToAtom implementation
+
+use crate::ast::ToAtom;
+use auto_val::{Node, Value};
+
+impl ToAtom for OnEvents {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("on");
+
+        for branch in &self.branches {
+            node.add_kid(branch.to_atom().to_node());
+        }
+
+        Value::Node(node)
+    }
+}
+
+impl ToAtom for Event {
+    fn to_atom(&self) -> Value {
+        match self {
+            Event::Arrow(arrow) => arrow.to_atom(),
+            Event::CondArrow(cond_arrow) => cond_arrow.to_atom(),
+        }
+    }
+}
+
+impl ToAtom for Arrow {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("arrow");
+
+        if let Some(src) = &self.src {
+            node.set_prop("from", src.to_atom());
+        }
+        if let Some(dest) = &self.dest {
+            node.set_prop("to", dest.to_atom());
+        }
+        if let Some(with) = &self.with {
+            node.set_prop("with", with.to_atom());
+        }
+
+        Value::Node(node)
+    }
+}
+
+impl ToAtom for CondArrow {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("cond-arrow");
+
+        if let Some(src) = &self.src {
+            node.set_prop("from", src.to_atom());
+        }
+
+        node.set_prop("cond", self.cond.to_atom());
+
+        for sub in &self.subs {
+            node.add_kid(sub.to_atom().to_node());
+        }
+
+        Value::Node(node)
+    }
+}

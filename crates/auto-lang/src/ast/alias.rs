@@ -12,3 +12,17 @@ impl fmt::Display for Alias {
         write!(f, "(alias (name {}) (target {}))", self.alias, self.target)
     }
 }
+
+// ToAtom implementation
+
+use crate::ast::ToAtom;
+use auto_val::{Node, Value};
+
+impl ToAtom for Alias {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("alias");
+        node.set_prop("name", Value::str(self.alias.as_str()));
+        node.set_prop("target", Value::str(self.target.as_str()));
+        Value::Node(node)
+    }
+}

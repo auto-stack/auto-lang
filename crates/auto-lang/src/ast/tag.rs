@@ -51,3 +51,30 @@ impl fmt::Display for TagField {
         write!(f, "{} {}", self.name, self.ty)
     }
 }
+
+// ToAtom implementation
+
+use crate::ast::ToAtom;
+use auto_val::{Node, Value};
+
+impl ToAtom for Tag {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("tag");
+        node.set_prop("name", Value::str(self.name.as_str()));
+
+        for field in &self.fields {
+            node.add_kid(field.to_atom().to_node());
+        }
+
+        Value::Node(node)
+    }
+}
+
+impl ToAtom for TagField {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("field");
+        node.set_prop("name", Value::str(self.name.as_str()));
+        node.set_prop("type", self.ty.to_atom());
+        Value::Node(node)
+    }
+}

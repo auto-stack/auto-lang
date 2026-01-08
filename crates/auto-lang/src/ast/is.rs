@@ -45,3 +45,63 @@ impl fmt::Display for Is {
         write!(f, ")")
     }
 }
+
+// ToAtom implementation
+
+use crate::ast::ToAtom;
+use auto_val::{Node, Value};
+
+impl ToAtom for Is {
+    fn to_atom(&self) -> Value {
+        let mut node = Node::new("is");
+        node.add_kid(self.target.to_atom().to_node());
+
+        for branch in &self.branches {
+            match branch {
+                IsBranch::EqBranch(expr, body) => {
+                    let mut eq_node = Node::new("eq");
+                    eq_node.add_kid(expr.to_atom().to_node());
+                    eq_node.add_kid(body.to_atom().to_node());
+                    node.add_kid(eq_node);
+                }
+                IsBranch::IfBranch(expr, body) => {
+                    let mut if_node = Node::new("if");
+                    if_node.add_kid(expr.to_atom().to_node());
+                    if_node.add_kid(body.to_atom().to_node());
+                    node.add_kid(if_node);
+                }
+                IsBranch::ElseBranch(body) => {
+                    let mut else_node = Node::new("else");
+                    else_node.add_kid(body.to_atom().to_node());
+                    node.add_kid(else_node);
+                }
+            }
+        }
+
+        Value::Node(node)
+    }
+}
+
+impl ToAtom for IsBranch {
+    fn to_atom(&self) -> Value {
+        match self {
+            IsBranch::EqBranch(expr, body) => {
+                let mut node = Node::new("eq");
+                node.add_kid(expr.to_atom().to_node());
+                node.add_kid(body.to_atom().to_node());
+                Value::Node(node)
+            }
+            IsBranch::IfBranch(expr, body) => {
+                let mut node = Node::new("if");
+                node.add_kid(expr.to_atom().to_node());
+                node.add_kid(body.to_atom().to_node());
+                Value::Node(node)
+            }
+            IsBranch::ElseBranch(body) => {
+                let mut node = Node::new("else");
+                node.add_kid(body.to_atom().to_node());
+                Value::Node(node)
+            }
+        }
+    }
+}

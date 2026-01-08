@@ -50,3 +50,29 @@ impl fmt::Display for Node {
         write!(f, ")")
     }
 }
+
+// ToAtom implementation
+
+use crate::ast::ToAtom;
+use auto_val::Value;
+
+impl ToAtom for Node {
+    fn to_atom(&self) -> Value {
+        let mut node = auto_val::Node::new("node");
+        node.set_prop("name", Value::str(self.name.as_str()));
+
+        if !self.id.is_empty() {
+            node.set_prop("id", Value::str(self.id.as_str()));
+        }
+
+        if !self.args.is_empty() {
+            node.add_kid(self.args.to_atom().to_node());
+        }
+
+        if !self.body.stmts.is_empty() {
+            node.add_kid(self.body.to_atom().to_node());
+        }
+
+        Value::Node(node)
+    }
+}
