@@ -59,17 +59,21 @@ use std::{fmt, io as stdio};
 
 impl AtomWriter for Node {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(node (name {})", self.name)?;
+        write!(f, "node(name(\"{}\")", self.name)?;
         if !self.id.is_empty() {
-            write!(f, " (id {})", self.id)?;
+            write!(f, ", id(\"{}\")", self.id)?;
         }
-        if !self.args.is_empty() {
-            write!(f, " {}", self.args.to_atom_str())?;
+        // Handle additional props from args
+        for arg in &self.args.args {
+            if let auto_val::Arg::Pair(key, value) = arg {
+                write!(f, ", {}(\"{}\")", key, value.to_atom_str())?;
+            }
         }
+        write!(f, ") {{")?;
         if !self.body.stmts.is_empty() {
             write!(f, " {}", self.body.to_atom_str())?;
         }
-        write!(f, ")")?;
+        write!(f, " }}")?;
         Ok(())
     }
 }

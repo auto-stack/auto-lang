@@ -28,21 +28,18 @@ use auto_val::{AutoStr, Node as AutoNode, Value};
 
 impl AtomWriter for Range {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(
+            f,
+            "range(start({}), end({})",
+            self.start.to_atom_str(),
+            self.end.to_atom_str()
+        )?;
         if self.eq {
-            write!(
-                f,
-                "(range= {} {})",
-                self.start.to_atom_str(),
-                self.end.to_atom_str()
-            )?;
+            write!(f, ", eq(true)")?;
         } else {
-            write!(
-                f,
-                "(range {} {})",
-                self.start.to_atom_str(),
-                self.end.to_atom_str()
-            )?;
+            write!(f, ", eq(false)")?;
         }
+        write!(f, ")")?;
         Ok(())
     }
 }

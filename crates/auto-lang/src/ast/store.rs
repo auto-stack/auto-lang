@@ -63,11 +63,14 @@ impl AtomWriter for Store {
             StoreKind::CVar => "cvar",
         };
 
-        write!(f, "({} (name {}) ", kind_name, self.name)?;
-        if !matches!(self.ty, Type::Unknown) {
-            write!(f, "(type {}) ", self.ty.to_atom_str())?;
-        }
-        write!(f, "{})", self.expr.to_atom_str())?;
+        write!(
+            f,
+            "{}(name(\"{}\"), type({}), expr({}))",
+            kind_name,
+            self.name,
+            self.ty.to_atom_str(),
+            self.expr.to_atom_str()
+        )?;
         Ok(())
     }
 }

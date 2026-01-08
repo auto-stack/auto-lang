@@ -44,12 +44,11 @@ use auto_val::{Arg as AutoValArg, Array, AutoStr, Node as AutoNode, Value};
 
 impl AtomWriter for Body {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(body")?;
+        write!(f, "body {{")?;
         for stmt in &self.stmts {
-            // TODO: Use stmt.to_atom_str() once Stmt implements AtomWriter
-            write!(f, " {:?}", stmt.to_atom())?;
+            write!(f, " {}", stmt.to_atom_str())?;
         }
-        write!(f, ")")?;
+        write!(f, " }}")?;
         Ok(())
     }
 }

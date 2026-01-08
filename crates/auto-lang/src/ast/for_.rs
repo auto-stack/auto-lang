@@ -88,9 +88,8 @@ impl AtomWriter for For {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         write!(
             f,
-            "(for {} {} {})",
+            "for(iter({})) {{ {} }}",
             self.iter.to_atom_str(),
-            self.range.to_atom_str(),
             self.body.to_atom_str()
         )?;
         Ok(())
@@ -127,17 +126,16 @@ impl AtomWriter for Iter {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         match self {
             Iter::Indexed(index, iter_name) => {
-                write!(f, "((name {}) (name {}))", index, iter_name)?;
+                write!(f, "iter(name(\"{}\"), name(\"{}\"))", index, iter_name)?;
             }
             Iter::Named(name) => {
-                write!(f, "(name {})", name)?;
+                write!(f, "iter(name(\"{}\"))", name)?;
             }
             Iter::Call(call) => {
-                // TODO: Use call.to_atom_str() once Call implements AtomWriter
-                write!(f, "{:?}", call.to_atom())?;
+                write!(f, "iter({})", call.to_atom_str())?;
             }
             Iter::Ever => {
-                write!(f, "(ever)")?;
+                write!(f, "iter(ever)")?;
             }
         }
         Ok(())
@@ -152,7 +150,7 @@ impl ToAtom for Iter {
 
 impl AtomWriter for Break {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "(break)")?;
+        write!(f, "break")?;
         Ok(())
     }
 }
