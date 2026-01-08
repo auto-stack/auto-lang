@@ -690,10 +690,7 @@ impl CTrans {
     }
 
     fn node(&mut self, node: &Node, out: &mut impl Write) -> AutoResult<()> {
-        println!("GOT NOD: {:?}", node);
-
         // lookup type meta and find field name for each arg
-        println!("cur sid: {}", self.scope.borrow().cur_spot);
         let Some(typ) = self.scope.borrow().lookup_ident_type(&node.name) else {
             return Err(format!("Type not found for node: {}", node.name).into());
         };
@@ -735,7 +732,6 @@ impl CTrans {
     }
 
     fn fn_decl(&mut self, fn_decl: &Fn, sink: &mut Sink) -> AutoResult<()> {
-        println!("Transpiling function declaration: {}", fn_decl.name);
         let out = &mut sink.body;
         // header
         let mut header = Vec::new();
@@ -783,7 +779,6 @@ impl CTrans {
             out.write(b"int main(void)").to()?;
             return Ok(());
         }
-        println!("Return type: {:?}", fn_decl.ret);
         // return type
         if !matches!(fn_decl.ret, Type::Unknown) {
             out.write(format!("{} ", self.c_type_name(&fn_decl.ret)).as_bytes()).to()?;
@@ -1217,15 +1212,99 @@ impl CTrans {
         Ok(())
     }
 
+    /// Get printf format specifier for an identifier expression
+    fn get_ident_format_specifier(&mut self, ident: &AutoStr) -> &'static str {
+        let meta = self.lookup_meta(ident);
+        if let Some(meta) = meta {
+            if let Meta::Store(st) = meta.as_ref() {
+                return match &st.ty {
+                    Type::Str(_) | Type::CStr => "%s",
+                    Type::Float => "%f",
+                    Type::Char => "%c",
+                    Type::Ptr(ptr) => {
+                        if matches!(*ptr.of.borrow(), Type::Char) {
+                            "%s"
+                        } else {
+                            "%d"
+                        }
+                    }
+                    Type::Array(arr) => {
+                        if matches!(*arr.elem, Type::Char) {
+                            "%s"
+                        } else {
+                            "%d"
+                        }
+                    }
+                    _ => "%d",
+                };
+            }
+        }
+        "%d"
+    }
+
+    /// Get printf format specifier for an index expression
+    fn get_index_format_specifier(&mut self, arr: &Expr, idx: &Expr) -> Option<&'static str> {
+        // Check if this is a slice operation (index with range)
+        if let Expr::Range(_) = idx {
+            return None; // Handled separately by print_slice
+        }
+
+        // Check array type
+        if let Expr::Ident(n) = arr {
+            if let Some(m) = self.lookup_meta(&n) {
+                if let Meta::Store(s) = m.as_ref() {
+                    if matches!(s.ty, Type::Str(_)) {
+                        return Some("%c");
+                    }
+                }
+            }
+        }
+        Some("%d")
+    }
+
+    /// Check if any argument has a custom print method and generate that call instead
+    fn try_custom_print(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<bool> {
+        for arg in call.args.args.iter() {
+            if let Arg::Pos(expr) = arg {
+                if let Expr::Ident(ident) = expr {
+                    let meta = self.lookup_meta(ident);
+                    if let Some(meta) = meta {
+                        if let Meta::Store(st) = meta.as_ref() {
+                            if let Type::User(typ) = &st.ty {
+                                if typ.has_method("print") {
+                                    out.write(format!("{}_Print(", typ.name).as_bytes())?;
+                                    for (i, arg) in call.args.args.iter().enumerate() {
+                                        self.arg(arg, out)?;
+                                        if i < call.args.args.len() - 1 {
+                                            out.write(b", ").to()?;
+                                        }
+                                    }
+                                    out.write(b")")?;
+                                    return Ok(true);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(false)
+    }
+
     fn process_print(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         // TODO: check type of the args and format accordingly
         self.libs.insert("<stdio.h>".into());
+
+        // Check if any arg has a custom print method
+        if self.try_custom_print(call, out)? {
+            return Ok(());
+        }
+
         // get number and type of args
         let mut arg_types = Vec::new();
         for arg in call.args.args.iter() {
             match arg {
                 Arg::Pos(expr) => {
-                    println!("Printing arg {}", expr);
                     match expr {
                         Expr::Int(_) => arg_types.push("%d"),
                         Expr::Str(_) => arg_types.push("%s"),
@@ -1234,61 +1313,7 @@ impl CTrans {
                         Expr::Char(_) => arg_types.push("%c"),
                         // TODO: check the actual type of the identifier
                         Expr::Ident(ident) => {
-                            let meta = self.lookup_meta(ident);
-                            if let Some(meta) = meta {
-                                match meta.as_ref() {
-                                    Meta::Store(st) => match &st.ty {
-                                        Type::Str(_) | Type::CStr => {
-                                            arg_types.push("%s");
-                                        }
-                                        Type::Float => {
-                                            arg_types.push("%f");
-                                        }
-                                        Type::Char => {
-                                            arg_types.push("%c");
-                                        }
-                                        Type::Ptr(ptr) => match *ptr.of.borrow() {
-                                            Type::Char => {
-                                                arg_types.push("%s");
-                                            }
-                                            _ => {
-                                                arg_types.push("%d");
-                                            }
-                                        },
-                                        Type::Array(arr) => match *arr.elem {
-                                            Type::Char => {
-                                                arg_types.push("%s");
-                                            }
-                                            _ => {
-                                                arg_types.push("%d");
-                                            }
-                                        },
-                                        Type::User(typ) => {
-                                            if typ.has_method("print") {
-                                                out.write(
-                                                    format!("{}_Print(", typ.name).as_bytes(),
-                                                )?;
-                                                for (i, arg) in call.args.args.iter().enumerate() {
-                                                    self.arg(arg, out)?;
-                                                    if i < call.args.args.len() - 1 {
-                                                        out.write(b", ").to()?;
-                                                    }
-                                                }
-                                                out.write(b")")?;
-                                                return Ok(());
-                                            }
-                                        }
-                                        _ => {
-                                            arg_types.push("%d");
-                                        }
-                                    },
-                                    _ => {
-                                        arg_types.push("%d");
-                                    }
-                                }
-                            } else {
-                                arg_types.push("%d");
-                            }
+                            arg_types.push(self.get_ident_format_specifier(ident));
                         }
                         Expr::Index(arr, idx) => {
                             match &**idx {
@@ -1296,34 +1321,16 @@ impl CTrans {
                                     return self.print_slice(&**arr, r, out);
                                 }
                                 _ => {
-                                    match &**arr {
-                                        Expr::Ident(n) => {
-                                            let meta = self.lookup_meta(&n);
-                                            if let Some(m) = meta {
-                                                match m.as_ref() {
-                                                    Meta::Store(s) => match s.ty {
-                                                        Type::Str(_) => {
-                                                            arg_types.push("%c");
-                                                        }
-                                                        _ => {
-                                                            arg_types.push("%d");
-                                                        }
-                                                    },
-                                                    _ => {
-                                                        arg_types.push("%d");
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        _ => {
-                                            arg_types.push("%d");
-                                        }
-                                    };
+                                    // Use helper to get format specifier
+                                    if let Some(spec) = self.get_index_format_specifier(arr, idx) {
+                                        arg_types.push(spec);
+                                    } else {
+                                        arg_types.push("%d");
+                                    }
                                 }
-                            };
+                            }
                         }
                         _ => {
-                            println!("Other expr types: {:?}", expr);
                             // other types are now viewed as ints
                             arg_types.push("%d");
                         }
@@ -1344,6 +1351,85 @@ impl CTrans {
         }
         out.write(b")")?;
         Ok(())
+    }
+
+    /// Handle method calls on Tag types (e.g., Tag.Class(data))
+    fn handle_tag_method(
+        &mut self,
+        tag: &Tag,
+        lname: &str,
+        rname: &AutoStr,
+        call: &Call,
+        out: &mut impl Write,
+    ) -> AutoResult<bool> {
+        let ftype = tag.get_field_type(rname);
+        if let Type::Unknown = ftype {
+            return Ok(false);
+        }
+
+        let mut rtext: Vec<u8> = Vec::new();
+        self.expr(&call.args.first_arg().unwrap(), &mut rtext)?;
+
+        // transform this method call into a node creation
+        let node = Node {
+            name: lname.into(),
+            id: lname.into(),
+            args: Args::new(),
+            body: Body {
+                stmts: vec![
+                    // kind
+                    Stmt::Expr(Expr::Pair(Pair {
+                        key: Key::NamedKey("tag".into()),
+                        value: Box::new(Expr::GenName(tag.enum_name(rname))),
+                    })),
+                    // value
+                    Stmt::Expr(Expr::Pair(Pair {
+                        key: Key::NamedKey(format!("as.{}", rname).into()),
+                        value: Box::new(Expr::GenName(
+                            String::from_utf8(rtext).unwrap().into(),
+                        )),
+                    })),
+                ],
+                has_new_line: true,
+            },
+            typ: shared(Type::Tag(shared(tag.clone()))),
+        };
+        self.node(&node, out)?;
+        Ok(true)
+    }
+
+    /// Handle method calls on Store/UserType instances
+    fn handle_store_method(
+        &mut self,
+        decl: &TypeDecl,
+        lname: &str,
+        method_name: &str,
+        call: &Call,
+        out: &mut impl Write,
+    ) -> AutoResult<bool> {
+        // write the method call as method_name(&s, args...)
+        // Note: add type prefix as Type_MethodName(...)
+        let type_name = &decl.name;
+        self.method_name(type_name, method_name, out)?;
+        out.write(b"(")?;
+        for m in decl.methods.iter() {
+            if m.name == *method_name {
+                out.write(b"&")?;
+                out.write(lname.as_bytes())?;
+                if !call.args.is_empty() {
+                    out.write(b", ")?;
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        if i > 0 {
+                            out.write(b", ")?;
+                        }
+                        self.expr(&arg.get_expr(), out)?;
+                    }
+                }
+                out.write(b")").to()?;
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     fn method_call(
@@ -1367,43 +1453,10 @@ impl CTrans {
                     let Expr::Ident(rname) = rhs.as_ref() else {
                         return Ok(false);
                     };
-                    let ftype = tag.borrow().get_field_type(rname);
-                    if let Type::Unknown = ftype {
-                        return Ok(false);
-                    }
-
-                    let mut rtext: Vec<u8> = Vec::new();
-                    self.expr(&call.args.first_arg().unwrap(), &mut rtext)?;
-
-                    // transform this method call into a node creation
-                    let node = Node {
-                        name: lname.clone(),
-                        id: lname.clone(),
-                        args: Args::new(),
-                        body: Body {
-                            stmts: vec![
-                                // kind
-                                Stmt::Expr(Expr::Pair(Pair {
-                                    key: Key::NamedKey("tag".into()),
-                                    value: Box::new(Expr::GenName(tag.borrow().enum_name(rname))),
-                                })),
-                                // value
-                                Stmt::Expr(Expr::Pair(Pair {
-                                    key: Key::NamedKey(format!("as.{}", rname).into()),
-                                    value: Box::new(Expr::GenName(
-                                        String::from_utf8(rtext).unwrap().into(),
-                                    )),
-                                })),
-                            ],
-                            has_new_line: true,
-                        },
-                        typ: shared(typ.clone()),
-                    };
-                    self.node(&node, out)?;
-                    return Ok(true);
+                    Ok(self.handle_tag_method(&*tag.borrow(), lname, rname, call, out)?)
                 }
                 _ => {
-                    return Ok(false);
+                    Ok(false)
                 }
             },
             // instance.method_name(&s, args...)
@@ -1415,32 +1468,10 @@ impl CTrans {
                 let Expr::Ident(method_name) = rhs.as_ref() else {
                     return Ok(false);
                 };
-                // write the method call as method_name(&s, args...)
-                // Note: add type prefix as Type_MethodName(...)
-                let type_name = &decl.name;
-                self.method_name(type_name, method_name, out)?;
-                // out.write(format!("{}_{}", type_name, method_name.to_camel()).as_bytes())?;
-                out.write(b"(")?;
-                for m in decl.methods.iter() {
-                    if m.name == *method_name {
-                        out.write(b"&")?;
-                        out.write(lname.as_bytes())?;
-                        if !call.args.is_empty() {
-                            out.write(b", ")?;
-                            for (i, arg) in call.args.args.iter().enumerate() {
-                                if i > 0 {
-                                    out.write(b", ")?;
-                                }
-                                self.expr(&arg.get_expr(), out)?;
-                            }
-                        }
-                        out.write(b")").to()?;
-                    }
-                }
-                return Ok(true);
+                Ok(self.handle_store_method(decl, lname, method_name, call, out)?)
             }
             _ => {
-                return Ok(false);
+                Ok(false)
             }
         }
     }
@@ -1678,14 +1709,12 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Sh
     let mut transpiler = CTrans::new(name);
     transpiler.scope = parser.scope.clone();
     transpiler.trans(ast, &mut out)?;
-    println!("Trans self finished!!!!!!!!!!!!!!");
 
     let uni = parser.scope.clone();
     let paks = std::mem::take(&mut parser.scope.borrow_mut().code_paks);
     // let paks = parser.scope.borrow().code_paks.clone();
     for (sid, pak) in paks.iter() {
         let name = sid.name();
-        println!("pack : {}, {}", sid, pak.text);
         let mut out = Sink::new(name.clone());
         let mut transpiler = CTrans::new(sid.name().into());
         uni.borrow_mut().set_spot(sid.clone());
@@ -1696,7 +1725,6 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Sh
 
         let str = String::from_utf8(src).unwrap();
         let file = pak.file.replace(".at", ".c");
-        println!("Translating {} to {}", pak.file, file);
         std::fs::write(Path::new(file.as_str()), str)?;
 
         let header = out.header;
