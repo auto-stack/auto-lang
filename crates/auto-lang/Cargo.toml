@@ -25,3 +25,4 @@ ecow = { workspace = true }
 normalize-path = { workspace = true }
 roxmltree = { workspace = true }
 dirs = { workspace = true }
+lazy_static = "1.4"

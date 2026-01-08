@@ -28,6 +28,10 @@ impl Interpreter {
             fstr_note: '$',
             skip_check: false,
         };
+
+        // Initialize VM modules
+        crate::vm::init_io_module();
+
         interpreter
     }
 

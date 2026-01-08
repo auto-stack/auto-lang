@@ -7,23 +7,24 @@ pub fn open(uni: Shared<Universe>, path: Value) -> Value {
     match path {
         Value::Str(p) => {
             let f = File::open(p.as_str());
-            if let Ok(f) = f {
-                let ty = uni.borrow().lookup_type("File");
-                match &ty {
-                    ast::Type::User(_) => {
-                        let b = Box::new(f);
-                        let id = uni.borrow_mut().add_vmref(b);
-                        let mut fields = Obj::new();
-                        fields.set("id", Value::USize(id));
-                        Value::Instance(Instance {
-                            ty: auto_val::Type::from(ty),
-                            fields,
-                        })
+            match f {
+                Ok(file) => {
+                    let ty = uni.borrow().lookup_type("File");
+                    match &ty {
+                        ast::Type::User(_) => {
+                            let b = Box::new(file);
+                            let id = uni.borrow_mut().add_vmref(b);
+                            let mut fields = Obj::new();
+                            fields.set("id", Value::USize(id));
+                            Value::Instance(Instance {
+                                ty: auto_val::Type::from(ty),
+                                fields,
+                            })
+                        }
+                        _ => Value::Error(format!("Type File not found!").into()),
                     }
-                    _ => Value::Error(format!("Type File not found!").into()),
                 }
-            } else {
-                Value::Error(format!("File {} not found!", p).into())
+                Err(e) => Value::Error(format!("File {} not found: {}", p, e).into()),
             }
         }
         _ => Value::Nil,
@@ -66,4 +67,14 @@ pub fn close(uni: Shared<Universe>, file: &mut Value) -> Value {
         }
     }
     Value::Nil
+}
+
+/// Wrapper for read_text to match VmMethod signature
+pub fn read_text_method(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+    read_text(uni, instance)
+}
+
+/// Wrapper for close to match VmMethod signature
+pub fn close_method(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+    close(uni, instance)
 }

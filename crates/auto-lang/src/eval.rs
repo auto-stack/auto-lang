@@ -193,7 +193,79 @@ impl Evaler {
         }
     }
 
-    fn eval_use(&mut self, _use_: &Use) -> Value {
+    fn eval_use(&mut self, use_: &Use) -> Value {
+        match use_.kind {
+            ast::UseKind::Auto => self.eval_use_auto(use_),
+            ast::UseKind::C => self.eval_use_c(use_),
+            ast::UseKind::Rust => self.eval_use_rust(use_),
+        }
+    }
+
+    fn eval_use_auto(&mut self, use_stmt: &ast::Use) -> Value {
+        // Construct module path from paths (e.g., ["auto", "io"] -> "auto.io")
+        let module_path = use_stmt.paths.join(".");
+
+        // Check if module exists in VM registry
+        let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+        let module = match registry.get_module(&module_path) {
+            Some(m) => m,
+            None => {
+                return Value::Error(format!("Module '{}' not found", module_path).into());
+            }
+        };
+
+        // Register all types from this module in the universe
+        // (Types need to be available even if not explicitly imported)
+        for (type_name, _type_entry) in module.types.iter() {
+            let type_decl = ast::TypeDecl {
+                name: type_name.clone(),
+                kind: ast::TypeDeclKind::UserType,
+                has: vec![],
+                specs: vec![],
+                members: vec![],
+                methods: vec![],
+            };
+            self.universe.borrow_mut().define_type(
+                type_name.clone(),
+                std::rc::Rc::new(crate::scope::Meta::Type(ast::Type::User(type_decl)))
+            );
+        }
+        drop(registry);
+
+        // Register each imported item in current scope
+        for item_name in &use_stmt.items {
+            // Check if it's a function
+            if let Some(_func_entry) = crate::vm::VM_REGISTRY.lock().unwrap()
+                .get_function(&module_path, item_name) {
+
+                // Create a VmFunction metadata entry
+                let fn_decl = ast::Fn::new(
+                    ast::FnKind::VmFunction,
+                    item_name.clone(),
+                    None,
+                    vec![],
+                    ast::Body::new(),
+                    ast::Type::Unknown,
+                );
+
+                // Register in current scope
+                self.universe.borrow_mut().define(
+                    item_name.clone(),
+                    std::rc::Rc::new(crate::scope::Meta::Fn(fn_decl))
+                );
+            }
+        }
+
+        Value::Void
+    }
+
+    fn eval_use_c(&mut self, _use_stmt: &ast::Use) -> Value {
+        // TODO: Implement C library loading
+        Value::Void
+    }
+
+    fn eval_use_rust(&mut self, _use_stmt: &ast::Use) -> Value {
+        // TODO: Implement Rust library loading
         Value::Void
     }
 
@@ -1131,6 +1203,60 @@ impl Evaler {
 
     // TODO: 需要整理一下，逻辑比较乱
     fn eval_call(&mut self, call: &Call) -> Value {
+        // Check if this is a method call like `file.close()`
+        if let Expr::Bina(left, op, right) = &*call.name {
+            if *op == Op::Dot {
+                // This is a dot expression - check if it's a method call
+                // Evaluate the left side to get the instance
+                let instance = self.eval_expr(left);
+
+                // Resolve ValueRef if needed
+                let instance_resolved = match &instance {
+                    Value::ValueRef(_vid) => {
+                        if let Some(data) = self.resolve_value(&instance) {
+                            let borrowed_data = data.borrow();
+                            let data_clone = borrowed_data.clone();
+                            drop(borrowed_data);
+                            Some(Value::from_data(data_clone))
+                        } else {
+                            None
+                        }
+                    }
+                    _ => Some(instance.clone()),
+                };
+
+                if let Some(inst) = instance_resolved {
+                    // Check if it's an instance and try to call as a VM method
+                    if let Value::Instance(ref inst_data) = &inst {
+                        if let Expr::Ident(method_name) = &**right {
+                            // Look up the method in the VM registry
+                            let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+                            let method = registry.get_method(&inst_data.ty.name(), method_name.as_str()).cloned();
+                            drop(registry);
+
+                            if let Some(method) = method {
+                                // Evaluate arguments (Arg::Pos contains Expr, not Value)
+                                let mut arg_vals = Vec::new();
+                                for arg in call.args.args.iter() {
+                                    match arg {
+                                        ast::Arg::Pos(expr) => {
+                                            arg_vals.push(self.eval_expr(expr));
+                                        }
+                                        _ => {}
+                                    }
+                                }
+
+                                // Call the VM method with the instance
+                                let uni = self.universe.clone();
+                                return method(uni, &mut inst.clone(), arg_vals);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Regular function call (non-method)
         let name = self.eval_expr(&call.name);
         if name == Value::Nil {
             return Value::error(format!("Invalid function name to call {}", call.name));
@@ -1405,8 +1531,12 @@ impl Evaler {
             }
             Arg::Pos(expr) => {
                 let val = self.eval_expr(expr);
-                let name = &params[i].name;
-                self.universe.borrow_mut().set_local_val(&name, val.clone());
+                // Only set local variable if params has this index
+                // VM functions have empty params, so we skip setting local vars
+                if i < params.len() {
+                    let name = &params[i].name;
+                    self.universe.borrow_mut().set_local_val(&name, val.clone());
+                }
                 val
             }
             Arg::Name(name) => {
@@ -1418,9 +1548,35 @@ impl Evaler {
         }
     }
 
-    pub fn eval_vm_fn_call(&mut self, _fn_decl: &Fn, _args: &Vec<Value>) -> Value {
-        // TODO:
-        Value::Str("Not implemented yet".into())
+    pub fn eval_vm_fn_call(&mut self, fn_decl: &Fn, args: &Vec<Value>) -> Value {
+        // Look up the function in the VM registry
+        let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+
+        // Search all modules for the function
+        let func_entry = registry.modules().values()
+            .find_map(|module| module.functions.get(fn_decl.name.as_str()))
+            .cloned();
+
+        drop(registry);
+
+        match func_entry {
+            Some(func_entry) => {
+                // Call the Rust function with universe and first argument
+                let uni = self.universe.clone();
+
+                // For single-argument functions like open()
+                if args.len() == 1 {
+                    (func_entry.func)(uni, args[0].clone())
+                } else {
+                    // For multi-argument functions (not yet supported)
+                    Value::Error(format!(
+                        "VM functions with {} arguments not yet supported",
+                        args.len()
+                    ).into())
+                }
+            },
+            None => Value::Error(format!("VM function '{}' not found", fn_decl.name).into()),
+        }
     }
 
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {

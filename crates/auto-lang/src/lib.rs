@@ -14,6 +14,9 @@ mod universe;
 pub mod util;
 pub mod vm;
 
+#[cfg(test)]
+mod vm_functions_test;
+
 use crate::scope::Meta;
 use crate::trans::c::CTrans;
 pub use crate::universe::Universe;

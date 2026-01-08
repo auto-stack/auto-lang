@@ -17,6 +17,8 @@ enum Commands {
     Parse { code: String },
     #[command(about = "Run Auto Script")]
     Run { path: String },
+    #[command(about = "Evaluate Auto expression")]
+    Eval { code: String },
     #[command(about = "Transpile Auto to C")]
     C { path: String },
 }
@@ -37,6 +39,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             let result = auto_lang::run_file(&path)?;
             println!("{}", result);
             println!();
+        }
+        Some(Commands::Eval { code }) => {
+            let result = auto_lang::run(&code)?;
+            println!("{}", result);
         }
         Some(Commands::Repl) => {
             repl::main_loop()?;
