@@ -22,7 +22,7 @@ a[1]
 
 ---
 
-index(ident(a), int(1))
+index(a, int(1))
 
 
 ## slice expr
@@ -31,7 +31,7 @@ arr[1..10]
 
 ---
 
-slice(ident(arr), int(1), int(10))
+slice(arr, int(1), int(10))
 
 ## slice expr - with step
 
@@ -39,7 +39,7 @@ arr[0..10..2]
 
 ---
 
-slice(ident(arr), int(0), int(10), int(2))
+slice(arr, int(0), int(10), int(2))
 
 ## array literal
 
@@ -56,8 +56,8 @@ array(int(1), int(2), int(3))
 ---
 
 object {
-    pair(name("name"), str("John"))
-    pair(name("age"), int(30))
+    pair(name, str("John"))
+    pair(age, int(30))
 }
 
 ## lambda
@@ -66,10 +66,6 @@ fn(x, y) { x + y }
 
 ---
 
-lambda {
-    param(name("x"))
-    param(name("y"))
-    body {
-        binary("+", ident(x), ident(y))
-    }
+fn (x, y) {
+    bina(+, x, y)
 }

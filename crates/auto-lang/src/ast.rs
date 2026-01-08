@@ -425,13 +425,13 @@ impl AtomWriter for Pair {
 impl AtomWriter for Expr {
     fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
         match self {
-            Expr::Int(i) => write!(f, "int({})", i)?,
-            Expr::Uint(u) => write!(f, "uint({})", u)?,
-            Expr::Float(fl, _) => write!(f, "float({})", fl)?,
-            Expr::Bool(b) => write!(f, "bool({})", b)?,
-            Expr::Char(c) => write!(f, "char({})", c)?,
-            Expr::Str(s) => write!(f, "str(\"{}\")", s)?,
-            Expr::Ident(n) => write!(f, "ident({})", n)?,
+            Expr::Int(i) => write!(f, "{}", i)?,
+            Expr::Uint(u) => write!(f, "{}", u)?,
+            Expr::Float(fl, _) => write!(f, "{}", fl)?,
+            Expr::Bool(b) => write!(f, "{}", b)?,
+            Expr::Char(c) => write!(f, "{}", c)?,
+            Expr::Str(s) => write!(f, "\"{}\"", s)?,
+            Expr::Ident(n) => write!(f, "{}", n)?,
             Expr::Ref(n) => write!(f, "ref({})", n)?,
             Expr::Bina(l, op, r) => {
                 let op_str = match op {
@@ -456,7 +456,7 @@ impl AtomWriter for Expr {
                 };
                 write!(
                     f,
-                    "binary(\"{}\", {}, {})",
+                    "bina({}, {}, {})",
                     op_str,
                     l.to_atom_str(),
                     r.to_atom_str()
@@ -470,17 +470,17 @@ impl AtomWriter for Expr {
                     auto_val::Op::Add => "&",
                     _ => "?",
                 };
-                write!(f, "unary(\"{}\", {})", op_str, e.to_atom_str())?;
+                write!(f, "una({}, {})", op_str, e.to_atom_str())?;
             }
             Expr::Array(elems) => {
-                write!(f, "array(")?;
+                write!(f, "[")?;
                 for (i, elem) in elems.iter().enumerate() {
                     elem.write_atom(f)?;
                     if i < elems.len() - 1 {
                         write!(f, ", ")?;
                     }
                 }
-                write!(f, ")")?;
+                write!(f, "]")?;
             }
             Expr::Pair(pair) => {
                 write!(f, "pair({}, ", pair.key)?;
@@ -488,11 +488,14 @@ impl AtomWriter for Expr {
                 write!(f, ")")?;
             }
             Expr::Object(pairs) => {
-                write!(f, "object {{")?;
-                for pair in pairs {
-                    write!(f, " {}", pair.to_atom_str())?;
+                write!(f, "{{")?;
+                for (i, pair) in pairs.iter().enumerate() {
+                    write!(f, "{}: {}", pair.key, pair.value.to_atom_str())?;
+                    if i < pairs.len() - 1 {
+                        write!(f, ", ")?;
+                    }
                 }
-                write!(f, " }}")?;
+                write!(f, "}}")?;
             }
             Expr::FStr(fstr) => fstr.write_atom(f)?,
             Expr::Index(array, index) => {
@@ -949,10 +952,22 @@ mod markdown_tests {
                 );
             }
 
-            let actual_normalized = pretty_atom(&actual.replace("\r\n", "\n"));
+            let actual_normalized = actual.replace("\r\n", "\n").trim().to_string();
             let expected_normalized = tc.expected.replace("\r\n", "\n");
 
             if actual_normalized != expected_normalized {
+                // Debug: show the difference
+                eprintln!("Comparing:");
+                eprintln!(
+                    "  Expected len: {}, repr: {:?}",
+                    expected_normalized.len(),
+                    expected_normalized
+                );
+                eprintln!(
+                    "  Actual len: {}, repr: {:?}",
+                    actual_normalized.len(),
+                    actual_normalized
+                );
                 panic!(
                     "\nTest '{}' failed:\nInput:\n{}\n\nExpected:\n{}\n\nActual:\n{}\n",
                     tc.name, tc.input, expected_normalized, actual_normalized

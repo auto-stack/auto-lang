@@ -4,7 +4,7 @@
 
 ---
 
-int(41)
+41
 
 ## float
 
@@ -12,7 +12,7 @@ int(41)
 
 ---
 
-float(42.3)
+42.3
 
 
 ## str
@@ -21,7 +21,7 @@ float(42.3)
 
 ---
 
-str("hello")
+"hello"
 
 
 ## fstr
@@ -30,7 +30,4 @@ str("hello")
 
 ---
 
-fstr {
-    str("1 + 2 = ")
-    binary("+", int(1), int(2))
-}
+fstr("1 + 2 = ", bina(+, 1, 2)

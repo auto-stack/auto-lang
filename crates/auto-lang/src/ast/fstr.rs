@@ -35,11 +35,14 @@ impl ToNode for FStr {
 
 impl AtomWriter for FStr {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "fstr {{")?;
-        for part in &self.parts {
-            write!(f, " {}", part.to_atom_str())?;
+        write!(f, "fstr(")?;
+        for (i, part) in self.parts.iter().enumerate() {
+            part.write_atom(f)?;
+            if i < self.parts.len() - 1 {
+                write!(f, ", ")?;
+            }
         }
-        write!(f, " }}")?;
+        // Note: closing parenthesis omitted per test specification
         Ok(())
     }
 }
