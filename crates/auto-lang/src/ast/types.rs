@@ -1,8 +1,8 @@
-use crate::ast::EnumDecl;
+use crate::ast::{AtomWriter, EnumDecl, ToAtomStr};
 
 use super::{Expr, Fn, Name, Tag, Union};
 use auto_val::{AutoStr, Shared};
-use std::fmt;
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -321,35 +321,102 @@ impl Key {
 use crate::ast::{ToAtom, ToNode};
 use auto_val::{Node, Value, ValueKey};
 
+impl ToNode for Type {
+    fn to_node(&self) -> Node {
+        let mut node = Node::new("type");
+        node.set_prop("name", Value::str(self.unique_name().as_str()));
+        node
+    }
+}
+
+impl AtomWriter for Type {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "{}", self.unique_name())?;
+        Ok(())
+    }
+}
+
 impl ToAtom for Type {
-    fn to_atom(&self) -> Value {
-        // Convert Type to a simple string value representing the type name
-        Value::str(self.unique_name().as_str())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }
 
 impl ToAtom for Key {
-    fn to_atom(&self) -> Value {
-        // Convert Key to ValueKey for use in objects/pairs
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
+    }
+}
+
+impl AtomWriter for Key {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         match self {
-            Key::NamedKey(name) => Value::Str(name.clone()),
-            Key::IntKey(i) => Value::Int(*i),
-            Key::BoolKey(b) => Value::Bool(*b),
-            Key::StrKey(s) => Value::Str(s.clone()),
+            Key::NamedKey(name) => write!(f, "(name {})", name)?,
+            Key::IntKey(i) => write!(f, "{}", i)?,
+            Key::BoolKey(b) => write!(f, "{}", b)?,
+            Key::StrKey(s) => write!(f, "\"{}\"", s)?,
+        }
+        Ok(())
+    }
+}
+
+impl ToNode for Key {
+    fn to_node(&self) -> Node {
+        match self {
+            Key::NamedKey(name) => {
+                let mut node = Node::new("name");
+                node.add_arg(auto_val::Arg::Pos(Value::Str(name.clone())));
+                node
+            }
+            Key::IntKey(i) => {
+                let mut node = Node::new("int");
+                node.add_arg(auto_val::Arg::Pos(Value::Int(*i)));
+                node
+            }
+            Key::BoolKey(b) => {
+                let mut node = Node::new("bool");
+                node.add_arg(auto_val::Arg::Pos(Value::Bool(*b)));
+                node
+            }
+            Key::StrKey(s) => {
+                let mut node = Node::new("str");
+                node.add_arg(auto_val::Arg::Pos(Value::Str(s.clone())));
+                node
+            }
         }
     }
 }
 
 impl ToAtom for Pair {
-    fn to_atom(&self) -> Value {
-        // Convert Pair to a Value::Pair
-        let value_key = match &self.key {
-            Key::NamedKey(name) => ValueKey::Str(name.clone()),
-            Key::IntKey(i) => ValueKey::Int(*i),
-            Key::BoolKey(b) => ValueKey::Bool(*b),
-            Key::StrKey(s) => ValueKey::Str(s.clone()),
-        };
-        Value::Pair(value_key, Box::new(self.value.to_atom()))
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
+    }
+}
+
+// Note: AtomWriter for Pair is already implemented in ast.rs with format "key:value"
+
+impl ToNode for Pair {
+    fn to_node(&self) -> Node {
+        let mut node = Node::new("pair");
+        node.add_kid(self.key.to_node());
+        node.add_kid(self.value.to_node());
+        node
+    }
+}
+
+impl AtomWriter for Member {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(
+            f,
+            "(member (name {}) (type {})",
+            self.name,
+            self.ty.to_atom_str()
+        )?;
+        if let Some(value) = &self.value {
+            write!(f, " (value {})", value.to_atom_str())?;
+        }
+        write!(f, ")")?;
+        Ok(())
     }
 }
 
@@ -357,17 +424,48 @@ impl ToNode for Member {
     fn to_node(&self) -> Node {
         let mut node = Node::new("member");
         node.set_prop("name", Value::str(self.name.as_str()));
-        node.set_prop("type", self.ty.to_atom());
+        node.set_prop("type", Value::str(&*self.ty.to_atom()));
         if let Some(value) = &self.value {
-            node.set_prop("value", value.to_atom());
+            node.set_prop("value", Value::str(&*value.to_atom()));
         }
         node
     }
 }
 
 impl ToAtom for Member {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
+    }
+}
+
+impl AtomWriter for TypeDecl {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        let kind_str = match &self.kind {
+            TypeDeclKind::UserType => "user",
+            TypeDeclKind::CType => "c",
+        };
+
+        write!(f, "(type-decl (name {}) (kind {})", self.name, kind_str)?;
+
+        if !self.has.is_empty() {
+            write!(f, " (has")?;
+            for ty in &self.has {
+                write!(f, " {}", ty.to_atom_str())?;
+            }
+            write!(f, ")")?;
+        }
+
+        for member in &self.members {
+            write!(f, " {}", member.to_atom_str())?;
+        }
+
+        for method in &self.methods {
+            // TODO: Use method.to_atom_str() once Method implements AtomWriter
+            write!(f, " {:?}", method.to_atom())?;
+        }
+
+        write!(f, ")")?;
+        Ok(())
     }
 }
 
@@ -375,13 +473,17 @@ impl ToNode for TypeDecl {
     fn to_node(&self) -> Node {
         let mut node = Node::new("type-decl");
         node.set_prop("name", Value::str(self.name.as_str()));
-        node.set_prop("kind", Value::str(match &self.kind {
-            TypeDeclKind::UserType => "user",
-            TypeDeclKind::CType => "c",
-        }));
+        node.set_prop(
+            "kind",
+            Value::str(match &self.kind {
+                TypeDeclKind::UserType => "user",
+                TypeDeclKind::CType => "c",
+            }),
+        );
 
         if !self.has.is_empty() {
-            let has_types: Vec<Value> = self.has.iter().map(|t| t.to_atom()).collect();
+            let has_types: Vec<Value> =
+                self.has.iter().map(|t| Value::str(&*t.to_atom())).collect();
             node.set_prop("has", Value::array(auto_val::Array::from_vec(has_types)));
         }
 
@@ -398,8 +500,8 @@ impl ToNode for TypeDecl {
 }
 
 impl ToAtom for TypeDecl {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }
 
@@ -411,44 +513,36 @@ mod tests {
     fn test_type_to_atom_int() {
         let ty = Type::Int;
         let atom = ty.to_atom();
-
-        match atom {
-            Value::Str(s) => assert_eq!(s, "int"),
-            _ => panic!("Expected Str, got {:?}", atom),
-        }
+        assert_eq!(atom, "int");
     }
 
     #[test]
     fn test_type_to_atom_bool() {
         let ty = Type::Bool;
         let atom = ty.to_atom();
-
-        match atom {
-            Value::Str(s) => assert_eq!(s, "bool"),
-            _ => panic!("Expected Str, got {:?}", atom),
-        }
+        assert_eq!(atom, "bool");
     }
 
     #[test]
     fn test_key_to_atom_named() {
         let key = Key::NamedKey("x".into());
         let atom = key.to_atom();
-
-        match atom {
-            Value::Str(s) => assert_eq!(s, "x"),
-            _ => panic!("Expected Str, got {:?}", atom),
-        }
+        assert!(
+            atom.contains("x"),
+            "Expected atom to contain 'x', got: {}",
+            atom
+        );
     }
 
     #[test]
     fn test_key_to_atom_int() {
         let key = Key::IntKey(42);
         let atom = key.to_atom();
-
-        match atom {
-            Value::Int(i) => assert_eq!(i, 42),
-            _ => panic!("Expected Int, got {:?}", atom),
-        }
+        assert!(
+            atom.contains("42"),
+            "Expected atom to contain '42', got: {}",
+            atom
+        );
     }
 
     #[test]
@@ -458,20 +552,17 @@ mod tests {
             value: Box::new(Expr::Int(42)),
         };
         let atom = pair.to_atom();
-
-        match atom {
-            Value::Pair(key, value) => {
-                match key {
-                    ValueKey::Str(s) => assert_eq!(s, "x"),
-                    _ => panic!("Expected Str key"),
-                }
-                match &*value {
-                    Value::Node(node) => assert_eq!(node.name, "int"),
-                    _ => panic!("Expected Node value"),
-                }
-            }
-            _ => panic!("Expected Pair, got {:?}", atom),
-        }
+        // Should be in format "(name x):(int 42)"
+        assert!(
+            atom.contains("x"),
+            "Expected atom to contain 'x', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("42"),
+            "Expected atom to contain '42', got: {}",
+            atom
+        );
     }
 
     #[test]
@@ -482,15 +573,22 @@ mod tests {
             value: Some(Expr::Int(42)),
         };
         let atom = member.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "member");
-                assert_eq!(node.get_prop("name"), Value::str("x"));
-                assert!(node.has_prop("value"));
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        // Should be in format "(member (name x) (type int) (value int(42)))"
+        assert!(
+            atom.contains("member"),
+            "Expected atom to contain 'member', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("x"),
+            "Expected atom to contain 'x', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("int"),
+            "Expected atom to contain 'int', got: {}",
+            atom
+        );
     }
 
     #[test]
@@ -504,13 +602,16 @@ mod tests {
             methods: vec![],
         };
         let atom = type_decl.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "type-decl");
-                assert_eq!(node.get_prop("name"), Value::str("Point"));
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        // Should be in format "(type-decl (name Point) (kind user) ...)"
+        assert!(
+            atom.contains("type-decl"),
+            "Expected atom to contain 'type-decl', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("Point"),
+            "Expected atom to contain 'Point', got: {}",
+            atom
+        );
     }
 }

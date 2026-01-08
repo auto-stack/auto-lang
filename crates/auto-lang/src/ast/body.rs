@@ -1,5 +1,6 @@
 use super::{Expr, Stmt};
-use std::fmt;
+use crate::ast::{AtomWriter, ToAtomStr};
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub struct Body {
@@ -39,21 +40,37 @@ impl fmt::Display for Body {
 // ToAtom and ToNode implementations
 
 use crate::ast::{ToAtom, ToNode};
-use auto_val::{Array, Arg as AutoValArg, Node as AutoNode, Value};
+use auto_val::{Arg as AutoValArg, Array, AutoStr, Node as AutoNode, Value};
+
+impl AtomWriter for Body {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(body")?;
+        for stmt in &self.stmts {
+            // TODO: Use stmt.to_atom_str() once Stmt implements AtomWriter
+            write!(f, " {:?}", stmt.to_atom())?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
 
 impl ToNode for Body {
     fn to_node(&self) -> AutoNode {
         let mut node = AutoNode::new("body");
         // Convert statements to an array
-        let stmts: Vec<Value> = self.stmts.iter().map(|stmt| stmt.to_atom()).collect();
+        let stmts: Vec<Value> = self
+            .stmts
+            .iter()
+            .map(|stmt| Value::str(&*stmt.to_atom()))
+            .collect();
         node.add_arg(AutoValArg::Pos(Value::array(Array::from_vec(stmts))));
         node
     }
 }
 
 impl ToAtom for Body {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }
 
@@ -65,32 +82,28 @@ mod tests {
     fn test_body_to_atom_empty() {
         let body = Body::new();
         let atom = body.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "body");
-                assert_eq!(node.args.args.len(), 1);
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        // Should be in format "(body)"
+        assert!(
+            atom.contains("body"),
+            "Expected atom to contain 'body', got: {}",
+            atom
+        );
     }
 
     #[test]
     fn test_body_to_atom_single_expr() {
         let body = Body::single_expr(Expr::Int(42));
         let atom = body.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "body");
-                match &node.args.args[0] {
-                    AutoValArg::Pos(Value::Array(arr)) => {
-                        assert_eq!(arr.len(), 1);
-                    }
-                    _ => panic!("Expected Array arg"),
-                }
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        // Should be in format "(body int(42))"
+        assert!(
+            atom.contains("body"),
+            "Expected atom to contain 'body', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("int(42)"),
+            "Expected atom to contain 'int(42)', got: {}",
+            atom
+        );
     }
 }

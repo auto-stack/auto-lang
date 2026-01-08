@@ -53,8 +53,26 @@ impl fmt::Display for Node {
 
 // ToAtom and ToNode implementations
 
-use crate::ast::{ToAtom, ToNode};
+use crate::ast::{AtomWriter, ToAtom, ToAtomStr, ToNode};
 use auto_val::{Node as AutoNode, Value};
+use std::{fmt, io as stdio};
+
+impl AtomWriter for Node {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(node (name {})", self.name)?;
+        if !self.id.is_empty() {
+            write!(f, " (id {})", self.id)?;
+        }
+        if !self.args.is_empty() {
+            write!(f, " {}", self.args.to_atom_str())?;
+        }
+        if !self.body.stmts.is_empty() {
+            write!(f, " {}", self.body.to_atom_str())?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
 
 impl ToNode for Node {
     fn to_node(&self) -> AutoNode {
@@ -78,7 +96,7 @@ impl ToNode for Node {
 }
 
 impl ToAtom for Node {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }

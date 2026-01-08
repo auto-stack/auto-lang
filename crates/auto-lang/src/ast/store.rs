@@ -1,5 +1,6 @@
 use super::{Expr, Name, Type};
-use std::fmt;
+use crate::ast::{AtomWriter, ToAtomStr};
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub enum StoreKind {
@@ -50,7 +51,26 @@ impl fmt::Display for StoreKind {
 // ToAtom and ToNode implementations
 
 use crate::ast::{ToAtom, ToNode};
-use auto_val::{Node as AutoNode, Value};
+use auto_val::{AutoStr, Node as AutoNode, Value};
+
+impl AtomWriter for Store {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        let kind_name = match self.kind {
+            StoreKind::Let => "let",
+            StoreKind::Mut => "mut",
+            StoreKind::Var => "var",
+            StoreKind::Field => "field",
+            StoreKind::CVar => "cvar",
+        };
+
+        write!(f, "({} (name {}) ", kind_name, self.name)?;
+        if !matches!(self.ty, Type::Unknown) {
+            write!(f, "(type {}) ", self.ty.to_atom_str())?;
+        }
+        write!(f, "{})", self.expr.to_atom_str())?;
+        Ok(())
+    }
+}
 
 impl ToNode for Store {
     fn to_node(&self) -> AutoNode {
@@ -66,16 +86,16 @@ impl ToNode for Store {
         node.set_prop("name", Value::str(self.name.as_str()));
 
         if !matches!(self.ty, Type::Unknown) {
-            node.set_prop("type", self.ty.to_atom());
+            node.set_prop("type", Value::str(&*self.ty.to_atom()));
         }
 
-        node.add_kid(self.expr.to_atom().to_node());
+        node.add_kid(self.expr.to_node()); // Changed from expr.to_atom().to_node()
         node
     }
 }
 
 impl ToAtom for Store {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }

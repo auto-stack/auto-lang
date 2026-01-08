@@ -1,13 +1,14 @@
 use super::{Body, Expr, Name, Type};
+use crate::ast::{AtomWriter, ToAtomStr};
 use serde::Serialize;
-use std::fmt;
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub enum FnKind {
     Function,
     Lambda,
     Method,
-    CFunction, // C function declaration
+    CFunction,  // C function declaration
     VmFunction, // VM implemented function declaration
 }
 
@@ -110,23 +111,54 @@ impl Param {
 // ToAtom and ToNode implementations
 
 use crate::ast::{ToAtom, ToNode};
-use auto_val::{Node as AutoNode, Value};
+use auto_val::{AutoStr, Node as AutoNode, Value};
+
+impl AtomWriter for Param {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(
+            f,
+            "(param (name {}) (type {})",
+            self.name,
+            self.ty.to_atom_str()
+        )?;
+        if let Some(default) = &self.default {
+            write!(f, " (default {})", default.to_atom_str())?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
 
 impl ToNode for Param {
     fn to_node(&self) -> AutoNode {
         let mut node = AutoNode::new("param");
         node.set_prop("name", Value::str(self.name.as_str()));
-        node.set_prop("type", self.ty.to_atom());
+        node.set_prop("type", Value::str(&*self.ty.to_atom()));
         if let Some(default) = &self.default {
-            node.set_prop("default", default.to_atom());
+            node.set_prop("default", Value::str(&*default.to_atom()));
         }
         node
     }
 }
 
 impl ToAtom for Param {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
+    }
+}
+
+impl AtomWriter for Fn {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(fn (name {}) (params", self.name)?;
+        for param in &self.params {
+            write!(f, " {}", param.to_atom_str())?;
+        }
+        write!(f, ")")?;
+        if !matches!(self.ret, Type::Unknown) {
+            write!(f, " (return {})", self.ret.to_atom_str())?;
+        }
+        write!(f, " {})", self.body.to_atom_str())?;
+        Ok(())
     }
 }
 
@@ -141,7 +173,7 @@ impl ToNode for Fn {
         }
 
         if !matches!(self.ret, Type::Unknown) {
-            node.set_prop("return", self.ret.to_atom());
+            node.set_prop("return", Value::str(&*self.ret.to_atom()));
         }
 
         // Add params as children
@@ -157,8 +189,8 @@ impl ToNode for Fn {
 }
 
 impl ToAtom for Fn {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }
 
@@ -170,15 +202,22 @@ mod tests {
     fn test_param_to_atom() {
         let param = Param::new("x".into(), Type::Int, None);
         let atom = param.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "param");
-                assert_eq!(node.get_prop("name"), Value::str("x"));
-                assert_eq!(node.get_prop("type"), Value::str("int"));
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        // Should be in format "(param (name x) (type int))"
+        assert!(
+            atom.contains("param"),
+            "Expected atom to contain 'param', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("x"),
+            "Expected atom to contain 'x', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("int"),
+            "Expected atom to contain 'int', got: {}",
+            atom
+        );
     }
 
     #[test]
@@ -192,14 +231,26 @@ mod tests {
             Type::Int,
         );
         let atom = fn_decl.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "fn");
-                assert_eq!(node.get_prop("name"), Value::str("add"));
-                assert_eq!(node.get_prop("return"), Value::str("int"));
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        // Should be in format "(fn (name add) ...)"
+        assert!(
+            atom.contains("fn"),
+            "Expected atom to contain 'fn', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("add"),
+            "Expected atom to contain 'add', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("return"),
+            "Expected atom to contain 'return', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("int"),
+            "Expected atom to contain 'int', got: {}",
+            atom
+        );
     }
 }

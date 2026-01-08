@@ -1,4 +1,5 @@
-use super::{Args, Expr};
+use super::{Args, Expr, ToNode};
+use auto_val::Node as AutoNode;
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -32,5 +33,35 @@ impl fmt::Display for Grid {
             write!(f, ")")?;
         }
         write!(f, ")")
+    }
+}
+
+impl ToNode for Grid {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("grid");
+
+        // Add head
+        let mut head_node = AutoNode::new("head");
+        for arg in &self.head.args {
+            head_node.add_kid(arg.to_node());
+        }
+        if !self.head.is_empty() {
+            node.add_kid(head_node);
+        }
+
+        // Add data
+        if !self.data.is_empty() {
+            let mut data_node = AutoNode::new("data");
+            for row in &self.data {
+                let mut row_node = AutoNode::new("row");
+                for cell in row {
+                    row_node.add_kid(cell.to_node());
+                }
+                data_node.add_kid(row_node);
+            }
+            node.add_kid(data_node);
+        }
+
+        node
     }
 }

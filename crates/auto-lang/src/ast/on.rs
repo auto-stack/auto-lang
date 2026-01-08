@@ -1,5 +1,6 @@
 use crate::ast::Expr;
-use std::fmt;
+use crate::ast::{AtomWriter, ToAtomStr};
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub struct Arrow {
@@ -96,7 +97,7 @@ impl fmt::Display for OnEvents {
 // ToAtom and ToNode implementations
 
 use crate::ast::{ToAtom, ToNode};
-use auto_val::{Node as AutoNode, Value};
+use auto_val::{AutoStr, Node as AutoNode, Value};
 
 impl ToNode for OnEvents {
     fn to_node(&self) -> AutoNode {
@@ -110,9 +111,29 @@ impl ToNode for OnEvents {
     }
 }
 
+impl AtomWriter for OnEvents {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(on")?;
+        for branch in &self.branches {
+            write!(f, " {}", branch.to_atom_str())?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
 impl ToAtom for OnEvents {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
+    }
+}
+
+impl AtomWriter for Event {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        match self {
+            Event::Arrow(arrow) => arrow.write_atom(f),
+            Event::CondArrow(cond_arrow) => cond_arrow.write_atom(f),
+        }
     }
 }
 
@@ -126,8 +147,8 @@ impl ToNode for Event {
 }
 
 impl ToAtom for Event {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }
 
@@ -136,22 +157,39 @@ impl ToNode for Arrow {
         let mut node = AutoNode::new("arrow");
 
         if let Some(src) = &self.src {
-            node.set_prop("from", src.to_atom());
+            node.set_prop("from", Value::str(&*src.to_atom()));
         }
         if let Some(dest) = &self.dest {
-            node.set_prop("to", dest.to_atom());
+            node.set_prop("to", Value::str(&*dest.to_atom()));
         }
         if let Some(with) = &self.with {
-            node.set_prop("with", with.to_atom());
+            node.set_prop("with", Value::str(&*with.to_atom()));
         }
 
         node
     }
 }
 
+impl AtomWriter for Arrow {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(arrow")?;
+        if let Some(src) = &self.src {
+            write!(f, " (from {})", src.to_atom_str())?;
+        }
+        if let Some(dest) = &self.dest {
+            write!(f, " (to {})", dest.to_atom_str())?;
+        }
+        if let Some(with) = &self.with {
+            write!(f, " (with {})", with.to_atom_str())?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
 impl ToAtom for Arrow {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }
 
@@ -160,10 +198,10 @@ impl ToNode for CondArrow {
         let mut node = AutoNode::new("cond-arrow");
 
         if let Some(src) = &self.src {
-            node.set_prop("from", src.to_atom());
+            node.set_prop("from", Value::str(&*src.to_atom()));
         }
 
-        node.set_prop("cond", self.cond.to_atom());
+        node.set_prop("cond", Value::str(&*self.cond.to_atom()));
 
         for sub in &self.subs {
             node.add_kid(sub.to_node());
@@ -173,8 +211,23 @@ impl ToNode for CondArrow {
     }
 }
 
+impl AtomWriter for CondArrow {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(cond-arrow")?;
+        if let Some(src) = &self.src {
+            write!(f, " (from {})", src.to_atom_str())?;
+        }
+        write!(f, " (cond {})", self.cond.to_atom_str())?;
+        for sub in &self.subs {
+            write!(f, " {}", sub.to_atom_str())?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
 impl ToAtom for CondArrow {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }

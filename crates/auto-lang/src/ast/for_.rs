@@ -1,5 +1,6 @@
 use super::{Body, Call, Expr, Name};
-use std::fmt;
+use crate::ast::{AtomWriter, ToAtomStr};
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub struct For {
@@ -49,7 +50,7 @@ impl fmt::Display for Break {
 // ToAtom and ToNode implementations
 
 use crate::ast::{ToAtom, ToNode};
-use auto_val::{Node as AutoNode, Value};
+use auto_val::{AutoStr, Node as AutoNode, Value};
 
 impl ToNode for For {
     fn to_node(&self) -> AutoNode {
@@ -77,15 +78,28 @@ impl ToNode for For {
             }
         }
 
-        node.add_kid(self.range.to_atom().to_node());
+        node.add_kid(self.range.to_node()); // Changed from range.to_atom().to_node()
         node.add_kid(self.body.to_node());
         node
     }
 }
 
+impl AtomWriter for For {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(
+            f,
+            "(for {} {} {})",
+            self.iter.to_atom_str(),
+            self.range.to_atom_str(),
+            self.body.to_atom_str()
+        )?;
+        Ok(())
+    }
+}
+
 impl ToAtom for For {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }
 
@@ -109,9 +123,37 @@ impl ToNode for Iter {
     }
 }
 
+impl AtomWriter for Iter {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        match self {
+            Iter::Indexed(index, iter_name) => {
+                write!(f, "((name {}) (name {}))", index, iter_name)?;
+            }
+            Iter::Named(name) => {
+                write!(f, "(name {})", name)?;
+            }
+            Iter::Call(call) => {
+                // TODO: Use call.to_atom_str() once Call implements AtomWriter
+                write!(f, "{:?}", call.to_atom())?;
+            }
+            Iter::Ever => {
+                write!(f, "(ever)")?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl ToAtom for Iter {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
+    }
+}
+
+impl AtomWriter for Break {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(break)")?;
+        Ok(())
     }
 }
 
@@ -122,7 +164,7 @@ impl ToNode for Break {
 }
 
 impl ToAtom for Break {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }

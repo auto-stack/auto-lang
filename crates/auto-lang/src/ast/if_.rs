@@ -1,5 +1,6 @@
 use super::{Body, Branch};
-use std::fmt;
+use crate::ast::{AtomWriter, ToAtomStr};
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub struct If {
@@ -23,7 +24,21 @@ impl fmt::Display for If {
 // ToAtom and ToNode implementations
 
 use crate::ast::{ToAtom, ToNode};
-use auto_val::{Node as AutoNode, Value};
+use auto_val::{AutoStr, Node as AutoNode, Value};
+
+impl AtomWriter for If {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(if")?;
+        for branch in &self.branches {
+            write!(f, " {}", branch.to_atom_str())?;
+        }
+        if let Some(else_body) = &self.else_ {
+            write!(f, " (else {})", else_body.to_atom_str())?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
 
 impl ToNode for If {
     fn to_node(&self) -> AutoNode {
@@ -41,7 +56,7 @@ impl ToNode for If {
 }
 
 impl ToAtom for If {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }

@@ -1,5 +1,6 @@
 use super::Name;
-use std::fmt;
+use crate::ast::AtomWriter;
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub struct Alias {
@@ -15,8 +16,15 @@ impl fmt::Display for Alias {
 
 // ToAtom and ToNode implementations
 
-use crate::ast::{ToAtom, ToNode};
-use auto_val::{Node as AutoNode, Value};
+use crate::ast::{ToAtom, ToAtomStr, ToNode};
+use auto_val::{AutoStr, Node as AutoNode, Value};
+
+impl AtomWriter for Alias {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(alias (name {}) (target {}))", self.alias, self.target)?;
+        Ok(())
+    }
+}
 
 impl ToNode for Alias {
     fn to_node(&self) -> AutoNode {
@@ -28,7 +36,7 @@ impl ToNode for Alias {
 }
 
 impl ToAtom for Alias {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }

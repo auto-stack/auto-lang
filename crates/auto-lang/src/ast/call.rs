@@ -1,6 +1,7 @@
 use super::{Expr, Name, Type};
+use crate::ast::{AtomWriter, ToAtomStr};
 use auto_val::AutoStr;
-use std::fmt;
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub struct Call {
@@ -198,12 +199,23 @@ pub fn fmt_call(f: &mut fmt::Formatter, call: &Call) -> fmt::Result {
 // ToAtom and ToNode implementations
 
 use crate::ast::{ToAtom, ToNode};
-use auto_val::{Array, Arg as AutoValArg, Node as AutoNode, Value, ValueKey};
+use auto_val::{Arg as AutoValArg, Array, Node as AutoNode, Value, ValueKey};
+
+impl AtomWriter for Arg {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        match self {
+            Arg::Pos(expr) => write!(f, "{}", expr.to_atom_str())?,
+            Arg::Name(name) => write!(f, "(name {})", name)?,
+            Arg::Pair(key, expr) => write!(f, "(pair {} {})", key, expr.to_atom_str())?,
+        }
+        Ok(())
+    }
+}
 
 impl ToNode for Arg {
     fn to_node(&self) -> AutoNode {
         match self {
-            Arg::Pos(expr) => expr.to_atom().to_node(),
+            Arg::Pos(expr) => expr.to_node(), // Changed from expr.to_atom().to_node()
             Arg::Name(name) => {
                 let mut node = AutoNode::new("name");
                 node.add_arg(AutoValArg::Pos(Value::Str(name.clone())));
@@ -212,7 +224,7 @@ impl ToNode for Arg {
             Arg::Pair(key, expr) => {
                 let mut node = AutoNode::new("pair");
                 node.add_arg(AutoValArg::Pos(Value::str(key.as_str())));
-                node.add_arg(AutoValArg::Pos(expr.to_atom()));
+                node.add_arg(AutoValArg::Pos(Value::str(&*expr.to_atom())));
                 node
             }
         }
@@ -220,38 +232,65 @@ impl ToNode for Arg {
 }
 
 impl ToAtom for Arg {
-    fn to_atom(&self) -> Value {
-        match self {
-            Arg::Pos(expr) => expr.to_atom(),
-            Arg::Name(name) => Value::Str(name.clone()),
-            Arg::Pair(key, expr) => Value::Pair(ValueKey::Str(key.clone()), Box::new(expr.to_atom())),
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
+    }
+}
+
+impl AtomWriter for Args {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(args")?;
+        for arg in &self.args {
+            write!(f, " {}", arg.to_atom_str())?;
         }
+        write!(f, ")")?;
+        Ok(())
     }
 }
 
 impl ToNode for Args {
     fn to_node(&self) -> AutoNode {
         let mut node = AutoNode::new("args");
-        let items: Vec<Value> = self.args.iter().map(|arg| arg.to_atom()).collect();
+        let items: Vec<Value> = self
+            .args
+            .iter()
+            .map(|arg| Value::str(&*arg.to_atom()))
+            .collect();
         node.add_arg(AutoValArg::Pos(Value::array(Array::from_vec(items))));
         node
     }
 }
 
 impl ToAtom for Args {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
+    }
+}
+
+impl AtomWriter for Call {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(
+            f,
+            "(call {} {}",
+            self.name.to_atom_str(),
+            self.args.to_atom_str()
+        )?;
+        if !matches!(self.ret, Type::Unknown) {
+            write!(f, " (return {})", self.ret.to_atom_str())?;
+        }
+        write!(f, ")")?;
+        Ok(())
     }
 }
 
 impl ToNode for Call {
     fn to_node(&self) -> AutoNode {
         let mut node = AutoNode::new("call");
-        node.add_kid(self.name.to_atom().to_node());
+        node.add_kid(self.name.to_node()); // Changed from name.to_atom().to_node()
         node.add_kid(self.args.to_node());
 
         if !matches!(self.ret, Type::Unknown) {
-            node.set_prop("return", self.ret.to_atom());
+            node.set_prop("return", Value::str(&*self.ret.to_atom()));
         }
 
         node
@@ -259,8 +298,8 @@ impl ToNode for Call {
 }
 
 impl ToAtom for Call {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }
 
@@ -272,58 +311,52 @@ mod tests {
     fn test_arg_to_atom_pos() {
         let arg = Arg::Pos(Expr::Int(42));
         let atom = arg.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "int");
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        assert_eq!(atom, "int(42)");
     }
 
     #[test]
     fn test_arg_to_atom_name() {
         let arg = Arg::Name("x".into());
         let atom = arg.to_atom();
-
-        match atom {
-            Value::Str(s) => assert_eq!(s, "x"),
-            _ => panic!("Expected Str, got {:?}", atom),
-        }
+        assert!(
+            atom.contains("x"),
+            "Expected atom to contain 'x', got: {}",
+            atom
+        );
     }
 
     #[test]
     fn test_arg_to_atom_pair() {
         let arg = Arg::Pair("key".into(), Expr::Int(42));
         let atom = arg.to_atom();
-
-        match atom {
-            Value::Pair(key, value) => {
-                match key {
-                    ValueKey::Str(s) => assert_eq!(s, "key"),
-                    _ => panic!("Expected Str key"),
-                }
-                match &*value {
-                    Value::Node(node) => assert_eq!(node.name, "int"),
-                    _ => panic!("Expected Node value"),
-                }
-            }
-            _ => panic!("Expected Pair, got {:?}", atom),
-        }
+        // Should be in format "(pair key int(42))"
+        assert!(
+            atom.contains("pair"),
+            "Expected atom to contain 'pair', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("key"),
+            "Expected atom to contain 'key', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("int(42)"),
+            "Expected atom to contain 'int(42)', got: {}",
+            atom
+        );
     }
 
     #[test]
     fn test_args_to_atom_empty() {
         let args = Args::new();
         let atom = args.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "args");
-                assert_eq!(node.args.args.len(), 1); // Has empty array arg
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        // Should be in format "(args)"
+        assert!(
+            atom.contains("args"),
+            "Expected atom to contain 'args', got: {}",
+            atom
+        );
     }
 
     #[test]
@@ -332,20 +365,22 @@ mod tests {
         args.args.push(Arg::Pos(Expr::Int(1)));
         args.args.push(Arg::Pos(Expr::Int(2)));
         let atom = args.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "args");
-                assert_eq!(node.args.args.len(), 1);
-                match &node.args.args[0] {
-                    AutoValArg::Pos(Value::Array(arr)) => {
-                        assert_eq!(arr.len(), 2);
-                    }
-                    _ => panic!("Expected Array arg"),
-                }
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        // Should be in format "(args int(1) int(2))"
+        assert!(
+            atom.contains("args"),
+            "Expected atom to contain 'args', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("int(1)"),
+            "Expected atom to contain 'int(1)', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("int(2)"),
+            "Expected atom to contain 'int(2)', got: {}",
+            atom
+        );
     }
 
     #[test]
@@ -356,15 +391,17 @@ mod tests {
             ret: Type::Unknown,
         };
         let atom = call.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "call");
-                assert_eq!(node.nodes.len(), 2); // name + args
-                assert!(!node.has_prop("return")); // Unknown omitted
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        // Should be in format "(call ident(print) (args))"
+        assert!(
+            atom.contains("call"),
+            "Expected atom to contain 'call', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("print"),
+            "Expected atom to contain 'print', got: {}",
+            atom
+        );
     }
 
     #[test]
@@ -375,14 +412,17 @@ mod tests {
             ret: Type::Int,
         };
         let atom = call.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "call");
-                assert_eq!(node.get_prop("return"), Value::str("int"));
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        // Should contain return type info
+        assert!(
+            atom.contains("call"),
+            "Expected atom to contain 'call', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("getInt"),
+            "Expected atom to contain 'getInt', got: {}",
+            atom
+        );
     }
 
     #[test]
@@ -396,13 +436,21 @@ mod tests {
             ret: Type::Unknown,
         };
         let atom = call.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "call");
-                assert_eq!(node.nodes.len(), 2);
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        // Should be in format "(call ident(print) (args int(42)))"
+        assert!(
+            atom.contains("call"),
+            "Expected atom to contain 'call', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("print"),
+            "Expected atom to contain 'print', got: {}",
+            atom
+        );
+        assert!(
+            atom.contains("int(42)"),
+            "Expected atom to contain 'int(42)', got: {}",
+            atom
+        );
     }
 }

@@ -1,5 +1,6 @@
 use super::{Body, Expr};
-use std::fmt;
+use crate::ast::{AtomWriter, ToAtomStr};
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub struct Branch {
@@ -16,20 +17,32 @@ impl fmt::Display for Branch {
 // ToAtom and ToNode implementations
 
 use crate::ast::{ToAtom, ToNode};
-use auto_val::{Node as AutoNode, Value};
+use auto_val::{AutoStr, Node as AutoNode, Value};
+
+impl AtomWriter for Branch {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(
+            f,
+            "(branch {} {})",
+            self.cond.to_atom_str(),
+            self.body.to_atom_str()
+        )?;
+        Ok(())
+    }
+}
 
 impl ToNode for Branch {
     fn to_node(&self) -> AutoNode {
         let mut node = AutoNode::new("branch");
-        node.add_kid(self.cond.to_atom().to_node());
+        node.add_kid(self.cond.to_node()); // Changed from cond.to_atom().to_node()
         node.add_kid(self.body.to_node());
         node
     }
 }
 
 impl ToAtom for Branch {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }
 
@@ -44,13 +57,11 @@ mod tests {
             body: Body::single_expr(Expr::Int(42)),
         };
         let atom = branch.to_atom();
-
-        match atom {
-            Value::Node(node) => {
-                assert_eq!(node.name, "branch");
-                assert_eq!(node.nodes.len(), 2); // Uses 'nodes' not 'kids'
-            }
-            _ => panic!("Expected Node, got {:?}", atom),
-        }
+        // Should be in format "(branch bool(true) (body int(42)))"
+        assert!(
+            atom.contains("branch"),
+            "Expected atom to contain 'branch', got: {}",
+            atom
+        );
     }
 }

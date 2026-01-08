@@ -1,6 +1,7 @@
 use super::{Name, Type};
+use crate::ast::{AtomWriter, ToAtomStr};
 use auto_val::AutoStr;
-use std::fmt;
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub struct Tag {
@@ -70,9 +71,32 @@ impl ToNode for Tag {
     }
 }
 
+impl AtomWriter for Tag {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(tag (name {})", self.name)?;
+        for field in &self.fields {
+            write!(f, " {}", field.to_atom_str())?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
 impl ToAtom for Tag {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
+    }
+}
+
+impl AtomWriter for TagField {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(
+            f,
+            "(field (name {}) (type {}))",
+            self.name,
+            self.ty.to_atom_str()
+        )?;
+        Ok(())
     }
 }
 
@@ -80,13 +104,13 @@ impl ToNode for TagField {
     fn to_node(&self) -> AutoNode {
         let mut node = AutoNode::new("field");
         node.set_prop("name", Value::str(self.name.as_str()));
-        node.set_prop("type", self.ty.to_atom());
+        node.set_prop("type", Value::str(&*self.ty.to_atom()));
         node
     }
 }
 
 impl ToAtom for TagField {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }

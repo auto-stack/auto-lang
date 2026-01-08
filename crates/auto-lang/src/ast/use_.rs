@@ -1,5 +1,6 @@
+use crate::ast::AtomWriter;
 use auto_val::AutoStr;
-use std::fmt;
+use std::{fmt, io as stdio};
 
 #[derive(Debug, Clone)]
 pub enum UseKind {
@@ -35,8 +36,8 @@ impl fmt::Display for Use {
 
 // ToAtom and ToNode implementations
 
-use crate::ast::{ToAtom, ToNode};
-use auto_val::{Array, Arg as AutoValArg, Node as AutoNode, Value};
+use crate::ast::{ToAtom, ToAtomStr, ToNode};
+use auto_val::{Arg as AutoValArg, Array, Node as AutoNode, Value};
 
 impl ToNode for Use {
     fn to_node(&self) -> AutoNode {
@@ -63,8 +64,27 @@ impl ToNode for Use {
     }
 }
 
+impl AtomWriter for Use {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(use")?;
+        match self.kind {
+            UseKind::C => write!(f, " (kind c)")?,
+            UseKind::Rust => write!(f, " (kind rust)")?,
+            UseKind::Auto => {}
+        }
+        if !self.paths.is_empty() {
+            write!(f, " (path {})", self.paths.join("."))?;
+        }
+        if !self.items.is_empty() {
+            write!(f, " (items {})", self.items.join(","))?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
 impl ToAtom for Use {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }

@@ -1,5 +1,6 @@
-use std::fmt;
+use std::{fmt, io as stdio};
 
+use crate::ast::{AtomWriter, ToAtomStr};
 use auto_val::AutoStr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -69,9 +70,27 @@ impl ToNode for EnumDecl {
     }
 }
 
+impl AtomWriter for EnumDecl {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(enum (name {})", self.name)?;
+        for item in &self.items {
+            write!(f, " {}", item.to_atom_str())?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
 impl ToAtom for EnumDecl {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
+    }
+}
+
+impl AtomWriter for EnumItem {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "(item (name {}) (value {}))", self.name, self.value)?;
+        Ok(())
     }
 }
 
@@ -85,7 +104,7 @@ impl ToNode for EnumItem {
 }
 
 impl ToAtom for EnumItem {
-    fn to_atom(&self) -> Value {
-        Value::Node(self.to_node())
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
     }
 }

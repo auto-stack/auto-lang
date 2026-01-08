@@ -1,4 +1,5 @@
-use super::Expr;
+use super::{Expr, ToNode};
+use auto_val::Node as AutoNode;
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -19,5 +20,15 @@ impl fmt::Display for FStr {
             write!(f, " {}", part)?;
         }
         write!(f, ")")
+    }
+}
+
+impl ToNode for FStr {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("fstr");
+        for part in &self.parts {
+            node.add_kid(part.to_node());
+        }
+        node
     }
 }
