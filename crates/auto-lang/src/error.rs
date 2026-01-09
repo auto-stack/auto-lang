@@ -67,6 +67,51 @@ pub fn span_from(offset: usize, len: usize) -> SourceSpan {
     SourceSpan::new(offset.into(), len.into())
 }
 
+/// Syntax error with attached source code for displaying code snippets
+#[derive(Debug)]
+pub struct SyntaxErrorWithSource {
+    pub source: NamedSource<String>,
+    pub error: SyntaxError,
+}
+
+impl std::fmt::Display for SyntaxErrorWithSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.error)
+    }
+}
+
+impl std::error::Error for SyntaxErrorWithSource {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
+impl Diagnostic for SyntaxErrorWithSource {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.error.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.error.severity()
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.error.help()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.error.url()
+    }
+
+    fn labels<'a>(&'a self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + 'a>> {
+        self.error.labels()
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.source)
+    }
+}
+
 /// Alias for Result type with AutoLang errors
 pub type AutoResult<T> = std::result::Result<T, AutoError>;
 
@@ -82,9 +127,9 @@ pub enum AutoError {
     Syntax(#[from] SyntaxError),
 
     /// Syntax errors with source code
-    #[error("{0}")]
+    #[error(transparent)]
     #[diagnostic(code(auto_syntax_E0001))]
-    SyntaxWithSource(Box<SyntaxError>, #[source_code] NamedSource<String>),
+    SyntaxWithSource(#[from] SyntaxErrorWithSource),
 
     /// Type errors
     #[error(transparent)]
@@ -132,7 +177,10 @@ impl AutoError {
 
     /// Attach source code to a syntax error
     pub fn with_source(err: SyntaxError, name: String, code: String) -> Self {
-        AutoError::SyntaxWithSource(Box::new(err), NamedSource::new(name, code))
+        AutoError::SyntaxWithSource(SyntaxErrorWithSource {
+            source: NamedSource::new(name, code),
+            error: err,
+        })
     }
 }
 
