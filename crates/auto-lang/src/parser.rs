@@ -1141,7 +1141,11 @@ impl<'a> Parser<'a> {
 
     pub fn lhs_expr(&mut self) -> AutoResult<Expr> {
         if !self.is_kind(TokenKind::Ident) {
-            return error_pos!("Expected LHS expr with ident, got {}", self.peek().kind);
+            return Err(SyntaxError::Generic {
+                message: format!("Expected LHS expr with ident, got {}", self.peek().kind),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
         }
         let name = self.parse_name()?;
 
@@ -1333,7 +1337,11 @@ impl<'a> Parser<'a> {
             self.next(); // skip name
             Ok(name)
         } else {
-            error_pos!("Expected identifier, got {:?}", self.kind())
+            return Err(SyntaxError::Generic {
+                message: format!("Expected identifier, got {:?}", self.kind()),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
         }
     }
 
@@ -1347,7 +1355,11 @@ impl<'a> Parser<'a> {
                 let name = self.expect_ident_str()?;
                 items.push(name);
             } else {
-                return error_pos!("Expected identifier, got {:?}", self.kind());
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected identifier, got {:?}", self.kind()),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
             }
             while self.is_kind(TokenKind::Comma) {
                 self.next(); // skip ,
