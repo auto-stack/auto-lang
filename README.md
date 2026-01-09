@@ -22,7 +22,7 @@ AutoLang is a programming language designed for automation and flexibility.
     - Standard Library: A customizable standard library that supports BareMetal, RTOS and Linux/Windows/MacOS/Web.
     - Builder&Package Manager: AutoMan is a builder that supports Auto/C/Rust mixed projects. It's configured with AutoConfig.
     - UI Framework: AutoUI is a cross-platform UI framework based on Rust/GPUI, similar to Jetpack Compose. It now supports Windows/Linux/Mac, and will be extended to Web, Bevy and HarmonyOS.
-    - Code Gen: AutoGen is a powerfull code generation tool that supports C/Rust/HTML and more.
+    - Code Gen: AutoGen is a powerfull code generation tool that supports C/Rust/HTML and more. [Tutorial](docs/tutorials/autogen-tutorial.md)
     - IDE: As AutoUI is based on Zed/GPUI, we'll build a plugin system with AutoLang, and provide a IDE.
 
 ## Language Tour

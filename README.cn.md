@@ -199,7 +199,7 @@ for f in find_files("src") {
 
 ### 5️⃣ AutoTemplate - 代码生成模板
 
-支持任意文本格式的模板引擎。
+支持任意文本格式的模板引擎。[教程](docs/tutorials/autogen-tutorial-zh.md)
 
 ```html
 <html>
