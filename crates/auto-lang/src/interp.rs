@@ -182,12 +182,19 @@ pub fn flip_template(template: &str, fnote: char) -> String {
             result.push("``".to_string());
             continue;
         }
-        let fnote_str = format!("{}", fnote);
+        let fnote_space = format!("{} ", fnote);
         let fnote_brace_pat = format!("{}{{", fnote);
-        if trimmed.starts_with(fnote_str.as_str()) && !trimmed.starts_with(fnote_brace_pat.as_str())
-        {
-            let code = &trimmed[1..].trim();
-            result.push(format!("{}", code));
+        // Only treat lines starting with "$ " (dollar + space) as code
+        // Lines starting with "$word" are content with embedded variable
+        if trimmed.starts_with(&fnote_space) || trimmed.starts_with(fnote_brace_pat.as_str()) {
+            // Code line: remove the leading "$ " or wrap the whole line
+            if trimmed.starts_with(&fnote_space) {
+                let code = &trimmed[2..]; // Skip "$ "
+                result.push(format!("{}", code));
+            } else {
+                // Starts with "${" - keep as-is for f-string processing
+                result.push(format!("`{}`", line));
+            }
         } else {
             result.push(format!("`{}`", line));
         }

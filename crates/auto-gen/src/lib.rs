@@ -5,6 +5,9 @@ mod generator;
 mod guard;
 mod template;
 
+#[cfg(test)]
+mod test_framework;
+
 // Re-exports
 pub use data::{DataLoader, DataSource};
 pub use error::{GenError, GenResult, SourceLocation};
@@ -338,9 +341,8 @@ fn capture_block(line: &str) -> AutoStr {
 
 #[cfg(test)]
 mod tests {
-    use auto_val::Value;
-
     use super::*;
+    use auto_val::Value;
 
     #[test]
     fn test_gen() {
@@ -371,5 +373,17 @@ mod tests {
         let line = "/// ---------- begin of guard: <includes> -----------------------------------";
         let block = capture_block(line);
         assert_eq!(block, "includes");
+    }
+
+    #[test]
+    fn test_autogen_markdown_tests() {
+        use std::path::PathBuf;
+        use test_framework::run_gen_tests_from_file;
+
+        let test_file = PathBuf::from("tests/autogen_tests.md");
+        match run_gen_tests_from_file(&test_file) {
+            Ok(()) => println!("All auto-gen tests passed!"),
+            Err(e) => panic!("Auto-gen tests failed:\n{}", e),
+        }
     }
 }
