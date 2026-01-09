@@ -23,6 +23,7 @@ history.txt
 
 *.wrong.c
 *.wrong.h
+*.wrong.rs
 
 .am/
 build/
