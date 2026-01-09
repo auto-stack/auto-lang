@@ -9,6 +9,7 @@ use auto_val::AutoPath;
 use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::{shared, Shared};
+use miette::SourceSpan;
 use std::backtrace::Backtrace;
 use std::collections::HashMap;
 use std::i32;
@@ -77,11 +78,15 @@ const PREC_INDEX: PostfixPrec = postfix_prec(16);
 const PREC_DOT: InfixPrec = infix_prec(17);
 const _PREC_ATOM: InfixPrec = infix_prec(18);
 
-fn prefix_power(op: Op) -> AutoResult<PrefixPrec> {
+fn prefix_power(op: Op, span: SourceSpan) -> AutoResult<PrefixPrec> {
     match op {
         Op::Add | Op::Sub => Ok(PREC_SIGN),
         Op::Not => Ok(PREC_NOT),
-        _ => error_pos!("Invalid prefix operator: {}", op),
+        _ => Err(SyntaxError::Generic {
+            message: format!("Invalid prefix operator: {}", op),
+            span,
+        }
+        .into()),
     }
 }
 
@@ -94,7 +99,7 @@ fn postfix_power(op: Op) -> AutoResult<Option<PostfixPrec>> {
     }
 }
 
-fn infix_power(op: Op) -> AutoResult<InfixPrec> {
+fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
     match op {
         Op::Add | Op::Sub => Ok(PREC_ADD),
         Op::Mul | Op::Div => Ok(PREC_MUL),
@@ -105,7 +110,11 @@ fn infix_power(op: Op) -> AutoResult<InfixPrec> {
         Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(PREC_CMP),
         Op::Range | Op::RangeEq => Ok(PREC_RANGE),
         Op::Dot => Ok(PREC_DOT),
-        _ => error_pos!("Invalid infix operator: {}", op),
+        _ => Err(SyntaxError::Generic {
+            message: format!("Invalid infix operator: {}", op),
+            span,
+        }
+        .into()),
     }
 }
 
@@ -447,7 +456,8 @@ impl<'a> Parser<'a> {
             // unary
             TokenKind::Add | TokenKind::Sub | TokenKind::Not => {
                 let op = self.op();
-                let power = prefix_power(op)?;
+                let span = pos_to_span(self.cur.pos);
+                let power = prefix_power(op, span)?;
                 self.next(); // skip unary op
                 let lhs = self.expr_pratt(power.r)?;
                 Expr::Unary(op, Box::new(lhs))
@@ -578,7 +588,8 @@ impl<'a> Parser<'a> {
                 }
             }
             // Infix
-            let power = infix_power(op)?;
+            let span = pos_to_span(self.cur.pos);
+            let power = infix_power(op, span)?;
             if power.l < min_power {
                 break;
             }
