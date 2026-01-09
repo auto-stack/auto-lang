@@ -328,7 +328,7 @@ pub enum SyntaxError {
     },
 
     /// Generic syntax error
-    #[error("syntax error")]
+    #[error("{message}")]
     #[diagnostic(code(auto_syntax_E0007))]
     Generic {
         message: String,
