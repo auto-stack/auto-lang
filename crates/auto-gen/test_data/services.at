@@ -1,0 +1,9 @@
+// Test data file in Auto format
+let service_name = "AuthService"
+let service_id = 0x1234
+
+let services = [
+    { name: "AuthService", id: 0x1234 },
+    { name: "DataService", id: 0x5678 },
+    { name: "LogService", id: 0x9ABC }
+]

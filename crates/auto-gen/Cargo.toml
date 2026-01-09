@@ -9,6 +9,10 @@ readme = "README.md"
 license = "Proprietary"
 keywords = ["automation", "language", "code generation"]
 
+[[bin]]
+name = "autogen"
+path = "src/bin/autogen.rs"
+
 [dependencies]
 clap = { workspace = true }
 auto-lang = { workspace = true }

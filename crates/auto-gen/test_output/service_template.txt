@@ -1,0 +1,11 @@
+// Template for generating service header
+
+Service: AuthService
+ID: 0x4660
+
+Service: AuthService
+ID: 0x4660
+Service: DataService
+ID: 0x22136
+Service: LogService
+ID: 0x39612

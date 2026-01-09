@@ -1,7 +1,9 @@
 use crate::error::{GenError, GenResult, SourceLocation};
 use auto_atom::Atom;
 use auto_lang::ast::Code;
-use auto_val::AutoStr;
+use auto_lang::interp::Interpreter;
+use auto_lang::Universe;
+use auto_val::{AutoStr, Shared};
 use std::path::PathBuf;
 
 /// A loaded template
@@ -34,21 +36,17 @@ impl TemplateEngine {
             reason: e.to_string(),
         })?;
 
-        // Parse as Auto code
-        let code = auto_lang::parse(&source).map_err(|e| GenError::TemplateSyntaxError {
-            location: SourceLocation::new(path.clone(), 0, 0),
-            message: e.to_string(),
-        })?;
-
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .into();
 
+        // Don't parse the template as Auto code - store it as-is
+        // The template will be transformed by flip_template during rendering
         Ok(Template {
             name,
-            code,
+            code: auto_lang::ast::Code::default(), // Empty AST - not used for templates
             source: source.into(),
         })
     }
@@ -57,15 +55,11 @@ impl TemplateEngine {
     pub fn load_from_string(&self, name: impl Into<AutoStr>, source: &str) -> GenResult<Template> {
         let name = name.into();
 
-        // Parse as Auto code
-        let code = auto_lang::parse(source).map_err(|e| GenError::TemplateSyntaxError {
-            location: SourceLocation::new(PathBuf::from("<string>"), 0, 0),
-            message: e.to_string(),
-        })?;
-
+        // Don't parse the template as Auto code - store it as-is
+        // The template will be transformed by flip_template during rendering
         Ok(Template {
             name,
-            code,
+            code: auto_lang::ast::Code::default(), // Empty AST - not used for templates
             source: source.into(),
         })
     }
@@ -79,6 +73,31 @@ impl TemplateEngine {
             auto_lang::interp::Interpreter::with_scope(universe).with_fstr_note(self.fstr_note);
 
         // Execute the Auto script as a template
+        let result =
+            inter
+                .eval_template(&template.source)
+                .map_err(|e| GenError::TemplateSyntaxError {
+                    location: SourceLocation::new(
+                        PathBuf::from(format!("template:{}", template.name)),
+                        0,
+                        0,
+                    ),
+                    message: e.to_string(),
+                })?;
+
+        Ok(result.to_astr())
+    }
+
+    /// Render a template using an existing universe (with data already loaded)
+    pub fn render_with_universe(
+        &self,
+        template: &Template,
+        universe: &Shared<Universe>,
+    ) -> GenResult<AutoStr> {
+        // Create an interpreter with the shared universe
+        let mut inter = Interpreter::with_univ(universe.clone()).with_fstr_note(self.fstr_note);
+
+        // Use the interpreter to evaluate the template
         let result =
             inter
                 .eval_template(&template.source)

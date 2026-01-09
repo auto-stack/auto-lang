@@ -1,8 +1,7 @@
-use crate::data::{DataLoader, DataSource};
+use crate::data::{DataLoader, DataSource, LoadedData};
 use crate::error::{GenError, GenResult};
 use crate::guard::GuardProcessor;
 use crate::template::{Template, TemplateEngine};
-use auto_atom::Atom;
 use auto_val::AutoStr;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -75,14 +74,14 @@ impl CodeGenerator {
         let start = std::time::Instant::now();
 
         // Load data
-        let data = self.data_loader.load(spec.data_source.clone())?;
+        let loaded_data = self.data_loader.load(spec.data_source.clone())?;
 
         let mut files_generated = Vec::new();
         let mut errors = Vec::new();
 
         // Process each template
         for template_spec in &spec.templates {
-            match self.generate_one(&data, template_spec) {
+            match self.generate_one(&loaded_data, template_spec) {
                 Ok(output_path) => {
                     files_generated.push(output_path);
                 }
@@ -99,12 +98,18 @@ impl CodeGenerator {
         })
     }
 
-    fn generate_one(&mut self, data: &Atom, template_spec: &TemplateSpec) -> GenResult<PathBuf> {
+    fn generate_one(
+        &mut self,
+        data: &LoadedData,
+        template_spec: &TemplateSpec,
+    ) -> GenResult<PathBuf> {
         // Load template
         let template = self.template_engine.load(&template_spec.template_path)?;
 
-        // Render template
-        let rendered = self.template_engine.render(&template, data)?;
+        // Render template using the universe from loaded data
+        let rendered = self
+            .template_engine
+            .render_with_universe(&template, &data.scope)?;
 
         // Determine output path
         let output_path = self.resolve_output_path(&template_spec, &template)?;

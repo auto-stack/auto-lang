@@ -1,5 +1,8 @@
 use crate::error::{GenError, GenResult};
 use auto_atom::Atom;
+use auto_lang::interp::Interpreter;
+use auto_lang::Universe;
+use auto_val::{NodeBody, Shared, Value};
 use std::path::PathBuf;
 
 /// Data source for the code generator
@@ -10,6 +13,11 @@ pub enum DataSource {
     Atom(Atom),
 }
 
+/// Loaded data with interpreter context
+pub struct LoadedData {
+    pub scope: Shared<Universe>,
+}
+
 /// Loads data from various sources
 pub struct DataLoader;
 
@@ -18,27 +26,51 @@ impl DataLoader {
         Self
     }
 
-    pub fn load(&self, source: DataSource) -> GenResult<Atom> {
+    pub fn load(&self, source: DataSource) -> GenResult<LoadedData> {
         match source {
-            DataSource::Atom(atom) => Ok(atom),
+            DataSource::Atom(atom) => {
+                // Create a universe and merge the atom data
+                let mut universe = Universe::new();
+                universe.merge_atom(&atom);
+                Ok(LoadedData {
+                    scope: auto_val::shared(universe),
+                })
+            }
             DataSource::AutoFile(path) => {
                 let code = std::fs::read_to_string(&path).map_err(|e| GenError::DataLoadError {
                     path: path.clone(),
                     reason: e.to_string(),
                 })?;
-                self.parse_auto_to_atom(&code, path)
+                self.parse_auto_to_data(&code, path)
             }
-            DataSource::AutoCode(code) => self.parse_auto_to_atom(&code, PathBuf::from("<code>")),
+            DataSource::AutoCode(code) => self.parse_auto_to_data(&code, PathBuf::from("<code>")),
         }
     }
 
-    fn parse_auto_to_atom(&self, code: &str, path: PathBuf) -> GenResult<Atom> {
-        // For now, return an empty Atom
-        // TODO: Implement proper conversion from Auto code to Atom
-        // This requires evaluating the code and extracting variables from the Universe
-        let _ = code;
-        let _ = path;
-        Ok(Atom::default())
+    fn parse_auto_to_data(&self, code: &str, path: PathBuf) -> GenResult<LoadedData> {
+        // Evaluate the Auto code
+        let mut inter = Interpreter::new();
+        let value = inter.eval(code);
+
+        // Try to convert to Atom if it's a Node or Array
+        let atom = match value {
+            Value::Node(n) => Atom::new(Value::Node(n)),
+            Value::Array(a) => Atom::new(Value::Array(a)),
+            // For other types, the data should be in the scope already
+            _ => {
+                return Ok(LoadedData {
+                    scope: inter.scope.clone(),
+                });
+            }
+        };
+
+        // Create a universe and merge the atom data
+        let mut universe = Universe::new();
+        universe.merge_atom(&atom);
+
+        Ok(LoadedData {
+            scope: auto_val::shared(universe),
+        })
     }
 }
 
@@ -57,8 +89,8 @@ mod tests {
     fn test_load_atom() {
         let loader = DataLoader::new();
         let atom = Atom::assemble(vec![Value::pair("test", 123)]);
-        let result = loader.load(DataSource::Atom(atom.clone())).unwrap();
-        assert_eq!(result.name, atom.name);
+        let result = loader.load(DataSource::Atom(atom));
+        assert!(result.is_ok());
     }
 
     #[test]

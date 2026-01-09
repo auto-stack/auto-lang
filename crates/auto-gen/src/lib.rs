@@ -9,7 +9,7 @@ mod template;
 mod test_framework;
 
 // Re-exports
-pub use data::{DataLoader, DataSource};
+pub use data::{DataLoader, DataSource, LoadedData};
 pub use error::{GenError, GenResult, SourceLocation};
 pub use generator::{
     CodeGenerator, CodeGeneratorBuilder, GenReport, GenerationSpec, GeneratorConfig, TemplateSpec,
