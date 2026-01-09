@@ -1313,7 +1313,9 @@ impl<'a> Parser<'a> {
             } else if self.is_kind(TokenKind::RBrace) {
                 // do nothing
             } else {
-                return error_pos!("expected ',' or newline, got {}", self.cur.text);
+                let message = format!("expected ',' or newline, got {}", self.cur.text);
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic { message, span }.into());
             }
             self.skip_empty_lines();
             items.push(item);
@@ -1964,7 +1966,11 @@ impl<'a> Parser<'a> {
             TokenKind::Var => Ok(StoreKind::Var),
             TokenKind::Let => Ok(StoreKind::Let),
             TokenKind::Mut => Ok(StoreKind::Mut),
-            _ => error_pos!("Expected store kind, got {:?}", self.kind()),
+            _ => {
+                let message = format!("Expected store kind, got {:?}", self.kind());
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic { message, span }.into());
+            }
         }
     }
 
@@ -2433,7 +2439,9 @@ impl<'a> Parser<'a> {
                 _ => 0,
             }
         } else {
-            return error_pos!("Expected Array Size or Empty, got {}", self.peek().kind);
+            let message = format!("Expected Array Size or Empty, got {}", self.peek().kind);
+            let span = pos_to_span(self.cur.pos);
+            return Err(SyntaxError::Generic { message, span }.into());
         };
         self.expect(TokenKind::RSquare)?; // skip `]`
 
@@ -2490,7 +2498,11 @@ impl<'a> Parser<'a> {
             TokenKind::Ident => self.parse_ident_type(),
             TokenKind::Star => self.parse_ptr_type(),
             TokenKind::LSquare => self.parse_array_type(),
-            _ => error_pos!("Expected type, got {}", self.cur.text),
+            _ => {
+                let message = format!("Expected type, got {}", self.cur.text);
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic { message, span }.into());
+            }
         }
     }
 
