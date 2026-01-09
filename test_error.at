@@ -1,2 +1,3 @@
-// Test file for error messages
-let x = +
+# Test file to trigger a parser error
+
+let x: int = "invalid"
