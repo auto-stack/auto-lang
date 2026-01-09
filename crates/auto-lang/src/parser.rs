@@ -2575,7 +2575,11 @@ impl<'a> Parser<'a> {
                 Op::Dot => {
                     if let Expr::Ident(name) = l.as_ref() {
                         if !self.exists(&name) {
-                            return error_pos!("Undefined variable: {}", name);
+                            return Err(SyntaxError::Generic {
+                                message: format!("Undefined variable: {}", name),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                            .into());
                         }
                     }
                     Ok(expr)
@@ -2584,7 +2588,11 @@ impl<'a> Parser<'a> {
             },
             Expr::Ident(name) => {
                 if !self.exists(&name) {
-                    return error_pos!("Undefined identifier: {}", name);
+                    return Err(SyntaxError::Generic {
+                        message: format!("Undefined identifier: {}", name),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
                 }
                 Ok(expr)
             }
