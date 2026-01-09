@@ -23,6 +23,8 @@ enum Commands {
     Config { path: String },
     #[command(about = "Transpile Auto to C")]
     C { path: String },
+    #[command(about = "Transpile Auto to Rust")]
+    Rust { path: String },
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -58,6 +60,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(Commands::C { path }) => {
             let c = auto_lang::trans_c(path.as_str())?;
             println!("{}", c);
+        }
+        Some(Commands::Rust { path }) => {
+            let r = auto_lang::trans_rust(path.as_str())?;
+            println!("{}", r);
         }
         None => {
             repl::main_loop()?;

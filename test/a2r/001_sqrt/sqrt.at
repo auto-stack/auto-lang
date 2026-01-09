@@ -1,0 +1,5 @@
+fn square(x double) double {
+    x * x
+}
+
+square(2.0)

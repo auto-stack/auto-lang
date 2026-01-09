@@ -172,6 +172,30 @@ pub fn trans_c(path: &str) -> AutoResult<String> {
     Ok(format!("[trans] {} -> {}", path, cname))
 }
 
+/// Transpile AutoLang file to Rust
+pub fn trans_rust(path: &str) -> AutoResult<String> {
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))
+        .unwrap();
+
+    let rsname = path.replace(".at", ".rs");
+    let fname = AutoPath::new(path).filename();
+
+    let scope = Rc::new(RefCell::new(Universe::new()));
+    let mut parser = Parser::new(code.as_str(), scope);
+    parser.set_dest(crate::parser::CompileDest::TransRust);
+    let ast = parser.parse().map_err(|e| e.to_string())?;
+    let mut sink = Sink::new(fname.clone());
+    let mut trans = crate::trans::rust::RustTrans::new(fname);
+    trans.set_scope(parser.scope.clone());
+    trans.trans(ast, &mut sink)?;
+
+    // Write Rust file
+    std::fs::write(&rsname, sink.done()?)?;
+
+    Ok(format!("[trans] {} -> {}", path, rsname))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::config::AutoConfig;
