@@ -146,6 +146,15 @@ pub enum SyntaxError {
         #[label("opened here")]
         span: SourceSpan,
     },
+
+    /// Generic syntax error
+    #[error("syntax error")]
+    #[diagnostic(code(auto_syntax_E0007))]
+    Generic {
+        message: String,
+        #[label("{}", message)]
+        span: SourceSpan,
+    },
 }
 
 // ============================================================================

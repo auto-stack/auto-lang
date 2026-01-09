@@ -522,7 +522,9 @@ impl<'a> Parser<'a> {
                 TokenKind::RSquare => break,
                 TokenKind::RParen => break,
                 _ => {
-                    return error_pos!("Expected infix operator, got {:?}", self.peek());
+                    let message = format!("Expected infix operator, got {:?}", self.peek());
+                    let span = pos_to_span(self.cur.pos);
+                    return Err(SyntaxError::Generic { message, span }.into());
                 }
             };
             // Postfix
@@ -555,7 +557,11 @@ impl<'a> Parser<'a> {
                             Expr::Int(i) => Key::IntKey(*i),
                             Expr::Bool(b) => Key::BoolKey(*b),
                             Expr::Str(s) => Key::StrKey(s.clone()),
-                            _ => return error_pos!("Invalid key: {}", lhs),
+                            _ => {
+                                let message = format!("Invalid key: {}", lhs);
+                                let span = pos_to_span(self.cur.pos);
+                                return Err(SyntaxError::Generic { message, span }.into());
+                            }
                         };
                         let rhs = self.pair_expr()?;
                         lhs = Expr::Pair(Pair {
@@ -564,7 +570,11 @@ impl<'a> Parser<'a> {
                         });
                         return Ok(lhs);
                     }
-                    _ => return error_pos!("Invalid postfix operator: {}", op),
+                    _ => {
+                        let message = format!("Invalid postfix operator: {}", op);
+                        let span = pos_to_span(self.cur.pos);
+                        return Err(SyntaxError::Generic { message, span }.into());
+                    }
                 }
             }
             // Infix
@@ -668,7 +678,9 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
         if !has_sep {
-            return error_pos!("Expected array separator, got {:?}", self.kind());
+            let message = format!("Expected array separator, got {:?}", self.kind());
+            let span = pos_to_span(self.cur.pos);
+            return Err(SyntaxError::Generic { message, span }.into());
         }
         Ok(())
     }
@@ -828,7 +840,11 @@ impl<'a> Parser<'a> {
                 self.next();
                 Ok(Key::NamedKey(value))
             }
-            _ => error_pos!("Expected key, got {:?}", self.kind()),
+            _ => {
+                let message = format!("Expected key, got {:?}", self.kind());
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic { message, span }.into());
+            }
         }
     }
 
@@ -875,7 +891,11 @@ impl<'a> Parser<'a> {
             TokenKind::Uint => self.parse_uint(),
             TokenKind::U8 => self.parse_u8(),
             TokenKind::I8 => self.parse_i8(),
-            _ => error_pos!("Expected integer, got {:?}", self.kind()),
+            _ => {
+                let message = format!("Expected integer, got {:?}", self.kind());
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic { message, span }.into());
+            }
         };
         if res.is_ok() {
             self.next();
