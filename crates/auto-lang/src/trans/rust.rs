@@ -758,6 +758,7 @@ impl RustTrans {
 
     // Enum declaration
     fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
+        // Generate enum definition
         sink.body.write(b"enum ")?;
         sink.body.write(enum_decl.name.as_bytes())?;
         sink.body.write(b" {\n")?;
@@ -771,7 +772,35 @@ impl RustTrans {
 
         self.dedent();
         self.print_indent(&mut sink.body)?;
-        sink.body.write(b"}\n\n")?;
+        sink.body.write(b"}\n")?;
+
+        // Generate Display trait implementation
+        sink.body.write(b"\n")?;
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "impl std::fmt::Display for {} {{", enum_decl.name)?;
+        self.indent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{")?;
+        self.indent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "match self {{")?;
+
+        for item in &enum_decl.items {
+            self.print_indent(&mut sink.body)?;
+            writeln!(sink.body, "{}::{} => write!(f, \"{}\"),", enum_decl.name, item.name, item.name)?;
+        }
+
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}}")?;
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}}")?;
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}}")?;
+        self.dedent();
+        sink.body.write(b"\n")?;
+
         Ok(())
     }
 
