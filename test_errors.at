@@ -1,0 +1,12 @@
+// Test file for error messages
+// This should trigger: Unexpected token error
+let x = ;
+
+// This should trigger: Expected type error
+fn bad_fn( -> int) { 0 }
+
+// This should trigger: Expected integer error
+let arr = [abc];
+
+// This should trigger: Invalid key error
+{ 123: "value" }
