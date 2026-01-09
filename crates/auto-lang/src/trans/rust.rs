@@ -180,13 +180,23 @@ impl RustTrans {
                     write!(out, " ")?;
                 }
 
-                // Handle positional arguments - just output them as-is for now
-                // TODO: Map positional args to field names using type declaration
+                // Try to get type declaration to map positional args to field names
+                let type_decl = self.scope.borrow().lookup_type(&node.name);
+
                 for (i, arg) in node.args.args.iter().enumerate() {
                     match arg {
                         Arg::Pos(expr) => {
-                            // Positional arg - use generic field name
-                            write!(out, "field{}: ", i)?;
+                            // Positional arg - map to actual field name from type definition
+                            let field_name = if let Type::User(decl) = &type_decl {
+                                if i < decl.members.len() {
+                                    decl.members[i].name.clone()
+                                } else {
+                                    format!("field{}", i).into()
+                                }
+                            } else {
+                                format!("field{}", i).into()
+                            };
+                            write!(out, "{}: ", field_name)?;
                             self.expr(expr, out)?;
                         }
                         Arg::Name(name) => {
@@ -742,7 +752,7 @@ impl RustTrans {
             self.print_indent(&mut sink.body)?;
         }
 
-        sink.body.write(b"}\n\n")?;
+        sink.body.write(b"}\n")?;
         Ok(())
     }
 

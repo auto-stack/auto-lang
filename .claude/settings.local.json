@@ -62,7 +62,8 @@
       "Bash(git add:*)",
       "Bash(\"/c/Program Files/tcc/tcc\" -o test_read_text_c.exe test_read_text_c.c -I.)",
       "Bash(powershell -Command:*)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(fc:*)"
     ]
   }
 }
