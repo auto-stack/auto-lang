@@ -1,0 +1,14 @@
+type Point {
+    x int
+    y int
+
+    fn modulus() int {
+        .x * .x + .y * .y
+    }
+}
+
+fn main() {
+    let p = Point {x:3, y:4}
+    let m int = p.modulus()
+    print("Modulus:", m)
+}
