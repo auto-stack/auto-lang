@@ -342,7 +342,11 @@ impl<'a> Parser<'a> {
                         current_section = CodeSection::Auto;
                     }
                     _ => {
-                        return error_pos!("Unknown section {}", section);
+                        return Err(SyntaxError::Generic {
+                            message: format!("Unknown section {}", section),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
                     }
                 }
                 // skip until newline
@@ -2653,7 +2657,11 @@ impl<'a> Parser<'a> {
             Expr::Ident(ident) => {
                 let meta = self.lookup_meta(ident);
                 let Some(meta) = meta else {
-                    return error_pos!("Function name not found! {}", ident);
+                    return Err(SyntaxError::Generic {
+                        message: format!("Function name not found! {}", ident),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
                 };
                 match meta.as_ref() {
                     Meta::Fn(fun) => {
@@ -2963,7 +2971,11 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LBrace)?;
         let block_parser = self.special_blocks.remove(name);
         if block_parser.is_none() {
-            return error_pos!("Unknown special block: {}", name);
+            return Err(SyntaxError::Generic {
+                message: format!("Unknown special block: {}", name),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
         }
         let block_parser = block_parser.unwrap();
         let body = block_parser.parse(self)?;
