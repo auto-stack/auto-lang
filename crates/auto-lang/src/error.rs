@@ -81,6 +81,11 @@ pub enum AutoError {
     #[diagnostic(code(auto_syntax_E0001))]
     Syntax(#[from] SyntaxError),
 
+    /// Syntax errors with source code
+    #[error("{0}")]
+    #[diagnostic(code(auto_syntax_E0001))]
+    SyntaxWithSource(Box<SyntaxError>, #[source_code] NamedSource<String>),
+
     /// Type errors
     #[error(transparent)]
     #[diagnostic(code(auto_type_E0101))]
@@ -123,6 +128,11 @@ impl AutoError {
     /// Get the source code associated with this error, if available
     pub fn source_code(&self) -> Option<NamedSource<String>> {
         get_source()
+    }
+
+    /// Attach source code to a syntax error
+    pub fn with_source(err: SyntaxError, name: String, code: String) -> Self {
+        AutoError::SyntaxWithSource(Box::new(err), NamedSource::new(name, code))
     }
 }
 

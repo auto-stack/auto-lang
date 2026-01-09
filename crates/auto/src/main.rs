@@ -3,12 +3,9 @@ use auto_lang::repl;
 use clap::{Parser, Subcommand};
 use miette::{MietteHandlerOpts, Result};
 
-// Helper to convert AutoError to miette error while preserving diagnostic info
-fn to_miette_err<E: Into<AutoError>>(err: E) -> miette::Report {
-    let auto_err = err.into();
-    // For now, convert to string, but this preserves the error message
-    // TODO: Find a way to pass the source code through
-    miette::miette!("{}", auto_err)
+// Helper to convert AutoError to miette Report - this preserves all diagnostic info
+fn to_miette_err(err: AutoError) -> miette::Report {
+    miette::Report::new(err)
 }
 
 #[derive(Parser, Debug)]

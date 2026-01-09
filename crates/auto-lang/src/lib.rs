@@ -28,23 +28,30 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-use crate::error::AutoResult;
+use crate::error::{AutoError, AutoResult};
 
 pub fn run(code: &str) -> AutoResult<String> {
-    // Set source code for error reporting
-    crate::error::set_source("<input>".to_string(), code.to_string());
-
     let mut interpreter = interp::Interpreter::new();
+
+    // Try to interpret, and attach source code if we get a syntax error
     let result = interpreter.interpret(code);
 
-    // Clear source after interpretation
-    crate::error::clear_source();
-
-    result?;
-
-    // Resolve any ValueRef in the result before converting to string
-    let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
-    Ok(resolved.repr().to_string())
+    match result {
+        Ok(_) => {
+            // Resolve any ValueRef in the result before converting to string
+            let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
+            Ok(resolved.repr().to_string())
+        }
+        Err(AutoError::Syntax(err)) => {
+            // Attach source code to the syntax error
+            Err(AutoError::with_source(
+                err,
+                "<input>".to_string(),
+                code.to_string(),
+            ))
+        }
+        Err(other) => Err(other),
+    }
 }
 
 /// Helper: Resolve ValueRef to actual value (for test output)
@@ -120,20 +127,21 @@ pub fn interpret_with_scope(code: &str, scope: Universe) -> AutoResult<interp::I
 pub fn run_file(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
-    // Set source code for error reporting with actual filename
-    crate::error::set_source(path.to_string(), code.clone());
-
     let mut interpreter = interp::Interpreter::new();
     let result = interpreter.interpret(&code);
 
-    // Clear source after interpretation
-    crate::error::clear_source();
-
-    result?;
-
-    // Resolve any ValueRef in the result before converting to string
-    let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
-    Ok(resolved.repr().to_string())
+    match result {
+        Ok(_) => {
+            // Resolve any ValueRef in the result before converting to string
+            let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
+            Ok(resolved.repr().to_string())
+        }
+        Err(AutoError::Syntax(err)) => {
+            // Attach source code to the syntax error with actual filename
+            Err(AutoError::with_source(err, path.to_string(), code))
+        }
+        Err(other) => Err(other),
+    }
 }
 
 pub fn interpret_file(path: &str) -> interp::Interpreter {
