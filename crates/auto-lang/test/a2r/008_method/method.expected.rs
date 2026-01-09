@@ -5,12 +5,12 @@ struct Point {
 
 impl Point {
     fn modulus(&self) -> i32 {
-        self.x * self.x + self.y * self.y;
+        self.x * self.x + self.y * self.y
     }
 }
 
 fn main() {
     let p: Point = Point { x: 3, y: 4 };
     let m: i32 = p.modulus();
-    print!("Modulus:", m);
+    println!("Modulus: {}", m);
 }
