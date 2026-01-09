@@ -55,7 +55,7 @@ use auto_val::{AutoStr, Node as AutoNode, Value};
 
 impl AtomWriter for Store {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        // Output: kind name (type) expr
+        // Output format: kind(name, type, expr) or kind(name, expr) for var
         let kind_name = match self.kind {
             StoreKind::Let => "let",
             StoreKind::Mut => "mut",
@@ -64,13 +64,13 @@ impl AtomWriter for Store {
             StoreKind::CVar => "cvar",
         };
 
-        write!(f, "{} {} ", kind_name, self.name)?;
+        write!(f, "{}({}", kind_name, self.name)?;
 
-        if !matches!(self.ty, Type::Unknown) {
-            write!(f, "({}) ", self.ty.to_atom_str())?;
+        if !matches!(self.ty, Type::Unknown) && !matches!(self.kind, StoreKind::Var) {
+            write!(f, ", {}", self.ty.to_atom_str())?;
         }
 
-        write!(f, "{}", self.expr.to_atom_str())?;
+        write!(f, ", {})", self.expr.to_atom_str())?;
         Ok(())
     }
 }

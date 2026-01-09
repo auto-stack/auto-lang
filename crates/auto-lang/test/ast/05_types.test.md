@@ -8,7 +8,7 @@ let a int = 10
 
 ---
 
-let a (int) 10
+let(a, int, 10)
 
 ## Type - Float
 
@@ -16,7 +16,7 @@ var x float = 3.14
 
 ---
 
-var x (float) 3.14
+var(x, float, 3.14)
 
 ## Type - Bool
 
@@ -24,7 +24,7 @@ var z bool = true
 
 ---
 
-var z (bool) true
+var(z, bool, true)
 
 ## Type - Str
 
@@ -32,7 +32,7 @@ let s str = "hello"
 
 ---
 
-let s (str) "hello"
+let(s, str, "hello")
 
 ## Type - Void
 
@@ -50,7 +50,7 @@ let p *int = 10.ptr
 
 ---
 
-let p (ptr(int)) bina(10, ptr)
+let(p, ptr(int), bina(10, ptr))
 
 ## Type - Array
 
@@ -58,7 +58,7 @@ var arr [3]int = [1, 2, 3]
 
 ---
 
-var arr (array(int, 3)) array(1, 2, 3)
+var(arr, array(int, 3), array(1, 2, 3))
 
 ## Type - User Defined
 
