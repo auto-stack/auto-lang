@@ -64,12 +64,14 @@ pub struct AutoGen {
     note: char,
 }
 
+#[allow(deprecated)]
 impl Default for AutoGen {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[allow(deprecated)]
 impl AutoGen {
     pub fn new() -> Self {
         Self {
@@ -247,6 +249,7 @@ pub struct OneGen {
     note: char,
 }
 
+#[allow(deprecated)]
 impl OneGen {
     pub fn new(mold: Mold, data: Atom) -> Self {
         Self {
@@ -259,6 +262,7 @@ impl OneGen {
     }
 }
 
+#[allow(deprecated)]
 impl OneGen {
     pub fn note(mut self, note: char) -> Self {
         self.note = note;
@@ -318,6 +322,7 @@ impl OneGen {
 }
 
 // Static methods
+#[allow(deprecated)]
 impl AutoGen {
     pub fn is_template_file(path: &AutoPath) -> bool {
         let exts = path.exts(2);
@@ -345,6 +350,7 @@ mod tests {
     use auto_val::Value;
 
     #[test]
+    #[allow(deprecated)]
     fn test_gen() {
         let values = vec![Value::pair("a", 1), Value::pair("b", 2)];
         let atom = Atom::assemble(values);
@@ -354,6 +360,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_is_template() {
         let path = "test.at.txt";
         let ap = AutoPath::new(path);

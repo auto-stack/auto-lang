@@ -4,41 +4,11 @@
 //! error codes, and helpful suggestions using the `miette` diagnostic library.
 
 use crate::token::Pos;
-use miette::{Diagnostic, NamedSource, SourceCode, SourceSpan};
+use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
 // Re-export commonly used types
 pub use miette::{MietteError, Result};
-
-/// Thread-local storage for the current source code being processed
-///
-/// This allows error reporting to access source code without threading it
-/// through every function call.
-thread_local! {
-    static CURRENT_SOURCE: std::cell::RefCell<Option<NamedSource<String>>> = const { std::cell::RefCell::new(None) };
-}
-
-/// Set the current source code for error reporting
-///
-/// This should be called at the start of parsing/compilation to enable
-/// source code snippets in error messages.
-pub fn set_source(name: String, code: String) {
-    CURRENT_SOURCE.with(|source| {
-        *source.borrow_mut() = Some(NamedSource::new(name, code));
-    });
-}
-
-/// Clear the current source code
-pub fn clear_source() {
-    CURRENT_SOURCE.with(|source| {
-        *source.borrow_mut() = None;
-    });
-}
-
-/// Get a reference to the current source code, if available
-pub fn get_source() -> Option<NamedSource<String>> {
-    CURRENT_SOURCE.with(|source| source.borrow().as_ref().cloned())
-}
 
 /// Convert a `Pos` to a `SourceSpan` for use with miette diagnostics
 ///
@@ -238,11 +208,6 @@ impl<'a> From<&'a str> for AutoError {
 }
 
 impl AutoError {
-    /// Get the source code associated with this error, if available
-    pub fn source_code(&self) -> Option<NamedSource<String>> {
-        get_source()
-    }
-
     /// Attach source code to a syntax error
     pub fn with_source(err: SyntaxError, name: String, code: String) -> Self {
         AutoError::SyntaxWithSource(SyntaxErrorWithSource {

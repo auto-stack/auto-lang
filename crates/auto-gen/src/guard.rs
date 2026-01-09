@@ -52,17 +52,17 @@ impl GuardProcessor {
     /// Merge existing content with generated content, preserving guarded sections
     pub fn merge(&self, existing: &str, generated: &str) -> GenResult<String> {
         let existing_guards = self.extract_guards(existing);
-        let generated_guards = self.extract_guards(generated);
+        let _generated_guards = self.extract_guards(generated);
 
         let mut result = String::new();
         let mut in_guard = false;
-        let mut current_guard_id: Option<AutoStr> = None;
+        let mut _current_guard_id: Option<AutoStr> = None;
 
         for line in generated.lines() {
             if let Some(caps) = self.start_pattern.captures(line) {
                 let guard_id: AutoStr = caps[1].to_string().into();
                 in_guard = true;
-                current_guard_id = Some(guard_id.clone());
+                _current_guard_id = Some(guard_id.clone());
                 result.push_str(line);
                 result.push('\n');
 
@@ -72,7 +72,7 @@ impl GuardProcessor {
                 }
             } else if in_guard && self.end_pattern.is_match(line) {
                 in_guard = false;
-                current_guard_id = None;
+                _current_guard_id = None;
                 result.push_str(line);
                 result.push('\n');
             } else if !in_guard {

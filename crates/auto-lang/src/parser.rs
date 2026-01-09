@@ -1,6 +1,5 @@
 use crate::ast::*;
-use crate::error::{pos_to_span, AutoError, SyntaxError};
-use crate::error_pos;
+use crate::error::{pos_to_span, SyntaxError};
 use crate::lexer::Lexer;
 use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
@@ -10,7 +9,6 @@ use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::{shared, Shared};
 use miette::SourceSpan;
-use std::backtrace::Backtrace;
 use std::collections::HashMap;
 use std::i32;
 use std::rc::Rc;

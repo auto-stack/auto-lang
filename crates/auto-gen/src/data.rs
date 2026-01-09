@@ -2,7 +2,7 @@ use crate::error::{GenError, GenResult};
 use auto_atom::Atom;
 use auto_lang::interp::Interpreter;
 use auto_lang::Universe;
-use auto_val::{NodeBody, Shared, Value};
+use auto_val::{Shared, Value};
 use std::path::PathBuf;
 
 /// Data source for the code generator
@@ -47,7 +47,7 @@ impl DataLoader {
         }
     }
 
-    fn parse_auto_to_data(&self, code: &str, path: PathBuf) -> GenResult<LoadedData> {
+    fn parse_auto_to_data(&self, code: &str, _path: PathBuf) -> GenResult<LoadedData> {
         // Evaluate the Auto code
         let mut inter = Interpreter::new();
         let value = inter.eval(code);
