@@ -216,6 +216,12 @@ impl RustTrans {
 
     fn print_call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         // print("hello") -> println!("hello")
+        // print(value) -> println!("{}", value)
+        if call.args.args.is_empty() {
+            write!(out, "println!()")?;
+            return Ok(());
+        }
+
         if call.args.args.len() == 1 {
             if let Arg::Pos(expr) = &call.args.args[0] {
                 match expr {
@@ -223,17 +229,29 @@ impl RustTrans {
                         write!(out, "println!(\"{}\")", s)?;
                         return Ok(());
                     }
-                    _ => {}
+                    _ => {
+                        // Single non-string argument: use format string
+                        write!(out, "println!(\"{{}}\", ")?;
+                        self.expr(expr, out)?;
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
                 }
             }
         }
-        // Fallback: generate print! macro
-        write!(out, "print!(")?;
-        for (i, arg) in call.args.args.iter().enumerate() {
-            self.arg(arg, out)?;
-            if i < call.args.args.len() - 1 {
-                write!(out, ", ")?;
+
+        // Multiple arguments: generate println! with format string
+        write!(out, "println!(\"")?;
+        for (i, _arg) in call.args.args.iter().enumerate() {
+            if i > 0 {
+                write!(out, " ")?;
             }
+            write!(out, "{{}}")?;
+        }
+        write!(out, "\"")?;
+        for arg in &call.args.args {
+            write!(out, ", ")?;
+            self.arg(arg, out)?;
         }
         write!(out, ")").map_err(Into::into)
     }
@@ -380,40 +398,11 @@ impl RustTrans {
 
         // Function body
         write!(sink.body, " ")?;
-        sink.body.write(b"{\n")?;
-        self.indent();
+        self.scope.borrow_mut().enter_fn(fn_decl.name.clone());
+        self.body(&fn_decl.body, sink, &fn_decl.ret, "")?;
+        self.scope.borrow_mut().exit_fn();
 
-        // Process body statements
-        for stmt in &fn_decl.body.stmts {
-            self.print_indent(&mut sink.body)?;
-            match stmt {
-                Stmt::Expr(expr) => {
-                    self.expr(expr, &mut sink.body)?;
-                    sink.body.write(b";\n")?;
-                }
-                Stmt::Store(store) => {
-                    self.store(store, &mut sink.body)?;
-                    sink.body.write(b";\n")?;
-                }
-                Stmt::EmptyLine(n) => {
-                    for _ in 0..*n {
-                        sink.body.write(b"\n")?;
-                    }
-                }
-                _ => {
-                    // For other statement types, write a placeholder
-                    sink.body.write(b"/* TODO: ")?;
-                    write!(sink.body, "{:?}", stmt)?;
-                    sink.body.write(b" */\n")?;
-                }
-            }
-        }
-
-        self.dedent();
-        self.print_indent(&mut sink.body)?;
-        sink.body.write(b"}")?;
-
-        sink.body.write(b"\n\n")?;
+        sink.body.write(b"\n")?;
         Ok(())
     }
 
@@ -727,10 +716,7 @@ impl RustTrans {
                 }
                 Expr::If(_) => true,
                 Expr::Block(_) => true,
-                Expr::Bina(lhs, _, _) => {
-                    // Binary operations are returnable
-                    matches!(lhs.as_ref(), Expr::Ident(_) | Expr::Call(_))
-                }
+                Expr::Bina(_, _, _) => true,
                 Expr::Ident(_) => true,
                 Expr::Array(_) => true,
                 Expr::Index(_, _) => true,
@@ -744,7 +730,7 @@ impl RustTrans {
 impl Trans for RustTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
         // Phase 1: Emit file header
-        sink.body.write(b"//! Auto-generated Rust code\n\n")?;
+        // sink.body.write(b"//! Auto-generated Rust code\n\n")?;
 
         // Phase 2: Split into declarations and main
         let mut decls: Vec<Stmt> = Vec::new();
@@ -798,12 +784,20 @@ impl Trans for RustTrans {
 
                 let is_last = i == main.len() - 1;
                 if is_last && has_return && self.is_returnable(stmt) {
-                    sink.body.write(b"return ")?;
-                    self.stmt(stmt, sink)?;
-                    sink.body.write(b"\n")?;
+                    // Last expression: no semicolon (expression position)
+                    match stmt {
+                        Stmt::Expr(expr) => {
+                            self.expr(expr, &mut sink.body)?;
+                            sink.body.write(b"\n")?;
+                        }
+                        _ => {
+                            self.stmt(stmt, sink)?;
+                            sink.body.write(b"\n")?;
+                        }
+                    }
                 } else {
                     self.stmt(stmt, sink)?;
-                    sink.body.write(b"\n")?;
+                    sink.body.write(b";\n")?;
                 }
             }
 
@@ -841,4 +835,93 @@ pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     transpiler.trans(ast, &mut out)?;
     let src = out.done()?.clone();
     Ok(String::from_utf8(src).unwrap().into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::read_to_string;
+    use std::path::PathBuf;
+
+    fn test_a2r(case: &str) -> AutoResult<()> {
+        // Parse test case name: "000_hello" -> "hello"
+        let parts: Vec<&str> = case.split("_").collect();
+        let name = parts[1..].join("_");
+
+        let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let src_path = format!("test/a2r/{}/{}.at", case, name);
+        let src_path = d.join(src_path);
+        let src = read_to_string(src_path.as_path())?;
+
+        let exp_path = format!("test/a2r/{}/{}.expected.rs", case, name);
+        let exp_path = d.join(exp_path);
+        let expected = if !exp_path.is_file() {
+            "".to_string()
+        } else {
+            read_to_string(exp_path.as_path())?
+        };
+
+        let (mut rcode, _) = transpile_rust(&name, &src)?;
+        let rs_code = rcode.done()?;
+
+        if rs_code != expected.as_bytes() {
+            // Generate .wrong.rs for comparison
+            let gen_path = format!("test/a2r/{}/{}.wrong.rs", case, name);
+            let gen_path = d.join(gen_path);
+            std::fs::write(&gen_path, rs_code)?;
+        }
+
+        assert_eq!(String::from_utf8_lossy(rs_code), expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_000_hello() {
+        test_a2r("000_hello").unwrap();
+    }
+
+    #[test]
+    fn test_001_sqrt() {
+        test_a2r("001_sqrt").unwrap();
+    }
+
+    #[test]
+    fn test_002_array() {
+        test_a2r("002_array").unwrap();
+    }
+
+    #[test]
+    fn test_003_func() {
+        test_a2r("003_func").unwrap();
+    }
+
+    #[test]
+    fn test_006_struct() {
+        test_a2r("006_struct").unwrap();
+    }
+
+    #[test]
+    fn test_007_enum() {
+        test_a2r("007_enum").unwrap();
+    }
+
+    #[test]
+    fn test_008_method() {
+        test_a2r("008_method").unwrap();
+    }
+
+    #[test]
+    fn test_010_if() {
+        test_a2r("010_if").unwrap();
+    }
+
+    #[test]
+    fn test_011_for() {
+        test_a2r("011_for").unwrap();
+    }
+
+    #[test]
+    fn test_012_is() {
+        test_a2r("012_is").unwrap();
+    }
 }

@@ -3,5 +3,5 @@ fn square(x: f64) -> f64 {
 }
 
 fn main() -> i32 {
-    return square(2.0);
+    square(2)
 }
