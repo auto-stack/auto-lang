@@ -128,6 +128,7 @@ pub struct Parser<'a> {
     pub scope: Shared<Universe>,
     lexer: Lexer<'a>,
     pub cur: Token,
+    prev: Token, // Track previous token for validation
     pub special_blocks: HashMap<AutoStr, Box<dyn BlockParser>>,
     pub skip_check: bool,
     pub compile_dest: CompileDest,
@@ -145,6 +146,16 @@ impl<'a> Parser<'a> {
             scope,
             lexer,
             cur,
+            prev: Token {
+                kind: TokenKind::EOF,
+                pos: Pos {
+                    line: 0,
+                    at: 0,
+                    pos: 0,
+                    len: 0,
+                },
+                text: "".into(),
+            }, // Initialize with EOF token
             compile_dest: CompileDest::Interp,
             special_blocks: HashMap::new(),
             skip_check: false,
@@ -169,6 +180,16 @@ impl<'a> Parser<'a> {
             scope,
             lexer,
             cur,
+            prev: Token {
+                kind: TokenKind::EOF,
+                pos: Pos {
+                    line: 0,
+                    at: 0,
+                    pos: 0,
+                    len: 0,
+                },
+                text: "".into(),
+            }, // Initialize with EOF token
             compile_dest: CompileDest::Interp,
             special_blocks: HashMap::new(),
             skip_check: false,
@@ -215,6 +236,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn next(&mut self) -> &Token {
+        self.prev = self.cur.clone();
         self.cur = self.lexer.next();
         self.skip_comments();
         &self.cur
@@ -291,6 +313,7 @@ impl<'a> Parser<'a> {
         let mut stmts = Vec::new();
         self.skip_empty_lines();
         let mut current_section = CodeSection::None;
+        let mut stmt_index = 0; // Track statement index for is_first_stmt check
         while !self.is_kind(TokenKind::EOF) {
             // deal with sections
             if self.is_kind(TokenKind::Hash) {
@@ -356,7 +379,9 @@ impl<'a> Parser<'a> {
                 }
             }
             stmts.push(stmt);
-            self.expect_eos()?;
+            let is_first = stmt_index == 0;
+            self.expect_eos(is_first)?;
+            stmt_index += 1;
         }
         stmts = self.convert_last_block(stmts)?;
         Ok(Code { stmts })
@@ -1150,7 +1175,10 @@ impl<'a> Parser<'a> {
 // Statements
 impl<'a> Parser<'a> {
     // End of statement
-    pub fn expect_eos(&mut self) -> AutoResult<usize> {
+    pub fn expect_eos(&mut self, is_first_stmt: bool) -> AutoResult<usize> {
+        // Save the previous token before consuming separators
+        let token_before_sep = self.prev.clone();
+
         let mut has_sep = false;
         let mut newline_count = 0;
         while self.is_kind(TokenKind::Semi)
@@ -1167,6 +1195,17 @@ impl<'a> Parser<'a> {
             return Ok(newline_count);
         }
         if has_sep {
+            // Check for ambiguous sequence: ')', '\n', '{'
+            // This is ambiguous - use 2+ newlines to disambiguate
+            if self.is_kind(TokenKind::LBrace)
+                && token_before_sep.kind == TokenKind::RParen
+                && newline_count == 1
+            {
+                return error_pos!(
+                    "Ambiguous syntax: statement ending with ')' followed by newline and '{{'. \
+                    Use 2+ newlines to separate statements, or put the '{{' on the same line."
+                );
+            }
             Ok(newline_count)
         } else {
             error_pos!(
@@ -1476,6 +1515,7 @@ impl<'a> Parser<'a> {
             stmts.push(Stmt::EmptyLine(new_lines - 1));
         }
         let has_new_line = new_lines > 0;
+        let mut stmt_index = 0; // Track statement index for is_first_stmt check
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             let stmt = self.parse_stmt()?;
             if is_node {
@@ -1491,10 +1531,12 @@ impl<'a> Parser<'a> {
                 }
             }
             stmts.push(stmt);
-            let newline_count = self.expect_eos()?;
+            let is_first = stmt_index == 0;
+            let newline_count = self.expect_eos(is_first)?;
             if newline_count > 1 {
                 stmts.push(Stmt::EmptyLine(newline_count - 1));
             }
+            stmt_index += 1;
         }
         stmts = self.convert_last_block(stmts)?;
         self.exit_scope();
@@ -2120,7 +2162,7 @@ impl<'a> Parser<'a> {
                 let member = self.type_member()?;
                 members.push(member);
             }
-            self.expect_eos()?;
+            self.expect_eos(false)?; // Not first statement in type body
         }
         self.expect(TokenKind::RBrace)?;
         // add members and methods of compose types
@@ -2180,10 +2222,13 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
         let mut fields = Vec::new();
+        let mut field_index = 0;
         while !self.is_kind(TokenKind::RBrace) {
             let f = self.union_field()?;
             fields.push(f);
-            self.expect_eos()?;
+            let is_first = field_index == 0;
+            self.expect_eos(is_first)?;
+            field_index += 1;
         }
         self.expect(TokenKind::RBrace)?;
 
@@ -2208,10 +2253,13 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
         let mut fields = Vec::new();
+        let mut field_index = 0;
         while !self.is_kind(TokenKind::RBrace) {
             let member = self.tag_field()?;
             fields.push(member);
-            self.expect_eos()?;
+            let is_first = field_index == 0;
+            self.expect_eos(is_first)?;
+            field_index += 1;
         }
         self.expect(TokenKind::RBrace)?;
         self.define(
@@ -2742,12 +2790,15 @@ impl<'a> Parser<'a> {
         // data
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
+        let mut row_index = 0;
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             let row = self.array()?;
             if let Expr::Array(array) = row {
                 data.push(array);
             }
-            self.expect_eos()?;
+            let is_first = row_index == 0;
+            self.expect_eos(is_first)?;
+            row_index += 1;
         }
         self.expect(TokenKind::RBrace)?;
         let grid = Grid { head: args, data };

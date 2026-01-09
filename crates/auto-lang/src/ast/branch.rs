@@ -21,13 +21,15 @@ use auto_val::{AutoStr, Node as AutoNode, Value};
 
 impl AtomWriter for Branch {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        // Output condition, opening brace, body, and closing brace
-        write!(
-            f,
-            "{} {{ {} }}",
-            self.cond.to_atom_str(),
-            self.body.to_atom_str()
-        )?;
+        // Output condition, opening brace, body statements, and closing brace
+        write!(f, " {} {{", self.cond.to_atom_str())?;
+        for stmt in &self.body.stmts {
+            write!(f, " {}", stmt.to_atom_str())?;
+        }
+        if !self.body.stmts.is_empty() {
+            write!(f, " ")?;
+        }
+        write!(f, "}}")?;
         Ok(())
     }
 }
@@ -59,10 +61,6 @@ mod tests {
         };
         let atom = branch.to_atom();
         // Should be in format "(branch bool(true) (body int(42)))"
-        assert!(
-            atom.contains("branch"),
-            "Expected atom to contain 'branch', got: {}",
-            atom
-        );
+        assert_eq!(atom, " true { 42 }");
     }
 }

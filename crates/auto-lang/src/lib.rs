@@ -38,7 +38,10 @@ pub fn run(code: &str) -> AutoResult<String> {
 }
 
 /// Helper: Resolve ValueRef to actual value (for test output)
-fn resolve_value_in_result(value: Value, universe: &std::rc::Rc<std::cell::RefCell<Universe>>) -> Value {
+fn resolve_value_in_result(
+    value: Value,
+    universe: &std::rc::Rc<std::cell::RefCell<Universe>>,
+) -> Value {
     match value {
         Value::ValueRef(vid) => {
             if let Some(data) = universe.borrow().get_value(vid) {
@@ -54,7 +57,9 @@ fn resolve_value_in_result(value: Value, universe: &std::rc::Rc<std::cell::RefCe
             }
         }
         Value::Array(arr) => {
-            let resolved_vals: Vec<Value> = arr.values.into_iter()
+            let resolved_vals: Vec<Value> = arr
+                .values
+                .into_iter()
                 .map(|v| resolve_value_in_result(v, universe))
                 .collect();
             Value::Array(resolved_vals.into())
@@ -982,6 +987,10 @@ square(15)
 
     #[test]
     fn test_node_newline() {
+        // the token sequence [')', '\n', '{'] should be treated as compile error
+        // because it would be ambiguous:
+        // 1. it might be a node statement with '{' written at the next line
+        // 2. it might be a node statement without body, then followed by an object or a block.
         let code = r#"
             dep("x")
             {
@@ -992,6 +1001,30 @@ square(15)
 
         let config = AutoConfig::new(code);
         assert!(config.is_err());
+
+        // this should pass, it is a normal node
+        let code = r#"
+            dep("x") {
+                x: 1
+                y: 2
+            }
+        "#;
+
+        let config = AutoConfig::new(code);
+        assert!(config.is_ok());
+
+        // this should also pass, this is a call followed by an object
+        let code = r#"
+            dep("x")
+
+            {
+                x: 1
+                y: 2
+            }
+        "#;
+
+        let config = AutoConfig::new(code);
+        assert!(config.is_ok());
     }
 
     #[test]
@@ -1302,6 +1335,9 @@ for d in dirs {
 }
 "#;
         let interp = eval_config(code, &auto_val::Obj::new()).unwrap();
-        assert_eq!(interp.result.repr(), r#"root {dir a {at: "a"; }; dir b {at: "b"; }; dir c {at: "c"; }; }"#);
+        assert_eq!(
+            interp.result.repr(),
+            r#"root {dir a {at: "a"; }; dir b {at: "b"; }; dir c {at: "c"; }; }"#
+        );
     }
 }

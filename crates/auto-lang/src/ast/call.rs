@@ -205,8 +205,8 @@ impl AtomWriter for Arg {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         match self {
             Arg::Pos(expr) => write!(f, "{}", expr.to_atom_str())?,
-            Arg::Name(name) => write!(f, "name(\"{}\")", name)?,
-            Arg::Pair(key, expr) => write!(f, "pair(name(\"{}\"), {})", key, expr.to_atom_str())?,
+            Arg::Name(name) => write!(f, "{}", name)?,
+            Arg::Pair(key, expr) => write!(f, "pair({}, {})", key, expr.to_atom_str())?,
         }
         Ok(())
     }
@@ -239,9 +239,17 @@ impl ToAtom for Arg {
 
 impl AtomWriter for Args {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "args")?;
-        for arg in &self.args {
-            write!(f, "({})", arg.to_atom_str())?;
+        if self.args.is_empty() {
+            write!(f, "()")?;
+        } else {
+            write!(f, "args(")?;
+            for (i, arg) in self.args.iter().enumerate() {
+                write!(f, "{}", arg.to_atom_str())?;
+                if i < self.args.len() - 1 {
+                    write!(f, ", ")?;
+                }
+            }
+            write!(f, ")")?;
         }
         Ok(())
     }
@@ -287,6 +295,10 @@ impl AtomWriter for Call {
             }
         }
         write!(f, ")")?;
+        // Add return type if not Unknown
+        if !matches!(self.ret, Type::Unknown) {
+            write!(f, " {}", self.ret.to_atom_str())?;
+        }
         Ok(())
     }
 }
@@ -319,52 +331,28 @@ mod tests {
     fn test_arg_to_atom_pos() {
         let arg = Arg::Pos(Expr::Int(42));
         let atom = arg.to_atom();
-        assert_eq!(atom, "int(42)");
+        assert_eq!(atom, "42");
     }
 
     #[test]
     fn test_arg_to_atom_name() {
         let arg = Arg::Name("x".into());
         let atom = arg.to_atom();
-        assert!(
-            atom.contains("x"),
-            "Expected atom to contain 'x', got: {}",
-            atom
-        );
+        assert_eq!(atom, "x");
     }
 
     #[test]
     fn test_arg_to_atom_pair() {
         let arg = Arg::Pair("key".into(), Expr::Int(42));
         let atom = arg.to_atom();
-        // Should be in format "(pair key int(42))"
-        assert!(
-            atom.contains("pair"),
-            "Expected atom to contain 'pair', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("key"),
-            "Expected atom to contain 'key', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("int(42)"),
-            "Expected atom to contain 'int(42)', got: {}",
-            atom
-        );
+        assert_eq!(atom, "pair(key, 42)");
     }
 
     #[test]
     fn test_args_to_atom_empty() {
         let args = Args::new();
         let atom = args.to_atom();
-        // Should be in format "(args)"
-        assert!(
-            atom.contains("args"),
-            "Expected atom to contain 'args', got: {}",
-            atom
-        );
+        assert_eq!(atom, "()");
     }
 
     #[test]
@@ -373,22 +361,7 @@ mod tests {
         args.args.push(Arg::Pos(Expr::Int(1)));
         args.args.push(Arg::Pos(Expr::Int(2)));
         let atom = args.to_atom();
-        // Should be in format "(args int(1) int(2))"
-        assert!(
-            atom.contains("args"),
-            "Expected atom to contain 'args', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("int(1)"),
-            "Expected atom to contain 'int(1)', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("int(2)"),
-            "Expected atom to contain 'int(2)', got: {}",
-            atom
-        );
+        assert_eq!(atom, "args(1, 2)");
     }
 
     #[test]
@@ -399,38 +372,19 @@ mod tests {
             ret: Type::Unknown,
         };
         let atom = call.to_atom();
-        // Should be in format "(call ident(print) (args))"
-        assert!(
-            atom.contains("call"),
-            "Expected atom to contain 'call', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("print"),
-            "Expected atom to contain 'print', got: {}",
-            atom
-        );
+        assert_eq!(atom, "call print ()");
     }
 
     #[test]
     fn test_call_to_atom_with_return_type() {
         let call = Call {
-            name: Box::new(Expr::Ident("getInt".into())),
+            name: Box::new(Expr::Ident("get_int".into())),
             args: Args::new(),
             ret: Type::Int,
         };
         let atom = call.to_atom();
         // Should contain return type info
-        assert!(
-            atom.contains("call"),
-            "Expected atom to contain 'call', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("getInt"),
-            "Expected atom to contain 'getInt', got: {}",
-            atom
-        );
+        assert_eq!(atom, "call get_int () int");
     }
 
     #[test]
@@ -444,21 +398,6 @@ mod tests {
             ret: Type::Unknown,
         };
         let atom = call.to_atom();
-        // Should be in format "(call ident(print) (args int(42)))"
-        assert!(
-            atom.contains("call"),
-            "Expected atom to contain 'call', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("print"),
-            "Expected atom to contain 'print', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("int(42)"),
-            "Expected atom to contain 'int(42)', got: {}",
-            atom
-        );
+        assert_eq!(atom, "call print (42)");
     }
 }
