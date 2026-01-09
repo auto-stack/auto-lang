@@ -1267,18 +1267,26 @@ impl<'a> Parser<'a> {
                 && token_before_sep.kind == TokenKind::RParen
                 && newline_count == 1
             {
-                return error_pos!(
-                    "Ambiguous syntax: statement ending with ')' followed by newline and '{{'. \
-                    Use 2+ newlines to separate statements, or put the '{{' on the same line."
-                );
+                return Err(SyntaxError::Generic {
+                    message:
+                        "Ambiguous syntax: statement ending with ')' followed by newline and '{'. \
+                    Use 2+ newlines to separate statements, or put the '{' on the same line."
+                            .to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
             }
             Ok(newline_count)
         } else {
-            error_pos!(
-                "Expected end of statement, got {:?}<{}>",
-                self.kind(),
-                self.cur.text
-            )
+            Err(SyntaxError::Generic {
+                message: format!(
+                    "Expected end of statement, got {:?}<{}>",
+                    self.kind(),
+                    self.cur.text
+                ),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into())
         }
     }
 
@@ -1428,11 +1436,15 @@ impl<'a> Parser<'a> {
             self.next(); // skip lib
             paths.push(format!("\"{}\"", name).into());
         } else {
-            return error_pos!(
-                "Expected <lib> or \"lib\", got {:?}, {}",
-                self.kind(),
-                self.cur.text
-            );
+            return Err(SyntaxError::Generic {
+                message: format!(
+                    "Expected <lib> or \"lib\", got {:?}, {}",
+                    self.kind(),
+                    self.cur.text
+                ),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
         }
 
         let items = self.parse_use_items()?;
@@ -2942,12 +2954,16 @@ impl<'a> Parser<'a> {
                             let nd = self.parse_node(&ident.repr(), primary_prop, args, &kind)?;
                             return Ok(Expr::Node(nd));
                         } else {
-                            return error_pos!(
-                                "expect node, got {} {} {}",
-                                ident.repr(),
-                                primary_prop.unwrap().repr(),
-                                kind
-                            );
+                            return Err(SyntaxError::Generic {
+                                message: format!(
+                                    "expect node, got {} {} {}",
+                                    ident.repr(),
+                                    primary_prop.unwrap().repr(),
+                                    kind
+                                ),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                            .into());
                         }
                     } else {
                         // name id <nl>
@@ -2960,11 +2976,15 @@ impl<'a> Parser<'a> {
                             return Ok(Expr::Node(nd));
                         }
                     }
-                    return error_pos!(
-                        "Expected simple expression, got `{} {}`",
-                        ident.repr(),
-                        primary_prop.unwrap()
-                    );
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Expected simple expression, got `{} {}`",
+                            ident.repr(),
+                            primary_prop.unwrap()
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
                 }
                 let expr = self.expr_pratt_with_left(ident, 0)?;
                 let expr = self.check_symbol(expr)?;
