@@ -2462,7 +2462,11 @@ impl<'a> Parser<'a> {
             let name = self.parse_name()?;
             let meta = self.lookup_meta(&name);
             let Some(m) = meta else {
-                return error_pos!("Array Size of {} is not found", name);
+                return Err(SyntaxError::Generic {
+                    message: format!("Array Size of {} is not found", name),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
             };
             match m.as_ref() {
                 Meta::Store(store) => {
@@ -2497,7 +2501,11 @@ impl<'a> Parser<'a> {
                         if let Meta::Type(array_ty) = meta.as_ref() {
                             return Ok(array_ty.clone());
                         } else {
-                            return error_pos!("Expected array type, got {:?}", meta);
+                            return Err(SyntaxError::Generic {
+                                message: format!("Expected array type, got {:?}", meta),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                            .into());
                         }
                     }
                     None => {
@@ -2513,7 +2521,11 @@ impl<'a> Parser<'a> {
                 }
             }
             _ => {
-                return error_pos!("Expected type, got ident {:?}", type_name);
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected type, got ident {:?}", type_name),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
             }
         }
     }
@@ -2522,7 +2534,11 @@ impl<'a> Parser<'a> {
         let ident = self.parse_ident()?;
         match ident {
             Expr::Ident(name) => Ok(self.lookup_type(&name).borrow().clone()),
-            _ => error_pos!("Expected type, got ident {:?}", ident),
+            _ => Err(SyntaxError::Generic {
+                message: format!("Expected type, got ident {:?}", ident),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into()),
         }
     }
 
