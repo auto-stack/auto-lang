@@ -26,3 +26,5 @@ normalize-path = { workspace = true }
 roxmltree = { workspace = true }
 dirs = { workspace = true }
 lazy_static = "1.4"
+thiserror = { workspace = true }
+miette = { workspace = true }

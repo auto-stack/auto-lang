@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::error::{pos_to_span, AutoError, SyntaxError};
 use crate::error_pos;
 use crate::lexer::Lexer;
 use crate::scope::Meta;
@@ -247,13 +248,15 @@ impl<'a> Parser<'a> {
             self.next();
             Ok(())
         } else {
-            println!("{}", Backtrace::capture());
-            error_pos!(
-                "Expected token kind: {:?}, got [{:?}] at position {:?}",
-                kind,
-                self.cur.text,
-                self.cur.pos,
-            )
+            let expected = format!("{:?}", kind);
+            let found = self.cur.text.to_string();
+            let span = pos_to_span(self.cur.pos);
+            Err(SyntaxError::UnexpectedToken {
+                expected,
+                found,
+                span,
+            }
+            .into())
         }
     }
 

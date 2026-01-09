@@ -1,6 +1,6 @@
 use auto_lang::repl;
 use clap::{Parser, Subcommand};
-use std::error::Error;
+use miette::{MietteHandlerOpts, Result};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -19,7 +19,7 @@ enum Commands {
     Run { path: String },
     #[command(about = "Evaluate Auto expression")]
     Eval { code: String },
-    #[command(about= "Treat File as AutoConfig")]
+    #[command(about = "Treat File as AutoConfig")]
     Config { path: String },
     #[command(about = "Transpile Auto to C")]
     C { path: String },
@@ -27,46 +27,51 @@ enum Commands {
     Rust { path: String },
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
+    // Set up miette for beautiful error reporting
+    miette::set_hook(Box::new(|_| Box::new(MietteHandlerOpts::new().build()))).ok();
+
     let cli = Cli::parse();
 
     match cli.command {
         Some(Commands::Parse { code }) => {
             println!("Parsing Auto {} to JSON", code);
-            let json = auto_lang::run(&code)?;
+            let json = auto_lang::run(&code).map_err(|e| miette::miette!("{}", e))?;
             println!("{}", json);
         }
         Some(Commands::Run { path }) => {
             println!("----------------------");
             println!("Running Auto {} ", path);
             println!("----------------------");
-            let result = auto_lang::run_file(&path)?;
+            let result = auto_lang::run_file(&path).map_err(|e| miette::miette!("{}", e))?;
             println!("{}", result);
             println!();
         }
         Some(Commands::Eval { code }) => {
-            let result = auto_lang::run(&code)?;
+            let result = auto_lang::run(&code).map_err(|e| miette::miette!("{}", e))?;
             println!("{}", result);
         }
         Some(Commands::Repl) => {
-            repl::main_loop()?;
+            repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
         }
         Some(Commands::Config { path }) => {
-            let code = std::fs::read_to_string(path.as_str())?;
+            let code = std::fs::read_to_string(path.as_str())
+                .map_err(|e| miette::miette!("Failed to read file: {}", e))?;
             let args = auto_val::Obj::new();
-            let c = auto_lang::eval_config(code.as_str(), &args)?;
+            let c = auto_lang::eval_config(code.as_str(), &args)
+                .map_err(|e| miette::miette!("{}", e))?;
             println!("{}", c.result.repr());
         }
         Some(Commands::C { path }) => {
-            let c = auto_lang::trans_c(path.as_str())?;
+            let c = auto_lang::trans_c(path.as_str()).map_err(|e| miette::miette!("{}", e))?;
             println!("{}", c);
         }
         Some(Commands::Rust { path }) => {
-            let r = auto_lang::trans_rust(path.as_str())?;
+            let r = auto_lang::trans_rust(path.as_str()).map_err(|e| miette::miette!("{}", e))?;
             println!("{}", r);
         }
         None => {
-            repl::main_loop()?;
+            repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
         }
     }
 

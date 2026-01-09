@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod config;
+pub mod error;
 pub mod eval;
 pub mod interp;
 mod lexer;

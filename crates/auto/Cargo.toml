@@ -7,3 +7,4 @@ edition = "2021"
 clap = { workspace = true }
 auto-lang = { path = "../auto-lang" }
 auto-val = { path = "../auto-val" }
+miette = { workspace = true }
