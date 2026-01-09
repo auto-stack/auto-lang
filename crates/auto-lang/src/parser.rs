@@ -647,10 +647,14 @@ impl<'a> Parser<'a> {
                 let meta = self.lookup_meta(name.as_str());
                 if let Some(Meta::Store(store)) = meta.as_deref() {
                     if matches!(store.kind, StoreKind::Let) {
-                        return error_pos!(
-                            "Syntax error: Assignment not allowed for let store: {}",
-                            store.name
-                        );
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "Syntax error: Assignment not allowed for let store: {}",
+                                store.name
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
                     }
                 }
             }
@@ -763,10 +767,14 @@ impl<'a> Parser<'a> {
                             // args.map.push((name, *p.value));
                         }
                         _ => {
-                            return error_pos!(
-                                "named args should have named key instead of {}",
-                                &k
-                            );
+                            return Err(SyntaxError::Generic {
+                                message: format!(
+                                    "named args should have named key instead of {}",
+                                    &k
+                                ),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                            .into());
                         }
                     }
                 }
@@ -1061,12 +1069,16 @@ impl<'a> Parser<'a> {
             TokenKind::Nil => Expr::Nil,
             TokenKind::Null => Expr::Null,
             _ => {
-                return error_pos!(
-                    "Expected term, got {:?}, pos: {}, next: {}",
-                    self.kind(),
-                    self.pos(),
-                    self.cur
-                );
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected term, got {:?}, pos: {}, next: {}",
+                        self.kind(),
+                        self.pos(),
+                        self.cur
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
             }
         };
 
@@ -2904,7 +2916,11 @@ impl<'a> Parser<'a> {
                     )?));
                 }
                 _ => {
-                    return error_pos!("Expected node name, got {:?}", ident);
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected node name, got {:?}", ident),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
                 }
             }
         } else {
