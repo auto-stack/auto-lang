@@ -178,10 +178,12 @@ impl AtomWriter for Fn {
                     }
                 }
                 write!(f, ") {{")?;
-                if !matches!(self.body.stmts.len(), 0) {
+                if !self.body.stmts.is_empty() {
                     write!(f, " {}", self.body.to_atom_str())?;
+                    write!(f, " }}")?;
+                } else {
+                    write!(f, "}}")?;
                 }
-                write!(f, " }}")?;
             }
             FnKind::CFunction => {
                 // C Function format: fn.c name (n, double) double
@@ -219,10 +221,12 @@ impl AtomWriter for Fn {
                     write!(f, " {}", self.ret.to_atom_str())?;
                 }
                 write!(f, " {{")?;
-                if !matches!(self.body.stmts.len(), 0) {
+                if !self.body.stmts.is_empty() {
                     write!(f, " {}", self.body.to_atom_str())?;
+                    write!(f, " }}")?;
+                } else {
+                    write!(f, "}}")?;
                 }
-                write!(f, " }}")?;
             }
         }
         Ok(())
@@ -269,22 +273,7 @@ mod tests {
     fn test_param_to_atom() {
         let param = Param::new("x".into(), Type::Int, None);
         let atom = param.to_atom();
-        // Should be in format "(param (name x) (type int))"
-        assert!(
-            atom.contains("param"),
-            "Expected atom to contain 'param', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("x"),
-            "Expected atom to contain 'x', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("int"),
-            "Expected atom to contain 'int', got: {}",
-            atom
-        );
+        assert_eq!(atom, "(x, int)");
     }
 
     #[test]
@@ -298,26 +287,6 @@ mod tests {
             Type::Int,
         );
         let atom = fn_decl.to_atom();
-        // Should be in format "(fn (name add) ...)"
-        assert!(
-            atom.contains("fn"),
-            "Expected atom to contain 'fn', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("add"),
-            "Expected atom to contain 'add', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("return"),
-            "Expected atom to contain 'return', got: {}",
-            atom
-        );
-        assert!(
-            atom.contains("int"),
-            "Expected atom to contain 'int', got: {}",
-            atom
-        );
+        assert_eq!(atom, "fn add ((a, int)) int {}");
     }
 }
