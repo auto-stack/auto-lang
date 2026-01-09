@@ -1071,11 +1071,14 @@ mod markdown_tests {
                 .parse()
                 .unwrap_or_else(|e| panic!("{}: Parse failed: {:?}", tc.name, e));
 
-            // Extract the first statement's atom representation
+            // Extract the first statement's atom representation, or join multiple statements with "; "
             let actual = if code.stmts.len() == 1 {
                 code.stmts[0].to_atom()
             } else {
-                code.to_atom()
+                // Join multiple statements with "; " instead of wrapping in (code ...)
+                let stmts: Vec<AutoStr> =
+                    code.stmts.iter().map(|stmt| stmt.to_atom_str()).collect();
+                AutoStr::from(stmts.join("; "))
             };
 
             // let actual_normalized = pretty_atom(&actual.replace("\r\n", "\n"));

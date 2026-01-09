@@ -86,7 +86,7 @@ impl ToNode for For {
 
 impl AtomWriter for For {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "for in (")?;
+        write!(f, "for in(")?;
         match &self.iter {
             Iter::Indexed(index, _iter_name) => {
                 // Special handling for Call expressions in range - output as "name(args)" not "call name (args)"

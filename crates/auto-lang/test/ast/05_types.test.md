@@ -62,13 +62,18 @@ var arr (array(int, 3)) array(1, 2, 3)
 
 ## Type - User Defined
 
+type Point {
+    x int
+    y int
+}
+
 fn new_point(x int, y int) Point {
     Point(x, y)
 }
 
 ---
 
-fn new_point ((x, int), (y, int)) Point { call Point (x, y) }
+type Point { member(x, int); member(y, int) }; fn new_point ((x, int), (y, int)) Point { node Point (x, y) }
 
 ## Key - Named
 
@@ -134,4 +139,4 @@ type Point {
 
 ---
 
-type Point { member(x, int); member(y, int); fn new ((x, int), (y, int)) Point { call Point (x, y) } }
+type Point { member(x, int); member(y, int); fn new ((x, int), (y, int)) Point { node Point (x, y) } }

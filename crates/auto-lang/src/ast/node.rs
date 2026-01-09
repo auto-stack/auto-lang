@@ -59,21 +59,41 @@ use std::{fmt, io as stdio};
 
 impl AtomWriter for Node {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "node(name(\"{}\")", self.name)?;
-        if !self.id.is_empty() {
-            write!(f, ", id(\"{}\")", self.id)?;
-        }
-        // Handle additional props from args
-        for arg in &self.args.args {
-            if let crate::ast::call::Arg::Pair(key, value) = arg {
-                write!(f, ", {}(\"{}\")", key, value.to_atom_str())?;
+        write!(f, "node {}", self.name)?;
+        if !self.args.args.is_empty() {
+            // Constructor call format: node name (arg1, arg2)
+            write!(f, " (")?;
+            for (i, arg) in self.args.args.iter().enumerate() {
+                match arg {
+                    crate::ast::call::Arg::Pos(expr) => write!(f, "{}", expr.to_atom_str())?,
+                    crate::ast::call::Arg::Name(name) => write!(f, "{}", name)?,
+                    crate::ast::call::Arg::Pair(key, value) => {
+                        write!(f, "{}: {}", key, value.to_atom_str())?
+                    }
+                }
+                if i < self.args.args.len() - 1 {
+                    write!(f, ", ")?;
+                }
             }
+            write!(f, ")")?;
         }
-        write!(f, ") {{")?;
-        if !self.body.stmts.is_empty() {
-            write!(f, " {}", self.body.to_atom_str())?;
+        if !self.id.is_empty() {
+            write!(f, " id(\"{}\")", self.id)?;
         }
-        write!(f, " }}")?;
+        // Only add braces if there's a body with statements or additional props
+        if !self.body.stmts.is_empty()
+            || self
+                .args
+                .args
+                .iter()
+                .any(|a| matches!(a, crate::ast::call::Arg::Pair(_, _)))
+        {
+            write!(f, " {{")?;
+            if !self.body.stmts.is_empty() {
+                write!(f, " {}", self.body.to_atom_str())?;
+            }
+            write!(f, " }}")?;
+        }
         Ok(())
     }
 }
