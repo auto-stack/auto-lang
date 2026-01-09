@@ -173,8 +173,91 @@ impl RustTrans {
                 write!(out, "]").map_err(Into::into)
             }
 
+            // Struct construction: Point(1, 2) -> Point { x: 1, y: 2 }
+            Expr::Node(node) => {
+                write!(out, "{} {{", node.name)?;
+                if !node.args.args.is_empty() || !node.body.stmts.is_empty() {
+                    write!(out, " ")?;
+                }
+
+                // Handle positional arguments - just output them as-is for now
+                // TODO: Map positional args to field names using type declaration
+                for (i, arg) in node.args.args.iter().enumerate() {
+                    match arg {
+                        Arg::Pos(expr) => {
+                            // Positional arg - use generic field name
+                            write!(out, "field{}: ", i)?;
+                            self.expr(expr, out)?;
+                        }
+                        Arg::Name(name) => {
+                            // Named arg without value
+                            write!(out, "{}: ", name)?;
+                        }
+                        Arg::Pair(key, expr) => {
+                            // Named argument: field: value
+                            write!(out, "{}: ", key)?;
+                            self.expr(expr, out)?;
+                        }
+                    }
+                    if i < node.args.args.len() - 1 || !node.body.stmts.is_empty() {
+                        write!(out, ", ")?;
+                    }
+                }
+
+                // Handle body statements (field initializers)
+                for (i, stmt) in node.body.stmts.iter().enumerate() {
+                    if let Stmt::Store(store) = stmt {
+                        write!(out, "{}: ", store.name)?;
+                        self.expr(&store.expr, out)?;
+                    }
+                    if i < node.body.stmts.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+
+                if !node.args.args.is_empty() || !node.body.stmts.is_empty() {
+                    write!(out, " ")?;
+                }
+                write!(out, "}}").map_err(Into::into)
+            }
+
             // Function calls
             Expr::Call(call) => self.call(call, out),
+
+            // F-strings: f"hello $name" -> format!("hello {}", name)
+            Expr::FStr(fstr) => {
+                write!(out, "format!(\"")?;
+                let mut arg_count = 0;
+                for part in &fstr.parts {
+                    match part {
+                        Expr::Str(s) | Expr::CStr(s) => {
+                            write!(out, "{}", s.replace("\"", r##"\""##))?;
+                        }
+                        Expr::Char(c) => {
+                            write!(out, "{}", c)?;
+                        }
+                        _ => {
+                            // Expression placeholder
+                            write!(out, "{{}}")?;
+                            arg_count += 1;
+                        }
+                    }
+                }
+                write!(out, "\"")?;
+
+                // Add arguments after format string
+                for part in &fstr.parts {
+                    match part {
+                        Expr::Str(_) | Expr::CStr(_) | Expr::Char(_) => {}
+                        _ => {
+                            write!(out, ", ")?;
+                            self.expr(part, out)?;
+                        }
+                    }
+                }
+
+                write!(out, ")").map_err(Into::into)
+            }
 
             // Control flow (stub for now)
             Expr::If(_if_) => {
@@ -217,9 +300,56 @@ impl RustTrans {
     fn print_call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         // print("hello") -> println!("hello")
         // print(value) -> println!("{}", value)
+        // print(f"...") -> println!("...", args)
+
         if call.args.args.is_empty() {
             write!(out, "println!()")?;
             return Ok(());
+        }
+
+        // Check if first argument is an f-string
+        if let Arg::Pos(first_arg) = &call.args.args[0] {
+            if let Expr::FStr(fstr) = first_arg {
+                // Generate println! with f-string format
+                write!(out, "println!(\"")?;
+
+                // Build format string from f-string parts
+                for part in &fstr.parts {
+                    match part {
+                        Expr::Str(s) | Expr::CStr(s) => {
+                            write!(out, "{}", s.replace("\"", r##"\""##))?;
+                        }
+                        Expr::Char(c) => {
+                            write!(out, "{}", c)?;
+                        }
+                        _ => {
+                            // Expression placeholder
+                            write!(out, "{{}}")?;
+                        }
+                    }
+                }
+                write!(out, "\"")?;
+
+                // Add f-string arguments
+                for part in &fstr.parts {
+                    match part {
+                        Expr::Str(_) | Expr::CStr(_) | Expr::Char(_) => {}
+                        _ => {
+                            write!(out, ", ")?;
+                            self.expr(part, out)?;
+                        }
+                    }
+                }
+
+                // Add additional arguments (after f-string)
+                for arg in call.args.args.iter().skip(1) {
+                    write!(out, ", ")?;
+                    self.arg(arg, out)?;
+                }
+
+                write!(out, ")")?;
+                return Ok(());
+            }
         }
 
         if call.args.args.len() == 1 {

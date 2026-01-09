@@ -6,5 +6,5 @@ enum Color {
 
 fn main() {
     let color Color = Color.BLUE;
-    print("The color is", color);
+    print(`The color is ${color}`)
 }

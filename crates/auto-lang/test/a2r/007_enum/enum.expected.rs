@@ -4,7 +4,8 @@ enum Color {
     BLUE = 3,
 }
 
+
 fn main() {
-    let color: Color = Color::BLUE;
-    print!("The color is", color);
+    let color: Color = Color.BLUE;
+    println!("The color is: {}", color);
 }
