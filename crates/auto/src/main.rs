@@ -1,8 +1,15 @@
-use auto_lang::error::{get_source, AutoError};
+use auto_lang::error::AutoError;
 use auto_lang::repl;
 use clap::{Parser, Subcommand};
-use miette::{Diagnostic, MietteHandlerOpts, Result};
-use std::error::Error as StdError;
+use miette::{MietteHandlerOpts, Result};
+
+// Helper to convert AutoError to miette error while preserving diagnostic info
+fn to_miette_err<E: Into<AutoError>>(err: E) -> miette::Report {
+    let auto_err = err.into();
+    // For now, convert to string, but this preserves the error message
+    // TODO: Find a way to pass the source code through
+    miette::miette!("{}", auto_err)
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -38,19 +45,19 @@ fn main() -> Result<()> {
     match cli.command {
         Some(Commands::Parse { code }) => {
             println!("Parsing Auto {} to JSON", code);
-            let json = auto_lang::run(&code).map_err(|e| miette::miette!("{}", e))?;
+            let json = auto_lang::run(&code).map_err(to_miette_err)?;
             println!("{}", json);
         }
         Some(Commands::Run { path }) => {
             println!("----------------------");
             println!("Running Auto {} ", path);
             println!("----------------------");
-            let result = auto_lang::run_file(&path).map_err(|e| miette::miette!("{}", e))?;
+            let result = auto_lang::run_file(&path).map_err(to_miette_err)?;
             println!("{}", result);
             println!();
         }
         Some(Commands::Eval { code }) => {
-            let result = auto_lang::run(&code).map_err(|e| miette::miette!("{}", e))?;
+            let result = auto_lang::run(&code).map_err(to_miette_err)?;
             println!("{}", result);
         }
         Some(Commands::Repl) => {
@@ -60,16 +67,15 @@ fn main() -> Result<()> {
             let code = std::fs::read_to_string(path.as_str())
                 .map_err(|e| miette::miette!("Failed to read file: {}", e))?;
             let args = auto_val::Obj::new();
-            let c = auto_lang::eval_config(code.as_str(), &args)
-                .map_err(|e| miette::miette!("{}", e))?;
+            let c = auto_lang::eval_config(code.as_str(), &args).map_err(to_miette_err)?;
             println!("{}", c.result.repr());
         }
         Some(Commands::C { path }) => {
-            let c = auto_lang::trans_c(path.as_str()).map_err(|e| miette::miette!("{}", e))?;
+            let c = auto_lang::trans_c(path.as_str()).map_err(to_miette_err)?;
             println!("{}", c);
         }
         Some(Commands::Rust { path }) => {
-            let r = auto_lang::trans_rust(path.as_str()).map_err(|e| miette::miette!("{}", e))?;
+            let r = auto_lang::trans_rust(path.as_str()).map_err(to_miette_err)?;
             println!("{}", r);
         }
         None => {
