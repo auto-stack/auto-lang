@@ -2670,7 +2670,11 @@ impl<'a> Parser<'a> {
                             // lookup meta for left name
                             let meta = self.lookup_meta(lname.as_str());
                             let Some(meta) = meta else {
-                                return error_pos!("Left name not found! {}.{}", lname, rhs);
+                                return Err(SyntaxError::Generic {
+                                    message: format!("Left name not found! {}.{}", lname, rhs),
+                                    span: pos_to_span(self.cur.pos),
+                                }
+                                .into());
                             };
                             match meta.as_ref() {
                                 Meta::Type(typ) => match typ {
@@ -2691,7 +2695,11 @@ impl<'a> Parser<'a> {
             }
             _ => {}
         }
-        error_pos!("Meta not found! {}", expr)
+        Err(SyntaxError::Generic {
+            message: format!("Meta not found! {}", expr),
+            span: pos_to_span(self.cur.pos),
+        }
+        .into())
     }
 
     pub fn return_type(&mut self, call_name: &Expr) -> AutoResult<Type> {
@@ -2717,7 +2725,11 @@ impl<'a> Parser<'a> {
                             // lookup meta for left name
                             let meta = self.lookup_meta(lname.as_str());
                             let Some(meta) = meta else {
-                                return error_pos!("Left name not found! {}.{}", lname, rhs);
+                                return Err(SyntaxError::Generic {
+                                    message: format!("Left name not found! {}.{}", lname, rhs),
+                                    span: pos_to_span(self.cur.pos),
+                                }
+                                .into());
                             };
                             match meta.as_ref() {
                                 Meta::Type(typ) => match typ {
