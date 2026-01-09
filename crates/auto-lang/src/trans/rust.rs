@@ -16,17 +16,15 @@ pub enum RustEdition {
 pub struct RustTrans {
     indent: usize,
     uses: HashSet<AutoStr>,
-    name: AutoStr,
     scope: Shared<crate::universe::Universe>,
     edition: RustEdition,
 }
 
 impl RustTrans {
-    pub fn new(name: AutoStr) -> Self {
+    pub fn new(_name: AutoStr) -> Self {
         Self {
             indent: 0,
             uses: HashSet::new(),
-            name,
             scope: shared(crate::universe::Universe::default()),
             edition: RustEdition::E2021,
         }
@@ -277,7 +275,7 @@ impl RustTrans {
             // F-strings: f"hello $name" -> format!("hello {}", name)
             Expr::FStr(fstr) => {
                 write!(out, "format!(\"")?;
-                let mut arg_count = 0;
+                let mut _arg_count = 0;
                 for part in &fstr.parts {
                     match part {
                         Expr::Str(s) | Expr::CStr(s) => {
@@ -289,7 +287,7 @@ impl RustTrans {
                         _ => {
                             // Expression placeholder
                             write!(out, "{{}}")?;
-                            arg_count += 1;
+                            _arg_count += 1;
                         }
                     }
                 }
@@ -967,7 +965,7 @@ impl RustTrans {
         sink.body.write(b" {\n")?;
         self.indent();
 
-        for (i, item) in enum_decl.items.iter().enumerate() {
+        for (_i, item) in enum_decl.items.iter().enumerate() {
             self.print_indent(&mut sink.body)?;
             sink.body
                 .write(format!("{} = {},", item.name, item.value).as_bytes())?;

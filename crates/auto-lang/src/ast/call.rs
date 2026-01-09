@@ -199,7 +199,7 @@ pub fn fmt_call(f: &mut fmt::Formatter, call: &Call) -> fmt::Result {
 // ToAtom and ToNode implementations
 
 use crate::ast::{ToAtom, ToNode};
-use auto_val::{Arg as AutoValArg, Array, Node as AutoNode, Value, ValueKey};
+use auto_val::{Arg as AutoValArg, Array, Node as AutoNode, Value};
 
 impl AtomWriter for Arg {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {

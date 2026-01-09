@@ -879,6 +879,7 @@ mod markdown_tests {
     }
 
     /// Format ATOM output with proper indentation and newlines for readability
+    #[allow(dead_code)]
     fn pretty_atom(atom: &str) -> String {
         let mut result = String::new();
         let mut indent = 0;

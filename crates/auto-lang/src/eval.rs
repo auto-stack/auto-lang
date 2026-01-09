@@ -1076,7 +1076,7 @@ impl Evaler {
                         // But right might be further nested, so we need to check
                         match &**right {
                             // If right is also a Bina (further nesting), recurse
-                            Expr::Bina(inner_left, inner_op, inner_right)
+                            Expr::Bina(_inner_left, inner_op, inner_right)
                                 if *inner_op == Op::Dot =>
                             {
                                 let left_path =
@@ -1459,7 +1459,7 @@ impl Evaler {
                         if key.to_string() == member.name {
                             // If val is a ValueRef, we need to get the actual value from universe
                             let val_to_store = match val {
-                                auto_val::Value::ValueRef(vid) => {
+                                auto_val::Value::ValueRef(_vid) => {
                                     if let Some(data) = self.resolve_value(val) {
                                         let borrowed = data.borrow();
                                         let cloned = borrowed.clone();
@@ -1484,7 +1484,7 @@ impl Evaler {
                         let member = &members[j];
                         // If value is a ValueRef, we need to get the actual value from universe
                         let val_to_store = match value {
-                            auto_val::Value::ValueRef(vid) => {
+                            auto_val::Value::ValueRef(_vid) => {
                                 if let Some(data) = self.resolve_value(value) {
                                     let borrowed = data.borrow();
                                     let cloned = borrowed.clone();

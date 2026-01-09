@@ -1,6 +1,4 @@
 use super::{Body, Expr, Name, Type};
-use crate::ast::call::Arg;
-use crate::ast::Stmt;
 use crate::ast::{AtomWriter, ToAtomStr};
 use serde::Serialize;
 use std::{fmt, io as stdio};

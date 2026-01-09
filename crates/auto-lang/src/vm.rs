@@ -8,7 +8,8 @@ pub mod io;
 pub type VmFunction = fn(Shared<crate::Universe>, auto_val::Value) -> auto_val::Value;
 
 /// VM method signature: takes universe, mutable instance reference, and arguments
-pub type VmMethod = fn(Shared<crate::Universe>, &mut auto_val::Value, Vec<auto_val::Value>) -> auto_val::Value;
+pub type VmMethod =
+    fn(Shared<crate::Universe>, &mut auto_val::Value, Vec<auto_val::Value>) -> auto_val::Value;
 
 /// Represents a VM function in the registry
 #[derive(Clone)]
@@ -70,10 +71,9 @@ impl VmRegistry {
     pub fn modules(&self) -> &HashMap<AutoStr, VmModule> {
         &self.modules
     }
-
 }
 
-/// Global VM registry instance
+// Global VM registry instance
 lazy_static::lazy_static! {
     pub static ref VM_REGISTRY: Mutex<VmRegistry> = Mutex::new(VmRegistry::new());
 }
@@ -102,8 +102,12 @@ pub fn init_io_module() {
         methods: HashMap::new(),
     };
 
-    file_type.methods.insert("close".into(), io::close_method as VmMethod);
-    file_type.methods.insert("read_text".into(), io::read_text_method as VmMethod);
+    file_type
+        .methods
+        .insert("close".into(), io::close_method as VmMethod);
+    file_type
+        .methods
+        .insert("read_text".into(), io::read_text_method as VmMethod);
 
     io_module.types.insert("File".into(), file_type);
 

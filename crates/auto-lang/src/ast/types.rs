@@ -319,7 +319,7 @@ impl Key {
 // ToAtom and ToNode implementations
 
 use crate::ast::{ToAtom, ToNode};
-use auto_val::{Node, Value, ValueKey};
+use auto_val::{Node, Value};
 
 impl ToNode for Type {
     fn to_node(&self) -> Node {

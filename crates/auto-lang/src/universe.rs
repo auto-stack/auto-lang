@@ -3,7 +3,10 @@ use crate::ast::FnKind;
 use crate::ast::{self, Type};
 use crate::libs;
 use auto_atom::Atom;
-use auto_val::{Args, AutoStr, ExtFn, NodeItem, Obj, Sig, TypeInfoStore, Value, ValueID, ValueData, AccessPath, AccessError, PathComponent, shared};
+use auto_val::{
+    shared, AccessError, AccessPath, Args, AutoStr, ExtFn, NodeItem, Obj, PathComponent, Sig,
+    TypeInfoStore, Value, ValueData, ValueID,
+};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -288,7 +291,8 @@ impl Universe {
     pub fn get_global(&self, name: &str) -> Value {
         // TODO: Update to use ValueID resolution
         // For now, this is a compatibility shim
-        self.global_scope().get_val_id(name)
+        self.global_scope()
+            .get_val_id(name)
             .and_then(|vid| self.get_value(vid))
             .map(|cell| {
                 let data = cell.borrow();
@@ -500,7 +504,8 @@ impl Universe {
             Value::Str(v) => auto_val::ValueData::Str(v),
             Value::Array(v) => {
                 // Allocate each element
-                let vids: Vec<auto_val::ValueID> = v.iter()
+                let vids: Vec<auto_val::ValueID> = v
+                    .iter()
                     .map(|val| {
                         let data = self.value_to_data_allocated(val.clone());
                         self.alloc_value(data)
@@ -510,7 +515,8 @@ impl Universe {
             }
             Value::Obj(obj) => {
                 // Allocate each field value
-                let fields: Vec<(auto_val::ValueKey, auto_val::ValueID)> = obj.iter()
+                let fields: Vec<(auto_val::ValueKey, auto_val::ValueID)> = obj
+                    .iter()
                     .map(|(k, val)| {
                         let data = self.value_to_data_allocated(val.clone());
                         let vid = self.alloc_value(data);
@@ -764,7 +770,7 @@ impl Universe {
         }
     }
 
-    pub fn add_vmref(&mut self, data: Box<dyn Any>) -> usize{
+    pub fn add_vmref(&mut self, data: Box<dyn Any>) -> usize {
         self.vmref_counter += 1;
         let refid = self.vmref_counter;
         self.vm_refs.insert(refid, data);
@@ -830,7 +836,8 @@ impl Universe {
 
             // Array - allocate each element
             Value::Array(arr) => {
-                let vids: Vec<ValueID> = arr.iter()
+                let vids: Vec<ValueID> = arr
+                    .iter()
                     .map(|v| self.alloc_value_from_value(v.clone()))
                     .collect();
                 self.alloc_value(ValueData::Array(vids))
@@ -900,7 +907,8 @@ impl Universe {
 
             // Case 3: Array - recursively dereference all elements
             Value::Array(arr) => {
-                let dereferenced_elems: Vec<Value> = arr.iter()
+                let dereferenced_elems: Vec<Value> = arr
+                    .iter()
                     .map(|elem| self.deref_val(elem.clone()))
                     .collect();
                 Value::Array(dereferenced_elems.into())
@@ -944,14 +952,23 @@ impl Universe {
                     match arg {
                         auto_val::Arg::Pos(val) => {
                             let deref_val = self.deref_val(val.clone());
-                            dereferenced_node.args.args.push(auto_val::Arg::Pos(deref_val));
+                            dereferenced_node
+                                .args
+                                .args
+                                .push(auto_val::Arg::Pos(deref_val));
                         }
                         auto_val::Arg::Name(name) => {
-                            dereferenced_node.args.args.push(auto_val::Arg::Name(name.clone()));
+                            dereferenced_node
+                                .args
+                                .args
+                                .push(auto_val::Arg::Name(name.clone()));
                         }
                         auto_val::Arg::Pair(key, val) => {
                             let deref_val = self.deref_val(val.clone());
-                            dereferenced_node.args.args.push(auto_val::Arg::Pair(key.clone(), deref_val));
+                            dereferenced_node
+                                .args
+                                .args
+                                .push(auto_val::Arg::Pair(key.clone(), deref_val));
                         }
                     }
                 }
@@ -973,14 +990,20 @@ impl Universe {
                     let dereferenced_item = match body_item {
                         auto_val::NodeItem::Prop(pair) => {
                             let deref_val = self.deref_val(pair.value.clone());
-                            auto_val::NodeItem::Prop(auto_val::Pair::new(pair.key.clone(), deref_val))
+                            auto_val::NodeItem::Prop(auto_val::Pair::new(
+                                pair.key.clone(),
+                                deref_val,
+                            ))
                         }
                         auto_val::NodeItem::Node(child_node) => {
                             let deref_node = self.deref_val(Value::Node(child_node.clone()));
                             auto_val::NodeItem::Node(deref_node.to_node().clone())
                         }
                     };
-                    dereferenced_node.body.map.insert(key.clone(), dereferenced_item);
+                    dereferenced_node
+                        .body
+                        .map
+                        .insert(key.clone(), dereferenced_item);
                 }
                 dereferenced_node.body.index = body.index.clone();
 
@@ -1010,7 +1033,12 @@ impl Universe {
     }
 
     /// Update nested field: obj.field = value
-    pub fn update_nested(&mut self, vid: ValueID, path: &AccessPath, new_vid: ValueID) -> Result<(), AccessError> {
+    pub fn update_nested(
+        &mut self,
+        vid: ValueID,
+        path: &AccessPath,
+        new_vid: ValueID,
+    ) -> Result<(), AccessError> {
         // Flatten nested paths and process step by step
         let path_components = self.flatten_path(path);
         self.update_nested_iterative(vid, &path_components, 0, new_vid)
@@ -1043,7 +1071,7 @@ impl Universe {
     /// Iteratively update nested value following path components
     fn update_nested_iterative(
         &mut self,
-        mut vid: ValueID,
+        vid: ValueID,
         components: &[PathComponent],
         depth: usize,
         new_vid: ValueID,
@@ -1061,16 +1089,17 @@ impl Universe {
 
                 // First, extract what we need from the borrow
                 let next_vid_result: Result<Value, AccessError> = match &*data {
-                    ValueData::Obj(fields) => {
-                        fields.iter()
-                            .find(|(k, _)| k == &auto_val::ValueKey::Str(field.clone()))
-                            .map(|(_, v)| Value::ValueRef(*v))
-                            .ok_or(AccessError::FieldNotFound)
-                    }
+                    ValueData::Obj(fields) => fields
+                        .iter()
+                        .find(|(k, _)| k == &auto_val::ValueKey::Str(field.clone()))
+                        .map(|(_, v)| Value::ValueRef(*v))
+                        .ok_or(AccessError::FieldNotFound),
                     ValueData::Opaque(ref opaque_val) => {
                         if let auto_val::Value::Instance(ref instance) = &**opaque_val {
                             // Use the lookup method which handles different ValueKey types
-                            instance.fields.lookup(field)
+                            instance
+                                .fields
+                                .lookup(field)
                                 .ok_or(AccessError::FieldNotFound)
                         } else {
                             Err(AccessError::NotAnObject)
@@ -1147,8 +1176,10 @@ impl Universe {
                     if let ValueData::Opaque(ref mut opaque_val) = &mut *data {
                         if let auto_val::Value::Instance(ref mut instance) = &mut **opaque_val {
                             // Update the field in the instance (will create if doesn't exist)
-                            instance.fields.set(auto_val::ValueKey::Str(field.clone()),
-                                               auto_val::Value::ValueRef(new_vid));
+                            instance.fields.set(
+                                auto_val::ValueKey::Str(field.clone()),
+                                auto_val::Value::ValueRef(new_vid),
+                            );
                             return Ok(());
                         }
                     }
@@ -1172,7 +1203,13 @@ impl Universe {
     }
 
     /// Legacy update_nested method (now a wrapper that calls flatten_path)
-    fn update_nested_legacy(&mut self, vid: ValueID, path: &AccessPath, new_vid: ValueID) -> Result<(), AccessError> {
+    #[allow(dead_code)]
+    fn update_nested_legacy(
+        &mut self,
+        vid: ValueID,
+        path: &AccessPath,
+        new_vid: ValueID,
+    ) -> Result<(), AccessError> {
         let cell = self.values.get(&vid).ok_or(AccessError::FieldNotFound)?;
         let mut data = cell.borrow_mut();
 
@@ -1196,8 +1233,10 @@ impl Universe {
                     if let ValueData::Opaque(ref mut opaque_val) = &mut *data {
                         if let auto_val::Value::Instance(ref mut instance) = &mut **opaque_val {
                             // Update the field in the instance
-                            instance.fields.set(auto_val::ValueKey::Str(field.clone()),
-                                               auto_val::Value::ValueRef(new_vid));
+                            instance.fields.set(
+                                auto_val::ValueKey::Str(field.clone()),
+                                auto_val::Value::ValueRef(new_vid),
+                            );
                             return Ok(());
                         }
                     }
@@ -1225,7 +1264,8 @@ impl Universe {
                             AccessPath::Field(f) => f.clone(),
                             _ => return Err(AccessError::NotAnObject),
                         };
-                        fields.iter()
+                        fields
+                            .iter()
                             .find(|(k, _)| k == &auto_val::ValueKey::Str(key.clone()))
                             .map(|(_, vid)| *vid)
                             .ok_or(AccessError::FieldNotFound)?
@@ -1257,12 +1297,8 @@ impl Universe {
         if let Some(cell) = self.get_value(from) {
             let data = cell.borrow();
             match &*data {
-                ValueData::Array(elems) => {
-                    elems.iter().any(|&vid| self.has_path(vid, to))
-                }
-                ValueData::Obj(fields) => {
-                    fields.iter().any(|(_, vid)| self.has_path(*vid, to))
-                }
+                ValueData::Array(elems) => elems.iter().any(|&vid| self.has_path(vid, to)),
+                ValueData::Obj(fields) => fields.iter().any(|(_, vid)| self.has_path(*vid, to)),
                 ValueData::Pair(left, right) => {
                     self.has_path(**left, to) || self.has_path(**right, to)
                 }

@@ -1175,7 +1175,7 @@ impl<'a> Parser<'a> {
 // Statements
 impl<'a> Parser<'a> {
     // End of statement
-    pub fn expect_eos(&mut self, is_first_stmt: bool) -> AutoResult<usize> {
+    pub fn expect_eos(&mut self, _is_first_stmt: bool) -> AutoResult<usize> {
         // Save the previous token before consuming separators
         let token_before_sep = self.prev.clone();
 
@@ -1603,13 +1603,12 @@ impl<'a> Parser<'a> {
         }
 
         // Check if this has an initializer: for let x = 0; condition { ... }
-        let mut init_stmt = None;
         if self.is_kind(TokenKind::Let)
             || self.is_kind(TokenKind::Var)
             || self.is_kind(TokenKind::Mut)
         {
             // Parse the initializer statement
-            init_stmt = Some(Box::new(self.parse_store_stmt()?));
+            let init_stmt = Some(Box::new(self.parse_store_stmt()?));
 
             // Expect semicolon after initializer
             self.expect(TokenKind::Semi)?;
@@ -2500,7 +2499,7 @@ impl<'a> Parser<'a> {
             }
             Expr::Call(call) => {
                 match call.name.as_ref() {
-                    Expr::Ident(name) => {
+                    Expr::Ident(_name) => {
                         // TODO: Re-enable this check for production, but skip for AST tests
                         // if !self.exists(&name) {
                         //     return error_pos!("Function {} not define!", name);

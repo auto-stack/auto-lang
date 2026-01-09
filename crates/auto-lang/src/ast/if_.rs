@@ -24,7 +24,7 @@ impl fmt::Display for If {
 // ToAtom and ToNode implementations
 
 use crate::ast::{ToAtom, ToNode};
-use auto_val::{AutoStr, Node as AutoNode, Value};
+use auto_val::{AutoStr, Node as AutoNode};
 
 impl AtomWriter for If {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {

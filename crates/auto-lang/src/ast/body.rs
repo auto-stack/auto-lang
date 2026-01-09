@@ -25,7 +25,7 @@ impl Body {
 
     /// Write body statements without wrapping braces (for embedding in functions/lambdas/branches)
     pub fn write_statements(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        let mut non_void_stmts: Vec<&Stmt> = self
+        let non_void_stmts: Vec<&Stmt> = self
             .stmts
             .iter()
             .filter(|stmt| {
