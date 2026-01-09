@@ -154,7 +154,13 @@ impl AtomWriter for For {
                 write!(f, "ever")?;
             }
         }
-        write!(f, ") {{ {} }}", self.body.to_atom_str())?;
+        write!(f, ") {{")?;
+        if !self.body.stmts.is_empty() {
+            write!(f, " ")?;
+            self.body.write_statements(f)?;
+            write!(f, " ")?;
+        }
+        write!(f, "}}")?;
         Ok(())
     }
 }

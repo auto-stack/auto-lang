@@ -29,12 +29,27 @@ use auto_val::{AutoStr, Node as AutoNode, Value};
 impl AtomWriter for If {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         write!(f, "if {{")?;
-        for branch in &self.branches {
-            write!(f, " {}", branch.to_atom_str())?;
+        for (i, branch) in self.branches.iter().enumerate() {
+            // Output branch without leading space for first branch
+            let branch_str = branch.to_atom_str();
+            // Branch format: " condition { body }"
+            // We need to remove the leading space from branch.to_atom_str()
+            let branch_str = branch_str.trim_start();
+            write!(f, " {}", branch_str)?;
+            // Add semicolon between branches
+            if i < self.branches.len() - 1 || self.else_.is_some() {
+                write!(f, ";")?;
+            }
         }
         if let Some(else_body) = &self.else_ {
-            // else is inside the if braces
-            write!(f, " else {{ {} }}", else_body.to_atom_str())?;
+            // else is inside the if braces, output body without wrapping
+            write!(f, " else {{")?;
+            if !else_body.stmts.is_empty() {
+                write!(f, " ")?;
+                else_body.write_statements(f)?;
+                write!(f, " ")?;
+            }
+            write!(f, "}}")?;
         }
         write!(f, " }}")?;
         Ok(())

@@ -179,7 +179,8 @@ impl AtomWriter for Fn {
                 }
                 write!(f, ") {{")?;
                 if !self.body.stmts.is_empty() {
-                    write!(f, " {}", self.body.to_atom_str())?;
+                    write!(f, " ")?;
+                    self.body.write_statements(f)?;
                     write!(f, " }}")?;
                 } else {
                     write!(f, "}}")?;
@@ -222,7 +223,8 @@ impl AtomWriter for Fn {
                 }
                 write!(f, " {{")?;
                 if !self.body.stmts.is_empty() {
-                    write!(f, " {}", self.body.to_atom_str())?;
+                    write!(f, " ")?;
+                    self.body.write_statements(f)?;
                     write!(f, " }}")?;
                 } else {
                     write!(f, "}}")?;

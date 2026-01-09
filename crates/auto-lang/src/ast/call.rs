@@ -295,10 +295,6 @@ impl AtomWriter for Call {
             }
         }
         write!(f, ")")?;
-        // Add return type if not Unknown
-        if !matches!(self.ret, Type::Unknown) {
-            write!(f, " {}", self.ret.to_atom_str())?;
-        }
         Ok(())
     }
 }
@@ -383,8 +379,8 @@ mod tests {
             ret: Type::Int,
         };
         let atom = call.to_atom();
-        // Should contain return type info
-        assert_eq!(atom, "call get_int () int");
+        // Call atom doesn't include return type (only in function signature)
+        assert_eq!(atom, "call get_int ()");
     }
 
     #[test]

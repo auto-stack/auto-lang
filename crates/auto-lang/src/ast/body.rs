@@ -22,6 +22,27 @@ impl Body {
             has_new_line: false,
         }
     }
+
+    /// Write body statements without wrapping braces (for embedding in functions/lambdas/branches)
+    pub fn write_statements(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        let mut non_void_stmts: Vec<&Stmt> = self
+            .stmts
+            .iter()
+            .filter(|stmt| {
+                // Filter out void expressions (used as return statements for void functions)
+                let atom_str = stmt.to_atom_str();
+                !matches!(atom_str.as_str(), "(nil)" | "(null)" | "void")
+            })
+            .collect();
+
+        for (i, stmt) in non_void_stmts.iter().enumerate() {
+            write!(f, "{}", stmt.to_atom_str())?;
+            if i < non_void_stmts.len() - 1 {
+                write!(f, "; ")?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl fmt::Display for Body {

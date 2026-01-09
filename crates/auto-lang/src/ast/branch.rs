@@ -23,10 +23,9 @@ impl AtomWriter for Branch {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         // Output condition, opening brace, body statements, and closing brace
         write!(f, " {} {{", self.cond.to_atom_str())?;
-        for stmt in &self.body.stmts {
-            write!(f, " {}", stmt.to_atom_str())?;
-        }
         if !self.body.stmts.is_empty() {
+            write!(f, " ")?;
+            self.body.write_statements(f)?;
             write!(f, " ")?;
         }
         write!(f, "}}")?;
