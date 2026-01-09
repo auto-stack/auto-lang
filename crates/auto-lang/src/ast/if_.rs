@@ -34,9 +34,9 @@ impl AtomWriter for If {
         }
         if let Some(else_body) = &self.else_ {
             // else is inside the if braces
-            write!(f, "\nelse {{ {} }}", else_body.to_atom_str())?;
+            write!(f, " else {{ {} }}", else_body.to_atom_str())?;
         }
-        write!(f, "\n }}")?;
+        write!(f, " }}")?;
         Ok(())
     }
 }

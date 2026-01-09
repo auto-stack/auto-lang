@@ -435,14 +435,9 @@ impl ToNode for Pair {
 
 impl AtomWriter for Member {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(
-            f,
-            "member(name(\"{}\"), type({}))",
-            self.name,
-            self.ty.to_atom_str()
-        )?;
+        write!(f, "member({}, {}", self.name, self.ty.to_atom_str())?;
         if let Some(value) = &self.value {
-            write!(f, ", value({})", value.to_atom_str())?;
+            write!(f, ", {}", value.to_atom_str())?;
         }
         write!(f, ")")?;
         Ok(())
@@ -469,13 +464,24 @@ impl ToAtom for Member {
 
 impl AtomWriter for TypeDecl {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(f, "type-decl(name(\"{}\"))", self.name)?;
+        write!(f, "type {} {{", self.name)?;
 
-        for member in &self.members {
+        for (i, member) in self.members.iter().enumerate() {
             write!(f, " {}", member.to_atom_str())?;
+            if i < self.members.len() - 1 || !self.methods.is_empty() {
+                write!(f, ";")?;
+            }
         }
 
-        write!(f, ")")?;
+        // Add methods if present
+        for (i, method) in self.methods.iter().enumerate() {
+            write!(f, " {}", method.to_atom_str())?;
+            if i < self.methods.len() - 1 {
+                write!(f, ";")?;
+            }
+        }
+
+        write!(f, " }}")?;
         Ok(())
     }
 }

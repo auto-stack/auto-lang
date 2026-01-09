@@ -1,4 +1,6 @@
 use super::{Body, Expr, Name, Type};
+use crate::ast::call::Arg;
+use crate::ast::Stmt;
 use crate::ast::{AtomWriter, ToAtomStr};
 use serde::Serialize;
 use std::{fmt, io as stdio};
@@ -21,6 +23,7 @@ pub struct Fn {
     pub params: Vec<Param>,
     pub body: Body,
     pub ret: Type,
+    pub ret_name: Option<Name>, // Original return type name (for unresolved types)
 }
 
 impl Serialize for Fn {
@@ -75,6 +78,27 @@ impl Fn {
             params,
             body,
             ret,
+            ret_name: None,
+        }
+    }
+
+    pub fn with_ret_name(
+        kind: FnKind,
+        name: Name,
+        parent: Option<Name>,
+        params: Vec<Param>,
+        body: Body,
+        ret: Type,
+        ret_name: Name,
+    ) -> Fn {
+        Fn {
+            kind,
+            name,
+            parent,
+            params,
+            body,
+            ret,
+            ret_name: Some(ret_name),
         }
     }
 }
@@ -115,16 +139,10 @@ use auto_val::{AutoStr, Node as AutoNode, Value};
 
 impl AtomWriter for Param {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
-        write!(
-            f,
-            "param(name(\"{}\"), type({}))",
-            self.name,
-            self.ty.to_atom_str()
-        )?;
+        write!(f, "({}, {})", self.name, self.ty.to_atom_str())?;
         if let Some(default) = &self.default {
-            write!(f, ", default({})", default.to_atom_str())?;
+            write!(f, " = {}", default.to_atom_str())?;
         }
-        write!(f, ")")?;
         Ok(())
     }
 }
@@ -178,7 +196,7 @@ impl AtomWriter for Fn {
                 }
                 write!(f, ")")?;
                 if !matches!(self.ret, Type::Unknown) {
-                    write!(f, " {}", self.ret)?;
+                    write!(f, " {}", self.ret.to_atom_str())?;
                 }
             }
             _ => {
@@ -192,8 +210,13 @@ impl AtomWriter for Fn {
                     }
                 }
                 write!(f, ")")?;
-                if !matches!(self.ret, Type::Unknown) {
-                    write!(f, " {}", self.ret)?;
+                // Output return type: use ret_name if ret is Unknown, otherwise use ret.to_atom_str()
+                if matches!(self.ret, Type::Unknown) {
+                    if let Some(ret_name) = &self.ret_name {
+                        write!(f, " {}", ret_name)?;
+                    }
+                } else if !matches!(self.ret, Type::Unknown) {
+                    write!(f, " {}", self.ret.to_atom_str())?;
                 }
                 write!(f, " {{")?;
                 if !matches!(self.body.stmts.len(), 0) {

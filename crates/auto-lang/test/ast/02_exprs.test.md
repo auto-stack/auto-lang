@@ -55,10 +55,7 @@ array(1, 2, 3)
 
 ---
 
-obj {
-    pair(name, "John")
-    pair(age, 30)
-}
+obj { pair(name, "John"), pair(age, 30) }
 
 ## lambda
 
@@ -66,6 +63,4 @@ obj {
 
 ---
 
-lambda(x, y) {
-    bina(+, x, y)
-}
+lambda(x, y) { bina(+, x, y) }

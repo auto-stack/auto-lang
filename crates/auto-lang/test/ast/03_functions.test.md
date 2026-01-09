@@ -6,9 +6,7 @@ fn add(a int, b int) int {
 
 ---
 
-fn add ((a, int), (b, int)) int {
-    bina(+, a, b)
-}
+fn add ((a, int), (b, int)) int { bina(+, a, b) }
 
 ## C Function Decl
 

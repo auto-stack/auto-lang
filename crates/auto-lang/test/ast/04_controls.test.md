@@ -8,14 +8,7 @@ if x > 1 {
 
 ---
 
-if {
-    bina('>', x, 1) {
-        call print ("greater than 1")
-    }
-    else {
-        call print ("less than or equal to 1")
-    }
-}
+if { bina(>, x, 1) { call print ("greater than 1") } else { call print ("less than or equal to 1") } }
 
 ## for control
 
@@ -25,9 +18,7 @@ for i in range(0, 10) {
 
 ---
 
-for in (i, range(0, 10)) {
-    call print (i)
-}
+for in (i, range(0, 10)) { call print (i) }
 
 ## while control
 
@@ -38,7 +29,4 @@ while x < 10 {
 
 ---
 
-while bina('<', x, 10) {
-    call print (x)
-    asn x bina('+', x, 1)
-}
+while bina(<, x, 10) { call print (x) asn x bina(+, x, 1) }

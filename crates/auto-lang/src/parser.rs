@@ -1923,8 +1923,10 @@ impl<'a> Parser<'a> {
 
         // parse return type
         let mut ret_type = Type::Unknown;
+        let mut ret_type_name: Option<AutoStr> = None;
         // TODO: determine return type with last stmt if it's not specified
         if self.is_kind(TokenKind::Ident) {
+            ret_type_name = Some(self.cur.text.clone());
             ret_type = self.parse_type()?;
         } else if self.is_kind(TokenKind::LBrace) {
             ret_type = Type::Void;
@@ -1963,7 +1965,18 @@ impl<'a> Parser<'a> {
         } else {
             FnKind::Function
         };
-        let fn_expr = Fn::new(kind, name.clone(), parent, params, body, ret_type);
+
+        // Create function, preserving return type name if type is Unknown
+        let fn_expr = if matches!(ret_type, Type::Unknown) {
+            if let Some(ret_name) = ret_type_name {
+                Fn::with_ret_name(kind, name.clone(), parent, params, body, ret_type, ret_name)
+            } else {
+                Fn::new(kind, name.clone(), parent, params, body, ret_type)
+            }
+        } else {
+            Fn::new(kind, name.clone(), parent, params, body, ret_type)
+        };
+
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         let unique_name = if parent_name.is_empty() {
             name

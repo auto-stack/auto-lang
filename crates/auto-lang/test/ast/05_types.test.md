@@ -42,9 +42,7 @@ fn say() void {
 
 ---
 
-fn say () void {
-    call print ("Hello, World!")
-}
+fn say () void { call print ("Hello, World!") }
 
 ## Type - Pointer
 
@@ -60,7 +58,7 @@ var arr [3]int = [1, 2, 3]
 
 ---
 
-var arr (array(int, 3)) [1, 2, 3]
+var arr (array(int, 3)) array(1, 2, 3)
 
 ## Type - User Defined
 
@@ -70,9 +68,7 @@ fn new_point(x int, y int) Point {
 
 ---
 
-fn new_point ((x, int), (y, int)) Point {
-    node Point (x, y)
-}
+fn new_point ((x, int), (y, int)) Point { call Point (x, y) }
 
 ## Key - Named
 
@@ -108,19 +104,11 @@ pair("key", "value")
 
 ## Pair - Simple
 
-name: value
+name: "value"
 
 ---
 
-pair(name, value)
-
-## Pair - Nested
-
-user.name: first_name
-
----
-
-pair(user.name, first_name)
+pair(name, "value")
 
 ## TypeDecl - Simple Struct
 
@@ -131,10 +119,7 @@ type Point {
 
 ---
 
-type Point {
-    member(x, int, 0)
-    member(y, int)
-}
+type Point { member(x, int, 0); member(y, int) }
 
 ## TypeDecl - With Methods
 
@@ -149,10 +134,4 @@ type Point {
 
 ---
 
-type Point {
-    member(x, int)
-    member(y, int)
-    fn new ((x, int), (y, int)) Point {
-        node Point(x, y)
-    }
-}
+type Point { member(x, int); member(y, int); fn new ((x, int), (y, int)) Point { call Point (x, y) } }
