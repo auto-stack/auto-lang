@@ -1413,7 +1413,11 @@ impl<'a> Parser<'a> {
     }
 
     pub fn use_rust_stmt(&mut self) -> AutoResult<Stmt> {
-        error_pos!("Rust import not supported yet")
+        return Err(SyntaxError::Generic {
+            message: "Rust import not supported yet".to_string(),
+            span: pos_to_span(self.cur.pos),
+        }
+        .into());
     }
 
     // There are three kinds of import
@@ -1487,7 +1491,11 @@ impl<'a> Parser<'a> {
         let dir = file_path.parent();
         let name = file_path.path().file_name().unwrap();
         if !dir.exists() {
-            return error_pos!("Invalid import path: {}", path);
+            return Err(SyntaxError::Generic {
+                message: format!("Invalid import path: {}", path),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
         }
         // Read file
         let file_path = dir.join(name.to_str().unwrap().to_string() + ".at");
@@ -1720,7 +1728,11 @@ impl<'a> Parser<'a> {
                 let args = self.args()?;
                 let call = self.call(Expr::Ident(ident), args)?;
                 let Expr::Call(call) = call else {
-                    return error_pos!("Strange call in for statement");
+                    return Err(SyntaxError::Generic {
+                        message: "Strange call in for statement".to_string(),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
                 };
                 self.expect(TokenKind::Question)?;
                 self.enter_scope();
@@ -1810,7 +1822,11 @@ impl<'a> Parser<'a> {
                     let tag_field_type = match *tag_typ.borrow() {
                         Type::Tag(ref t) => t.borrow().get_field_type(&cover.tag),
                         _ => {
-                            return error_pos!("Invalid tag type: {}", cover.kind);
+                            return Err(SyntaxError::Generic {
+                                message: format!("Invalid tag type: {}", cover.kind),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                            .into());
                         }
                     };
 
@@ -2389,7 +2405,11 @@ impl<'a> Parser<'a> {
         match size {
             Expr::Int(size) => {
                 if *size <= 0 {
-                    error_pos!("Array size must be greater than 0")
+                    return Err(SyntaxError::Generic {
+                        message: "Array size must be greater than 0".to_string(),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
                 } else {
                     Ok(*size as usize)
                 }
@@ -2397,14 +2417,22 @@ impl<'a> Parser<'a> {
             Expr::Uint(size) => Ok(*size as usize),
             Expr::I8(size) => {
                 if *size <= 0 {
-                    error_pos!("Array size must be greater than 0")
+                    return Err(SyntaxError::Generic {
+                        message: "Array size must be greater than 0".to_string(),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
                 } else {
                     Ok(*size as usize)
                 }
             }
             Expr::U8(size) => Ok(*size as usize),
             _ => {
-                error_pos!("Invalid array size expression, Not a Integer Number!")
+                return Err(SyntaxError::Generic {
+                    message: "Invalid array size expression, Not a Integer Number!".to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
             }
         }
     }
