@@ -1,10 +1,10 @@
-use super::{Trans, Sink};
+use super::{Sink, Trans};
 use crate::ast::*;
 use crate::parser::Parser;
 use crate::universe::Universe;
 use crate::AutoResult;
-use auto_val::{AutoStr, Op};
 use auto_val::{shared, Shared};
+use auto_val::{AutoStr, Op};
 use std::collections::HashSet;
 use std::io::Write;
 
@@ -98,18 +98,16 @@ impl RustTrans {
             Expr::Float(f, _) => write!(out, "{}", f).map_err(Into::into),
             Expr::Double(d, _) => write!(out, "{}", d).map_err(Into::into),
             Expr::Bool(b) => write!(out, "{}", b).map_err(Into::into),
-            Expr::Char(c) => {
-                if *c == '\n' {
-                    write!(out, "'\\n'")
-                } else if *c == '\t' {
-                    write!(out, "'\\t'")
-                } else if *c == '\\' {
-                    write!(out, "'\\\\'")
-                } else {
-                    write!(out, "'{}'", c)
-                }
-                .map_err(Into::into)
+            Expr::Char(c) => if *c == '\n' {
+                write!(out, "'\\n'")
+            } else if *c == '\t' {
+                write!(out, "'\\t'")
+            } else if *c == '\\' {
+                write!(out, "'\\\\'")
+            } else {
+                write!(out, "'{}'", c)
             }
+            .map_err(Into::into),
             Expr::Str(s) => write!(out, "\"{}\"", s).map_err(Into::into),
             Expr::CStr(s) => write!(out, "\"{}\"", s).map_err(Into::into),
             Expr::Ident(name) => write!(out, "{}", name).map_err(Into::into),
@@ -121,10 +119,38 @@ impl RustTrans {
             Expr::Bina(lhs, op, rhs) => {
                 match op {
                     Op::Dot => {
-                        // Member access: expr.field
-                        self.expr(lhs, out)?;
-                        write!(out, ".")?;
-                        self.expr(rhs, out)?;
+                        // Member access: expr.field or .field (shorthand for self.field)
+                        match lhs.as_ref() {
+                            Expr::Nil | Expr::Null => {
+                                // .field -> self.field
+                                write!(out, "self.")?;
+                                self.expr(rhs, out)?;
+                            }
+                            _ => {
+                                // Check if this is enum variant access: Type::Variant
+                                // Use :: if rhs is an identifier starting with uppercase (enum variant convention)
+                                let is_enum_variant = if let Expr::Ident(rhs_name) = rhs.as_ref() {
+                                    rhs_name
+                                        .chars()
+                                        .next()
+                                        .map(|c| c.is_uppercase())
+                                        .unwrap_or(false)
+                                } else {
+                                    false
+                                };
+
+                                if matches!(lhs.as_ref(), Expr::Ident(_)) && is_enum_variant {
+                                    self.expr(lhs, out)?;
+                                    write!(out, "::")?;
+                                    self.expr(rhs, out)?;
+                                } else {
+                                    // expr.field or expr.method()
+                                    self.expr(lhs, out)?;
+                                    write!(out, ".")?;
+                                    self.expr(rhs, out)?;
+                                }
+                            }
+                        }
                     }
                     Op::Range => {
                         // Range: start..end
@@ -216,9 +242,23 @@ impl RustTrans {
 
                 // Handle body statements (field initializers)
                 for (i, stmt) in node.body.stmts.iter().enumerate() {
-                    if let Stmt::Store(store) = stmt {
-                        write!(out, "{}: ", store.name)?;
-                        self.expr(&store.expr, out)?;
+                    match stmt {
+                        Stmt::Store(store) => {
+                            write!(out, "{}: ", store.name)?;
+                            self.expr(&store.expr, out)?;
+                        }
+                        Stmt::Expr(Expr::Pair(pair)) => {
+                            // Named field initializer: x: 3
+                            let field_name = match &pair.key {
+                                crate::ast::Key::NamedKey(name) => name.clone(),
+                                crate::ast::Key::IntKey(n) => format!("{}", n).into(),
+                                crate::ast::Key::BoolKey(b) => format!("{}", b).into(),
+                                crate::ast::Key::StrKey(s) => s.clone(),
+                            };
+                            write!(out, "{}: ", field_name)?;
+                            self.expr(&pair.value, out)?;
+                        }
+                        _ => {}
                     }
                     if i < node.body.stmts.len() - 1 {
                         write!(out, ", ")?;
@@ -311,6 +351,7 @@ impl RustTrans {
         // print("hello") -> println!("hello")
         // print(value) -> println!("{}", value)
         // print(f"...") -> println!("...", args)
+        // print("text:", value) -> println!("text: {}", value)
 
         if call.args.args.is_empty() {
             write!(out, "println!()")?;
@@ -380,7 +421,31 @@ impl RustTrans {
             }
         }
 
-        // Multiple arguments: generate println! with format string
+        // Multiple arguments: check if first is a string literal
+        if let Arg::Pos(first_arg) = &call.args.args[0] {
+            if let Expr::Str(s) | Expr::CStr(s) = first_arg {
+                // First arg is a string - use it as format prefix
+                let mut format_string = s.replace("\"", r##"\""##);
+                let arg_count = call.args.args.len() - 1;
+
+                // Add placeholders for remaining args
+                for _ in 0..arg_count {
+                    format_string.push_str(" {}");
+                }
+
+                write!(out, "println!(\"{}\"", format_string)?;
+
+                // Add remaining args
+                for arg in call.args.args.iter().skip(1) {
+                    write!(out, ", ")?;
+                    self.arg(arg, out)?;
+                }
+                write!(out, ")")?;
+                return Ok(());
+            }
+        }
+
+        // Fallback: generic format string with placeholders
         write!(out, "println!(\"")?;
         for (i, _arg) in call.args.args.iter().enumerate() {
             if i > 0 {
@@ -493,16 +558,36 @@ impl RustTrans {
             // Explicit type annotation
             match store.kind {
                 StoreKind::Let => {
-                    write!(out, "let {}: {} = ", store.name, self.rust_type_name(&store.ty))?;
+                    write!(
+                        out,
+                        "let {}: {} = ",
+                        store.name,
+                        self.rust_type_name(&store.ty)
+                    )?;
                 }
                 StoreKind::Mut => {
-                    write!(out, "let mut {}: {} = ", store.name, self.rust_type_name(&store.ty))?;
+                    write!(
+                        out,
+                        "let mut {}: {} = ",
+                        store.name,
+                        self.rust_type_name(&store.ty)
+                    )?;
                 }
                 StoreKind::Var => {
-                    write!(out, "let {}: {} = ", store.name, self.rust_type_name(&store.ty))?;
+                    write!(
+                        out,
+                        "let {}: {} = ",
+                        store.name,
+                        self.rust_type_name(&store.ty)
+                    )?;
                 }
                 _ => {
-                    write!(out, "let {}: {} = ", store.name, self.rust_type_name(&store.ty))?;
+                    write!(
+                        out,
+                        "let {}: {} = ",
+                        store.name,
+                        self.rust_type_name(&store.ty)
+                    )?;
                 }
             }
         }
@@ -518,13 +603,35 @@ impl RustTrans {
             return Ok(());
         }
 
+        // Check if this is a method (has parent)
+        let is_method = fn_decl.parent.is_some();
+
+        // Print indent for methods (inside impl block)
+        if is_method {
+            self.print_indent(&mut sink.body)?;
+        }
+
         // Function signature
         write!(sink.body, "fn {}", fn_decl.name)?;
 
         // Parameters
         write!(sink.body, "(")?;
+
+        // Add &self as first parameter for methods
+        if is_method {
+            write!(sink.body, "&self")?;
+            if !fn_decl.params.is_empty() {
+                write!(sink.body, ", ")?;
+            }
+        }
+
         for (i, param) in fn_decl.params.iter().enumerate() {
-            write!(sink.body, "{}: {}", param.name, self.rust_type_name(&param.ty))?;
+            write!(
+                sink.body,
+                "{}: {}",
+                param.name,
+                self.rust_type_name(&param.ty)
+            )?;
             if i < fn_decl.params.len() - 1 {
                 write!(sink.body, ", ")?;
             }
@@ -542,7 +649,6 @@ impl RustTrans {
         self.body(&fn_decl.body, sink, &fn_decl.ret, "")?;
         self.scope.borrow_mut().exit_fn();
 
-        sink.body.write(b"\n")?;
         Ok(())
     }
 
@@ -550,51 +656,83 @@ impl RustTrans {
     fn for_stmt(&mut self, for_stmt: &For, sink: &mut Sink) -> AutoResult<()> {
         match &for_stmt.iter {
             Iter::Named(name) => {
-                // Range iteration: for x in start..end
+                sink.body.write(b"for ")?;
+                sink.body.write(name.as_bytes())?;
+                sink.body.write(b" in ")?;
+
+                // Check if it's a range or array iteration
                 if let Expr::Range(range) = &for_stmt.range {
-                    sink.body.write(b"for ")?;
-                    sink.body.write(name.as_bytes())?;
-                    sink.body.write(b" in ")?;
+                    // Range iteration: for x in start..end
                     self.expr(&range.start, &mut sink.body)?;
                     sink.body.write(b"..")?;
                     self.expr(&range.end, &mut sink.body)?;
-                    sink.body.write(b" ")?;
+                    sink.body.write(b" {\n")?;
 
                     // Body
-                    sink.body.write(b"{ ")?;
+                    self.indent();
                     for stmt in &for_stmt.body.stmts {
+                        self.print_indent(&mut sink.body)?;
                         match stmt {
                             Stmt::Expr(expr) => {
                                 self.expr(expr, &mut sink.body)?;
-                                sink.body.write(b"; ")?;
+                                sink.body.write(b";\n")?;
                             }
                             Stmt::Store(store) => {
                                 self.store(store, &mut sink.body)?;
-                                sink.body.write(b"; ")?;
+                                sink.body.write(b";\n")?;
                             }
                             _ => {}
                         }
                     }
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    sink.body.write(b"}")?;
+                } else {
+                    // Array iteration: for x in arr
+                    self.expr(&for_stmt.range, &mut sink.body)?;
+                    sink.body.write(b" {\n")?;
+
+                    // Body
+                    self.indent();
+                    for stmt in &for_stmt.body.stmts {
+                        self.print_indent(&mut sink.body)?;
+                        match stmt {
+                            Stmt::Expr(expr) => {
+                                self.expr(expr, &mut sink.body)?;
+                                sink.body.write(b";\n")?;
+                            }
+                            Stmt::Store(store) => {
+                                self.store(store, &mut sink.body)?;
+                                sink.body.write(b";\n")?;
+                            }
+                            _ => {}
+                        }
+                    }
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
                     sink.body.write(b"}")?;
                 }
             }
             Iter::Ever => {
                 // Infinite loop: loop { body }
-                sink.body.write(b"loop ")?;
-                sink.body.write(b"{ ")?;
+                sink.body.write(b"loop {\n")?;
+                self.indent();
                 for stmt in &for_stmt.body.stmts {
+                    self.print_indent(&mut sink.body)?;
                     match stmt {
                         Stmt::Expr(expr) => {
                             self.expr(expr, &mut sink.body)?;
-                            sink.body.write(b"; ")?;
+                            sink.body.write(b";\n")?;
                         }
                         Stmt::Store(store) => {
                             self.store(store, &mut sink.body)?;
-                            sink.body.write(b"; ")?;
+                            sink.body.write(b";\n")?;
                         }
                         _ => {}
                     }
                 }
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
                 sink.body.write(b"}")?;
             }
             _ => {}
@@ -611,44 +749,51 @@ impl RustTrans {
                 sink.body.write(b" else if ")?;
             }
 
-            sink.body.write(b"{ ")?;
             self.expr(&branch.cond, &mut sink.body)?;
             sink.body.write(b" ")?;
 
-            // Process branch body
-            sink.body.write(b"{ ")?;
+            // Process branch body - use body() method for proper formatting
+            sink.body.write(b"{\n")?;
+            self.indent();
             for stmt in &branch.body.stmts {
+                self.print_indent(&mut sink.body)?;
                 match stmt {
                     Stmt::Expr(expr) => {
                         self.expr(expr, &mut sink.body)?;
-                        sink.body.write(b"; ")?;
+                        sink.body.write(b";\n")?;
                     }
                     Stmt::Store(store) => {
                         self.store(store, &mut sink.body)?;
-                        sink.body.write(b"; ")?;
+                        sink.body.write(b";\n")?;
                     }
                     _ => {}
                 }
             }
-            sink.body.write(b"} }")?;
+            self.dedent();
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"}")?;
         }
 
         if let Some(else_body) = &if_.else_ {
             sink.body.write(b" else ")?;
-            sink.body.write(b"{ ")?;
+            sink.body.write(b"{\n")?;
+            self.indent();
             for stmt in &else_body.stmts {
+                self.print_indent(&mut sink.body)?;
                 match stmt {
                     Stmt::Expr(expr) => {
                         self.expr(expr, &mut sink.body)?;
-                        sink.body.write(b"; ")?;
+                        sink.body.write(b";\n")?;
                     }
                     Stmt::Store(store) => {
                         self.store(store, &mut sink.body)?;
-                        sink.body.write(b"; ")?;
+                        sink.body.write(b";\n")?;
                     }
                     _ => {}
                 }
             }
+            self.dedent();
+            self.print_indent(&mut sink.body)?;
             sink.body.write(b"}")?;
         }
 
@@ -744,7 +889,12 @@ impl RustTrans {
 
             for member in &type_decl.members {
                 self.print_indent(&mut sink.body)?;
-                write!(sink.body, "{}: {},", member.name, self.rust_type_name(&member.ty))?;
+                write!(
+                    sink.body,
+                    "{}: {},",
+                    member.name,
+                    self.rust_type_name(&member.ty)
+                )?;
                 sink.body.write(b"\n")?;
             }
 
@@ -753,6 +903,24 @@ impl RustTrans {
         }
 
         sink.body.write(b"}\n")?;
+
+        // Generate impl block with methods
+        if !type_decl.methods.is_empty() {
+            sink.body.write(b"\n")?;
+            write!(sink.body, "impl {} {{", type_decl.name)?;
+            sink.body.write(b"\n")?;
+            self.indent();
+
+            for method in &type_decl.methods {
+                self.fn_decl(method, sink)?;
+                sink.body.write(b"\n")?;
+            }
+
+            self.dedent();
+            self.print_indent(&mut sink.body)?;
+            sink.body.write(b"}\n")?;
+        }
+
         Ok(())
     }
 
@@ -766,7 +934,8 @@ impl RustTrans {
 
         for (i, item) in enum_decl.items.iter().enumerate() {
             self.print_indent(&mut sink.body)?;
-            sink.body.write(format!("{} = {},", item.name, item.value).as_bytes())?;
+            sink.body
+                .write(format!("{} = {},", item.name, item.value).as_bytes())?;
             sink.body.write(b"\n")?;
         }
 
@@ -776,22 +945,31 @@ impl RustTrans {
 
         // Generate Display trait implementation
         sink.body.write(b"\n")?;
-        self.print_indent(&mut sink.body)?;
-        writeln!(sink.body, "impl std::fmt::Display for {} {{", enum_decl.name)?;
+        writeln!(
+            sink.body,
+            "impl std::fmt::Display for {} {{",
+            enum_decl.name
+        )?;
         self.indent();
         self.print_indent(&mut sink.body)?;
-        writeln!(sink.body, "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{")?;
+        writeln!(
+            sink.body,
+            "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{"
+        )?;
         self.indent();
         self.print_indent(&mut sink.body)?;
         writeln!(sink.body, "match self {{")?;
+        self.indent();
 
         for item in &enum_decl.items {
             self.print_indent(&mut sink.body)?;
-            writeln!(sink.body, "{}::{} => write!(f, \"{}\"),", enum_decl.name, item.name, item.name)?;
+            writeln!(
+                sink.body,
+                "{}::{} => write!(f, \"{}\"),",
+                enum_decl.name, item.name, item.name
+            )?;
         }
 
-        self.print_indent(&mut sink.body)?;
-        writeln!(sink.body, "}}")?;
         self.dedent();
         self.print_indent(&mut sink.body)?;
         writeln!(sink.body, "}}")?;
@@ -799,7 +977,7 @@ impl RustTrans {
         self.print_indent(&mut sink.body)?;
         writeln!(sink.body, "}}")?;
         self.dedent();
-        sink.body.write(b"\n")?;
+        writeln!(sink.body, "}}")?;
 
         Ok(())
     }
@@ -928,14 +1106,25 @@ impl Trans for RustTrans {
         for (i, decl) in decls.iter().enumerate() {
             self.stmt(decl, sink)?;
             if i < decls.len() - 1 {
-                sink.body.write(b"\n")?;
+                // Add blank line between declarations
+                // Check if we already end with a newline
+                if sink.body.ends_with(b"\n") {
+                    sink.body.write(b"\n")?;
+                } else {
+                    sink.body.write(b"\n\n")?;
+                }
             }
         }
 
         // Phase 4: Generate main function if needed
         if !main.is_empty() {
             if !decls.is_empty() {
-                sink.body.write(b"\n")?;
+                // Add blank line before main
+                if sink.body.ends_with(b"\n") {
+                    sink.body.write(b"\n")?;
+                } else {
+                    sink.body.write(b"\n\n")?;
+                }
             }
 
             // Check if main should return a value
@@ -966,7 +1155,16 @@ impl Trans for RustTrans {
                     }
                 } else {
                     self.stmt(stmt, sink)?;
-                    sink.body.write(b";\n")?;
+                    // Only add semicolon for simple statements (expr, store)
+                    // Compound statements (if, for, etc.) handle their own formatting
+                    match stmt {
+                        Stmt::Expr(_) | Stmt::Store(_) => {
+                            sink.body.write(b";\n")?;
+                        }
+                        _ => {
+                            // Compound statements already have proper formatting
+                        }
+                    }
                 }
             }
 
@@ -974,12 +1172,20 @@ impl Trans for RustTrans {
             sink.body.write(b"}\n")?;
         }
 
+        // Add final newline only if not already ending with one
+        if !sink.body.is_empty() && !sink.body.ends_with(b"\n") {
+            sink.body.write(b"\n")?;
+        }
+
         Ok(())
     }
 }
 
 /// Transpile AutoLang code to Rust
-pub fn transpile_rust(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Shared<Universe>)> {
+pub fn transpile_rust(
+    name: impl Into<AutoStr>,
+    code: &str,
+) -> AutoResult<(Sink, Shared<Universe>)> {
     let name = name.into();
     let scope = shared(crate::universe::Universe::default());
     let mut parser = Parser::new(code, scope);

@@ -5,5 +5,5 @@ fn main() {
         0 => println!("X is ZERO"),
         1 => println!("X is ONE"),
         _ => println!("X is Large"),
-    };
+    }
 }

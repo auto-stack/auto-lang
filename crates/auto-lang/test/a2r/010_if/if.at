@@ -6,5 +6,4 @@ fn main() {
     } else {
         print("Small!")
     }
-
 }
