@@ -227,7 +227,7 @@ impl Evaler {
             };
             self.universe.borrow_mut().define_type(
                 type_name.clone(),
-                std::rc::Rc::new(crate::scope::Meta::Type(ast::Type::User(type_decl)))
+                std::rc::Rc::new(crate::scope::Meta::Type(ast::Type::User(type_decl))),
             );
         }
         drop(registry);
@@ -235,9 +235,11 @@ impl Evaler {
         // Register each imported item in current scope
         for item_name in &use_stmt.items {
             // Check if it's a function
-            if let Some(_func_entry) = crate::vm::VM_REGISTRY.lock().unwrap()
-                .get_function(&module_path, item_name) {
-
+            if let Some(_func_entry) = crate::vm::VM_REGISTRY
+                .lock()
+                .unwrap()
+                .get_function(&module_path, item_name)
+            {
                 // Create a VmFunction metadata entry
                 let fn_decl = ast::Fn::new(
                     ast::FnKind::VmFunction,
@@ -251,7 +253,7 @@ impl Evaler {
                 // Register in current scope
                 self.universe.borrow_mut().define(
                     item_name.clone(),
-                    std::rc::Rc::new(crate::scope::Meta::Fn(fn_decl))
+                    std::rc::Rc::new(crate::scope::Meta::Fn(fn_decl)),
                 );
             }
         }
@@ -411,7 +413,10 @@ impl Evaler {
                 todo!()
             }
             Iter::Ever => {
-                todo!()
+                // No iteration variable for infinite loops
+            }
+            Iter::Cond => {
+                // No iteration variable for conditional loops
             }
         }
     }
@@ -420,6 +425,46 @@ impl Evaler {
         let iter = &for_stmt.iter;
         let body = &for_stmt.body;
         let mut max_loop = 1000;
+
+        // Handle conditional for loop: for condition { ... }
+        if matches!(iter, Iter::Cond) {
+            let mut res = Array::new();
+            self.universe.borrow_mut().enter_scope();
+            loop {
+                if max_loop <= 0 {
+                    self.universe.borrow_mut().exit_scope();
+                    return Value::error("Max loop reached");
+                }
+                max_loop -= 1;
+
+                let cond = self.eval_expr(&for_stmt.range);
+                let cond_is_true = cond.is_true();
+
+                if !cond_is_true {
+                    break;
+                }
+
+                res.push(self.eval_loop_body(body, false, for_stmt.new_line));
+            }
+            self.universe.borrow_mut().exit_scope();
+
+            return match self.mode {
+                EvalMode::SCRIPT => Value::Void,
+                EvalMode::CONFIG => Value::Array(res),
+                EvalMode::TEMPLATE => Value::Str(
+                    res.iter()
+                        .filter(|v| match v {
+                            Value::Nil => false,
+                            _ => true,
+                        })
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join("")
+                        .into(),
+                ),
+            };
+        }
+
         let range = self.eval_expr(&for_stmt.range);
 
         // Resolve ValueRef for range/array operations
@@ -547,20 +592,28 @@ impl Evaler {
         match op {
             Op::Add => {
                 // Convert resolved ValueData back to Value for add()
-                add(Value::from_data(left_resolved.clone()), Value::from_data(right_resolved.clone()))
+                add(
+                    Value::from_data(left_resolved.clone()),
+                    Value::from_data(right_resolved.clone()),
+                )
             }
-            Op::Sub => {
-                sub(Value::from_data(left_resolved.clone()), Value::from_data(right_resolved.clone()))
-            }
-            Op::Mul => {
-                mul(Value::from_data(left_resolved.clone()), Value::from_data(right_resolved.clone()))
-            }
-            Op::Div => {
-                div(Value::from_data(left_resolved.clone()), Value::from_data(right_resolved.clone()))
-            }
-            Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => {
-                comp(&Value::from_data(left_resolved), &op, &Value::from_data(right_resolved))
-            }
+            Op::Sub => sub(
+                Value::from_data(left_resolved.clone()),
+                Value::from_data(right_resolved.clone()),
+            ),
+            Op::Mul => mul(
+                Value::from_data(left_resolved.clone()),
+                Value::from_data(right_resolved.clone()),
+            ),
+            Op::Div => div(
+                Value::from_data(left_resolved.clone()),
+                Value::from_data(right_resolved.clone()),
+            ),
+            Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => comp(
+                &Value::from_data(left_resolved),
+                &op,
+                &Value::from_data(right_resolved),
+            ),
             Op::Asn => self.eval_asn(left, right_value),
             Op::Range => self.range(left, right),
             Op::RangeEq => self.range_eq(left, right),
@@ -615,7 +668,9 @@ impl Evaler {
                                         let idx_val = self.eval_expr(index_expr);
                                         if let Value::Int(i) = idx_val {
                                             let path = auto_val::AccessPath::Nested(
-                                                Box::new(auto_val::AccessPath::Field(arr_name.clone())),
+                                                Box::new(auto_val::AccessPath::Field(
+                                                    arr_name.clone(),
+                                                )),
                                                 Box::new(auto_val::AccessPath::Index(i as usize)),
                                             );
                                             match self
@@ -707,9 +762,16 @@ impl Evaler {
                             if let Some(obj_name) = top_level {
                                 if let Some(obj_vid) = self.lookup_vid(&obj_name) {
                                     // Build path for the rest (inner), excluding the top-level identifier
-                                    let inner_path = match self.build_path_excluding_top_level(left_obj, &obj_name) {
+                                    let inner_path = match self
+                                        .build_path_excluding_top_level(left_obj, &obj_name)
+                                    {
                                         Ok(path) => path,
-                                        Err(e) => return Value::error(format!("Invalid access path: {}", e)),
+                                        Err(e) => {
+                                            return Value::error(format!(
+                                                "Invalid access path: {}",
+                                                e
+                                            ))
+                                        }
                                     };
 
                                     // Add the rightmost field to complete the path
@@ -760,10 +822,9 @@ impl Evaler {
                                     .update_nested(arr_vid, &path, right_vid)
                                 {
                                     Ok(()) => Value::Void,
-                                    Err(e) => Value::error(format!(
-                                        "Failed to assign to index: {:?}",
-                                        e
-                                    )),
+                                    Err(e) => {
+                                        Value::error(format!("Failed to assign to index: {:?}", e))
+                                    }
                                 }
                             } else {
                                 Value::error("Array index must be integer")
@@ -783,7 +844,9 @@ impl Evaler {
                                     let nested_idx_val = self.eval_expr(nested_index);
                                     if let Value::Int(nested_i) = nested_idx_val {
                                         let path = auto_val::AccessPath::Nested(
-                                            Box::new(auto_val::AccessPath::Index(nested_i as usize)),
+                                            Box::new(auto_val::AccessPath::Index(
+                                                nested_i as usize,
+                                            )),
                                             Box::new(auto_val::AccessPath::Index(i as usize)),
                                         );
                                         match self
@@ -854,7 +917,12 @@ impl Evaler {
                                         // Build path for the left_obj part (e.g., inner)
                                         let left_path = match self.build_access_path(left_obj) {
                                             Ok(path) => path,
-                                            Err(e) => return Value::error(format!("Invalid access path: {}", e)),
+                                            Err(e) => {
+                                                return Value::error(format!(
+                                                    "Invalid access path: {}",
+                                                    e
+                                                ))
+                                            }
                                         };
 
                                         // Build path for right_field + index
@@ -923,9 +991,7 @@ impl Evaler {
     fn build_access_path(&mut self, expr: &Expr) -> Result<auto_val::AccessPath, String> {
         match expr {
             // Case 1: Simple field access (base case for recursion)
-            Expr::Ident(name) => {
-                Ok(auto_val::AccessPath::Field(name.clone()))
-            }
+            Expr::Ident(name) => Ok(auto_val::AccessPath::Field(name.clone())),
 
             // Case 2: Nested field access: obj.field or arr[0].field
             Expr::Bina(left, op, right) if *op == Op::Dot => {
@@ -986,11 +1052,16 @@ impl Evaler {
     /// - `obj.inner` → Field("inner")  (excludes "obj")
     /// - `arr[0]` → Index(0)  (excludes "arr")
     /// - `obj.level1.level2` → Nested(Field("level1"), Field("level2"))  (excludes "obj")
-    fn build_path_excluding_top_level(&mut self, expr: &Expr, top_level: &str) -> Result<auto_val::AccessPath, String> {
+    fn build_path_excluding_top_level(
+        &mut self,
+        expr: &Expr,
+        top_level: &str,
+    ) -> Result<auto_val::AccessPath, String> {
         match expr {
-            Expr::Ident(name) if name == top_level => {
-                Err(format!("Expression is just the top-level identifier: {}", name))
-            }
+            Expr::Ident(name) if name == top_level => Err(format!(
+                "Expression is just the top-level identifier: {}",
+                name
+            )),
             Expr::Ident(name) => Ok(auto_val::AccessPath::Field(name.clone())),
             Expr::Bina(left, op, right) if *op == Op::Dot => {
                 // Check if left is the top-level identifier
@@ -1000,8 +1071,11 @@ impl Evaler {
                         // But right might be further nested, so we need to check
                         match &**right {
                             // If right is also a Bina (further nesting), recurse
-                            Expr::Bina(inner_left, inner_op, inner_right) if *inner_op == Op::Dot => {
-                                let left_path = auto_val::AccessPath::Field(self.expr_to_astr(right));
+                            Expr::Bina(inner_left, inner_op, inner_right)
+                                if *inner_op == Op::Dot =>
+                            {
+                                let left_path =
+                                    auto_val::AccessPath::Field(self.expr_to_astr(right));
                                 let right_field = self.expr_to_astr(inner_right);
                                 Ok(auto_val::AccessPath::Nested(
                                     Box::new(left_path),
@@ -1144,13 +1218,12 @@ impl Evaler {
     /// Helper: Resolve Ref or clone inline value
     fn resolve_or_clone(&self, val: &Value) -> auto_val::ValueData {
         match val {
-            Value::ValueRef(vid) => {
-                self.universe
-                    .borrow()
-                    .get_value(*vid)
-                    .map(|cell| cell.borrow().clone())
-                    .unwrap_or(auto_val::ValueData::Nil)
-            }
+            Value::ValueRef(vid) => self
+                .universe
+                .borrow()
+                .get_value(*vid)
+                .map(|cell| cell.borrow().clone())
+                .unwrap_or(auto_val::ValueData::Nil),
             _ => val.clone().into_data(),
         }
     }
@@ -1231,7 +1304,9 @@ impl Evaler {
                         if let Expr::Ident(method_name) = &**right {
                             // Look up the method in the VM registry
                             let registry = crate::vm::VM_REGISTRY.lock().unwrap();
-                            let method = registry.get_method(&inst_data.ty.name(), method_name.as_str()).cloned();
+                            let method = registry
+                                .get_method(&inst_data.ty.name(), method_name.as_str())
+                                .cloned();
                             drop(registry);
 
                             if let Some(method) = method {
@@ -1553,7 +1628,9 @@ impl Evaler {
         let registry = crate::vm::VM_REGISTRY.lock().unwrap();
 
         // Search all modules for the function
-        let func_entry = registry.modules().values()
+        let func_entry = registry
+            .modules()
+            .values()
             .find_map(|module| module.functions.get(fn_decl.name.as_str()))
             .cloned();
 
@@ -1569,12 +1646,15 @@ impl Evaler {
                     (func_entry.func)(uni, args[0].clone())
                 } else {
                     // For multi-argument functions (not yet supported)
-                    Value::Error(format!(
-                        "VM functions with {} arguments not yet supported",
-                        args.len()
-                    ).into())
+                    Value::Error(
+                        format!(
+                            "VM functions with {} arguments not yet supported",
+                            args.len()
+                        )
+                        .into(),
+                    )
                 }
-            },
+            }
             None => Value::Error(format!("VM function '{}' not found", fn_decl.name).into()),
         }
     }
@@ -1603,9 +1683,7 @@ impl Evaler {
                 self.exit_scope();
                 result
             }
-            _ => {
-                Value::Error(format!("Fn {} eval not supported ", fn_decl.name).into())
-            }
+            _ => Value::Error(format!("Fn {} eval not supported ", fn_decl.name).into()),
         }
     }
 
@@ -1701,7 +1779,6 @@ impl Evaler {
     }
 
     fn eval_ident(&mut self, name: &AutoStr) -> Value {
-
         // let univ = self.universe.borrow_mut();
         // return Some(RefMut::map(univ, |map| map.get_mut_val(name).unwrap()));
 
@@ -1851,7 +1928,7 @@ impl Evaler {
                                 field_value.clone()
                             }
                         }
-                        _ => field_value
+                        _ => field_value,
                     }
                 }
                 Expr::Int(key) => {
@@ -1867,7 +1944,7 @@ impl Evaler {
                                 field_value.clone()
                             }
                         }
-                        _ => field_value
+                        _ => field_value,
                     }
                 }
                 Expr::Bool(key) => {
@@ -1883,7 +1960,7 @@ impl Evaler {
                                 field_value.clone()
                             }
                         }
-                        _ => field_value
+                        _ => field_value,
                     }
                 }
                 _ => None,

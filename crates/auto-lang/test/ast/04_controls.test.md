@@ -20,13 +20,13 @@ for i in range(0, 10) {
 
 for in(i, range(0, 10)) { call print (i) }
 
-## while control
+## for control
 
-while x < 10 {
+for x < 10 {
     print(x)
     x = x + 1
 }
 
 ---
 
-while bina(<, x, 10) { call print (x); asn x bina(+, x, 1) }
+for bina(<, x, 10) { call print (x); asn x bina(+, x, 1) }

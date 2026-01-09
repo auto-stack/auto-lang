@@ -781,7 +781,8 @@ impl CTrans {
         }
         // return type
         if !matches!(fn_decl.ret, Type::Unknown) {
-            out.write(format!("{} ", self.c_type_name(&fn_decl.ret)).as_bytes()).to()?;
+            out.write(format!("{} ", self.c_type_name(&fn_decl.ret)).as_bytes())
+                .to()?;
         } else {
             out.write(b"void ").to()?;
         }
@@ -908,7 +909,9 @@ impl CTrans {
         if matches!(store.ty, Type::Unknown) {
             if let Some(inferred_type) = self.infer_expr_type(&store.expr) {
                 // Update the scope with the inferred type for future lookups
-                self.scope.borrow_mut().update_store_type(&store.name, inferred_type.clone());
+                self.scope
+                    .borrow_mut()
+                    .update_store_type(&store.name, inferred_type.clone());
                 let type_name = self.c_type_name(&inferred_type);
                 out.write(format!("{} {} = ", type_name, store.name).as_bytes())
                     .to()?;
@@ -1122,6 +1125,7 @@ impl CTrans {
             Iter::Indexed(_i, _iter) => {}
             Iter::Named(_) => {}
             Iter::Ever => {}
+            Iter::Cond => {}
             Iter::Call(call) => {
                 self.call(call, out)?;
             }
@@ -1385,9 +1389,7 @@ impl CTrans {
                     // value
                     Stmt::Expr(Expr::Pair(Pair {
                         key: Key::NamedKey(format!("as.{}", rname).into()),
-                        value: Box::new(Expr::GenName(
-                            String::from_utf8(rtext).unwrap().into(),
-                        )),
+                        value: Box::new(Expr::GenName(String::from_utf8(rtext).unwrap().into())),
                     })),
                 ],
                 has_new_line: true,
@@ -1455,9 +1457,7 @@ impl CTrans {
                     };
                     Ok(self.handle_tag_method(&*tag.borrow(), lname, rname, call, out)?)
                 }
-                _ => {
-                    Ok(false)
-                }
+                _ => Ok(false),
             },
             // instance.method_name(&s, args...)
             Meta::Store(store) => {
@@ -1470,9 +1470,7 @@ impl CTrans {
                 };
                 Ok(self.handle_store_method(decl, lname, method_name, call, out)?)
             }
-            _ => {
-                Ok(false)
-            }
+            _ => Ok(false),
         }
     }
 

@@ -1600,60 +1600,83 @@ impl<'a> Parser<'a> {
                 new_line: has_new_line,
             }));
         }
-        let ident = self.parse_name()?;
-        if self.is_kind(TokenKind::LParen) {
-            // for call(args)? { ... }
-            let args = self.args()?;
-            let call = self.call(Expr::Ident(ident), args)?;
-            let Expr::Call(call) = call else {
-                return error_pos!("Strange call in for statement");
-            };
-            self.expect(TokenKind::Question)?;
-            self.enter_scope();
-            let body = self.body()?;
-            self.exit_scope();
-            return Ok(Stmt::For(For {
-                iter: Iter::Call(call),
-                range: Expr::Nil,
-                body,
-                new_line: false,
-            }));
-        } else {
-            // for ident in range { ... }
-            self.enter_scope();
-            let meta = Meta::Store(Store {
-                kind: StoreKind::Var,
-                name: ident.clone(),
-                expr: Expr::Nil,
-                ty: Type::Int,
-            });
-            self.define(ident.as_str(), meta);
-            let mut iter = Iter::Named(ident.clone());
-            if self.is_kind(TokenKind::Comma) {
-                self.next(); // skip ,
-                let iter_name = self.cur.text.clone();
-                let meta_iter = Meta::Store(Store {
-                    kind: StoreKind::Var,
-                    name: iter_name.clone(),
-                    expr: Expr::Nil,
-                    ty: Type::Int,
-                });
-                self.define(iter_name.as_str(), meta_iter);
-                self.next(); // skip iter name
-                iter = Iter::Indexed(ident.clone(), iter_name.clone());
+
+        // Try to parse as iterator pattern first: for ident in range { ... }
+        // We do this by checking if we have an identifier
+        if self.is_kind(TokenKind::Ident) {
+            // Save the identifier text to check later
+            let ident_text = self.cur.text.clone();
+
+            // Try to parse as iterator pattern
+            if self.lexer.peek_non_whitespace('i') || self.lexer.peek_non_whitespace('(') {
+                // Check next non-whitespace char
+                let next_chars: Vec<char> = self
+                    .lexer
+                    .chars
+                    .clone()
+                    .filter(|c| !c.is_whitespace())
+                    .take(10)
+                    .collect();
+                let next_str: String = next_chars.iter().collect();
+
+                if next_str.starts_with("in ") || next_str.starts_with('(') {
+                    // This is an iterator or call pattern
+                    let ident = self.parse_name()?;
+
+                    if self.is_kind(TokenKind::In) {
+                        // for ident in range { ... }
+                        self.next(); // skip 'in'
+                        self.enter_scope();
+                        let meta = Meta::Store(Store {
+                            kind: StoreKind::Var,
+                            name: ident.clone(),
+                            expr: Expr::Nil,
+                            ty: Type::Int,
+                        });
+                        self.define(ident.as_str(), meta);
+                        let iter = Iter::Named(ident.clone());
+                        let range = self.iterable_expr()?;
+                        let body = self.body()?;
+                        let has_new_line = body.has_new_line;
+                        self.exit_scope();
+                        return Ok(Stmt::For(For {
+                            iter,
+                            range,
+                            body,
+                            new_line: has_new_line,
+                        }));
+                    } else if self.is_kind(TokenKind::LParen) {
+                        // for call(args) { ... }
+                        let args = self.args()?;
+                        let call = self.call(Expr::Ident(ident), args)?;
+                        let Expr::Call(call) = call else {
+                            return error_pos!("Strange call in for statement");
+                        };
+                        self.expect(TokenKind::Question)?;
+                        self.enter_scope();
+                        let body = self.body()?;
+                        self.exit_scope();
+                        return Ok(Stmt::For(For {
+                            iter: Iter::Call(call),
+                            range: Expr::Nil,
+                            body,
+                            new_line: false,
+                        }));
+                    }
+                }
             }
-            self.expect(TokenKind::In)?;
-            let range = self.iterable_expr()?;
-            let body = self.body()?;
-            let has_new_line = body.has_new_line;
-            self.exit_scope();
-            return Ok(Stmt::For(For {
-                iter,
-                range,
-                body,
-                new_line: has_new_line,
-            }));
         }
+
+        // Otherwise, parse as conditional for loop: for condition { ... }
+        let condition = self.parse_expr()?;
+        let body = self.body()?;
+        let has_new_line = body.has_new_line;
+        Ok(Stmt::For(For {
+            iter: Iter::Cond,
+            range: condition,
+            body,
+            new_line: has_new_line,
+        }))
     }
 
     pub fn is_stmt(&mut self) -> AutoResult<Stmt> {
