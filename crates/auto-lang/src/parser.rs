@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::i32;
 use std::rc::Rc;
 
-use auto_val::AutoResult;
+use crate::error::AutoResult;
 
 /// TODO: T should be a generic AST node type
 pub trait ParserExt {

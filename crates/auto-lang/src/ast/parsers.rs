@@ -1,6 +1,6 @@
 use super::*;
+use crate::error::AutoResult;
 use crate::parser::{Parser, ParserExt};
-use auto_val::AutoResult;
 
 impl ParserExt for Code {
     fn parse(code: impl Into<AutoStr>) -> AutoResult<Self> {

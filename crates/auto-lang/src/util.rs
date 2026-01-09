@@ -1,4 +1,4 @@
-use auto_val::AutoResult;
+use crate::error::AutoResult;
 use auto_val::AutoStr;
 use normalize_path::NormalizePath;
 use roxmltree::{Document, NodeType};

@@ -1,6 +1,8 @@
+use auto_lang::error::{get_source, AutoError};
 use auto_lang::repl;
 use clap::{Parser, Subcommand};
-use miette::{MietteHandlerOpts, Result};
+use miette::{Diagnostic, MietteHandlerOpts, Result};
+use std::error::Error as StdError;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
