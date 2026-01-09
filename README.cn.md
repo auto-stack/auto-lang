@@ -35,7 +35,7 @@ Auto 采用**场景导向（Scenario Oriented）**的设计理念，针对不同
 - **AutoConfig** - 作为配置语言，替代 JSON/XML/YAML，支持可编程配置
 - **AutoScript** - 作为脚本语言，替代 Python/JavaScript，提供动态解释执行
 - **AutoShell** - 作为跨平台 Shell，替代 Bash/PowerShell
-- **AutoTemplate** - 作为模板语言，替代 Jinja2/Mustache
+- **AutoTemplate** - 作为模板语言，替代 Jinja2/Mustache。参看[教程](docs/tutorials/autogen-tutorial.cn.md)
 - **AutoUI** - 作为 UI 描述语言，替代 QML/XAML/Vue
 
 ### 设计理念
@@ -199,7 +199,7 @@ for f in find_files("src") {
 
 ### 5️⃣ AutoTemplate - 代码生成模板
 
-支持任意文本格式的模板引擎。[教程](docs/tutorials/autogen-tutorial-zh.md)
+支持任意文本格式的模板引擎。
 
 ```html
 <html>
