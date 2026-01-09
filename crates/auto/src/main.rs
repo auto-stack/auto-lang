@@ -34,8 +34,11 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
-    // Set up miette for beautiful error reporting
-    miette::set_hook(Box::new(|_| Box::new(MietteHandlerOpts::new().build()))).ok();
+    // Set up miette for beautiful error reporting with fancy colors
+    miette::set_hook(Box::new(|_| {
+        Box::new(MietteHandlerOpts::new().terminal_links(true).build())
+    }))
+    .ok();
 
     let cli = Cli::parse();
 
@@ -49,7 +52,7 @@ fn main() -> Result<()> {
             println!("----------------------");
             println!("Running Auto {} ", path);
             println!("----------------------");
-            let result = auto_lang::run_file(&path).map_err(to_miette_err)?;
+            let result = auto_lang::run_file(&path)?;
             println!("{}", result);
             println!();
         }

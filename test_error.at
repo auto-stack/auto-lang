@@ -1,3 +1,0 @@
-# Test file to trigger a parser error
-
-let x: int = "invalid"

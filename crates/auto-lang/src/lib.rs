@@ -36,11 +36,6 @@ pub fn run(code: &str) -> AutoResult<String> {
     // Try to interpret, and attach source code if we get a syntax error
     let result = interpreter.interpret(code);
 
-    eprintln!("DEBUG: interpret() result.is_err() = {}", result.is_err());
-    if let Err(ref e) = result {
-        eprintln!("DEBUG: Error type: {:?}", std::mem::discriminant(e));
-    }
-
     match result {
         Ok(_) => {
             // Resolve any ValueRef in the result before converting to string
@@ -49,10 +44,6 @@ pub fn run(code: &str) -> AutoResult<String> {
         }
         Err(AutoError::Syntax(err)) => {
             // Attach source code to the syntax error
-            eprintln!(
-                "DEBUG: Creating SyntaxWithSource with {} bytes of code",
-                code.len()
-            );
             Err(AutoError::with_source(
                 err,
                 "<input>".to_string(),
@@ -139,14 +130,6 @@ pub fn run_file(path: &str) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::new();
     let result = interpreter.interpret(&code);
 
-    eprintln!("DEBUG run_file: result.is_err() = {}", result.is_err());
-    if let Err(ref e) = result {
-        eprintln!(
-            "DEBUG run_file: Error type: {:?}",
-            std::mem::discriminant(e)
-        );
-    }
-
     match result {
         Ok(_) => {
             // Resolve any ValueRef in the result before converting to string
@@ -155,13 +138,9 @@ pub fn run_file(path: &str) -> AutoResult<String> {
         }
         Err(AutoError::Syntax(err)) => {
             // Attach source code to the syntax error with actual filename
-            eprintln!("DEBUG run_file: Creating SyntaxWithSource");
             Err(AutoError::with_source(err, path.to_string(), code))
         }
-        Err(other) => {
-            eprintln!("DEBUG run_file: Non-syntax error");
-            Err(other)
-        }
+        Err(other) => Err(other),
     }
 }
 

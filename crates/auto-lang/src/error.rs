@@ -119,42 +119,110 @@ pub type AutoResult<T> = std::result::Result<T, AutoError>;
 ///
 /// This enum encompasses all possible errors that can occur during
 /// compilation, parsing, type checking, and evaluation.
-#[derive(Error, Diagnostic, Debug)]
+#[derive(Error, Debug)]
 pub enum AutoError {
     /// Syntax errors during parsing
     #[error(transparent)]
-    #[diagnostic(code(auto_syntax_E0001))]
     Syntax(#[from] SyntaxError),
 
     /// Syntax errors with source code
     #[error(transparent)]
-    #[diagnostic(code(auto_syntax_E0001))]
     SyntaxWithSource(#[from] SyntaxErrorWithSource),
 
     /// Type errors
     #[error(transparent)]
-    #[diagnostic(code(auto_type_E0101))]
     Type(#[from] TypeError),
 
     /// Name/binding errors (undefined variables, duplicate definitions)
     #[error(transparent)]
-    #[diagnostic(code(auto_name_E0201))]
     Name(#[from] NameError),
 
     /// Runtime errors (division by zero, index out of bounds, etc.)
     #[error(transparent)]
-    #[diagnostic(code(auto_runtime_E0301))]
     Runtime(#[from] RuntimeError),
 
     /// IO errors (file reading, etc.)
     #[error(transparent)]
-    #[diagnostic(code(auto_io_E0401))]
     Io(#[from] std::io::Error),
 
     /// Generic error message (for converting from other error types)
     #[error("{0}")]
-    #[diagnostic(code(auto_generic_E9999))]
     Msg(String),
+}
+
+// Manual implementation of Diagnostic for AutoError to properly delegate
+impl Diagnostic for AutoError {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match self {
+            AutoError::Syntax(e) => e.code(),
+            AutoError::SyntaxWithSource(e) => e.code(),
+            AutoError::Type(e) => e.code(),
+            AutoError::Name(e) => e.code(),
+            AutoError::Runtime(e) => e.code(),
+            AutoError::Io(_) => None,
+            AutoError::Msg(_) => None,
+        }
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        match self {
+            AutoError::Syntax(e) => e.severity(),
+            AutoError::SyntaxWithSource(e) => e.severity(),
+            AutoError::Type(e) => e.severity(),
+            AutoError::Name(e) => e.severity(),
+            AutoError::Runtime(e) => e.severity(),
+            AutoError::Io(_) => None,
+            AutoError::Msg(_) => None,
+        }
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match self {
+            AutoError::Syntax(e) => e.help(),
+            AutoError::SyntaxWithSource(e) => e.help(),
+            AutoError::Type(e) => e.help(),
+            AutoError::Name(e) => e.help(),
+            AutoError::Runtime(e) => e.help(),
+            AutoError::Io(_) => None,
+            AutoError::Msg(_) => None,
+        }
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match self {
+            AutoError::Syntax(e) => e.url(),
+            AutoError::SyntaxWithSource(e) => e.url(),
+            AutoError::Type(e) => e.url(),
+            AutoError::Name(e) => e.url(),
+            AutoError::Runtime(e) => e.url(),
+            AutoError::Io(_) => None,
+            AutoError::Msg(_) => None,
+        }
+    }
+
+    fn labels<'a>(&'a self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + 'a>> {
+        match self {
+            AutoError::Syntax(e) => e.labels(),
+            AutoError::SyntaxWithSource(e) => e.labels(),
+            AutoError::Type(e) => e.labels(),
+            AutoError::Name(e) => e.labels(),
+            AutoError::Runtime(e) => e.labels(),
+            AutoError::Io(_) => None,
+            AutoError::Msg(_) => None,
+        }
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        match self {
+            AutoError::Syntax(e) => e.source_code(),
+            AutoError::SyntaxWithSource(e) => e.source_code(),
+            AutoError::Type(e) => e.source_code(),
+            AutoError::Name(e) => e.source_code(),
+            AutoError::Runtime(e) => e.source_code(),
+            AutoError::Io(_) => None,
+            AutoError::Msg(_) => None,
+        }
+    }
 }
 
 impl From<String> for AutoError {
