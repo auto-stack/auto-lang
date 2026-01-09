@@ -431,9 +431,21 @@ impl<'a> Parser<'a> {
                     Expr::Pair(p) => {
                         pairs.push(p.clone());
                     }
-                    _ => return error_pos!("Last block must be an object!"),
+                    _ => {
+                        return Err(SyntaxError::Generic {
+                            message: "Last block must be an object!".to_string(),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
                 },
-                _ => return error_pos!("Last block must be an object!"),
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: "Last block must be an object!".to_string(),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
             }
         }
         Ok(pairs)
