@@ -22,11 +22,11 @@ for in(i, range(0, 10)) { call print (i) }
 
 ## for control
 
-for let x = 0; x < 10 {
+for var x = 0; x < 10 {
     print(x)
     x = x + 1
 }
 
 ---
 
-for (let(x, 0), bina(<, x, 10)) { call print (x); asn x bina(+, x, 1) }
+for (var(x, int, 0), bina(<, x, 10)) { call print (x); asn x bina(+, x, 1) }

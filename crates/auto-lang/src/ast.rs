@@ -437,6 +437,9 @@ impl AtomWriter for Expr {
                 // Special case for dot operator (field access): output as "bina(left, right)"
                 if *op == auto_val::Op::Dot {
                     write!(f, "bina({}, {})", l.to_atom_str(), r.to_atom_str())?;
+                } else if *op == auto_val::Op::Asn {
+                    // Assignment: output as "asn left right" not "bina(asn, left, right)"
+                    write!(f, "asn {} {}", l.to_atom_str(), r.to_atom_str())?;
                 } else {
                     let op_str = match op {
                         auto_val::Op::Add => "+",

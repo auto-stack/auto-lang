@@ -735,6 +735,41 @@ impl RustTrans {
                 self.print_indent(&mut sink.body)?;
                 sink.body.write(b"}")?;
             }
+            Iter::Cond => {
+                // Conditional loop: for condition { ... } or for init; condition { ... }
+                sink.body.write(b"for (")?;
+
+                // Handle init statement if present
+                if let Some(init_stmt) = &for_stmt.init {
+                    self.stmt(init_stmt, sink)?;
+                    sink.body.write(b"; ")?;
+                }
+
+                self.expr(&for_stmt.range, &mut sink.body)?;
+                sink.body.write(b"; ")?;
+
+                // No increment expression in AutoLang, leave empty
+                sink.body.write(b") {\n")?;
+
+                self.indent();
+                for stmt in &for_stmt.body.stmts {
+                    self.print_indent(&mut sink.body)?;
+                    match stmt {
+                        Stmt::Expr(expr) => {
+                            self.expr(expr, &mut sink.body)?;
+                            sink.body.write(b";\n")?;
+                        }
+                        Stmt::Store(store) => {
+                            self.store(store, &mut sink.body)?;
+                            sink.body.write(b";\n")?;
+                        }
+                        _ => {}
+                    }
+                }
+                self.dedent();
+                self.print_indent(&mut sink.body)?;
+                sink.body.write(b"}")?;
+            }
             _ => {}
         }
         Ok(())

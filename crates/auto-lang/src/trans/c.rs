@@ -1110,8 +1110,22 @@ impl CTrans {
                 // sink.body.write(format!("{} < {}.size; ", idx, &for_stmt.range.repr()).as_bytes())?;
                 // sink.body.write(format!("{}++", idx).as_bytes())?;
             }
-            _ => {
+            Iter::Cond => {
                 sink.body.write(b"for (").to()?;
+                // Handle init statement if present: for init; condition { ... }
+                if let Some(init_stmt) = &for_stmt.init {
+                    self.stmt(init_stmt, sink)?;
+                    sink.body.write(b"; ").to()?;
+                }
+                self.expr(&for_stmt.range, &mut sink.body)?;
+            }
+            Iter::Indexed(_, _) => {
+                sink.body.write(b"for (").to()?;
+                // Handle init statement if present
+                if let Some(init_stmt) = &for_stmt.init {
+                    self.stmt(init_stmt, sink)?;
+                    sink.body.write(b"; ").to()?;
+                }
                 self.expr(&for_stmt.range, &mut sink.body)?;
             }
         }

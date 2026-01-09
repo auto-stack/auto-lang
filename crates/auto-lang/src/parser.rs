@@ -1598,72 +1598,105 @@ impl<'a> Parser<'a> {
                 range: Expr::Nil,
                 body,
                 new_line: has_new_line,
+                init: None,
             }));
         }
 
-        // Try to parse as iterator pattern first: for ident in range { ... }
-        // We do this by checking if we have an identifier
+        // Check if this has an initializer: for let x = 0; condition { ... }
+        let mut init_stmt = None;
+        if self.is_kind(TokenKind::Let)
+            || self.is_kind(TokenKind::Var)
+            || self.is_kind(TokenKind::Mut)
+        {
+            // Parse the initializer statement
+            init_stmt = Some(Box::new(self.parse_store_stmt()?));
+
+            // Expect semicolon after initializer
+            self.expect(TokenKind::Semi)?;
+
+            // After initializer, must parse condition
+            let condition = self.parse_expr()?;
+            let body = self.body()?;
+            let has_new_line = body.has_new_line;
+            return Ok(Stmt::For(For {
+                iter: Iter::Cond,
+                range: condition,
+                body,
+                new_line: has_new_line,
+                init: init_stmt,
+            }));
+        }
+
+        // No initializer, try to parse as iterator pattern: for ident in range { ... }
         if self.is_kind(TokenKind::Ident) {
-            // Save the identifier text to check later
-            let ident_text = self.cur.text.clone();
+            let ident = self.parse_name()?;
 
-            // Try to parse as iterator pattern
-            if self.lexer.peek_non_whitespace('i') || self.lexer.peek_non_whitespace('(') {
-                // Check next non-whitespace char
-                let next_chars: Vec<char> = self
-                    .lexer
-                    .chars
-                    .clone()
-                    .filter(|c| !c.is_whitespace())
-                    .take(10)
-                    .collect();
-                let next_str: String = next_chars.iter().collect();
-
-                if next_str.starts_with("in ") || next_str.starts_with('(') {
-                    // This is an iterator or call pattern
-                    let ident = self.parse_name()?;
-
-                    if self.is_kind(TokenKind::In) {
-                        // for ident in range { ... }
-                        self.next(); // skip 'in'
-                        self.enter_scope();
-                        let meta = Meta::Store(Store {
-                            kind: StoreKind::Var,
-                            name: ident.clone(),
-                            expr: Expr::Nil,
-                            ty: Type::Int,
-                        });
-                        self.define(ident.as_str(), meta);
-                        let iter = Iter::Named(ident.clone());
-                        let range = self.iterable_expr()?;
-                        let body = self.body()?;
-                        let has_new_line = body.has_new_line;
-                        self.exit_scope();
-                        return Ok(Stmt::For(For {
-                            iter,
-                            range,
-                            body,
-                            new_line: has_new_line,
-                        }));
-                    } else if self.is_kind(TokenKind::LParen) {
-                        // for call(args) { ... }
-                        let args = self.args()?;
-                        let call = self.call(Expr::Ident(ident), args)?;
-                        let Expr::Call(call) = call else {
-                            return error_pos!("Strange call in for statement");
-                        };
-                        self.expect(TokenKind::Question)?;
-                        self.enter_scope();
-                        let body = self.body()?;
-                        self.exit_scope();
-                        return Ok(Stmt::For(For {
-                            iter: Iter::Call(call),
-                            range: Expr::Nil,
-                            body,
-                            new_line: false,
-                        }));
-                    }
-                }
+            if self.is_kind(TokenKind::In) {
+                // for ident in range { ... }
+                self.next(); // skip 'in'
+                self.enter_scope();
+                let meta = Meta::Store(Store {
+                    kind: StoreKind::Var,
+                    name: ident.clone(),
+                    expr: Expr::Nil,
+                    ty: Type::Int,
+                });
+                self.define(ident.as_str(), meta);
+                let iter = Iter::Named(ident.clone());
+                let range = self.iterable_expr()?;
+                let body = self.body()?;
+                let has_new_line = body.has_new_line;
+                self.exit_scope();
+                return Ok(Stmt::For(For {
+                    iter,
+                    range,
+                    body,
+                    new_line: has_new_line,
+                    init: None,
+                }));
+            } else if self.is_kind(TokenKind::Comma) {
+                // for ident, ident2 in range { ... } - indexed iterator
+                self.next(); // skip ','
+                let ident2 = self.parse_name()?;
+                self.expect(TokenKind::In)?; // this calls self.next() internally
+                self.enter_scope();
+                let meta = Meta::Store(Store {
+                    kind: StoreKind::Var,
+                    name: ident2.clone(),
+                    expr: Expr::Nil,
+                    ty: Type::Int,
+                });
+                self.define(ident2.as_str(), meta);
+                let iter = Iter::Indexed(ident.clone(), ident2.clone());
+                let range = self.iterable_expr()?;
+                let body = self.body()?;
+                let has_new_line = body.has_new_line;
+                self.exit_scope();
+                return Ok(Stmt::For(For {
+                    iter,
+                    range,
+                    body,
+                    new_line: has_new_line,
+                    init: None,
+                }));
+            } else if self.is_kind(TokenKind::LParen) {
+                // for call(args) { ... }
+                let args = self.args()?;
+                let call = self.call(Expr::Ident(ident), args)?;
+                let Expr::Call(call) = call else {
+                    return error_pos!("Strange call in for statement");
+                };
+                self.expect(TokenKind::Question)?;
+                self.enter_scope();
+                let body = self.body()?;
+                self.exit_scope();
+                return Ok(Stmt::For(For {
+                    iter: Iter::Call(call),
+                    range: Expr::Nil,
+                    body,
+                    new_line: false,
+                    init: None,
+                }));
             }
         }
 
@@ -1676,6 +1709,7 @@ impl<'a> Parser<'a> {
             range: condition,
             body,
             new_line: has_new_line,
+            init: None,
         }))
     }
 

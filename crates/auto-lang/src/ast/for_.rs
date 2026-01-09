@@ -98,7 +98,7 @@ impl AtomWriter for For {
         // Handle initializer if present
         if let Some(init) = &self.init {
             // Output: for (init, condition) { ... }
-            write!(f, "({}, {}", init.to_atom_str(), self.range.to_atom_str())?;
+            write!(f, "({}, {})", init.to_atom_str(), self.range.to_atom_str())?;
         } else {
             match &self.iter {
                 Iter::Cond => {

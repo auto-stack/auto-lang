@@ -426,6 +426,11 @@ impl Evaler {
         let body = &for_stmt.body;
         let mut max_loop = 1000;
 
+        // Execute init statement if present
+        if let Some(init_stmt) = &for_stmt.init {
+            self.eval_stmt(init_stmt);
+        }
+
         // Handle conditional for loop: for condition { ... }
         if matches!(iter, Iter::Cond) {
             let mut res = Array::new();

@@ -66,7 +66,7 @@ impl AtomWriter for Store {
 
         write!(f, "{}({}", kind_name, self.name)?;
 
-        if !matches!(self.ty, Type::Unknown) && !matches!(self.kind, StoreKind::Var) {
+        if !matches!(self.ty, Type::Unknown) {
             write!(f, ", {}", self.ty.to_atom_str())?;
         }
 
