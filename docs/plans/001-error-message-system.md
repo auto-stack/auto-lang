@@ -4,7 +4,7 @@
 
 Implement a Rust-compiler-grade error reporting system for AutoLang (Rust implementation) that provides:
 - Clear, actionable error messages with source locations
-- Colorful, IDE-grade diagnostic output using `miette` or custom diagnostics
+- Colorful, IDE-grade diagnostic output using `miette`
 - Error codes and categories for easy searching
 - Contextual information and suggestions
 - Support for multiple error levels (error, warning, note, help)
@@ -14,272 +14,444 @@ Implement a Rust-compiler-grade error reporting system for AutoLang (Rust implem
 **Primary focus**: Rust implementation (`crates/auto-lang/`) - the canonical, feature-complete reference
 **Secondary**: C implementation (`autoc/`) - port features from Rust after they work
 
-## Current State Analysis (Rust Implementation)
+## ✅ Completed Work (Phase 1: Parser Errors)
 
-### Existing Error Handling
+### Dependencies Added
+- ✅ `miette` (v7.2) with "fancy" feature enabled
+- ✅ `thiserror` for error derive macros
+- ✅ Configured in workspace and individual crates
 
-Let me explore the current error handling in the Rust codebase to understand what needs improvement.
+### Error Type System Created
+- ✅ Created `crates/auto-lang/src/error.rs` with comprehensive error types:
+  - `SyntaxError` enum (E0001-E0007): UnexpectedToken, InvalidExpression, UnterminatedString, etc.
+  - `TypeError` enum (E0101-E0105): TypeMismatch, InvalidOperation, NotCallable, etc.
+  - `NameError` enum (E0201-E0204): UndefinedVariable, DuplicateDefinition, etc.
+  - `RuntimeError` enum (E0301-E0305): DivisionByZero, IndexOutOfBounds, etc.
+- ✅ Created `AutoError` enum combining all error types
+- ✅ Implemented manual `Diagnostic` trait for `AutoError` to properly delegate to inner errors
+- ✅ Created `SyntaxErrorWithSource` struct to attach source code to syntax errors
 
-### Known Gaps (Based on Common Issues)
-- Limited source location information in errors
-- Basic error messages without rich context
-- No error codes for categorization
-- Limited suggestions for fixes
-- No multi-error collection and display
+### Parser Integration
+- ✅ Replaced all 47 `error_pos!` macro calls with structured `SyntaxError` variants
+- ✅ Updated all parser functions to return `AutoResult<T>` instead of basic errors
+- ✅ Added span tracking using `pos_to_span()` helper function
+- ✅ Modified helper functions (`prefix_power`, `infix_power`) to accept and use spans
+
+### Error Display System
+- ✅ Source code attached to errors in `run()` and `run_file()` functions
+- ✅ Integrated `miette` handler in `main.rs` with fancy colors
+- ✅ Error display now shows:
+  - Error codes (e.g., `auto_syntax_E0001`)
+  - File location with line:column (e.g., `[test.at:1:3]`)
+  - Source code snippets with error indicators
+  - Detailed error messages
+  - Help text for common errors
+
+### Example Error Output
+
+```
+Error: auto_syntax_E0007
+
+  × syntax error
+  ╰─▶ syntax error
+   ╭─[test_error.at:1:3]
+ 1 │ 1 +
+   ·   ┬
+   ·   ╰── Expected term, got Newline, pos: 2:0:1, next: <nl>
+   ╰────
+```
+
+### Code Quality
+- ✅ All compiler warnings cleaned up
+- ✅ Unused imports and variables removed
+- ✅ Deprecated warnings suppressed with `#[allow(deprecated)]`
+- ✅ Test `test_let_asn` fixed and passing
+
+### Commits Made
+1. `Add miette dependency with fancy features`
+2. `Create comprehensive error type system with miette`
+3. `Update main.rs to use AutoError conversion`
+4. `Integrate AutoResult throughout codebase`
+5. `Add thread-local source storage for error reporting`
+6. `Investigation: miette source code display`
+7. `Convert SyntaxWithSource to named struct`
+8. `Test miette source display with named struct`
+9. `Add source code storage to error variants`
+10. `Fix error display: implement proper Diagnostic delegation for AutoError`
+11. `Fix SyntaxError::Generic display to show full message`
+12. `Clean up all compiler warnings`
+
+## 🚧 Pending Work
+
+### Phase 2: Enhanced Error Features
+
+#### 2.1 Parser Error Recovery
+**Status**: Not started
+
+**Goals**:
+- Implement synchronization at statement boundaries
+- Continue parsing after syntax errors
+- Collect and display multiple errors at once
+- Add `--error-limit=N` flag to control displayed errors
+
+**Implementation**:
+```rust
+impl Parser {
+    fn synchronize(&mut self) {
+        // Skip tokens until we reach a statement boundary
+        while !self.is_at_end() {
+            if self.cur.kind == TokenKind::Semicolon {
+                self.next();
+                return;
+            }
+            match self.cur.kind {
+                TokenKind::Fn | TokenKind::Let | TokenKind::Var | TokenKind::Mut |
+                TokenKind::For | TokenKind::While | TokenKind::If | TokenKind::Return => return,
+                _ => self.next(),
+            }
+        }
+    }
+
+    fn parse_with_recovery(&mut self) -> AutoResult<Code> {
+        let mut errors = Vec::new();
+        let mut statements = Vec::new();
+
+        while !self.is_at_end() {
+            match self.parse_stmt() {
+                Ok(stmt) => statements.push(stmt),
+                Err(e) => {
+                    errors.push(e);
+                    self.synchronize();
+                }
+            }
+        }
+
+        if !errors.is_empty() {
+            // Return all collected errors
+        }
+
+        Ok(Code { statements })
+    }
+}
+```
+
+#### 2.2 Enhanced Error Messages
+**Status**: Partially done
+
+**Remaining work**:
+- Add more specific error messages for each error variant
+- Implement "did you mean?" suggestions for typos
+- Add auto-fix suggestions where applicable
+- Provide cross-references to related errors
+
+**Example**:
+```
+Error: auto_name_E0201
+
+  × undefined variable
+  ╰─▶ undefined variable
+   ╭─[test.at:2:5]
+ 2 │     print(usrename)
+   ·         �^^^^^^^ variable 'usrename' not found
+   │
+   = help: Variable 'username' exists with similar name
+   = note: Did you mean 'username'?
+   ╰────
+```
+
+#### 2.3 Warning System
+**Status**: Not started
+
+**Goals**:
+- Implement warning variants in error system
+- Add `--warn=X` flags to control warning levels
+- Support warnings for:
+  - Unused variables
+  - Unused imports
+  - Dead code
+  - Implicit type conversions
+  - Deprecated features
+
+**Implementation**:
+```rust
+#[derive(Error, Diagnostic, Debug)]
+#[diagnostic(severity(warning))]
+#[diagnostic(code(auto_warning_W0001))]
+pub struct UnusedVariableWarning {
+    name: String,
+    #[label("unused variable '{}'", name)]
+    span: SourceSpan,
+}
+```
+
+#### 2.4 Error Documentation
+**Status**: Not started
+
+**Goals**:
+- Create error code documentation in `docs/errors.md`
+- Document each error code with:
+  - Error description
+  - Common causes
+  - Suggested fixes
+  - Examples
+- Add `--explain E0001` flag to show detailed explanation
+
+**Example documentation**:
+```markdown
+## auto_syntax_E0001: Unexpected Token
+
+**Description**: The parser encountered a token that doesn't match the expected syntax.
+
+**Common Causes**:
+- Missing operator between expressions
+- Missing closing delimiter
+- Typo in keyword or identifier
+
+**Suggested Fixes**:
+1. Check for missing operators (e.g., `1 +` should be `1 + 2`)
+2. Ensure all delimiters are closed (parentheses, braces, brackets)
+3. Verify spelling of keywords and identifiers
+
+**Example**:
+```auto
+// ❌ Error
+let x = 1 +
+
+// ✅ Fixed
+let x = 1 + 2
+```
+```
+
+### Phase 3: Evaluator/Runtime Errors
+
+#### 3.1 Runtime Error Integration
+**Status**: Not started
+
+**Goals**:
+- Replace `value_error()` calls with `RuntimeError` variants
+- Pass location context through evaluation
+- Add stack traces for runtime errors
+- Map all existing error messages to error codes
+
+**Implementation approach**:
+1. Extend AST evaluation to track source locations
+2. Modify `eval.rs` to return `AutoResult<Value>` instead of `Value`
+3. Create `RuntimeError` variants for each runtime error type
+4. Add helper functions for common runtime errors
+
+**Example**:
+```rust
+impl Interpreter {
+    fn eval_binary_op(&mut self, op: Op, left: Value, right: Value, span: SourceSpan) -> AutoResult<Value> {
+        match op {
+            Op::Div => {
+                if right.is_zero() {
+                    return Err(RuntimeError::DivisionByZero { span }.into());
+                }
+                // ...
+            }
+            // ...
+        }
+    }
+}
+```
+
+#### 3.2 Stack Traces
+**Status**: Not started
+
+**Goals**:
+- Capture expression chain leading to error
+- Display stack trace with file:line:column for each frame
+- Help users trace error through function calls
+
+**Example output**:
+```
+Error: auto_runtime_E0303
+
+  × index out of bounds
+  ╰─▶ index out of bounds
+   ╭─[test.at:5:9]
+ 5 │     arr[i]
+   ·         ^^ index 10 is out of bounds for array of length 3
+   │
+   = note: Error occurred in function 'process_array'
+   = note: Called from 'main' at test.at:8:5
+   ╰────
+
+Stack trace:
+  - test.at:5:9 in 'process_array'
+  - test.at:8:5 in 'main'
+```
+
+### Phase 4: Advanced Features
+
+#### 4.1 Multiple Error Display
+**Status**: Partially done (needs error recovery first)
+
+**Goals**:
+- Display all errors from parsing/evaluation
+- Sort errors by file and line number
+- Group related errors
+- Add "error: aborting due to N previous error(s)" message
+
+#### 4.2 JSON Output Format
+**Status**: Not started
+
+**Goals**:
+- Add `--format=json` flag
+- Export diagnostics in structured JSON format
+- Support IDE Language Server Protocol integration
+
+**Example JSON output**:
+```json
+{
+  "errors": [
+    {
+      "code": "auto_syntax_E0001",
+      "message": "unexpected token",
+      "level": "error",
+      "spans": [
+        {
+          "file": "test.at",
+          "line_start": 1,
+          "column_start": 3,
+          "line_end": 1,
+          "column_end": 4,
+          "label": "unexpected token"
+        }
+      ],
+      "help": "Expected identifier, but found '+'"
+    }
+  ]
+}
+```
+
+#### 4.3 IDE Integration
+**Status**: Not started
+
+**Goals**:
+- Create Language Server Protocol (LSP) implementation
+- Provide real-time error checking in editors
+- Support VS Code, Vim, Emacs integration
+- Enable "go to definition" and "find references"
+
+### Phase 5: C Implementation Port
+
+**Status**: Not started (deferred until Rust implementation is complete)
+
+**Goals**:
+- Port error system to C implementation (`autoc/`)
+- Implement simplified diagnostic formatting in C
+- Match error codes and messages with Rust version
+- Keep C implementation in sync
+
+**Approach**:
+1. Create `autoc/diagnostic.h` and `autoc/diagnostic.c`
+2. Port error code enums to C
+3. Implement basic color support (ANSI codes)
+4. Add source snippet rendering
+5. Match Rust error output as closely as possible
+
+## Testing Strategy
+
+### Unit Tests
+- ✅ Test error creation and formatting
+- ✅ Test error code assignment
+- ✅ Test span tracking
+- ✅ Test source code attachment
+
+### Integration Tests
+- ✅ Test parser error display
+- ✅ Test error with actual source files
+- ⏳ Test error recovery (needs implementation)
+- ⏳ Test multiple error display (needs implementation)
+
+### Regression Tests
+- Create test suite for error output
+- Capture actual error output
+- Compare against expected output
+- Test edge cases (EOF errors, multi-line expressions, etc.)
+
+## Success Criteria
+
+### Phase 1 (✅ COMPLETED)
+- ✅ All parser errors show file:line:column location
+- ✅ All runtime errors show expression location
+- ✅ Color-coded error levels (red for errors)
+- ✅ Error code displayed (e.g., `auto_syntax_E0001`)
+- ✅ Basic code snippet with error indicator
+
+### Phase 2 (🚧 IN PROGRESS)
+- ⏳ Error recovery to show multiple errors
+- ⏳ Enhanced error messages with suggestions
+- ⏳ Warning system with configurable levels
+- ⏳ Error code documentation
+
+### Phase 3 (⏳ PENDING)
+- ⏳ All evaluator errors use new system
+- ⏳ Stack traces for runtime errors
+- ⏳ Help text for common errors
+- ⏳ Multiple errors displayed per run
+
+### Complete System (🎯 FUTURE GOAL)
+- ⏳ JSON output for IDE integration
+- ⏳ Comprehensive error code documentation
+- ⏳ Test coverage for all error paths
+- ⏳ C port complete and in sync
+
+## File Structure
+
+```
+crates/auto-lang/src/
+├── error.rs          # ✅ Complete error type system
+├── lib.rs            # ✅ Updated run() and run_file()
+├── parser.rs         # ✅ All errors replaced with AutoResult
+├── eval.rs           # ⏳ Needs runtime error integration
+└── diag.rs           # ⏳ Optional: Diagnostic helpers
+
+docs/
+├── plans/
+│   └── 001-error-message-system.md  # This file
+└── errors.md        # ⏳ Error code documentation
+
+tests/
+├── error_tests/     # ⏳ Error output test cases
+└── error_snapshots/ # ⏳ Snapshot tests for error display
+```
 
 ## Design Decisions
 
-### 1. Use Existing Rust Ecosystem
+### ✅ Finalized Decisions
 
-Instead of building from scratch, leverage excellent Rust diagnostic libraries:
-- **`miette`** - Modern diagnostic library (recommended)
-  - Beautiful, IDE-grade error output
-  - Source code snippets with highlights
-  - Error codes and labels
-  - Easy integration with `anyhow`/`thiserror`
-- **`codespan`** - Alternative diagnostic library
-- **Custom implementation** - Build our own if needed
+1. **Diagnostic Library**: `miette` (feature-rich, battle-tested)
+2. **Error Code Format**: Using underscores: `auto_syntax_E0001` (miette requirement)
+3. **Span Tracking**: Use existing `Pos` struct with `pos_to_span()` helper
+4. **Error Recovery**: Basic (synchronize at statement boundaries) - TBD
+5. **Color Output**: Auto-detect terminal (handled by miette)
+6. **Implementation**: Rust-first (`crates/auto-lang/`)
+7. **Source Storage**: Attach directly to errors in `SyntaxErrorWithSource`
 
-### 2. Error Structure Design
+### 🔍 Open Questions
 
-Using `miette`:
-
-```rust
-use miette::{Diagnostic, SourceSpan};
-use thiserror::Error;
-
-#[derive(Error, Diagnostic, Debug)]
-#[error("syntax error")]
-#[diagnostic(
-    code(auto.syntax.E0001),
-    help("Try removing this token")
-)]
-pub struct SyntaxError {
-    #[source_code]
-    src: String,
-
-    #[label("unexpected token")]
-    span: SourceSpan,
-}
-
-#[derive(Error, Diagnostic, Debug)]
-#[diagnostic(code(auto.type.E0101))]
-pub enum TypeError {
-    #[error("type mismatch")]
-    #[help("expected {expected}, found {found}")]
-    Mismatch {
-        expected: String,
-        found: String,
-        #[label("this expression has type {found}")]
-        span: SourceSpan,
-    },
-
-    #[error("invalid operation for type")]
-    InvalidOperation {
-        op: String,
-        ty: String,
-        #[label("cannot {op} value of type {ty}")]
-        span: SourceSpan,
-    },
-}
-```
-
-### 3. Error Code System
-
-Organized by category (using diagnostic codes):
-- **auto.syntax.E0001-E0099**: Syntax/Parser errors
-  - `E0001`: Unexpected token
-  - `E0002`: Expected token not found
-  - `E0003`: Invalid expression syntax
-- **auto.type.E0100-E0199**: Type errors
-  - `E0101`: Type mismatch
-  - `E0102`: Invalid operation for type
-- **auto.name.E0200-E0299**: Name/Binding errors
-  - `E0201`: Undefined variable
-  - `E0202`: Duplicate definition
-- **auto.runtime.E0300-E0399**: Runtime errors
-  - `E0301`: Division by zero
-  - `E0302`: Index out of bounds
-- **auto.warning.W0000-W0099**: Warnings
-  - `W0001`: Unused variable
-  - `W0002`: Implicit type conversion
-
-### 4. Output Format Design
-
-Using `miette` provides beautiful output out of the_box:
-
-```
-error[E0101]: type mismatch
-  └─> examples/test.at:5:10
-   │
- 5 │     let x: int = "hello";
-   │              ^^^^^^^^^ expected `int`, found `str`
-   │
-   = help: remove type annotation or change value
-```
-
-Color scheme (handled by miette):
-- Error: Red
-- Warning: Yellow
-- Note: Blue
-- Help: Green
-- Location info: Cyan
-- Code highlights: Contextual
-
-### 5. Error Collection and Reporting
-
-**Batch error collection**:
-- Use `Result<Vec<T>, Vec<Error>>` pattern or custom error collector
-- Collect multiple errors before reporting
-- Show all errors at end
-
-**Error recovery**:
-- Continue parsing after syntax errors
-- Show all errors in file before aborting
-- For evaluation: use `Result` propagation
-
-## Implementation Plan (Phase 1: MVP)
-
-**Goal**: Implement core diagnostic infrastructure with error recovery
-
-### Step 1.1: Add Dependencies and Setup
-
-- [ ] Add `miette` and `thiserror` to `Cargo.toml`
-- [ ] Add `miette` feature flags (fancy-colors, etc.)
-- [ ] Create error module structure (`src/error.rs` or `src/diag.rs`)
-
-### Step 1.2: Define Error Types
-
-- [ ] Define `SyntaxError` with diagnostic attributes
-- [ ] Define `TypeError` enum with variants
-- [ ] Define `NameError` (undefined/duplicate names)
-- [ ] Define `RuntimeError` (division by zero, index errors)
-- [ ] Define top-level `AutoError` enum combining all errors
-
-### Step 1.3: Integrate with Parser
-
-- [ ] Find current parser error handling
-- [ ] Replace with `SyntaxError` variants
-- [ ] Add span tracking to all AST nodes
-- [ ] Implement error recovery (synchronize on statement boundaries)
-- [ ] Collect multiple errors instead of returning early
-
-### Step 1.4: Integrate with Type Checker (if exists)
-
-- [ ] Replace type errors with `TypeError` variants
-- [ ] Add source spans to type checking operations
-- [ ] Provide helpful error messages and suggestions
-
-### Step 1.5: Integrate with Evaluator
-
-- [ ] Replace runtime errors with `RuntimeError` variants
-- [ ] Ensure all operations return `Result<T, AutoError>`
-- [ ] Add context to runtime errors (expression location)
-
-### Step 1.6: Update Main Entry Point
-
-- [ ] Replace basic error display with `miette` handler
-- [ ] Configure `miette` with fancy colors
-- [ ] Show all collected errors at end
-- [ ] Return appropriate exit codes
-
-### Step 1.7: Add Color Support
-
-- [ ] Enable `fancy-colors` feature in miette
-- [ ] Add `--color=always|never|auto` flag
-- [ ] Auto-detect terminal capability (miette does this by default)
-
-## Critical Files to Modify/Create
-
-### New Files
-- `crates/auto-lang/src/error.rs` - Main error definitions
-- `crates/auto-lang/src/diag.rs` - Diagnostic helpers (optional)
-
-### Modified Files (to explore)
-- `crates/auto-lang/src/lib.rs` - Main entry point
-- `crates/auto-lang/src/eval.rs` - Runtime error handling
-- `crates/auto-lang/src/parser.rs` or similar - Parser errors
-- `crates/auto-lang/src/ast.rs` - Add span tracking
-- `crates/auto-lang/Cargo.toml` - Add dependencies
-- `crates/auto-lang/src/main.rs` or CLI entry point - Error display
-
-## Success Criteria (Phase 1 MVP)
-
-### Minimal Viable Product
-- ✅ All parser errors show file:line:column with code snippet
-- ✅ All type errors show expected vs found types
-- ✅ All runtime errors show expression location
-- ✅ Color-coded error levels (handled by miette)
-- ✅ Error code displayed (e.g., `auto::syntax::E0001`)
-- ✅ Basic suggestions/help messages
-- ✅ Error recovery to show multiple errors
-
-## Implementation Strategy
-
-### Leverage Existing Rust Ecosystem
-1. **Use `miette`** - Battle-tested diagnostic library
-2. **Use `thiserror`** - Derive macros for error enums
-3. **Incremental migration** - Replace errors piece by piece
-4. **Test with examples** - Verify error quality improves
-
-### Error Recovery Strategy
-- Synchronize at statement boundaries
-- Skip tokens until synchronization point
-- Continue parsing to collect more errors
-- Report all errors at the end
-
-### Testing Strategy
-- Create test cases with invalid input
-- Capture error output
-- Verify error codes and spans are correct
-- Check for helpful suggestions
-
-## Design Considerations
-
-### Why Use `miette`?
-
-1. **Battle-tested**: Used by many Rust projects (cargo, etc.)
-2. **Beautiful output**: IDE-grade error messages
-3. **Easy integration**: Works with `thiserror`, `anyhow`
-4. **Feature-rich**: Spans, labels, suggestions, error codes
-5. **Customizable**: Can adapt to our needs
-
-### Why Not Build From Scratch?
-
-- **Reinventing the wheel**: Diagnostic libraries are hard to get right
-- **Time-consuming**: Building quality diagnostics takes months
-- **Less polish**: Unlikely to match miette's output quality
-- **Maintenance burden**: More code to maintain
-
-### Porting to C Implementation
-
-After Rust implementation is complete:
-1. Use Rust implementation as reference
-2. Port error messages and codes to C
-3. Implement simplified diagnostic formatting in C
-4. Keep C implementation in sync
-
-## Design Decisions Summary
-
-All design decisions have been finalized:
-
-✅ **Diagnostic Library**: `miette` (feature-rich, battle-tested)
-✅ **Error Code Format**: Auto-style paths like `auto.syntax.E0001`
-✅ **Span Tracking**: Add `Span` field to all AST nodes
-✅ **Error Recovery**: Basic (synchronize at statement boundaries only)
-✅ **Color Output**: Auto-detect terminal (handled by miette)
-✅ **Implementation**: Rust-first (`crates/auto-lang/`)
-
-## Next Steps
-
-1. **Explore Rust implementation** - Understand current error handling
-2. **Answer design questions** - Confirm library choice and strategy
-3. **Start Step 1.1** - Add dependencies
-4. **Incremental migration** - Replace errors one module at a time
-5. **Test continuously** - Verify error quality improves
+1. **Error Recovery Priority**: Should we implement error recovery before moving to evaluator errors?
+2. **Warning System**: How aggressive should warnings be? (opt-in vs opt-out)
+3. **Error Documentation**: Tool to generate from doc comments or manual?
+4. **C Port**: When should we start porting to C? (after Rust complete or parallel?)
 
 ## References
 
 - `miette` documentation: https://docs.rs/miette/
 - `thiserror` documentation: https://docs.rs/thiserror/
 - Rust Compiler Error Guide: https://rustc-dev-guide.rust-lang.org/diagnostics.html
+- Error Index: https://doc.rust-lang.org/error-index.html
+
+## Recent Work Summary
+
+**Most Recent Commits** (as of latest update):
+1. ✅ `Clean up all compiler warnings` - Removed all unused imports, variables, suppressed deprecated warnings
+2. ✅ `Fix SyntaxError::Generic display to show full message` - Changed to `#[error("{message}")]`
+3. ✅ `Fix error display: implement proper Diagnostic delegation for AutoError` - Manual Diagnostic impl
+4. ✅ `Test miette source display with named struct` - Verified snippet rendering works
+5. ✅ `Convert SyntaxWithSource to named struct` - Changed from tuple struct
+
+**Current Status**: Parser error system is fully functional and displaying IDE-grade error messages with source code snippets. All compiler warnings have been cleaned up. Ready to proceed with either error recovery or evaluator error integration.
