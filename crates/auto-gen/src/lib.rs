@@ -1,3 +1,23 @@
+// Modules
+mod data;
+mod error;
+mod generator;
+mod guard;
+mod template;
+
+// Re-exports
+pub use data::{DataLoader, DataSource};
+pub use error::{GenError, GenResult, SourceLocation};
+pub use generator::{
+    CodeGenerator, CodeGeneratorBuilder, GenReport, GenerationSpec, GeneratorConfig, TemplateSpec,
+};
+pub use guard::{Conflict, GuardProcessor, GuardedSection};
+pub use template::{Template, TemplateEngine};
+
+// ============================================================================
+// LEGACY CODE - Kept for backward compatibility during transition
+// ============================================================================
+
 use std::{collections::HashMap, path::Path};
 
 use auto_atom::Atom;
@@ -32,13 +52,15 @@ impl Mold {
     }
 }
 
+#[deprecated(note = "Use CodeGenerator instead")]
 pub struct AutoGen {
     pub data: Atom,
     pub out: AutoPath,
-    pub molds: Vec<Mold>, // paths to
+    pub molds: Vec<Mold>,
     pub is_rename: bool,
     note: char,
 }
+
 impl Default for AutoGen {
     fn default() -> Self {
         Self::new()
@@ -72,14 +94,7 @@ impl AutoGen {
     }
 
     pub fn out(mut self, path: impl Into<AutoPath>) -> Self {
-        let path = path.into();
-        // println!("out path: {}", path.to_astr());
-        self.out = path;
-        // if path.is_dir() {
-        // self.out = path;
-        // } else {
-        // panic!("output path {} must be a directory", path.to_astr());
-        // }
+        self.out = path.into();
         self
     }
 
@@ -97,12 +112,10 @@ impl AutoGen {
     pub fn gen_all(&self) -> AutoStr {
         let atom_name = self.data.name.clone();
         for mold in self.molds.iter() {
-            //TODO: rename mold to pac name
             let out_file = if self.is_rename || mold.is_rename {
                 let out_name = replace_name(mold.name.clone(), atom_name.clone());
                 self.out.join(&out_name)
             } else {
-                // trim `.at.` in mold name
                 let trimmed = mold.name.replace(".at.", ".");
                 self.out.join(&trimmed)
             };
@@ -114,7 +127,6 @@ impl AutoGen {
     pub fn gen_str(&self) -> AutoStr {
         let mut result = String::new();
         for mold in self.molds.iter() {
-            //TODO: rename mold to pac name
             let code = self.gen_one_str(&mold);
             result.push_str(&code);
         }
@@ -223,6 +235,7 @@ impl AutoGen {
     }
 }
 
+#[deprecated(note = "Use CodeGenerator instead")]
 pub struct OneGen {
     pub data: Atom,
     pub out: AutoPath,
