@@ -918,24 +918,20 @@ impl Universe {
                 Value::Pair(key, Box::new(deref_val))
             }
 
-            // Case 6: Node - recursively dereference args, props, nodes, and body
+            // Case 6: Node - recursively dereference args, props, and kids
             Value::Node(node) => {
                 // Clone fields we need before creating new node
                 let name = node.name.clone();
                 let id = node.id.clone();
                 let num_args = node.num_args;
                 let text = node.text.clone();
-                let body_ref = node.body_ref.clone();
                 let args = &node.args;
-                let nodes = &node.nodes;
-                let body = &node.body;
 
                 // Create new node with same name and id
                 let mut dereferenced_node = auto_val::Node::new(name);
                 dereferenced_node.id = id;
                 dereferenced_node.num_args = num_args;
                 dereferenced_node.text = text;
-                dereferenced_node.body_ref = body_ref;
 
                 // Copy args for backward compatibility
                 dereferenced_node.args = args.clone();
@@ -946,7 +942,7 @@ impl Universe {
                     dereferenced_node.set_prop(key.clone(), deref_prop_val);
                 }
 
-                // NEW: Dereference all kids
+                // Dereference all kids
                 for (key, kid) in node.kids_iter() {
                     let dereferenced_kid = match kid {
                         auto_val::Kid::Node(child_node) => {
@@ -967,33 +963,6 @@ impl Universe {
                             dereferenced_node.add_lazy_kid(key.clone(), mid);
                         }
                     }
-                }
-
-                // Dereference all child nodes (backward compatibility)
-                for child_node in nodes.iter() {
-                    let deref_child = self.deref_val(Value::Node(child_node.clone()));
-                    dereferenced_node.nodes.push(deref_child.to_node().clone());
-                }
-
-                // Dereference all items in body (backward compatibility)
-                for (key, body_item) in body.map.iter() {
-                    let dereferenced_item = match body_item {
-                        auto_val::NodeItem::Prop(pair) => {
-                            let deref_val = self.deref_val(pair.value.clone());
-                            auto_val::NodeItem::Prop(auto_val::Pair::new(
-                                pair.key.clone(),
-                                deref_val,
-                            ))
-                        }
-                        auto_val::NodeItem::Node(child_node) => {
-                            let deref_node = self.deref_val(Value::Node(child_node.clone()));
-                            auto_val::NodeItem::Node(deref_node.to_node().clone())
-                        }
-                    };
-                    dereferenced_node
-                        .body
-                        .map
-                        .insert(key.clone(), dereferenced_item);
                 }
 
                 Value::Node(dereferenced_node)

@@ -112,14 +112,8 @@ pub struct Node {
     pub num_args: usize, // Number of arg keys in props (unified args/props system)
     pub args: Args,      // DEPRECATED: Kept for backward compatibility during migration
     props: Obj,
-    kids: Kids, // NEW: Unified storage for child nodes (replaces body, body_ref, nodes)
-    #[deprecated(note = "Use kids API (add_node_kid, kids_iter, etc.) instead")]
-    pub nodes: Vec<Node>, // DEPRECATED: Will be removed in future version
+    kids: Kids, // Unified storage for child nodes
     pub text: AutoStr,
-    #[deprecated(note = "Use kids API instead")]
-    pub body: NodeBody, // DEPRECATED: Will be removed in future version
-    #[deprecated(note = "Use kids.get_lazy_ref() / set_kids_ref() instead")]
-    pub body_ref: MetaID, // DEPRECATED: Will be removed in future version
 }
 
 impl Node {
@@ -131,10 +125,7 @@ impl Node {
             args: Args::new(),
             props: Obj::new(),
             kids: Kids::new(),
-            nodes: vec![],
             text: AutoStr::new(),
-            body: NodeBody::new(),
-            body_ref: MetaID::Nil,
         }
     }
 
@@ -146,10 +137,7 @@ impl Node {
             args: Args::new(),
             props: Obj::new(),
             kids: Kids::new(),
-            nodes: vec![],
             text: AutoStr::default(),
-            body: NodeBody::new(),
-            body_ref: MetaID::Nil,
         }
     }
 
@@ -214,16 +202,8 @@ impl Node {
         if let Some(a) = a {
             return a.get_val();
         }
-        let v = match self.props.get(key) {
-            Some(value) => value.clone(),
-            None => Value::Nil,
-        };
-        if v.is_nil() {
-            if !self.body.is_empty() {
-                return self.body.get_prop_of(key);
-            }
-        }
-        v
+        // find from props
+        self.props.get(key).map(|v| v.clone()).unwrap_or(Value::Nil)
     }
 
     pub fn get_prop_of(&self, key: &str) -> Value {
@@ -235,25 +215,55 @@ impl Node {
 
     pub fn get_nodes(&self, name: impl Into<AutoStr>) -> Vec<Node> {
         let name = name.into();
-        self.nodes
+        self.kids
             .iter()
-            .filter(|n| *n.name == name)
-            .map(|n| n.clone())
+            .filter(|(_, kid)| {
+                if let Kid::Node(node) = kid {
+                    node.name == name
+                } else {
+                    false
+                }
+            })
+            .map(|(_, kid)| {
+                if let Kid::Node(node) = kid {
+                    node.clone()
+                } else {
+                    unreachable!()
+                }
+            })
             .collect()
     }
 
     pub fn has_nodes(&self, name: impl Into<AutoStr>) -> bool {
         let name = name.into();
-        self.nodes.iter().any(|n| *n.name == name)
+        self.kids.iter().any(|(_, kid)| {
+            if let Kid::Node(node) = kid {
+                node.name == name
+            } else {
+                false
+            }
+        })
     }
 
     pub fn get_kids(&self, name: impl Into<AutoStr>) -> Vec<Node> {
         let name = name.into();
         let mut nodes: Vec<Node> = self
-            .nodes
+            .kids
             .iter()
-            .filter(|n| *n.name == name)
-            .map(|n| n.clone())
+            .filter(|(_, kid)| {
+                if let Kid::Node(node) = kid {
+                    node.name == name
+                } else {
+                    false
+                }
+            })
+            .map(|(_, kid)| {
+                if let Kid::Node(node) = kid {
+                    node.clone()
+                } else {
+                    unreachable!()
+                }
+            })
             .collect();
         let plural = format!("{}s", name);
         if self.has_prop(&plural) {
@@ -281,7 +291,8 @@ impl Node {
     }
 
     pub fn add_kid(&mut self, node: Node) {
-        self.nodes.push(node);
+        // Add with integer index as key (preserves order and allows duplicates)
+        self.add_node_kid(self.kids_len() as i32, node);
     }
 
     // ========== Unified Args/Props API ==========
@@ -408,7 +419,23 @@ impl Node {
     }
 
     pub fn nodes(&self, name: &str) -> Vec<&Node> {
-        self.nodes.iter().filter(|n| n.name == name).collect()
+        self.kids
+            .iter()
+            .filter(|(_, kid)| {
+                if let Kid::Node(node) = kid {
+                    node.name == name
+                } else {
+                    false
+                }
+            })
+            .map(|(_, kid)| {
+                if let Kid::Node(node) = kid {
+                    node
+                } else {
+                    unreachable!()
+                }
+            })
+            .collect()
     }
 
     pub fn to_astr(&self) -> AutoStr {
@@ -418,12 +445,14 @@ impl Node {
     pub fn group_kids(&self) -> HashMap<AutoStr, Vec<&Node>> {
         // organize kids by their node name
         let mut kids = HashMap::new();
-        for node in self.nodes.iter() {
-            let name = node.name.clone();
-            if !kids.contains_key(&name) {
-                kids.insert(name, vec![node]);
-            } else {
-                kids.get_mut(&name).unwrap().push(node);
+        for (_, kid) in self.kids.iter() {
+            if let Kid::Node(node) = kid {
+                let name = node.name.clone();
+                if !kids.contains_key(&name) {
+                    kids.insert(name, vec![node]);
+                } else {
+                    kids.get_mut(&name).unwrap().push(node);
+                }
             }
         }
         kids
@@ -436,23 +465,19 @@ impl Node {
             vec.push(format!("{}: {}", k, v).into());
             vec.push("\n".into());
         }
-        // nodes
-        for n in self.nodes.iter() {
-            vec.push(n.to_astr());
-            vec.push("\n".into());
+        // kids
+        for (_, kid) in self.kids.iter() {
+            if let Kid::Node(n) = kid {
+                vec.push(n.to_astr());
+                vec.push("\n".into());
+            }
         }
         vec
     }
 
     pub fn fill_node_body(&mut self) -> &mut Self {
-        // fill props into nodebody
-        for (k, v) in self.props.iter() {
-            self.body.add_prop(k.clone(), v.clone());
-        }
-        // fill nodes into nodebody
-        for n in self.nodes.iter() {
-            self.body.add_kid(n.clone());
-        }
+        // This method is deprecated - kids are now populated directly
+        // Keeping for API compatibility but it's a no-op
         self
     }
 }
@@ -488,15 +513,12 @@ impl fmt::Display for Node {
             write!(f, ")")?;
         }
         let mut has_body = false;
-        // NEW: Check if we have body props or kids
+        // Check if we have body props or kids
         let body_props: Vec<_> = self.body_props_iter().collect();
         let has_kids = self.has_kids();
-        let has_nodes = !self.nodes.is_empty();
-        let has_body_content = !self.body.is_empty();
-        let has_body_ref = self.body_ref != MetaID::Nil;
+        let has_lazy_ref = self.kids.has_lazy_ref();
 
-        if !(body_props.is_empty() && !has_kids && !has_nodes && !has_body_content && !has_body_ref)
-        {
+        if !(body_props.is_empty() && !has_kids && !has_lazy_ref) {
             write!(f, " {{")?;
             if !body_props.is_empty() {
                 for (key, value) in body_props {
@@ -504,9 +526,8 @@ impl fmt::Display for Node {
                     write!(f, "; ")?;
                 }
             }
-            // NEW: Display from kids if available, otherwise fall back to old fields
+            // Display from kids
             if has_kids {
-                // Use kids (new unified API)
                 for (key, kid) in self.kids_iter() {
                     match kid {
                         Kid::Node(node) => {
@@ -536,28 +557,17 @@ impl fmt::Display for Node {
                     }
                     write!(f, "; ")?;
                 }
-            } else if has_nodes {
-                // OLD: Fall back to nodes field only if kids is empty
-                for node in self.nodes.iter() {
-                    write!(f, "{}", node)?;
-                    write!(f, "; ")?;
-                }
             }
             write!(f, "}}")?;
             has_body = true;
         }
 
-        // OLD: Keep backward compatibility with body and body_ref (only if not using kids)
-        if !has_kids && has_body_content {
-            write!(f, " {{")?;
-            write!(f, "{}", self.body)?;
-            write!(f, "}}")?;
-            has_body = true;
-        }
-
-        if !has_kids && has_body_ref {
-            write!(f, " {}", self.body_ref)?;
-            has_body = true;
+        // Display lazy reference if present
+        if has_lazy_ref {
+            if let Some(lazy_ref) = self.kids.get_lazy_ref() {
+                write!(f, " {}", lazy_ref)?;
+                has_body = true;
+            }
         }
         if !has_body {
             write!(f, " {{}}")?;
@@ -773,8 +783,18 @@ mod tests {
         let nodes = node.get_nodes("zebra");
         assert_eq!(nodes.len(), 1);
 
-        // Verify all children are in correct order
-        let names: Vec<AutoStr> = node.nodes.iter().map(|n| n.name.clone()).collect();
+        // Verify all children are in correct order using kids API
+        let names: Vec<AutoStr> = node
+            .kids_iter()
+            .filter(|(_, kid)| matches!(kid, Kid::Node(_)))
+            .map(|(_, kid)| {
+                if let Kid::Node(n) = kid {
+                    n.name.clone()
+                } else {
+                    unreachable!()
+                }
+            })
+            .collect();
         assert_eq!(names, vec!["zebra", "apple", "middle"]);
     }
 

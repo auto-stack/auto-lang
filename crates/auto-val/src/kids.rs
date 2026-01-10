@@ -62,6 +62,11 @@ impl Kids {
         self.lazy.as_ref()
     }
 
+    /// Check if there is a lazy body reference
+    pub fn has_lazy_ref(&self) -> bool {
+        self.lazy.is_some()
+    }
+
     /// Get a child by key
     pub fn get(&self, key: &ValueKey) -> Option<&Kid> {
         self.map.get(key)

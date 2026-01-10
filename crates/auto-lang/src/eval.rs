@@ -2436,9 +2436,6 @@ impl Evaler {
             nd.set_kids_ref(body.clone());
         }
 
-        // OLD: Keep for backward compatibility
-        nd.nodes = nodes;
-        nd.body_ref = body;
         let nd = Value::Node(nd);
         // save value to scope
         if !ndid.is_empty() {

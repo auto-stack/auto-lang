@@ -123,7 +123,17 @@ impl AutoConfig {
     }
 
     pub fn list_target_names(&self) -> Vec<AutoStr> {
-        self.root.nodes.iter().map(|n| n.title()).collect()
+        self.root
+            .kids_iter()
+            .filter(|(_, kid)| matches!(kid, auto_val::Kid::Node(_)))
+            .map(|(_, kid)| {
+                if let auto_val::Kid::Node(n) = kid {
+                    n.title()
+                } else {
+                    unreachable!()
+                }
+            })
+            .collect()
     }
 
     pub fn to_xml(&self) -> AutoStr {

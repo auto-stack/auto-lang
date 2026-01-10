@@ -23,13 +23,15 @@ impl ToXML for Node {
             xml.push_str(format!(" {}=\"{}\"", k, v.repr()).as_str());
         }
 
-        if self.nodes.is_empty() {
+        if !self.has_kids() {
             xml.push_str("/>")
         } else {
             xml.push_str(">");
             // fill kids
-            for k in self.nodes.iter() {
-                xml.push_str(k.to_xml().as_str());
+            for (_, kid) in self.kids_iter() {
+                if let auto_val::Kid::Node(node) = kid {
+                    xml.push_str(node.to_xml().as_str());
+                }
             }
 
             // end tag

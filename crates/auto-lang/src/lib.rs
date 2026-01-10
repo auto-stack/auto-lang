@@ -588,7 +588,18 @@ $ }"#;
         "#;
         let interp = eval_config(code, &Obj::new()).unwrap();
         let config = interp.result.as_node();
-        let parent = &config.nodes[0];
+        let parent = config
+            .kids_iter()
+            .filter(|(_, kid)| matches!(kid, auto_val::Kid::Node(_)))
+            .map(|(_, kid)| {
+                if let auto_val::Kid::Node(n) = kid {
+                    n
+                } else {
+                    unreachable!()
+                }
+            })
+            .nth(0)
+            .unwrap();
         let size = parent.get_prop_of("size").to_uint();
         assert_eq!(size, 10);
     }
