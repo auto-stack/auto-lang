@@ -1,6 +1,6 @@
 use crate::error::AutoError;
 use crate::interp;
-use miette::{MietteHandlerOpts, Report, SourceCode};
+use miette::{MietteHandlerOpts, Report};
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 
@@ -77,17 +77,16 @@ fn try_command(line: &str, interpreter: &mut interp::Interpreter) -> CmdResult {
 }
 
 fn print_miette_error(err: AutoError) {
-    // Convert AutoError to miette Report and display it nicely
-    let report = Report::new(err);
-
-    // Set up miette handler for pretty printing
-    miette::set_hook(Box::new(|_| {
-        Box::new(MietteHandlerOpts::new().terminal_links(true).build())
-    }))
-    .ok();
-
-    // Print the error - miette will handle the formatting
-    eprintln!("{}", report);
+    // Handle MultipleErrors by displaying each error separately
+    if let crate::error::AutoError::MultipleErrors { errors, .. } = err {
+        // Display each individual error
+        for error in errors {
+            eprintln!("{:?}", miette::Report::new(error));
+        }
+    } else {
+        // Single error - just display it
+        eprintln!("{:?}", miette::Report::new(err));
+    }
 }
 
 pub fn main_loop() -> Result<()> {

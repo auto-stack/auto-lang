@@ -168,8 +168,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn char(&mut self) -> AutoResult<Token> {
+        let start_pos = self.pos;  // Record position BEFORE skipping '
         self.chars.next(); // skip '
-        let start_pos = self.pos;
         if let Some(&c) = self.chars.peek() {
             // deal with escapes
             if self.peek('\\') {
@@ -458,6 +458,9 @@ impl<'a> Lexer<'a> {
         while let Some(&c) = self.chars.peek() {
             if c.is_whitespace() && c != '\n' {
                 self.chars.next();
+                // Update position tracking for accurate error reporting
+                self.pos += 1;
+                self.at += 1;
             } else {
                 break;
             }
