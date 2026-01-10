@@ -1,9 +1,8 @@
 use auto_lang::error::AutoError;
 use auto_lang::repl;
 use clap::{Parser, Subcommand, ValueEnum};
-use miette::{MietteHandlerOpts, Result, Diagnostic};
-use serde_json::json;
-use std::io::{self, Write};
+use miette::{Diagnostic, MietteHandlerOpts, Result};
+use serde_json::{json, Value};
 
 // Helper to convert AutoError to miette Report - this preserves all diagnostic info
 fn to_miette_err(err: AutoError) -> miette::Report {
@@ -12,7 +11,7 @@ fn to_miette_err(err: AutoError) -> miette::Report {
 
 /// Format error as JSON for machine consumption
 fn format_error_json(err: &AutoError) -> String {
-    let mut error_obj = json!({
+    let mut error_obj: Value = json!({
         "message": err.to_string(),
     });
 
@@ -31,20 +30,17 @@ fn format_error_json(err: &AutoError) -> String {
 
     // Try to get source span information from labels
     if let Some(labels) = err.labels() {
-        let spans: Vec<serde_json::Value> = labels
+        let spans: Vec<Value> = labels
             .map(|label| {
-                let span_obj = json!({
+                let mut span_obj = json!({
                     "offset": label.offset(),
                     "len": label.len(),
                 });
                 // Add label text if present
                 if let Some(text) = label.label() {
-                    let mut with_label = span_obj;
-                    with_label["label"] = json!(text);
-                    with_label
-                } else {
-                    span_obj
+                    span_obj["label"] = json!(text);
                 }
+                span_obj
             })
             .collect();
         error_obj["spans"] = json!(spans);
@@ -57,7 +53,7 @@ fn format_error_json(err: &AutoError) -> String {
 
     // Add related errors (for MultipleErrors)
     if let Some(related) = err.related() {
-        let related_errors: Vec<serde_json::Value> = related
+        let related_errors: Vec<Value> = related
             .map(|diag| {
                 json!({
                     "message": diag.to_string(),

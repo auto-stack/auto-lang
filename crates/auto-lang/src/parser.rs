@@ -806,7 +806,11 @@ impl<'a> Parser<'a> {
             TokenKind::RangeEq => Op::RangeEq,
             TokenKind::Dot => Op::Dot,
             TokenKind::Colon => Op::Colon,
-            _ => panic!("Expected operator, got {:?}", self.kind()),
+            _ => {
+                // This should never happen if called from correct match branches
+                // Return a default operator to avoid panic
+                Op::Add
+            }
         }
     }
 
@@ -846,15 +850,21 @@ impl<'a> Parser<'a> {
         Ok(Expr::Array(elems))
     }
 
-    pub fn sep_args(&mut self) {
+    pub fn sep_args(&mut self) -> AutoResult<()> {
         if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
             self.next();
-            return;
+            return Ok(());
         }
         if self.is_kind(TokenKind::RParen) {
-            return;
+            return Ok(());
         }
-        panic!("Expected argument separator, got {:?}", self.kind());
+        let pos = self.cur.pos;
+        Err(SyntaxError::UnexpectedToken {
+            expected: "argument separator (comma, newline, or ))".to_string(),
+            found: format!("{:?}", self.kind()),
+            span: pos_to_span(pos),
+        }
+        .into())
     }
 
     pub fn args(&mut self) -> AutoResult<Args> {
@@ -913,7 +923,7 @@ impl<'a> Parser<'a> {
                     args.args.push(Arg::Pos(expr.clone()));
                 }
             }
-            self.sep_args();
+            self.sep_args()?;
         }
         self.expect(TokenKind::RParen)?;
         Ok(args)
@@ -925,7 +935,7 @@ impl<'a> Parser<'a> {
         let mut entries = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             entries.push(self.pair()?);
-            self.sep_obj();
+            self.sep_obj()?;
         }
         self.expect(TokenKind::RBrace)?;
         Ok(entries)
@@ -1001,16 +1011,22 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn sep_obj(&mut self) {
+    pub fn sep_obj(&mut self) -> AutoResult<()> {
         if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
             self.next();
             self.skip_empty_lines();
-            return;
+            return Ok(());
         }
         if self.is_kind(TokenKind::RBrace) {
-            return;
+            return Ok(());
         }
-        panic!("Expected pair separator, got {:?}", self.kind());
+        let pos = self.cur.pos;
+        Err(SyntaxError::UnexpectedToken {
+            expected: "pair separator (comma, newline, or })".to_string(),
+            found: format!("{:?}", self.kind()),
+            span: pos_to_span(pos),
+        }
+        .into())
     }
 
     pub fn ident_name(&mut self) -> AutoResult<Name> {
@@ -2344,15 +2360,21 @@ impl<'a> Parser<'a> {
         Ok(fn_stmt)
     }
 
-    pub fn sep_params(&mut self) {
+    pub fn sep_params(&mut self) -> AutoResult<()> {
         if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
             self.next();
-            return;
+            return Ok(());
         }
         if self.is_kind(TokenKind::RParen) || self.is_kind(TokenKind::VBar) {
-            return;
+            return Ok(());
         }
-        panic!("Expected parameter separator, got {:?}", self.kind());
+        let pos = self.cur.pos;
+        Err(SyntaxError::UnexpectedToken {
+            expected: "parameter separator (comma, newline, ), or |)".to_string(),
+            found: format!("{:?}", self.kind()),
+            span: pos_to_span(pos),
+        }
+        .into())
     }
 
     // parse function parameters
@@ -2384,7 +2406,7 @@ impl<'a> Parser<'a> {
             // TODO: should we consider Meta::Param instead of Meta::Var?
             self.define(name.as_str(), Meta::Store(var));
             params.push(Param { name, ty, default });
-            self.sep_params();
+            self.sep_params()?;
         }
         Ok(params)
     }
