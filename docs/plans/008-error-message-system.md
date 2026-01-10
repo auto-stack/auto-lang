@@ -975,17 +975,17 @@ $ auto --error-limit 2 run test.at
 - Implement stack traces for runtime errors
 - Map all runtime errors to error codes (E0301-E0305)
 
-**Phase 4: Advanced Features** (Not Started)
-- JSON output format for IDEs
-- Enhanced error messages with auto-fix suggestions
-- Cross-references between related errors
-- LSP (Language Server Protocol) integration
+**Phase 4: Advanced Features** (Partially Complete)
+- ✅ JSON output format for IDEs (Phase 4.2 - COMPLETE)
+- ⏳ Enhanced error messages with auto-fix suggestions (Phase 4.2 continued)
+- ⏳ Cross-references between related errors
+- ⏳ LSP (Language Server Protocol) integration (Phase 4.3)
 
 **Phase 5: C Implementation Port** (Deferred)
 - Port error system to C implementation
 - Match error codes and messages with Rust version
 
-### 🎯 Status: **PHASES 2.1-2.3 COMPLETE** ✅
+### 🎯 Status: **PHASES 2.1-2.3 COMPLETE, PHASE 4.2 COMPLETE** ✅
 
 The AutoLang compiler now has **Rust-compiler-grade error reporting** with:
 - ✅ Error recovery with synchronization
@@ -993,7 +993,129 @@ The AutoLang compiler now has **Rust-compiler-grade error reporting** with:
 - ✅ CLI-configurable error limits
 - ✅ "Did you mean?" suggestion infrastructure
 - ✅ Comprehensive warning system
+- ✅ **JSON output format for IDE integration** (NEW!)
 
-**Total Implementation:** ~1000+ lines of production-grade error handling code
+**Total Implementation:** ~1200+ lines of production-grade error handling code
 
-The foundation is solid and ready for Phase 3 (Runtime Errors) or other enhancements!
+The foundation is solid and ready for Phase 3 (Runtime Errors), Phase 4.3 (LSP), or other enhancements!
+
+---
+
+## ✅ Phase 4.2 Complete: JSON Output Format (2026-01-10)
+
+### Implementation Summary
+
+**✅ FULLY COMPLETED:**
+
+1. **CLI Flag Implementation** (`crates/auto/src/main.rs`)
+   - Added `--format` global flag with two options:
+     - `--format text` (default): Human-readable text output with colors
+     - `--format json`: Machine-readable JSON output
+   - Integrated with all commands: `run`, `eval`, `parse`, `config`, `c`, `rust`
+   - Conditional decorative output (only in text mode)
+
+2. **JSON Error Formatter** (`crates/auto/src/main.rs`)
+   - `format_error_json()` function converts `AutoError` to JSON
+   - Exports all diagnostic information:
+     - `message`: Error description
+     - `code`: Error code (e.g., `auto_syntax_E0007`)
+     - `severity`: "error" or "warning"
+     - `spans`: Array of source code locations (offset, len, label)
+     - `help`: Help text with suggestions
+     - `related`: Related errors (for multi-error output)
+   - Uses `serde_json` for JSON generation
+
+3. **Dependencies Added**
+   - `serde`: Workspace dependency (already present)
+   - `serde_json`: Workspace dependency (already present)
+   - Added to `crates/auto/Cargo.toml`
+
+### Usage Examples
+
+**Basic JSON Output:**
+```bash
+$ auto --format json eval "1 +"
+{
+  "code": "auto_syntax_E0099",
+  "severity": "error",
+  "message": "aborting due to 1 previous error",
+  "help": "Fix the reported errors and try again",
+  "related": [
+    {
+      "code": "auto_syntax_E0007",
+      "message": "Expected term, got EOF, pos: 1:2:0, next: <eof>"
+    }
+  ]
+}
+```
+
+**File Execution:**
+```bash
+$ auto --format json run script.at
+# Success: plain text output
+# Error: JSON to stderr
+```
+
+**With Other Flags:**
+```bash
+$ auto --format json --error-limit 2 run test.at
+# Combines JSON output with error limit
+```
+
+### JSON Schema
+
+```typescript
+interface AutoError {
+  message: string;
+  code?: string;
+  severity: 'error' | 'warning';
+  spans?: Array<{
+    offset: number;
+    len: number;
+    label?: string;
+  }>;
+  help?: string;
+  related?: Array<{
+    message: string;
+    code?: string;
+  }>;
+}
+```
+
+### IDE Integration
+
+The JSON format is designed for easy parsing by IDEs and editors. See `docs/json-output-examples.md` for:
+- Complete JSON schema documentation
+- Python integration example
+- LSP integration guide
+- TypeScript type definitions
+
+### Files Modified
+
+1. `crates/auto/Cargo.toml` - Added serde and serde_json dependencies
+2. `crates/auto/src/main.rs` - Added --format flag and JSON formatter
+3. `docs/json-output-examples.md` - New documentation file
+
+### Testing
+
+✅ Tested with various error scenarios:
+- Syntax errors
+- Multi-error output
+- Successful execution (no JSON output)
+- Combined with `--error-limit` flag
+
+### Status: **PHASE 4.2 COMPLETE** ✅
+
+JSON output format is fully implemented and ready for IDE integration:
+- ✅ `--format json/text` flag working
+- ✅ Comprehensive error information exported
+- ✅ Compatible with all commands
+- ✅ Documented with examples
+- ✅ Ready for LSP integration (Phase 4.3)
+
+**Next Steps:**
+- Phase 4.3: LSP (Language Server Protocol) implementation
+- Or Phase 3: Runtime error integration
+- Or enhance JSON format with more metadata
+
+---
