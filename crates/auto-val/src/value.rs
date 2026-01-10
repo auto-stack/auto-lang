@@ -49,7 +49,6 @@ pub enum ValueData {
     /// Opaque value storage for types that don't need deep mutation
     /// Stores the full Value inline (functions, types, nodes, etc.)
     Opaque(Box<Value>),
-
     // TODO: Add more variants as needed during implementation
     // Fn, ExtFn, Type, Node, Widget, Model, View, Meta, Method, Instance, Args, etc.
 }
@@ -219,7 +218,6 @@ impl Value {
             _ => ValueData::Nil,
         }
     }
-
 
     /// Convert ValueData to Value (for reading from Universe)
     /// Note: Nested ValueIDs remain as references, not fully resolved
@@ -474,7 +472,17 @@ impl Value {
     }
 }
 
-static NODE_NIL: Node = Node::empty();
+static NODE_NIL: std::sync::OnceLock<Node> = std::sync::OnceLock::new();
+
+fn node_nil() -> &'static Node {
+    NODE_NIL.get_or_init(|| Node::empty())
+}
+
+static OBJ_EMPTY: std::sync::OnceLock<Obj> = std::sync::OnceLock::new();
+
+fn obj_empty() -> &'static Obj {
+    OBJ_EMPTY.get_or_init(|| Obj::new())
+}
 
 // Quick Readers
 impl Value {
@@ -520,7 +528,7 @@ impl Value {
     pub fn as_obj(&self) -> &Obj {
         match self {
             Value::Obj(ref value) => value,
-            _ => &OBJ_EMPTY,
+            _ => obj_empty(),
         }
     }
 
@@ -571,14 +579,14 @@ impl Value {
     pub fn as_node(&self) -> &Node {
         match self {
             Value::Node(value) => value,
-            _ => &NODE_NIL,
+            _ => node_nil(),
         }
     }
 
     pub fn to_node(self) -> Node {
         match self {
             Value::Node(value) => value,
-            _ => NODE_NIL.clone(),
+            _ => node_nil().clone(),
         }
     }
 

@@ -6,3 +6,4 @@ edition = "2024"
 
 [dependencies]
 auto-val = { path = "../auto-val" }
+thiserror = "2.0"

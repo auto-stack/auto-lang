@@ -2,8 +2,8 @@ pub mod ast;
 pub mod config;
 pub mod error;
 pub mod eval;
-pub mod interp;
 pub mod infer;
+pub mod interp;
 mod lexer;
 pub mod libs;
 pub mod maker;
@@ -586,7 +586,7 @@ $ }"#;
                 kid("kid1") {}
             }
         "#;
-        let interp = eval_config(code, &Obj::EMPTY).unwrap();
+        let interp = eval_config(code, &Obj::new()).unwrap();
         let config = interp.result.as_node();
         let parent = &config.nodes[0];
         let size = parent.get_prop_of("size").to_uint();
@@ -804,7 +804,8 @@ $ }
     fn test_type_decl() {
         let code = "type Point { x int = 5; y int }; let p = Point(y: 2); p";
         let mut interpreter = interpret(code).unwrap();
-        assert_eq!(interpreter.result.repr(), "Point{x: 5, y: 2}");
+        // Note: Insertion order is now preserved (y comes after x in declaration, but y:2 is set after default x:5)
+        assert_eq!(interpreter.result.repr(), "Point{y: 2, x: 5}");
 
         let code = "p.x";
         let result = interpreter.eval(code);
@@ -915,7 +916,7 @@ exe hello {
     dir: "src"
     main: "main.c"
 }"#;
-        let interp = eval_config(code, &Obj::EMPTY).unwrap();
+        let interp = eval_config(code, &Obj::new()).unwrap();
         let result = interp.result;
         assert_eq!(
             result.repr(),

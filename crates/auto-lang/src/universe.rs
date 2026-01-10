@@ -1043,7 +1043,6 @@ impl Universe {
                         .map
                         .insert(key.clone(), dereferenced_item);
                 }
-                dereferenced_node.body.index = body.index.clone();
 
                 Value::Node(dereferenced_node)
             }

@@ -58,8 +58,9 @@ mod tests {
         kid.set_prop("score", Value::Int(145));
         node.add_kid(kid);
         let xml = node.to_xml();
+        // Note: Insertion order is now preserved (name first, then age)
         let expected = r#"
-            <test age="12" name="ming">
+            <test name="ming" age="12">
                 <score name="Math" score="145"></score>
             </test>
         "#;

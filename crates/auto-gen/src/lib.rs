@@ -353,7 +353,7 @@ mod tests {
     #[allow(deprecated)]
     fn test_gen() {
         let values = vec![Value::pair("a", 1), Value::pair("b", 2)];
-        let atom = Atom::assemble(values);
+        let atom = Atom::assemble(values).unwrap();
         let ag = AutoGen::new().data(atom);
         let result = ag.gen_all();
         assert_eq!(result, "a: 1; b: 2");

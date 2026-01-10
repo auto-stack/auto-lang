@@ -4,21 +4,26 @@ use crate::pretty;
 use crate::AutoStr;
 use crate::Value;
 use crate::ValueKey;
-use std::collections::btree_map::{IntoIter, Iter};
-use std::collections::BTreeMap;
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
-pub static OBJ_EMPTY: Obj = Obj::EMPTY;
-
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Obj {
-    values: BTreeMap<ValueKey, Value>,
+    values: IndexMap<ValueKey, Value>,
+}
+
+impl Default for Obj {
+    fn default() -> Self {
+        Self {
+            values: IndexMap::new(),
+        }
+    }
 }
 
 impl IntoIterator for Obj {
     type Item = (ValueKey, Value);
-    type IntoIter = IntoIter<ValueKey, Value>;
+    type IntoIter = indexmap::map::IntoIter<ValueKey, Value>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.values.into_iter()
@@ -26,19 +31,15 @@ impl IntoIterator for Obj {
 }
 
 impl Obj {
-    pub const EMPTY: Self = Self {
-        values: BTreeMap::new(),
-    };
-
-    pub fn iter(&self) -> Iter<'_, ValueKey, Value> {
+    pub fn iter(&self) -> indexmap::map::Iter<'_, ValueKey, Value> {
         self.values.iter()
     }
 }
 
 impl Obj {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Obj {
-            values: BTreeMap::new(),
+            values: IndexMap::new(),
         }
     }
 
@@ -197,7 +198,7 @@ impl Obj {
     }
 
     pub fn remove(&mut self, key: impl Into<ValueKey>) {
-        self.values.remove(&key.into());
+        self.values.swap_remove(&key.into());
     }
 
     pub fn pretty(&self, max_indent: usize) -> AutoStr {

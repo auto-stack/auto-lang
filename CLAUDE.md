@@ -231,6 +231,67 @@ This creates a self-sustaining ecosystem where AutoLang can compile itself.
 - Replace `Rc<RefCell<T>>` with manual memory management
 - Use `AutoStr` instead of `String`
 
+## Data Structures (Rust Implementation)
+
+### Node and NodeBody
+
+The `Node` and `NodeBody` structures (in `crates/auto-val/src/node.rs`) use `IndexMap` for efficient, ordered storage of properties and child nodes.
+
+**Key Implementation Details**:
+
+- **IndexMap**: Uses `indexmap::IndexMap` instead of `BTreeMap` or `HashMap`
+  - Provides O(1) lookups (better than BTreeMap's O(log n))
+  - Preserves insertion order (unlike HashMap)
+  - Eliminates need for separate index tracking
+
+- **NodeBody Structure**:
+```rust
+#[derive(Debug, Clone, PartialEq)]
+pub struct NodeBody {
+    pub map: IndexMap<ValueKey, NodeItem>,
+}
+```
+
+- **Insertion Order Preservation**: Properties and children maintain insertion order
+  - Display/serialization shows items in insertion order
+  - No manual index synchronization needed
+  - Tests verify order is preserved across operations
+
+- **Usage Patterns**:
+```rust
+// Adding properties preserves order
+node.set_prop("zebra", 1);  // Added first
+node.set_prop("apple", 2);  // Added second
+// Display shows: zebra first, then apple (not alphabetical)
+
+// Adding children preserves order
+node.add_kid(Node::new("kid1"));
+node.add_kid(Node::new("kid2"));
+// Iteration returns: kid1, then kid2
+```
+
+- **Performance Characteristics**:
+  - Lookup: O(1) average case
+  - Insertion: O(1) average case
+  - Iteration: O(n) in insertion order
+  - Memory: Single IndexMap instead of BTreeMap + Vec
+
+### Obj Structure
+
+The `Obj` structure (in `crates/auto-val/src/obj.rs`) also uses `IndexMap` for the same reasons:
+
+```rust
+#[derive(Debug, Clone, PartialEq)]
+pub struct Obj {
+    values: IndexMap<ValueKey, Value>,
+}
+```
+
+**Important**: IndexMap cannot be used in const contexts, so:
+- `Obj::new()` is not const
+- Use `OnceLock` for static Obj instances (see `value.rs:node_nil()` and `obj_empty()`)
+- Removed `Obj::EMPTY` constant; use `Obj::new()` instead
+
 ## Common Development Tasks
 
 ### ⚠️ CRITICAL: Test Expectation Rules

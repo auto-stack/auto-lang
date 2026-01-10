@@ -54,8 +54,10 @@ impl DataLoader {
 
         // Try to convert to Atom if it's a Node or Array
         let atom = match value {
-            Value::Node(n) => Atom::new(Value::Node(n)),
-            Value::Array(a) => Atom::new(Value::Array(a)),
+            Value::Node(n) => Atom::new(Value::Node(n))
+                .map_err(|e| GenError::Other(format!("Failed to create atom from node: {}", e)))?,
+            Value::Array(a) => Atom::new(Value::Array(a))
+                .map_err(|e| GenError::Other(format!("Failed to create atom from array: {}", e)))?,
             // For other types, the data should be in the scope already
             _ => {
                 return Ok(LoadedData {
@@ -88,7 +90,7 @@ mod tests {
     #[test]
     fn test_load_atom() {
         let loader = DataLoader::new();
-        let atom = Atom::assemble(vec![Value::pair("test", 123)]);
+        let atom = Atom::assemble(vec![Value::pair("test", 123)]).unwrap();
         let result = loader.load(DataSource::Atom(atom));
         assert!(result.is_ok());
     }

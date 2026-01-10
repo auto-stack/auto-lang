@@ -91,6 +91,7 @@ pub enum TokenKind {
     Enum,
     On,
     Alias,
+    Node, // ADDED: node keyword for typed node definitions
 
     // Format Str
     FStrStart,
@@ -158,6 +159,7 @@ impl fmt::Display for Token {
             TokenKind::Union => write!(f, "<union>"),
             TokenKind::Tag => write!(f, "<tag>"),
             TokenKind::Alias => write!(f, "<alias>"),
+            TokenKind::Node => write!(f, "<node>"),
             TokenKind::FStrNote => write!(f, "<{}>", self.text),
             TokenKind::FStrStart => write!(f, "<fstrs>"),
             TokenKind::FStrEnd => write!(f, "<fstre>"),

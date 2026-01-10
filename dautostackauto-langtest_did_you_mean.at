@@ -1,5 +1,0 @@
-let myVariable = 42
-let myNumber = 100
-
-// Try to access with typo - should suggest "myVariable"
-let x = myVaraible

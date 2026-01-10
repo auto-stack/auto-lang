@@ -9,3 +9,4 @@ normalize-path = { workspace = true }
 regex = { workspace = true }
 glob-match = { workspace = true }
 thiserror = { workspace = true }
+indexmap = "2.0"

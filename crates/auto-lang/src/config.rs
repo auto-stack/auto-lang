@@ -87,7 +87,7 @@ impl AutoConfig {
 
     pub fn new(code: impl Into<String>) -> AutoResult<Self> {
         let univ = Universe::default();
-        Self::from_code(code, &Obj::EMPTY, univ)
+        Self::from_code(code, &Obj::new(), univ)
     }
 
     pub fn save(&mut self, path: &AutoPath) -> AutoResult<()> {

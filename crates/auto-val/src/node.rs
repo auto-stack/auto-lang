@@ -4,13 +4,39 @@ use crate::pair::ValueKey;
 use crate::types::Type;
 use crate::value::Value;
 use crate::{AutoStr, Pair};
-use std::collections::{BTreeMap, HashMap};
+use indexmap::IndexMap;
+use std::collections::HashMap;
 use std::fmt;
 
+/// NodeBody stores properties and child nodes in insertion order
+///
+/// Uses `IndexMap` for O(1) lookups while maintaining insertion order
+/// for serialization and display purposes.
+///
+/// # Performance
+///
+/// - Lookup: O(1) average
+/// - Insertion: O(1) average
+/// - Iteration: O(n) in insertion order
+///
+/// # Examples
+///
+/// ```rust
+/// use auto_val::{NodeBody, Value};
+///
+/// let mut body = NodeBody::new();
+/// body.add_prop("z", 1);
+/// body.add_prop("a", 2);
+/// body.add_prop("m", 3);
+///
+/// // Iterates in insertion order: z, a, m
+/// for (key, item) in body.map.iter() {
+///     println!("{:?}", key);
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeBody {
-    pub index: Vec<ValueKey>,
-    pub map: BTreeMap<ValueKey, NodeItem>,
+    pub map: IndexMap<ValueKey, NodeItem>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,10 +52,9 @@ impl NodeItem {
 }
 
 impl NodeBody {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            index: Vec::new(),
-            map: BTreeMap::new(),
+            map: IndexMap::new(),
         }
     }
 
@@ -39,13 +64,11 @@ impl NodeBody {
 
     pub fn add_kid(&mut self, n: Node) {
         let id: ValueKey = n.id().into();
-        self.index.push(id.clone());
         self.map.insert(id, NodeItem::Node(n));
     }
 
     pub fn add_prop(&mut self, k: impl Into<ValueKey>, v: impl Into<Value>) {
         let k = k.into();
-        self.index.push(k.clone());
         self.map.insert(k.clone(), NodeItem::prop(k, v.into()));
     }
 
@@ -94,7 +117,7 @@ pub struct Node {
 }
 
 impl Node {
-    pub const fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             name: AutoStr::new(),
             id: AutoStr::new(),
@@ -370,8 +393,8 @@ impl fmt::Display for Node {
 
 impl fmt::Display for NodeBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (i, k) in self.map.keys().enumerate() {
-            write!(f, "{}", self.map.get(k).unwrap())?;
+        for (i, (_k, item)) in self.map.iter().enumerate() {
+            write!(f, "{}", item)?;
             if i < self.map.len() - 1 {
                 write!(f, "; ")?;
             }
@@ -398,5 +421,240 @@ pub struct Instance {
 impl fmt::Display for Instance {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}{}", self.ty, self.fields)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AutoStr;
+
+    #[test]
+    fn test_nodebody_insertion_order_props() {
+        let mut body = NodeBody::new();
+
+        // Add properties in a specific order
+        body.add_prop("zebra", 1);
+        body.add_prop("apple", 2);
+        body.add_prop("middle", 3);
+        body.add_prop("first", 4);
+
+        // Verify iteration preserves insertion order (not alphabetical)
+        let keys: Vec<&ValueKey> = body.map.keys().collect();
+        assert_eq!(keys.len(), 4);
+
+        // Convert to strings for comparison
+        let key_strs: Vec<String> = keys.iter().map(|k| k.to_astr().to_string()).collect();
+        assert_eq!(key_strs, vec!["zebra", "apple", "middle", "first"]);
+    }
+
+    #[test]
+    fn test_nodebody_insertion_order_kids() {
+        let mut body = NodeBody::new();
+
+        // Add child nodes in specific order with unique IDs
+        let mut kid1 = Node::new("zebra");
+        kid1.set_main_arg("zebra_id");
+        let mut kid2 = Node::new("apple");
+        kid2.set_main_arg("apple_id");
+        let mut kid3 = Node::new("middle");
+        kid3.set_main_arg("middle_id");
+
+        body.add_kid(kid1);
+        body.add_kid(kid2);
+        body.add_kid(kid3);
+
+        // Verify iteration preserves insertion order
+        let keys: Vec<&ValueKey> = body.map.keys().collect();
+        assert_eq!(keys.len(), 3);
+
+        let key_strs: Vec<String> = keys.iter().map(|k| k.to_astr().to_string()).collect();
+        assert_eq!(key_strs, vec!["zebra_id", "apple_id", "middle_id"]);
+    }
+
+    #[test]
+    fn test_nodebody_mixed_order() {
+        let mut body = NodeBody::new();
+
+        // Mix of properties and kids with unique IDs
+        body.add_prop("prop1", 1);
+
+        let mut kid1 = Node::new("kid1");
+        kid1.set_main_arg("kid1_id");
+        body.add_kid(kid1);
+
+        body.add_prop("prop2", 2);
+
+        let mut kid2 = Node::new("kid2");
+        kid2.set_main_arg("kid2_id");
+        body.add_kid(kid2);
+
+        body.add_prop("prop3", 3);
+
+        let keys: Vec<&ValueKey> = body.map.keys().collect();
+        assert_eq!(keys.len(), 5);
+
+        let key_strs: Vec<String> = keys.iter().map(|k| k.to_astr().to_string()).collect();
+        assert_eq!(
+            key_strs,
+            vec!["prop1", "kid1_id", "prop2", "kid2_id", "prop3"]
+        );
+    }
+
+    #[test]
+    fn test_nodebody_display_order() {
+        let mut body = NodeBody::new();
+
+        body.add_prop("z_last", 1);
+        body.add_prop("a_first", 2);
+        body.add_prop("m_middle", 3);
+
+        let display = format!("{}", body);
+
+        // Display should show insertion order, not alphabetical
+        assert!(display.contains("z_last"));
+        assert!(display.contains("a_first"));
+        assert!(display.contains("m_middle"));
+
+        // Verify order by position
+        let z_pos = display.find("z_last").unwrap();
+        let a_pos = display.find("a_first").unwrap();
+        let m_pos = display.find("m_middle").unwrap();
+
+        assert!(z_pos < a_pos);
+        assert!(a_pos < m_pos);
+    }
+
+    #[test]
+    fn test_obj_insertion_order() {
+        let mut obj = Obj::new();
+
+        // Insert keys in reverse alphabetical order
+        obj.set("zebra", 1);
+        obj.set("apple", 2);
+        obj.set("banana", 3);
+
+        let keys = obj.keys();
+        let key_strs: Vec<String> = keys.iter().map(|k| k.to_astr().to_string()).collect();
+
+        // Should preserve insertion order
+        assert_eq!(key_strs, vec!["zebra", "apple", "banana"]);
+    }
+
+    #[test]
+    fn test_obj_iteration_order() {
+        let mut obj = Obj::new();
+
+        obj.set("c", 3);
+        obj.set("a", 1);
+        obj.set("b", 2);
+        obj.set("d", 4);
+
+        let mut iter = obj.iter();
+        assert_eq!(
+            iter.next().map(|(k, _)| k.to_astr().to_string()),
+            Some("c".to_string())
+        );
+        assert_eq!(
+            iter.next().map(|(k, _)| k.to_astr().to_string()),
+            Some("a".to_string())
+        );
+        assert_eq!(
+            iter.next().map(|(k, _)| k.to_astr().to_string()),
+            Some("b".to_string())
+        );
+        assert_eq!(
+            iter.next().map(|(k, _)| k.to_astr().to_string()),
+            Some("d".to_string())
+        );
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_obj_into_iter_order() {
+        let mut obj = Obj::new();
+
+        obj.set("z", 1);
+        obj.set("a", 2);
+        obj.set("m", 3);
+
+        let items: Vec<(ValueKey, Value)> = obj.into_iter().collect();
+        assert_eq!(items.len(), 3);
+
+        let key_strs: Vec<String> = items.iter().map(|(k, _)| k.to_astr().to_string()).collect();
+        assert_eq!(key_strs, vec!["z", "a", "m"]);
+    }
+
+    #[test]
+    fn test_node_lookup_preserves_order() {
+        let mut node = Node::new("parent");
+
+        // Add children in non-alphabetical order
+        node.add_kid(Node::new("zebra"));
+        node.add_kid(Node::new("apple"));
+        node.add_kid(Node::new("middle"));
+
+        // get_nodes should return in insertion order
+        let nodes = node.get_nodes("zebra");
+        assert_eq!(nodes.len(), 1);
+
+        // Verify all children are in correct order
+        let names: Vec<AutoStr> = node.nodes.iter().map(|n| n.name.clone()).collect();
+        assert_eq!(names, vec!["zebra", "apple", "middle"]);
+    }
+
+    #[test]
+    fn test_node_props_display_order() {
+        let mut node = Node::new("test");
+
+        node.set_prop("z_prop", 1);
+        node.set_prop("a_prop", 2);
+        node.set_prop("m_prop", 3);
+
+        let display = format!("{}", node);
+
+        // Verify properties appear in insertion order
+        let z_pos = display.find("z_prop").unwrap();
+        let a_pos = display.find("a_prop").unwrap();
+        let m_pos = display.find("m_prop").unwrap();
+
+        assert!(z_pos < a_pos);
+        assert!(a_pos < m_pos);
+    }
+
+    #[test]
+    fn test_nodebody_remove_preserves_order() {
+        let mut body = NodeBody::new();
+
+        body.add_prop("a", 1);
+        body.add_prop("b", 2);
+        body.add_prop("c", 3);
+        body.add_prop("d", 4);
+
+        // Remove middle element
+        body.map.swap_remove(&ValueKey::Str("b".into()));
+
+        let keys: Vec<String> = body.map.keys().map(|k| k.to_astr().to_string()).collect();
+
+        // After swap_remove, order is: a, d, c (d moves to b's position)
+        assert_eq!(keys, vec!["a", "d", "c"]);
+    }
+
+    #[test]
+    fn test_obj_remove_preserves_order() {
+        let mut obj = Obj::new();
+
+        obj.set("a", 1);
+        obj.set("b", 2);
+        obj.set("c", 3);
+        obj.set("d", 4);
+
+        // Remove middle element
+        obj.remove("b");
+
+        let keys: Vec<String> = obj.keys().iter().map(|k| k.to_astr().to_string()).collect();
+
+        // After swap_remove, order is: a, d, c
+        assert_eq!(keys, vec!["a", "d", "c"]);
     }
 }
