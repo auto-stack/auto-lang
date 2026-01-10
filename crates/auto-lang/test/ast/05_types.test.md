@@ -73,7 +73,7 @@ fn new_point(x int, y int) Point {
 
 ---
 
-type Point { member(x, int); member(y, int) }; fn new_point ((x, int), (y, int)) Point { node Point (x, y) }
+type Point { member(x, int); member(y, int) }; (nl (count 1)); fn new_point ((x, int), (y, int)) Point { node Point (x, y) }
 
 ## Key - Named
 

@@ -1,6 +1,0 @@
-let dirs = ["a", "b"]
-for d in dirs {
-    dir(id: d) {
-        at: d
-    }
-}
