@@ -3,6 +3,7 @@ pub mod config;
 pub mod error;
 pub mod eval;
 pub mod interp;
+pub mod infer;
 mod lexer;
 pub mod libs;
 pub mod maker;
