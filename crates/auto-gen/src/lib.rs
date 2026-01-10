@@ -115,7 +115,19 @@ impl AutoGen {
 
     // Main API
     pub fn gen_all(&self) -> AutoStr {
-        let atom_name = self.data.name.clone();
+        // Extract name from atom - if it's a Node, get its name property
+        let atom_name = match &self.data {
+            auto_atom::Atom::Node(node) => {
+                let name_prop = node.get_prop_of("name");
+                if !name_prop.is_nil() {
+                    name_prop.to_astr().to_string()
+                } else {
+                    node.main_arg().to_astr().to_string()
+                }
+            }
+            _ => String::new(),
+        };
+
         for mold in self.molds.iter() {
             let out_file = if self.is_rename || mold.is_rename {
                 let out_name = replace_name(mold.name.clone(), atom_name.clone());

@@ -709,8 +709,8 @@ impl Universe {
 
     // TODO: support nested nodes
     pub fn merge_atom(&mut self, atom: &Atom) {
-        match &atom.root {
-            auto_atom::Root::Node(node) => {
+        match atom {
+            auto_atom::Atom::Node(node) => {
                 // Extract properties from the node
                 let name = node.get_prop_of("name");
                 if !name.is_nil() {
@@ -749,7 +749,7 @@ impl Universe {
                     }
                 }
             }
-            auto_atom::Root::Array(array) => {
+            auto_atom::Atom::Array(array) => {
                 for (i, val) in array.iter().enumerate() {
                     self.set_global(format!("item_{}", i).as_str(), val.clone());
                 }
