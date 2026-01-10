@@ -1,5 +1,5 @@
+use auto_val::AutoStr;
 use auto_val::{Array, Node, Value};
-use auto_val::{AutoStr, NodeBody};
 use std::fmt;
 
 use crate::{AtomError, AtomResult};
@@ -62,7 +62,6 @@ pub struct Atom {
 ///
 /// This enum represents the different types of data that an Atom can contain:
 /// - Full node structures with properties and children
-/// - Simplified node bodies with just properties and children
 /// - Arrays of values
 /// - Empty/null values
 ///
@@ -70,10 +69,9 @@ pub struct Atom {
 ///
 /// ```rust
 /// use auto_atom::Root;
-/// use auto_val::{Array, Node, NodeBody};
+/// use auto_val::{Array, Node};
 ///
 /// let node_root = Root::Node(Node::new("test"));
-/// let body_root = Root::NodeBody(NodeBody::new());
 /// let array_root = Root::Array(Array::from_vec(vec![1, 2, 3]));
 /// let empty_root = Root::Empty;
 /// ```
@@ -81,9 +79,6 @@ pub struct Atom {
 pub enum Root {
     /// A full node with name, arguments, properties, and children
     Node(Node),
-
-    /// A simplified node with only properties and children (no name or arguments)
-    NodeBody(NodeBody),
 
     /// An ordered array of values
     Array(Array),
@@ -148,19 +143,13 @@ impl Atom {
     pub fn new(val: Value) -> AtomResult<Self> {
         match val {
             Value::Node(n) => {
-                let mut nb = NodeBody::new();
-                for (k, v) in n.props_iter() {
-                    nb.add_prop(k.clone(), v.clone());
-                }
-                for n in &n.nodes {
-                    nb.add_kid(n.clone());
-                }
+                // Extract name from the node
                 let name = if !n.has_prop("name") {
                     n.main_arg().to_astr()
                 } else {
                     n.get_prop_of("name").to_astr()
                 };
-                let mut atom = Self::node_body(nb);
+                let mut atom = Self::node(n);
                 atom.name = name;
                 Ok(atom)
             }
@@ -192,29 +181,6 @@ impl Atom {
         Self {
             name: AutoStr::new(),
             root: Root::Array(array),
-        }
-    }
-
-    /// Creates an Atom from a NodeBody
-    ///
-    /// # Arguments
-    ///
-    /// * `node` - The node body to wrap in an Atom
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use auto_atom::Atom;
-    /// use auto_val::NodeBody;
-    ///
-    /// let node = NodeBody::new();
-    /// let atom = Atom::node_body(node);
-    /// assert!(atom.is_node());
-    /// ```
-    pub fn node_body(node: NodeBody) -> Self {
-        Self {
-            name: AutoStr::new(),
-            root: Root::NodeBody(node),
         }
     }
 
@@ -265,7 +231,7 @@ impl Atom {
 
     /// Assembles an Atom from a vector of values
     ///
-    /// This method creates a NodeBody Atom from a vector of Values. Only Node
+    /// This method creates a Node Atom from a vector of Values. Only Node
     /// and Pair values are allowed as children; all other types will return an error.
     ///
     /// # Arguments
@@ -289,12 +255,17 @@ impl Atom {
     /// ]).unwrap();
     /// ```
     pub fn assemble(values: Vec<impl Into<Value>>) -> AtomResult<Self> {
-        let mut node = NodeBody::new();
+        let mut node = Node::new("atom");
         for value in values {
             let val = value.into();
             match val {
-                Value::Node(n) => node.add_kid(n),
-                Value::Pair(k, v) => node.add_prop(k, *v),
+                Value::Node(n) => {
+                    // Add as a kid with integer index
+                    node.add_node_kid(node.kids_len() as i32, n);
+                }
+                Value::Pair(k, v) => {
+                    node.set_prop(k, *v);
+                }
                 _ => {
                     return Err(AtomError::InvalidType {
                         expected: "Node or Pair".to_string(),
@@ -305,7 +276,7 @@ impl Atom {
         }
         Ok(Self {
             name: AutoStr::new(),
-            root: Root::NodeBody(node),
+            root: Root::Node(node),
         })
     }
 
@@ -327,11 +298,11 @@ impl Atom {
         matches!(self.root, Root::Array(_))
     }
 
-    /// Checks if this Atom contains a Node or NodeBody
+    /// Checks if this Atom contains a Node
     ///
     /// # Returns
     ///
-    /// `true` if the root is a Node or NodeBody, `false` otherwise
+    /// `true` if the root is a Node, `false` otherwise
     ///
     /// # Examples
     ///
@@ -345,7 +316,7 @@ impl Atom {
     /// assert!(atom.is_node());
     /// ```
     pub fn is_node(&self) -> bool {
-        matches!(self.root, Root::Node(_) | Root::NodeBody(_))
+        matches!(self.root, Root::Node(_))
     }
 
     /// Checks if this Atom is empty
@@ -369,7 +340,7 @@ impl Atom {
     ///
     /// This method returns a string representation of the Atom in the ATOM format.
     /// The format depends on the root type:
-    /// - Node/NodeBody: Returns the node's ATOM representation
+    /// - Node: Returns the node's ATOM representation
     /// - Array: Returns the array's ATOM representation
     /// - Empty: Returns an empty string
     ///
@@ -395,7 +366,6 @@ impl Atom {
     pub fn to_astr(&self) -> AutoStr {
         match &self.root {
             Root::Node(node) => node.to_astr(),
-            Root::NodeBody(node) => node.to_astr(),
             Root::Array(array) => array.to_astr(),
             Root::Empty => AutoStr::default(),
         }
@@ -414,22 +384,6 @@ impl Root {
             Root::Array(array) => Ok(array),
             _ => Err(AtomError::InvalidType {
                 expected: "Array".to_string(),
-                found: format!("{:?}", self),
-            }),
-        }
-    }
-
-    /// Attempts to borrow the root as a NodeBody
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(&NodeBody)` if the root is a NodeBody, otherwise returns
-    /// an [`AtomError::InvalidType`].
-    pub fn as_nodebody(&self) -> AtomResult<&NodeBody> {
-        match self {
-            Root::NodeBody(node) => Ok(node),
-            _ => Err(AtomError::InvalidType {
-                expected: "NodeBody".to_string(),
                 found: format!("{:?}", self),
             }),
         }
@@ -469,12 +423,11 @@ impl fmt::Display for Atom {
     ///     Value::pair("b", 2),
     /// ]).unwrap();
     ///
-    /// assert_eq!(format!("{}", atom), "a: 1; b: 2");
+    /// assert_eq!(format!("{}", atom), "atom {a: 1; b: 2; }");
     /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.root {
             Root::Node(node) => write!(f, "{}", node),
-            Root::NodeBody(node) => write!(f, "{}", node),
             Root::Array(array) => write!(f, "{}", array),
             Root::Empty => write!(f, ""),
         }
@@ -508,7 +461,7 @@ mod tests {
             Value::pair("e", 5),
         ])
         .unwrap();
-        let node = atom.root.as_nodebody().unwrap();
+        let node = atom.root.as_node().unwrap();
         assert_eq!(node.get_prop_of("a"), Value::Int(1));
         assert_eq!(node.get_prop_of("b"), Value::Int(2));
         assert_eq!(node.get_prop_of("c"), Value::Int(3));
@@ -519,7 +472,7 @@ mod tests {
     #[test]
     fn test_display() {
         let atom = Atom::assemble(vec![Value::pair("a", 1), Value::pair("b", 2)]).unwrap();
-        assert_eq!(format!("{}", atom), "a: 1; b: 2");
+        assert_eq!(format!("{}", atom), "atom {a: 1; b: 2; }");
     }
 
     // Error handling tests
@@ -555,7 +508,7 @@ mod tests {
         let err = result.unwrap_err();
         // Error message contains the full Debug output
         assert!(err.to_string().contains("invalid type: expected Array"));
-        assert!(err.to_string().contains("found NodeBody"));
+        assert!(err.to_string().contains("found Node"));
     }
 
     #[test]
