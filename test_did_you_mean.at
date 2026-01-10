@@ -1,0 +1,15 @@
+// Test file for "did you mean?" suggestions
+
+// Define some variables
+let username = "alice"
+let user_id = 12345
+let counter = 0
+
+// Try to use a variable with a typo
+print(usrename)  // Should suggest "username"
+
+// Try to use another variable with a typo
+print(cuonter)   // Should suggest "counter"
+
+// Try a function that doesn't exist
+print(squre(5))  // Should suggest existing functions if any

@@ -27,8 +27,25 @@ use auto_val::{AutoPath, Obj, Value};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::error::{AutoError, AutoResult};
+
+/// Global error limit for parser error recovery
+static ERROR_LIMIT: AtomicUsize = AtomicUsize::new(20);
+
+/// Set the global error limit for parser error recovery
+///
+/// This controls how many errors the parser will collect before aborting.
+/// Default is 20.
+pub fn set_error_limit(limit: usize) {
+    ERROR_LIMIT.store(limit, Ordering::SeqCst);
+}
+
+/// Get the current global error limit
+pub fn get_error_limit() -> usize {
+    ERROR_LIMIT.load(Ordering::SeqCst)
+}
 
 pub fn run(code: &str) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::new();
@@ -39,6 +56,35 @@ pub fn run(code: &str) -> AutoResult<String> {
     match result {
         Ok(_) => {
             // Resolve any ValueRef in the result before converting to string
+            let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
+            Ok(resolved.repr().to_string())
+        }
+        Err(AutoError::Syntax(err)) => {
+            // Attach source code to the syntax error
+            Err(AutoError::with_source(
+                err,
+                "<input>".to_string(),
+                code.to_string(),
+            ))
+        }
+        Err(other) => Err(other),
+    }
+}
+
+/// Run code and collect all errors during parsing
+///
+/// This function enables error recovery to collect multiple syntax errors
+/// instead of aborting on the first error.
+pub fn run_with_errors(code: &str) -> AutoResult<String> {
+    let mut interpreter = interp::Interpreter::new();
+
+    // Enable error recovery
+    interpreter.enable_error_recovery();
+
+    let result = interpreter.interpret(code);
+
+    match result {
+        Ok(_) => {
             let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
             Ok(resolved.repr().to_string())
         }

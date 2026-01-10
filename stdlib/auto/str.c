@@ -10,6 +10,5 @@ void dstr_Print(struct dstr *self) {
     for () {
 
     }
-
 }
 

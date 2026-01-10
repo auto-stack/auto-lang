@@ -1,0 +1,11 @@
+// Test file with multiple syntax errors to verify error recovery
+
+// Error 1: Missing operator
+var x = 1 2
+
+// Error 2: Missing closing paren
+var y = (1 + 2
+
+// Error 3: Assignment to let binding
+let a = 10
+a = 20

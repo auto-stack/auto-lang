@@ -11,6 +11,10 @@ fn to_miette_err(err: AutoError) -> miette::Report {
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Cli {
+    /// Maximum number of errors to display before aborting (default: 20)
+    #[arg(short, long, global = true, value_name = "N")]
+    error_limit: Option<usize>,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -41,6 +45,11 @@ fn main() -> Result<()> {
     .ok();
 
     let cli = Cli::parse();
+
+    // Set error limit from CLI if provided
+    if let Some(limit) = cli.error_limit {
+        auto_lang::set_error_limit(limit);
+    }
 
     match cli.command {
         Some(Commands::Parse { code }) => {

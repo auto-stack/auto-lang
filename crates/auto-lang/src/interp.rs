@@ -16,6 +16,8 @@ pub struct Interpreter {
     pub result: Value,
     pub fstr_note: char,
     skip_check: bool,
+    /// Enable error recovery to collect multiple errors
+    enable_error_recovery: bool,
 }
 
 impl Interpreter {
@@ -27,6 +29,7 @@ impl Interpreter {
             result: Value::Nil,
             fstr_note: '$',
             skip_check: false,
+            enable_error_recovery: false,
         };
 
         // Initialize VM modules
@@ -47,6 +50,7 @@ impl Interpreter {
             fstr_note: '$',
             result: Value::Nil,
             skip_check: false,
+            enable_error_recovery: false,
         };
         interp
     }
@@ -68,6 +72,15 @@ impl Interpreter {
     pub fn skip_check(&mut self) {
         self.skip_check = true;
         self.evaler.skip_check();
+    }
+
+    /// Enable error recovery to collect multiple errors during parsing
+    ///
+    /// When enabled, the parser will attempt to recover from syntax errors
+    /// and continue parsing to collect additional errors instead of aborting
+    /// on the first error.
+    pub fn enable_error_recovery(&mut self) {
+        self.enable_error_recovery = true;
     }
 
     pub fn interpret(&mut self, code: &str) -> AutoResult<()> {

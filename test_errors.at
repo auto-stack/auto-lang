@@ -1,12 +1,19 @@
-// Test file for error messages
-// This should trigger: Unexpected token error
-let x = ;
+// Test file with multiple syntax errors to verify error recovery
 
-// This should trigger: Expected type error
-fn bad_fn( -> int) { 0 }
+// Error 1: Missing operator
+let x = 1 2
 
-// This should trigger: Expected integer error
-let arr = [abc];
+// Error 2: Undefined variable
+let y = undefined_var
 
-// This should trigger: Invalid key error
-{ 123: "value" }
+// Error 3: Missing closing brace
+fn add(a int, b int int {
+    a + b
+}
+
+// Error 4: Invalid token in expression
+let z = 1 + + 2
+
+// Error 5: Assignment to let binding
+let a = 10
+a = 20

@@ -10,6 +10,77 @@ use thiserror::Error;
 // Re-export commonly used types
 pub use miette::{MietteError, Result};
 
+/// Calculate Levenshtein distance between two strings
+///
+/// Returns the minimum number of single-character edits (insertions, deletions, or substitutions)
+/// required to change one string into the other.
+fn levenshtein_distance(s1: &str, s2: &str) -> usize {
+    let chars1: Vec<char> = s1.chars().collect();
+    let chars2: Vec<char> = s2.chars().collect();
+    let m = chars1.len();
+    let n = chars2.len();
+
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+
+    let mut matrix = vec![vec![0; n + 1]; m + 1];
+
+    for i in 0..=m {
+        matrix[i][0] = i;
+    }
+    for j in 0..=n {
+        matrix[0][j] = j;
+    }
+
+    for i in 1..=m {
+        for j in 1..=n {
+            let cost = if chars1[i - 1] == chars2[j - 1] { 0 } else { 1 };
+            matrix[i][j] = [
+                matrix[i - 1][j] + 1,        // deletion
+                matrix[i][j - 1] + 1,        // insertion
+                matrix[i - 1][j - 1] + cost, // substitution
+            ]
+            .iter()
+            .min()
+            .copied()
+            .unwrap();
+        }
+    }
+
+    matrix[m][n]
+}
+
+/// Find the best match from a list of candidates using Levenshtein distance
+///
+/// Returns the candidate with the smallest distance if it's within a reasonable threshold,
+/// otherwise returns None.
+fn find_best_match(target: &str, candidates: &[String]) -> Option<String> {
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let mut best_match = None;
+    let mut best_distance = usize::MAX;
+
+    for candidate in candidates {
+        let distance = levenshtein_distance(target, candidate);
+
+        // Threshold: allow up to 3 edits, or 30% of the target length, whichever is larger
+        let threshold = std::cmp::max(3, target.len() / 3);
+
+        if distance < best_distance && distance <= threshold {
+            best_distance = distance;
+            best_match = Some(candidate.clone());
+        }
+    }
+
+    best_match
+}
+
 /// Convert a `Pos` to a `SourceSpan` for use with miette diagnostics
 ///
 /// # Example
@@ -38,7 +109,7 @@ pub fn span_from(offset: usize, len: usize) -> SourceSpan {
 }
 
 /// Syntax error with attached source code for displaying code snippets
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SyntaxErrorWithSource {
     pub source: NamedSource<String>,
     pub error: SyntaxError,
@@ -89,7 +160,7 @@ pub type AutoResult<T> = std::result::Result<T, AutoError>;
 ///
 /// This enum encompasses all possible errors that can occur during
 /// compilation, parsing, type checking, and evaluation.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum AutoError {
     /// Syntax errors during parsing
     #[error(transparent)]
@@ -111,9 +182,21 @@ pub enum AutoError {
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
 
-    /// IO errors (file reading, etc.)
+    /// Multiple errors collected during parsing with error recovery
+    #[error("aborting due to {count} previous error{plural}")]
+    MultipleErrors {
+        count: usize,
+        plural: String,
+        errors: Vec<AutoError>,
+    },
+
+    /// Compiler warnings
     #[error(transparent)]
-    Io(#[from] std::io::Error),
+    Warning(#[from] Warning),
+
+    /// IO errors (file reading, etc.)
+    #[error("{0}")]
+    Io(String),
 
     /// Generic error message (for converting from other error types)
     #[error("{0}")]
@@ -129,6 +212,8 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.code(),
             AutoError::Name(e) => e.code(),
             AutoError::Runtime(e) => e.code(),
+            AutoError::MultipleErrors { .. } => Some(Box::new("auto_syntax_E0099")),
+            AutoError::Warning(e) => e.code(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
         }
@@ -141,6 +226,8 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.severity(),
             AutoError::Name(e) => e.severity(),
             AutoError::Runtime(e) => e.severity(),
+            AutoError::MultipleErrors { .. } => Some(miette::Severity::Error),
+            AutoError::Warning(e) => e.severity(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
         }
@@ -153,6 +240,10 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.help(),
             AutoError::Name(e) => e.help(),
             AutoError::Runtime(e) => e.help(),
+            AutoError::MultipleErrors { .. } => {
+                Some(Box::new("Fix the reported errors and try again"))
+            }
+            AutoError::Warning(e) => e.help(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
         }
@@ -165,6 +256,8 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.url(),
             AutoError::Name(e) => e.url(),
             AutoError::Runtime(e) => e.url(),
+            AutoError::MultipleErrors { .. } => None,
+            AutoError::Warning(e) => e.url(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
         }
@@ -177,8 +270,19 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.labels(),
             AutoError::Name(e) => e.labels(),
             AutoError::Runtime(e) => e.labels(),
+            AutoError::MultipleErrors { .. } => None,
+            AutoError::Warning(e) => e.labels(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
+        }
+    }
+
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn miette::Diagnostic> + 'a>> {
+        match self {
+            AutoError::MultipleErrors { errors, .. } => Some(Box::new(
+                errors.iter().map(|e| e as &dyn miette::Diagnostic),
+            )),
+            _ => None,
         }
     }
 
@@ -189,6 +293,8 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.source_code(),
             AutoError::Name(e) => e.source_code(),
             AutoError::Runtime(e) => e.source_code(),
+            AutoError::MultipleErrors { .. } => None,
+            AutoError::Warning(e) => e.source_code(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
         }
@@ -198,6 +304,12 @@ impl Diagnostic for AutoError {
 impl From<String> for AutoError {
     fn from(msg: String) -> Self {
         AutoError::Msg(msg)
+    }
+}
+
+impl From<std::io::Error> for AutoError {
+    fn from(err: std::io::Error) -> Self {
+        AutoError::Io(err.to_string())
     }
 }
 
@@ -222,7 +334,7 @@ impl AutoError {
 // ============================================================================
 
 /// Syntax errors during parsing
-#[derive(Error, Diagnostic, Debug)]
+#[derive(Error, Diagnostic, Debug, Clone)]
 pub enum SyntaxError {
     /// Unexpected token encountered
     #[error("unexpected token")]
@@ -307,7 +419,7 @@ pub enum SyntaxError {
 // ============================================================================
 
 /// Type checking errors
-#[derive(Error, Diagnostic, Debug)]
+#[derive(Error, Diagnostic, Debug, Clone)]
 pub enum TypeError {
     /// Type mismatch
     #[error("type mismatch")]
@@ -376,53 +488,157 @@ pub enum TypeError {
 // ============================================================================
 
 /// Name resolution and binding errors
-#[derive(Error, Diagnostic, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum NameError {
     /// Undefined variable
     #[error("undefined variable")]
-    #[diagnostic(
-        code(auto_name_E0201),
-        help("Variable '{name}' is not defined in this scope")
-    )]
     UndefinedVariable {
         name: String,
-        #[label("variable '{name}' not found")]
         span: SourceSpan,
+        /// Suggested variable name (if a similar one exists)
+        suggested: Option<String>,
     },
 
     /// Duplicate definition
     #[error("duplicate definition")]
-    #[diagnostic(
-        code(auto_name_E0202),
-        help("The name '{name}' is already defined in this scope")
-    )]
     DuplicateDefinition {
         name: String,
-        #[label("'{name}' is already defined")]
         span: SourceSpan,
         original_span: Option<SourceSpan>,
     },
 
     /// Cannot assign to immutable variable
     #[error("cannot assign to immutable variable")]
-    #[diagnostic(
-        code(auto_name_E0203),
-        help("Use 'mut' instead of 'let' to make this variable mutable")
-    )]
-    ImmutableAssignment {
-        name: String,
-        #[label("'{name}' is immutable")]
-        span: SourceSpan,
-    },
+    ImmutableAssignment { name: String, span: SourceSpan },
 
     /// Undefined function
     #[error("undefined function")]
-    #[diagnostic(code(auto_name_E0204), help("Function '{name}' is not defined"))]
     UndefinedFunction {
         name: String,
-        #[label("function '{name}' not found")]
         span: SourceSpan,
+        /// Suggested function name (if a similar one exists)
+        suggested: Option<String>,
     },
+}
+
+// Manual Diagnostic implementation for NameError to support dynamic suggestions
+impl Diagnostic for NameError {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match self {
+            NameError::UndefinedVariable { .. } => Some(Box::new("auto_name_E0201")),
+            NameError::DuplicateDefinition { .. } => Some(Box::new("auto_name_E0202")),
+            NameError::ImmutableAssignment { .. } => Some(Box::new("auto_name_E0203")),
+            NameError::UndefinedFunction { .. } => Some(Box::new("auto_name_E0204")),
+        }
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        Some(miette::Severity::Error)
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match self {
+            NameError::UndefinedVariable { name, .. } => Some(Box::new(format!(
+                "Variable '{}' is not defined in this scope",
+                name
+            ))),
+            NameError::DuplicateDefinition { name, .. } => Some(Box::new(format!(
+                "The name '{}' is already defined in this scope",
+                name
+            ))),
+            NameError::ImmutableAssignment { name, .. } => Some(Box::new(format!(
+                "Use 'mut' instead of 'let' to make '{}' mutable",
+                name
+            ))),
+            NameError::UndefinedFunction { name, .. } => {
+                Some(Box::new(format!("Function '{}' is not defined", name)))
+            }
+        }
+    }
+
+    fn labels<'a>(&'a self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + 'a>> {
+        match self {
+            NameError::UndefinedVariable { name, span, .. } => {
+                let offset = span.offset();
+                let len = span.len();
+                Some(Box::new(std::iter::once(miette::LabeledSpan::new(
+                    Some(format!("variable '{}' not found", name)),
+                    offset,
+                    len,
+                ))))
+            }
+            NameError::DuplicateDefinition { name, span, .. } => {
+                let offset = span.offset();
+                let len = span.len();
+                Some(Box::new(std::iter::once(miette::LabeledSpan::new(
+                    Some(format!("'{}' is already defined", name)),
+                    offset,
+                    len,
+                ))))
+            }
+            NameError::ImmutableAssignment { name, span } => {
+                let offset = span.offset();
+                let len = span.len();
+                Some(Box::new(std::iter::once(miette::LabeledSpan::new(
+                    Some(format!("'{}' is immutable", name)),
+                    offset,
+                    len,
+                ))))
+            }
+            NameError::UndefinedFunction { name, span, .. } => {
+                let offset = span.offset();
+                let len = span.len();
+                Some(Box::new(std::iter::once(miette::LabeledSpan::new(
+                    Some(format!("function '{}' not found", name)),
+                    offset,
+                    len,
+                ))))
+            }
+        }
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        None
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        None
+    }
+}
+
+impl NameError {
+    /// Create an UndefinedVariable error with automatic suggestion
+    pub fn undefined_variable(name: String, span: SourceSpan, candidates: &[String]) -> Self {
+        let suggested = find_best_match(&name, candidates);
+        NameError::UndefinedVariable {
+            name,
+            span,
+            suggested,
+        }
+    }
+
+    /// Create an UndefinedFunction error with automatic suggestion
+    pub fn undefined_function(name: String, span: SourceSpan, candidates: &[String]) -> Self {
+        let suggested = find_best_match(&name, candidates);
+        NameError::UndefinedFunction {
+            name,
+            span,
+            suggested,
+        }
+    }
+
+    /// Get the suggestion text for display
+    pub fn get_suggestion_text(&self) -> Option<String> {
+        match self {
+            NameError::UndefinedVariable { suggested, .. } => {
+                suggested.as_ref().map(|s| format!("Did you mean '{}'?", s))
+            }
+            NameError::UndefinedFunction { suggested, .. } => {
+                suggested.as_ref().map(|s| format!("Did you mean '{}'?", s))
+            }
+            _ => None,
+        }
+    }
 }
 
 // ============================================================================
@@ -430,7 +646,7 @@ pub enum NameError {
 // ============================================================================
 
 /// Runtime evaluation errors
-#[derive(Error, Diagnostic, Debug)]
+#[derive(Error, Diagnostic, Debug, Clone)]
 pub enum RuntimeError {
     /// Division by zero
     #[error("division by zero")]
@@ -477,6 +693,82 @@ pub enum RuntimeError {
     )]
     BreakOutsideLoop {
         #[label("'break' statement not inside a loop")]
+        span: SourceSpan,
+    },
+}
+
+// ============================================================================
+// Warning Errors (W0001-W0099)
+// ============================================================================
+
+/// Compiler warnings
+///
+/// These don't prevent compilation but indicate potential issues
+#[derive(Error, Diagnostic, Debug, Clone)]
+pub enum Warning {
+    /// Unused variable warning
+    #[error("unused variable")]
+    #[diagnostic(
+        code(auto_warning_W0001),
+        severity(warning),
+        help("Variable '{name}' is defined but never used")
+    )]
+    UnusedVariable {
+        name: String,
+        #[label("unused variable '{name}'")]
+        span: SourceSpan,
+    },
+
+    /// Unused import warning
+    #[error("unused import")]
+    #[diagnostic(
+        code(auto_warning_W0002),
+        severity(warning),
+        help("Import '{path}' is not used in this module")
+    )]
+    UnusedImport {
+        path: String,
+        #[label("unused import '{path}'")]
+        span: SourceSpan,
+    },
+
+    /// Dead code warning
+    #[error("dead code")]
+    #[diagnostic(
+        code(auto_warning_W0003),
+        severity(warning),
+        help("This code will never be executed")
+    )]
+    DeadCode {
+        #[label("unreachable code")]
+        span: SourceSpan,
+    },
+
+    /// Implicit type conversion warning
+    #[error("implicit type conversion")]
+    #[diagnostic(
+        code(auto_warning_W0004),
+        severity(warning),
+        help("Implicit conversion from '{from}' to '{to}'")
+    )]
+    ImplicitTypeConversion {
+        from: String,
+        to: String,
+        #[label("implicit conversion")]
+        span: SourceSpan,
+    },
+
+    /// Deprecated feature warning
+    #[error("deprecated feature")]
+    #[diagnostic(
+        code(auto_warning_W0005),
+        severity(warning),
+        help("'{name}' is deprecated: {message}")
+    )]
+    DeprecatedFeature {
+        name: String,
+        message: String,
+        #[label("deprecated feature '{name}'")]
         span: SourceSpan,
     },
 }

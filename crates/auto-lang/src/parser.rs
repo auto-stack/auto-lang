@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::error::{pos_to_span, SyntaxError};
+use crate::error::{pos_to_span, AutoError, AutoResult, SyntaxError};
 use crate::lexer::Lexer;
 use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
@@ -12,8 +12,6 @@ use miette::SourceSpan;
 use std::collections::HashMap;
 use std::i32;
 use std::rc::Rc;
-
-use crate::error::AutoResult;
 
 /// TODO: T should be a generic AST node type
 pub trait ParserExt {
@@ -140,6 +138,10 @@ pub struct Parser<'a> {
     pub special_blocks: HashMap<AutoStr, Box<dyn BlockParser>>,
     pub skip_check: bool,
     pub compile_dest: CompileDest,
+    /// Error recovery: collected errors during parsing
+    pub errors: Vec<AutoError>,
+    /// Maximum number of errors to collect before aborting
+    pub error_limit: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -167,6 +169,8 @@ impl<'a> Parser<'a> {
             compile_dest: CompileDest::Interp,
             special_blocks: HashMap::new(),
             skip_check: false,
+            errors: Vec::new(),
+            error_limit: crate::get_error_limit(), // Use global error limit
         };
         parser.skip_comments();
         parser
@@ -201,6 +205,8 @@ impl<'a> Parser<'a> {
             compile_dest: CompileDest::Interp,
             special_blocks: HashMap::new(),
             skip_check: false,
+            errors: Vec::new(),
+            error_limit: crate::get_error_limit(), // Use global error limit
         };
         parser.skip_comments();
         parser
@@ -309,6 +315,67 @@ impl<'a> Parser<'a> {
         self.next();
         Ok(Stmt::Break)
     }
+
+    /// Synchronize parser state after encountering an error
+    ///
+    /// This method skips tokens until we reach a statement boundary,
+    /// allowing the parser to continue collecting errors instead of
+    /// aborting on the first error.
+    ///
+    /// Statement boundaries are:
+    /// - Semicolon
+    /// - Keywords that start statements (fn, let, var, mut, for, while, if, return, etc.)
+    /// - End of file
+    fn synchronize(&mut self) {
+        // Skip tokens until we reach a statement boundary
+        while !self.is_at_end() {
+            // Semicolon is a statement boundary
+            if self.is_kind(TokenKind::Semi) {
+                self.next();
+                return;
+            }
+
+            // Check if we're at a keyword that starts a statement
+            match self.kind() {
+                TokenKind::Fn
+                | TokenKind::Let
+                | TokenKind::Var
+                | TokenKind::Mut
+                | TokenKind::For
+                | TokenKind::If
+                | TokenKind::Break
+                | TokenKind::Use
+                | TokenKind::Type
+                | TokenKind::Union
+                | TokenKind::Tag
+                | TokenKind::Enum
+                | TokenKind::On
+                | TokenKind::Alias
+                | TokenKind::Is => {
+                    // We've reached a statement boundary, don't consume the token
+                    return;
+                }
+                _ => {
+                    // Not at a boundary, skip this token
+                    self.next();
+                }
+            }
+        }
+    }
+
+    /// Check if we're at the end of the input
+    fn is_at_end(&mut self) -> bool {
+        self.kind() == TokenKind::EOF
+    }
+
+    /// Add an error to the error collection
+    ///
+    /// Returns true if we should continue parsing (haven't hit error limit),
+    /// false if we should abort.
+    fn add_error(&mut self, error: AutoError) -> bool {
+        self.errors.push(error);
+        self.errors.len() < self.error_limit
+    }
 }
 
 pub enum CodeSection {
@@ -324,6 +391,7 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         let mut current_section = CodeSection::None;
         let mut stmt_index = 0; // Track statement index for is_first_stmt check
+
         while !self.is_kind(TokenKind::EOF) {
             // deal with sections
             if self.is_kind(TokenKind::Hash) {
@@ -340,15 +408,20 @@ impl<'a> Parser<'a> {
                         current_section = CodeSection::Auto;
                     }
                     _ => {
-                        return Err(SyntaxError::Generic {
+                        let error = SyntaxError::Generic {
                             message: format!("Unknown section {}", section),
                             span: pos_to_span(self.cur.pos),
                         }
-                        .into());
+                        .into();
+                        if !self.add_error(error) {
+                            return Err(self.errors.pop().unwrap()); // Error limit exceeded
+                        }
+                        self.synchronize();
+                        continue;
                     }
                 }
                 // skip until newline
-                self.skip_line()?;
+                let _ = self.skip_line();
                 continue;
             } else {
                 match self.compile_dest {
@@ -376,27 +449,51 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            let stmt = self.parse_stmt()?;
-            // First level pairs are viewed as variable declarations
-            // TODO: this should only happen in a Config scenario
-            if let Stmt::Expr(Expr::Pair(Pair { key, value })) = &stmt {
-                if let Some(name) = key.name() {
-                    self.define(
-                        name,
-                        Meta::Store(Store {
-                            name: name.into(),
-                            kind: StoreKind::Var,
-                            ty: Type::Unknown,
-                            expr: *value.clone(),
-                        }),
-                    );
+            match self.parse_stmt() {
+                Ok(stmt) => {
+                    // First level pairs are viewed as variable declarations
+                    // TODO: this should only happen in a Config scenario
+                    if let Stmt::Expr(Expr::Pair(Pair { key, value })) = &stmt {
+                        if let Some(name) = key.name() {
+                            self.define(
+                                name,
+                                Meta::Store(Store {
+                                    name: name.into(),
+                                    kind: StoreKind::Var,
+                                    ty: Type::Unknown,
+                                    expr: *value.clone(),
+                                }),
+                            );
+                        }
+                    }
+                    stmts.push(stmt);
+                    let is_first = stmt_index == 0;
+                    let _ = self.expect_eos(is_first);
+                    stmt_index += 1;
+                }
+                Err(e) => {
+                    // Add error to collection and synchronize
+                    if !self.add_error(e) {
+                        return Err(self.errors.pop().unwrap()); // Error limit exceeded
+                    }
+                    self.synchronize();
                 }
             }
-            stmts.push(stmt);
-            let is_first = stmt_index == 0;
-            self.expect_eos(is_first)?;
-            stmt_index += 1;
         }
+
+        // Check if we collected any errors
+        if !self.errors.is_empty() {
+            // Return MultipleErrors with all collected errors
+            let error_count = self.errors.len();
+            let plural = if error_count > 1 { "s" } else { "" };
+
+            return Err(AutoError::MultipleErrors {
+                count: error_count,
+                plural: plural.to_string(),
+                errors: self.errors.clone(),
+            });
+        }
+
         stmts = self.convert_last_block(stmts)?;
         Ok(Code { stmts })
     }
@@ -1610,28 +1707,38 @@ impl<'a> Parser<'a> {
         }
         let has_new_line = new_lines > 0;
         let mut stmt_index = 0; // Track statement index for is_first_stmt check
+
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            let stmt = self.parse_stmt()?;
-            if is_node {
-                if let Stmt::Expr(Expr::Pair(Pair { key, value })) = &stmt {
-                    // define as a property
-                    self.define(
-                        key.to_string().as_str(),
-                        Meta::Pair(Pair {
-                            key: key.clone(),
-                            value: value.clone(),
-                        }),
-                    );
+            match self.parse_stmt() {
+                Ok(stmt) => {
+                    if is_node {
+                        if let Stmt::Expr(Expr::Pair(Pair { key, value })) = &stmt {
+                            // define as a property
+                            self.define(
+                                key.to_string().as_str(),
+                                Meta::Pair(Pair {
+                                    key: key.clone(),
+                                    value: value.clone(),
+                                }),
+                            );
+                        }
+                    }
+                    stmts.push(stmt);
+                    let is_first = stmt_index == 0;
+                    let _ = self.expect_eos(is_first);
+                    stmt_index += 1;
+                }
+                Err(e) => {
+                    // Add error to collection and synchronize
+                    if !self.add_error(e) {
+                        self.exit_scope();
+                        return Err(self.errors.pop().unwrap()); // Error limit exceeded
+                    }
+                    self.synchronize();
                 }
             }
-            stmts.push(stmt);
-            let is_first = stmt_index == 0;
-            let newline_count = self.expect_eos(is_first)?;
-            if newline_count > 1 {
-                stmts.push(Stmt::EmptyLine(newline_count - 1));
-            }
-            stmt_index += 1;
         }
+
         stmts = self.convert_last_block(stmts)?;
         self.exit_scope();
         self.expect(TokenKind::RBrace)?;

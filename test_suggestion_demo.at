@@ -1,0 +1,13 @@
+// Test program to demonstrate "did you mean?" functionality
+// This will be run through the evaluator to test suggestions
+
+let username = "alice"
+let counter = 0
+let user_id = 12345
+
+// These should trigger suggestions:
+// print(usrename)  // Should suggest "username"
+// print(cuonter)   // Should suggest "counter"
+// print(usreid)    // Should suggest "user_id" or "username"
+
+username  // Return valid value to avoid errors

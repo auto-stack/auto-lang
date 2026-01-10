@@ -621,6 +621,44 @@ impl Universe {
         self.builtins.get(name).cloned()
     }
 
+    /// Get all defined variable/function names in current scope for suggestions
+    ///
+    /// Returns a list of names that could be used for "did you mean?" suggestions
+    pub fn get_defined_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+
+        // Collect names from current scope and all parent scopes
+        let mut current_sid = Some(self.cur_spot.clone());
+
+        while let Some(sid) = current_sid {
+            if let Some(scope) = self.scopes.get(&sid) {
+                // Add all symbols (variables, functions, etc.)
+                for name in scope.symbols.keys() {
+                    names.push(name.to_string());
+                }
+
+                // Add all types
+                for name in scope.types.keys() {
+                    names.push(name.to_string());
+                }
+
+                // Move to parent scope
+                current_sid = scope.parent.clone();
+            } else {
+                break;
+            }
+        }
+
+        // Also add builtin functions
+        for name in self.builtins.keys() {
+            names.push(name.to_string());
+        }
+
+        names.sort();
+        names.dedup();
+        names
+    }
+
     pub fn define_alias(&mut self, alias: AutoStr, target: AutoStr) {
         self.cur_scope_mut().define_alias(alias, target);
     }
