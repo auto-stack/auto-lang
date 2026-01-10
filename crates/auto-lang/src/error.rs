@@ -153,6 +153,51 @@ impl Diagnostic for SyntaxErrorWithSource {
     }
 }
 
+/// Lexer error with attached source code for displaying code snippets
+#[derive(Debug, Clone)]
+pub struct LexerErrorWithSource {
+    pub source: NamedSource<String>,
+    pub error: LexerError,
+}
+
+impl std::fmt::Display for LexerErrorWithSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.error)
+    }
+}
+
+impl std::error::Error for LexerErrorWithSource {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
+impl Diagnostic for LexerErrorWithSource {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.error.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.error.severity()
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.error.help()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.error.url()
+    }
+
+    fn labels<'a>(&'a self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + 'a>> {
+        self.error.labels()
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.source)
+    }
+}
+
 /// Alias for Result type with AutoLang errors
 pub type AutoResult<T> = std::result::Result<T, AutoError>;
 
@@ -165,6 +210,10 @@ pub enum AutoError {
     /// Lexer errors during tokenization
     #[error(transparent)]
     Lexer(#[from] LexerError),
+
+    /// Lexer errors with source code
+    #[error(transparent)]
+    LexerWithSource(#[from] LexerErrorWithSource),
 
     /// Syntax errors during parsing
     #[error(transparent)]
@@ -212,6 +261,7 @@ impl Diagnostic for AutoError {
     fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
             AutoError::Lexer(e) => e.code(),
+            AutoError::LexerWithSource(e) => e.code(),
             AutoError::Syntax(e) => e.code(),
             AutoError::SyntaxWithSource(e) => e.code(),
             AutoError::Type(e) => e.code(),
@@ -227,6 +277,7 @@ impl Diagnostic for AutoError {
     fn severity(&self) -> Option<miette::Severity> {
         match self {
             AutoError::Lexer(e) => e.severity(),
+            AutoError::LexerWithSource(e) => e.severity(),
             AutoError::Syntax(e) => e.severity(),
             AutoError::SyntaxWithSource(e) => e.severity(),
             AutoError::Type(e) => e.severity(),
@@ -242,6 +293,7 @@ impl Diagnostic for AutoError {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
             AutoError::Lexer(e) => e.help(),
+            AutoError::LexerWithSource(e) => e.help(),
             AutoError::Syntax(e) => e.help(),
             AutoError::SyntaxWithSource(e) => e.help(),
             AutoError::Type(e) => e.help(),
@@ -259,6 +311,7 @@ impl Diagnostic for AutoError {
     fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
             AutoError::Lexer(e) => e.url(),
+            AutoError::LexerWithSource(e) => e.url(),
             AutoError::Syntax(e) => e.url(),
             AutoError::SyntaxWithSource(e) => e.url(),
             AutoError::Type(e) => e.url(),
@@ -274,6 +327,7 @@ impl Diagnostic for AutoError {
     fn labels<'a>(&'a self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + 'a>> {
         match self {
             AutoError::Lexer(e) => e.labels(),
+            AutoError::LexerWithSource(e) => e.labels(),
             AutoError::Syntax(e) => e.labels(),
             AutoError::SyntaxWithSource(e) => e.labels(),
             AutoError::Type(e) => e.labels(),
@@ -298,6 +352,7 @@ impl Diagnostic for AutoError {
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         match self {
             AutoError::Lexer(e) => e.source_code(),
+            AutoError::LexerWithSource(e) => e.source_code(),
             AutoError::Syntax(e) => e.source_code(),
             AutoError::SyntaxWithSource(e) => e.source_code(),
             AutoError::Type(e) => e.source_code(),
@@ -333,6 +388,14 @@ impl AutoError {
     /// Attach source code to a syntax error
     pub fn with_source(err: SyntaxError, name: String, code: String) -> Self {
         AutoError::SyntaxWithSource(SyntaxErrorWithSource {
+            source: NamedSource::new(name, code),
+            error: err,
+        })
+    }
+
+    /// Attach source code to a lexer error
+    pub fn with_source_lexer(err: LexerError, name: String, code: String) -> Self {
+        AutoError::LexerWithSource(LexerErrorWithSource {
             source: NamedSource::new(name, code),
             error: err,
         })
@@ -852,6 +915,10 @@ pub enum Warning {
 /// Attach source code to any error for displaying code snippets
 pub fn attach_source(err: AutoError, name: String, code: String) -> AutoError {
     match err {
+        AutoError::Lexer(e) => AutoError::LexerWithSource(LexerErrorWithSource {
+            source: NamedSource::new(name, code),
+            error: e,
+        }),
         AutoError::Syntax(e) => AutoError::SyntaxWithSource(SyntaxErrorWithSource {
             source: NamedSource::new(name, code),
             error: e,
