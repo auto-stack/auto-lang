@@ -520,10 +520,19 @@ impl fmt::Display for Node {
 
         if !(body_props.is_empty() && !has_kids && !has_lazy_ref) {
             write!(f, " {{")?;
+
+            // Collect all items (props and kids) to know total count
+            let total_items = body_props.len() + self.kids_len();
+            let mut item_index = 0;
+
             if !body_props.is_empty() {
                 for (key, value) in body_props {
                     write!(f, "{}: {}", key, value)?;
-                    write!(f, "; ")?;
+                    item_index += 1;
+                    // Add semicolon only if this is not the last item
+                    if item_index < total_items {
+                        write!(f, "; ")?;
+                    }
                 }
             }
             // Display from kids
@@ -555,7 +564,11 @@ impl fmt::Display for Node {
                             }
                         }
                     }
-                    write!(f, "; ")?;
+                    item_index += 1;
+                    // Add semicolon only if this is not the last item
+                    if item_index < total_items {
+                        write!(f, "; ")?;
+                    }
                 }
             }
             write!(f, "}}")?;

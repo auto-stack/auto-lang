@@ -6,5 +6,4 @@ edition = "2024"
 [dependencies]
 auto-lang = { workspace = true }
 auto-val = { workspace = true }
-auto-atom = { workspace = true }
 roxmltree = { workspace = true }

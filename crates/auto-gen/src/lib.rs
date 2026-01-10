@@ -23,7 +23,7 @@ pub use template::{Template, TemplateEngine};
 
 use std::{collections::HashMap, path::Path};
 
-use auto_atom::Atom;
+use auto_lang::atom::Atom;
 use auto_val::{AutoPath, AutoResult, AutoStr};
 use regex::Regex;
 
@@ -117,7 +117,7 @@ impl AutoGen {
     pub fn gen_all(&self) -> AutoStr {
         // Extract name from atom - if it's a Node, get its name property
         let atom_name = match &self.data {
-            auto_atom::Atom::Node(node) => {
+            auto_lang::atom::Atom::Node(node) => {
                 let name_prop = node.get_prop_of("name");
                 if !name_prop.is_nil() {
                     name_prop.to_astr().to_string()
@@ -368,7 +368,7 @@ mod tests {
         let atom = Atom::assemble(values).unwrap();
         let ag = AutoGen::new().data(atom);
         let result = ag.gen_all();
-        assert_eq!(result, "atom {a: 1; b: 2; }");
+        assert_eq!(result, "atom {a: 1; b: 2}");
     }
 
     #[test]

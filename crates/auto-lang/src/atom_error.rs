@@ -15,7 +15,7 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```rust
-/// use auto_atom::AtomError;
+/// use auto_lang::atom_error::AtomError;
 ///
 /// let err = AtomError::InvalidType {
 ///     expected: "Node".to_string(),
@@ -89,7 +89,8 @@ pub enum AtomError {
 /// # Examples
 ///
 /// ```rust
-/// use auto_atom::{Atom, AtomResult};
+/// use auto_lang::atom::Atom;
+/// use auto_lang::atom_error::{AtomError, AtomResult};
 /// use auto_val::Value;
 ///
 /// fn create_atom() -> AtomResult<Atom> {

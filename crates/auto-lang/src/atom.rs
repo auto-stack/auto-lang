@@ -2,7 +2,7 @@ use auto_val::AutoStr;
 use auto_val::{Array, Node, Obj, Value};
 use std::fmt;
 
-use crate::{AtomError, AtomResult};
+use crate::atom_error::{AtomError, AtomResult};
 
 /// An Atom represents Auto Object Markup data
 ///
@@ -14,7 +14,7 @@ use crate::{AtomError, AtomResult};
 /// Creating a node atom from values:
 ///
 /// ```rust
-/// use auto_atom::Atom;
+/// use auto_lang::atom::Atom;
 /// use auto_val::Value;
 ///
 /// let atom = Atom::assemble(vec![
@@ -26,7 +26,7 @@ use crate::{AtomError, AtomResult};
 /// Creating an array atom:
 ///
 /// ```rust
-/// use auto_atom::Atom;
+/// use auto_lang::atom::Atom;
 ///
 /// let atom = Atom::assemble_array(vec![1, 2, 3, 4, 5]);
 /// ```
@@ -34,7 +34,7 @@ use crate::{AtomError, AtomResult};
 /// Converting to string:
 ///
 /// ```rust
-/// use auto_atom::Atom;
+/// use auto_lang::atom::Atom;
 /// use auto_val::Value;
 ///
 /// let atom = Atom::assemble(vec![
@@ -66,7 +66,7 @@ pub enum Atom {
 /// # Examples
 ///
 /// ```rust
-/// use auto_atom::EMPTY;
+/// use auto_lang::atom::EMPTY;
 ///
 /// assert!(EMPTY.is_empty_atom());
 /// assert_eq!(EMPTY.to_astr(), "");
@@ -97,7 +97,7 @@ impl Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_atom::Atom;
+    /// use auto_lang::atom::Atom;
     /// use auto_val::{Value, Node};
     ///
     /// let node = Node::new("test");
@@ -132,7 +132,7 @@ impl Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_atom::Atom;
+    /// use auto_lang::atom::Atom;
     /// use auto_val::Obj;
     ///
     /// let obj = Obj::new();
@@ -152,7 +152,7 @@ impl Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_atom::Atom;
+    /// use auto_lang::atom::Atom;
     /// use auto_val::Node;
     ///
     /// let node = Node::new("test");
@@ -172,7 +172,7 @@ impl Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_atom::Atom;
+    /// use auto_lang::atom::Atom;
     /// use auto_val::Array;
     ///
     /// let array = Array::from_vec(vec![1, 2, 3]);
@@ -192,7 +192,7 @@ impl Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_atom::Atom;
+    /// use auto_lang::atom::Atom;
     ///
     /// let atom = Atom::assemble_array(vec![1, 2, 3, 4, 5]);
     /// assert!(atom.is_array());
@@ -219,7 +219,7 @@ impl Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_atom::Atom;
+    /// use auto_lang::atom::Atom;
     /// use auto_val::Value;
     ///
     /// let atom = Atom::assemble(vec![
@@ -259,7 +259,7 @@ impl Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_atom::Atom;
+    /// use auto_lang::atom::Atom;
     ///
     /// let atom = Atom::assemble_array(vec![1, 2, 3]);
     /// assert!(atom.is_array());
@@ -277,7 +277,7 @@ impl Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_atom::Atom;
+    /// use auto_lang::atom::Atom;
     /// use auto_val::Value;
     ///
     /// let atom = Atom::assemble(vec![
@@ -298,7 +298,7 @@ impl Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_atom::Atom;
+    /// use auto_lang::atom::Atom;
     /// use auto_val::Obj;
     ///
     /// let obj = Obj::new();
@@ -318,7 +318,7 @@ impl Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_atom::EMPTY;
+    /// use auto_lang::atom::EMPTY;
     ///
     /// assert!(EMPTY.is_empty_atom());
     /// ```
@@ -342,7 +342,7 @@ impl Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_atom::Atom;
+    /// use auto_lang::atom::Atom;
     /// use auto_val::Value;
     ///
     /// let atom = Atom::assemble(vec![
@@ -373,7 +373,7 @@ impl fmt::Display for Atom {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_atom::Atom;
+    /// use auto_lang::atom::Atom;
     /// use auto_val::Value;
     ///
     /// let atom = Atom::assemble(vec![
@@ -381,7 +381,7 @@ impl fmt::Display for Atom {
     ///     Value::pair("b", 2),
     /// ]).unwrap();
     ///
-    /// assert_eq!(format!("{}", atom), "atom {a: 1; b: 2; }");
+    /// assert_eq!(format!("{}", atom), "atom {a: 1; b: 2}");
     /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -390,6 +390,131 @@ impl fmt::Display for Atom {
             Atom::Array(array) => write!(f, "{}", array),
             Atom::Empty => write!(f, ""),
         }
+    }
+}
+
+/// Reader for Atom data from Auto code
+///
+/// AtomReader provides a convenient way to parse Auto code and directly
+/// extract Atom data structures without the overhead of AutoConfig.
+///
+/// # Examples
+///
+/// ```rust
+/// use auto_lang::atom::AtomReader;
+///
+/// let mut reader = AtomReader::new();
+/// let atom = reader.parse("config { name: \"test\"; value: 42; }").unwrap();
+/// assert!(atom.is_node());
+/// ```
+pub struct AtomReader {
+    /// The interpreter used to evaluate Auto code
+    interp: crate::interp::Interpreter,
+    /// The universe (scope) for variable bindings
+    #[allow(dead_code)]
+    univ: auto_val::Shared<crate::Universe>,
+}
+
+impl AtomReader {
+    /// Creates a new AtomReader
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_lang::atom::AtomReader;
+    ///
+    /// let reader = AtomReader::new();
+    /// ```
+    pub fn new() -> Self {
+        use crate::eval::EvalMode;
+        use auto_val::shared;
+
+        let univ = shared(crate::Universe::new());
+        let interp =
+            crate::interp::Interpreter::with_univ(univ.clone()).with_eval_mode(EvalMode::CONFIG);
+        Self { interp, univ }
+    }
+
+    /// Parses Auto code and returns an Atom
+    ///
+    /// This method evaluates the provided Auto code in CONFIG mode and
+    /// converts the result into an Atom.
+    ///
+    /// # Arguments
+    ///
+    /// * `code` - The Auto code to parse
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(Atom)` if parsing succeeds, otherwise returns an error.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_lang::atom::AtomReader;
+    ///
+    /// let mut reader = AtomReader::new();
+    /// let atom = reader.parse("atom { x: 1; y: 2; }").unwrap();
+    /// assert!(atom.is_node());
+    /// ```
+    pub fn parse(&mut self, code: impl Into<auto_val::AutoStr>) -> AtomResult<Atom> {
+        let code = code.into();
+        self.interp
+            .interpret(code.as_str())
+            .map_err(|e| AtomError::ConversionFailed(format!("Failed to parse code: {}", e)))?;
+
+        let result = std::mem::replace(&mut self.interp.result, auto_val::Value::Nil);
+
+        // Special handling for bare arrays and objects
+        match result {
+            auto_val::Value::Array(a) => {
+                // Return the array directly
+                return Ok(Atom::Array(a));
+            }
+            auto_val::Value::Obj(o) => {
+                // Return the object directly
+                return Ok(Atom::Obj(o));
+            }
+            other => Atom::new(other),
+        }
+    }
+
+    /// Reads an Atom from a file
+    ///
+    /// This method reads the contents of a file and parses it as Auto code
+    /// to produce an Atom.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the file to read
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(Atom)` if reading and parsing succeed, otherwise returns an error.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_lang::atom::AtomReader;
+    /// use std::path::Path;
+    ///
+    /// let mut reader = AtomReader::new();
+    /// # // Assuming test.at exists
+    /// # // let atom = reader.read(Path::new("test.at")).unwrap();
+    /// ```
+    pub fn read(&mut self, path: impl AsRef<std::path::Path>) -> AtomResult<Atom> {
+        let path = path.as_ref();
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            AtomError::ConversionFailed(format!("Failed to read file {}: {}", path.display(), e))
+        })?;
+
+        self.parse(content)
+    }
+}
+
+impl Default for AtomReader {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -454,7 +579,7 @@ mod tests {
     #[test]
     fn test_display() {
         let atom = Atom::assemble(vec![Value::pair("a", 1), Value::pair("b", 2)]).unwrap();
-        assert_eq!(format!("{}", atom), "atom {a: 1; b: 2; }");
+        assert_eq!(format!("{}", atom), "atom {a: 1; b: 2}");
     }
 
     // Error handling tests

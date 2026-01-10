@@ -1,8 +1,8 @@
 use super::scope::*;
 use crate::ast::FnKind;
 use crate::ast::{self, Type};
+use crate::atom::Atom;
 use crate::libs;
-use auto_atom::Atom;
 use auto_val::{
     shared, AccessError, AccessPath, Args, AutoStr, ExtFn, Obj, PathComponent, Sig, TypeInfoStore,
     Value, ValueData, ValueID,
@@ -710,7 +710,7 @@ impl Universe {
     // TODO: support nested nodes
     pub fn merge_atom(&mut self, atom: &Atom) {
         match atom {
-            auto_atom::Atom::Node(node) => {
+            Atom::Node(node) => {
                 // Extract properties from the node
                 let name = node.get_prop_of("name");
                 if !name.is_nil() {
@@ -749,7 +749,7 @@ impl Universe {
                     }
                 }
             }
-            auto_atom::Atom::Array(array) => {
+            Atom::Array(array) => {
                 for (i, val) in array.iter().enumerate() {
                     self.set_global(format!("item_{}", i).as_str(), val.clone());
                 }

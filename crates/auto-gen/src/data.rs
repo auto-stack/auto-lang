@@ -1,5 +1,5 @@
 use crate::error::{GenError, GenResult};
-use auto_atom::Atom;
+use auto_lang::atom::Atom;
 use auto_lang::interp::Interpreter;
 use auto_lang::Universe;
 use auto_val::{Shared, Value};

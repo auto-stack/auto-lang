@@ -6,12 +6,11 @@ use crate::scope::Meta;
 use crate::universe::Universe;
 use auto_val;
 use auto_val::{add, comp, div, mul, sub};
-use auto_val::{
-    Array, AutoStr, ConfigBody, ConfigItem, MetaID, Method, Obj, Op, Pair, Sig, Type, Value,
-    ValueData, ValueKey,
-};
+use auto_val::{Array, AutoStr, MetaID, Method, Obj, Op, Sig, Type, Value, ValueData, ValueKey};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::io::Error;
+use std::io::ErrorKind;
 use std::rc::Rc;
 
 pub enum EvalTempo {
@@ -74,6 +73,34 @@ impl Evaler {
                 Ok(value)
             }
             EvalMode::CONFIG => {
+                if code.stmts.len() == 1 {
+                    let first_val = self.eval_stmt(&code.stmts[0])?;
+                    match first_val {
+                        Value::Array(_) => {
+                            return Ok(first_val);
+                        }
+                        Value::Obj(_) => {
+                            return Ok(first_val);
+                        }
+                        Value::Node(n) => {
+                            let mut node = auto_val::Node::new("root");
+                            node.add_kid(n);
+                            return Ok(Value::Node(node));
+                        }
+                        Value::Pair(k, v) => {
+                            let mut node = auto_val::Node::new("root");
+                            node.set_prop(k, *v);
+                            return Ok(Value::Node(node));
+                        }
+                        _ => {
+                            return Err(Error::new(
+                                ErrorKind::InvalidInput,
+                                "Invalid configuration statement",
+                            )
+                            .into());
+                        }
+                    }
+                }
                 let mut node = auto_val::Node::new("root");
                 for stmt in code.stmts.iter() {
                     let val = self.eval_stmt(stmt)?;
@@ -105,46 +132,19 @@ impl Evaler {
                         Value::Array(arr) => {
                             for item in arr.values.into_iter() {
                                 match item {
-                                    Value::ConfigBody(body) => {
-                                        for item in body.items.into_iter() {
-                                            match item {
-                                                ConfigItem::Pair(pair) => {
-                                                    node.set_prop(pair.key, pair.value);
-                                                }
-                                                ConfigItem::Object(o) => {
-                                                    node.merge_obj(o);
-                                                }
-                                                ConfigItem::Node(n) => {
-                                                    node.add_kid(n.clone());
-                                                }
-                                                ConfigItem::Value(v) => {
-                                                    node.set_prop(v.to_astr(), v);
-                                                }
-                                            }
-                                        }
+                                    Value::Pair(key, value) => {
+                                        node.set_prop(key, *value);
                                     }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        Value::ConfigBody(body) => {
-                            for item in body.items.into_iter() {
-                                match item {
-                                    ConfigItem::Pair(pair) => {
-                                        node.set_prop(pair.key, pair.value);
-                                    }
-                                    ConfigItem::Object(o) => {
+                                    Value::Obj(o) => {
                                         node.merge_obj(o);
                                     }
-                                    ConfigItem::Node(n) => {
-                                        node.add_kid(n.clone());
+                                    Value::Node(n) => {
+                                        node.add_kid(n);
                                     }
-                                    ConfigItem::Value(v) => {
-                                        // TODO: where did we get this void prop from config body?
-                                        if v.is_void() {
-                                            continue;
+                                    _ => {
+                                        if !item.is_void() {
+                                            node.set_prop(item.to_astr(), item);
                                         }
-                                        node.set_prop(v.to_astr(), v);
                                     }
                                 }
                             }
@@ -272,17 +272,8 @@ impl Evaler {
         Value::Void
     }
 
-    fn collect_config_body(&mut self, vals: Vec<Value>) -> ConfigBody {
-        let mut body = ConfigBody::new();
-        for val in vals.into_iter() {
-            match val {
-                Value::Pair(key, value) => body.add_pair(Pair::new(key, *value)),
-                Value::Obj(o) => body.add_object(o),
-                Value::Node(n) => body.add_node(n),
-                _ => body.add_val(val),
-            }
-        }
-        body
+    fn collect_config_body(&mut self, vals: Vec<Value>) -> Vec<Value> {
+        vals
     }
 
     fn eval_body(&mut self, body: &Body) -> AutoResult<Value> {
@@ -293,7 +284,7 @@ impl Evaler {
         }
         let res = match self.mode {
             EvalMode::SCRIPT => Ok(res.last().unwrap_or(&Value::Nil).clone()),
-            EvalMode::CONFIG => Ok(Value::ConfigBody(self.collect_config_body(res))),
+            EvalMode::CONFIG => Ok(Value::Array(Array::from_vec(self.collect_config_body(res)))),
             EvalMode::TEMPLATE => Ok(Value::Str(
                 res.iter()
                     .map(|v| match v {
@@ -325,7 +316,7 @@ impl Evaler {
         }
         Ok(match self.mode {
             EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
-            EvalMode::CONFIG => Value::ConfigBody(self.collect_config_body(res)),
+            EvalMode::CONFIG => Value::Array(Array::from_vec(self.collect_config_body(res))),
             EvalMode::TEMPLATE => Value::Str(
                 res.into_iter()
                     .filter(|v| !v.is_nil())
@@ -1289,19 +1280,7 @@ impl Evaler {
         for elem in elems.iter() {
             let v = self.eval_expr(elem);
             if !v.is_void() {
-                if let Value::ConfigBody(b) = v {
-                    // merge values
-                    for i in b.items {
-                        match i {
-                            ConfigItem::Node(n) => values.push(n),
-                            ConfigItem::Pair(p) => values.push(Value::pair(p.key, p.value)),
-                            ConfigItem::Object(o) => values.push(o),
-                            ConfigItem::Value(v) => values.push(v),
-                        }
-                    }
-                } else {
-                    values.push(self.eval_expr(elem));
-                }
+                values.push(v);
             }
         }
         Value::array(values)
@@ -2324,42 +2303,17 @@ impl Evaler {
                         Value::Array(arr) => {
                             for item in arr.values.into_iter() {
                                 match item {
-                                    Value::ConfigBody(body) => {
-                                        for item in body.items.into_iter() {
-                                            match item {
-                                                ConfigItem::Pair(pair) => {
-                                                    props.set(pair.key, pair.value);
-                                                }
-                                                ConfigItem::Object(o) => {
-                                                    props.merge(&o);
-                                                }
-                                                ConfigItem::Node(n) => {
-                                                    nodes.push(n.clone());
-                                                }
-                                                ConfigItem::Value(v) => {
-                                                    props.set(v.to_astr(), v);
-                                                }
-                                            }
-                                        }
+                                    Value::Pair(key, value) => {
+                                        props.set(key, *value);
                                     }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        Value::ConfigBody(body) => {
-                            for item in body.items.into_iter() {
-                                match item {
-                                    ConfigItem::Pair(pair) => {
-                                        props.set(pair.key, pair.value);
-                                    }
-                                    ConfigItem::Object(o) => {
+                                    Value::Obj(o) => {
                                         props.merge(&o);
                                     }
-                                    ConfigItem::Node(n) => {
-                                        nodes.push(n.clone());
+                                    Value::Node(n) => {
+                                        nodes.push(n);
                                     }
-                                    ConfigItem::Value(v) => {
-                                        props.set(v.to_astr(), v);
+                                    _ => {
+                                        props.set(item.to_astr(), item);
                                     }
                                 }
                             }

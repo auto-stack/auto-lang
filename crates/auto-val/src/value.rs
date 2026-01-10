@@ -119,7 +119,6 @@ pub enum Value {
     Ref(AutoStr),
     Error(AutoStr),
     Grid(Grid),
-    ConfigBody(ConfigBody),
     VmRef(VmRef),
     /// Reference to value stored in Universe (NEW)
     ValueRef(ValueID),
@@ -346,7 +345,6 @@ impl Display for Value {
             Value::Ref(target) => write!(f, "(ref {})", target),
             Value::Instance(instance) => write!(f, "{}", instance),
             Value::Grid(grid) => write!(f, "{}", grid),
-            Value::ConfigBody(body) => write!(f, "{}", body),
             Value::Type(typ) => write!(f, "{}", typ.name()),
             Value::VmRef(_) => write!(f, "<vmref>"),
             Value::ValueRef(vid) => write!(f, "{}", vid), // NEW: Display ValueID
@@ -1138,75 +1136,6 @@ impl Pair {
 impl fmt::Display for Pair {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.key, self.value)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ConfigItem {
-    Pair(Pair),
-    Object(Obj),
-    Node(Node),
-    Value(Value), // simple values
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ConfigBody {
-    pub items: Vec<ConfigItem>,
-}
-
-impl ConfigBody {
-    pub fn new() -> Self {
-        Self { items: vec![] }
-    }
-
-    pub fn add_pair(&mut self, pair: Pair) {
-        self.items.push(ConfigItem::Pair(pair));
-    }
-
-    pub fn add_object(&mut self, object: Obj) {
-        self.items.push(ConfigItem::Object(object));
-    }
-
-    pub fn add_node(&mut self, node: Node) {
-        self.items.push(ConfigItem::Node(node));
-    }
-
-    pub fn add_val(&mut self, val: Value) {
-        self.items.push(ConfigItem::Value(val));
-    }
-
-    pub fn to_node(self, name: impl Into<AutoStr>) -> Node {
-        let mut node = Node::new(name);
-        for item in self.items.into_iter() {
-            match item {
-                ConfigItem::Pair(pair) => node.set_prop(pair.key.to_string(), pair.value),
-                ConfigItem::Object(object) => node.merge_obj(object),
-                ConfigItem::Node(n) => node.add_kid(n),
-                ConfigItem::Value(v) => node.set_prop("value".to_string(), v),
-            }
-        }
-        node
-    }
-}
-
-impl fmt::Display for ConfigItem {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ConfigItem::Pair(pair) => write!(f, "{}: {}", pair.key, pair.value),
-            ConfigItem::Object(object) => write!(f, "{}", object),
-            ConfigItem::Node(node) => write!(f, "{}", node),
-            ConfigItem::Value(v) => write!(f, "{}", v),
-        }
-    }
-}
-
-impl fmt::Display for ConfigBody {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{{")?;
-        for item in &self.items {
-            write!(f, "{}", item)?;
-        }
-        write!(f, "}}")
     }
 }
 

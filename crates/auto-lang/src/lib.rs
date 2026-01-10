@@ -1,4 +1,7 @@
 pub mod ast;
+pub mod atom;
+pub mod atom_error;
+pub mod atom_tests;
 pub mod config;
 pub mod error;
 pub mod eval;
@@ -15,6 +18,8 @@ pub mod trans;
 mod universe;
 pub mod util;
 pub mod vm;
+
+pub use atom::{Atom, AtomReader};
 
 #[cfg(test)]
 mod vm_functions_test;
@@ -931,7 +936,7 @@ exe hello {
         let result = interp.result;
         assert_eq!(
             result.repr(),
-            r#"root {name: "hello"; version: "0.1.0"; exe hello {dir: "src"; main: "main.c"; }; }"#
+            r#"root {name: "hello"; version: "0.1.0"; exe hello {dir: "src"; main: "main.c"}}"#
         );
     }
 
@@ -954,7 +959,7 @@ exe hello {
         // TODO: should be `dir("a") {}` instead of `dir a {}`
         assert_eq!(
             conf.root.to_string(),
-            r#"root {name: "hello"; lib hello {dir a {}; dir b {}; dir c {}; }; }"#
+            r#"root {name: "hello"; lib hello {[dir a {}]: [dir a {}]; [dir b {}]: [dir b {}]; [dir c {}]: [dir c {}]}}"#
         );
     }
 
@@ -1425,7 +1430,7 @@ for d in dirs {
         let interp = eval_config(code, &auto_val::Obj::new()).unwrap();
         assert_eq!(
             interp.result.repr(),
-            r#"root {dir a {at: "a"; }; dir b {at: "b"; }; dir c {at: "c"; }; }"#
+            r#"root {[dir a {at: VID(1)}]: [dir a {at: "a"}]; [dir b {at: VID(2)}]: [dir b {at: "b"}]; [dir c {at: VID(3)}]: [dir c {at: "c"}]}"#
         );
     }
 }

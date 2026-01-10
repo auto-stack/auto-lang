@@ -1,9 +1,0 @@
-[package]
-name = "auto-atom"
-version = "0.1.0"
-description = "Atom is short for Auto Object Markup, it is a subset of Auto Language and is similar to JSON+XML. It is used to transfer data."
-edition = "2024"
-
-[dependencies]
-auto-val = { path = "../auto-val" }
-thiserror = "2.0"
