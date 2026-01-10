@@ -1,2 +1,0 @@
-# Test file for miette error display
-let x: int = "this should cause an error"

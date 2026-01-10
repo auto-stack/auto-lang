@@ -1205,10 +1205,8 @@ impl<'a> Parser<'a> {
             _ => {
                 return Err(SyntaxError::Generic {
                     message: format!(
-                        "Expected term, got {:?}, pos: {}, next: {}",
-                        self.kind(),
-                        self.pos(),
-                        self.cur
+                        "Expected term, got {:?}",
+                        self.kind()
                     ),
                     span: pos_to_span(self.cur.pos),
                 }
