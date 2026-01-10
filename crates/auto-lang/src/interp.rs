@@ -105,7 +105,7 @@ impl Interpreter {
             parser = parser.skip_check();
         }
         let ast = parser.parse()?;
-        let result = self.evaler.eval(&ast);
+        let result = self.evaler.eval(&ast)?;
         // Check if result is an error and return it as a Result error
         if result.is_error() {
             return Err(format!("Evaluation error: {}", result).into());
@@ -129,7 +129,7 @@ impl Interpreter {
         let flipped = flip_template(code.as_str(), note);
         let mut parser = Parser::new_with_note(flipped.as_str(), self.scope.clone(), note);
         let ast = parser.parse()?;
-        let result = self.evaler.eval(&ast);
+        let result = self.evaler.eval(&ast)?;
         Ok(result)
     }
 
@@ -154,7 +154,7 @@ impl Interpreter {
         let mut parser = Parser::new_with_note(code, self.scope.clone(), self.fstr_note);
         let ast = parser.parse().map_err(|e| e.to_string())?;
         let mut config_evaler = Evaler::new(self.scope.clone()).with_mode(EvalMode::CONFIG);
-        let res = config_evaler.eval(&ast);
+        let res = config_evaler.eval(&ast)?;
         Ok(res)
     }
 
@@ -165,7 +165,10 @@ impl Interpreter {
             Ok(ast) => {
                 let mut val = Value::Nil;
                 for stmt in ast.stmts {
-                    val = self.evaler.eval_stmt(&stmt);
+                    val = match self.evaler.eval_stmt(&stmt) {
+                        Ok(v) => v,
+                        Err(e) => Value::Error(format!("Evaluation error: {:?}", e).into()),
+                    };
                 }
                 if let Value::ValueRef(id) = val {
                     // lookup ValueData as Value

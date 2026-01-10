@@ -1,5 +1,6 @@
 use crate::ast;
 use crate::ast::*;
+use crate::error::AutoResult;
 use crate::scope;
 use crate::scope::Meta;
 use crate::universe::Universe;
@@ -61,21 +62,21 @@ impl Evaler {
         self.skip_check = true;
     }
 
-    pub fn eval(&mut self, code: &Code) -> Value {
+    pub fn eval(&mut self, code: &Code) -> AutoResult<Value> {
         match self.mode {
             EvalMode::SCRIPT => {
                 let mut value = Value::Nil;
                 for stmt in code.stmts.iter() {
-                    value = self.eval_stmt(stmt);
+                    value = self.eval_stmt(stmt)?;
                     // Don't panic on errors - let them propagate as error values
                     // This allows tests to check for errors using Result::Err
                 }
-                value
+                Ok(value)
             }
             EvalMode::CONFIG => {
                 let mut node = auto_val::Node::new("root");
                 for stmt in code.stmts.iter() {
-                    let val = self.eval_stmt(stmt);
+                    let val = self.eval_stmt(stmt)?;
                     match val {
                         Value::Pair(key, value) => {
                             // first level pairs are viewed as variable declarations
@@ -151,17 +152,17 @@ impl Evaler {
                         _ => {}
                     }
                 }
-                Value::Node(node)
+                Ok(Value::Node(node))
             }
             EvalMode::TEMPLATE => {
                 let mut result = Vec::new();
                 for stmt in code.stmts.iter() {
-                    let val = self.eval_stmt(stmt);
+                    let val = self.eval_stmt(stmt)?;
                     if !val.is_nil() {
                         result.push(val.to_astr());
                     }
                 }
-                Value::Str(result.join("\n").into())
+                Ok(Value::Str(result.join("\n").into()))
             }
         }
     }
@@ -170,26 +171,26 @@ impl Evaler {
         self.universe.borrow().dump();
     }
 
-    pub fn eval_stmt(&mut self, stmt: &Stmt) -> Value {
+    pub fn eval_stmt(&mut self, stmt: &Stmt) -> AutoResult<Value> {
         match stmt {
-            Stmt::Use(use_stmt) => self.eval_use(use_stmt),
-            Stmt::Expr(expr) => self.eval_expr(expr),
+            Stmt::Use(use_stmt) => Ok(self.eval_use(use_stmt)),
+            Stmt::Expr(expr) => Ok(self.eval_expr(expr)),
             Stmt::If(if_) => self.eval_if(if_),
             Stmt::For(for_stmt) => self.eval_for(for_stmt),
             Stmt::Block(body) => self.eval_body(body),
-            Stmt::Store(store) => self.eval_store(store),
-            Stmt::Fn(_) => Value::Nil,
-            Stmt::TypeDecl(type_decl) => self.type_decl(type_decl),
+            Stmt::Store(store) => Ok(self.eval_store(store)),
+            Stmt::Fn(_) => Ok(Value::Nil),
+            Stmt::TypeDecl(type_decl) => Ok(self.type_decl(type_decl)),
             Stmt::Node(node) => self.eval_node(node),
             Stmt::Is(stmt) => self.eval_is(stmt),
-            Stmt::EnumDecl(_) => Value::Nil,
-            Stmt::OnEvents(on) => self.eval_on_events(on),
-            Stmt::Comment(_) => Value::Nil,
-            Stmt::Alias(_) => Value::Void,
-            Stmt::EmptyLine(_) => Value::Void,
-            Stmt::Union(_) => Value::Void,
-            Stmt::Tag(_) => Value::Void,
-            Stmt::Break => Value::Void,
+            Stmt::EnumDecl(_) => Ok(Value::Nil),
+            Stmt::OnEvents(on) => Ok(self.eval_on_events(on)),
+            Stmt::Comment(_) => Ok(Value::Nil),
+            Stmt::Alias(_) => Ok(Value::Void),
+            Stmt::EmptyLine(_) => Ok(Value::Void),
+            Stmt::Union(_) => Ok(Value::Void),
+            Stmt::Tag(_) => Ok(Value::Void),
+            Stmt::Break => Ok(Value::Void),
         }
     }
 
@@ -284,16 +285,16 @@ impl Evaler {
         body
     }
 
-    fn eval_body(&mut self, body: &Body) -> Value {
+    fn eval_body(&mut self, body: &Body) -> AutoResult<Value> {
         self.enter_scope();
         let mut res = Vec::new();
         for stmt in body.stmts.iter() {
-            res.push(self.eval_stmt(stmt));
+            res.push(self.eval_stmt(stmt)?);
         }
         let res = match self.mode {
-            EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
-            EvalMode::CONFIG => Value::ConfigBody(self.collect_config_body(res)),
-            EvalMode::TEMPLATE => Value::Str(
+            EvalMode::SCRIPT => Ok(res.last().unwrap_or(&Value::Nil).clone()),
+            EvalMode::CONFIG => Ok(Value::ConfigBody(self.collect_config_body(res))),
+            EvalMode::TEMPLATE => Ok(Value::Str(
                 res.iter()
                     .map(|v| match v {
                         Value::Str(s) => s.clone(),
@@ -302,22 +303,22 @@ impl Evaler {
                     .collect::<Vec<AutoStr>>()
                     .join("\n")
                     .into(),
-            ),
+            )),
         };
         self.exit_scope();
         res
     }
 
-    fn eval_loop_body(&mut self, body: &Body, is_mid: bool, is_new_line: bool) -> Value {
+    fn eval_loop_body(&mut self, body: &Body, is_mid: bool, is_new_line: bool) -> AutoResult<Value> {
         self.universe
             .borrow_mut()
             .set_local_val("is_mid", Value::Bool(is_mid));
         let mut res = Vec::new();
         let sep = if is_new_line { "\n" } else { "" };
         for stmt in body.stmts.iter() {
-            res.push(self.eval_stmt(stmt));
+            res.push(self.eval_stmt(stmt)?);
         }
-        match self.mode {
+        Ok(match self.mode {
             EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
             EvalMode::CONFIG => Value::ConfigBody(self.collect_config_body(res)),
             EvalMode::TEMPLATE => Value::Str(
@@ -331,10 +332,10 @@ impl Evaler {
                     .join(sep)
                     .into(),
             ),
-        }
+        })
     }
 
-    fn eval_is(&mut self, stmt: &Is) -> Value {
+    fn eval_is(&mut self, stmt: &Is) -> AutoResult<Value> {
         let t = &stmt.target;
         for br in &stmt.branches {
             match br {
@@ -357,14 +358,14 @@ impl Evaler {
                 }
                 // TODO: implement other types of is-branch
                 _ => {
-                    return Value::Void;
+                    return Ok(Value::Void);
                 }
             }
         }
-        Value::Void
+        Ok(Value::Void)
     }
 
-    fn eval_if(&mut self, if_: &If) -> Value {
+    fn eval_if(&mut self, if_: &If) -> AutoResult<Value> {
         for branch in if_.branches.iter() {
             let cond = self.eval_expr(&branch.cond);
 
@@ -396,7 +397,7 @@ impl Evaler {
         if let Some(else_stmt) = &if_.else_ {
             return self.eval_body(else_stmt);
         }
-        Value::Void
+        Ok(Value::Void)
     }
 
     fn eval_iter(&mut self, iter: &Iter, idx: usize, item: Value) {
@@ -421,14 +422,14 @@ impl Evaler {
         }
     }
 
-    fn eval_for(&mut self, for_stmt: &For) -> Value {
+    fn eval_for(&mut self, for_stmt: &For) -> AutoResult<Value> {
         let iter = &for_stmt.iter;
         let body = &for_stmt.body;
         let mut max_loop = 1000;
 
         // Execute init statement if present
         if let Some(init_stmt) = &for_stmt.init {
-            self.eval_stmt(init_stmt);
+            self.eval_stmt(init_stmt)?;
         }
 
         // Handle conditional for loop: for condition { ... }
@@ -438,7 +439,7 @@ impl Evaler {
             loop {
                 if max_loop <= 0 {
                     self.universe.borrow_mut().exit_scope();
-                    return Value::error("Max loop reached");
+                    return Ok(Value::error("Max loop reached"));
                 }
                 max_loop -= 1;
 
@@ -449,11 +450,17 @@ impl Evaler {
                     break;
                 }
 
-                res.push(self.eval_loop_body(body, false, for_stmt.new_line));
+                match self.eval_loop_body(body, false, for_stmt.new_line) {
+                    Ok(val) => res.push(val),
+                    Err(e) => {
+                        self.universe.borrow_mut().exit_scope();
+                        return Err(e);
+                    }
+                }
             }
             self.universe.borrow_mut().exit_scope();
 
-            return match self.mode {
+            return Ok(match self.mode {
                 EvalMode::SCRIPT => Value::Void,
                 EvalMode::CONFIG => Value::Array(res),
                 EvalMode::TEMPLATE => Value::Str(
@@ -467,7 +474,7 @@ impl Evaler {
                         .join("")
                         .into(),
                 ),
-            };
+            });
         }
 
         let range = self.eval_expr(&for_stmt.range);
@@ -489,7 +496,7 @@ impl Evaler {
 
         let range_final = match range_resolved {
             Some(v) => v,
-            None => return Value::error(format!("Invalid range {}", range)),
+            None => return Ok(Value::error(format!("Invalid range {}", range))),
         };
 
         let mut res = Array::new();
@@ -505,8 +512,13 @@ impl Evaler {
                         is_mid = false;
                     }
                     self.eval_iter(iter, idx, Value::Int(n));
-                    let s = self.eval_loop_body(body, is_mid, is_new_line);
-                    res.push(s);
+                    match self.eval_loop_body(body, is_mid, is_new_line) {
+                        Ok(val) => res.push(val),
+                        Err(e) => {
+                            self.universe.borrow_mut().exit_scope();
+                            return Err(e);
+                        }
+                    }
                     max_loop -= 1;
                 }
             }
@@ -517,7 +529,13 @@ impl Evaler {
                         is_mid = false;
                     }
                     self.eval_iter(iter, idx, Value::Int(n));
-                    res.push(self.eval_loop_body(body, is_mid, is_new_line));
+                    match self.eval_loop_body(body, is_mid, is_new_line) {
+                        Ok(val) => res.push(val),
+                        Err(e) => {
+                            self.universe.borrow_mut().exit_scope();
+                            return Err(e);
+                        }
+                    }
                     max_loop -= 1;
                 }
             }
@@ -528,19 +546,25 @@ impl Evaler {
                         is_mid = false;
                     }
                     self.eval_iter(iter, idx, item.clone());
-                    res.push(self.eval_loop_body(body, is_mid, is_new_line));
+                    match self.eval_loop_body(body, is_mid, is_new_line) {
+                        Ok(val) => res.push(val),
+                        Err(e) => {
+                            self.universe.borrow_mut().exit_scope();
+                            return Err(e);
+                        }
+                    }
                     max_loop -= 1;
                 }
             }
             _ => {
-                return Value::error(format!("Invalid range {}", range_final));
+                return Ok(Value::error(format!("Invalid range {}", range_final)));
             }
         }
         self.universe.borrow_mut().exit_scope();
         if max_loop <= 0 {
-            return Value::error("Max loop reached");
+            Ok(Value::error("Max loop reached"))
         } else {
-            let result = match self.mode {
+            Ok(match self.mode {
                 EvalMode::SCRIPT => Value::Void,
                 EvalMode::CONFIG => Value::Array(res),
                 EvalMode::TEMPLATE => Value::Str(
@@ -555,8 +579,7 @@ impl Evaler {
                         .join(sep)
                         .into(),
                 ),
-            };
-            result
+            })
         }
     }
 
@@ -1291,7 +1314,7 @@ impl Evaler {
     }
 
     // TODO: 需要整理一下，逻辑比较乱
-    fn eval_call(&mut self, call: &Call) -> Value {
+    fn eval_call(&mut self, call: &Call) -> AutoResult<Value> {
         // Check if this is a method call like `file.close()`
         if let Expr::Bina(left, op, right) = &*call.name {
             if *op == Op::Dot {
@@ -1339,7 +1362,7 @@ impl Evaler {
 
                                 // Call the VM method with the instance
                                 let uni = self.universe.clone();
-                                return method(uni, &mut inst.clone(), arg_vals);
+                                return Ok(method(uni, &mut inst.clone(), arg_vals));
                             }
                         }
                     }
@@ -1350,7 +1373,7 @@ impl Evaler {
         // Regular function call (non-method)
         let name = self.eval_expr(&call.name);
         if name == Value::Nil {
-            return Value::error(format!("Invalid function name to call {}", call.name));
+            return Ok(Value::error(format!("Invalid function name to call {}", call.name)));
         }
 
         // Resolve ValueRef before matching on function type
@@ -1370,7 +1393,7 @@ impl Evaler {
 
         let name_final = match name_resolved {
             Some(v) => v,
-            None => return Value::error(format!("Invalid function name to call {}", call.name)),
+            None => return Ok(Value::error(format!("Invalid function name to call {}", call.name))),
         };
 
         match name_final {
@@ -1390,7 +1413,7 @@ impl Evaler {
             },
             Value::ExtFn(extfn) => {
                 let args_val = self.eval_args(&call.args);
-                return (extfn.fun)(&args_val);
+                return Ok((extfn.fun)(&args_val));
             }
             Value::Lambda(name) => {
                 // Try to lookup lambda in SymbolTable
@@ -1401,11 +1424,11 @@ impl Evaler {
                             return self.eval_fn_call(fn_decl, &call.args);
                         }
                         _ => {
-                            return Value::error(format!("Invalid lambda {}", name));
+                            return Ok(Value::error(format!("Invalid lambda {}", name)));
                         }
                     }
                 } else {
-                    return Value::error(format!("Invalid lambda {}", name));
+                    return Ok(Value::error(format!("Invalid lambda {}", name)));
                 }
             }
             Value::Widget(_widget) => {
@@ -1416,7 +1439,7 @@ impl Evaler {
                 return self.eval_method(&method, &call.args);
             }
             _ => {
-                return Value::error(format!("Invalid function call {}", name));
+                return Ok(Value::error(format!("Invalid function call {}", name)));
             }
         }
 
@@ -1427,7 +1450,7 @@ impl Evaler {
                 scope::Meta::Fn(fn_decl) => {
                     return self.eval_fn_call(fn_decl, &call.args);
                 }
-                _ => return Value::error(format!("Invalid lambda {}", call.get_name_text())),
+                _ => return Ok(Value::error(format!("Invalid lambda {}", call.get_name_text()))),
             }
         } else {
             // convert call to node intance
@@ -1540,19 +1563,19 @@ impl Evaler {
         fields
     }
 
-    pub fn eval_method(&mut self, method: &Method, args: &Args) -> Value {
+    pub fn eval_method(&mut self, method: &Method, args: &Args) -> AutoResult<Value> {
         let target = &method.target;
         let name = &method.name;
         // methods for Any
         match target.as_ref() {
             Value::Str(s) => {
-                let method = self
+                let method_fn = self
                     .universe
                     .borrow()
                     .types
                     .lookup_method(Type::Str, name.clone());
-                if let Some(method) = method {
-                    return method(&target);
+                if let Some(method_fn) = method_fn {
+                    return Ok(method_fn(&target));
                 } else {
                     println!("wrong method?: {}", s);
                 }
@@ -1570,35 +1593,35 @@ impl Evaler {
                             let self_ref = Arg::Pair("self".into(), Expr::Ident("x".into()));
                             args.args.insert(0, self_ref);
                             // args.args.push(Arg::Pair("self".into(), inst));
-                            let res = self.eval_fn_call(fn_decl, &args);
+                            let res = self.eval_fn_call(fn_decl, &args)?;
                             // self.exit_scope();
-                            return res;
+                            return Ok(res);
                         }
                         _ => {
-                            return Value::error(format!("wrong meta for method: {}", meta));
+                            return Ok(Value::error(format!("wrong meta for method: {}", meta)));
                         }
                     }
                 }
             }
             _ => {
-                let method = self
+                let method_fn = self
                     .universe
                     .borrow()
                     .types
                     .lookup_method(Type::Any, name.clone());
-                if let Some(method) = method {
-                    return method(&target);
+                if let Some(method_fn) = method_fn {
+                    return Ok(method_fn(&target));
                 }
             }
         }
-        Value::error(format!("Invalid method {} on {}", name, target))
+        Ok(Value::error(format!("Invalid method {} on {}", name, target)))
     }
 
-    fn eval_fn_call_with_sig(&mut self, sig: &Sig, args: &Args) -> Value {
+    fn eval_fn_call_with_sig(&mut self, sig: &Sig, args: &Args) -> AutoResult<Value> {
         let meta = self.universe.borrow().lookup_sig(sig).unwrap();
         match meta.as_ref() {
             scope::Meta::Fn(fn_decl) => self.eval_fn_call(fn_decl, args),
-            _ => Value::error(format!("Invalid function call {}", sig.name)),
+            _ => Ok(Value::error(format!("Invalid function call {}", sig.name))),
         }
     }
 
@@ -1675,7 +1698,7 @@ impl Evaler {
         }
     }
 
-    pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> Value {
+    pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> AutoResult<Value> {
         // TODO: 需不需要一个单独的 enter_call()
         println!("scope before enter: {}", self.universe.borrow().cur_spot);
         self.universe.borrow_mut().enter_fn(&fn_decl.name);
@@ -1688,19 +1711,20 @@ impl Evaler {
         for (i, arg) in args.args.iter().enumerate() {
             arg_vals.push(self.eval_fn_arg(arg, i, &fn_decl.params));
         }
-        match fn_decl.kind {
+        let result = match fn_decl.kind {
             FnKind::Function | FnKind::Lambda => {
-                let result = self.eval_body(&fn_decl.body);
+                let result = self.eval_body(&fn_decl.body)?;
                 self.exit_scope();
-                result
+                Ok(result)
             }
             FnKind::VmFunction => {
                 let result = self.eval_vm_fn_call(fn_decl, &arg_vals);
                 self.exit_scope();
-                result
+                Ok(result)
             }
-            _ => Value::Error(format!("Fn {} eval not supported ", fn_decl.name).into()),
-        }
+            _ => Ok(Value::Error(format!("Fn {} eval not supported ", fn_decl.name).into())),
+        };
+        result
     }
 
     fn index(&mut self, array: &Expr, index: &Expr) -> Value {
@@ -1772,14 +1796,34 @@ impl Evaler {
             Expr::Unary(op, e) => self.eval_una(op, e),
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
             Expr::Range(range) => self.eval_range(range),
-            Expr::If(if_) => self.eval_if(if_),
+            Expr::If(if_) => {
+                match self.eval_if(if_) {
+                    Ok(v) => v,
+                    Err(e) => Value::Error(format!("Error in if expression: {:?}", e).into()),
+                }
+            }
             Expr::Array(elems) => self.eval_array(elems),
-            Expr::Call(call) => self.eval_call(call),
-            Expr::Node(node) => self.eval_node(node),
+            Expr::Call(call) => {
+                match self.eval_call(call) {
+                    Ok(v) => v,
+                    Err(e) => Value::Error(format!("Error in call: {:?}", e).into()),
+                }
+            }
+            Expr::Node(node) => {
+                match self.eval_node(node) {
+                    Ok(v) => v,
+                    Err(e) => Value::Error(format!("Error in node: {:?}", e).into()),
+                }
+            }
             Expr::Index(array, index) => self.index(array, index),
             Expr::Pair(pair) => self.pair(pair),
             Expr::Object(pairs) => self.object(pairs),
-            Expr::Block(body) => self.eval_body(body),
+            Expr::Block(body) => {
+                match self.eval_body(body) {
+                    Ok(v) => v,
+                    Err(e) => Value::Error(format!("Error in block: {:?}", e).into()),
+                }
+            }
             Expr::Lambda(lambda) => Value::Lambda(lambda.name.clone().into()),
             Expr::FStr(fstr) => self.fstr(fstr),
             Expr::Grid(grid) => self.grid(grid),
@@ -2065,7 +2109,7 @@ impl Evaler {
         )))
     }
 
-    fn eval_mid(&mut self, node: &Node) -> Value {
+    fn eval_mid(&mut self, node: &Node) -> AutoResult<Value> {
         // Resolve ValueRef before converting to bool
         let is_mid_value = self
             .universe
@@ -2107,11 +2151,11 @@ impl Evaler {
         }
         if is_mid && node.body.stmts.len() != 0 {
             for stmt in node.body.stmts.iter() {
-                let val = self.eval_stmt(stmt);
+                let val = self.eval_stmt(stmt)?;
                 res = val;
             }
         }
-        res
+        Ok(res)
     }
 
     fn eval_arg(&mut self, arg: &ast::Arg) -> auto_val::Arg {
@@ -2190,13 +2234,13 @@ impl Evaler {
     }
 
     // TODO: should node only be used in config mode?
-    pub fn eval_node(&mut self, node: &Node) -> Value {
+    pub fn eval_node(&mut self, node: &Node) -> AutoResult<Value> {
         let name = node.name.clone();
         let expr = Expr::Ident(name);
         let name_expr = self.eval_expr(&expr);
         let args = self.eval_args(&node.args);
         if let Value::Type(Type::User(type_decl)) = name_expr {
-            return self.eval_type_new(&type_decl, &args);
+            return Ok(self.eval_type_new(&type_decl, &args));
         }
 
         let mut nodes = Vec::new();
@@ -2228,7 +2272,7 @@ impl Evaler {
                     }
                 }
                 for stmt in node.body.stmts.iter() {
-                    let val = self.eval_stmt(stmt);
+                    let val = self.eval_stmt(stmt)?;
                     match val {
                         Value::Str(s) => {
                             let mut n = auto_val::Node::new("text");
@@ -2326,7 +2370,7 @@ impl Evaler {
         if !ndid.is_empty() {
             self.universe.borrow_mut().set_global(ndid, nd.clone());
         }
-        nd
+        Ok(nd)
     }
 
     // fn eval_value_node_body(&mut self, node_val: &mut Value) {
