@@ -1,3 +1,4 @@
+use crate::error::{AutoError, AutoResult, LexerError};
 use crate::token::Pos;
 use crate::token::{Token, TokenKind};
 use std::collections::VecDeque;
@@ -166,47 +167,72 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn char(&mut self) -> Token {
+    fn char(&mut self) -> AutoResult<Token> {
         self.chars.next(); // skip '
+        let start_pos = self.pos;
         if let Some(&c) = self.chars.peek() {
             // deal with escapes
             if self.peek('\\') {
                 self.chars.next(); // skip \
-                if self.peek('n') {
-                    // \n
-                    self.chars.next(); // skip char
-                    self.chars.next(); // skip '
-                    return Token::char(self.pos(1), '\n'.into());
-                } else if self.peek('t') {
-                    // \t
-                    self.chars.next(); // skip char
-                    self.chars.next(); // skip '
-                    return Token::char(self.pos(1), '\t'.into());
-                } else if self.peek('r') {
-                    // \r
-                    self.chars.next(); // skip char
-                    self.chars.next(); // skip '
-                    return Token::char(self.pos(1), '\r'.into());
-                } else if self.peek('0') {
-                    // \0
-                    self.chars.next(); // skip char
-                    self.chars.next(); // skip '
-                    return Token::char(self.pos(1), '\0'.into());
+                if let Some(&esc_char) = self.chars.peek() {
+                    match esc_char {
+                        'n' => {
+                            // \n
+                            self.chars.next(); // skip char
+                            self.chars.next(); // skip '
+                            return Ok(Token::char(self.pos(1), '\n'.into()));
+                        }
+                        't' => {
+                            // \t
+                            self.chars.next(); // skip char
+                            self.chars.next(); // skip '
+                            return Ok(Token::char(self.pos(1), '\t'.into()));
+                        }
+                        'r' => {
+                            // \r
+                            self.chars.next(); // skip char
+                            self.chars.next(); // skip '
+                            return Ok(Token::char(self.pos(1), '\r'.into()));
+                        }
+                        '0' => {
+                            // \0
+                            self.chars.next(); // skip char
+                            self.chars.next(); // skip '
+                            return Ok(Token::char(self.pos(1), '\0'.into()));
+                        }
+                        _ => {
+                            let seq = format!("\\{}", esc_char);
+                            let span = crate::error::span_from(start_pos, seq.len());
+                            return Err(LexerError::UnknownEscapeSequence {
+                                sequence: seq,
+                                span,
+                            }
+                            .into());
+                        }
+                    }
                 } else {
-                    panic!("unknown escape sequence: {}", self.chars.peek().unwrap());
+                    // Unexpected end of input after backslash
+                    let span = crate::error::span_from(start_pos, 1);
+                    return Err(LexerError::UnknownEscapeSequence {
+                        sequence: "\\".to_string(),
+                        span,
+                    }
+                    .into());
                 }
             } else {
                 let tok = Token::char(self.pos(1), c.into());
                 self.chars.next(); // skip char
                 if self.peek('\'') {
                     self.chars.next(); // skip '
+                    Ok(tok)
                 } else {
-                    panic!("char must be ended by a '");
+                    let span = crate::error::span_from(start_pos, 1);
+                    Err(LexerError::UnterminatedChar { span }.into())
                 }
-                tok
             }
         } else {
-            panic!("char must be followed by a character");
+            let span = crate::error::span_from(start_pos, 1);
+            Err(LexerError::EmptyChar { span }.into())
         }
     }
 
@@ -241,7 +267,7 @@ impl<'a> Lexer<'a> {
         Token::new(TokenKind::CStr, self.pos(text.len()), text.into())
     }
 
-    fn fstr(&mut self) -> Token {
+    fn fstr(&mut self) -> AutoResult<Token> {
         let mut endchar = '`';
         if self.peek('`') {
             let tk = self.single(TokenKind::FStrStart, '`');
@@ -275,10 +301,10 @@ impl<'a> Lexer<'a> {
                 self.buffer.push_back(tk);
                 if let Some(&c) = self.chars.peek() {
                     if c == '{' {
-                        self.fstr_expr();
+                        self.fstr_expr()?;
                     } else {
                         // lex next data
-                        let ident = self.identifier();
+                        let ident = self.identifier()?;
                         self.buffer.push_back(ident);
                     }
                 }
@@ -287,17 +313,17 @@ impl<'a> Lexer<'a> {
                 self.chars.next();
             }
         }
-        self.buffer.pop_front().unwrap()
+        Ok(self.buffer.pop_front().unwrap())
     }
 
-    fn fstr_expr(&mut self) {
+    fn fstr_expr(&mut self) -> AutoResult<()> {
         // push {
         let tk = self.single(TokenKind::LBrace, '{');
         self.buffer.push_back(tk);
         let mut level = 1;
         // tokens in the expression
         loop {
-            let tk = self.next_step();
+            let tk = self.next_step()?;
             let kind = tk.kind;
             self.buffer.push_back(tk);
             if kind == TokenKind::LBrace {
@@ -313,6 +339,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+        Ok(())
         // if self.peek('}') {
         // let tk = self.single(TokenKind::RBrace, '}');
         // self.buffer.push_back(tk);
@@ -350,8 +377,8 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn identifier_or_special_block(&mut self) -> Token {
-        let ident = self.identifier();
+    pub fn identifier_or_special_block(&mut self) -> AutoResult<Token> {
+        let ident = self.identifier()?;
         // TODO: register special blocks dynamically
         if ident.text == "markdown" && self.peek_non_whitespace('{') {
             self.chars.next();
@@ -370,9 +397,9 @@ impl<'a> Lexer<'a> {
             self.buffer.push_back(code);
             let tk = self.single(TokenKind::RBrace, '}');
             self.buffer.push_back(tk);
-            ident
+            Ok(ident)
         } else {
-            ident
+            Ok(ident)
         }
     }
 
@@ -386,15 +413,18 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn identifier(&mut self) -> Token {
+    pub fn identifier(&mut self) -> AutoResult<Token> {
         let mut text = String::new();
+        let start_pos = self.pos;
         // 第1个字符，必须是字母或下划线
         if let Some(&c) = self.chars.peek() {
             if !c.is_alphabetic() && c != '_' {
-                panic!(
-                    "identifier must start with a letter or underscore, got {}",
-                    c
-                );
+                let span = crate::error::span_from(start_pos, 1);
+                return Err(LexerError::InvalidIdentifierStart {
+                    character: c.to_string(),
+                    span,
+                }
+                .into());
             } else {
                 text.push(c);
                 self.chars.next();
@@ -410,15 +440,15 @@ impl<'a> Lexer<'a> {
         }
         // TODO: keyword detection should be dynamic, e.g. context dependent)
         if let Some(keyword) = self.keyword(text.clone()) {
-            keyword
+            Ok(keyword)
         } else if self.is_newstart() {
             if let Some(header_keyword) = self.header_keyword(text.clone()) {
-                header_keyword
+                Ok(header_keyword)
             } else {
-                Token::ident(self.pos(text.len()), text.into())
+                Ok(Token::ident(self.pos(text.len()), text.into()))
             }
         } else {
-            Token::ident(self.pos(text.len()), text.into())
+            Ok(Token::ident(self.pos(text.len()), text.into()))
         }
     }
 }
@@ -433,17 +463,17 @@ impl<'a> Lexer<'a> {
             }
         }
     }
-    pub fn next(&mut self) -> Token {
+    pub fn next(&mut self) -> AutoResult<Token> {
         // skip whitespace
         self.skip_whitespace();
         if !self.buffer.is_empty() {
             let b = self.buffer.pop_front().unwrap();
             self.last = Some(b.clone());
-            return b;
+            return Ok(b);
         }
-        let t = self.next_step();
+        let t = self.next_step()?;
         self.last = Some(t.clone());
-        t
+        Ok(t)
     }
 
     fn minus_or_arrow(&mut self, c: char) -> Token {
@@ -480,43 +510,43 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn next_step(&mut self) -> Token {
+    fn next_step(&mut self) -> AutoResult<Token> {
         self.skip_whitespace();
         while let Some(&c) = self.chars.peek() {
             match c {
                 '(' => {
-                    return self.single(TokenKind::LParen, c);
+                    return Ok(self.single(TokenKind::LParen, c));
                 }
                 ')' => {
-                    return self.single(TokenKind::RParen, c);
+                    return Ok(self.single(TokenKind::RParen, c));
                 }
                 '[' => {
-                    return self.single(TokenKind::LSquare, c);
+                    return Ok(self.single(TokenKind::LSquare, c));
                 }
                 ']' => {
-                    return self.single(TokenKind::RSquare, c);
+                    return Ok(self.single(TokenKind::RSquare, c));
                 }
                 '{' => {
-                    return self.single(TokenKind::LBrace, c);
+                    return Ok(self.single(TokenKind::LBrace, c));
                 }
                 '}' => {
-                    return self.single(TokenKind::RBrace, c);
+                    return Ok(self.single(TokenKind::RBrace, c));
                 }
                 '\'' => {
                     return self.char();
                 }
                 '"' => {
-                    return self.str();
+                    return Ok(self.str());
                 }
                 '#' => {
-                    return self.single(TokenKind::Hash, c);
+                    return Ok(self.single(TokenKind::Hash, c));
                 }
                 'c' => {
                     let mut iter_copy = self.chars.clone();
                     iter_copy.next();
                     if let Some(next_char) = iter_copy.peek() {
                         if *next_char == '"' {
-                            return self.cstr();
+                            return Ok(self.cstr());
                         } else {
                             return self.identifier();
                         }
@@ -534,98 +564,103 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 ':' => {
-                    return self.single(TokenKind::Colon, c);
+                    return Ok(self.single(TokenKind::Colon, c));
                 }
                 ',' => {
-                    return self.single(TokenKind::Comma, c);
+                    return Ok(self.single(TokenKind::Comma, c));
                 }
                 ';' => {
-                    return self.single(TokenKind::Semi, c);
+                    return Ok(self.single(TokenKind::Semi, c));
                 }
                 '\n' => {
                     self.line += 1;
                     self.at = 0;
-                    return self.single(TokenKind::Newline, c);
+                    return Ok(self.single(TokenKind::Newline, c));
                 }
                 '+' => {
-                    return self.with_equal(TokenKind::Add, TokenKind::AddEq, c);
+                    return Ok(self.with_equal(TokenKind::Add, TokenKind::AddEq, c));
                 }
                 '-' => {
-                    return self.minus_or_arrow(c);
+                    return Ok(self.minus_or_arrow(c));
                 }
                 '*' => {
-                    return self.with_equal(TokenKind::Star, TokenKind::MulEq, c);
+                    return Ok(self.with_equal(TokenKind::Star, TokenKind::MulEq, c));
                 }
                 '/' => {
-                    return self.slash_or_comment();
+                    return Ok(self.slash_or_comment());
                 }
                 '!' => {
-                    return self.with_equal(TokenKind::Not, TokenKind::Neq, c);
+                    return Ok(self.with_equal(TokenKind::Not, TokenKind::Neq, c));
                 }
                 '>' => {
-                    return self.with_equal(TokenKind::Gt, TokenKind::Ge, c);
+                    return Ok(self.with_equal(TokenKind::Gt, TokenKind::Ge, c));
                 }
                 '<' => {
-                    return self.with_equal(TokenKind::Lt, TokenKind::Le, c);
+                    return Ok(self.with_equal(TokenKind::Lt, TokenKind::Le, c));
                 }
                 '=' => {
-                    return self.equal_or_double_arrow(c);
+                    return Ok(self.equal_or_double_arrow(c));
                 }
                 '.' => {
-                    return self.dot_or_range();
+                    return Ok(self.dot_or_range());
                 }
                 '|' => {
-                    return self.single(TokenKind::VBar, c);
+                    return Ok(self.single(TokenKind::VBar, c));
                 }
                 '`' => {
                     return self.fstr();
                 }
                 '?' => {
-                    return self.single(TokenKind::Question, c);
+                    return Ok(self.single(TokenKind::Question, c));
                 }
                 '@' => {
-                    return self.single(TokenKind::At, c);
+                    return Ok(self.single(TokenKind::At, c));
                 }
                 _ => {
                     if c == self.fstr_note {
-                        return self.single(TokenKind::FStrNote, c);
+                        return Ok(self.single(TokenKind::FStrNote, c));
                     }
                     if c.is_digit(10) {
-                        return self.number();
+                        return Ok(self.number());
                     }
 
                     if c.is_alphabetic() {
                         return self.identifier_or_special_block();
                     }
 
-                    panic!("unknown character: `{}`", c);
+                    let span = crate::error::span_from(self.pos, 1);
+                    return Err(LexerError::UnknownCharacter {
+                        character: c.to_string(),
+                        span,
+                    }
+                    .into());
                 }
             }
         }
-        Token::eof(self.pos(0))
+        Ok(Token::eof(self.pos(0)))
     }
 
     #[cfg(test)]
-    fn tokens(&mut self) -> Vec<Token> {
+    fn tokens(&mut self) -> AutoResult<Vec<Token>> {
         let mut tokens = Vec::new();
         loop {
-            let token = self.next();
+            let token = self.next()?;
             if token.kind == TokenKind::EOF {
                 break;
             }
             tokens.push(token);
         }
-        tokens
+        Ok(tokens)
     }
 
     #[cfg(test)]
-    fn tokens_str(&mut self) -> String {
-        let tokens = self.tokens();
-        tokens
+    fn tokens_str(&mut self) -> AutoResult<String> {
+        let tokens = self.tokens()?;
+        Ok(tokens
             .iter()
             .map(|t| t.to_string())
             .collect::<Vec<String>>()
-            .join("")
+            .join(""))
     }
 
     fn slash_or_comment(&mut self) -> Token {
@@ -679,7 +714,7 @@ mod tests {
 
     fn parse_token_strings(code: &str) -> String {
         let mut lexer = Lexer::new(code);
-        lexer.tokens_str()
+        lexer.tokens_str().unwrap()
     }
 
     #[test]
@@ -816,7 +851,7 @@ mod tests {
         let fstr = r#"`hello #{2 + 1} again`"#;
         let mut lexer = Lexer::new(fstr);
         lexer.set_fstr_note('#');
-        let tokens = lexer.tokens_str();
+        let tokens = lexer.tokens_str().unwrap();
         assert_eq!(
             tokens,
             "<fstrs><fstrp:hello ><#><{><int:2><+><int:1><}><fstrp: again><fstre>"

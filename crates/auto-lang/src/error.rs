@@ -162,6 +162,10 @@ pub type AutoResult<T> = std::result::Result<T, AutoError>;
 /// compilation, parsing, type checking, and evaluation.
 #[derive(Error, Debug, Clone)]
 pub enum AutoError {
+    /// Lexer errors during tokenization
+    #[error(transparent)]
+    Lexer(#[from] LexerError),
+
     /// Syntax errors during parsing
     #[error(transparent)]
     Syntax(#[from] SyntaxError),
@@ -207,6 +211,7 @@ pub enum AutoError {
 impl Diagnostic for AutoError {
     fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
+            AutoError::Lexer(e) => e.code(),
             AutoError::Syntax(e) => e.code(),
             AutoError::SyntaxWithSource(e) => e.code(),
             AutoError::Type(e) => e.code(),
@@ -221,6 +226,7 @@ impl Diagnostic for AutoError {
 
     fn severity(&self) -> Option<miette::Severity> {
         match self {
+            AutoError::Lexer(e) => e.severity(),
             AutoError::Syntax(e) => e.severity(),
             AutoError::SyntaxWithSource(e) => e.severity(),
             AutoError::Type(e) => e.severity(),
@@ -235,6 +241,7 @@ impl Diagnostic for AutoError {
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
+            AutoError::Lexer(e) => e.help(),
             AutoError::Syntax(e) => e.help(),
             AutoError::SyntaxWithSource(e) => e.help(),
             AutoError::Type(e) => e.help(),
@@ -251,6 +258,7 @@ impl Diagnostic for AutoError {
 
     fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
+            AutoError::Lexer(e) => e.url(),
             AutoError::Syntax(e) => e.url(),
             AutoError::SyntaxWithSource(e) => e.url(),
             AutoError::Type(e) => e.url(),
@@ -265,6 +273,7 @@ impl Diagnostic for AutoError {
 
     fn labels<'a>(&'a self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + 'a>> {
         match self {
+            AutoError::Lexer(e) => e.labels(),
             AutoError::Syntax(e) => e.labels(),
             AutoError::SyntaxWithSource(e) => e.labels(),
             AutoError::Type(e) => e.labels(),
@@ -288,6 +297,7 @@ impl Diagnostic for AutoError {
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         match self {
+            AutoError::Lexer(e) => e.source_code(),
             AutoError::Syntax(e) => e.source_code(),
             AutoError::SyntaxWithSource(e) => e.source_code(),
             AutoError::Type(e) => e.source_code(),
@@ -330,7 +340,73 @@ impl AutoError {
 }
 
 // ============================================================================
-// Syntax Errors (E0001-E0099)
+// Lexer Errors (E0001-E0099)
+// ============================================================================
+
+/// Lexer errors during tokenization
+#[derive(Error, Diagnostic, Debug, Clone)]
+pub enum LexerError {
+    /// Unknown escape sequence in character literal
+    #[error("unknown escape sequence")]
+    #[diagnostic(
+        code(auto_lexer_E0001),
+        help("Valid escape sequences are: \\n, \\t, \\r, \\0")
+    )]
+    UnknownEscapeSequence {
+        sequence: String,
+        #[label("unknown escape sequence")]
+        span: SourceSpan,
+    },
+
+    /// Unterminated character literal
+    #[error("unterminated character literal")]
+    #[diagnostic(
+        code(auto_lexer_E0002),
+        help("Character literals must be enclosed in single quotes (')")
+    )]
+    UnterminatedChar {
+        #[label("character literal not closed")]
+        span: SourceSpan,
+    },
+
+    /// Empty character literal
+    #[error("empty character literal")]
+    #[diagnostic(
+        code(auto_lexer_E0003),
+        help("Character literals must contain exactly one character")
+    )]
+    EmptyChar {
+        #[label("empty character literal")]
+        span: SourceSpan,
+    },
+
+    /// Invalid identifier start
+    #[error("invalid identifier")]
+    #[diagnostic(
+        code(auto_lexer_E0004),
+        help("Identifiers must start with a letter or underscore")
+    )]
+    InvalidIdentifierStart {
+        character: String,
+        #[label("identifiers must start with a letter or underscore")]
+        span: SourceSpan,
+    },
+
+    /// Unknown character
+    #[error("unknown character")]
+    #[diagnostic(
+        code(auto_lexer_E0005),
+        help("This character is not valid in AutoLang source code")
+    )]
+    UnknownCharacter {
+        character: String,
+        #[label("unknown character")]
+        span: SourceSpan,
+    },
+}
+
+// ============================================================================
+// Syntax Errors (E0101-E0199)
 // ============================================================================
 
 /// Syntax errors during parsing

@@ -63,7 +63,16 @@
       "Bash(\"/c/Program Files/tcc/tcc\" -o test_read_text_c.exe test_read_text_c.c -I.)",
       "Bash(powershell -Command:*)",
       "Bash(git push)",
-      "Bash(fc:*)"
+      "Bash(fc:*)",
+      "Bash(node:*)",
+      "Bash(npm --version)",
+      "Bash(wmic:*)",
+      "Bash(tasklist:*)",
+      "Bash(cmd.exe //c \"taskkill /F /PID 21720 & taskkill /F /PID 7416 & taskkill /F /PID 20056 & taskkill /F /PID 19460\")",
+      "Bash(cmd.exe //c \"taskkill /F /PID 12720\")",
+      "Bash(cmd.exe:*)",
+      "Bash(cargo doc:*)",
+      "Bash(git reset:*)"
     ]
   }
 }

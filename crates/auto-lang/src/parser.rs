@@ -151,7 +151,7 @@ impl<'a> Parser<'a> {
 
     pub fn new(code: &'a str, scope: Shared<Universe>) -> Self {
         let mut lexer = Lexer::new(code);
-        let cur = lexer.next();
+        let cur = lexer.next().expect("lexer should produce first token");
         let mut parser = Parser {
             scope,
             lexer,
@@ -187,11 +187,43 @@ impl<'a> Parser<'a> {
     pub fn new_with_note(code: &'a str, scope: Shared<Universe>, note: char) -> Self {
         let mut lexer = Lexer::new(code);
         lexer.set_fstr_note(note);
-        let cur = lexer.next();
+        let cur = lexer.next().expect("lexer should produce first token");
         let mut parser = Parser {
             scope,
             lexer,
             cur,
+            prev: Token {
+                kind: TokenKind::EOF,
+                pos: Pos {
+                    line: 0,
+                    at: 0,
+                    pos: 0,
+                    len: 0,
+                },
+                text: "".into(),
+            }, // Initialize with EOF token
+            compile_dest: CompileDest::Interp,
+            special_blocks: HashMap::new(),
+            skip_check: false,
+            errors: Vec::new(),
+            error_limit: crate::get_error_limit(), // Use global error limit
+        };
+        parser.skip_comments();
+        parser
+    }
+
+    /// Create a new parser with a pre-lexed first token
+    pub fn new_with_note_and_first_token(
+        code: &'a str,
+        scope: Shared<Universe>,
+        note: char,
+        first_token: Token,
+        lexer: Lexer<'a>,
+    ) -> Self {
+        let mut parser = Parser {
+            scope,
+            lexer,
+            cur: first_token,
             prev: Token {
                 kind: TokenKind::EOF,
                 pos: Pos {
@@ -240,7 +272,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::CommentStart
                 | TokenKind::CommentContent
                 | TokenKind::CommentEnd => {
-                    self.cur = self.lexer.next();
+                    self.cur = self.lexer.next().expect("lexer should produce token");
                 }
                 _ => {
                     break;
@@ -251,7 +283,30 @@ impl<'a> Parser<'a> {
 
     pub fn next(&mut self) -> &Token {
         self.prev = self.cur.clone();
-        self.cur = self.lexer.next();
+        // Try to get the next token, if lexer returns an error, record it and use EOF
+        self.cur = match self.lexer.next() {
+            Ok(token) => token,
+            Err(err) => {
+                // Record the lexer error
+                self.errors.push(err);
+                // Check if we've hit the error limit
+                if self.errors.len() >= self.error_limit {
+                    // Return EOF to stop parsing
+                    return &self.cur;
+                }
+                // Create an EOF token to continue parsing
+                Token {
+                    kind: TokenKind::EOF,
+                    pos: Pos {
+                        line: 0,
+                        at: 0,
+                        pos: 0,
+                        len: 0,
+                    },
+                    text: "".into(),
+                }
+            }
+        };
         self.skip_comments();
         &self.cur
     }

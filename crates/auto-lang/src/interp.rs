@@ -84,7 +84,23 @@ impl Interpreter {
     }
 
     pub fn interpret(&mut self, code: &str) -> AutoResult<()> {
-        let mut parser = Parser::new_with_note(code, self.scope.clone(), self.fstr_note);
+        // Create a lexer first to check for errors before creating parser
+        let mut lexer = crate::lexer::Lexer::new(code);
+        lexer.set_fstr_note(self.fstr_note);
+        // Try to get the first token - if it's an error, return it
+        let first_token = match lexer.next() {
+            Ok(token) => token,
+            Err(e) => return Err(e),
+        };
+
+        // Create parser with the already-lexed first token
+        let mut parser = Parser::new_with_note_and_first_token(
+            code,
+            self.scope.clone(),
+            self.fstr_note,
+            first_token,
+            lexer,
+        );
         if self.skip_check {
             parser = parser.skip_check();
         }

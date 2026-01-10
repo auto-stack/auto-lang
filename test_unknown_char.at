@@ -1,0 +1,2 @@
+// Test unknown character
+let x = ©
