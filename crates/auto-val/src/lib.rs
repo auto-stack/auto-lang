@@ -23,6 +23,9 @@ pub use obj::*;
 mod meta;
 pub use meta::*;
 
+mod kids;
+pub use kids::*;
+
 mod node;
 pub use node::*;
 
@@ -64,7 +67,7 @@ impl IOError {
     pub fn file(err: std::io::Error, src: impl Into<AutoStr>) -> Self {
         IOError::FileError {
             err,
-            src: src.into()
+            src: src.into(),
         }
     }
 

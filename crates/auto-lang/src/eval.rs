@@ -309,7 +309,12 @@ impl Evaler {
         res
     }
 
-    fn eval_loop_body(&mut self, body: &Body, is_mid: bool, is_new_line: bool) -> AutoResult<Value> {
+    fn eval_loop_body(
+        &mut self,
+        body: &Body,
+        is_mid: bool,
+        is_new_line: bool,
+    ) -> AutoResult<Value> {
         self.universe
             .borrow_mut()
             .set_local_val("is_mid", Value::Bool(is_mid));
@@ -664,12 +669,20 @@ impl Evaler {
                         } else {
                             // Variable not found - return error with suggestion
                             let candidates = self.universe.borrow().get_defined_names();
-                            let suggestion = if let Some(s) = crate::error::find_best_match(&target, &candidates) {
+                            let suggestion = if let Some(s) =
+                                crate::error::find_best_match(&target, &candidates)
+                            {
                                 format!(". Did you mean '{}'?", s)
                             } else {
                                 String::new()
                             };
-                            return Value::Error(format!("Variable (ref {} -> {}) not found{}", name, target, suggestion).into());
+                            return Value::Error(
+                                format!(
+                                    "Variable (ref {} -> {}) not found{}",
+                                    name, target, suggestion
+                                )
+                                .into(),
+                            );
                         }
                     }
                     _ => {
@@ -678,12 +691,16 @@ impl Evaler {
                         } else {
                             // Variable not found - return error with suggestion
                             let candidates = self.universe.borrow().get_defined_names();
-                            let suggestion = if let Some(s) = crate::error::find_best_match(&name, &candidates) {
+                            let suggestion = if let Some(s) =
+                                crate::error::find_best_match(&name, &candidates)
+                            {
                                 format!(". Did you mean '{}'?", s)
                             } else {
                                 String::new()
                             };
-                            return Value::Error(format!("Variable {} not found{}", name, suggestion).into());
+                            return Value::Error(
+                                format!("Variable {} not found{}", name, suggestion).into(),
+                            );
                         }
                     }
                 }
@@ -1373,7 +1390,10 @@ impl Evaler {
         // Regular function call (non-method)
         let name = self.eval_expr(&call.name);
         if name == Value::Nil {
-            return Ok(Value::error(format!("Invalid function name to call {}", call.name)));
+            return Ok(Value::error(format!(
+                "Invalid function name to call {}",
+                call.name
+            )));
         }
 
         // Resolve ValueRef before matching on function type
@@ -1393,7 +1413,12 @@ impl Evaler {
 
         let name_final = match name_resolved {
             Some(v) => v,
-            None => return Ok(Value::error(format!("Invalid function name to call {}", call.name))),
+            None => {
+                return Ok(Value::error(format!(
+                    "Invalid function name to call {}",
+                    call.name
+                )))
+            }
         };
 
         match name_final {
@@ -1450,7 +1475,12 @@ impl Evaler {
                 scope::Meta::Fn(fn_decl) => {
                     return self.eval_fn_call(fn_decl, &call.args);
                 }
-                _ => return Ok(Value::error(format!("Invalid lambda {}", call.get_name_text()))),
+                _ => {
+                    return Ok(Value::error(format!(
+                        "Invalid lambda {}",
+                        call.get_name_text()
+                    )))
+                }
             }
         } else {
             // convert call to node intance
@@ -1614,7 +1644,10 @@ impl Evaler {
                 }
             }
         }
-        Ok(Value::error(format!("Invalid method {} on {}", name, target)))
+        Ok(Value::error(format!(
+            "Invalid method {} on {}",
+            name, target
+        )))
     }
 
     fn eval_fn_call_with_sig(&mut self, sig: &Sig, args: &Args) -> AutoResult<Value> {
@@ -1722,7 +1755,9 @@ impl Evaler {
                 self.exit_scope();
                 Ok(result)
             }
-            _ => Ok(Value::Error(format!("Fn {} eval not supported ", fn_decl.name).into())),
+            _ => Ok(Value::Error(
+                format!("Fn {} eval not supported ", fn_decl.name).into(),
+            )),
         };
         result
     }
@@ -1796,34 +1831,26 @@ impl Evaler {
             Expr::Unary(op, e) => self.eval_una(op, e),
             Expr::Bina(left, op, right) => self.eval_bina(left, op, right),
             Expr::Range(range) => self.eval_range(range),
-            Expr::If(if_) => {
-                match self.eval_if(if_) {
-                    Ok(v) => v,
-                    Err(e) => Value::Error(format!("Error in if expression: {:?}", e).into()),
-                }
-            }
+            Expr::If(if_) => match self.eval_if(if_) {
+                Ok(v) => v,
+                Err(e) => Value::Error(format!("Error in if expression: {:?}", e).into()),
+            },
             Expr::Array(elems) => self.eval_array(elems),
-            Expr::Call(call) => {
-                match self.eval_call(call) {
-                    Ok(v) => v,
-                    Err(e) => Value::Error(format!("Error in call: {:?}", e).into()),
-                }
-            }
-            Expr::Node(node) => {
-                match self.eval_node(node) {
-                    Ok(v) => v,
-                    Err(e) => Value::Error(format!("Error in node: {:?}", e).into()),
-                }
-            }
+            Expr::Call(call) => match self.eval_call(call) {
+                Ok(v) => v,
+                Err(e) => Value::Error(format!("Error in call: {:?}", e).into()),
+            },
+            Expr::Node(node) => match self.eval_node(node) {
+                Ok(v) => v,
+                Err(e) => Value::Error(format!("Error in node: {:?}", e).into()),
+            },
             Expr::Index(array, index) => self.index(array, index),
             Expr::Pair(pair) => self.pair(pair),
             Expr::Object(pairs) => self.object(pairs),
-            Expr::Block(body) => {
-                match self.eval_body(body) {
-                    Ok(v) => v,
-                    Err(e) => Value::Error(format!("Error in block: {:?}", e).into()),
-                }
-            }
+            Expr::Block(body) => match self.eval_body(body) {
+                Ok(v) => v,
+                Err(e) => Value::Error(format!("Error in block: {:?}", e).into()),
+            },
             Expr::Lambda(lambda) => Value::Lambda(lambda.name.clone().into()),
             Expr::FStr(fstr) => self.fstr(fstr),
             Expr::Grid(grid) => self.grid(grid),
@@ -2277,6 +2304,8 @@ impl Evaler {
                         Value::Str(s) => {
                             let mut n = auto_val::Node::new("text");
                             n.text = s.clone();
+                            // NEW: Use kids API with node name as key
+                            // Will be added to kids after nd is created
                             nodes.push(n);
                         }
                         Value::Pair(key, value) => {
@@ -2286,6 +2315,10 @@ impl Evaler {
                             props.set(key, *value);
                         }
                         Value::Node(node) => {
+                            eprintln!(
+                                "DEBUG pushing node to parent nodes: name={}, num_args={}",
+                                node.name, node.num_args
+                            );
                             nodes.push(node);
                         }
                         Value::Array(arr) => {
@@ -2361,8 +2394,49 @@ impl Evaler {
             }
         }
         let ndid = nd.id.clone();
-        nd.args = args;
+        nd.args = args.clone(); // Keep for backward compatibility
+
+        // NEW: Populate unified props with args
+        nd.num_args = args.args.len();
+        for arg in args.args.iter() {
+            match arg {
+                auto_val::Arg::Pos(expr) => {
+                    // Positional arg: use empty key
+                    nd.set_prop("", expr.clone());
+                }
+                auto_val::Arg::Name(name) => {
+                    // Named arg: use name as key with Str value
+                    nd.set_prop(name.as_str(), Value::Str(name.clone()));
+                }
+                auto_val::Arg::Pair(key, _) => {
+                    // Pair arg: extract key and value
+                    match key {
+                        auto_val::ValueKey::Str(k) => {
+                            nd.set_prop(k.as_str(), arg.get_val());
+                        }
+                        auto_val::ValueKey::Int(i) => {
+                            nd.set_prop(i.to_string(), arg.get_val());
+                        }
+                        auto_val::ValueKey::Bool(b) => {
+                            nd.set_prop(b.to_string(), arg.get_val());
+                        }
+                    }
+                }
+            }
+        }
+
         nd.merge_obj(props);
+
+        // NEW: Use kids API instead of nodes and body_ref
+        // Use integer indices as keys to preserve order and allow duplicates
+        for (idx, node) in nodes.iter().enumerate() {
+            nd.add_node_kid(idx as i32, node.clone());
+        }
+        if body != MetaID::Nil {
+            nd.set_kids_ref(body.clone());
+        }
+
+        // OLD: Keep for backward compatibility
         nd.nodes = nodes;
         nd.body_ref = body;
         let nd = Value::Node(nd);

@@ -1,3 +1,4 @@
+use crate::kids::{Kid, Kids};
 use crate::meta::{Arg, Args, MetaID};
 use crate::obj::Obj;
 use crate::pair::ValueKey;
@@ -108,12 +109,17 @@ impl NodeBody {
 pub struct Node {
     pub name: AutoStr,
     pub id: AutoStr,
-    pub args: Args,
+    pub num_args: usize, // Number of arg keys in props (unified args/props system)
+    pub args: Args,      // DEPRECATED: Kept for backward compatibility during migration
     props: Obj,
-    pub nodes: Vec<Node>,
+    kids: Kids, // NEW: Unified storage for child nodes (replaces body, body_ref, nodes)
+    #[deprecated(note = "Use kids API (add_node_kid, kids_iter, etc.) instead")]
+    pub nodes: Vec<Node>, // DEPRECATED: Will be removed in future version
     pub text: AutoStr,
-    pub body: NodeBody,
-    pub body_ref: MetaID,
+    #[deprecated(note = "Use kids API instead")]
+    pub body: NodeBody, // DEPRECATED: Will be removed in future version
+    #[deprecated(note = "Use kids.get_lazy_ref() / set_kids_ref() instead")]
+    pub body_ref: MetaID, // DEPRECATED: Will be removed in future version
 }
 
 impl Node {
@@ -121,8 +127,10 @@ impl Node {
         Self {
             name: AutoStr::new(),
             id: AutoStr::new(),
+            num_args: 0,
             args: Args::new(),
             props: Obj::new(),
+            kids: Kids::new(),
             nodes: vec![],
             text: AutoStr::new(),
             body: NodeBody::new(),
@@ -134,8 +142,10 @@ impl Node {
         Self {
             name: name.into(),
             id: AutoStr::default(),
+            num_args: 0,
             args: Args::new(),
             props: Obj::new(),
+            kids: Kids::new(),
             nodes: vec![],
             text: AutoStr::default(),
             body: NodeBody::new(),
@@ -274,6 +284,129 @@ impl Node {
         self.nodes.push(node);
     }
 
+    // ========== Unified Args/Props API ==========
+
+    /// Iterate over args only (first num_args items in props)
+    pub fn args_iter(&self) -> impl Iterator<Item = (&ValueKey, &Value)> {
+        self.props.iter().take(self.num_args)
+    }
+
+    /// Iterate over body props only (items after first num_args)
+    pub fn body_props_iter(&self) -> impl Iterator<Item = (&ValueKey, &Value)> {
+        self.props.iter().skip(self.num_args)
+    }
+
+    /// Check if a key is an arg (in first num_args positions)
+    pub fn is_arg(&self, key: &str) -> bool {
+        self.args_iter().any(|(k, _)| k.to_astr() == key)
+    }
+
+    /// Check if a key is a body prop (after first num_args positions)
+    pub fn is_body_prop(&self, key: &str) -> bool {
+        self.body_props_iter().any(|(k, _)| k.to_astr() == key)
+    }
+
+    /// Get an arg by key
+    pub fn get_arg(&self, key: &str) -> Option<Value> {
+        self.args_iter()
+            .find(|(k, _)| k.to_astr() == key)
+            .map(|(_, v)| v.clone())
+    }
+
+    /// Get a body prop by key
+    pub fn get_body_prop(&self, key: &str) -> Option<Value> {
+        self.body_props_iter()
+            .find(|(k, _)| k.to_astr() == key)
+            .map(|(_, v)| v.clone())
+    }
+
+    /// Get all arg keys
+    pub fn arg_keys(&self) -> Vec<ValueKey> {
+        self.args_iter().map(|(k, _)| k.clone()).collect()
+    }
+
+    /// Get all body prop keys
+    pub fn body_prop_keys(&self) -> Vec<ValueKey> {
+        self.body_props_iter().map(|(k, _)| k.clone()).collect()
+    }
+
+    /// Add an arg to the unified props system
+    pub fn add_arg_unified(&mut self, key: impl Into<ValueKey>, value: impl Into<Value>) {
+        let key = key.into();
+        self.props.set(key.clone(), value.into());
+        self.num_args += 1;
+    }
+
+    /// Add a positional arg (convenience method for empty key)
+    pub fn add_pos_arg_unified(&mut self, value: impl Into<Value>) {
+        self.add_arg_unified("", value);
+    }
+
+    /// Add a body prop to the unified props system
+    pub fn add_body_prop(&mut self, key: impl Into<ValueKey>, value: impl Into<Value>) {
+        self.props.set(key, value);
+    }
+
+    /// Set main argument (updates or creates first arg)
+    pub fn set_main_arg_unified(&mut self, arg: impl Into<Value>) {
+        if self.num_args == 0 {
+            // Create first arg with empty key
+            self.add_arg_unified("", arg);
+        } else {
+            // Update first arg
+            if let Some((key, _)) = self.props.iter().next() {
+                self.props.set(key.clone(), arg.into());
+            }
+        }
+    }
+
+    // ========== Unified Kids API ==========
+
+    /// Check if kids is empty
+    pub fn has_kids(&self) -> bool {
+        !self.kids.is_empty()
+    }
+
+    /// Get number of kids
+    pub fn kids_len(&self) -> usize {
+        self.kids.len()
+    }
+
+    /// Iterate over all kids
+    pub fn kids_iter(&self) -> impl Iterator<Item = (&ValueKey, &Kid)> {
+        self.kids.iter()
+    }
+
+    /// Get a kid by key
+    pub fn get_kid(&self, key: &ValueKey) -> Option<&Kid> {
+        self.kids.get(key)
+    }
+
+    /// Add a node kid
+    pub fn add_node_kid(&mut self, key: impl Into<ValueKey>, node: Node) {
+        self.kids.add_node(key, node);
+    }
+
+    /// Add a lazy kid (MetaID reference)
+    pub fn add_lazy_kid(&mut self, key: impl Into<ValueKey>, meta: MetaID) {
+        self.kids.add_lazy(key, meta);
+    }
+
+    /// Remove a kid by key
+    pub fn remove_kid(&mut self, key: &ValueKey) -> Option<Kid> {
+        self.kids.remove(key)
+    }
+
+    /// Get lazy reference (body_ref equivalent)
+    pub fn get_kids_ref(&self) -> Option<&MetaID> {
+        self.kids.get_lazy_ref()
+    }
+
+    /// Set lazy reference (body_ref equivalent)
+    pub fn set_kids_ref(&mut self, meta: MetaID) {
+        self.kids.set_lazy_ref(meta);
+    }
+
     pub fn nodes(&self, name: &str) -> Vec<&Node> {
         self.nodes.iter().filter(|n| n.name == name).collect()
     }
@@ -330,40 +463,81 @@ impl fmt::Display for Node {
         if !self.id.is_empty() {
             write!(f, " {}", self.id)?;
         }
-        // if first arg is the same as id
-        let args = if self.id == self.main_arg().to_astr() {
-            self.args.args.iter().skip(1)
-        } else {
-            self.args.args.iter().skip(0)
-        };
-        // don't display pair args as they are displayed in the props
-        let args = args
-            .filter(|arg| match arg {
-                Arg::Pair(_, _) => false,
-                _ => true,
-            })
-            .collect::<Vec<_>>();
 
-        if !args.is_empty() {
+        // NEW: Use unified props to display args
+        // if first arg is the same as id, skip it
+        let skip_first = self.id == self.main_arg().to_astr();
+        let args_to_show: Vec<_> = self
+            .args_iter()
+            .skip(if skip_first { 1 } else { 0 })
+            .collect();
+
+        if !args_to_show.is_empty() {
             write!(f, "(")?;
-            for (i, arg) in args.iter().enumerate() {
-                write!(f, "{}", arg)?;
-                if i < args.len() - 1 {
+            for (i, (k, v)) in args_to_show.iter().enumerate() {
+                // Positional args have empty keys, just show the value
+                if k.to_astr().is_empty() {
+                    write!(f, "{}", v)?;
+                } else {
+                    write!(f, "{}: {}", k, v)?;
+                }
+                if i < args_to_show.len() - 1 {
                     write!(f, ", ")?;
                 }
             }
             write!(f, ")")?;
         }
         let mut has_body = false;
-        if !(self.props.is_empty() && self.nodes.is_empty()) {
+        // NEW: Check if we have body props or kids
+        let body_props: Vec<_> = self.body_props_iter().collect();
+        let has_kids = self.has_kids();
+        let has_nodes = !self.nodes.is_empty();
+        let has_body_content = !self.body.is_empty();
+        let has_body_ref = self.body_ref != MetaID::Nil;
+
+        if !(body_props.is_empty() && !has_kids && !has_nodes && !has_body_content && !has_body_ref)
+        {
             write!(f, " {{")?;
-            if !self.props.is_empty() {
-                for (key, value) in self.props.iter() {
+            if !body_props.is_empty() {
+                for (key, value) in body_props {
                     write!(f, "{}: {}", key, value)?;
                     write!(f, "; ")?;
                 }
             }
-            if !self.nodes.is_empty() {
+            // NEW: Display from kids if available, otherwise fall back to old fields
+            if has_kids {
+                // Use kids (new unified API)
+                for (key, kid) in self.kids_iter() {
+                    match kid {
+                        Kid::Node(node) => {
+                            // Show key only for non-integer keys (indexed nodes don't show keys)
+                            match key {
+                                ValueKey::Int(_) => {
+                                    // Don't show key for integer indices (mimics old nodes vector)
+                                    write!(f, "{}", node)?;
+                                }
+                                _ => {
+                                    // Show key for string/bool keys
+                                    if !key.to_astr().is_empty() {
+                                        write!(f, "{}: {}", key, node)?;
+                                    } else {
+                                        write!(f, "{}", node)?;
+                                    }
+                                }
+                            }
+                        }
+                        Kid::Lazy(meta_id) => {
+                            if !key.to_astr().is_empty() {
+                                write!(f, "{}: {}", key, meta_id)?;
+                            } else {
+                                write!(f, "{}", meta_id)?;
+                            }
+                        }
+                    }
+                    write!(f, "; ")?;
+                }
+            } else if has_nodes {
+                // OLD: Fall back to nodes field only if kids is empty
                 for node in self.nodes.iter() {
                     write!(f, "{}", node)?;
                     write!(f, "; ")?;
@@ -373,14 +547,15 @@ impl fmt::Display for Node {
             has_body = true;
         }
 
-        if !self.body.is_empty() {
+        // OLD: Keep backward compatibility with body and body_ref (only if not using kids)
+        if !has_kids && has_body_content {
             write!(f, " {{")?;
             write!(f, "{}", self.body)?;
             write!(f, "}}")?;
             has_body = true;
         }
 
-        if self.body_ref != MetaID::Nil {
+        if !has_kids && has_body_ref {
             write!(f, " {}", self.body_ref)?;
             has_body = true;
         }
