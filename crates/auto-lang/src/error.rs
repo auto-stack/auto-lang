@@ -61,7 +61,7 @@ fn levenshtein_distance(s1: &str, s2: &str) -> usize {
 ///
 /// Returns the candidate with the smallest distance if it's within a reasonable threshold,
 /// otherwise returns None.
-fn find_best_match(target: &str, candidates: &[String]) -> Option<String> {
+pub fn find_best_match(target: &str, candidates: &[String]) -> Option<String> {
     if candidates.is_empty() {
         return None;
     }

@@ -73,7 +73,8 @@
       "Bash(cmd.exe:*)",
       "Bash(cargo doc:*)",
       "Bash(git reset:*)",
-      "Bash(Select-String:*)"
+      "Bash(Select-String:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }

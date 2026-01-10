@@ -639,17 +639,28 @@ impl Evaler {
                         if self.universe.borrow().exists(&target) {
                             self.universe.borrow_mut().update_val(&target, val);
                         } else {
-                            panic!(
-                                "Invalid assignment, variable (ref {} -> {}) not found",
-                                name, target
-                            );
+                            // Variable not found - return error with suggestion
+                            let candidates = self.universe.borrow().get_defined_names();
+                            let suggestion = if let Some(s) = crate::error::find_best_match(&target, &candidates) {
+                                format!(". Did you mean '{}'?", s)
+                            } else {
+                                String::new()
+                            };
+                            return Value::Error(format!("Variable (ref {} -> {}) not found{}", name, target, suggestion).into());
                         }
                     }
                     _ => {
                         if self.universe.borrow().exists(&name) {
                             self.universe.borrow_mut().update_val(&name, val);
                         } else {
-                            panic!("Invalid assignment, variable {} not found", name);
+                            // Variable not found - return error with suggestion
+                            let candidates = self.universe.borrow().get_defined_names();
+                            let suggestion = if let Some(s) = crate::error::find_best_match(&name, &candidates) {
+                                format!(". Did you mean '{}'?", s)
+                            } else {
+                                String::new()
+                            };
+                            return Value::Error(format!("Variable {} not found{}", name, suggestion).into());
                         }
                     }
                 }
