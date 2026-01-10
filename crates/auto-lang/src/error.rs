@@ -772,3 +772,25 @@ pub enum Warning {
         span: SourceSpan,
     },
 }
+
+/// Attach source code to any error for displaying code snippets
+pub fn attach_source(err: AutoError, name: String, code: String) -> AutoError {
+    match err {
+        AutoError::Syntax(e) => AutoError::SyntaxWithSource(SyntaxErrorWithSource {
+            source: NamedSource::new(name, code),
+            error: e,
+        }),
+        AutoError::MultipleErrors { count, plural, mut errors } => {
+            // Attach source to each error in the list
+            for error in errors.iter_mut() {
+                *error = attach_source(error.clone(), name.clone(), code.clone());
+            }
+            AutoError::MultipleErrors { count, plural, errors }
+        }
+        _ => {
+            // For other error types (Name, Type, Runtime), we can't attach source
+            // Return the error as-is
+            err
+        }
+    }
+}

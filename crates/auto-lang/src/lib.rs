@@ -59,15 +59,14 @@ pub fn run(code: &str) -> AutoResult<String> {
             let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
             Ok(resolved.repr().to_string())
         }
-        Err(AutoError::Syntax(err)) => {
-            // Attach source code to the syntax error
-            Err(AutoError::with_source(
+        Err(err) => {
+            // Attach source code to the error
+            Err(crate::error::attach_source(
                 err,
                 "<input>".to_string(),
                 code.to_string(),
             ))
         }
-        Err(other) => Err(other),
     }
 }
 
@@ -88,15 +87,14 @@ pub fn run_with_errors(code: &str) -> AutoResult<String> {
             let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
             Ok(resolved.repr().to_string())
         }
-        Err(AutoError::Syntax(err)) => {
-            // Attach source code to the syntax error
-            Err(AutoError::with_source(
+        Err(err) => {
+            // Attach source code to the error
+            Err(crate::error::attach_source(
                 err,
                 "<input>".to_string(),
                 code.to_string(),
             ))
         }
-        Err(other) => Err(other),
     }
 }
 
@@ -182,11 +180,10 @@ pub fn run_file(path: &str) -> AutoResult<String> {
             let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
             Ok(resolved.repr().to_string())
         }
-        Err(AutoError::Syntax(err)) => {
-            // Attach source code to the syntax error with actual filename
-            Err(AutoError::with_source(err, path.to_string(), code))
+        Err(err) => {
+            // Attach source code to all error types for better error messages
+            Err(crate::error::attach_source(err, path.to_string(), code))
         }
-        Err(other) => Err(other),
     }
 }
 
