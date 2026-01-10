@@ -356,7 +356,7 @@ mod tests {
         let atom = Atom::assemble(values).unwrap();
         let ag = AutoGen::new().data(atom);
         let result = ag.gen_all();
-        assert_eq!(result, "a: 1; b: 2");
+        assert_eq!(result, "atom {a: 1; b: 2; }");
     }
 
     #[test]
