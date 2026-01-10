@@ -123,7 +123,6 @@ impl Default for TemplateEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auto_val::Value;
 
     #[test]
     fn test_load_from_string() {

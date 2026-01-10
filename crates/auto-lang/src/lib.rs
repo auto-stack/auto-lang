@@ -29,7 +29,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::error::{AutoError, AutoResult};
+use crate::error::AutoResult;
 
 /// Global error limit for parser error recovery
 static ERROR_LIMIT: AtomicUsize = AtomicUsize::new(20);

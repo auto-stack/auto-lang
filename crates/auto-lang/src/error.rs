@@ -3,6 +3,9 @@
 //! This module provides comprehensive error reporting with source locations,
 //! error codes, and helpful suggestions using the `miette` diagnostic library.
 
+// Allow unused assignments in error structs - these fields are used by the Diagnostic macro
+#![allow(unused_assignments)]
+
 use crate::token::Pos;
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
@@ -677,10 +680,19 @@ impl Diagnostic for NameError {
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
-            NameError::UndefinedVariable { name, .. } => Some(Box::new(format!(
-                "Variable '{}' is not defined in this scope",
-                name
-            ))),
+            NameError::UndefinedVariable { name, suggested, .. } => {
+                if let Some(suggestion) = suggested {
+                    Some(Box::new(format!(
+                        "Variable '{}' is not defined in this scope. Did you mean '{}'?",
+                        name, suggestion
+                    )))
+                } else {
+                    Some(Box::new(format!(
+                        "Variable '{}' is not defined in this scope",
+                        name
+                    )))
+                }
+            }
             NameError::DuplicateDefinition { name, .. } => Some(Box::new(format!(
                 "The name '{}' is already defined in this scope",
                 name
@@ -689,8 +701,15 @@ impl Diagnostic for NameError {
                 "Use 'mut' instead of 'let' to make '{}' mutable",
                 name
             ))),
-            NameError::UndefinedFunction { name, .. } => {
-                Some(Box::new(format!("Function '{}' is not defined", name)))
+            NameError::UndefinedFunction { name, suggested, .. } => {
+                if let Some(suggestion) = suggested {
+                    Some(Box::new(format!(
+                        "Function '{}' is not defined. Did you mean '{}'?",
+                        name, suggestion
+                    )))
+                } else {
+                    Some(Box::new(format!("Function '{}' is not defined", name)))
+                }
             }
         }
     }

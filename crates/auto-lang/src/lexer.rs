@@ -1,4 +1,4 @@
-use crate::error::{AutoError, AutoResult, LexerError};
+use crate::error::{AutoResult, LexerError};
 use crate::token::Pos;
 use crate::token::{Token, TokenKind};
 use std::collections::VecDeque;

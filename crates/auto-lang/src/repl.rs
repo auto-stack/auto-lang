@@ -1,6 +1,5 @@
 use crate::error::AutoError;
 use crate::interp;
-use miette::{MietteHandlerOpts, Report};
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 

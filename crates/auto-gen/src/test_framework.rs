@@ -1,4 +1,3 @@
-use auto_val::AutoStr;
 /// Test framework for auto-gen markdown-based tests
 ///
 /// Test format:

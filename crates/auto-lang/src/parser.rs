@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::error::{pos_to_span, AutoError, AutoResult, SyntaxError};
+use crate::error::{pos_to_span, AutoError, AutoResult, NameError, SyntaxError};
 use crate::lexer::Lexer;
 use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
@@ -214,9 +214,9 @@ impl<'a> Parser<'a> {
 
     /// Create a new parser with a pre-lexed first token
     pub fn new_with_note_and_first_token(
-        code: &'a str,
+        _code: &'a str,
         scope: Shared<Universe>,
-        note: char,
+        _note: char,
         first_token: Token,
         lexer: Lexer<'a>,
     ) -> Self {
@@ -2850,10 +2850,12 @@ impl<'a> Parser<'a> {
                 Op::Dot => {
                     if let Expr::Ident(name) = l.as_ref() {
                         if !self.exists(&name) {
-                            return Err(SyntaxError::Generic {
-                                message: format!("Undefined variable: {}", name),
-                                span: pos_to_span(self.cur.pos),
-                            }
+                            let candidates = self.scope.borrow().get_defined_names();
+                            return Err(NameError::undefined_variable(
+                                name.to_string(),
+                                pos_to_span(self.cur.pos),
+                                &candidates,
+                            )
                             .into());
                         }
                     }
@@ -2863,10 +2865,12 @@ impl<'a> Parser<'a> {
             },
             Expr::Ident(name) => {
                 if !self.exists(&name) {
-                    return Err(SyntaxError::Generic {
-                        message: format!("Undefined identifier: {}", name),
-                        span: pos_to_span(self.cur.pos),
-                    }
+                    let candidates = self.scope.borrow().get_defined_names();
+                    return Err(NameError::undefined_variable(
+                        name.to_string(),
+                        pos_to_span(self.cur.pos),
+                        &candidates,
+                    )
                     .into());
                 }
                 Ok(expr)

@@ -223,7 +223,6 @@ impl Default for CodeGeneratorBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auto_val::Value;
 
     #[test]
     fn test_generator_config_default() {

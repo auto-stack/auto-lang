@@ -1165,4 +1165,64 @@ mod markdown_tests {
     // fn test_11_more_expressions() {
     //     run_markdown_test_file("11_more_expressions.test.md");
     // }
+
+    /// Remove ANSI color codes from string for testing
+    fn strip_ansi_codes(s: &str) -> String {
+        // This regex matches ANSI escape sequences like \x1b[...m or \033[...m
+        let ansi_regex = regex::Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+        ansi_regex.replace_all(s, "").to_string()
+    }
+
+    /// Run markdown tests that expect errors
+    fn run_markdown_error_test_file(path: &str) {
+        let full_path = Path::new("test/ast").join(path);
+        let content = fs::read_to_string(&full_path)
+            .unwrap_or_else(|_| panic!("Failed to read test file: {:?}", full_path));
+
+        let cases = parse_markdown_tests(&content);
+
+        for tc in cases {
+            let scope = Rc::new(RefCell::new(Universe::new()));
+            let mut parser = Parser::new(&tc.input, scope.clone());
+
+            match parser.parse() {
+                Ok(_) => {
+                    panic!(
+                        "Test '{}' expected an error but parsing succeeded.\nInput:\n{}",
+                        tc.name, tc.input
+                    );
+                }
+                Err(err) => {
+                    // Convert error to miette report and format it
+                    let report = miette::Report::new(err);
+                    let error_output = format!("{:?}", report);
+
+                    // Strip ANSI color codes for reliable string comparison
+                    let error_clean = strip_ansi_codes(&error_output);
+
+                    // Check if the error output contains expected text
+                    // Normalize both for comparison (handle line endings)
+                    let error_normalized = error_clean.replace("\r\n", "\n");
+                    let expected_normalized = tc.expected.replace("\r\n", "\n");
+
+                    // Check if all expected lines are present in the error output
+                    for expected_line in expected_normalized.lines() {
+                        let trimmed = expected_line.trim();
+                        if !trimmed.is_empty() && !error_normalized.contains(trimmed) {
+                            eprintln!("Error output:\n{}", error_normalized);
+                            panic!(
+                                "\nTest '{}' failed:\nInput:\n{}\n\nExpected to find:\n{}\n\nIn error output:\n{}\n",
+                                tc.name, tc.input, trimmed, error_normalized
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_06_errors() {
+        run_markdown_error_test_file("06_errors.test.md");
+    }
 }

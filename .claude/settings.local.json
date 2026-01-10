@@ -72,7 +72,8 @@
       "Bash(cmd.exe //c \"taskkill /F /PID 12720\")",
       "Bash(cmd.exe:*)",
       "Bash(cargo doc:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(Select-String:*)"
     ]
   }
 }
