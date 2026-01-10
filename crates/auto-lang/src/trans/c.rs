@@ -1392,6 +1392,7 @@ impl CTrans {
         let node = Node {
             name: lname.into(),
             id: lname.into(),
+            num_args: 0,
             args: Args::new(),
             body: Body {
                 stmts: vec![

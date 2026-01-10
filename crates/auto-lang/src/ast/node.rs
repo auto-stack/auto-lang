@@ -5,7 +5,8 @@ use auto_val::{shared, Shared};
 pub struct Node {
     pub name: Name,
     pub id: Name,
-    pub args: Args,
+    pub num_args: usize, // NEW: Number of args (for unified API)
+    pub args: Args,      // TODO: Will be removed in Phase 5
     // pub props: BTreeMap<Key, Expr>,
     pub body: Body,
     pub typ: Shared<Type>,
@@ -16,10 +17,37 @@ impl Node {
         Self {
             name: name.into(),
             id: Name::new(),
+            num_args: 0,
             args: Args::new(),
             body: Body::new(),
             typ: shared(Type::Unknown),
         }
+    }
+
+    // ========== UNIFIED API: Args (Phase 2 migration) ==========
+    // These methods parallel the auto_val::Node API for consistency
+    // During migration, args are stored in BOTH args (old) and tracked by num_args (new)
+
+    /// Add an arg and increment num_args counter
+    /// NOTE: For AST nodes, we don't have a unified props store yet, so we just track
+    /// the count and populate the old args field. The full unification happens later
+    /// when ast::Node is converted to auto_val::Node.
+    pub fn add_arg_unified(&mut self, key: impl Into<Name>, value: Expr) {
+        let key = key.into();
+        self.args.args.push(crate::ast::call::Arg::Pair(key, value));
+        self.num_args += 1;
+    }
+
+    /// Add a positional arg (empty key)
+    pub fn add_pos_arg_unified(&mut self, value: Expr) {
+        self.args.args.push(crate::ast::call::Arg::Pos(value));
+        self.num_args += 1;
+    }
+
+    /// Add a named arg
+    pub fn add_name_arg_unified(&mut self, name: Name) {
+        self.args.args.push(crate::ast::call::Arg::Name(name));
+        self.num_args += 1;
     }
 }
 

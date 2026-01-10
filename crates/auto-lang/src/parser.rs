@@ -1259,10 +1259,7 @@ impl<'a> Parser<'a> {
             TokenKind::Null => Expr::Null,
             _ => {
                 return Err(SyntaxError::Generic {
-                    message: format!(
-                        "Expected term, got {:?}",
-                        self.kind()
-                    ),
+                    message: format!("Expected term, got {:?}", self.kind()),
                     span: pos_to_span(self.cur.pos),
                 }
                 .into());
@@ -3021,7 +3018,7 @@ impl<'a> Parser<'a> {
         &mut self,
         name: &AutoStr,
         primary: Option<Expr>,
-        mut args: Args,
+        args: Args,
         kind: &AutoStr,
     ) -> AutoResult<Node> {
         let n = name.clone().into();
@@ -3034,17 +3031,34 @@ impl<'a> Parser<'a> {
                     node.id = id;
                 }
                 _ => {
-                    node.args.args.push(Arg::Pair("content".into(), prime));
+                    // Convert to unified API: add args before body props
+                    node.add_arg_unified("content", prime.clone());
                 }
             }
         }
 
-        // optional kind argument
+        // optional kind argument - add using unified API
         if !kind.is_empty() {
-            args.args
-                .push(Arg::Pair("kind".into(), Expr::Str(kind.into())));
+            node.add_arg_unified("kind", Expr::Str(kind.into()));
         }
-        node.args.args.extend(args.args);
+
+        // Add remaining args using unified API
+        for arg in args.args {
+            match arg {
+                Arg::Pos(expr) => {
+                    // Positional arg
+                    node.add_pos_arg_unified(expr);
+                }
+                Arg::Name(pair_name) => {
+                    // Named arg
+                    node.add_name_arg_unified(pair_name);
+                }
+                Arg::Pair(key, value) => {
+                    // Pair arg
+                    node.add_arg_unified(key, value);
+                }
+            }
+        }
 
         if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
         } else {
