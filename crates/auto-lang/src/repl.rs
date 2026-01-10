@@ -1,4 +1,6 @@
+use crate::error::AutoError;
 use crate::interp;
+use miette::{MietteHandlerOpts, Report, SourceCode};
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 
@@ -26,7 +28,7 @@ fn try_command(line: &str, interpreter: &mut interp::Interpreter) -> CmdResult {
                 match interpreter.load_file(filename) {
                     Ok(_) => CmdResult::Continue,
                     Err(error) => {
-                        eprintln!("Error: {}", error);
+                        print_miette_error(error);
                         CmdResult::Continue
                     }
                 }
@@ -42,7 +44,7 @@ fn try_command(line: &str, interpreter: &mut interp::Interpreter) -> CmdResult {
                 match interpreter.load_config(filename) {
                     Ok(_) => CmdResult::Continue,
                     Err(error) => {
-                        eprintln!("Error: {}", error);
+                        print_miette_error(error);
                         CmdResult::Continue
                     }
                 }
@@ -61,11 +63,31 @@ fn try_command(line: &str, interpreter: &mut interp::Interpreter) -> CmdResult {
                 CmdResult::Continue
             }
             Err(error) => {
-                eprintln!("Error: {}", error);
+                // Attach source code to the error for better display
+                let error_with_source = crate::error::attach_source(
+                    error,
+                    "<repl>".to_string(),
+                    line.to_string(),
+                );
+                print_miette_error(error_with_source);
                 CmdResult::Continue
             }
         },
     }
+}
+
+fn print_miette_error(err: AutoError) {
+    // Convert AutoError to miette Report and display it nicely
+    let report = Report::new(err);
+
+    // Set up miette handler for pretty printing
+    miette::set_hook(Box::new(|_| {
+        Box::new(MietteHandlerOpts::new().terminal_links(true).build())
+    }))
+    .ok();
+
+    // Print the error - miette will handle the formatting
+    eprintln!("{}", report);
 }
 
 pub fn main_loop() -> Result<()> {
