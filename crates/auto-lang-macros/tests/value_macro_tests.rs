@@ -33,6 +33,46 @@ fn test_value_object() {
     assert!(matches!(val, Value::Obj(_)));
 }
 
+#[test]
+fn test_value_let() {
+    let val = value!{
+        let name = "Alice";
+        let age = 30;
+        {name: name, age: age}
+    };
+    println!("Value: {:?}", val);
+    println!("Value repr: {}", val);
+
+    // 验证结果是一个对象，包含正确的值
+    if let Value::Obj(obj) = val {
+        assert_eq!(obj.len(), 2);
+        assert!(obj.has("name"));
+        assert!(obj.has("age"));
+    } else {
+        panic!("Expected Obj value");
+    }
+}
+
+// 测试 atom! 宏支持多行语句和变量定义
+#[test]
+fn test_atom_let() {
+    use auto_lang::atom::Atom;
+    let atom = atom!{
+        let name = "Bob";
+        let age = 25;
+        {name: name, age: age}
+    };
+    println!("Atom: {:?}", atom);
+
+    // 验证结果是一个对象
+    assert!(matches!(atom, Atom::Obj(_)));
+    if let Atom::Obj(obj) = atom {
+        assert_eq!(obj.len(), 2);
+        assert!(obj.has("name"));
+        assert!(obj.has("age"));
+    }
+}
+
 // 测试 value! 宏 - 嵌套结构
 #[test]
 fn test_value_nested() {

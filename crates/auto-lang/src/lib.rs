@@ -1438,3 +1438,23 @@ for d in dirs {
         );
     }
 }
+
+#[cfg(test)]
+mod test_multiline {
+    use super::*;
+
+    #[test]
+    fn test_atom_reader_multiline() {
+        let mut reader = atom::AtomReader::new();
+
+        let code = r#"
+let name = "Alice"
+let age = 30
+{name: name, age: age}
+"#;
+
+        let result = reader.parse(code);
+        println!("Result: {:?}", result);
+        assert!(result.is_ok());
+    }
+}

@@ -280,10 +280,8 @@ fn token_stream_to_string(tokens: TokenStream) -> proc_macro2::TokenStream {
                         result.push(']');
                     }
                 } else {
-                    // 不是数组 - 直接处理
-                    for tok in all_tokens {
-                        result.push_str(&token_to_string(tok));
-                    }
+                    // 不是数组 - 使用 helper 函数处理以正确添加空格
+                    result = tokens_to_string_helper(all_tokens, 0);
                 }
             }
         }
@@ -313,15 +311,69 @@ fn token_to_string(token: TokenTree) -> String {
     }
 }
 
-/// 辅助函数：将 token 列表转换为字符串（处理逗号转换）
+/// 辅助函数：将 token 列表转换为字符串（处理逗号转换和空格）
 fn tokens_to_string_helper(tokens: Vec<TokenTree>, brace_depth: usize) -> String {
     let mut result = String::new();
     let mut in_brace = brace_depth > 0;
 
-    for token in tokens.iter() {
+    // AutoLang 关键字列表
+    let keywords = ["let", "mut", "fn", "return", "if", "else", "for", "while", "loop", "break", "use", "type"];
+
+    for (i, token) in tokens.iter().enumerate() {
+        // 检测语句边界并插入分号
+        // 语句边界：字面量/Group 后跟关键字或新语句的标识符
+        if i > 0 && !result.is_empty() {
+            let prev_token = &tokens[i - 1];
+            let needs_semicolon = match (prev_token, token) {
+                // 字面量后面跟关键字（新语句开始）
+                (TokenTree::Literal(_), TokenTree::Ident(ident)) => {
+                    let ident_str = ident.to_string();
+                    keywords.contains(&ident_str.as_str()) || ident_str == "let"
+                }
+                // Group 后跟关键字（新语句开始）
+                (TokenTree::Group(_), TokenTree::Ident(ident)) => {
+                    let ident_str = ident.to_string();
+                    keywords.contains(&ident_str.as_str()) || ident_str == "let"
+                }
+                // Group 后跟字面量（可能是新语句）
+                (TokenTree::Group(_), TokenTree::Literal(_)) => true,
+                _ => false,
+            };
+
+            if needs_semicolon {
+                result.push_str("; ");
+            }
+        }
+
+        // 在 token 之间添加适当的空格
+        if i > 0 && !result.is_empty() {
+            let prev_token = &tokens[i - 1];
+            let last_char = result.chars().last().unwrap_or(' ');
+
+            // 如果最后一个字符已经是空格或开括号，不需要再添加
+            if !last_char.is_whitespace() && last_char != '{' && last_char != '[' && last_char != '(' {
+                match (prev_token, token) {
+                    // 标识符后面跟标点（如 `name:`）不需要空格
+                    (TokenTree::Ident(_), TokenTree::Punct(_)) => {}
+                    // 字面量后面跟标点不需要空格
+                    (TokenTree::Literal(_), TokenTree::Punct(_)) => {}
+                    // 其他情况添加空格
+                    _ => {
+                        result.push(' ');
+                    }
+                }
+            }
+        }
+
         match token {
             TokenTree::Ident(ident) => {
-                result.push_str(&ident.to_string());
+                let ident_str = ident.to_string();
+                result.push_str(&ident_str);
+
+                // 关键字后面必须有空格
+                if keywords.contains(&ident_str.as_str()) {
+                    result.push(' ');
+                }
             }
             TokenTree::Punct(punct) => {
                 let ch = punct.as_char();
@@ -332,6 +384,10 @@ fn tokens_to_string_helper(tokens: Vec<TokenTree>, brace_depth: usize) -> String
                     } else {
                         result.push_str(", ");
                     }
+                } else if ch == '=' || ch == ':' || ch == ';' {
+                    // 这些符号后面需要空格
+                    result.push(ch);
+                    result.push(' ');
                 } else {
                     result.push(ch);
                 }
