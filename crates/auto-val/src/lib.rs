@@ -2,6 +2,9 @@ mod value;
 
 pub use value::*;
 
+mod to_value;
+pub use to_value::ToAutoValue;
+
 mod types;
 pub use types::*;
 

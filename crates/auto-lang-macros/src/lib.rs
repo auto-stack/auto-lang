@@ -25,6 +25,12 @@ use quote::quote;
 /// ```
 #[proc_macro]
 pub fn value(input: TokenStream) -> TokenStream {
+    // 检查是否包含插值模式
+    if has_interpolation(&input) {
+        // 使用插值处理
+        return handle_interpolated_value(input);
+    }
+
     // 将 TokenStream 转换为字符串
     let code = token_stream_to_string(input);
 
@@ -439,4 +445,94 @@ fn convert_commas_in_braces(s: &str) -> String {
     }
 
     result
+}
+
+/// 检测 TokenStream 中是否包含插值模式 #{...}
+fn has_interpolation(tokens: &TokenStream) -> bool {
+    let tokens_vec = tokens.clone().into_iter().collect::<Vec<_>>();
+    for i in 0..tokens_vec.len().saturating_sub(3) {
+        if matches!(&tokens_vec[i], TokenTree::Punct(p) if p.as_char() == '#')
+            && matches!(&tokens_vec[i+1], TokenTree::Punct(p) if p.as_char() == '{')
+            && matches!(&tokens_vec[i+2], TokenTree::Ident(_))
+            && matches!(&tokens_vec[i+3], TokenTree::Punct(p) if p.as_char() == '}') {
+            return true;
+        }
+    }
+    false
+}
+
+/// 处理带插值的对象字面量
+/// 例如：value!{name: "height", count: #{count}}
+fn handle_interpolated_value(input: TokenStream) -> TokenStream {
+    let tokens = input.into_iter().collect::<Vec<_>>();
+    let mut properties = Vec::new();
+    let mut i = 0;
+    
+    // 解析对象属性
+    while i < tokens.len() {
+        // 跳过逗号和分号
+        if matches!(&tokens[i], TokenTree::Punct(p) if p.as_char() == ',' || p.as_char() == ';') {
+            i += 1;
+            continue;
+        }
+        
+        // 获取属性名 (标识符)
+        let key = match &tokens[i] {
+            TokenTree::Ident(ident) => ident.to_string(),
+            _ => break,
+        };
+        i += 1;
+        
+        // 跳过冒号
+        if i >= tokens.len() || !matches!(&tokens[i], TokenTree::Punct(p) if p.as_char() == ':') {
+            break;
+        }
+        i += 1;
+        
+        // 获取属性值
+        if i >= tokens.len() {
+            break;
+        }
+        
+        // 检查是否是插值模式 #{ident}
+        let value_code = if matches!(&tokens[i], TokenTree::Punct(p) if p.as_char() == '#') 
+            && i + 3 < tokens.len() 
+            && matches!(&tokens[i+1], TokenTree::Punct(p) if p.as_char() == '{')
+            && matches!(&tokens[i+2], TokenTree::Ident(_))
+            && matches!(&tokens[i+3], TokenTree::Punct(p) if p.as_char() == '}') {
+            // 插值模式
+            let var_name = match &tokens[i+2] {
+                TokenTree::Ident(ident) => ident.to_string(),
+                _ => String::new(),
+            };
+            let var_ident = syn::Ident::new(&var_name, proc_macro2::Span::call_site());
+            i += 4;
+            quote! { #var_ident.to_auto_value() }
+        } else {
+            // 普通值，使用 token_to_string
+            let value_str = token_to_string(tokens[i].clone());
+            i += 1;
+            let string_literal = syn::LitStr::new(&value_str, proc_macro2::Span::call_site());
+            quote! { {
+                use auto_lang::atom::AtomReader;
+                let mut reader = AtomReader::new();
+                let atom = reader.parse(#string_literal)
+                    .unwrap_or_else(|e| panic!("value! macro failed: {}", e));
+                atom.to_value()
+            } }
+        };
+        
+        let key_str = syn::LitStr::new(&key, proc_macro2::Span::call_site());
+        properties.push(quote! { obj.set(#key_str, #value_code); });
+    }
+    
+    // 生成代码
+    let expanded = quote! {{
+        use auto_val::Obj;
+        let mut obj = Obj::new();
+        #(#properties)*
+        auto_val::Value::Obj(obj)
+    }};
+    
+    expanded.into()
 }

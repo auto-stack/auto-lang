@@ -73,6 +73,31 @@ fn test_atom_let() {
     }
 }
 
+// 测试 value! 宏支持外部变量插值
+#[test]
+fn test_value_interpolation() {
+    let count = 10;
+    let name = "height";
+    let active = true;
+
+    let val = value!{name: name, count: #{count}, active: #{active}};
+    println!("Value: {:?}", val);
+
+    // 验证结果是一个对象，包含正确的值
+    if let Value::Obj(obj) = val {
+        assert_eq!(obj.len(), 3);
+        assert!(obj.has("name"));
+        assert!(obj.has("count"));
+        assert!(obj.has("active"));
+
+        // 验证插值的值
+        assert_eq!(obj.get("count"), Some(Value::Uint(10)));
+        assert_eq!(obj.get("active"), Some(Value::Bool(true)));
+    } else {
+        panic!("Expected Obj value");
+    }
+}
+
 // 测试 value! 宏 - 嵌套结构
 #[test]
 fn test_value_nested() {
