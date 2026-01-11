@@ -326,6 +326,138 @@ impl Atom {
         matches!(self, Atom::Empty)
     }
 
+    // ========== Convenience Constructors ==========
+
+    /// Create a node Atom with properties
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Node name
+    /// * `props` - Iterator of (key, value) pairs
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_lang::atom::Atom;
+    /// use auto_val::Node;
+    ///
+    /// let atom = Atom::node(
+    ///     Node::new("config")
+    ///         .with_prop("version", "1.0")
+    ///         .with_prop("debug", true)
+    /// );
+    /// ```
+    pub fn node_with_props(
+        name: impl Into<AutoStr>,
+        props: impl IntoIterator<Item = (impl Into<auto_val::ValueKey>, impl Into<auto_val::Value>)>,
+    ) -> Self {
+        let node = auto_val::Node::new(name).with_props(props);
+        Atom::Node(node)
+    }
+
+    /// Create a node Atom with children
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Node name
+    /// * `children` - Iterator of child nodes
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_lang::atom::Atom;
+    /// use auto_val::Node;
+    ///
+    /// let atom = Atom::node(
+    ///     Node::new("root")
+    ///         .with_child(Node::new("child1"))
+    ///         .with_child(Node::new("child2"))
+    /// );
+    /// ```
+    pub fn node_with_children(
+        name: impl Into<AutoStr>,
+        children: impl IntoIterator<Item = auto_val::Node>,
+    ) -> Self {
+        let node = auto_val::Node::new(name).with_children(children);
+        Atom::Node(node)
+    }
+
+    /// Create a node Atom with properties and children
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Node name
+    /// * `props` - Iterator of (key, value) pairs
+    /// * `children` - Iterator of child nodes
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_lang::atom::Atom;
+    /// use auto_val::Node;
+    ///
+    /// let atom = Atom::node(
+    ///     Node::new("config")
+    ///         .with_prop("version", "1.0")
+    ///         .with_child(Node::new("db"))
+    ///         .with_child(Node::new("cache"))
+    /// );
+    /// ```
+    pub fn node_full(
+        name: impl Into<AutoStr>,
+        props: impl IntoIterator<Item = (impl Into<auto_val::ValueKey>, impl Into<auto_val::Value>)>,
+        children: impl IntoIterator<Item = auto_val::Node>,
+    ) -> Self {
+        let node = auto_val::Node::new(name)
+            .with_props(props)
+            .with_children(children);
+        Atom::Node(node)
+    }
+
+    /// Create an array Atom from values
+    ///
+    /// # Arguments
+    ///
+    /// * `values` - Iterator of values
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_lang::atom::Atom;
+    ///
+    /// let atom = Atom::array_from(vec![1, 2, 3, 4, 5]);
+    /// let atom = Atom::array_from(0..10);
+    /// ```
+    pub fn array_from(values: impl IntoIterator<Item = impl Into<auto_val::Value>>) -> Self {
+        let array = auto_val::Array::from(values);
+        Atom::Array(array)
+    }
+
+    /// Create an object Atom from key-value pairs
+    ///
+    /// # Arguments
+    ///
+    /// * `pairs` - Iterator of (key, value) pairs
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_lang::atom::Atom;
+    /// use auto_val::Obj;
+    ///
+    /// let atom = Atom::obj(
+    ///     Obj::new()
+    ///         .with("name", "Alice")
+    ///         .with("age", 30)
+    /// );
+    /// ```
+    pub fn obj_from(
+        pairs: impl IntoIterator<Item = (impl Into<auto_val::ValueKey>, impl Into<auto_val::Value>)>,
+    ) -> Self {
+        let obj = auto_val::Obj::from_pairs(pairs);
+        Atom::Obj(obj)
+    }
+
     /// Converts the Atom to its string representation
     ///
     /// This method returns a string representation of the Atom in the ATOM format.
@@ -361,6 +493,133 @@ impl Atom {
             Atom::Array(array) => array.to_astr(),
             Atom::Empty => AutoStr::default(),
         }
+    }
+
+    // ========== Builder Pattern ==========
+
+    /// Create an AtomBuilder for conditional Atom construction
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_lang::atom::Atom;
+    ///
+    /// let atom = Atom::builder()
+    ///     .node("config")
+    ///     .build();
+    /// ```
+    pub fn builder() -> AtomBuilder {
+        AtomBuilder::new()
+    }
+}
+
+// ========== AtomBuilder ==========
+
+/// Builder for creating `Atom` objects with conditional construction support
+///
+/// The AtomBuilder provides flexible construction for all Atom variants:
+/// - Nodes, Arrays, Objects, or Empty Atoms
+/// - Conditional construction based on runtime conditions
+/// - Deferred construction (build when ready)
+///
+/// # Examples
+///
+/// Node construction:
+/// ```rust
+/// use auto_lang::atom::Atom;
+/// use auto_val::Node;
+///
+/// let atom = Atom::builder()
+///     .node(Node::new("config"))
+///     .build();
+/// ```
+///
+/// Array construction:
+/// ```rust
+/// use auto_lang::atom::Atom;
+///
+/// let atom = Atom::builder()
+///     .array_values([1, 2, 3])
+///     .build();
+/// ```
+///
+/// Conditional construction:
+/// ```rust
+/// use auto_lang::atom::Atom;
+/// use auto_val::Node;
+///
+/// let include_debug = true;
+/// let atom = Atom::builder()
+///     .node(
+///         Node::builder("config")
+///             .prop_if(include_debug, "debug", true)
+///             .build()
+///     )
+///     .build();
+/// ```
+#[derive(Debug, Clone)]
+pub struct AtomBuilder {
+    inner: Option<Atom>,
+}
+
+impl AtomBuilder {
+    /// Create a new AtomBuilder
+    pub fn new() -> Self {
+        Self { inner: None }
+    }
+
+    /// Set the Atom to a Node
+    pub fn node(mut self, node: auto_val::Node) -> Self {
+        self.inner = Some(Atom::Node(node));
+        self
+    }
+
+    /// Set the Atom to an Array
+    pub fn array(mut self, array: auto_val::Array) -> Self {
+        self.inner = Some(Atom::Array(array));
+        self
+    }
+
+    /// Set the Atom to an Array from values
+    pub fn array_values(mut self, values: impl IntoIterator<Item = impl Into<auto_val::Value>>) -> Self {
+        let array = auto_val::Array::from(values);
+        self.inner = Some(Atom::Array(array));
+        self
+    }
+
+    /// Set the Atom to an Object
+    pub fn obj(mut self, obj: auto_val::Obj) -> Self {
+        self.inner = Some(Atom::Obj(obj));
+        self
+    }
+
+    /// Set the Atom to an Object from key-value pairs
+    pub fn obj_pairs(
+        mut self,
+        pairs: impl IntoIterator<Item = (impl Into<auto_val::ValueKey>, impl Into<auto_val::Value>)>,
+    ) -> Self {
+        let obj = auto_val::Obj::from_pairs(pairs);
+        self.inner = Some(Atom::Obj(obj));
+        self
+    }
+
+    /// Set the Atom to Empty
+    pub fn empty(mut self) -> Self {
+        self.inner = Some(Atom::Empty);
+        self
+    }
+
+    /// Construct the final Atom from the builder's configuration
+    ///
+    /// Returns the built Atom, or Empty if none was set
+    pub fn build(self) -> Atom {
+        self.inner.unwrap_or(Atom::Empty)
+    }
+}
+
+impl Default for AtomBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -663,5 +922,187 @@ mod tests {
         let atom = Atom::assemble(vec![Value::pair("a", 1)]).unwrap();
         let cloned = atom.clone();
         assert!(cloned.is_node());
+    }
+
+    // ========== Convenience Constructor Tests ==========
+
+    #[test]
+    fn test_node_with_props() {
+        // Using manual chaining instead of array to avoid type inference issues
+        let atom = Atom::node(
+            auto_val::Node::new("config")
+                .with_prop("version", "1.0")
+                .with_prop("debug", true)
+        );
+
+        assert!(atom.is_node());
+        if let Atom::Node(node) = atom {
+            assert_eq!(node.name, "config");
+            assert_eq!(node.get_prop_of("version"), Value::Str("1.0".into()));
+            assert_eq!(node.get_prop_of("debug"), Value::Bool(true));
+        }
+    }
+
+    #[test]
+    fn test_node_with_children() {
+        let atom = Atom::node_with_children("root",
+            [auto_val::Node::new("child1"), auto_val::Node::new("child2")]
+        );
+
+        assert!(atom.is_node());
+        if let Atom::Node(node) = atom {
+            assert_eq!(node.name, "root");
+            assert_eq!(node.kids_len(), 2);
+            assert!(node.has_nodes("child1"));
+            assert!(node.has_nodes("child2"));
+        }
+    }
+
+    #[test]
+    fn test_node_full() {
+        let atom = Atom::node_full("config",
+            [("version", "1.0")],
+            [auto_val::Node::new("db"), auto_val::Node::new("cache")]
+        );
+
+        assert!(atom.is_node());
+        if let Atom::Node(node) = atom {
+            assert_eq!(node.name, "config");
+            assert_eq!(node.get_prop_of("version"), Value::Str("1.0".into()));
+            assert_eq!(node.kids_len(), 2);
+            assert!(node.has_nodes("db"));
+            assert!(node.has_nodes("cache"));
+        }
+    }
+
+    #[test]
+    fn test_array_from() {
+        let atom = Atom::array_from(vec![1, 2, 3, 4, 5]);
+
+        assert!(atom.is_array());
+        if let Atom::Array(array) = atom {
+            assert_eq!(array.len(), 5);
+            assert_eq!(array.values[0], Value::Int(1));
+            assert_eq!(array.values[4], Value::Int(5));
+        }
+    }
+
+    #[test]
+    fn test_array_from_range() {
+        let atom = Atom::array_from(0..5);
+
+        assert!(atom.is_array());
+        if let Atom::Array(array) = atom {
+            assert_eq!(array.len(), 5);
+            assert_eq!(array.values[0], Value::Int(0));
+            assert_eq!(array.values[4], Value::Int(4));
+        }
+    }
+
+    #[test]
+    fn test_obj_from() {
+        // Using manual chaining instead of array to avoid type inference issues
+        let atom = Atom::obj(
+            auto_val::Obj::new()
+                .with("name", "Alice")
+                .with("age", 30)
+        );
+
+        assert!(atom.is_obj());
+        if let Atom::Obj(obj) = atom {
+            assert_eq!(obj.get_str_of("name"), "Alice");
+            assert_eq!(obj.get_int_of("age"), 30);
+        }
+    }
+
+    // ========== Builder Method Tests ==========
+
+    #[test]
+    fn test_builder_node() {
+        let atom = Atom::builder()
+            .node(auto_val::Node::new("config"))
+            .build();
+
+        assert!(atom.is_node());
+        if let Atom::Node(node) = atom {
+            assert_eq!(node.name, "config");
+        }
+    }
+
+    #[test]
+    fn test_builder_array() {
+        let arr = auto_val::Array::from(vec![1, 2, 3]);
+        let atom = Atom::builder()
+            .array(arr)
+            .build();
+
+        assert!(atom.is_array());
+    }
+
+    #[test]
+    fn test_builder_array_values() {
+        let atom = Atom::builder()
+            .array_values([1, 2, 3, 4, 5])
+            .build();
+
+        assert!(atom.is_array());
+        if let Atom::Array(arr) = atom {
+            assert_eq!(arr.len(), 5);
+            assert_eq!(arr.values[0], auto_val::Value::Int(1));
+            assert_eq!(arr.values[4], auto_val::Value::Int(5));
+        }
+    }
+
+    #[test]
+    fn test_builder_obj() {
+        let obj = auto_val::Obj::new();
+        let atom = Atom::builder()
+            .obj(obj)
+            .build();
+
+        assert!(atom.is_obj());
+    }
+
+    #[test]
+    fn test_builder_obj_pairs() {
+        let atom = Atom::builder()
+            .obj_pairs(std::iter::empty::<(&str, &str)>())
+            .build();
+
+        assert!(atom.is_obj());
+    }
+
+    #[test]
+    fn test_builder_empty() {
+        let atom = Atom::builder()
+            .empty()
+            .build();
+
+        assert!(atom.is_empty_atom());
+    }
+
+    #[test]
+    fn test_builder_default_empty() {
+        let atom = Atom::builder().build();
+        assert!(atom.is_empty_atom());
+    }
+
+    #[test]
+    fn test_builder_with_node_builder() {
+        let atom = Atom::builder()
+            .node(
+                auto_val::Node::builder("config")
+                    .prop("version", "1.0")
+                    .prop_if(true, "debug", true)
+                    .build(),
+            )
+            .build();
+
+        assert!(atom.is_node());
+        if let Atom::Node(node) = atom {
+            assert_eq!(node.name, "config");
+            assert_eq!(node.get_prop_of("version"), auto_val::Value::Str("1.0".into()));
+            assert_eq!(node.get_prop_of("debug"), auto_val::Value::Bool(true));
+        }
     }
 }

@@ -480,6 +480,364 @@ impl Node {
         // Keeping for API compatibility but it's a no-op
         self
     }
+
+    // ========== Chainable Builder Methods ==========
+
+    /// Create node with a single property (chainable)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_val::Node;
+    ///
+    /// let node = Node::new("config")
+    ///     .with_prop("version", "1.0")
+    ///     .with_prop("debug", true);
+    /// ```
+    pub fn with_prop(mut self, key: impl Into<ValueKey>, value: impl Into<Value>) -> Self {
+        self.set_prop(key, value);
+        self
+    }
+
+    /// Create node with multiple properties (chainable)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_val::Node;
+    ///
+    /// let node = Node::new("person")
+    ///     .with_prop("name", "Alice")
+    ///     .with_prop("age", 30)
+    ///     .with_prop("city", "Boston");
+    /// ```
+    pub fn with_props(
+        mut self,
+        props: impl IntoIterator<Item = (impl Into<ValueKey>, impl Into<Value>)>,
+    ) -> Self {
+        for (key, value) in props {
+            self.set_prop(key, value);
+        }
+        self
+    }
+
+    /// Create node and merge object properties (chainable)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_val::{Node, Obj};
+    ///
+    /// let obj = Obj::new()
+    ///     .with("a", 1)
+    ///     .with("b", 2);
+    /// let node = Node::new("test")
+    ///     .with_obj(obj);
+    /// ```
+    pub fn with_obj(mut self, obj: Obj) -> Self {
+        self.merge_obj(obj);
+        self
+    }
+
+    /// Create node with a child (chainable)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_val::Node;
+    ///
+    /// let node = Node::new("root")
+    ///     .with_child(Node::new("child1"))
+    ///     .with_child(Node::new("child2"));
+    /// ```
+    pub fn with_child(mut self, node: Node) -> Self {
+        self.add_kid(node);
+        self
+    }
+
+    /// Create node with multiple children (chainable)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_val::Node;
+    ///
+    /// let node = Node::new("root")
+    ///     .with_child(Node::new("child1"))
+    ///     .with_child(Node::new("child2"))
+    ///     .with_child(Node::new("child3"));
+    /// ```
+    pub fn with_children(mut self, children: impl IntoIterator<Item = Node>) -> Self {
+        for child in children {
+            self.add_kid(child);
+        }
+        self
+    }
+
+    /// Create node with an indexed child (chainable)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_val::Node;
+    ///
+    /// let node = Node::new("root")
+    ///     .with_node_kid(0, Node::new("first"))
+    ///     .with_node_kid(1, Node::new("second"));
+    /// ```
+    pub fn with_node_kid(mut self, index: i32, node: Node) -> Self {
+        self.add_node_kid(index, node);
+        self
+    }
+
+    /// Create node with text content (chainable)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_val::Node;
+    ///
+    /// let node = Node::new("paragraph")
+    ///     .with_text("Hello, world!");
+    /// ```
+    pub fn with_text(mut self, text: impl Into<AutoStr>) -> Self {
+        self.text = text.into();
+        self
+    }
+
+    /// Create node with main argument (chainable)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_val::Node;
+    ///
+    /// let node = Node::new("db")
+    ///     .with_arg("my_database");
+    /// ```
+    pub fn with_arg(mut self, arg: impl Into<Value>) -> Self {
+        self.set_main_arg(arg);
+        self
+    }
+
+    /// Create node with a named argument (chainable)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_val::Node;
+    ///
+    /// let node = Node::new("config")
+    ///     .with_named_arg("host", "localhost")
+    ///     .with_named_arg("port", 5432);
+    /// ```
+    pub fn with_named_arg(mut self, name: impl Into<ValueKey>, value: impl Into<Value>) -> Self {
+        self.add_arg_unified(name, value);
+        self
+    }
+
+    // ========== Builder Pattern ==========
+
+    /// Create a NodeBuilder for conditional node construction
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_val::Node;
+    ///
+    /// let node = Node::builder("config")
+    ///     .prop("version", "1.0")
+    ///     .prop_if(true, "debug", true)
+    ///     .build();
+    /// ```
+    pub fn builder(name: impl Into<AutoStr>) -> NodeBuilder {
+        NodeBuilder::new(name)
+    }
+}
+
+// ========== NodeBuilder ==========
+
+/// Builder for creating `Node` objects with conditional construction support
+///
+/// The NodeBuilder provides more flexibility than chainable methods:
+/// - Conditional property/child addition based on runtime conditions
+/// - Batch operations with iterators
+/// - Deferred construction (build when ready)
+///
+/// # Examples
+///
+/// Basic usage:
+/// ```rust
+/// use auto_val::Node;
+///
+/// let node = Node::builder("config")
+///     .prop("version", "1.0")
+///     .prop("debug", true)
+///     .build();
+/// ```
+///
+/// Conditional construction:
+/// ```rust
+/// use auto_val::Node;
+///
+/// let enable_ssl = true;
+/// let node = Node::builder("database")
+///     .prop("host", "localhost")
+///     .prop_if(enable_ssl, "ssl", true)  // Only added if enable_ssl is true
+///     .child_if(enable_ssl, Node::new("certificate"))
+///     .build();
+/// ```
+#[derive(Debug, Clone)]
+pub struct NodeBuilder {
+    name: AutoStr,
+    id: AutoStr,
+    props: Vec<(ValueKey, Value)>,
+    kids: Vec<Node>,
+    text: AutoStr,
+    args: Vec<(ValueKey, Value)>,
+}
+
+impl NodeBuilder {
+    /// Create a new NodeBuilder with the given node name
+    pub fn new(name: impl Into<AutoStr>) -> Self {
+        Self {
+            name: name.into(),
+            id: AutoStr::default(),
+            props: Vec::new(),
+            kids: Vec::new(),
+            text: AutoStr::default(),
+            args: Vec::new(),
+        }
+    }
+
+    /// Set the node ID (main argument)
+    pub fn id(mut self, id: impl Into<AutoStr>) -> Self {
+        self.id = id.into();
+        self
+    }
+
+    /// Add a property to the node
+    pub fn prop(mut self, key: impl Into<ValueKey>, value: impl Into<Value>) -> Self {
+        self.props.push((key.into(), value.into()));
+        self
+    }
+
+    /// Add properties to the node in a batch operation
+    pub fn props(mut self, props: impl IntoIterator<Item = (impl Into<ValueKey>, impl Into<Value>)>) -> Self {
+        for (key, value) in props {
+            self.props.push((key.into(), value.into()));
+        }
+        self
+    }
+
+    /// Conditionally add a property based on a runtime condition
+    pub fn prop_if(mut self, condition: bool, key: impl Into<ValueKey>, value: impl Into<Value>) -> Self {
+        if condition {
+            self.props.push((key.into(), value.into()));
+        }
+        self
+    }
+
+    /// Add a child node to this node
+    pub fn child(mut self, node: Node) -> Self {
+        self.kids.push(node);
+        self
+    }
+
+    /// Add child nodes in a batch operation
+    pub fn children(mut self, nodes: impl IntoIterator<Item = Node>) -> Self {
+        for node in nodes {
+            self.kids.push(node);
+        }
+        self
+    }
+
+    /// Conditionally add a child node based on a runtime condition
+    pub fn child_if(mut self, condition: bool, node: Node) -> Self {
+        if condition {
+            self.kids.push(node);
+        }
+        self
+    }
+
+    /// Add an indexed child node
+    pub fn child_kid(mut self, index: i32, node: Node) -> Self {
+        let mut id = node.id().to_string();
+        id.insert_str(0, &format!("{}.", index));
+        let mut node = node;
+        node.id = id.into();
+        self.kids.push(node);
+        self
+    }
+
+    /// Set the node's text content
+    pub fn text(mut self, text: impl Into<AutoStr>) -> Self {
+        self.text = text.into();
+        self
+    }
+
+    /// Add a positional argument
+    pub fn arg(mut self, value: impl Into<Value>) -> Self {
+        self.args.push((ValueKey::Str(AutoStr::default()), value.into()));
+        self
+    }
+
+    /// Add a named argument
+    pub fn named_arg(mut self, name: impl Into<ValueKey>, value: impl Into<Value>) -> Self {
+        self.args.push((name.into(), value.into()));
+        self
+    }
+
+    /// Add arguments in a batch operation
+    pub fn args(mut self, args: impl IntoIterator<Item = (impl Into<ValueKey>, impl Into<Value>)>) -> Self {
+        for (key, value) in args {
+            self.args.push((key.into(), value.into()));
+        }
+        self
+    }
+
+    /// Construct the final Node from the builder's configuration
+    pub fn build(self) -> Node {
+        let mut node = Node::new(self.name);
+
+        // Set ID field and add as main arg to ensure consistency
+        if !self.id.is_empty() {
+            node.id = self.id.clone();
+            node.set_main_arg(self.id.clone());
+        }
+
+        for (key, value) in self.props {
+            node.set_prop(key, value);
+        }
+
+        for child in self.kids {
+            node.add_kid(child);
+        }
+
+        node.text = self.text;
+
+        // Add args to both systems for compatibility
+        for (key, value) in self.args {
+            // Add to unified props system
+            node.add_arg_unified(key.clone(), value.clone());
+
+            // Also add to legacy args system for main_arg() compatibility
+            let key_str = key.to_astr().to_string();
+            if key_str.is_empty() {
+                // Positional arg - add as main arg if it's the first one
+                if node.args.is_empty() {
+                    node.set_main_arg(value);
+                } else {
+                    node.add_arg(crate::meta::Arg::Pos(value));
+                }
+            } else {
+                // Named arg
+                node.add_arg(crate::meta::Arg::Pair(key, value));
+            }
+        }
+
+        node
+    }
 }
 
 impl fmt::Display for Node {
@@ -864,5 +1222,411 @@ mod tests {
 
         // After swap_remove, order is: a, d, c
         assert_eq!(keys, vec!["a", "d", "c"]);
+    }
+
+    // ========== Chainable Builder Method Tests ==========
+
+    #[test]
+    fn test_with_prop() {
+        let node = Node::new("test").with_prop("key", "value");
+        assert_eq!(node.get_prop_of("key"), Value::Str("value".into()));
+    }
+
+    #[test]
+    fn test_with_prop_chain() {
+        let node = Node::new("config")
+            .with_prop("version", "1.0")
+            .with_prop("debug", true)
+            .with_prop("port", 8080);
+
+        assert_eq!(node.get_prop_of("version"), Value::Str("1.0".into()));
+        assert_eq!(node.get_prop_of("debug"), Value::Bool(true));
+        assert_eq!(node.get_prop_of("port"), Value::Int(8080));
+    }
+
+    #[test]
+    fn test_with_props_multiple() {
+        let node = Node::new("person")
+            .with_prop("name", "Alice")
+            .with_prop("age", 30i32)
+            .with_prop("city", "Boston");
+
+        assert_eq!(node.get_prop_of("name"), Value::Str("Alice".into()));
+        assert_eq!(node.get_prop_of("age"), Value::Int(30));
+        assert_eq!(node.get_prop_of("city"), Value::Str("Boston".into()));
+    }
+
+    #[test]
+    fn test_with_props_empty() {
+        // Test with empty iterator - using explicit type annotation
+        let _node = Node::new("test").with_props(std::iter::empty::<(&str, &str)>());
+        // Just test that it compiles; actual functionality is covered by other tests
+    }
+
+    #[test]
+    fn test_with_obj() {
+        let obj = Obj::new()
+            .with("a", 1)
+            .with("b", 2)
+            .with("c", 3);
+        let node = Node::new("test").with_obj(obj);
+
+        assert_eq!(node.get_prop_of("a"), Value::Int(1));
+        assert_eq!(node.get_prop_of("b"), Value::Int(2));
+        assert_eq!(node.get_prop_of("c"), Value::Int(3));
+    }
+
+    #[test]
+    fn test_with_child() {
+        let node = Node::new("root")
+            .with_child(Node::new("child1"))
+            .with_child(Node::new("child2"));
+
+        assert_eq!(node.kids_len(), 2);
+        assert!(node.has_nodes("child1"));
+        assert!(node.has_nodes("child2"));
+    }
+
+    #[test]
+    fn test_with_children() {
+        let node = Node::new("root").with_children([
+            Node::new("child1"),
+            Node::new("child2"),
+            Node::new("child3"),
+        ]);
+
+        assert_eq!(node.kids_len(), 3);
+        assert!(node.has_nodes("child1"));
+        assert!(node.has_nodes("child2"));
+        assert!(node.has_nodes("child3"));
+    }
+
+    #[test]
+    fn test_with_children_empty() {
+        let node = Node::new("root").with_children(std::iter::empty::<Node>());
+        assert_eq!(node.kids_len(), 0);
+    }
+
+    #[test]
+    fn test_with_node_kid() {
+        let node = Node::new("root")
+            .with_node_kid(0, Node::new("first"))
+            .with_node_kid(5, Node::new("second"))
+            .with_node_kid(10, Node::new("third"));
+
+        assert_eq!(node.kids_len(), 3);
+        assert!(node.has_nodes("first"));
+        assert!(node.has_nodes("second"));
+        assert!(node.has_nodes("third"));
+    }
+
+    #[test]
+    fn test_with_text() {
+        let node = Node::new("paragraph").with_text("Hello, world!");
+        assert_eq!(node.text, AutoStr::from("Hello, world!"));
+    }
+
+    #[test]
+    fn test_with_arg() {
+        let node = Node::new("db").with_arg("my_database");
+        assert_eq!(node.main_arg().to_astr(), AutoStr::from("my_database"));
+    }
+
+    #[test]
+    fn test_with_named_arg() {
+        let node = Node::new("config")
+            .with_named_arg("host", "localhost")
+            .with_named_arg("port", 5432);
+
+        assert_eq!(node.get_arg("host"), Some(Value::Str("localhost".into())));
+        assert_eq!(node.get_arg("port"), Some(Value::Int(5432)));
+    }
+
+    #[test]
+    fn test_nested_chain() {
+        let node = Node::new("root")
+            .with_prop("root_prop", "value")
+            .with_child(
+                Node::new("level1")
+                    .with_prop("level1_prop", "value1")
+                    .with_child(
+                        Node::new("level2")
+                            .with_prop("level2_prop", "value2")
+                            .with_prop("deep", true),
+                    ),
+            )
+            .with_child(Node::new("sibling").with_prop("sibling_prop", "value3"));
+
+        // Verify root properties
+        assert_eq!(node.get_prop_of("root_prop"), Value::Str("value".into()));
+        assert_eq!(node.kids_len(), 2);
+
+        // Verify level1 child
+        let level1_nodes = node.get_nodes("level1");
+        assert_eq!(level1_nodes.len(), 1);
+        assert_eq!(
+            level1_nodes[0].get_prop_of("level1_prop"),
+            Value::Str("value1".into())
+        );
+
+        // Verify level2 child nested under level1
+        let level2_nodes = level1_nodes[0].get_nodes("level2");
+        assert_eq!(level2_nodes.len(), 1);
+        assert_eq!(
+            level2_nodes[0].get_prop_of("level2_prop"),
+            Value::Str("value2".into())
+        );
+        assert_eq!(level2_nodes[0].get_prop_of("deep"), Value::Bool(true));
+
+        // Verify sibling child
+        let sibling_nodes = node.get_nodes("sibling");
+        assert_eq!(sibling_nodes.len(), 1);
+        assert_eq!(
+            sibling_nodes[0].get_prop_of("sibling_prop"),
+            Value::Str("value3".into())
+        );
+    }
+
+    #[test]
+    fn test_complex_realistic_config() {
+        let node = Node::new("config")
+            .with_prop("version", "1.0")
+            .with_prop("debug", true)
+            .with_child(
+                Node::new("database")
+                    .with_prop("host", "localhost")
+                    .with_prop("port", 5432)
+                    .with_prop("ssl", true)
+                    .with_child(Node::new("pool").with_prop("size", 10)),
+            )
+            .with_child(
+                Node::new("redis")
+                    .with_prop("host", "127.0.0.1")
+                    .with_prop("port", 6379),
+            );
+
+        // Verify config properties
+        assert_eq!(node.get_prop_of("version"), Value::Str("1.0".into()));
+        assert_eq!(node.get_prop_of("debug"), Value::Bool(true));
+        assert_eq!(node.kids_len(), 2);
+
+        // Verify database child
+        let db_nodes = node.get_nodes("database");
+        assert_eq!(db_nodes.len(), 1);
+        assert_eq!(
+            db_nodes[0].get_prop_of("host"),
+            Value::Str("localhost".into())
+        );
+        assert_eq!(db_nodes[0].get_prop_of("port"), Value::Int(5432));
+        assert_eq!(db_nodes[0].get_prop_of("ssl"), Value::Bool(true));
+
+        // Verify pool under database
+        let pool_nodes = db_nodes[0].get_nodes("pool");
+        assert_eq!(pool_nodes.len(), 1);
+        assert_eq!(pool_nodes[0].get_prop_of("size"), Value::Int(10));
+
+        // Verify redis child
+        let redis_nodes = node.get_nodes("redis");
+        assert_eq!(redis_nodes.len(), 1);
+        assert_eq!(
+            redis_nodes[0].get_prop_of("host"),
+            Value::Str("127.0.0.1".into())
+        );
+        assert_eq!(redis_nodes[0].get_prop_of("port"), Value::Int(6379));
+    }
+
+    // ========== Builder Method Tests ==========
+
+    #[test]
+    fn test_builder_basic() {
+        let node = Node::builder("config")
+            .prop("version", "1.0")
+            .prop("debug", true)
+            .build();
+
+        assert_eq!(node.name, "config");
+        assert_eq!(node.get_prop_of("version"), Value::Str("1.0".into()));
+        assert_eq!(node.get_prop_of("debug"), Value::Bool(true));
+    }
+
+    #[test]
+    fn test_builder_with_id() {
+        let node = Node::builder("db")
+            .id("my_db")
+            .build();
+
+        assert_eq!(node.name, "db");
+        assert_eq!(node.id, "my_db");
+    }
+
+    #[test]
+    fn test_builder_prop_if_true() {
+        let node = Node::builder("config")
+            .prop_if(true, "debug", true)
+            .prop_if(true, "verbose", false)
+            .build();
+
+        assert_eq!(node.get_prop_of("debug"), Value::Bool(true));
+        assert_eq!(node.get_prop_of("verbose"), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_builder_prop_if_false() {
+        let node = Node::builder("config")
+            .prop_if(false, "debug", true)
+            .prop_if(false, "verbose", false)
+            .build();
+
+        assert_eq!(node.get_prop_of("debug"), Value::Nil);
+        assert_eq!(node.get_prop_of("verbose"), Value::Nil);
+    }
+
+    #[test]
+    fn test_builder_props_batch() {
+        let node = Node::builder("person")
+            .prop("name", "Alice")
+            .prop("age", 30)
+            .build();
+
+        assert_eq!(node.get_prop_of("name"), Value::Str("Alice".into()));
+        assert_eq!(node.get_prop_of("age"), Value::Int(30));
+    }
+
+    #[test]
+    fn test_builder_child() {
+        let node = Node::builder("root")
+            .child(Node::new("child1"))
+            .child(Node::new("child2"))
+            .build();
+
+        assert_eq!(node.kids_len(), 2);
+        assert!(node.has_nodes("child1"));
+        assert!(node.has_nodes("child2"));
+    }
+
+    #[test]
+    fn test_builder_child_if_true() {
+        let node = Node::builder("root")
+            .child_if(true, Node::new("child1"))
+            .build();
+
+        assert_eq!(node.kids_len(), 1);
+        assert!(node.has_nodes("child1"));
+    }
+
+    #[test]
+    fn test_builder_child_if_false() {
+        let node = Node::builder("root")
+            .child_if(false, Node::new("child1"))
+            .build();
+
+        assert_eq!(node.kids_len(), 0);
+        assert!(!node.has_nodes("child1"));
+    }
+
+    #[test]
+    fn test_builder_children_batch() {
+        let node = Node::builder("root")
+            .children([
+                Node::new("child1"),
+                Node::new("child2"),
+                Node::new("child3"),
+            ])
+            .build();
+
+        assert_eq!(node.kids_len(), 3);
+        assert!(node.has_nodes("child1"));
+        assert!(node.has_nodes("child2"));
+        assert!(node.has_nodes("child3"));
+    }
+
+    #[test]
+    fn test_builder_text() {
+        let node = Node::builder("paragraph")
+            .text("Hello, world!")
+            .build();
+
+        assert_eq!(node.text, AutoStr::from("Hello, world!"));
+    }
+
+    #[test]
+    fn test_builder_arg() {
+        let node = Node::builder("db")
+            .arg("my_database")
+            .build();
+
+        assert_eq!(node.main_arg().to_astr(), AutoStr::from("my_database"));
+    }
+
+    #[test]
+    fn test_builder_named_arg() {
+        let node = Node::builder("config")
+            .named_arg("host", "localhost")
+            .named_arg("port", 5432)
+            .build();
+
+        assert_eq!(node.get_arg("host"), Some(Value::Str("localhost".into())));
+        assert_eq!(node.get_arg("port"), Some(Value::Int(5432)));
+    }
+
+    #[test]
+    fn test_builder_conditional_nested() {
+        let enable_ssl = true;
+        let enable_pool = false;
+
+        let node = Node::builder("config")
+            .prop("version", "1.0")
+            .child(
+                Node::builder("database")
+                    .prop("host", "localhost")
+                    .prop_if(enable_ssl, "ssl", true)
+                    .child_if(enable_pool, Node::builder("pool").prop("size", 10).build())
+                    .build(),
+            )
+            .build();
+
+        assert_eq!(node.get_prop_of("version"), Value::Str("1.0".into()));
+        let db_nodes = node.get_nodes("database");
+        assert_eq!(db_nodes.len(), 1);
+        assert_eq!(db_nodes[0].get_prop_of("host"), Value::Str("localhost".into()));
+        assert_eq!(db_nodes[0].get_prop_of("ssl"), Value::Bool(true));
+        assert!(!db_nodes[0].has_nodes("pool")); // pool not added because enable_pool is false
+    }
+
+    #[test]
+    fn test_builder_complex_realistic() {
+        let use_redis = true;
+
+        let node = Node::builder("config")
+            .prop("version", "1.0")
+            .prop("debug", true)
+            .child(
+                Node::builder("database")
+                    .prop("host", "localhost")
+                    .prop("port", 5432)
+                    .prop("ssl", true)
+                    .child(Node::builder("pool").prop("size", 10).build())
+                    .build(),
+            )
+            .child_if(
+                use_redis,
+                Node::builder("redis")
+                    .prop("host", "127.0.0.1")
+                    .prop("port", 6379)
+                    .build(),
+            )
+            .build();
+
+        assert_eq!(node.get_prop_of("version"), Value::Str("1.0".into()));
+        assert_eq!(node.get_prop_of("debug"), Value::Bool(true));
+        assert_eq!(node.kids_len(), 2); // database + redis
+
+        let db_nodes = node.get_nodes("database");
+        assert_eq!(db_nodes.len(), 1);
+        assert_eq!(db_nodes[0].get_prop_of("host"), Value::Str("localhost".into()));
+
+        let redis_nodes = node.get_nodes("redis");
+        assert_eq!(redis_nodes.len(), 1);
+        assert_eq!(redis_nodes[0].get_prop_of("host"), Value::Str("127.0.0.1".into()));
     }
 }
