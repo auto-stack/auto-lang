@@ -535,10 +535,10 @@ impl Atom {
     ///
     /// ```rust
     /// use auto_lang::atom::Atom;
-    /// use auto_lang::node;
+    /// use auto_val::Node;
     ///
     /// let atom = Atom::builder()
-    ///     .node(node!("config"))
+    ///     .node(Node::new("config"))
     ///     .build();
     /// ```
     pub fn builder() -> AtomBuilder {
