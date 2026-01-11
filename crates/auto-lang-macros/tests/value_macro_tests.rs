@@ -76,10 +76,11 @@ fn test_atom_let() {
 // 测试 value! 宏支持外部变量插值
 #[test]
 fn test_value_interpolation() {
-    let count = 10;
-    let name = "height";
-    let active = true;
+    let count: i32 = 10;
+    let name: &str = "height";
+    let active: bool = true;
 
+    // 测试多个插值（混合隐式和显式插值）
     let val = value!{name: name, count: #{count}, active: #{active}};
     println!("Value: {:?}", val);
 
@@ -91,7 +92,70 @@ fn test_value_interpolation() {
         assert!(obj.has("active"));
 
         // 验证插值的值
-        assert_eq!(obj.get("count"), Some(Value::Uint(10)));
+        assert_eq!(obj.get("count"), Some(Value::Int(10)));
+        assert_eq!(obj.get("active"), Some(Value::Bool(true)));
+        assert_eq!(obj.get("name"), Some(Value::Str("height".into())));
+    } else {
+        panic!("Expected Obj value");
+    }
+}
+
+// 测试仅使用显式插值语法 #{}
+#[test]
+fn test_value_explicit_interpolation() {
+    let port: u32 = 8080;
+    let host: &str = "localhost";
+    let debug: bool = false;
+
+    // 全部使用显式插值
+    let val = value!{host: #{host}, port: #{port}, debug: #{debug}};
+
+    if let Value::Obj(obj) = val {
+        assert_eq!(obj.len(), 3);
+        assert_eq!(obj.get("host"), Some(Value::Str("localhost".into())));
+        assert_eq!(obj.get("port"), Some(Value::Uint(8080)));
+        assert_eq!(obj.get("debug"), Some(Value::Bool(false)));
+    } else {
+        panic!("Expected Obj value");
+    }
+}
+
+// 测试浮点数插值
+#[test]
+fn test_value_float_interpolation() {
+    let pi: f64 = 3.14159;
+    let e: f32 = 2.71828;
+
+    let val = value!{pi: #{pi}, e: #{e}};
+
+    if let Value::Obj(obj) = val {
+        assert_eq!(obj.len(), 2);
+        assert_eq!(obj.get("pi"), Some(Value::Double(3.14159)));
+        // f32 转换为 f64 会有精度损失，使用近似比较
+        if let Some(Value::Float(actual)) = obj.get("e") {
+            assert!((actual - 2.71828).abs() < 0.0001, "Expected ~2.71828, got {}", actual);
+        } else {
+            panic!("Expected Float value");
+        }
+    } else {
+        panic!("Expected Obj value");
+    }
+}
+
+// 测试混合字面量和插值
+#[test]
+fn test_value_mixed_literal_interpolation() {
+    let version: u32 = 2;
+    let name: &str = "test";
+
+    // 混合字面量和变量插值（使用单行格式以避免解析问题）
+    let val = value!{name: name, version: #{version}, description: "A test config", active: true};
+
+    if let Value::Obj(obj) = val {
+        assert_eq!(obj.len(), 4);
+        assert_eq!(obj.get("name"), Some(Value::Str("test".into())));
+        assert_eq!(obj.get("version"), Some(Value::Uint(2)));
+        assert_eq!(obj.get("description"), Some(Value::Str("A test config".into())));
         assert_eq!(obj.get("active"), Some(Value::Bool(true)));
     } else {
         panic!("Expected Obj value");

@@ -27,3 +27,5 @@ history.txt
 
 .am/
 build/
+
+*.o

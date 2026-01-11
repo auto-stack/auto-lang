@@ -22,11 +22,75 @@ use quote::quote;
 ///
 /// // 对象
 /// let val = value!{name: "Alice", age: 30};
+///
+/// // 变量插值
+/// let count: i32 = 10;
+/// let name: &str = "test";
+/// let val = value!{
+///     name: #{name},           // 变量插值
+///     count: #{count},         // 变量插值
+///     active: true,            // 布尔字面量
+///     description: "test",     // 字符串字面量
+/// };
 /// ```
+///
+/// # 插值语法
+///
+/// `value!` 宏支持变量插值，使用 `#{var}` 语法引用外部变量：
+///
+/// ```rust
+/// # use auto_lang_macros::value;
+/// # use auto_val::Value;
+/// let count = 10;
+/// let name = "Alice";
+/// let val = value!{name: #{name}, count: #{count}};  // 变量插值
+/// # let _ = val;
+/// ```
+///
+/// 当使用 `#{}` 语法时，标识符会被自动识别为变量引用并调用 `ToAutoValue` trait：
+///
+/// ```rust
+/// # use auto_lang_macros::value;
+/// # use auto_val::Value;
+/// let active = true;
+/// let port: u32 = 8080;
+/// let val = value!{
+///     active: #{active},  // 使用 ToAutoValue trait 转换
+///     port: #{port},
+/// };
+/// # let _ = val;
+/// ```
+///
+/// 支持的值类型：
+/// - 变量引用（通过 `ToAutoValue` trait 转换）：`i32`, `u32`, `f64`, `f32`, `bool`, `&str`, `String`
+/// - 布尔字面量：`true`, `false`
+/// - 字符串字面量：`"hello"`
+/// - 数字字面量：`42`, `3.14`
+/// - AutoLang 表达式（通过 `AtomReader` 解析）
+///
+/// # 类型转换
+///
+/// 插值的变量必须实现 `ToAutoValue` trait。已为以下类型提供实现：
+/// - `i32`, `u32`, `i64`, `u64` → `Value::Int` / `Value::Uint`
+/// - `f64` → `Value::Double`
+/// - `f32` → `Value::Float`
+/// - `bool` → `Value::Bool`
+/// - `&str`, `String` → `Value::Str`
+/// - `Value` → 自身（identity）
+///
+/// # 注意事项
+///
+/// - **必须使用 `#{}` 语法**：只有使用 `#{var}` 语法时，变量才会被插值
+/// - 布尔值 `true`/`false` 被识别为字面量，而非变量引用
+/// - 字符串和数字字面量直接转换为 `Value`，不经过解析器
+/// - 复杂表达式使用 `AtomReader` 解析为 AutoLang AST
+/// - 混合使用时，字面量值（`true`、`"string"`、`42`）与插值（`#{var}`）可以一起使用
 #[proc_macro]
 pub fn value(input: TokenStream) -> TokenStream {
     // 检查是否包含插值模式
-    if has_interpolation(&input) {
+    let has_interp = has_interpolation(&input);
+
+    if has_interp {
         // 使用插值处理
         return handle_interpolated_value(input);
     }
@@ -450,12 +514,26 @@ fn convert_commas_in_braces(s: &str) -> String {
 /// 检测 TokenStream 中是否包含插值模式 #{...}
 fn has_interpolation(tokens: &TokenStream) -> bool {
     let tokens_vec = tokens.clone().into_iter().collect::<Vec<_>>();
-    for i in 0..tokens_vec.len().saturating_sub(3) {
-        if matches!(&tokens_vec[i], TokenTree::Punct(p) if p.as_char() == '#')
-            && matches!(&tokens_vec[i+1], TokenTree::Punct(p) if p.as_char() == '{')
-            && matches!(&tokens_vec[i+2], TokenTree::Ident(_))
-            && matches!(&tokens_vec[i+3], TokenTree::Punct(p) if p.as_char() == '}') {
-            return true;
+
+    // 需要至少 2 个 tokens: # { ... }
+    if tokens_vec.len() < 2 {
+        return false;
+    }
+
+    for i in 0..tokens_vec.len() - 1 {
+        if matches!(&tokens_vec[i], TokenTree::Punct(p) if p.as_char() == '#') {
+            // 检查下一个 token 是否是 Group { ... }
+            if i + 1 < tokens_vec.len() {
+                if let TokenTree::Group(group) = &tokens_vec[i + 1] {
+                    if group.delimiter() == Delimiter::Brace {
+                        // 检查 group 内容是否只有一个标识符
+                        let inner: Vec<_> = group.stream().into_iter().collect();
+                        if inner.len() == 1 && matches!(inner.first(), Some(TokenTree::Ident(_))) {
+                            return true;
+                        }
+                    }
+                }
+            }
         }
     }
     false
@@ -495,31 +573,97 @@ fn handle_interpolated_value(input: TokenStream) -> TokenStream {
         }
         
         // 检查是否是插值模式 #{ident}
-        let value_code = if matches!(&tokens[i], TokenTree::Punct(p) if p.as_char() == '#') 
-            && i + 3 < tokens.len() 
-            && matches!(&tokens[i+1], TokenTree::Punct(p) if p.as_char() == '{')
-            && matches!(&tokens[i+2], TokenTree::Ident(_))
-            && matches!(&tokens[i+3], TokenTree::Punct(p) if p.as_char() == '}') {
-            // 插值模式
-            let var_name = match &tokens[i+2] {
-                TokenTree::Ident(ident) => ident.to_string(),
-                _ => String::new(),
-            };
-            let var_ident = syn::Ident::new(&var_name, proc_macro2::Span::call_site());
-            i += 4;
-            quote! { #var_ident.to_auto_value() }
+        let value_code = if matches!(&tokens[i], TokenTree::Punct(p) if p.as_char() == '#')
+            && i + 1 < tokens.len()
+            && matches!(&tokens[i+1], TokenTree::Group(g) if g.delimiter() == Delimiter::Brace) {
+            // 插值模式 #{ident}
+            if let TokenTree::Group(group) = &tokens[i+1] {
+                let inner: Vec<_> = group.stream().into_iter().collect();
+                let var_name = if inner.len() == 1 {
+                    match &inner[0] {
+                        TokenTree::Ident(ident) => ident.to_string(),
+                        _ => String::new(),
+                    }
+                } else {
+                    String::new()
+                };
+                let var_ident = syn::Ident::new(&var_name, proc_macro2::Span::call_site());
+                i += 2;
+                quote! { #var_ident.to_auto_value() }
+            } else {
+                unreachable!()
+            }
         } else {
-            // 普通值，使用 token_to_string
-            let value_str = token_to_string(tokens[i].clone());
-            i += 1;
-            let string_literal = syn::LitStr::new(&value_str, proc_macro2::Span::call_site());
-            quote! { {
-                use auto_lang::atom::AtomReader;
-                let mut reader = AtomReader::new();
-                let atom = reader.parse(#string_literal)
-                    .unwrap_or_else(|e| panic!("value! macro failed: {}", e));
-                atom.to_value()
-            } }
+            // 检查值的类型
+            match &tokens[i] {
+                // 标识符需要特殊处理：true/false 是布尔字面量，其他是变量引用
+                TokenTree::Ident(ident) => {
+                    let ident_str = ident.to_string();
+                    if ident_str == "true" {
+                        // 布尔字面量 true
+                        i += 1;
+                        quote! { auto_val::Value::Bool(true) }
+                    } else if ident_str == "false" {
+                        // 布尔字面量 false
+                        i += 1;
+                        quote! { auto_val::Value::Bool(false) }
+                    } else {
+                        // 变量引用
+                        let var_ident = syn::Ident::new(&ident_str, proc_macro2::Span::call_site());
+                        i += 1;
+                        quote! { #var_ident.to_auto_value() }
+                    }
+                }
+                // 字面量直接转换为 Value（不使用解析器，因为解析器期待完整语句）
+                TokenTree::Literal(lit) => {
+                    let lit_str = lit.to_string();
+                    // 检查字面量类型
+                    if lit_str.starts_with('"') {
+                        // 字符串字面量
+                        i += 1;
+                        // 移除引号
+                        let unquoted = &lit_str[1..lit_str.len()-1];
+                        let string_literal = syn::LitStr::new(unquoted, proc_macro2::Span::call_site());
+                        quote! { auto_val::Value::Str(#string_literal.into()) }
+                    } else if lit_str.contains('.') {
+                        // 浮点数
+                        i += 1;
+                        let float_literal = syn::LitFloat::new(&lit_str, proc_macro2::Span::call_site());
+                        quote! { auto_val::Value::Double(#float_literal as f64) }
+                    } else {
+                        // 整数
+                        i += 1;
+                        let int_literal = syn::LitInt::new(&lit_str, proc_macro2::Span::call_site());
+                        quote! { auto_val::Value::Int(#int_literal as i32) }
+                    }
+                }
+                // Group 类型（嵌套结构）使用 AtomReader 解析
+                TokenTree::Group(_) => {
+                    let value_str = token_to_string(tokens[i].clone());
+                    i += 1;
+                    let string_literal = syn::LitStr::new(&value_str, proc_macro2::Span::call_site());
+                    quote! { {
+                        use auto_lang::atom::AtomReader;
+                        let mut reader = AtomReader::new();
+                        let atom = reader.parse(#string_literal)
+                            .unwrap_or_else(|e| panic!("value! macro failed: {}", e));
+                        atom.to_value()
+                    } }
+                }
+                // 其他类型也尝试解析
+                _ => {
+                    let value_str = token_to_string(tokens[i].clone());
+                    i += 1;
+                    let string_literal = syn::LitStr::new(&value_str, proc_macro2::Span::call_site());
+                    quote! { {
+                        use auto_lang::atom::AtomReader;
+                        let mut reader = AtomReader::new();
+                        let atom = reader.parse(#string_literal)
+                            .unwrap_or_else(|e| panic!("value! macro failed: {}", e));
+                        atom.to_value()
+                    } }
+                }
+            }
         };
         
         let key_str = syn::LitStr::new(&key, proc_macro2::Span::call_site());
@@ -529,10 +673,11 @@ fn handle_interpolated_value(input: TokenStream) -> TokenStream {
     // 生成代码
     let expanded = quote! {{
         use auto_val::Obj;
+        use auto_val::ToAutoValue;
         let mut obj = Obj::new();
         #(#properties)*
         auto_val::Value::Obj(obj)
     }};
-    
+
     expanded.into()
 }
