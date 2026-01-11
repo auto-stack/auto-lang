@@ -9,9 +9,6 @@ pub mod infer;
 pub mod interp;
 mod lexer;
 pub mod libs;
-// 宏 DSL - 声明式 Atom/Node/Array/Obj 构造宏
-#[macro_use]
-pub mod macros;
 pub mod maker;
 pub mod parser;
 pub mod repl;
@@ -23,6 +20,10 @@ pub mod util;
 pub mod vm;
 
 pub use atom::{Atom, AtomReader};
+
+// 过程宏 - 支持 AutoLang 语法的内嵌 DSL
+// 这些宏接受 AutoLang 代码字符串并解析为 Atom/Node 结构体
+pub use auto_lang_macros::{atom, node};
 
 #[cfg(test)]
 mod vm_functions_test;

@@ -77,7 +77,9 @@
       "Bash(git checkout:*)",
       "Bash(git stash:*)",
       "Bash(auto run test_runtime_errors.at)",
-      "Bash(cargo clean:*)"
+      "Bash(cargo clean:*)",
+      "Bash(rustc:*)",
+      "Bash(del:*)"
     ]
   }
 }
