@@ -1,6 +1,73 @@
 use proc_macro::{TokenStream, TokenTree, Delimiter};
 use quote::quote;
 
+/// Value 宏 - 将 AutoLang 语法转换为 Value 结构体
+///
+/// # 语法
+///
+/// ```rust
+/// use auto_lang::value;
+/// use auto_val::Value;
+///
+/// // 节点
+/// let val = value!{
+///     config {
+///         version: "1.0",
+///         debug: true,
+///     }
+/// };
+///
+/// // 数组
+/// let val = value![1, 2, 3, 4, 5];
+///
+/// // 对象
+/// let val = value!{name: "Alice", age: 30};
+/// ```
+#[proc_macro]
+pub fn value(input: TokenStream) -> TokenStream {
+    // 将 TokenStream 转换为字符串
+    let code = token_stream_to_string(input);
+
+    // 生成解析代码
+    let expanded = quote! {{
+        use auto_lang::atom::AtomReader;
+        use auto_lang::atom::Atom;
+        use auto_val::Kid;
+
+        let mut reader = AtomReader::new();
+        let code = #code;
+
+        let atom = reader.parse(code)
+            .unwrap_or_else(|e| panic!("value! macro failed: {}", e));
+
+        // AtomReader 在 CONFIG 模式下会包装在 root 节点中
+        // 提取实际内容
+        let atom = match atom {
+            Atom::Node(root_node) => {
+                let kids: Vec<_> = root_node.kids_iter().collect();
+                let has_props = root_node.props_iter().next().is_some();
+
+                if kids.len() == 1 && !has_props {
+                    match &kids[0] {
+                        (_, Kid::Node(first_kid)) => Atom::Node(first_kid.clone()),
+                        _ => Atom::Node(root_node),
+                    }
+                } else if kids.is_empty() && has_props && root_node.name == "root" {
+                    Atom::Obj(root_node.props_clone())
+                } else {
+                    Atom::Node(root_node)
+                }
+            }
+            other => other,
+        };
+
+        // 转换为 Value
+        atom.to_value()
+    }};
+
+    expanded.into()
+}
+
 /// Atom 宏 - 将 AutoLang 语法转换为 Atom 结构体
 ///
 /// # 语法

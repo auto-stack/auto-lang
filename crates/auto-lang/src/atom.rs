@@ -326,6 +326,38 @@ impl Atom {
         matches!(self, Atom::Empty)
     }
 
+    /// Convert Atom to Value
+    ///
+    /// Converts an Atom into its corresponding Value representation.
+    /// This is useful when you need to pass an Atom to APIs that expect Value.
+    ///
+    /// # Returns
+    ///
+    /// Returns a Value with the same underlying data:
+    /// - `Atom::Node(node)` -> `Value::Node(node)`
+    /// - `Atom::Array(arr)` -> `Value::Array(arr)`
+    /// - `Atom::Obj(obj)` -> `Value::Obj(obj)`
+    /// - `Atom::Empty` -> `Value::Nil`
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_lang::atom;
+    /// use auto_val::Value;
+    ///
+    /// let atom = atom!{config {version: "1.0"}};
+    /// let value = atom.to_value();
+    /// assert!(matches!(value, Value::Node(_)));
+    /// ```
+    pub fn to_value(self) -> Value {
+        match self {
+            Atom::Node(node) => Value::Node(node),
+            Atom::Array(arr) => Value::Array(arr),
+            Atom::Obj(obj) => Value::Obj(obj),
+            Atom::Empty => Value::Nil,
+        }
+    }
+
     // ========== Convenience Constructors ==========
 
     /// Create a node Atom with properties

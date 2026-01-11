@@ -22,8 +22,8 @@ pub mod vm;
 pub use atom::{Atom, AtomReader};
 
 // 过程宏 - 支持 AutoLang 语法的内嵌 DSL
-// 这些宏接受 AutoLang 代码字符串并解析为 Atom/Node 结构体
-pub use auto_lang_macros::{atom, node};
+// 这些宏接受 AutoLang 代码字符串并解析为 Atom/Node/Value 结构体
+pub use auto_lang_macros::{atom, node, value};
 
 #[cfg(test)]
 mod vm_functions_test;
