@@ -76,7 +76,8 @@
       "Bash(Select-String:*)",
       "Bash(git checkout:*)",
       "Bash(git stash:*)",
-      "Bash(auto run test_runtime_errors.at)"
+      "Bash(auto run test_runtime_errors.at)",
+      "Bash(cargo clean:*)"
     ]
   }
 }

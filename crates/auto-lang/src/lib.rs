@@ -9,6 +9,9 @@ pub mod infer;
 pub mod interp;
 mod lexer;
 pub mod libs;
+// 宏 DSL - 声明式 Atom/Node/Array/Obj 构造宏
+#[macro_use]
+pub mod macros;
 pub mod maker;
 pub mod parser;
 pub mod repl;
