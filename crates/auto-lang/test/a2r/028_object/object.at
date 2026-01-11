@@ -1,0 +1,9 @@
+fn main() {
+    // Object literal test
+    let obj = {x: 1, y: 2}
+    print("obj")
+
+    // Pair expression test
+    let pair = x: 10
+    print("pair")
+}

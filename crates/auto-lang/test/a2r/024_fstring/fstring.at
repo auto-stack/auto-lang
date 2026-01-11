@@ -1,0 +1,30 @@
+fn main() {
+    let name = "AutoLang"
+    let age = 1
+
+    // Simple interpolation
+    let greeting = f"Hello, $name"
+    print(greeting)
+
+    // Multiple variables
+    let info = f"Name: $name, Age: $age"
+    print(info)
+
+    // With expressions
+    let x = 10
+    let y = 20
+    let result = f"Result: ${x + y}"
+    print(result)
+
+    // Mixed literals and variables
+    let msg = f"The value is $x and ${y * 2}"
+    print(msg)
+
+    // Direct print with f-string
+    print(f"Direct: $name is $age years old")
+
+    // Complex expression in f-string
+    let a = 5
+    let b = 3
+    print(f"Sum: ${a + b}, Product: ${a * b}")
+}

@@ -1,0 +1,12 @@
+fn factorial(n int) int {
+    if n <= 1 {
+        1
+    } else {
+        n * factorial(n - 1)
+    }
+}
+
+fn main() {
+    let result = factorial(5)
+    print("Factorial of 5 is:", result)
+}

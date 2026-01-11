@@ -1,0 +1,16 @@
+fn main() {
+    // Simple f-string
+    let x = 42
+    let simple = f"Value: $x"
+    print(simple)
+
+    // F-string with expression
+    let a = 5
+    let b = 10
+    let expr = f"Sum: ${a + b}"
+    print(expr)
+
+    // Direct print with f-string
+    let name = "World"
+    print(f"Hello $name")
+}

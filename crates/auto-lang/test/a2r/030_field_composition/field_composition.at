@@ -1,0 +1,6 @@
+type Engine {
+    hp int
+}
+
+type Car has Engine {
+}

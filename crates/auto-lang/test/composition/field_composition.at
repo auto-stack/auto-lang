@@ -1,0 +1,16 @@
+// Test field composition
+type Engine {
+    hp int
+    cylinders int
+}
+
+type Car has Engine {
+    make str
+}
+
+fn main() {
+    let c = Car()
+    print(c.hp)
+    print(c.cylinders)
+    print(c.make)
+}

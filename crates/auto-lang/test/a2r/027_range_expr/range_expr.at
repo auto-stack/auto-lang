@@ -1,0 +1,8 @@
+fn main() {
+    // Range expression as value
+    let r1 = 0..10
+    let r2 = 0..=10
+
+    print("r1")
+    print("r2")
+}

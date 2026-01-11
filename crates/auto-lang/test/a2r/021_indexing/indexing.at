@@ -1,0 +1,14 @@
+fn main() {
+    let arr = [10, 20, 30, 40, 50]
+    let first = arr[0]
+    let third = arr[2]
+    let last = arr[4]
+
+    print("First:", first)
+    print("Third:", third)
+    print("Last:", last)
+
+    let matrix = [[1, 2], [3, 4]]
+    let val = matrix[0][1]
+    print("Matrix value:", val)
+}

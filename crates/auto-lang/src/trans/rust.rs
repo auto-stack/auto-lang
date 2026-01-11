@@ -197,76 +197,214 @@ impl RustTrans {
                 write!(out, "]").map_err(Into::into)
             }
 
-            // Struct construction: Point(1, 2) -> Point { x: 1, y: 2 }
-            Expr::Node(node) => {
-                write!(out, "{} {{", node.name)?;
-                if !node.args.args.is_empty() || !node.body.stmts.is_empty() {
-                    write!(out, " ")?;
+            Expr::Range(range) => {
+                self.expr(&range.start, out)?;
+                if range.eq {
+                    write!(out, "..=")?;
+                } else {
+                    write!(out, "..")?;
                 }
+                self.expr(&range.end, out).map_err(Into::into)
+            }
 
-                // Try to get type declaration to map positional args to field names
-                let type_decl = self.scope.borrow().lookup_type(&node.name);
+            Expr::Pair(pair) => {
+                // Pair expression: key: value
+                let key = match &pair.key {
+                    crate::ast::Key::NamedKey(name) => name.clone(),
+                    crate::ast::Key::IntKey(n) => format!("{}", n).into(),
+                    crate::ast::Key::BoolKey(b) => format!("{}", b).into(),
+                    crate::ast::Key::StrKey(s) => s.clone(),
+                };
+                write!(out, "{}: ", key)?;
+                self.expr(&pair.value, out).map_err(Into::into)
+            }
 
-                for (i, arg) in node.args.args.iter().enumerate() {
-                    match arg {
-                        Arg::Pos(expr) => {
-                            // Positional arg - map to actual field name from type definition
-                            let field_name = if let Type::User(decl) = &type_decl {
-                                if i < decl.members.len() {
-                                    decl.members[i].name.clone()
-                                } else {
-                                    format!("field{}", i).into()
-                                }
-                            } else {
-                                format!("field{}", i).into()
-                            };
-                            write!(out, "{}: ", field_name)?;
-                            self.expr(expr, out)?;
-                        }
-                        Arg::Name(name) => {
-                            // Named arg without value
-                            write!(out, "{}: ", name)?;
-                        }
-                        Arg::Pair(key, expr) => {
-                            // Named argument: field: value
-                            write!(out, "{}: ", key)?;
-                            self.expr(expr, out)?;
-                        }
-                    }
-                    if i < node.args.args.len() - 1 || !node.body.stmts.is_empty() {
+            Expr::Object(pairs) => {
+                // Object literal: {key1: value1, key2: value2}
+                write!(out, "{{")?;
+                for (i, pair) in pairs.iter().enumerate() {
+                    self.expr(&Expr::Pair(pair.clone()), out)?;
+                    if i < pairs.len() - 1 {
                         write!(out, ", ")?;
                     }
-                }
-
-                // Handle body statements (field initializers)
-                for (i, stmt) in node.body.stmts.iter().enumerate() {
-                    match stmt {
-                        Stmt::Store(store) => {
-                            write!(out, "{}: ", store.name)?;
-                            self.expr(&store.expr, out)?;
-                        }
-                        Stmt::Expr(Expr::Pair(pair)) => {
-                            // Named field initializer: x: 3
-                            let field_name = match &pair.key {
-                                crate::ast::Key::NamedKey(name) => name.clone(),
-                                crate::ast::Key::IntKey(n) => format!("{}", n).into(),
-                                crate::ast::Key::BoolKey(b) => format!("{}", b).into(),
-                                crate::ast::Key::StrKey(s) => s.clone(),
-                            };
-                            write!(out, "{}: ", field_name)?;
-                            self.expr(&pair.value, out)?;
-                        }
-                        _ => {}
-                    }
-                    if i < node.body.stmts.len() - 1 {
-                        write!(out, ", ")?;
-                    }
-                }
-
-                if !node.args.args.is_empty() || !node.body.stmts.is_empty() {
-                    write!(out, " ")?;
                 }
                 write!(out, "}}").map_err(Into::into)
+            }
+
+            Expr::Grid(grid) => {
+                // Grid expression: 2D array
+                // Convert to nested vec: vec![vec![...], ...]
+                write!(out, "vec![")?;
+                for (i, row) in grid.data.iter().enumerate() {
+                    write!(out, "vec![")?;
+                    for (j, cell) in row.iter().enumerate() {
+                        self.expr(cell, out)?;
+                        if j < row.len() - 1 {
+                            write!(out, ", ")?;
+                        }
+                    }
+                    write!(out, "]")?;
+                    if i < grid.data.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, "]").map_err(Into::into)
+            }
+
+            Expr::Cover(cover) => {
+                // Cover expression for tagged unions
+                match cover {
+                    crate::ast::Cover::Tag(tag_cover) => {
+                        write!(out, "/* TagCover: {} {} {} */",
+                               tag_cover.kind, tag_cover.tag, tag_cover.elem).map_err(Into::into)
+                    }
+                }
+            }
+
+            Expr::Uncover(uncover) => {
+                // Uncover expression for pattern matching
+                write!(out, "/* TagUncover: {} */", uncover.src).map_err(Into::into)
+            }
+
+            Expr::Ref(name) => {
+                // Reference expression: &name
+                write!(out, "&{}", name).map_err(Into::into)
+            }
+
+            // Struct construction: Point(1, 2) -> Point { x: 1, y: 2 }
+            // Special case: loop { body } -> loop { body }
+            Expr::Node(node) => {
+                // Check if this is a loop expression
+                if node.name == "loop" {
+                    write!(out, "loop {{")?;
+                    if !node.body.stmts.is_empty() {
+                        write!(out, "\n")?;
+                        self.indent();
+
+                        for stmt in &node.body.stmts {
+                            self.print_indent(out)?;
+                            match stmt {
+                                Stmt::Expr(expr) => {
+                                    self.expr(expr, out)?;
+                                    out.write(b";\n")?;
+                                }
+                                Stmt::Store(store) => {
+                                    self.store(store, out)?;
+                                    out.write(b";\n")?;
+                                }
+                                Stmt::Break => {
+                                    out.write(b"break;\n")?;
+                                }
+                                _ => {
+                                    // For other statement types, format inline
+                                    match stmt {
+                                        Stmt::If(if_) => {
+                                            // Inline if statement
+                                            write!(out, "if ")?;
+                                            for (i, branch) in if_.branches.iter().enumerate() {
+                                                if i == 0 {
+                                                } else {
+                                                    write!(out, " else if ")?;
+                                                }
+                                                self.expr(&branch.cond, out)?;
+                                                write!(out, " {{ ")?;
+                                                // Single statement body
+                                                if let Some(stmt) = branch.body.stmts.first() {
+                                                    match stmt {
+                                                        Stmt::Expr(expr) => {
+                                                            self.expr(expr, out)?;
+                                                        }
+                                                        Stmt::Break => {
+                                                            write!(out, "break")?;
+                                                        }
+                                                        _ => {}
+                                                    }
+                                                }
+                                                write!(out, " }}; ")?;
+                                            }
+                                            write!(out, "}};\n")?;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+
+                        self.dedent();
+                        self.print_indent(out)?;
+                    }
+                    write!(out, "}}")
+                } else {
+                    // Regular struct construction
+                    write!(out, "{} {{", node.name)?;
+                    if !node.args.args.is_empty() || !node.body.stmts.is_empty() {
+                        write!(out, " ")?;
+                    }
+
+                    // Try to get type declaration to map positional args to field names
+                    let type_decl = self.scope.borrow().lookup_type(&node.name);
+
+                    for (i, arg) in node.args.args.iter().enumerate() {
+                        match arg {
+                            Arg::Pos(expr) => {
+                                // Positional arg - map to actual field name from type definition
+                                let field_name = if let Type::User(decl) = &type_decl {
+                                    if i < decl.members.len() {
+                                        decl.members[i].name.clone()
+                                    } else {
+                                        format!("field{}", i).into()
+                                    }
+                                } else {
+                                    format!("field{}", i).into()
+                                };
+                                write!(out, "{}: ", field_name)?;
+                                self.expr(expr, out)?;
+                            }
+                            Arg::Name(name) => {
+                                // Named arg without value
+                                write!(out, "{}: ", name)?;
+                            }
+                            Arg::Pair(key, expr) => {
+                                // Named argument: field: value
+                                write!(out, "{}: ", key)?;
+                                self.expr(expr, out)?;
+                            }
+                        }
+                        if i < node.args.args.len() - 1 || !node.body.stmts.is_empty() {
+                            write!(out, ", ")?;
+                        }
+                    }
+
+                    // Handle body statements (field initializers)
+                    for (i, stmt) in node.body.stmts.iter().enumerate() {
+                        match stmt {
+                            Stmt::Store(store) => {
+                                write!(out, "{}: ", store.name)?;
+                                self.expr(&store.expr, out)?;
+                            }
+                            Stmt::Expr(Expr::Pair(pair)) => {
+                                // Named field initializer: x: 3
+                                let field_name = match &pair.key {
+                                    crate::ast::Key::NamedKey(name) => name.clone(),
+                                    crate::ast::Key::IntKey(n) => format!("{}", n).into(),
+                                    crate::ast::Key::BoolKey(b) => format!("{}", b).into(),
+                                    crate::ast::Key::StrKey(s) => s.clone(),
+                                };
+                                write!(out, "{}: ", field_name)?;
+                                self.expr(&pair.value, out)?;
+                            }
+                            _ => {}
+                        }
+                        if i < node.body.stmts.len() - 1 {
+                            write!(out, ", ")?;
+                        }
+                    }
+
+                    if !node.args.args.is_empty() || !node.body.stmts.is_empty() {
+                        write!(out, " ")?;
+                    }
+                    write!(out, "}}")
+                }.map_err(Into::into)
             }
 
             // Function calls
@@ -308,9 +446,195 @@ impl RustTrans {
             }
 
             // Control flow (stub for now)
-            Expr::If(_if_) => {
-                // TODO: Will be implemented in Phase 2
-                write!(out, "/* if */").map_err(Into::into)
+            Expr::If(if_) => {
+                // Transpile if/else if/else chains
+                for (i, branch) in if_.branches.iter().enumerate() {
+                    if i == 0 {
+                        write!(out, "if ")?;
+                    } else {
+                        write!(out, " else if ")?;
+                    }
+
+                    // Condition
+                    self.expr(&branch.cond, out)?;
+                    write!(out, " {{")?;
+
+                    // Body
+                    if !branch.body.stmts.is_empty() {
+                        write!(out, "\n")?;
+                        self.indent();
+                        let stmt_count = branch.body.stmts.len();
+                        for (i, stmt) in branch.body.stmts.iter().enumerate() {
+                            self.print_indent(out)?;
+                            // Handle different statement types
+                            let is_last = i == stmt_count - 1;
+                            match stmt {
+                                Stmt::Expr(Expr::If(inner_if)) => {
+                                    // If expression - don't add semicolon
+                                    self.expr(&Expr::If(inner_if.clone()), out)?;
+                                    out.write(b"\n")?;
+                                }
+                                Stmt::Expr(expr) => {
+                                    self.expr(expr, out)?;
+                                    // Check if this expression needs a semicolon
+                                    let needs_semicolon = if !is_last {
+                                        true
+                                    } else {
+                                        // Check if it's a call to print or other void functions
+                                        match expr {
+                                            Expr::Call(call) => {
+                                                if let Expr::Ident(name) = call.name.as_ref() {
+                                                    name == "print" || name == "println"
+                                                } else {
+                                                    false
+                                                }
+                                            }
+                                            _ => false,
+                                        }
+                                    };
+
+                                    if needs_semicolon {
+                                        out.write(b";\n")?;
+                                    } else {
+                                        out.write(b"\n")?;
+                                    }
+                                }
+                                Stmt::If(inner_if) => {
+                                    // Nested if statement - handle as expression
+                                    self.expr(&Expr::If(inner_if.clone()), out)?;
+                                    out.write(b"\n")?;
+                                }
+                                Stmt::Store(store) => {
+                                    self.store(store, out)?;
+                                    out.write(b";\n")?;
+                                }
+                                _ => {
+                                    // Other statement types - write directly
+                                    write!(out, "/* unsupported statement in if body */\n")?;
+                                }
+                            }
+                        }
+                        self.dedent();
+                        self.print_indent(out)?;
+                    }
+                    write!(out, "}}")?;
+                }
+
+                // Else clause
+                if let Some(else_body) = &if_.else_ {
+                    write!(out, "\nelse {{")?;
+                    if !else_body.stmts.is_empty() {
+                        write!(out, "\n")?;
+                        self.indent();
+                        let stmt_count = else_body.stmts.len();
+                        for (i, stmt) in else_body.stmts.iter().enumerate() {
+                            self.print_indent(out)?;
+                            let is_last = i == stmt_count - 1;
+                            match stmt {
+                                Stmt::Expr(Expr::If(inner_if)) => {
+                                    // Nested if expression in else
+                                    self.expr(&Expr::If(inner_if.clone()), out)?;
+                                    out.write(b"\n")?;
+                                }
+                                Stmt::Expr(expr) => {
+                                    self.expr(expr, out)?;
+                                    // Check if this expression needs a semicolon
+                                    let needs_semicolon = if !is_last {
+                                        true
+                                    } else {
+                                        // Check if it's a call to print or other void functions
+                                        match expr {
+                                            Expr::Call(call) => {
+                                                if let Expr::Ident(name) = call.name.as_ref() {
+                                                    name == "print" || name == "println"
+                                                } else {
+                                                    false
+                                                }
+                                            }
+                                            _ => false,
+                                        }
+                                    };
+
+                                    if needs_semicolon {
+                                        out.write(b";\n")?;
+                                    } else {
+                                        out.write(b"\n")?;
+                                    }
+                                }
+                                Stmt::If(inner_if) => {
+                                    // Nested if statement - handle as expression
+                                    self.expr(&Expr::If(inner_if.clone()), out)?;
+                                    out.write(b"\n")?;
+                                }
+                                Stmt::Store(store) => {
+                                    self.store(store, out)?;
+                                    out.write(b";\n")?;
+                                }
+                                _ => {
+                                    write!(out, "/* unsupported statement in else body */\n")?;
+                                }
+                            }
+                        }
+                        self.dedent();
+                        self.print_indent(out)?;
+                    }
+                    write!(out, "}}\n")?;
+                } else {
+                    // No else clause - add newline after closing brace
+                    write!(out, "\n")?;
+                }
+
+                Ok(())
+            }
+
+            // Lambda/closure: |params| body
+            Expr::Lambda(lambda) => {
+                write!(out, "|")?;
+                for (i, param) in lambda.params.iter().enumerate() {
+                    write!(out, "{}", self.rust_type_name(&param.ty))?;
+                    write!(out, " {}", param.name)?;
+                    if i < lambda.params.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, "| ")?;
+
+                // Lambda body - if it's a single expression, write it directly
+                if lambda.body.stmts.len() == 1 {
+                    match &lambda.body.stmts[0] {
+                        Stmt::Expr(expr) => {
+                            self.expr(expr, out)?;
+                        }
+                        Stmt::Store(store) => {
+                            self.store(store, out)?;
+                        }
+                        _ => {
+                            write!(out, "{{ /* unsupported lambda body */ }}")?;
+                        }
+                    }
+                } else {
+                    // Multiple statements - use block
+                    write!(out, "{{ ")?;
+                    for (i, stmt) in lambda.body.stmts.iter().enumerate() {
+                        match stmt {
+                            Stmt::Expr(expr) => {
+                                self.expr(expr, out)?;
+                                if i < lambda.body.stmts.len() - 1 {
+                                    write!(out, "; ")?;
+                                }
+                            }
+                            Stmt::Store(store) => {
+                                self.store(store, out)?;
+                                write!(out, "; ")?;
+                            }
+                            _ => {
+                                write!(out, "/* unsupported statement */ ")?;
+                            }
+                        }
+                    }
+                    write!(out, "}}")?;
+                }
+                Ok(())
             }
 
             _ => Err(format!("Rust Transpiler: unsupported expression: {}", expr).into()),
@@ -518,6 +842,13 @@ impl RustTrans {
 
             Stmt::Break => {
                 sink.body.write(b"break;")?;
+                Ok(true)
+            }
+
+            Stmt::Node(node) => {
+                // Handle loop and other control flow nodes
+                self.expr(&Expr::Node(node.clone()), &mut sink.body)?;
+                sink.body.write(b";")?;
                 Ok(true)
             }
 
@@ -734,20 +1065,25 @@ impl RustTrans {
                 sink.body.write(b"}")?;
             }
             Iter::Cond => {
-                // Conditional loop: for condition { ... } or for init; condition { ... }
-                sink.body.write(b"for (")?;
-
-                // Handle init statement if present
+                // Conditional loop: while condition { ... }
+                // Check if there's an init statement
                 if let Some(init_stmt) = &for_stmt.init {
-                    self.stmt(init_stmt, sink)?;
-                    sink.body.write(b"; ")?;
+                    // Emit init statement before the loop
+                    match &**init_stmt {
+                        Stmt::Store(store) => {
+                            self.store(store, &mut sink.body)?;
+                            sink.body.write(b";\n")?;
+                        }
+                        _ => {
+                            self.stmt(&**init_stmt, sink)?;
+                            sink.body.write(b"\n")?;
+                        }
+                    }
                 }
 
+                sink.body.write(b"while ")?;
                 self.expr(&for_stmt.range, &mut sink.body)?;
-                sink.body.write(b"; ")?;
-
-                // No increment expression in AutoLang, leave empty
-                sink.body.write(b") {\n")?;
+                sink.body.write(b" {\n")?;
 
                 self.indent();
                 for stmt in &for_stmt.body.stmts {
@@ -788,12 +1124,45 @@ impl RustTrans {
             // Process branch body - use body() method for proper formatting
             sink.body.write(b"{\n")?;
             self.indent();
-            for stmt in &branch.body.stmts {
+            let stmt_count = branch.body.stmts.len();
+            for (i, stmt) in branch.body.stmts.iter().enumerate() {
                 self.print_indent(&mut sink.body)?;
+                let is_last = i == stmt_count - 1;
                 match stmt {
+                    Stmt::Expr(Expr::If(inner_if)) => {
+                        // Nested if expression - handle recursively
+                        self.expr(&Expr::If(inner_if.clone()), &mut sink.body)?;
+                        sink.body.write(b"\n")?;
+                    }
                     Stmt::Expr(expr) => {
                         self.expr(expr, &mut sink.body)?;
-                        sink.body.write(b";\n")?;
+                        // Check if this expression needs a semicolon
+                        // Add semicolon if: not last OR it's a void function call (like print)
+                        let needs_semicolon = if !is_last {
+                            true
+                        } else {
+                            // Check if it's a call to print or other void functions
+                            match expr {
+                                Expr::Call(call) => {
+                                    if let Expr::Ident(name) = call.name.as_ref() {
+                                        name == "print" || name == "println"
+                                    } else {
+                                        false
+                                    }
+                                }
+                                _ => false,
+                            }
+                        };
+
+                        if needs_semicolon {
+                            sink.body.write(b";\n")?;
+                        } else {
+                            sink.body.write(b"\n")?;
+                        }
+                    }
+                    Stmt::If(inner_if) => {
+                        // Nested if statement - handle recursively
+                        self.if_stmt(inner_if, sink)?;
                     }
                     Stmt::Store(store) => {
                         self.store(store, &mut sink.body)?;
@@ -811,12 +1180,44 @@ impl RustTrans {
             sink.body.write(b" else ")?;
             sink.body.write(b"{\n")?;
             self.indent();
-            for stmt in &else_body.stmts {
+            let stmt_count = else_body.stmts.len();
+            for (i, stmt) in else_body.stmts.iter().enumerate() {
                 self.print_indent(&mut sink.body)?;
+                let is_last = i == stmt_count - 1;
                 match stmt {
+                    Stmt::Expr(Expr::If(inner_if)) => {
+                        // Nested if expression in else
+                        self.expr(&Expr::If(inner_if.clone()), &mut sink.body)?;
+                        sink.body.write(b"\n")?;
+                    }
                     Stmt::Expr(expr) => {
                         self.expr(expr, &mut sink.body)?;
-                        sink.body.write(b";\n")?;
+                        // Check if this expression needs a semicolon
+                        let needs_semicolon = if !is_last {
+                            true
+                        } else {
+                            // Check if it's a call to print or other void functions
+                            match expr {
+                                Expr::Call(call) => {
+                                    if let Expr::Ident(name) = call.name.as_ref() {
+                                        name == "print" || name == "println"
+                                    } else {
+                                        false
+                                    }
+                                }
+                                _ => false,
+                            }
+                        };
+
+                        if needs_semicolon {
+                            sink.body.write(b";\n")?;
+                        } else {
+                            sink.body.write(b"\n")?;
+                        }
+                    }
+                    Stmt::If(inner_if) => {
+                        // Nested if statement in else
+                        self.if_stmt(inner_if, sink)?;
                     }
                     Stmt::Store(store) => {
                         self.store(store, &mut sink.body)?;
@@ -827,7 +1228,7 @@ impl RustTrans {
             }
             self.dedent();
             self.print_indent(&mut sink.body)?;
-            sink.body.write(b"}")?;
+            sink.body.write(b"}\n")?;
         }
 
         Ok(())
@@ -913,14 +1314,112 @@ impl RustTrans {
 
     // Type declaration (struct)
     fn type_decl(&mut self, type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
+        // Generate traits for composed types
+        for has_type in &type_decl.has {
+            if let Type::User(has_decl) = has_type {
+                // Check if this type is already defined (has members or methods)
+                let is_trait_only = has_decl.members.is_empty() && has_decl.methods.is_empty();
+
+                // Generate trait definition
+                write!(sink.body, "trait {} {{\n", has_decl.name)?;
+                self.indent();
+
+                for method in &has_decl.methods {
+                    // Generate method signature with &self
+                    self.print_indent(&mut sink.body)?;
+                    write!(sink.body, "fn {}(&self", method.name)?;
+
+                    // Parameters (skip self which is already added)
+                    for (i, param) in method.params.iter().enumerate() {
+                        write!(sink.body, ", {}: {}", param.name, self.rust_type_name(&param.ty))?;
+                        if i < method.params.len() - 1 {
+                            write!(sink.body, ", ")?;
+                        }
+                    }
+
+                    // Return type
+                    if !matches!(method.ret, Type::Void) {
+                        write!(sink.body, ") -> {}", self.rust_type_name(&method.ret))?;
+                    } else {
+                        write!(sink.body, ")")?;
+                    }
+
+                    write!(sink.body, ";\n")?;
+                }
+
+                self.dedent();
+                write!(sink.body, "}}\n\n")?;
+
+                // If this is a trait-only type (no struct definition), also generate a default impl
+                if is_trait_only && !has_decl.methods.is_empty() {
+                    write!(sink.body, "impl {} for {} {{\n", has_decl.name, has_decl.name)?;
+                    self.indent();
+
+                    for method in &has_decl.methods {
+                        self.print_indent(&mut sink.body)?;
+                        write!(sink.body, "fn {}(&self", method.name)?;
+
+                        // Parameters
+                        for (i, param) in method.params.iter().enumerate() {
+                            write!(sink.body, ", {}: {}", param.name, self.rust_type_name(&param.ty))?;
+                            if i < method.params.len() - 1 {
+                                write!(sink.body, ", ")?;
+                            }
+                        }
+
+                        // Return type
+                        if !matches!(method.ret, Type::Void) {
+                            write!(sink.body, ") -> {}", self.rust_type_name(&method.ret))?;
+                        } else {
+                            write!(sink.body, ")")?;
+                        }
+
+                        write!(sink.body, " {{\n")?;
+                        self.indent();
+                        self.print_indent(&mut sink.body)?;
+                        write!(sink.body, "// Method implementation for {}\n", has_decl.name)?;
+                        self.dedent();
+                        self.print_indent(&mut sink.body)?;
+                        write!(sink.body, "}}\n")?;
+                    }
+
+                    self.dedent();
+                    write!(sink.body, "}}\n\n")?;
+                }
+            }
+        }
+
         // Struct definition
         write!(sink.body, "struct {} {{", type_decl.name)?;
 
-        if !type_decl.members.is_empty() {
+        // Collect all members (including from composed types)
+        // Use a set to avoid duplicates
+        let mut all_members = Vec::new();
+        let mut seen_fields = std::collections::HashSet::new();
+
+        // First add members from composed types
+        for has_type in &type_decl.has {
+            if let Type::User(has_decl) = has_type {
+                for member in &has_decl.members {
+                    if seen_fields.insert(member.name.clone()) {
+                        all_members.push(member);
+                    }
+                }
+            }
+        }
+
+        // Then add own members (can override composed ones)
+        for member in &type_decl.members {
+            if seen_fields.insert(member.name.clone()) {
+                all_members.push(member);
+            }
+        }
+
+        if !all_members.is_empty() {
             sink.body.write(b"\n")?;
             self.indent();
 
-            for member in &type_decl.members {
+            for member in all_members {
                 self.print_indent(&mut sink.body)?;
                 write!(
                     sink.body,
@@ -937,7 +1436,46 @@ impl RustTrans {
 
         sink.body.write(b"}\n")?;
 
-        // Generate impl block with methods
+        // Implement traits for composed types
+        for has_type in &type_decl.has {
+            if let Type::User(has_decl) = has_type {
+                write!(sink.body, "\nimpl {} for {} {{\n", has_decl.name, type_decl.name)?;
+                self.indent();
+
+                for method in &has_decl.methods {
+                    self.print_indent(&mut sink.body)?;
+                    write!(sink.body, "fn {}(&self", method.name)?;
+
+                    // Parameters
+                    for (i, param) in method.params.iter().enumerate() {
+                        write!(sink.body, ", {}: {}", param.name, self.rust_type_name(&param.ty))?;
+                        if i < method.params.len() - 1 {
+                            write!(sink.body, ", ")?;
+                        }
+                    }
+
+                    // Return type
+                    if !matches!(method.ret, Type::Void) {
+                        write!(sink.body, ") -> {}", self.rust_type_name(&method.ret))?;
+                    } else {
+                        write!(sink.body, ")")?;
+                    }
+
+                    write!(sink.body, " {{\n")?;
+                    self.indent();
+                    self.print_indent(&mut sink.body)?;
+                    write!(sink.body, "// TODO: Implement {} method body from {}\n", method.name, has_decl.name)?;
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    write!(sink.body, "}}\n")?;
+                }
+
+                self.dedent();
+                write!(sink.body, "}}\n")?;
+            }
+        }
+
+        // Generate impl block with own methods
         if !type_decl.methods.is_empty() {
             sink.body.write(b"\n")?;
             write!(sink.body, "impl {} {{", type_decl.name)?;
@@ -1331,5 +1869,95 @@ mod tests {
     #[test]
     fn test_012_is() {
         test_a2r("012_is").unwrap();
+    }
+
+    #[test]
+    fn test_013_while() {
+        test_a2r("013_while").unwrap();
+    }
+
+    #[test]
+    fn test_014_closure() {
+        test_a2r("014_closure").unwrap();
+    }
+
+    #[test]
+    fn test_015_nested_if() {
+        test_a2r("015_nested_if").unwrap();
+    }
+
+    #[test]
+    fn test_016_complex() {
+        test_a2r("016_complex").unwrap();
+    }
+
+    #[test]
+    fn test_017_struct_methods() {
+        test_a2r("017_struct_methods").unwrap();
+    }
+
+    #[test]
+    fn test_018_enum_pattern() {
+        test_a2r("018_enum_pattern").unwrap();
+    }
+
+    #[test]
+    fn test_019_blocks() {
+        test_a2r("019_blocks").unwrap();
+    }
+
+    #[test]
+    fn test_020_comprehensive() {
+        test_a2r("020_comprehensive").unwrap();
+    }
+
+    #[test]
+    fn test_021_indexing() {
+        test_a2r("021_indexing").unwrap();
+    }
+
+    #[test]
+    fn test_022_unary() {
+        test_a2r("022_unary").unwrap();
+    }
+
+    #[test]
+    fn test_023_arithmetic() {
+        test_a2r("023_arithmetic").unwrap();
+    }
+
+    #[test]
+    fn test_024_fstring() {
+        test_a2r("024_fstring").unwrap();
+    }
+
+    #[test]
+    fn test_025_fstring_edge() {
+        test_a2r("025_fstring_edge").unwrap();
+    }
+
+    #[test]
+    fn test_026_ref_expr() {
+        test_a2r("026_ref_expr").unwrap();
+    }
+
+    #[test]
+    fn test_027_range_expr() {
+        test_a2r("027_range_expr").unwrap();
+    }
+
+    #[test]
+    fn test_028_object() {
+        test_a2r("028_object").unwrap();
+    }
+
+    #[test]
+    fn test_029_composition() {
+        test_a2r("029_composition").unwrap();
+    }
+
+    #[test]
+    fn test_030_field_composition() {
+        test_a2r("030_field_composition").unwrap();
     }
 }

@@ -1,0 +1,17 @@
+fn main() {
+    let x = 10
+    let y = 20
+    let z = 30
+
+    let result1 = (x + y) * z
+    let result2 = x + y * z
+    let result3 = (x + y) * (z - x)
+
+    print("Result1:", result1)
+    print("Result2:", result2)
+    print("Result3:", result3)
+
+    let a = 5
+    let b = a * 2 + a / 2 - 1
+    print("b:", b)
+}

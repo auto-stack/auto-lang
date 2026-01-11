@@ -1,0 +1,11 @@
+fn main() {
+    mut count = 0
+    loop {
+        if count >= 10 {
+            break
+        }
+        print(count)
+        count = count + 1
+    }
+    print("done")
+}

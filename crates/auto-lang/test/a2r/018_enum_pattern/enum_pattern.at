@@ -1,0 +1,17 @@
+fn main() {
+    let x = 10
+    let y = 20
+
+    is x {
+        10 => print("X is 10")
+        20 => print("X is 20")
+        else => print("X is something else")
+    }
+
+    is y {
+        5 => print("Y is 5")
+        10 => print("Y is 10")
+        15 => print("Y is 15")
+        else => print("Y is unknown")
+    }
+}

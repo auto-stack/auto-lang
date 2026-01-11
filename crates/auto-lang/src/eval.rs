@@ -1494,6 +1494,30 @@ impl Evaler {
         let members = &type_decl.members;
         // TODO: remove unnecessary clone
         let mut fields = Obj::new();
+
+        // First, mix in fields from composed types
+        for has_type in &type_decl.has {
+            if let ast::Type::User(has_decl) = has_type {
+                // Add default values for fields from composed type
+                for member in &has_decl.members {
+                    if !fields.has(member.name.clone()) {
+                        match &member.value {
+                            Some(default_value) => {
+                                let val_data = self.eval_expr(default_value).into_data();
+                                let vid = self.universe.borrow_mut().alloc_value(val_data);
+                                fields.set(member.name.clone(), auto_val::Value::ValueRef(vid));
+                            }
+                            None => {
+                                // No default value, set to nil
+                                fields.set(member.name.clone(), Value::Nil);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Then, add fields from direct arguments
         for (j, arg) in args.args.iter().enumerate() {
             // let val_arg = self.eval_arg(arg);
             match arg {
@@ -1886,7 +1910,41 @@ impl Evaler {
         }
     }
 
-    fn type_decl(&mut self, _type_decl: &TypeDecl) -> Value {
+    fn type_decl(&mut self, type_decl: &TypeDecl) -> Value {
+        // Register the type itself
+        let type_meta = scope::Meta::Type(ast::Type::User(type_decl.clone()));
+        self.universe.borrow_mut().define(type_decl.name.clone(), std::rc::Rc::new(type_meta));
+
+        // Mix in methods from composed types (has relationships)
+        for has_type in &type_decl.has {
+            if let ast::Type::User(has_decl) = has_type {
+                // Register each method from the composed type
+                for method in &has_decl.methods {
+                    // Create fully qualified method name: TypeName::method_name
+                    let method_name: AutoStr = format!("{}::{}", type_decl.name, method.name).into();
+
+                    // Clone the method and update its name to reflect the new owner
+                    let mut mixed_method = method.clone();
+                    mixed_method.name = type_decl.name.clone();
+
+                    // Register in universe with qualified name
+                    self.universe.borrow_mut().define(
+                        method_name,
+                        std::rc::Rc::new(scope::Meta::Fn(mixed_method))
+                    );
+                }
+            }
+        }
+
+        // Also register the type's own methods
+        for method in &type_decl.methods {
+            let method_name: AutoStr = format!("{}::{}", type_decl.name, method.name).into();
+            self.universe.borrow_mut().define(
+                method_name,
+                std::rc::Rc::new(scope::Meta::Fn(method.clone()))
+            );
+        }
+
         Value::Void
     }
 

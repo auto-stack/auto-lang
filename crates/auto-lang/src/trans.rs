@@ -25,6 +25,17 @@ impl Sink {
         }
     }
 
+    /// Create a dummy sink for temporary statement processing
+    pub fn dummy() -> Self {
+        Self {
+            name: "".into(),
+            includes: Vec::new(),
+            body: Vec::new(),
+            header: Vec::new(),
+            source: Vec::new(),
+        }
+    }
+
     pub fn print(&mut self, data: &[u8]) -> AutoResult<()> {
         self.body.write(data)?;
         Ok(())

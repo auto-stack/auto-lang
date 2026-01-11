@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "auto-shell"]
 resolver = "2"
 
 

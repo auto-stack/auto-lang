@@ -1,0 +1,26 @@
+type Math {
+    value int
+
+    fn square(x int) int {
+        x * x
+    }
+}
+
+fn main() {
+    let m = Math {value: 0}
+    let sq = m.square(5)
+
+    if sq > 20 {
+        print("Square is large:", sq)
+    } else {
+        print("Square is small:", sq)
+    }
+
+    is sq {
+        25 => print("Square is 25")
+        else => print("Square is not 25")
+    }
+
+    let arr = [1, 2, 3]
+    print("Array:", arr)
+}
