@@ -1488,6 +1488,7 @@ impl<'a> Parser<'a> {
             TokenKind::Type => self.type_decl_stmt()?,
             TokenKind::Union => self.union_stmt()?,
             TokenKind::Tag => self.tag_stmt()?,
+            TokenKind::Spec => self.spec_decl_stmt()?,
             TokenKind::LBrace => Stmt::Block(self.body()?),
             // Node Instance?
             TokenKind::Ident => self.parse_node_or_call_stmt()?,
@@ -2465,6 +2466,66 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Expr(self.parse_expr()?))
     }
 
+    pub fn spec_decl_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `spec` keyword
+
+        let name = self.parse_name()?;
+
+        // Parse spec body
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut methods = Vec::new();
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            if self.is_kind(TokenKind::Fn) {
+                let method = self.spec_method()?;
+                methods.push(method);
+                self.expect_eos(false)?;
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: "Expected method declaration in spec".to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        let spec_decl = SpecDecl {
+            name,
+            methods,
+        };
+
+        // Register spec in scope
+        self.define(spec_decl.name.as_str(), Meta::Spec(spec_decl.clone()));
+
+        Ok(Stmt::SpecDecl(spec_decl))
+    }
+
+    fn spec_method(&mut self) -> AutoResult<SpecMethod> {
+        self.expect(TokenKind::Fn)?;
+        let name = self.parse_name()?;
+
+        self.expect(TokenKind::LParen)?;
+        let params = self.fn_params()?;
+        self.expect(TokenKind::RParen)?;
+
+        // Parse return type
+        let ret = if self.is_type_name() {
+            self.parse_type()?
+        } else {
+            Type::Void // Default to void
+        };
+
+        Ok(SpecMethod {
+            name,
+            params,
+            ret,
+        })
+    }
+
     pub fn type_decl_stmt(&mut self) -> AutoResult<Stmt> {
         // TODO: deal with scope
         self.next(); // skip `type` keyword
@@ -2481,6 +2542,7 @@ impl<'a> Parser<'a> {
                     has: Vec::new(),
                     specs: Vec::new(),
                     members: Vec::new(),
+                    delegations: Vec::new(),
                     methods: Vec::new(),
                 };
                 // put type in scope
@@ -2496,6 +2558,7 @@ impl<'a> Parser<'a> {
             specs: Vec::new(),
             has: Vec::new(),
             members: Vec::new(),
+            delegations: Vec::new(),
             methods: Vec::new(),
         };
         // println!(
@@ -2511,9 +2574,14 @@ impl<'a> Parser<'a> {
         let mut specs = Vec::new();
         if self.is_kind(TokenKind::As) {
             self.next(); // skip `as` keyword
-            let spec = self.cur.text.clone();
-            self.next(); // skip spec
-            specs.push(spec.into());
+            // Parse one or more spec names
+            while !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Has) {
+                if !specs.is_empty() {
+                    self.expect(TokenKind::Comma)?;
+                }
+                let spec_name = self.parse_name()?;
+                specs.push(spec_name);
+            }
         }
         decl.specs = specs;
 
@@ -2534,15 +2602,20 @@ impl<'a> Parser<'a> {
         // type body
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
-        // list of members or methods
+        // list of members, methods, or delegations
         let mut members = Vec::new();
         let mut methods = Vec::new();
+        let mut delegations = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             if self.is_kind(TokenKind::Fn) {
                 let fn_stmt = self.fn_decl_stmt(&name)?;
                 if let Stmt::Fn(fn_expr) = fn_stmt {
                     methods.push(fn_expr);
                 }
+            } else if self.is_kind(TokenKind::Has) {
+                // Parse member-level delegation: `has member Type for Spec`
+                let delegation = self.parse_delegation()?;
+                delegations.push(delegation);
             } else {
                 let member = self.type_member()?;
                 members.push(member);
@@ -2574,6 +2647,39 @@ impl<'a> Parser<'a> {
         }
         decl.members = members;
         decl.methods = methods;
+        decl.delegations = delegations;
+
+        // Check trait conformance if type declares specs
+        if !decl.specs.is_empty() {
+            for spec_name in &decl.specs {
+                if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
+                    if let Meta::Spec(spec_decl) = meta.as_ref() {
+                        // Use TraitChecker to verify conformance
+                        if let Err(errors) = crate::trait_checker::TraitChecker::check_conformance(
+                            &decl,
+                            spec_decl,
+                        ) {
+                            // Add all conformance errors to parser errors
+                            for error in errors {
+                                self.add_error(error);
+                            }
+                        }
+                    }
+                } else {
+                    // Spec not found - this is an error
+                    self.add_error(
+                        SyntaxError::Generic {
+                            message: format!(
+                                "Type '{}' declares spec '{}' but spec is not defined",
+                                name, spec_name
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into(),
+                    );
+                }
+            }
+        }
 
         self.define(name.as_str(), Meta::Type(Type::User(decl.clone())));
         Ok(Stmt::TypeDecl(decl))
@@ -2599,6 +2705,30 @@ impl<'a> Parser<'a> {
         };
         self.define(name.as_str(), Meta::Store(store));
         Ok(Member::new(name, ty, value))
+    }
+
+    /// Parse member-level delegation: `has member Type for Spec`
+    /// Example: `has core WarpDrive for Engine`
+    fn parse_delegation(&mut self) -> AutoResult<crate::ast::Delegation> {
+        self.expect(TokenKind::Has)?; // skip `has` keyword
+
+        // Parse member name
+        let member_name = self.parse_name()?;
+
+        // Parse member type
+        let member_type = self.parse_type()?;
+
+        // Expect `for` keyword
+        self.expect(TokenKind::For)?;
+
+        // Parse spec name
+        let spec_name = self.parse_name()?;
+
+        Ok(crate::ast::Delegation {
+            member_name,
+            member_type,
+            spec_name,
+        })
     }
 
     pub fn union_stmt(&mut self) -> AutoResult<Stmt> {
@@ -4065,5 +4195,110 @@ exe hello {
                 " (eq (tag-cover (kind Atom) (tag Float) (elem f)) (body (name f))))"
             )
         );
+    }
+
+    #[test]
+    fn test_spec_decl() {
+        let code = r#"
+            spec Flyer {
+                fn fly()
+                fn land()
+            }
+        "#;
+        let ast = parse_once(code);
+        // Check that the first statement is a SpecDecl
+        assert!(ast.stmts.len() >= 1);
+        let first_stmt = &ast.stmts[0];
+        // The spec should be parsed correctly
+        let stmt_str = first_stmt.to_string();
+        assert!(stmt_str.contains("Flyer"));
+        assert!(stmt_str.contains("fly"));
+        assert!(stmt_str.contains("land"));
+    }
+
+    #[test]
+    fn test_spec_with_params() {
+        let code = r#"
+            spec Calculator {
+                fn add(a int, b int) int
+                fn subtract(a int, b int) int
+            }
+        "#;
+        let ast = parse_once(code);
+        assert!(ast.stmts.len() >= 1);
+        let first_stmt = &ast.stmts[0];
+        let stmt_str = first_stmt.to_string();
+        assert!(stmt_str.contains("Calculator"));
+        assert!(stmt_str.contains("add"));
+        assert!(stmt_str.contains("subtract"));
+    }
+
+    #[test]
+    fn test_type_as_spec() {
+        let code = r#"
+            spec Flyer {
+                fn fly()
+            }
+
+            type Pigeon as Flyer {
+                fn fly() {
+                    print("Flap Flap")
+                }
+            }
+        "#;
+        let ast = parse_once(code);
+        // Should parse both spec and type with 'as' clause
+        // Filter out empty line statements
+        let non_empty_stmts: Vec<_> = ast.stmts.iter()
+            .filter(|s| !s.to_string().starts_with("(nl"))
+            .collect();
+
+        assert!(non_empty_stmts.len() >= 2);
+        let spec_stmt = non_empty_stmts[0];
+        let type_stmt = non_empty_stmts[1];
+        // Debug output
+        println!("Spec stmt: {}", spec_stmt.to_string());
+        println!("Type stmt: {}", type_stmt.to_string());
+        assert!(spec_stmt.to_string().contains("Flyer"));
+        // The type should contain Pigeon
+        let type_str = type_stmt.to_string();
+        assert!(type_str.contains("Pigeon") || type_str.contains("pigeon"),
+            "Type statement should contain 'Pigeon', got: {}", type_str);
+    }
+
+    #[test]
+    fn test_type_with_multiple_specs() {
+        let code = r#"
+            spec Flyer {
+                fn fly()
+            }
+
+            spec Swimmer {
+                fn swim()
+            }
+
+            type Duck as Flyer, Swimmer {
+                fn fly() {
+                    print("Quack fly")
+                }
+                fn swim() {
+                    print("Quack swim")
+                }
+            }
+        "#;
+        let ast = parse_once(code);
+        // Should parse spec and type with multiple 'as' specs
+        // Filter out empty line statements
+        let non_empty_stmts: Vec<_> = ast.stmts.iter()
+            .filter(|s| !s.to_string().starts_with("(nl"))
+            .collect();
+
+        assert!(non_empty_stmts.len() >= 3);
+        let duck_stmt = non_empty_stmts[2];
+        // Debug output
+        println!("Duck stmt: {}", duck_stmt.to_string());
+        let duck_str = duck_stmt.to_string();
+        assert!(duck_str.contains("Duck") || duck_str.contains("duck"),
+            "Type statement should contain 'Duck', got: {}", duck_str);
     }
 }

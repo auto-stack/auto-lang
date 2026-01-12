@@ -1,0 +1,15 @@
+// Test basic spec declaration
+spec Flyer {
+    fn fly()
+}
+
+type Pigeon as Flyer {
+    fn fly() {
+        print("Flap")
+    }
+}
+
+fn main() {
+    let p = Pigeon()
+    p.fly()
+}

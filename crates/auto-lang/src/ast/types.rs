@@ -158,6 +158,25 @@ pub enum TypeDeclKind {
     CType,
 }
 
+/// 成员级委托声明
+/// 表示 `has member Type for Spec` 语法
+#[derive(Debug, Clone)]
+pub struct Delegation {
+    pub member_name: AutoStr,  // 成员名
+    pub member_type: Type,     // 成员类型
+    pub spec_name: AutoStr,    // 委托的 spec
+}
+
+impl fmt::Display for Delegation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "(delegation (member {}) (type {}) (for spec {}))",
+            self.member_name, self.member_type.unique_name(), self.spec_name
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TypeDecl {
     pub name: Name,
@@ -165,6 +184,7 @@ pub struct TypeDecl {
     pub has: Vec<Type>,
     pub specs: Vec<Spec>,
     pub members: Vec<Member>,
+    pub delegations: Vec<Delegation>,  // 新增：委托成员
     pub methods: Vec<Fn>,
 }
 
@@ -185,6 +205,16 @@ impl fmt::Display for TypeDecl {
             write!(f, " (has ")?;
             for h in self.has.iter() {
                 write!(f, "(type {})", h.unique_name())?;
+            }
+            write!(f, ")")?;
+        }
+        if !self.delegations.is_empty() {
+            write!(f, " (delegations ")?;
+            for (i, del) in self.delegations.iter().enumerate() {
+                write!(f, "{}", del)?;
+                if i < self.delegations.len() - 1 {
+                    write!(f, " ")?;
+                }
             }
             write!(f, ")")?;
         }

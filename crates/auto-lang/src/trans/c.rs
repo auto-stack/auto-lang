@@ -192,6 +192,9 @@ impl CTrans {
             Stmt::Tag(tag) => {
                 self.tag(tag, sink)?;
             }
+            Stmt::SpecDecl(spec_decl) => {
+                self.spec_decl(spec_decl, sink)?;
+            }
             Stmt::Break => {
                 sink.body.write(b"break;")?;
             }
@@ -369,6 +372,16 @@ impl CTrans {
             out.write(field.name.as_bytes())?;
             out.write(b";\n")?;
         }
+
+        // Add delegation members
+        for delegation in type_decl.delegations.iter() {
+            out.write(b"    ")?;
+            out.write(self.c_type_name(&delegation.member_type).as_bytes())?;
+            out.write(b" ")?;
+            out.write(delegation.member_name.as_bytes())?;
+            out.write(b";\n")?;
+        }
+
         out.write(b"};\n")?;
 
         // write methods
@@ -399,6 +412,24 @@ impl CTrans {
                     .as_bytes(),
             )?;
             out.write(b");\n")?;
+        }
+
+        // Generate delegation wrapper method declarations
+        for delegation in type_decl.delegations.iter() {
+            let spec_name = delegation.spec_name.clone();
+            if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+                if let Meta::Spec(spec_decl) = meta.as_ref() {
+                    for spec_method in spec_decl.methods.iter() {
+                        out.write(b"void ")?;
+                        out.write(type_decl.name.as_bytes())?;
+                        out.write(b"_")?;
+                        out.write(spec_method.name.as_bytes())?;
+                        out.write(b"(struct ")?;
+                        out.write(type_decl.name.as_bytes())?;
+                        out.write(b" *self);\n")?;
+                    }
+                }
+            }
         }
 
         self.header = out;
@@ -432,11 +463,134 @@ impl CTrans {
             sink.body.write(b"\n")?;
         }
 
-        if type_decl.members.len() > 0 {
+        // Generate delegation wrapper method implementations
+        for delegation in type_decl.delegations.iter() {
+            let spec_name = delegation.spec_name.clone();
+            let member_type_name = delegation.member_type.unique_name();
+            let member_name = delegation.member_name.clone();
+            if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+                if let Meta::Spec(spec_decl) = meta.as_ref() {
+                    for spec_method in spec_decl.methods.iter() {
+                        let out = &mut sink.body;
+                        out.write(b"void ")?;
+                        out.write(type_decl.name.as_bytes())?;
+                        out.write(b"_")?;
+                        out.write(spec_method.name.as_bytes())?;
+                        out.write(b"(struct ")?;
+                        out.write(type_decl.name.as_bytes())?;
+                        out.write(b" *self) {\n    ")?;
+
+                        // Call the delegated member's method
+                        out.write(member_type_name.as_bytes())?;
+                        out.write(b"_")?;
+                        out.write(spec_method.name.as_bytes())?;
+                        out.write(b"(&self->")?;
+                        out.write(member_name.as_bytes())?;
+                        out.write(b");\n}\n")?;
+                    }
+                }
+            }
+        }
+
+        // Generate vtable instances for each spec this type implements
+        let spec_decls: Vec<_> = type_decl.specs.iter().filter_map(|spec_name| {
+            if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+                if let Meta::Spec(spec_decl) = meta.as_ref() {
+                    Some(spec_decl.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }).collect();
+
+        for spec_decl in spec_decls {
+            self.type_vtable_instance(type_decl, &spec_decl, sink)?;
+        }
+
+        if type_decl.members.len() > 0 || !type_decl.delegations.is_empty() {
             self.last_out = OutKind::Both;
         } else {
             self.last_out = OutKind::Header;
         }
+        Ok(())
+    }
+
+    fn spec_decl(&mut self, spec_decl: &SpecDecl, _sink: &mut Sink) -> AutoResult<()> {
+        // Generate vtable struct for the spec
+        let mut header = std::mem::take(&mut self.header);
+
+        // Write vtable struct definition
+        header.write(b"typedef struct ")?;
+        header.write(spec_decl.name.as_bytes())?;
+        header.write(b"_vtable {\n")?;
+        self.indent();
+
+        for method in &spec_decl.methods {
+            self.print_indent(&mut header)?;
+            header.write(b"void (*")?;
+            header.write(method.name.as_bytes())?;
+            header.write(b")(")?;
+
+            // First parameter is always self pointer
+            header.write(b"void *self")?;
+
+            // Add remaining parameters
+            for param in method.params.iter() {
+                header.write(b", ")?;
+                header.write(self.c_type_name(&param.ty).as_bytes())?;
+                header.write(b" ")?;
+                header.write(param.name.as_bytes())?;
+            }
+
+            header.write(b");\n")?;
+        }
+
+        self.dedent();
+        header.write(b"} ")?;
+        header.write(spec_decl.name.as_bytes())?;
+        header.write(b"_vtable;\n\n")?;
+
+        self.header = header;
+        self.last_out = OutKind::Header;
+        Ok(())
+    }
+
+    fn type_vtable_instance(
+        &mut self,
+        type_decl: &TypeDecl,
+        spec_decl: &SpecDecl,
+        sink: &mut Sink,
+    ) -> AutoResult<()> {
+        // Generate vtable instance
+        let out = &mut sink.body;
+        out.write(spec_decl.name.as_bytes())?;
+        out.write(b"_vtable ")?;
+        out.write(type_decl.name.as_bytes())?;
+        out.write(b"_")?;
+        out.write(spec_decl.name.as_bytes())?;
+        out.write(b"_vtable = {\n")?;
+        self.indent();
+
+        for method in spec_decl.methods.iter() {
+            self.print_indent(out)?;
+            out.write(b".")?;
+            out.write(method.name.as_bytes())?;
+            out.write(b" = ")?;
+
+            // Function pointer to the type's method implementation
+            // Use method_name() helper for consistent camelCase naming
+            self.method_name(&type_decl.name, &method.name, out)?;
+
+            // Add comma if not the last method
+            // Note: we can't easily check if we're at the last item in a for loop
+            // without collecting into a Vec first, so we'll always add a newline
+            out.write(b"\n")?;
+        }
+
+        self.dedent();
+        out.write(b"};\n\n")?;
         Ok(())
     }
 
@@ -1424,13 +1578,15 @@ impl CTrans {
         call: &Call,
         out: &mut impl Write,
     ) -> AutoResult<bool> {
-        // write the method call as method_name(&s, args...)
-        // Note: add type prefix as Type_MethodName(...)
         let type_name = &decl.name;
-        self.method_name(type_name, method_name, out)?;
-        out.write(b"(")?;
+
+        // First check if the type has this method directly
         for m in decl.methods.iter() {
             if m.name == *method_name {
+                // write the method call as Type_MethodName(&s, args...)
+                // Note: add type prefix as Type_MethodName(...)
+                self.method_name(type_name, method_name, out)?;
+                out.write(b"(")?;
                 out.write(b"&")?;
                 out.write(lname.as_bytes())?;
                 if !call.args.is_empty() {
@@ -1446,6 +1602,47 @@ impl CTrans {
                 return Ok(true);
             }
         }
+
+        // Check delegations - look for a delegation that implements this method
+        // Collect delegation info first to avoid borrow issues
+        let mut delegation_impl: Option<(AutoStr, AutoStr)> = None;
+        for delegation in decl.delegations.iter() {
+            let spec_name = delegation.spec_name.clone();
+            if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+                if let Meta::Spec(spec_decl) = meta.as_ref() {
+                    for spec_method in spec_decl.methods.iter() {
+                        if spec_method.name == *method_name {
+                            delegation_impl = Some((delegation.member_name.clone(), delegation.member_type.unique_name()));
+                            break;
+                        }
+                    }
+                }
+            }
+            if delegation_impl.is_some() {
+                break;
+            }
+        }
+
+        if let Some((member_name, member_type_name)) = delegation_impl {
+            // Use the delegation wrapper method
+            out.write(type_name.as_bytes())?;
+            out.write(b"_")?;
+            out.write(method_name.as_bytes())?;
+            out.write(b"(&")?;
+            out.write(lname.as_bytes())?;
+            if !call.args.is_empty() {
+                out.write(b", ")?;
+                for (i, arg) in call.args.args.iter().enumerate() {
+                    if i > 0 {
+                        out.write(b", ")?;
+                    }
+                    self.expr(&arg.get_expr(), out)?;
+                }
+            }
+            out.write(b")").to()?;
+            return Ok(true);
+        }
+
         Ok(false)
     }
 
@@ -2001,6 +2198,21 @@ int add(int x, int y);
     #[test]
     fn test_015_str() {
         test_a2c("015_str").unwrap();
+    }
+
+    #[test]
+    fn test_016_basic_spec() {
+        test_a2c("016_basic_spec").unwrap();
+    }
+
+    #[test]
+    fn test_017_spec() {
+        test_a2c("017_spec").unwrap();
+    }
+
+    #[test]
+    fn test_018_delegation() {
+        test_a2c("018_delegation").unwrap();
     }
 
     // ===================== test cases for Auto's stdlib =======================

@@ -1,0 +1,32 @@
+// a new spec that say's anything that conforms this Flyer spec should implement a fly() method.
+spec Flyer {
+    fn fly()
+}
+
+// a concreate type that conforms to the Flyer spec
+type Pigeon as Flyer {
+    fn fly() {
+        print("Flap Flap")
+    }
+}
+
+// a concreate type that conforms to the Flyer spec
+type Hawk as Flyer {
+    fn fly() {
+        print("Gawk! Gawk!")
+    }
+}
+
+fn main() {
+    // create an instance for each concrete type
+    let b1 = Pigeon()
+    let b2 = Hawk()
+
+    // As they both conform to the Flyer spec, we can store them in an array
+    // This is dynamic polymorphism at runtime
+    let arr []Flyer = [b1, b2]
+    for b in arr {
+        b.fly()
+    }
+}
+

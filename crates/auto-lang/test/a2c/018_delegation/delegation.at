@@ -1,0 +1,21 @@
+// Test member-level delegation syntax
+spec Engine {
+    fn start()
+}
+
+type WarpDrive {
+    fn start() {
+        print("WarpDrive engaging")
+    }
+}
+
+// Note: No 'as Engine' declaration to avoid trait checking for now
+// (delegation-based trait checking to be implemented)
+type Starship {
+    has core WarpDrive for Engine
+}
+
+fn main() {
+    let ship = Starship()
+    ship.start()
+}
