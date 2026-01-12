@@ -1616,6 +1616,7 @@ impl Evaler {
                 }
             }
             Value::Instance(inst) => {
+                // First, try to find the method directly in the type
                 let meth = self.universe.borrow().lookup_meta(&method.name);
                 if let Some(meta) = meth {
                     match meta.as_ref() {
@@ -1636,6 +1637,68 @@ impl Evaler {
                             return Ok(Value::error(format!("wrong meta for method: {}", meta)));
                         }
                     }
+                }
+
+                // Method not found directly, check delegations
+                // Get the type declaration to check for delegations
+                // Collect delegation info first to avoid borrow issues
+                let mut delegation_target: Option<Value> = None;
+                let mut delegated_method_name: Option<AutoStr> = None;
+
+                match &inst.ty {
+                    auto_val::Type::User(type_name) => {
+                        // Lookup the TypeDecl from universe
+                        let type_name_clone = type_name.clone();
+                        if let Some(meta) = self.universe.borrow().lookup_meta(&type_name_clone) {
+                            if let Meta::Type(ast::Type::User(type_decl)) = meta.as_ref() {
+                                for delegation in &type_decl.delegations {
+                                    // Check if this delegation handles the method
+                                    let spec_name = delegation.spec_name.clone();
+                                    let member_name = delegation.member_name.clone();
+                                    if let Some(spec_meta) = self.universe.borrow().lookup_meta(&spec_name) {
+                                        if let Meta::Spec(spec_decl) = spec_meta.as_ref() {
+                                            // Check if the spec has this method
+                                            if spec_decl.methods.iter().any(|m| m.name == method.name) {
+                                                // Found delegation! Get the delegated member value
+                                                if let Some(member_value) = inst.fields.lookup(&member_name) {
+                                                    // Resolve ValueRef if needed
+                                                    let resolved_member = match member_value {
+                                                        Value::ValueRef(_vid) => {
+                                                            if let Some(data) = self.resolve_value(&member_value) {
+                                                                let borrowed = data.borrow();
+                                                                let cloned = borrowed.clone();
+                                                                drop(borrowed);
+                                                                Some(Value::from_data(cloned))
+                                                            } else {
+                                                                None
+                                                            }
+                                                        }
+                                                        _ => Some(member_value.clone()),
+                                                    };
+
+                                                    if resolved_member.is_some() {
+                                                        delegation_target = resolved_member;
+                                                        delegated_method_name = Some(method.name.clone());
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+
+                // If we found a delegation, call the method on the delegated member
+                if let (Some(target), Some(method_name)) = (delegation_target, delegated_method_name) {
+                    let delegated_method = Method {
+                        target: Box::new(target),
+                        name: method_name,
+                    };
+                    return self.eval_method(&delegated_method, args);
                 }
             }
             _ => {
