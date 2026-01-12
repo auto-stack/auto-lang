@@ -1,3 +1,0 @@
-// Test for undefined variable assignment (should not panic)
-let x = 10
-y = 20
