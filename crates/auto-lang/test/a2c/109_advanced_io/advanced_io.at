@@ -1,0 +1,19 @@
+use auto.io: File, open_write
+
+fn main() {
+    let file = open_write("seek_test.txt")
+    
+    // Write some data
+    file.puts("Hello")
+    
+    // Seek to beginning (SEEK_SET = 0)
+    file.seek(0, 0)
+    
+    // Get position
+    let pos = file.tell()
+    
+    // Rewind
+    file.rewind()
+    
+    file.close()
+}

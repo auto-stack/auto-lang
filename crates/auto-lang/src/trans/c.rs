@@ -32,6 +32,7 @@ pub struct CTrans {
     indent: usize,
     libs: HashSet<AutoStr>,
     pub header: Vec<u8>,
+    uses_bool: bool,
     name: AutoStr,
     scope: Shared<Universe>,
     last_out: OutKind,
@@ -42,6 +43,7 @@ impl CTrans {
     pub fn new(name: AutoStr) -> Self {
         Self {
             indent: 0,
+            uses_bool: false,
             libs: HashSet::new(),
             header: Vec::new(),
             name,
@@ -740,6 +742,10 @@ impl CTrans {
             Expr::Str(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::CStr(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::FStr(fs) => self.fstr(fs, out),
+            Expr::Bool(b) => {
+                self.uses_bool = true;
+                out.write_all(if *b { b"true" } else { b"false" }).to()
+            }
             Expr::Char(ch) => self.char(ch, out),
             Expr::Call(call) => self.call(call, out),
             Expr::Array(array) => self.array(array, out),
@@ -1050,6 +1056,12 @@ impl CTrans {
                 .collect::<Vec<_>>()
                 .join(", ");
             out.write(params.as_bytes()).to()?;
+        }
+
+        for p in fn_decl.params.iter() {
+            if matches!(p.ty, Type::Bool) {
+                self.uses_bool = true;
+            }
         }
         out.write(b")").to()?;
 
@@ -2048,6 +2060,10 @@ impl Trans for CTrans {
                 sink.header.write(b"\n")?;
             }
 
+            if self.uses_bool {
+                sink.header.write(b"#include <stdbool.h>\n")?;
+            }
+
             if !libs.is_empty() && !self.header.is_empty() {
                 sink.header.write(b"\n")?;
             }
@@ -2459,5 +2475,17 @@ int add(int x, int y);
     #[test]
     fn test_105_std_str() {
         test_a2c("105_std_str").unwrap();
+    }
+
+    #[test]
+    fn test_106_file_operations() {
+        test_a2c("106_file_operations").unwrap();
+    }
+
+    #[test]
+
+    #[test]
+    fn test_110_bool() {
+        test_a2c("110_bool").unwrap();
     }
 }

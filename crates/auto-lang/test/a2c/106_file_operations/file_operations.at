@@ -1,0 +1,26 @@
+use auto.io: File, open, open_read, open_write, open_append
+
+fn main() {
+    let file = open_read("test.txt")
+    let line = file.read_line()
+    print("Read: ")
+    print(line)
+    print("\n")
+    file.close()
+
+    let out = open_write("output.txt")
+    out.write_line("Hello, AutoLang!")
+    out.write_line("File I/O test")
+    out.flush()
+    out.close()
+
+    let app = open_append("output.txt")
+    app.write_line("This line is appended")
+    app.close()
+
+    let rw = open_write("rw_test.txt")
+    rw.write_line("Line 1")
+    rw.write_line("Line 2")
+    rw.flush()
+    rw.close()
+}

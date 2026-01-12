@@ -4,12 +4,42 @@ fn say(msg str) {
     print(msg)
 }
 
+enum SeekOrigin {
+    Set = 0
+    Cur = 1
+    End = 2
+}
+
 type File {
     fn.vm close()
     fn.vm read_text() str
+    fn.vm read_line() str
+    fn.vm write_line(s str)
+    fn.vm flush()
+
+    fn.vm getc() int
+    fn.vm putc(c int)
+    fn.vm ungetc(c int)
+
+    fn.vm read(buf []byte, size int, count int) int
+    fn.vm write(buf []byte, size int, count int) int
+
+    fn.vm gets(buf []byte) str
+    fn.vm puts(s str)
+
+    fn.vm seek(offset int, origin int) int
+    fn.vm tell() int
+    fn.vm rewind()
+
+    fn.vm is_eof() bool
+    fn.vm has_error() bool
+    fn.vm clear_error()
 }
 
 fn.vm open(path str) File
+fn.vm open_read(path str) File
+fn.vm open_write(path str) File
+fn.vm open_append(path str) File
 
 # C
 use.c <stdlib.h>
@@ -21,10 +51,28 @@ fn.c printf(fmt cstr, arg cstr)
 type.c FILE
 fn.c getline(lineptr *cstr, n *int, stream *FILE) int
 let c stdin *FILE
+let c stdout *FILE
 
 fn.c fopen(filename cstr, mode cstr) *FILE
 fn.c fclose(stream *FILE)
 fn.c fgets(buf cstr, n int, stream *FILE) cstr
+fn.c fputs(s cstr, stream *FILE) int
+fn.c fflush(stream *FILE) int
+
+fn.c fgetc(stream *FILE) int
+fn.c fputc(c int, stream *FILE) int
+fn.c ungetc(c int, stream *FILE) int
+
+fn.c fread(ptr *void, size int, count int, stream *FILE) int
+fn.c fwrite(ptr *void, size int, count int, stream *FILE) int
+
+fn.c fseek(stream *FILE, offset int, origin int) int
+fn.c ftell(stream *FILE) int
+fn.c rewind(stream *FILE)
+
+fn.c feof(stream *FILE) int
+fn.c ferror(stream *FILE) int
+fn.c clearerr(stream *FILE)
 
 fn say(msg str) {
     printf(c"%s\n", msg)
@@ -35,19 +83,120 @@ type File {
     file *FILE
 
     fn read_text() str {
-        // Read a single line - simple implementation
         let buf cstr = c"                                        "
         fgets(buf, 40, .file)
         buf
     }
 
+    fn read_line() str {
+        let buf cstr = c"                                                                                "
+        fgets(buf, 80, .file)
+        buf
+    }
+
+    fn write_line(s str) {
+        fputs(s, .file)
+        fputs(c"\n", .file)
+    }
+
     fn close() {
         fclose(.file)
+    }
+
+    fn flush() {
+        fflush(.file)
+    }
+
+    fn getc() int {
+        fgetc(.file)
+    }
+
+    fn putc(c int) {
+        fputc(c, .file)
+    }
+
+    fn ungetc(c int) {
+        ungetc(c, .file)
+    }
+
+    fn read(buf []byte, size int, count int) int {
+        fread(buf, size, count, .file)
+    }
+
+    fn write(buf []byte, size int, count int) int {
+        fwrite(buf, size, count, .file)
+    }
+
+    fn gets(buf []byte) str {
+        fgets(buf, 80, .file)
+        buf
+    }
+
+    fn puts(s str) {
+        fputs(s, .file)
+    }
+
+    fn seek(offset int, origin int) int {
+        fseek(.file, offset, origin)
+    }
+
+    fn tell() int {
+        ftell(.file)
+    }
+
+    fn rewind() {
+        rewind(.file)
+    }
+
+    fn is_eof() bool {
+        let result = feof(.file)
+        if result == 0 {
+            false
+        } else {
+            true
+        }
+    }
+
+    fn has_error() bool {
+        let result = ferror(.file)
+        if result == 0 {
+            false
+        } else {
+            true
+        }
+    }
+
+    fn clear_error() {
+        clearerr(.file)
     }
 }
 
 fn open(path str) File {
+    open_read(path)
+}
+
+fn open_read(path str) File {
     let f *FILE = fopen(path, c"r")
+    if f == nil {
+        printf(c"Failed to open file")
+        exit(1)
+    }
+    let file = File(path, f)
+    file
+}
+
+fn open_write(path str) File {
+    let f *FILE = fopen(path, c"w")
+    if f == nil {
+        printf(c"Failed to open file")
+        exit(1)
+    }
+    let file = File(path, f)
+    file
+}
+
+fn open_append(path str) File {
+    let f *FILE = fopen(path, c"a")
     if f == nil {
         printf(c"Failed to open file")
         exit(1)

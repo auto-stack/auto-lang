@@ -1,0 +1,7 @@
+fn test_bool_return() bool {
+    1 == 1
+}
+
+fn main() {
+    let result = test_bool_return()
+}
