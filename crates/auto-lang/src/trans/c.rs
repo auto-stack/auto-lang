@@ -420,13 +420,27 @@ impl CTrans {
             if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
                 if let Meta::Spec(spec_decl) = meta.as_ref() {
                     for spec_method in spec_decl.methods.iter() {
-                        out.write(b"void ")?;
+                        // Return type
+                        out.write(self.c_type_name(&spec_method.ret).as_bytes())?;
+                        out.write(b" ")?;
+
+                        // Method name
                         out.write(type_decl.name.as_bytes())?;
                         out.write(b"_")?;
                         out.write(spec_method.name.as_bytes())?;
                         out.write(b"(struct ")?;
                         out.write(type_decl.name.as_bytes())?;
-                        out.write(b" *self);\n")?;
+                        out.write(b" *self")?;
+
+                        // Parameters
+                        for param in &spec_method.params {
+                            out.write(b", ")?;
+                            out.write(self.c_type_name(&param.ty).as_bytes())?;
+                            out.write(b" ")?;
+                            out.write(param.name.as_bytes())?;
+                        }
+
+                        out.write(b");\n")?;
                     }
                 }
             }
@@ -472,20 +486,47 @@ impl CTrans {
                 if let Meta::Spec(spec_decl) = meta.as_ref() {
                     for spec_method in spec_decl.methods.iter() {
                         let out = &mut sink.body;
-                        out.write(b"void ")?;
+
+                        // Return type
+                        let ret_type_name = self.c_type_name(&spec_method.ret);
+                        out.write(ret_type_name.as_bytes())?;
+                        out.write(b" ")?;
+
+                        // Method name
                         out.write(type_decl.name.as_bytes())?;
                         out.write(b"_")?;
                         out.write(spec_method.name.as_bytes())?;
                         out.write(b"(struct ")?;
                         out.write(type_decl.name.as_bytes())?;
-                        out.write(b" *self) {\n    ")?;
+                        out.write(b" *self")?;
+
+                        // Parameters
+                        for param in &spec_method.params {
+                            out.write(b", ")?;
+                            out.write(self.c_type_name(&param.ty).as_bytes())?;
+                            out.write(b" ")?;
+                            out.write(param.name.as_bytes())?;
+                        }
+
+                        out.write(b") {\n    ")?;
 
                         // Call the delegated member's method
+                        if !matches!(spec_method.ret, Type::Void) {
+                            out.write(b"return ")?;
+                        }
+
                         out.write(member_type_name.as_bytes())?;
                         out.write(b"_")?;
                         out.write(spec_method.name.as_bytes())?;
                         out.write(b"(&self->")?;
                         out.write(member_name.as_bytes())?;
+
+                        // Forward parameters
+                        for param in &spec_method.params {
+                            out.write(b", ")?;
+                            out.write(param.name.as_bytes())?;
+                        }
+
                         out.write(b");\n}\n")?;
                     }
                 }
@@ -1623,7 +1664,7 @@ impl CTrans {
             }
         }
 
-        if let Some((member_name, member_type_name)) = delegation_impl {
+        if let Some((_member_name, _member_type_name)) = delegation_impl {
             // Use the delegation wrapper method
             out.write(type_name.as_bytes())?;
             out.write(b"_")?;
@@ -2213,6 +2254,16 @@ int add(int x, int y);
     #[test]
     fn test_018_delegation() {
         test_a2c("018_delegation").unwrap();
+    }
+
+    #[test]
+    fn test_019_multi_delegation() {
+        test_a2c("019_multi_delegation").unwrap();
+    }
+
+    #[test]
+    fn test_020_delegation_params() {
+        test_a2c("020_delegation_params").unwrap();
     }
 
     // ===================== test cases for Auto's stdlib =======================

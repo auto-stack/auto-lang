@@ -1420,10 +1420,16 @@ impl RustTrans {
             }
         }
 
-        if !all_members.is_empty() {
+        // Add delegation members to seen_fields and generate them separately
+        for delegation in &type_decl.delegations {
+            seen_fields.insert(delegation.member_name.clone());
+        }
+
+        if !all_members.is_empty() || !type_decl.delegations.is_empty() {
             sink.body.write(b"\n")?;
             self.indent();
 
+            // First, write regular members
             for member in all_members {
                 self.print_indent(&mut sink.body)?;
                 write!(
@@ -1431,6 +1437,18 @@ impl RustTrans {
                     "{}: {},",
                     member.name,
                     self.rust_type_name(&member.ty)
+                )?;
+                sink.body.write(b"\n")?;
+            }
+
+            // Then, write delegation members
+            for delegation in &type_decl.delegations {
+                self.print_indent(&mut sink.body)?;
+                write!(
+                    sink.body,
+                    "{}: {},",
+                    delegation.member_name,
+                    self.rust_type_name(&delegation.member_type)
                 )?;
                 sink.body.write(b"\n")?;
             }
@@ -1470,6 +1488,68 @@ impl RustTrans {
                     self.indent();
                     self.print_indent(&mut sink.body)?;
                     write!(sink.body, "// TODO: Implement {} method body from {}\n", method.name, has_decl.name)?;
+                    self.dedent();
+                    self.print_indent(&mut sink.body)?;
+                    write!(sink.body, "}}\n")?;
+                }
+
+                self.dedent();
+                write!(sink.body, "}}\n")?;
+            }
+        }
+
+        // Generate trait implementations for delegations
+        for delegation in &type_decl.delegations {
+            let spec_name = delegation.spec_name.clone();
+            let member_name = delegation.member_name.clone();
+
+            // Get the spec declaration - clone to avoid borrow issues
+            let spec_decl_clone = if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+                if let crate::scope::Meta::Spec(spec_decl) = meta.as_ref() {
+                    Some(spec_decl.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            // Now use the cloned spec_decl
+            if let Some(spec_decl) = spec_decl_clone {
+                write!(sink.body, "\nimpl {} for {} {{\n", spec_decl.name, type_decl.name)?;
+                self.indent();
+
+                // Generate methods that delegate to the member
+                for spec_method in &spec_decl.methods {
+                    self.print_indent(&mut sink.body)?;
+                    write!(sink.body, "fn {}(&self", spec_method.name)?;
+
+                    // Parameters
+                    for param in &spec_method.params {
+                        write!(sink.body, ", {}: {}", param.name, self.rust_type_name(&param.ty))?;
+                    }
+
+                    // Return type
+                    if !matches!(spec_method.ret, Type::Void) {
+                        write!(sink.body, ") -> {}", self.rust_type_name(&spec_method.ret))?;
+                    } else {
+                        write!(sink.body, ")")?;
+                    }
+
+                    write!(sink.body, " {{\n")?;
+                    self.indent();
+                    self.print_indent(&mut sink.body)?;
+                    write!(sink.body, "self.{}.{}(", member_name, spec_method.name)?;
+
+                    // Forward parameters
+                    for (i, param) in spec_method.params.iter().enumerate() {
+                        if i > 0 {
+                            write!(sink.body, ", ")?;
+                        }
+                        write!(sink.body, "{}", param.name)?;
+                    }
+
+                    write!(sink.body, ")\n")?;
                     self.dedent();
                     self.print_indent(&mut sink.body)?;
                     write!(sink.body, "}}\n")?;
@@ -2059,5 +2139,20 @@ mod tests {
     #[test]
     fn test_031_spec() {
         test_a2r("031_spec").unwrap();
+    }
+
+    #[test]
+    fn test_032_delegation() {
+        test_a2r("032_delegation").unwrap();
+    }
+
+    #[test]
+    fn test_033_multi_delegation() {
+        test_a2r("033_multi_delegation").unwrap();
+    }
+
+    #[test]
+    fn test_034_delegation_params() {
+        test_a2r("034_delegation_params").unwrap();
     }
 }
