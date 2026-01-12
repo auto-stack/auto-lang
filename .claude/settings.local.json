@@ -84,6 +84,7 @@
       "Bash(cargo tree:*)",
       "Bash(curl:*)",
       "Bash(rustdoc --open --no-deps -p reedline:*)"
+      "Bash(find:*)"
     ]
   }
 }

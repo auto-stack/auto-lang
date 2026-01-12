@@ -1,0 +1,13 @@
+type target {
+    name str
+    at str
+}
+
+
+fn main() {
+    let t = target {
+        name: "foo",
+        at: 42,
+    }
+    print(t.name)
+}

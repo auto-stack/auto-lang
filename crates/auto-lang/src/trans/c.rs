@@ -1,5 +1,5 @@
 use super::{Sink, ToStrError, Trans};
-use crate::ast::Type;
+use crate::ast::{ArrayType, Type};
 use crate::ast::*;
 use crate::parser::Parser;
 use crate::scope::Meta;
@@ -890,6 +890,60 @@ impl CTrans {
             return Err(format!("Type not found for node: {}", node.name).into());
         };
 
+        // Type validation for struct initialization
+        if let Type::User(type_decl) = &typ {
+            // Validate args (named arguments)
+            for arg in &node.args.args {
+                if let Arg::Pair(key, value_expr) = arg {
+                    // Find the field declaration
+                    let field = type_decl.members.iter()
+                        .find(|m| &m.name == key)
+                        .ok_or_else(|| format!("Field '{}' not found in type '{}'", key, type_decl.name))?;
+
+                    // Get the expected type from the field declaration
+                    let expected_type = &field.ty;
+
+                    // Infer the type of the value expression
+                    let value_type = self.infer_literal_type(value_expr);
+
+                    // Check if types match
+                    if !self.types_compatible(&value_type, expected_type) {
+                        return Err(format!(
+                            "Type mismatch: field '{}' declared as '{}' but initialized with '{}' value",
+                            key, expected_type, value_type
+                        ).into());
+                    }
+                }
+            }
+
+            // Validate body (field: value pairs in object literal)
+            for stmt in &node.body.stmts {
+                if let Stmt::Expr(expr) = stmt {
+                    if let Expr::Pair(pair) = expr {
+                        let field_name = pair.key.to_astr();
+                        // Find the field declaration
+                        let field = type_decl.members.iter()
+                            .find(|m| &m.name == &field_name)
+                            .ok_or_else(|| format!("Field '{}' not found in type '{}'", field_name, type_decl.name))?;
+
+                        // Get the expected type from the field declaration
+                        let expected_type = &field.ty;
+
+                        // Infer the type of the value expression
+                        let value_type = self.infer_literal_type(&pair.value);
+
+                        // Check if types match
+                        if !self.types_compatible(&value_type, expected_type) {
+                            return Err(format!(
+                                "Type mismatch: field '{}' declared as '{}' but initialized with '{}' value",
+                                field_name, expected_type, value_type
+                            ).into());
+                        }
+                    }
+                }
+            }
+        }
+
         out.write(b"{")?;
         // translate args to pairs in body
         for (i, arg) in node.args.args.iter().enumerate() {
@@ -1727,6 +1781,73 @@ impl CTrans {
         }
     }
 
+    /// Validate struct initialization arguments against type declaration
+    fn validate_struct_init(&mut self, type_decl: &TypeDecl, args: &Args) -> AutoResult<()> {
+        for arg in &args.args {
+            if let Arg::Pair(key, value_expr) = arg {
+                // Find the field declaration
+                let field = type_decl.members.iter()
+                    .find(|m| &m.name == key)
+                    .ok_or_else(|| format!("Field '{}' not found in type '{}'", key, type_decl.name))?;
+
+                // Get the expected type from the field declaration
+                let expected_type = &field.ty;
+
+                // Infer the type of the value expression
+                let value_type = self.infer_literal_type(value_expr);
+
+                // Check if types match
+                if !self.types_compatible(&value_type, expected_type) {
+                    return Err(format!(
+                        "Type mismatch: field '{}' declared as '{}' but initialized with '{}' value",
+                        key, expected_type, value_type
+                    ).into());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Infer the type of a literal expression (for type checking)
+    fn infer_literal_type(&self, expr: &Expr) -> Type {
+        match expr {
+            Expr::I8(_) | Expr::Int(_) => Type::Int,
+            Expr::Uint(_) | Expr::Byte(_) | Expr::U8(_) => Type::Uint,
+            Expr::Float(_, _) => Type::Float,
+            Expr::Double(_, _) => Type::Double,
+            Expr::Bool(_) => Type::Bool,
+            Expr::Char(_) => Type::Char,
+            Expr::Str(s) => Type::Str(s.len()),
+            Expr::CStr(_) => Type::CStr,
+            Expr::Array(elems) => {
+                if elems.is_empty() {
+                    Type::Array(ArrayType { elem: Box::new(Type::Unknown), len: 0 })
+                } else {
+                    let elem_type = self.infer_literal_type(&elems[0]);
+                    Type::Array(ArrayType { elem: Box::new(elem_type), len: elems.len() })
+                }
+            }
+            Expr::Ident(name) => self.lookup_type(name),
+            _ => Type::Unknown,
+        }
+    }
+
+    /// Check if two types are compatible (for type checking)
+    fn types_compatible(&self, actual: &Type, expected: &Type) -> bool {
+        match (actual, expected) {
+            // Exact match
+            (a, e) if std::mem::discriminant(a) == std::mem::discriminant(e) => true,
+            // String types are compatible
+            (Type::Str(_), Type::Str(_)) => true,
+            // Numeric types: allow some conversions
+            (Type::Int, Type::Uint) | (Type::Uint, Type::Int) => true,
+            (Type::Float, Type::Double) | (Type::Double, Type::Float) => true,
+            // Unknown matches anything (for error recovery)
+            (Type::Unknown, _) | (_, Type::Unknown) => true,
+            _ => false,
+        }
+    }
+
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         // method call
         if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
@@ -1742,6 +1863,13 @@ impl CTrans {
             if name == "print" {
                 return self.process_print(call, out);
             } else {
+                // Check if this is a struct initialization (user-defined type)
+                if let Some(meta) = self.lookup_meta(name) {
+                    if let Meta::Type(Type::User(type_decl)) = meta.as_ref() {
+                        // Validate struct initialization arguments
+                        self.validate_struct_init(&type_decl, &call.args)?;
+                    }
+                }
                 self.expr(&call.name, out)?;
                 out.write(b"(").to()?;
             }
@@ -2119,46 +2247,76 @@ int add(int x, int y);
         println!("src_path: {}", src_path.display());
         let src = read_to_string(src_path.as_path())?;
 
-        let exp_path = format!("test/a2c/{}/{}.expected.c", case, name);
-        let exp_path = d.join(exp_path);
-        let expected_src = if !exp_path.is_file() {
-            "".to_string()
+        // Check if this is an error test
+        let err_path = format!("test/a2c/{}/{}.expected.error.log", case, name);
+        let err_path = d.join(err_path);
+
+        if err_path.is_file() {
+            // This is an error test - check that transpilation fails with expected error
+            let _expected_error = read_to_string(err_path.as_path())?;
+
+            let result = transpile_c(name, &src);
+
+            match result {
+                Err(e) => {
+                    let error_msg = format!("{}", e);
+                    // Check if the error message contains the expected error
+                    if !error_msg.contains("Type mismatch") {
+                        return Err(format!(
+                            "Expected type mismatch error, got: {}",
+                            error_msg
+                        ).into());
+                    }
+                    // Basic check passed - the transpiler correctly detected the type error
+                    Ok(())
+                }
+                Ok(_) => {
+                    return Err(format!("Expected transpilation to fail with type error, but it succeeded").into());
+                }
+            }
         } else {
-            read_to_string(exp_path.as_path())?
-        };
+            // Normal test - check generated code
+            let exp_path = format!("test/a2c/{}/{}.expected.c", case, name);
+            let exp_path = d.join(exp_path);
+            let expected_src = if !exp_path.is_file() {
+                "".to_string()
+            } else {
+                read_to_string(exp_path.as_path())?
+            };
 
-        let exph_path = format!("test/a2c/{}/{}.expected.h", case, name);
-        let exph_path = d.join(exph_path);
-        let expected_header = if !exph_path.is_file() {
-            "".to_string()
-        } else {
-            read_to_string(exph_path.as_path())?
-        };
+            let exph_path = format!("test/a2c/{}/{}.expected.h", case, name);
+            let exph_path = d.join(exph_path);
+            let expected_header = if !exph_path.is_file() {
+                "".to_string()
+            } else {
+                read_to_string(exph_path.as_path())?
+            };
 
-        let (mut ccode, _) = transpile_c(name, &src)?;
+            let (mut ccode, _) = transpile_c(name, &src)?;
 
-        let src = ccode.done()?;
+            let src = ccode.done()?;
 
-        if src != expected_src.as_bytes() {
-            // out put generated code to a gen file
-            let gen_path = format!("test/a2c/{}/{}.wrong.c", case, name);
-            let gen_path = d.join(gen_path);
-            let mut file = File::create(gen_path.as_path())?;
-            file.write_all(src)?;
+            if src != expected_src.as_bytes() {
+                // out put generated code to a gen file
+                let gen_path = format!("test/a2c/{}/{}.wrong.c", case, name);
+                let gen_path = d.join(gen_path);
+                let mut file = File::create(gen_path.as_path())?;
+                file.write_all(src)?;
+            }
+
+            assert_eq!(String::from_utf8_lossy(src), expected_src);
+
+            let header = ccode.header;
+            if header != expected_header.as_bytes() {
+                // out put generated code to a gen file
+                let gen_path = format!("test/a2c/{}/{}.wrong.h", case, name);
+                let gen_path = d.join(gen_path);
+                let mut file = File::create(gen_path.as_path())?;
+                file.write_all(&header)?;
+            }
+            assert_eq!(String::from_utf8_lossy(&header), expected_header);
+            Ok(())
         }
-
-        assert_eq!(String::from_utf8_lossy(src), expected_src);
-
-        let header = ccode.header;
-        if header != expected_header.as_bytes() {
-            // out put generated code to a gen file
-            let gen_path = format!("test/a2c/{}/{}.wrong.h", case, name);
-            let gen_path = d.join(gen_path);
-            let mut file = File::create(gen_path.as_path())?;
-            file.write_all(&header)?;
-        }
-        assert_eq!(String::from_utf8_lossy(&header), expected_header);
-        Ok(())
     }
 
     #[test]
@@ -2264,6 +2422,11 @@ int add(int x, int y);
     #[test]
     fn test_020_delegation_params() {
         test_a2c("020_delegation_params").unwrap();
+    }
+
+    #[test]
+    fn test_021_type_error() {
+        test_a2c("021_type_error").unwrap();
     }
 
     // ===================== test cases for Auto's stdlib =======================

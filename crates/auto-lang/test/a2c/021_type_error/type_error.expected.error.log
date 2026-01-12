@@ -1,0 +1,4 @@
+Error: Type mismatch in struct initialization
+
+  × Type mismatch
+  ╰─▶ Type mismatch: field 'at' declared as 'str' but initialized with 'int' value

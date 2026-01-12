@@ -1019,5 +1019,18 @@ Auto语言编译器本身只依赖于Rust和Cargo。
 ```bash
 > git clone git@gitee.com:auto-stack/auto-lang.git
 > cd auto-lang
-> cargo run
+> cargo build --release
+> cargo run --release
 ```
+
+## 架构说明
+
+AutoLang 有一个主要实现（Rust 编译器），支持三种执行模式：
+
+1. **解释执行**: 直接运行 AutoLang 代码（REPL、脚本执行）
+2. **转译到 C (a2c)**: 将 AutoLang 转译为 C 代码，用于嵌入式系统
+3. **转译到 Rust (a2r)**: 将 AutoLang 转译为 Rust 代码，用于原生应用
+
+测试文件说明：
+- `crates/auto-lang/test/a2c/` - Auto 到 C 转译器测试
+- `crates/auto-lang/test/a2r/` - Auto 到 Rust 转译器测试
