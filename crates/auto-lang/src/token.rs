@@ -86,6 +86,7 @@ pub enum TokenKind {
     Let,
     Mut,
     Has,
+    Spec,
     Use,
     As,
     Enum,
@@ -175,6 +176,7 @@ impl fmt::Display for Token {
             TokenKind::On => write!(f, "<on>"),
             TokenKind::Question => write!(f, "<?>"),
             TokenKind::Use => write!(f, "<use>"),
+            TokenKind::Spec => write!(f, "<spec>"),
             TokenKind::CStr => write!(f, "<cstr:{}>", self.text),
             TokenKind::At => write!(f, "<@>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
@@ -259,6 +261,7 @@ impl Token {
             "let" => Some(TokenKind::Let),
             "mut" => Some(TokenKind::Mut),
             "has" => Some(TokenKind::Has),
+            "spec" => Some(TokenKind::Spec),
             "use" => Some(TokenKind::Use),
             "as" => Some(TokenKind::As),
             "enum" => Some(TokenKind::Enum),
@@ -267,5 +270,38 @@ impl Token {
             "break" => Some(TokenKind::Break),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_spec_keyword() {
+        // Test that "spec" is recognized as a keyword
+        let kind = Token::keyword_kind("spec");
+        assert_eq!(kind, Some(TokenKind::Spec));
+
+        // Test that "Spec" (capitalized) is NOT recognized as a keyword
+        let kind = Token::keyword_kind("Spec");
+        assert_eq!(kind, None);
+
+        // Test that other keywords still work
+        assert_eq!(Token::keyword_kind("has"), Some(TokenKind::Has));
+        assert_eq!(Token::keyword_kind("fn"), Some(TokenKind::Fn));
+        assert_eq!(Token::keyword_kind("type"), Some(TokenKind::Type));
+    }
+
+    #[test]
+    fn test_spec_display() {
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 4,
+        };
+        let token = Token::new(TokenKind::Spec, pos, "spec".into());
+        assert_eq!(format!("{}", token), "<spec>");
     }
 }

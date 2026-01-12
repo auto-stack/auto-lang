@@ -30,6 +30,8 @@ mod store;
 pub use store::*;
 mod tag;
 pub use tag::*;
+mod spec;
+pub use spec::*;
 mod types;
 pub use types::*;
 mod union;
@@ -155,6 +157,7 @@ pub enum Stmt {
     TypeDecl(TypeDecl),
     Union(Union),
     Tag(Tag),
+    SpecDecl(SpecDecl),
     Node(Node),
     Use(Use),
     OnEvents(OnEvents),
@@ -180,6 +183,7 @@ impl Stmt {
             | Stmt::Store(_)
             | Stmt::Union(_)
             | Stmt::Tag(_)
+            | Stmt::SpecDecl(_)
             | Stmt::Alias(_) => true,
             _ => false,
         }
@@ -187,7 +191,7 @@ impl Stmt {
 
     pub fn is_new_block(&self) -> bool {
         match self {
-            Stmt::Block(_) | Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) => true,
+            Stmt::Block(_) | Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::SpecDecl(_) => true,
             _ => false,
         }
     }
@@ -213,6 +217,7 @@ impl fmt::Display for Stmt {
             Stmt::EmptyLine(n) => write!(f, "(nl*{})", n),
             Stmt::Union(u) => write!(f, "{}", u),
             Stmt::Tag(tag) => write!(f, "{}", tag),
+            Stmt::SpecDecl(spec_decl) => write!(f, "{}", spec_decl),
             Stmt::Break => write!(f, "(break)"),
         }
     }
@@ -719,6 +724,7 @@ impl ToNode for Stmt {
             Stmt::TypeDecl(type_decl) => type_decl.to_node(),
             Stmt::Union(union) => union.to_node(),
             Stmt::Tag(tag) => tag.to_node(),
+            Stmt::SpecDecl(spec_decl) => spec_decl.to_node(),
             Stmt::Node(node) => node.to_node(),
             Stmt::Use(use_) => use_.to_node(),
             Stmt::OnEvents(on_events) => on_events.to_node(),
@@ -760,6 +766,7 @@ impl ToAtom for Stmt {
             Stmt::TypeDecl(type_decl) => type_decl.to_atom(),
             Stmt::Union(union) => union.to_atom(),
             Stmt::Tag(tag) => tag.to_atom(),
+            Stmt::SpecDecl(spec_decl) => spec_decl.to_atom(),
             Stmt::Node(node) => node.to_atom(),
             Stmt::Use(use_) => use_.to_atom(),
             Stmt::OnEvents(on_events) => on_events.to_atom(),

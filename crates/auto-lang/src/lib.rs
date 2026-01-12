@@ -14,6 +14,7 @@ pub mod parser;
 pub mod repl;
 pub mod scope;
 pub mod token;
+pub mod trait_checker;
 pub mod trans;
 mod universe;
 pub mod util;

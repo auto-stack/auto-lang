@@ -190,6 +190,7 @@ impl Evaler {
             Stmt::EmptyLine(_) => Ok(Value::Void),
             Stmt::Union(_) => Ok(Value::Void),
             Stmt::Tag(_) => Ok(Value::Void),
+            Stmt::SpecDecl(spec_decl) => Ok(self.spec_decl(spec_decl)),
             Stmt::Break => Ok(Value::Void),
         }
     }
@@ -224,6 +225,7 @@ impl Evaler {
                 has: vec![],
                 specs: vec![],
                 members: vec![],
+                delegations: vec![],
                 methods: vec![],
             };
             self.universe.borrow_mut().define_type(
@@ -1945,6 +1947,16 @@ impl Evaler {
             );
         }
 
+        Value::Void
+    }
+
+    fn spec_decl(&mut self, _spec_decl: &ast::SpecDecl) -> Value {
+        // The spec is already registered in the parser
+        // In the future, we might want to:
+        // - Create a vtable for trait methods
+        // - Store trait metadata for runtime checks
+        // - Support trait object creation
+        // For now, just return Void as the spec is already in scope
         Value::Void
     }
 
