@@ -828,6 +828,11 @@ impl RustTrans {
                 Ok(true)
             }
 
+            Stmt::SpecDecl(spec_decl) => {
+                self.spec_decl(spec_decl, sink)?;
+                Ok(true)
+            }
+
             Stmt::EnumDecl(enum_decl) => {
                 self.enum_decl(enum_decl, sink)?;
                 Ok(true)
@@ -1492,6 +1497,65 @@ impl RustTrans {
             sink.body.write(b"}\n")?;
         }
 
+        // Generate trait implementations for specs
+        if !type_decl.specs.is_empty() {
+            // Collect spec declarations from scope
+            let spec_decls: Vec<_> = type_decl.specs.iter().filter_map(|spec_name| {
+                if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+                    if let crate::scope::Meta::Spec(spec_decl) = meta.as_ref() {
+                        Some(spec_decl.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }).collect();
+
+            // Generate impl block for each spec
+            for spec_decl in spec_decls {
+                sink.body.write(b"\n")?;
+                writeln!(sink.body, "impl {} for {} {{", spec_decl.name, type_decl.name)?;
+                self.indent();
+
+                // Find methods in type_decl that match spec methods
+                for spec_method in &spec_decl.methods {
+                    // Find the implementation in type_decl
+                    if let Some(method) = type_decl.methods.iter().find(|m| m.name == spec_method.name) {
+                        self.print_indent(&mut sink.body)?;
+
+                        // Method signature
+                        write!(sink.body, "fn {}(&self", method.name)?;
+
+                        // Parameters
+                        for param in &method.params {
+                            write!(sink.body, ", {}: {}", param.name, self.rust_type_name(&param.ty))?;
+                        }
+
+                        // Return type
+                        if !matches!(method.ret, Type::Void) {
+                            write!(sink.body, ") -> {}", self.rust_type_name(&method.ret))?;
+                        } else {
+                            write!(sink.body, ")")?;
+                        }
+
+                        writeln!(sink.body, " {{")?;
+                        self.indent();
+
+                        // Generate method body
+                        self.body(&method.body, sink, &method.ret, "")?;
+
+                        self.dedent();
+                        self.print_indent(&mut sink.body)?;
+                        writeln!(sink.body, "}}")?;
+                    }
+                }
+
+                self.dedent();
+                writeln!(sink.body, "}}")?;
+            }
+        }
+
         Ok(())
     }
 
@@ -1549,6 +1613,37 @@ impl RustTrans {
         writeln!(sink.body, "}}")?;
         self.dedent();
         writeln!(sink.body, "}}")?;
+
+        Ok(())
+    }
+
+    // Spec/trait declaration
+    fn spec_decl(&mut self, spec_decl: &SpecDecl, sink: &mut Sink) -> AutoResult<()> {
+        // Generate trait definition
+        writeln!(sink.body, "trait {} {{", spec_decl.name)?;
+        self.indent();
+
+        for method in &spec_decl.methods {
+            self.print_indent(&mut sink.body)?;
+            write!(sink.body, "fn {}(&self", method.name)?;
+
+            // Parameters (skip self which is already added as &self)
+            for param in &method.params {
+                write!(sink.body, ", {}: {}", param.name, self.rust_type_name(&param.ty))?;
+            }
+
+            // Return type
+            if !matches!(method.ret, Type::Void) {
+                write!(sink.body, ") -> {}", self.rust_type_name(&method.ret))?;
+            } else {
+                write!(sink.body, ")")?;
+            }
+
+            writeln!(sink.body, ";")?;
+        }
+
+        self.dedent();
+        writeln!(sink.body, "}}\n")?;
 
         Ok(())
     }
@@ -1959,5 +2054,10 @@ mod tests {
     #[test]
     fn test_030_field_composition() {
         test_a2r("030_field_composition").unwrap();
+    }
+
+    #[test]
+    fn test_031_spec() {
+        test_a2r("031_spec").unwrap();
     }
 }
