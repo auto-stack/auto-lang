@@ -1,29 +1,11 @@
 use miette::Result;
 use reedline::{
-    DefaultPrompt, DefaultPromptSegment, Reedline, Signal,
-    FileBackedHistory,
+    default_emacs_keybindings, ColumnarMenu, MenuBuilder, DefaultCompleter, DefaultPrompt,
+    Emacs, FileBackedHistory, KeyCode, KeyModifiers, Reedline, ReedlineEvent, ReedlineMenu, Signal,
 };
 use std::path::PathBuf;
 
-use crate::shell::Shell;
-use crate::parser::expand_history;
-
-/// Mock history wrapper for expansion
-struct MockHistory {
-    strings: Vec<String>,
-}
-
-impl MockHistory {
-    fn new(strings: Vec<String>) -> Self {
-        Self { strings }
-    }
-}
-
-impl crate::parser::History for MockHistory {
-    fn search(&self, _query: Option<&str>) -> Vec<String> {
-        self.strings.clone()
-    }
-}
+use crate::{completions::reedline::ShellCompleter, shell::Shell};
 
 /// Read-Eval-Print Loop for AutoShell
 pub struct Repl {
@@ -40,10 +22,40 @@ impl Repl {
         let history_path = Self::get_history_path()?;
         let history = Box::new(
             FileBackedHistory::with_file(1000, history_path)
-                .map_err(|e| miette::miette!("Failed to create history: {}", e))?
+                .map_err(|e| miette::miette!("Failed to create history: {}", e))?,
         );
+
+        // Create completer for Tab completion
+        let completer = Box::new(ShellCompleter::new());
+        // // Test with DefaultCompleter
+        // let commands = vec![
+        //     "test".into(),
+        //     "hello world".into(),
+        //     "hello world reedline".into(),
+        //     "this is the reedline crate".into(),
+        // ];
+        // let completer = Box::new(DefaultCompleter::new_with_wordlen(commands.clone(), 2));
+
+        // Use the interactive menu to select options from the completer
+        let completion_menu = Box::new(ColumnarMenu::default().with_name("completion_menu"));
+        // Set up the required keybindings
+        let mut keybindings = default_emacs_keybindings();
+        keybindings.add_binding(
+            KeyModifiers::NONE,
+            KeyCode::Tab,
+            ReedlineEvent::UntilFound(vec![
+                ReedlineEvent::Menu("completion_menu".to_string()),
+                ReedlineEvent::MenuNext,
+            ]),
+        );
+
+        let edit_mode = Box::new(Emacs::new(keybindings));
+
         let line_editor = Reedline::create()
-            .with_history(history);
+            .with_history(history)
+            .with_completer(completer)
+            .with_menu(ReedlineMenu::EngineCompleter(completion_menu))
+            .with_edit_mode(edit_mode);
 
         Ok(Self { shell, line_editor })
     }
@@ -74,10 +86,29 @@ impl Repl {
 
     /// Run the REPL loop
     pub fn run(&mut self) -> Result<()> {
-        let prompt = DefaultPrompt::new(
-            DefaultPromptSegment::Empty,
-            DefaultPromptSegment::Empty,
-        );
+        // let prompt = DefaultPrompt::new(DefaultPromptSegment::Empty, DefaultPromptSegment::Empty);
+
+        // // Use the interactive menu to select options from the completer
+        // let completion_menu = Box::new(ColumnarMenu::default().with_name("completion_menu"));
+        // // Set up the required keybindings
+        // let mut keybindings = default_emacs_keybindings();
+        // keybindings.add_binding(
+        //     KeyModifiers::NONE,
+        //     KeyCode::Tab,
+        //     ReedlineEvent::UntilFound(vec![
+        //         ReedlineEvent::Menu("completion_menu".to_string()),
+        //         ReedlineEvent::MenuNext,
+        //     ]),
+        // );
+
+        // let edit_mode = Box::new(Emacs::new(keybindings));
+
+        // let mut line_editor = Reedline::create()
+        //     .with_completer(completer)
+        //     .with_menu(ReedlineMenu::EngineCompleter(completion_menu))
+        //     .with_edit_mode(edit_mode);
+
+        let prompt = DefaultPrompt::default();
 
         loop {
             // Read input

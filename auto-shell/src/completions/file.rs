@@ -17,12 +17,31 @@ pub fn complete_file(input: &str) -> Vec<super::Completion> {
         // Complete from current directory
         complete_from_dir(Path::new("."), "", &mut completions);
     } else {
-        // Extract directory and partial name
-        let path = Path::new(partial_path);
-        let parent = path.parent().unwrap_or(Path::new("."));
-        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        // Check if path ends with a directory separator (e.g., "src/", "src/\")
+        // In this case, we want to list the contents of that directory
+        if partial_path.ends_with('/') || partial_path.ends_with('\\') {
+            // List contents of the directory
+            complete_from_dir(Path::new(partial_path), "", &mut completions);
+        } else {
+            // Extract directory and partial name
+            let path = Path::new(partial_path);
 
-        complete_from_dir(parent, file_name, &mut completions);
+            // Get parent directory, defaulting to "." if parent is empty or doesn't exist
+            let parent = if let Some(p) = path.parent() {
+                // path.parent() can return Some("") for relative paths like "s"
+                if p.as_os_str().is_empty() {
+                    Path::new(".")
+                } else {
+                    p
+                }
+            } else {
+                Path::new(".")
+            };
+
+            let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+            complete_from_dir(parent, file_name, &mut completions);
+        }
     }
 
     completions
@@ -86,6 +105,17 @@ mod tests {
         if src_exists {
             // May or may not have completions depending on what's in src/
             let _ = completions;
+        }
+    }
+
+    #[test]
+    fn test_complete_file_directory_with_slash() {
+        let completions = complete_file("src/");
+        // Should list contents of src directory if it exists
+        let src_exists = std::path::Path::new("src").exists();
+        if src_exists {
+            // src directory should have files (e.g., main.rs, lib.rs)
+            assert!(!completions.is_empty());
         }
     }
 

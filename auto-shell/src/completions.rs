@@ -5,6 +5,7 @@
 pub mod command;
 pub mod file;
 pub mod auto;
+pub mod reedline;
 
 /// Completion suggestion
 #[derive(Debug, Clone, PartialEq)]
@@ -21,6 +22,9 @@ pub struct Completion {
 /// - File paths after command names
 /// - Shell variables after $
 pub fn get_completions(input: &str) -> Vec<Completion> {
+    // Check if input ends with whitespace (user wants file completion after command)
+    let ends_with_space = input.ends_with(|c: char| c.is_whitespace());
+
     let trimmed = input.trim();
 
     // Empty input: complete all commands
@@ -34,7 +38,7 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
         let after_pipe = trimmed[pipe_idx + 1..].trim();
 
         // If nothing after pipe or just starting a command, complete commands
-        if after_pipe.is_empty() || !after_pipe.contains(' ') {
+        if after_pipe.is_empty() || (!after_pipe.contains(' ') && !ends_with_space) {
             return command::complete_command(after_pipe);
         }
     }
@@ -50,27 +54,32 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
     // Check if we should complete files or commands
     let parts: Vec<&str> = trimmed.split_whitespace().collect();
 
+    // If input ends with space or has multiple words, do file completion
+    if ends_with_space || parts.len() > 1 {
+        // Multiple words: check if last word starts with -
+        if let Some(last) = parts.last() {
+            if last.starts_with('-') {
+                // Flag completion (TODO: not implemented yet)
+                return Vec::new();
+            }
+        }
+        // Complete file paths - pass original input, not trimmed!
+        return file::complete_file(input);
+    }
+
+    // First word: complete commands
     if parts.len() == 1 {
-        // First word: complete commands
         let cmd_completions = command::complete_command(trimmed);
         if !cmd_completions.is_empty() {
             return cmd_completions;
         }
 
         // If no command matches, try file completion
-        return file::complete_file(trimmed);
+        return file::complete_file(input);
     }
 
-    // Multiple words: check if last word starts with -
-    if let Some(last) = parts.last() {
-        if last.starts_with('-') {
-            // Flag completion (TODO: not implemented yet)
-            return Vec::new();
-        }
-    }
-
-    // Otherwise, complete file paths
-    file::complete_file(trimmed)
+    // Fallback to file completion
+    file::complete_file(input)
 }
 
 #[cfg(test)]
@@ -97,6 +106,24 @@ mod tests {
         // Should try to complete "src" as a file path
         let _ = completions;
         // We can't assert exact results without knowing directory structure
+    }
+
+    #[test]
+    fn test_complete_file_partial() {
+        let completions = get_completions("ls s");
+        // Should complete files/directories starting with "s"
+        // In auto-shell directory, should include "src/"
+        assert!(!completions.is_empty());
+        assert!(completions.iter().any(|c| c.display == "src/"));
+    }
+
+    #[test]
+    fn test_complete_file_after_command_with_space() {
+        let completions = get_completions("ls ");
+        // "ls " ends with space, should complete files from current directory
+        // We can't assert exact results without knowing directory structure
+        // but it should return file completions, not command completions
+        let _ = completions;
     }
 
     #[test]

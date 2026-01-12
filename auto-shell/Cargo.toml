@@ -12,7 +12,7 @@ auto-lang = { path = "../crates/auto-lang" }
 auto-val = { path = "../crates/auto-val" }
 
 # Terminal and REPL
-reedline = "0.33"
+reedline = "0.44.0"
 crossterm = "0.27"
 nu-ansi-term = "0.49"
 

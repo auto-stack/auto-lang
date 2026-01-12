@@ -79,7 +79,11 @@
       "Bash(auto run test_runtime_errors.at)",
       "Bash(cargo clean:*)",
       "Bash(rustc:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(cargo search:*)",
+      "Bash(cargo tree:*)",
+      "Bash(curl:*)",
+      "Bash(rustdoc --open --no-deps -p reedline:*)"
     ]
   }
 }
