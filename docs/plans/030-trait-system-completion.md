@@ -3,8 +3,8 @@
 ## Implementation Status: ⏳ PLANNED
 
 **Priority:** HIGH - Enables polymorphism and code reuse in compiler
-**Dependencies:** Plan 019 (Spec Trait System foundation), Plan 032 (Generic Types)
-**Estimated Start:** After Plan 032 completion
+**Dependencies:** Plan 019 (Spec Trait System foundation), Plan 028 (Generic Types)
+**Estimated Start:** After Plan 028 completion
 **Timeline:** 12-16 weeks
 
 ## Executive Summary
@@ -972,7 +972,7 @@ Help: Remove one of the conflicting implementations
 ## 7. Related Documentation
 
 - **[Plan 019]:** Spec Trait System (foundation)
-- **[Plan 032]:** Generic Types and Monomorphization (dependency)
+- **[Plan 028]:** Generic Types and Monomorphization (dependency)
 - **[Plan 026]:** Self-Hosting Compiler (uses trait system)
 - **[Rust Traits](https://doc.rust-lang.org/reference/items/traits.html)** (reference)
 
@@ -1001,8 +1001,8 @@ Help: Remove one of the conflicting implementations
 **Critical Path:** Phase 1 → 2 → 3 → 4
 
 **Dependencies:**
-- Must wait for Plan 032 (Generic Types)
-- Can overlap with Plan 028 (Pattern Matching)
+- Must wait for Plan 028 (Generic Types)
+- Can overlap with Plan 029 (Pattern Matching)
 - Blocks Plan 026 (Self-Hosting Compiler)
 
 ---

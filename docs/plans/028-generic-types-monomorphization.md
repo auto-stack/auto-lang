@@ -24,7 +24,7 @@ Implement comprehensive generic types and monomorphization for AutoLang, enablin
 - ✅ Type parameter inference
 - ✅ Monomorphization (generate specialized versions)
 - ✅ Generic constraints (trait bounds)
-- ✅ Associated types (with Plan 029)
+- ✅ Associated types (with Plan 030)
 
 **Timeline:** 12-16 weeks
 **Complexity:** Very High (requires type system extensions, monomorphization algorithm, code generation)
@@ -1106,7 +1106,7 @@ fn main() {
 ## 6. Related Documentation
 
 - **[Plan 024]:** Ownership-Based Memory System (dependency)
-- **[Plan 029]:** Trait System Completion (trait bounds)
+- **[Plan 030]:** Trait System Completion (trait bounds)
 - **[Plan 026]:** Self-Hosting Compiler (uses generics)
 - **[Rust Generics](https://doc.rust-lang.org/reference/items/generics.html):** Reference
 
@@ -1126,8 +1126,8 @@ fn main() {
 
 **Dependencies:**
 - Must wait for Plan 024 Phase 2 (Owned Strings)
-- Can overlap with Plan 028 (Pattern Matching)
-- Enables Plan 029 (Trait System)
+- Can overlap with Plan 029 (Pattern Matching)
+- Enables Plan 030 (Trait System)
 
 ---
 
