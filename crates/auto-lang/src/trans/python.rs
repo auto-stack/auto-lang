@@ -157,9 +157,19 @@ impl PythonTrans {
                 Ok(true)
             }
 
-            // Skip type declarations, enums, etc. for now
-            Stmt::TypeDecl(_) => Ok(false),
-            Stmt::EnumDecl(_) => Ok(false),
+            // Type declarations (structs)
+            Stmt::TypeDecl(type_decl) => {
+                self.type_decl(type_decl, out)?;
+                Ok(true)
+            }
+
+            // Enum declarations
+            Stmt::EnumDecl(enum_decl) => {
+                self.enum_decl(enum_decl, out)?;
+                Ok(true)
+            }
+
+            // Skip alias, use, union, tag for now
             Stmt::Alias(_) => Ok(false),
             Stmt::Use(_) => Ok(false),
             Stmt::Union(_) => Ok(false),
@@ -426,6 +436,62 @@ impl PythonTrans {
         Ok(())
     }
 
+    fn type_decl(&mut self, type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
+        self.print_indent(out)?;
+        out.write(b"@dataclass\n")?;
+        self.print_indent(out)?;
+        out.write(b"class ")?;
+        out.write_all(type_decl.name.as_bytes())?;
+        out.write(b":\n")?;
+        self.indent();
+
+        // Emit fields
+        for member in &type_decl.members {
+            self.print_indent(out)?;
+            out.write_all(member.name.as_bytes())?;
+            out.write(b": ")?;
+            // Simple type mapping for common types
+            let type_name = self.python_type_name(&member.ty);
+            out.write_all(type_name.as_bytes())?;
+            out.write(b"\n")?;
+        }
+
+        self.dedent();
+        Ok(())
+    }
+
+    fn enum_decl(&mut self, enum_decl: &EnumDecl, out: &mut impl Write) -> AutoResult<()> {
+        self.print_indent(out)?;
+        out.write(b"class ")?;
+        out.write_all(enum_decl.name.as_bytes())?;
+        out.write(b"(Enum):\n")?;
+        self.indent();
+
+        for item in &enum_decl.items {
+            self.print_indent(out)?;
+            out.write_all(item.name.as_bytes())?;
+            out.write(b" = auto()\n")?;
+        }
+
+        self.dedent();
+        Ok(())
+    }
+
+    fn python_type_name(&self, ty: &Type) -> AutoStr {
+        match ty {
+            Type::Int => "int".into(),
+            Type::Uint => "int".into(),
+            Type::Float => "float".into(),
+            Type::Double => "float".into(),
+            Type::Bool => "bool".into(),
+            Type::Str(_) => "str".into(),
+            Type::CStr => "str".into(),
+            Type::User(type_decl) => type_decl.name.clone(),
+            Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
+            _ => "Any".into(), // Fallback for complex types
+        }
+    }
+
     fn body(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
         for stmt in &body.stmts {
             self.stmt(stmt, out)?;
@@ -436,17 +502,6 @@ impl PythonTrans {
 
 impl Trans for PythonTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
-        // Emit imports if needed
-        if self.imports.contains("dataclass") {
-            sink.body.write(b"from dataclasses import dataclass\n")?;
-        }
-        if self.imports.contains("Enum") {
-            sink.body.write(b"from enum import Enum, auto\n")?;
-        }
-        if !self.imports.is_empty() {
-            sink.body.write(b"\n")?;
-        }
-
         // Find and save main function if it exists
         let main_func = ast.stmts.iter().find(|s| {
             if let Stmt::Fn(func) = s {
@@ -473,6 +528,32 @@ impl Trans for PythonTrans {
             } else {
                 main_stmts.push(stmt);
             }
+        }
+
+        // First pass: process declarations to collect imports
+        for decl in &decls {
+            if let Stmt::TypeDecl(type_decl) = decl {
+                // Collect import without emitting
+                if type_decl.members.len() > 0 {
+                    self.imports.insert("dataclass".into());
+                }
+            } else if let Stmt::EnumDecl(enum_decl) = decl {
+                // Collect import without emitting
+                if enum_decl.items.len() > 0 {
+                    self.imports.insert("Enum".into());
+                }
+            }
+        }
+
+        // Emit imports if needed
+        if self.imports.contains("dataclass") {
+            sink.body.write(b"from dataclasses import dataclass\n")?;
+        }
+        if self.imports.contains("Enum") {
+            sink.body.write(b"from enum import Enum, auto\n")?;
+        }
+        if !self.imports.is_empty() {
+            sink.body.write(b"\n")?;
         }
 
         // Generate declarations (excluding main)
@@ -593,5 +674,15 @@ mod tests {
     #[test]
     fn test_015_str() {
         test_a2p("015_str").unwrap();
+    }
+
+    #[test]
+    fn test_006_struct() {
+        test_a2p("006_struct").unwrap();
+    }
+
+    #[test]
+    fn test_007_enum() {
+        test_a2p("007_enum").unwrap();
     }
 }
