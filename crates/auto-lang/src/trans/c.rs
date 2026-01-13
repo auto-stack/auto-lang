@@ -2488,9 +2488,12 @@ int add(int x, int y);
     }
 
     #[test]
-
-    #[test]
     fn test_110_bool() {
         test_a2c("110_bool").unwrap();
+    }
+
+    #[test]
+    fn test_112_inheritance() {
+        test_a2c("112_inheritance").unwrap();
     }
 }

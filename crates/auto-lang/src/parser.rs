@@ -2560,6 +2560,7 @@ impl<'a> Parser<'a> {
                 let decl = TypeDecl {
                     kind: TypeDeclKind::CType,
                     name: name.clone(),
+                    parent: None,
                     has: Vec::new(),
                     specs: Vec::new(),
                     members: Vec::new(),
@@ -2576,6 +2577,7 @@ impl<'a> Parser<'a> {
         let mut decl = TypeDecl {
             kind: TypeDeclKind::UserType,
             name: name.clone(),
+            parent: None,
             specs: Vec::new(),
             has: Vec::new(),
             members: Vec::new(),
@@ -2590,6 +2592,30 @@ impl<'a> Parser<'a> {
 
         // put type in scope
         self.define(name.as_str(), Meta::Type(Type::User(decl.clone())));
+
+        // deal with `is` keyword (single inheritance)
+        let mut parent = None;
+        if self.is_kind(TokenKind::Is) {
+            self.next(); // skip `is` keyword
+            let parent_name = self.parse_name()?;
+            // Lookup parent type
+            if let Some(meta) = self.lookup_meta(parent_name.as_str()) {
+                if let Meta::Type(Type::User(parent_decl)) = meta.as_ref() {
+                    parent = Some(Box::new(Type::User(parent_decl.clone())));
+                } else {
+                    return Err(SyntaxError::Generic {
+                        message: format!("'{}' is not a user type", parent_name),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Parent type '{}' not found", parent_name),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
+        }
+        decl.parent = parent;
 
         // deal with `as` keyword
         let mut specs = Vec::new();
@@ -2644,6 +2670,32 @@ impl<'a> Parser<'a> {
             self.expect_eos(false)?; // Not first statement in type body
         }
         self.expect(TokenKind::RBrace)?;
+
+        // add members and methods from parent type (inheritance)
+        if let Some(ref parent_type) = decl.parent {
+            match parent_type.as_ref() {
+                Type::User(parent_decl) => {
+                    // Inherit members from parent
+                    for m in parent_decl.members.iter() {
+                        members.push(m.clone());
+                    }
+                    // Inherit methods from parent
+                    for meth in parent_decl.methods.iter() {
+                        // change meth's parent to self
+                        let mut inherited_meth = meth.clone();
+                        inherited_meth.parent = Some(name.clone());
+                        // register this method as Self::method
+                        let unique_name = format!("{}::{}", &name, &inherited_meth.name);
+                        self.define(unique_name.as_str(), Meta::Fn(inherited_meth.clone()));
+                        methods.push(inherited_meth);
+                    }
+                }
+                _ => {
+                    // System types cannot be inherited
+                }
+            }
+        }
+
         // add members and methods of compose types
         for comp in decl.has.iter() {
             match comp {

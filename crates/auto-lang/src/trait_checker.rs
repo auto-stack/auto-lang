@@ -175,6 +175,7 @@ mod tests {
         TypeDecl {
             name: Name::from(name),
             kind: crate::ast::TypeDeclKind::UserType,
+            parent: None,
             has: Vec::new(),
             specs,
             members: Vec::new(),

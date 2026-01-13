@@ -222,6 +222,7 @@ impl Evaler {
             let type_decl = ast::TypeDecl {
                 name: type_name.clone(),
                 kind: ast::TypeDeclKind::UserType,
+                parent: None,
                 has: vec![],
                 specs: vec![],
                 members: vec![],

@@ -181,8 +181,9 @@ impl fmt::Display for Delegation {
 pub struct TypeDecl {
     pub name: Name,
     pub kind: TypeDeclKind,
-    pub has: Vec<Type>,
-    pub specs: Vec<Spec>,
+    pub parent: Option<Box<Type>>,  // 单继承：父类型（使用 Box 避免递归类型）
+    pub has: Vec<Type>,            // 组合：多个组合类型
+    pub specs: Vec<Spec>,          // Spec 声明：实现的 specs
     pub members: Vec<Member>,
     pub delegations: Vec<Delegation>,  // 新增：委托成员
     pub methods: Vec<Fn>,
@@ -201,6 +202,9 @@ impl TypeDecl {
 impl fmt::Display for TypeDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(type-decl (name {})", self.name)?;
+        if let Some(ref parent) = self.parent {
+            write!(f, " (is {})", parent.unique_name())?;
+        }
         if !self.has.is_empty() {
             write!(f, " (has ")?;
             for h in self.has.iter() {
