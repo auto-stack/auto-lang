@@ -62,6 +62,8 @@ impl Evaler {
     }
 
     pub fn eval(&mut self, code: &Code) -> AutoResult<Value> {
+        eprintln!("DEBUG eval: mode = {:?}", matches!(self.mode, EvalMode::CONFIG));
+        eprintln!("DEBUG eval: code.stmts.len() = {}", code.stmts.len());
         match self.mode {
             EvalMode::SCRIPT => {
                 let mut value = Value::Nil;
@@ -75,10 +77,79 @@ impl Evaler {
             EvalMode::CONFIG => {
                 if code.stmts.len() == 1 {
                     let first_val = self.eval_stmt(&code.stmts[0])?;
-                    match first_val {
-                        Value::Array(_) => {
-                            return Ok(first_val);
+                    // DEBUG
+                    eprintln!("DEBUG: first_val type = {:?}", matches!(first_val, Value::Array(_)));
+                    if let Value::Array(ref arr) = first_val {
+                        eprintln!("DEBUG: Array length = {}", arr.len());
+                        for (i, item) in arr.values.iter().enumerate() {
+                            eprintln!("DEBUG: arr[{}] = {} (is Node? = {})", i, item.repr(), matches!(item, Value::Node(_)));
                         }
+                    }
+                    // For Array, we need to process it to consolidate nodes
+                    if matches!(first_val, Value::Array(_)) {
+                        let mut node = auto_val::Node::new("root");
+                        // Process the array using the same logic as multi-statement case
+                        match first_val {
+                            Value::Array(arr) => {
+                                use std::collections::HashMap;
+                                use auto_val::Array;
+
+                                // Group nodes by name for consolidation
+                                let mut nodes_by_name: HashMap<AutoStr, Vec<auto_val::Node>> = HashMap::new();
+                                let mut other_items: Vec<Value> = Vec::new();
+
+                                // First pass: separate nodes from other items
+                                for item in arr.values.into_iter() {
+                                    match item {
+                                        Value::Node(n) => {
+                                            nodes_by_name.entry(n.name.clone()).or_default().push(n);
+                                        }
+                                        Value::Pair(key, value) => {
+                                            node.set_prop(key, *value);
+                                        }
+                                        Value::Obj(o) => {
+                                            node.merge_obj(o);
+                                        }
+                                        Value::Instance(inst) => {
+                                            // Convert instance to node with type name as node name
+                                            let mut kid_node = auto_val::Node::new(&inst.ty.name());
+                                            // Add instance fields as node properties
+                                            for (k, v) in inst.fields.iter() {
+                                                kid_node.set_prop(k.clone(), v.clone());
+                                            }
+                                            nodes_by_name.entry(kid_node.name.clone()).or_default().push(kid_node);
+                                        }
+                                        _ => {
+                                            if !item.is_void() {
+                                                other_items.push(item);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Second pass: add consolidated nodes
+                                for (name, nodes) in nodes_by_name.into_iter() {
+                                    if nodes.len() == 1 {
+                                        // Single node: add as kid
+                                        node.add_kid(nodes.into_iter().next().unwrap());
+                                    } else {
+                                        // Multiple nodes with same name: create plural form property
+                                        let plural_name = format!("{}s", name); // dir -> dirs
+                                        let node_values: Vec<Value> = nodes.into_iter().map(|n| Value::Node(n)).collect();
+                                        node.set_prop(plural_name, Value::Array(Array::from_vec(node_values)));
+                                    }
+                                }
+
+                                // Handle remaining non-node items
+                                for item in other_items.into_iter() {
+                                    node.set_prop(item.to_astr(), item);
+                                }
+                            }
+                            _ => unreachable!(),
+                        }
+                        return Ok(Value::Node(node));
+                    }
+                    match first_val {
                         Value::Obj(_) => {
                             return Ok(first_val);
                         }
@@ -130,23 +201,69 @@ impl Evaler {
                             node.add_kid(n);
                         }
                         Value::Array(arr) => {
+                            eprintln!("DEBUG: Processing Array with {} items", arr.len());
+                            use std::collections::HashMap;
+                            use auto_val::{Array, ValueKey};
+
+                            // Group nodes by name for consolidation
+                            let mut nodes_by_name: HashMap<AutoStr, Vec<auto_val::Node>> = HashMap::new();
+                            let mut other_items: Vec<Value> = Vec::new();
+
+                            // First pass: separate nodes from other items
                             for item in arr.values.into_iter() {
+                                eprintln!("DEBUG: Array item type = {}, value = {}",
+                                    match &item {
+                                        Value::Node(_) => "Node",
+                                        Value::Pair(_, _) => "Pair",
+                                        Value::Obj(_) => "Obj",
+                                        Value::Instance(_) => "Instance",
+                                        _ => "Other"
+                                    },
+                                    item.repr()
+                                );
                                 match item {
+                                    Value::Node(n) => {
+                                        nodes_by_name.entry(n.name.clone()).or_default().push(n);
+                                    }
                                     Value::Pair(key, value) => {
                                         node.set_prop(key, *value);
                                     }
                                     Value::Obj(o) => {
                                         node.merge_obj(o);
                                     }
-                                    Value::Node(n) => {
-                                        node.add_kid(n);
+                                    Value::Instance(inst) => {
+                                        // Convert instance to node with type name as node name
+                                        let mut kid_node = auto_val::Node::new(&inst.ty.name());
+                                        // Add instance fields as node properties
+                                        for (k, v) in inst.fields.iter() {
+                                            kid_node.set_prop(k.clone(), v.clone());
+                                        }
+                                        nodes_by_name.entry(kid_node.name.clone()).or_default().push(kid_node);
                                     }
                                     _ => {
                                         if !item.is_void() {
-                                            node.set_prop(item.to_astr(), item);
+                                            other_items.push(item);
                                         }
                                     }
                                 }
+                            }
+
+                            // Second pass: add consolidated nodes
+                            for (name, nodes) in nodes_by_name.into_iter() {
+                                if nodes.len() == 1 {
+                                    // Single node: add as kid
+                                    node.add_kid(nodes.into_iter().next().unwrap());
+                                } else {
+                                    // Multiple nodes with same name: create plural form property
+                                    let plural_name = format!("{}s", name); // dir -> dirs
+                                    let node_values: Vec<Value> = nodes.into_iter().map(|n| Value::Node(n)).collect();
+                                    node.set_prop(plural_name, Value::Array(Array::from_vec(node_values)));
+                                }
+                            }
+
+                            // Handle remaining non-node items
+                            for item in other_items.into_iter() {
+                                node.set_prop(item.to_astr(), item);
                             }
                         }
                         _ => {}
@@ -450,7 +567,13 @@ impl Evaler {
                 }
 
                 match self.eval_loop_body(body, false, for_stmt.new_line) {
-                    Ok(val) => res.push(val),
+                    Ok(val) => {
+                        if let Value::Array(arr) = &val {
+                            res.extend(arr);
+                        } else {
+                            res.push(val);
+                        }
+                    }
                     Err(e) => {
                         self.universe.borrow_mut().exit_scope();
                         return Err(e);
@@ -512,7 +635,13 @@ impl Evaler {
                     }
                     self.eval_iter(iter, idx, Value::Int(n));
                     match self.eval_loop_body(body, is_mid, is_new_line) {
-                        Ok(val) => res.push(val),
+                        Ok(val) => {
+                            if let Value::Array(arr) = &val {
+                                res.extend(arr);
+                            } else {
+                                res.push(val);
+                            }
+                        }
                         Err(e) => {
                             self.universe.borrow_mut().exit_scope();
                             return Err(e);
@@ -529,7 +658,13 @@ impl Evaler {
                     }
                     self.eval_iter(iter, idx, Value::Int(n));
                     match self.eval_loop_body(body, is_mid, is_new_line) {
-                        Ok(val) => res.push(val),
+                        Ok(val) => {
+                            if let Value::Array(arr) = &val {
+                                res.extend(arr);
+                            } else {
+                                res.push(val);
+                            }
+                        }
                         Err(e) => {
                             self.universe.borrow_mut().exit_scope();
                             return Err(e);
@@ -546,7 +681,13 @@ impl Evaler {
                     }
                     self.eval_iter(iter, idx, item.clone());
                     match self.eval_loop_body(body, is_mid, is_new_line) {
-                        Ok(val) => res.push(val),
+                        Ok(val) => {
+                            if let Value::Array(arr) = &val {
+                                res.extend(arr);
+                            } else {
+                                res.push(val);
+                            }
+                        }
                         Err(e) => {
                             self.universe.borrow_mut().exit_scope();
                             return Err(e);
@@ -2380,6 +2521,7 @@ impl Evaler {
         let name_expr = self.eval_expr(&expr);
         let args = self.eval_args(&node.args);
         if let Value::Type(Type::User(type_decl)) = name_expr {
+            println!("EVAL TYPE _NEWNWNWN");
             return Ok(self.eval_type_new(&type_decl, &args));
         }
 
@@ -2445,6 +2587,15 @@ impl Evaler {
                                     }
                                     Value::Node(n) => {
                                         nodes.push(n);
+                                    }
+                                    Value::Instance(inst) => {
+                                        // Convert instance to node with type name as node name
+                                        let mut kid_node = auto_val::Node::new(&inst.ty.name());
+                                        // Add instance fields as node properties
+                                        for (k, v) in inst.fields.iter() {
+                                            kid_node.set_prop(k.clone(), v.clone());
+                                        }
+                                        nodes.push(kid_node);
                                     }
                                     _ => {
                                         props.set(item.to_astr(), item);
@@ -2529,6 +2680,7 @@ impl Evaler {
         if !ndid.is_empty() {
             self.universe.borrow_mut().set_global(ndid, nd.clone());
         }
+
         Ok(nd)
     }
 

@@ -1,0 +1,10 @@
+let modules = ["moda", "modb", "modc"]
+
+app hello {
+    for m in modules {
+        dir (id: m) {
+            at: m
+        }
+    }
+}
+
