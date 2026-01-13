@@ -310,6 +310,29 @@ pub fn trans_python(path: &str) -> AutoResult<String> {
     Ok(format!("[trans] {} -> {}", path, pyname))
 }
 
+/// Transpile AutoLang file to JavaScript
+pub fn trans_javascript(path: &str) -> AutoResult<String> {
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))
+        .unwrap();
+
+    let jsname = path.replace(".at", ".js");
+    let fname = AutoPath::new(path).filename();
+
+    let scope = Rc::new(RefCell::new(Universe::new()));
+    let mut parser = Parser::new(code.as_str(), scope);
+    let ast = parser.parse().map_err(|e| e.to_string())?;
+    let mut sink = Sink::new(fname.clone());
+    let mut trans = crate::trans::javascript::JavaScriptTrans::new(fname);
+    trans.set_scope(parser.scope.clone());
+    trans.trans(ast, &mut sink)?;
+
+    // Write JavaScript file
+    std::fs::write(&jsname, sink.done()?)?;
+
+    Ok(format!("[trans] {} -> {}", path, jsname))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::config::AutoConfig;

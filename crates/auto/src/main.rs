@@ -110,6 +110,8 @@ enum Commands {
     Rust { path: String },
     #[command(about = "Transpile Auto to Python")]
     Python { path: String },
+    #[command(about = "Transpile Auto to JavaScript")]
+    JavaScript { path: String },
 }
 
 fn main() -> Result<()> {
@@ -219,6 +221,16 @@ fn main() -> Result<()> {
                 to_miette_err(e)
             })?;
             println!("{}", py);
+        }
+        Some(Commands::JavaScript { path }) => {
+            let js = auto_lang::trans_javascript(path.as_str()).map_err(|e| {
+                if matches!(format, OutputFormat::Json) {
+                    eprintln!("{}", format_error_json(&e));
+                    std::process::exit(1);
+                }
+                to_miette_err(e)
+            })?;
+            println!("{}", js);
         }
         None => {
             repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
