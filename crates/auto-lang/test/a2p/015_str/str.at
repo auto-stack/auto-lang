@@ -1,0 +1,5 @@
+fn main() {
+    let name = "World"
+    print(f"Hello, $name!")
+    print(f"Result: ${1 + 2}")
+}
