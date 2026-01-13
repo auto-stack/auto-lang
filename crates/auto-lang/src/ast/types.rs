@@ -1,4 +1,4 @@
-use crate::ast::{AtomWriter, EnumDecl, ToAtomStr};
+use crate::ast::{AtomWriter, EnumDecl, SpecDecl, ToAtomStr};
 
 use super::{Expr, Fn, Name, Tag, Union};
 use auto_val::{AutoStr, Shared};
@@ -22,6 +22,7 @@ pub enum Type {
     Union(Union),
     Tag(Shared<Tag>),
     Enum(Shared<EnumDecl>),
+    Spec(Shared<SpecDecl>),  // Spec 类型（多态接口）
     Void,
     Unknown,
     CStruct(TypeDecl),
@@ -45,6 +46,7 @@ impl Type {
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().unique_name()).into(),
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
+            Type::Spec(spec_decl) => spec_decl.borrow().name.clone(),
             Type::CStruct(type_decl) => format!("struct {}", type_decl.name).into(),
             Type::Void => "void".into(),
             Type::Unknown => "<unknown>".into(),
@@ -67,6 +69,7 @@ impl Type {
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
             Type::User(_) => "{}".into(),
             Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
+            Type::Spec(_) => "{}".into(),  // Spec 默认值为空对象
             Type::CStruct(_) => "{}".into(),
             Type::Unknown => "<unknown>".into(),
             _ => "<unknown_type>".into(),
@@ -114,6 +117,7 @@ impl fmt::Display for Type {
             Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
             Type::User(type_decl) => write!(f, "{}", type_decl),
             Type::Enum(enum_decl) => write!(f, "{}", enum_decl.borrow()),
+            Type::Spec(spec_decl) => write!(f, "spec {}", spec_decl.borrow().name),
             Type::Union(u) => write!(f, "{}", u),
             Type::Tag(t) => write!(f, "{}", t.borrow()),
             Type::Void => write!(f, "void"),
@@ -140,6 +144,7 @@ impl From<Type> for auto_val::Type {
             Type::Ptr(_) => auto_val::Type::Ptr,
             Type::User(decl) => auto_val::Type::User(decl.name),
             Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
+            Type::Spec(decl) => auto_val::Type::User(decl.borrow().name.clone()),
             Type::Union(u) => auto_val::Type::Union(u.name),
             Type::Tag(t) => auto_val::Type::Tag(t.borrow().name.clone()),
             Type::Void => auto_val::Type::Void,
@@ -389,6 +394,7 @@ impl AtomWriter for Type {
             }
             Type::User(type_decl) => write!(f, "{}", type_decl.name)?,
             Type::Enum(enum_decl) => write!(f, "{}", enum_decl.borrow().name)?,
+            Type::Spec(spec_decl) => write!(f, "spec {}", spec_decl.borrow().name)?,
             Type::Union(u) => write!(f, "{}", u.name)?,
             Type::Tag(t) => write!(f, "{}", t.borrow().name)?,
             Type::Void => write!(f, "void")?,

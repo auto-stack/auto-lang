@@ -76,6 +76,7 @@ impl RustTrans {
             }
             Type::User(usr) => usr.name.to_string(),
             Type::Enum(en) => en.borrow().name.to_string(),
+            Type::Spec(spec) => format!("dyn {}", spec.borrow().name),  // Spec 作为 trait object
             Type::Union(u) => u.name.to_string(),
             Type::Tag(t) => t.borrow().name.to_string(),
             Type::Void => "()".to_string(),

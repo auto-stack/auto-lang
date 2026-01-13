@@ -40,7 +40,7 @@ fn main() {
 
 
 
-    let arr: [/* unknown */; 0] = [b1, b2];
+    let arr: [dyn Flyer; 0] = [b1, b2];
     for b in arr {
         b.fly();
     }

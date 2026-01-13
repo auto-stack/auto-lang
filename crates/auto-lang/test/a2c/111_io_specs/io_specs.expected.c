@@ -13,9 +13,9 @@ int main(void) {
     struct MyReader reader = {.data = "Hello, spec!"};
 
 
-    unknown readers[0] = {reader};
+    void* readers[0] = {reader};
     for (int i = 0; i < 0; i++) {
-        unknown r = readers[i];
+        void* r = readers[i];
         unknown text = r.read();
         printf("%d\n", text);
     }

@@ -475,8 +475,8 @@ spec Writer {
     fn flush()
 }
 
-// 实现 spec
-type File is Reader, Writer {
+// 实现 spec（使用 as 关键字）
+type File as Reader, Writer {
     path str
 
     fn read() str {

@@ -360,6 +360,7 @@ impl<'a> Parser<'a> {
         match self.scope.borrow().lookup_type_meta(name) {
             Some(meta) => match meta.as_ref() {
                 Meta::Type(ty) => shared(ty.clone()),
+                Meta::Spec(spec_decl) => shared(Type::Spec(shared(spec_decl.clone()))),
                 _ => shared(Type::Unknown),
             },
             None => shared(Type::Unknown),

@@ -880,8 +880,8 @@ spec Writer {
     fn flush()
 }
 
-// Implement spec
-type File is Reader, Writer {
+// Implement spec (using 'as' keyword)
+type File as Reader, Writer {
     path str
 
     fn read() str {

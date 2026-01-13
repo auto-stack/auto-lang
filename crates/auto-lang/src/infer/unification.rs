@@ -147,6 +147,9 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         // 用户类型：暂时假设不包含类型变量
         Type::User(_) | Type::CStruct(_) => false,
 
+        // Spec 类型：暂时假设不包含类型变量
+        Type::Spec(_) => false,
+
         // 其他类型
         Type::Union(_) | Type::Tag(_) | Type::Enum(_) => false,
     }

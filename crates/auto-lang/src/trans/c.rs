@@ -1146,6 +1146,10 @@ impl CTrans {
             Type::Tag(t) => {
                 format!("struct {}", t.borrow().name)
             }
+            Type::Spec(spec_decl) => {
+                // Spec 类型在 C 中使用 void* 表示（多态）
+                "void*".to_string()
+            }
             Type::Unknown => "unknown".to_string(),
             Type::CStruct(decl) => format!("{}", decl.name),
             Type::Char => "char".to_string(),
@@ -1186,7 +1190,8 @@ impl CTrans {
                 Type::Array(array_type) => {
                     let elem_type = &array_type.elem;
                     let len = array_type.len;
-                    out.write(format!("{} {}[{}] = ", elem_type, store.name, len).as_bytes())
+                    let elem_type_name = self.c_type_name(elem_type);
+                    out.write(format!("{} {}[{}] = ", elem_type_name, store.name, len).as_bytes())
                         .to()?;
                 }
                 _ => {
@@ -1338,8 +1343,9 @@ impl CTrans {
                                 Type::Array(arr) => {
                                     let elem_type = &*arr.elem;
                                     let elem_size = arr.len;
+                                    let elem_type_name = self.c_type_name(elem_type);
                                     iter_var =
-                                        format!("{} {} = {}[{}];\n", elem_type, n, range_name, "i");
+                                        format!("{} {} = {}[{}];\n", elem_type_name, n, range_name, "i");
                                     self.range(
                                         "i",
                                         &Expr::Int(0),

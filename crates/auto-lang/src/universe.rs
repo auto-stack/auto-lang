@@ -324,6 +324,13 @@ impl Universe {
                 // used for static method calls
                 self.current_scope_mut().put_symbol(name.as_str(), meta);
             }
+            Meta::Spec(decl) => {
+                // Spec 也是一种类型，需要同时注册到 types 和 symbols
+                let type_meta = Meta::Type(ast::Type::Spec(shared(decl.clone())));
+                self.current_scope_mut()
+                    .define_type(name.clone(), Rc::new(type_meta));
+                self.current_scope_mut().put_symbol(name.as_str(), meta);
+            }
             _ => {
                 self.current_scope_mut().put_symbol(name.as_str(), meta);
             }
@@ -602,6 +609,7 @@ impl Universe {
         match self.lookup_type_meta(name) {
             Some(meta) => match meta.as_ref() {
                 Meta::Type(ty) => ty.clone(),
+                Meta::Spec(spec_decl) => ast::Type::Spec(auto_val::shared(spec_decl.clone())),
                 _ => ast::Type::Unknown,
             },
             None => ast::Type::Unknown,

@@ -22,9 +22,9 @@ int main(void) {
     struct Pigeon b1 = {};
     struct Hawk b2 = {};
 
-    unknown arr[0] = {b1, b2};
+    void* arr[0] = {b1, b2};
     for (int i = 0; i < 0; i++) {
-        unknown b = arr[i];
+        void* b = arr[i];
         b.fly();
     }
     return 0;
