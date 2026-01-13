@@ -2,21 +2,21 @@
 
 ## Implementation Status: ⏸️ BLOCKED
 
-**Blocker:** Plan 025 (Ownership-Based Memory System) must be implemented FIRST
+**Blocker:** Plan 024 (Ownership-Based Memory System) must be implemented FIRST
 **Reason:** Manual lifetime tracking in this plan is incompatible with planned ownership system
 **Impact:** 60-70% of this plan would be throwaway work if implemented now
-**Solution:** Implement Plan 025 first, then redesign strings to use ownership system
+**Solution:** Implement Plan 024 first, then redesign strings to use ownership system
 
 ## Executive Summary
 
 **Original Plan:** Redesign AutoLang's string type system with manual lifetime tracking
 
-**Updated Approach:** Wait for ownership system (Plan 025), then implement strings using:
-- Move semantics (Phase 1 of Plan 025)
-- Owned strings (Phase 2 of Plan 025)
-- Borrowed strings via `take`/`edit` (Phase 3 of Plan 025)
+**Updated Approach:** Wait for ownership system (Plan 024), then implement strings using:
+- Move semantics (Phase 1 of Plan 024)
+- Owned strings (Phase 2 of Plan 024)
+- Borrowed strings via `take`/`edit` (Phase 3 of Plan 024)
 
-**New Timeline:** Strings available after Phase 2 of Plan 025 (~3 months from Plan 025 start)
+**New Timeline:** Strings available after Phase 2 of Plan 024 (~3 months from Plan 024 start)
 **Complexity:** High (but simplified by ownership system)
 
 **Current Problems:**
@@ -1090,7 +1090,7 @@ typedef struct {
 
 ## 12. Related Documentation
 
-- **Plan 024**: Standard Library C Foundation (depends on this plan)
+- **Plan 027**: Standard Library C Foundation (depends on this plan)
 - [String Handling in Rust](https://doc.rust-lang.org/std/string/index.html) (reference)
 - [UTF-8](https://en.wikipedia.org/wiki/UTF-8) (encoding standard)
 - [C String Handling](https://www.cs.utah.edu/~germain/PPS/Topics/C_strings.html) (C reference)
@@ -1099,7 +1099,7 @@ typedef struct {
 
 ## 13. Conclusion
 
-This plan provides a robust, safe, and clear string type system that resolves current ambiguities and provides a solid foundation for StringBuilder (Plan 024), string interning, and all other string operations.
+This plan provides a robust, safe, and clear string type system that resolves current ambiguities and provides a solid foundation for StringBuilder (Plan 027), string interning, and all other string operations.
 
 **Key Benefits:**
 1. **Safety**: No raw pointers, lifetime tracking

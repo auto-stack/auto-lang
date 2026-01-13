@@ -3,15 +3,16 @@
 ## Implementation Status: ⏳ PLANNED
 
 **Dependencies:**
-- Plan 024 (String Type Redesign) - Must complete first
-- Plan 025 (Stdlib C Foundation) - Must complete first
-**Estimated Start:** After Plan 025 completion (~35-44 weeks from now)
+- Plan 024 (Ownership-Based Memory System) - Must complete first
+- Plan 025 (String Type Redesign) - Must complete first
+- Plan 027 (Stdlib C Foundation) - Must complete first
+**Estimated Start:** After Plan 027 completion (~35-44 weeks from now)
 
 ## Executive Summary
 
 Implement an AutoLang compiler IN AutoLang that can be transpiled to C using the existing a2c transpiler and built with auto-man. This achieves self-hosting: the compiler can compile itself, reducing dependency on the Rust implementation.
 
-**Timeline**: 24-30 weeks (6-7.5 months) after Plan 025
+**Timeline**: 24-30 weeks (6-7.5 months) after Plan 027
 **Complexity**: Very High (parser = 4,399 lines, transpiler = 2,505 lines)
 **Priority**: HIGH - Core strategic goal for AutoLang
 
@@ -109,9 +110,9 @@ Round 4: Full Auto/C → Self-hosting milestone!
 - ❌ Type checker
 - ❌ Code generator
 
-### 2.3 Stdlib Foundation (Plan 024)
+### 2.3 Stdlib Foundation (Plan 027)
 
-**Prerequisites from Plan 024:**
+**Prerequisites from Plan 027:**
 - ✅ HashMap/HashSet - For symbol tables
 - ✅ StringBuilder - For code generation
 - ✅ Result/Option - For error handling
@@ -212,7 +213,7 @@ fn compile(source_path str) Result<(), Error> {
 
 **Objective:** Build token and position infrastructure.
 
-**Dependencies:** Stdlib foundation (Plan 024)
+**Dependencies:** Stdlib foundation (Plan 027)
 
 #### 1.1 Complete Token System
 
@@ -656,7 +657,7 @@ fn test_lexer_identifiers() {
 
 **Objective:** Implement hierarchical symbol table.
 
-**Dependencies:** Stdlib HashMap (Plan 024)
+**Dependencies:** Stdlib HashMap (Plan 027)
 
 **Reference:** [scope.rs](../../crates/auto-lang/src/scope.rs:1) (150+ lines)
 
@@ -2188,7 +2189,7 @@ auto-compiler hello.at -o hello
 ## 9. Next Steps
 
 ### Immediate Actions (Week 1-4)
-1. **Complete Plan 024** - Build stdlib foundation first
+1. **Complete Plan 027** - Build stdlib foundation first
 2. **Set up auto/ directory structure**
 3. **Implement Phase 1** - Token system
 4. **Create test infrastructure**
@@ -2207,8 +2208,9 @@ auto-compiler hello.at -o hello
 
 ## 10. Related Documentation
 
-- **Plan 024**: String Type Redesign
-- **Plan 025**: Standard Library C Foundation
+- **Plan 024**: Ownership-Based Memory System
+- **Plan 025**: String Type Redesign
+- **Plan 027**: Standard Library C Foundation
 - [C Transpiler Documentation](../c-transpiler.md)
 - [Auto-Man Documentation](https://gitee.com/auto-stack/auto-man)
 - [Rust Implementation](../../crates/auto-lang/src/) - Reference for all phases

@@ -2,9 +2,9 @@
 
 ## Implementation Status: ⏳ PLANNED
 
-**Priority:** FOUNDATIONAL - Must complete before String Types (Plan 024)
+**Priority:** FOUNDATIONAL - Must complete before String Types (Plan 025)
 **Dependencies:** None (this IS the foundation)
-**Estimated Start:** Immediate (blocks Plan 024 and all subsequent plans)
+**Estimated Start:** Immediate (blocks Plan 025 and all subsequent plans)
 
 ## Executive Summary
 
@@ -12,7 +12,7 @@ Implement AutoLang's ownership-based memory management system as described in [n
 
 **Timeline:** 4-5 months (hybrid approach)
 **Complexity:** Very High (requires borrow checker, control flow analysis)
-**Priority:** CRITICAL - Blocks Plan 024 (Strings) and Plan 025 (Stdlib)
+**Priority:** CRITICAL - Blocks Plan 025 (Strings) and Plan 027 (Stdlib)
 
 ---
 
@@ -40,9 +40,9 @@ fn eval_store(&mut self, store: &Store) -> Value {
 
 **Problem:** Every assignment copies data, no ownership semantics
 
-### 1.2 Plan 024 Compatibility Issue
+### 1.2 Plan 025 Compatibility Issue
 
-**Plan 024's Approach (Manual Lifetime Tracking):**
+**Plan 025's Approach (Manual Lifetime Tracking):**
 ```c
 // Manual lifetime tracking via global registry
 StringSlice String_slice(String* s) {
@@ -65,7 +65,7 @@ let slice = take s;  // Compiler: slice borrows from s
 ```
 
 **The Conflict:**
-| Aspect | Plan 024 | Ownership System |
+| Aspect | Plan 025 | Ownership System |
 |--------|----------|------------------|
 | Lifetime checks | Runtime | Compile-time |
 | Cleanup | Manual `drop()` | Automatic (linear types) |
@@ -73,7 +73,7 @@ let slice = take s;  // Compiler: slice borrows from s
 | Performance | Overhead per access | Zero-cost |
 | Safety | Runtime panic | Compile-time error |
 
-**Critical Finding:** Plan 024's manual lifetime tracking is **fundamentally incompatible** with the planned ownership system. 60-70% of Plan 024 would be throwaway work.
+**Critical Finding:** Plan 025's manual lifetime tracking is **fundamentally incompatible** with the planned ownership system. 60-70% of Plan 025 would be throwaway work.
 
 ### 1.3 Strategic Decision
 
@@ -905,7 +905,7 @@ fn test_hold_path() {
 ### Overall
 - [ ] Matches [new_memory.md](../language/design/new_memory.md) vision
 - [ ] Zero-cost safety achieved
-- [ ] Ready for Plan 024 (Strings) to use this system
+- [ ] Ready for Plan 025 (Strings) to use this system
 - [ ] Foundation for collections, async, etc.
 
 ---
@@ -969,7 +969,7 @@ fn test_hold_path() {
 | Approach | Time to Strings | Total Time | Rework | Safety |
 |----------|-----------------|------------|--------|--------|
 | A. Memory First (Full) | 6 months | 6 months | None | Compile-time |
-| B. Strings First (Plan 024) | 2.5 months | 4+ months | 60-70% | Runtime |
+| B. Strings First (Plan 025) | 2.5 months | 4+ months | 60-70% | Runtime |
 | **C. Hybrid** | **3 months** | **5 months** | **<5%** | **Compile-time** |
 
 ### Key Benefits
@@ -1020,9 +1020,9 @@ fn test_hold_path() {
 ## 9. Related Documentation
 
 - **[new_memory.md](../language/design/new_memory.md)** - Memory system design vision
-- **Plan 024**: String Type Redesign (BLOCKED - waits for this plan)
-- **Plan 027**: Stdlib C Foundation (BLOCKED - waits for Plan 024)
-- **Plan 026**: Self-Hosting Compiler (BLOCKED - waits for Plans 024 & 027)
+- **Plan 025**: String Type Redesign (BLOCKED - waits for this plan)
+- **Plan 027**: Stdlib C Foundation (BLOCKED - waits for Plan 025)
+- **Plan 026**: Self-Hosting Compiler (BLOCKED - waits for Plans 025 & 027)
 
 ---
 
@@ -1037,4 +1037,4 @@ This plan provides the foundation for AutoLang's core innovation: ownership-base
 4. **Compile-time safety** (no runtime overhead)
 5. **Alignment with vision** (matches `new_memory.md`)
 
-This is the critical foundation that Plan 024 (Strings) and all subsequent plans depend on. Once complete, AutoLang will have Rust-level memory safety with GC-level ergonomics.
+This is the critical foundation that Plan 025 (Strings) and all subsequent plans depend on. Once complete, AutoLang will have Rust-level memory safety with GC-level ergonomics.

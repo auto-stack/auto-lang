@@ -2,14 +2,16 @@
 
 ## Implementation Status: ⏳ PLANNED
 
-**Dependencies:** Plan 024 (String Type Redesign) - Must complete first
-**Estimated Start:** After Plan 026 completion (~7-10 weeks)
+**Dependencies:**
+- Plan 024 (Ownership-Based Memory System) - Must complete first
+- Plan 025 (String Type Redesign) - Must complete first
+**Estimated Start:** After Plan 025 completion (~3-5 months from Plan 024 start)
 
 ## Executive Summary
 
 Build foundational C standard library components required for the self-hosting Auto compiler. These components will be implemented in C and exposed to AutoLang through the C FFI (Foreign Function Interface), providing essential data structures and utilities for compiler operations.
 
-**Timeline**: 6-8 months (after Plan 024)
+**Timeline**: 6-8 months (after Plan 025)
 **Complexity**: High (requires C expertise, memory management, AutoLang FFI integration)
 **Priority:** BLOCKER - Must complete before self-hosting compiler can begin
 
@@ -1107,9 +1109,11 @@ gcc -fsanitize=undefined -g test_hashmap.c hashmap.c -o test_hashmap
 
 ## 10. Prerequisites
 
-**Plan 024: String Type Redesign** must be completed before starting this plan.
+**Plan 024 (Ownership System)** and **Plan 025 (String Type Redesign)** must be completed before starting this plan.
 
-The StringBuilder and String Interning components in this plan depend on the robust string type system (String, StringSlice, CString) defined in Plan 024.
+The StringBuilder and String Interning components in this plan depend on:
+- Plan 024's ownership and borrow checking system
+- Plan 025's robust string type system (String, StringSlice, CString)
 
 ## 11. Conclusion
 
