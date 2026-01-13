@@ -1048,17 +1048,19 @@ Auto语言编译器本身只依赖于Rust和Cargo。
 
 ## 架构说明
 
-AutoLang 有一个主要实现（Rust 编译器），支持四种执行模式：
+AutoLang 有一个主要实现（Rust 编译器），支持五种执行模式：
 
 1. **解释执行**: 直接运行 AutoLang 代码（REPL、脚本执行）
 2. **转译到 C (a2c)**: 将 AutoLang 转译为 C 代码，用于嵌入式系统
 3. **转译到 Rust (a2r)**: 将 AutoLang 转译为 Rust 代码，用于原生应用
 4. **转译到 Python (a2p)**: 将 AutoLang 转译为 Python 代码，用于快速原型和 Python 生态集成
+5. **转译到 JavaScript (a2j)**: 将 AutoLang 转译为 JavaScript (ES6+) 代码，用于 Web 开发和 Node.js
 
 测试文件说明：
 - `crates/auto-lang/test/a2c/` - Auto 到 C 转译器测试
 - `crates/auto-lang/test/a2r/` - Auto 到 Rust 转译器测试
 - `crates/auto-lang/test/a2p/` - Auto 到 Python 转译器测试
+- `crates/auto-lang/test/a2j/` - Auto 到 JavaScript 转译器测试
 
 ## Python Transpiler (a2p)
 
@@ -1164,3 +1166,116 @@ if __name__ == "__main__":
 
 - **最低版本**: Python 3.10+
 - **原因**: `match/case` 语句需要 Python 3.10 或更高版本
+
+## JavaScript Transpiler (a2j)
+
+AutoLang 支持转译到 JavaScript ES6+，实现以下特性：
+
+### 核心特性
+
+- ✅ **完美 Template Literal 映射**: AutoLang 的 f-string 语法与 JavaScript 模板字符串几乎相同
+- ✅ **ES6+ 类**: 使用现代 ES6 class 语法生成结构体
+- ✅ **模式匹配**: 完整支持 `switch/case` 语句
+- ✅ **方法支持**: 自动将 `.x` 转换为 `this.x`
+- ✅ **动态类型**: JavaScript 的动态类型与 AutoLang 完美匹配
+- ✅ **零依赖**: 生成的 JavaScript 代码无需任何 polyfills
+
+### 使用方法
+
+```bash
+# 转译 AutoLang 到 JavaScript
+auto.exe java-script hello.at
+
+# 运行生成的 JavaScript（需要 Node.js）
+node hello.js
+```
+
+### 代码示例
+
+**AutoLang 代码:**
+```auto
+type Point {
+    x int
+    y int
+
+    fn modulus() int {
+        .x * .x + .y * .y
+    }
+}
+
+fn main() {
+    let p = Point{x: 3, y: 4}
+    let m = p.modulus()
+    print(f"Modulus: $m")
+}
+```
+
+**生成的 JavaScript 代码:**
+```javascript
+class Point {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    modulus() {
+        return this.x * this.x + this.y * this.y;
+    }
+}
+
+function main() {
+    const p = new Point(3, 4);
+    const m = p.modulus();
+    console.log(`Modulus: ${m}`);
+}
+
+main();
+```
+
+### 语言映射
+
+| AutoLang | JavaScript | 说明 |
+|----------|-----------|------|
+| `let x = 1` | `const x = 1` | 不可变变量使用 const |
+| `mut x = 1` | `let x = 1` | 可变变量使用 let |
+| `type Point { x int }` | `class Point { constructor... }` | ES6 类语法 |
+| `enum Color { Red }` | `const Color = Object.freeze({...})` | 冻结对象防止修改 |
+| `is x { 0 => print() }` | `switch (x) { case 0: ... }` | switch/case 语句 |
+| `for i in 0..10` | `for (let i = 0; i < 10; i++)` | 传统 for 循环 |
+| `f"hello $name"` | `` `hello ${name}` `` | 模板字符串（反引号） |
+| `.x` (方法内) | `this.x` | 自动转换 self 为 this |
+| `print(...)` | `console.log(...)` | 自动转换函数名 |
+
+### 测试覆盖
+
+当前支持 9 个测试用例，全部通过 ✅：
+
+1. `000_hello` - 基础打印
+2. `002_array` - 数组和索引
+3. `003_func` - 函数声明和调用
+4. `006_struct` - 结构体定义 (ES6 class)
+5. `007_enum` - 枚举定义 (Object.freeze)
+6. `008_method` - 类方法 (this 转换)
+7. `010_if` - if/else 语句
+8. `011_for` - for 循环
+9. `012_is` - 模式匹配 (switch/case)
+
+### 文档
+
+完整的 JavaScript 转译器文档请参考：[JavaScript Transpiler Documentation](docs/javascript-transpiler.md)
+
+### 限制
+
+以下特性尚未实现：
+
+- Lambda 函数（箭头函数）
+- If 表达式（三元运算符 `? :`）
+- ES6 模块（import/export）
+- 异步支持（async/await）
+- 生成器函数
+
+### 环境要求
+
+- **Node.js**: v12.0.0 或更高版本（支持 ES6+）
+- **浏览器**: 任意现代浏览器（Chrome 51+, Firefox 54+, Safari 10+, Edge 15+）
+- **原因**: 需要支持 ES6+ 特性（class、模板字符串、箭头函数等）
