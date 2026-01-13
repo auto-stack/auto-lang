@@ -95,6 +95,12 @@ impl JavaScriptTrans {
 
             // Store (variable assignment)
             Stmt::Store(store) => {
+                // AutoLang: let (immutable) → const, mut → let, var → let
+                match store.kind {
+                    StoreKind::Let => out.write(b"const ").to()?,
+                    StoreKind::Mut | StoreKind::Var => out.write(b"let ").to()?,
+                    _ => {} // Field and CVar don't need declaration
+                };
                 out.write_all(store.name.as_bytes())?;
                 out.write(b" = ")?;
                 self.expr(&store.expr, out)?;
@@ -193,22 +199,22 @@ impl JavaScriptTrans {
         if let Some(first_branch) = if_stmt.branches.first() {
             out.write(b"if (")?;
             self.expr(&first_branch.cond, out)?;
-            out.write(b") ")?;
-            self.body(&first_branch.body, out)?;
+            out.write(b")")?;
+            self.if_body(&first_branch.body, out)?;
         }
 
         // Process remaining branches as "else if"
         for branch in if_stmt.branches.iter().skip(1) {
             out.write(b" else if (")?;
             self.expr(&branch.cond, out)?;
-            out.write(b") ")?;
-            self.body(&branch.body, out)?;
+            out.write(b")")?;
+            self.if_body(&branch.body, out)?;
         }
 
         // Process else if present
         if let Some(else_) = &if_stmt.else_ {
-            out.write(b" else ")?;
-            self.body(else_, out)?;
+            out.write(b" else")?;
+            self.if_body(else_, out)?;
         }
 
         Ok(())
@@ -237,8 +243,8 @@ impl JavaScriptTrans {
                     return Err(format!("JavaScript Transpiler: for loop requires range, got: {:?}", for_loop.range).into());
                 }
 
-                out.write(b") ")?;
-                self.body(&for_loop.body, out)?;
+                out.write(b")")?;
+                self.if_body(&for_loop.body, out)?;
             }
             _ => {
                 return Err(format!("JavaScript Transpiler: unsupported for loop iteration: {:?}", for_loop.iter).into());
@@ -255,27 +261,27 @@ impl JavaScriptTrans {
         for branch in &is_stmt.branches {
             match branch {
                 IsBranch::EqBranch(expr, body) => {
-                    out.write(b"\n    case ")?;
+                    out.write(b"\n        case ")?;
                     self.expr(expr, out)?;
                     out.write(b":")?;
-                    self.body_in_line(body, out)?;
-                    out.write(b"\n    break;")?;
+                    self.switch_case_body(body, out)?;
+                    out.write(b"\n            break;")?;
                 }
                 IsBranch::IfBranch(expr, body) => {
-                    out.write(b"\n    case ")?;
+                    out.write(b"\n        case ")?;
                     self.expr(expr, out)?;
                     out.write(b":")?;
-                    self.body_in_line(body, out)?;
-                    out.write(b"\n    break;")?;
+                    self.switch_case_body(body, out)?;
+                    out.write(b"\n            break;")?;
                 }
                 IsBranch::ElseBranch(body) => {
-                    out.write(b"\n    default:")?;
-                    self.body_in_line(body, out)?;
+                    out.write(b"\n        default:")?;
+                    self.switch_case_body(body, out)?;
                 }
             }
         }
 
-        out.write(b"\n}")?;
+        out.write(b"\n    }")?;
         Ok(())
     }
 
@@ -285,6 +291,32 @@ impl JavaScriptTrans {
             self.stmt(&body.stmts[0], out)?;
             // Remove the semicolon since we're in a switch case
             // (already added by stmt)
+        } else {
+            out.write(b" {")?;
+            for stmt in &body.stmts {
+                out.write(b"\n        ")?;
+                self.stmt(stmt, out)?;
+            }
+            out.write(b"\n    }")?;
+        }
+        Ok(())
+    }
+
+    fn switch_case_body(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
+        for stmt in &body.stmts {
+            out.write(b"\n            ")?;
+            self.stmt(stmt, out)?;
+        }
+        Ok(())
+    }
+
+    fn if_body(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
+        if body.stmts.is_empty() {
+            out.write(b" {}")?;
+        } else if body.stmts.len() == 1 {
+            out.write(b" {\n        ")?;
+            self.stmt(&body.stmts[0], out)?;
+            out.write(b"\n    }")?;
         } else {
             out.write(b" {")?;
             for stmt in &body.stmts {
@@ -429,11 +461,11 @@ impl JavaScriptTrans {
             out.write_all(param.name.as_bytes())?;
         }
 
-        out.write(b") ")?;
+        out.write(b") {")?;
 
         // Method body
-        out.write(b"{")?;
         for stmt in &func.body.stmts {
+            out.write(b"\n        ")?;
             // Convert .x to this.x in method body
             self.stmt_with_this(stmt, out)?;
         }
@@ -443,10 +475,43 @@ impl JavaScriptTrans {
     }
 
     fn stmt_with_this(&mut self, stmt: &Stmt, out: &mut impl Write) -> AutoResult<()> {
-        // For now, just handle regular statements
-        // TODO: Convert self.x to this.x
-        self.stmt(stmt, out)?;
-        Ok(())
+        match stmt {
+            Stmt::Expr(expr) => {
+                out.write(b"return ")?;
+                self.expr_with_this(expr, out)?;
+                out.write(b";")?;
+                Ok(())
+            }
+            _ => self.stmt(stmt, out),
+        }
+    }
+
+    fn expr_with_this(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
+        match expr {
+            // Convert .x (Unary Dot) to this.x
+            Expr::Unary(Op::Dot, inner) => {
+                out.write(b"this.")?;
+                self.expr_with_this(inner, out)
+            }
+            // Convert self to this
+            Expr::Ident(name) if name == "self" => {
+                out.write(b"this")?;
+                Ok(())
+            }
+            // For other expressions, recurse and handle Dot in binary ops
+            Expr::Bina(lhs, Op::Dot, rhs) => {
+                self.expr_with_this(lhs, out)?;
+                out.write(b".")?;
+                self.expr(rhs, out)
+            }
+            // For other binary ops, recurse on both sides
+            Expr::Bina(lhs, op, rhs) => {
+                self.expr_with_this(lhs, out)?;
+                out.write(format!(" {} ", op.op()).as_bytes()).to()?;
+                self.expr_with_this(rhs, out)
+            }
+            _ => self.expr(expr, out),
+        }
     }
 
     fn enum_decl(&mut self, enum_decl: &EnumDecl, out: &mut impl Write) -> AutoResult<()> {
@@ -493,8 +558,8 @@ impl Trans for JavaScriptTrans {
                 }
             }
 
-            // Check if this is a declaration (type or enum)
-            if matches!(stmt, Stmt::TypeDecl(_) | Stmt::EnumDecl(_)) {
+            // Check if this is a declaration (type, enum, or function)
+            if matches!(stmt, Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Fn(_)) {
                 decls.push(stmt);
             } else {
                 main_stmts.push(stmt);
@@ -583,5 +648,45 @@ mod tests {
     #[test]
     fn test_000_hello() {
         test_a2j("000_hello").unwrap();
+    }
+
+    #[test]
+    fn test_010_if() {
+        test_a2j("010_if").unwrap();
+    }
+
+    #[test]
+    fn test_011_for() {
+        test_a2j("011_for").unwrap();
+    }
+
+    #[test]
+    fn test_012_is() {
+        test_a2j("012_is").unwrap();
+    }
+
+    #[test]
+    fn test_002_array() {
+        test_a2j("002_array").unwrap();
+    }
+
+    #[test]
+    fn test_003_func() {
+        test_a2j("003_func").unwrap();
+    }
+
+    #[test]
+    fn test_006_struct() {
+        test_a2j("006_struct").unwrap();
+    }
+
+    #[test]
+    fn test_007_enum() {
+        test_a2j("007_enum").unwrap();
+    }
+
+    #[test]
+    fn test_008_method() {
+        test_a2j("008_method").unwrap();
     }
 }
