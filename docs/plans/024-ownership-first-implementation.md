@@ -1022,7 +1022,7 @@ fn test_hold_path() {
 - **[new_memory.md](../language/design/new_memory.md)** - Memory system design vision
 - **Plan 025**: String Type Redesign (BLOCKED - waits for this plan)
 - **Plan 027**: Stdlib C Foundation (BLOCKED - waits for Plan 025)
-- **Plan 026**: Self-Hosting Compiler (BLOCKED - waits for Plans 025 & 027)
+- **Plan 033**: Self-Hosting Compiler (BLOCKED - waits for Plans 025 & 027)
 
 ---
 

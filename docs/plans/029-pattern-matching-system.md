@@ -2,7 +2,7 @@
 
 ## Implementation Status: ⏳ PLANNED
 
-**Priority:** CRITICAL - Blocks self-hosting compiler (Plan 026)
+**Priority:** CRITICAL - Blocks self-hosting compiler (Plan 033)
 **Dependencies:** None (can start in parallel with Plan 024)
 **Estimated Start:** During or after Plan 024 Phase 1
 **Timeline:** 10-14 weeks
@@ -896,7 +896,7 @@ Error: auto_pattern_E0002
 ## 7. Related Documentation
 
 - **[Plan 024]:** Ownership-Based Memory System (for closure support)
-- **[Plan 026]:** Self-Hosting Compiler (depends on this plan)
+- **[Plan 033]:** Self-Hosting Compiler (depends on this plan)
 - **[Rust Pattern Matching](https://doc.rust-lang.org/reference/patterns.html)** (reference)
 - **[Match Expressions](https://doc.rust-lang.org/book/ch06-02-match.html)** (Rust book)
 

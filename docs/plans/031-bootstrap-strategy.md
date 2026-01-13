@@ -3,7 +3,7 @@
 ## Implementation Status: ⏳ PLANNED
 
 **Priority:** CRITICAL - Resolves circular dependency for self-hosting
-**Dependencies:** Plan 026 (Self-Hosting Compiler)
+**Dependencies:** Plan 033 (Self-Hosting Compiler)
 **Estimated Start:** Before starting Plan 024
 **Timeline:** 4-6 weeks (planning + infrastructure)
 
@@ -13,7 +13,7 @@ Design and implement a three-stage bootstrap strategy to resolve the circular de
 
 **The Problem:**
 ```
-Plan 026: Self-hosting compiler needs:
+Plan 033: Self-hosting compiler needs:
   → Plan 027: Stdlib C Foundation (HashMap, StringBuilder, String)
   → Plan 025: String Types
   → Plan 024: Ownership System
@@ -793,7 +793,7 @@ build/stage3/compiler auto/compiler/stage3/*.at -o build/stage4/
 
 - **[Plan 024]:** Ownership-Based Memory System
 - **[Plan 025]:** String Type Redesign
-- **[Plan 026]:** Self-Hosting Compiler (depends on this plan)
+- **[Plan 033]:** Self-Hosting Compiler (depends on this plan)
 - **[Plan 027]:** Stdlib C Foundation
 - **[Go Bootstrap](https://golang.org/doc/install/source#bootstrap):** Reference
 - **[Rust Bootstrap](https://rustc-dev-guide.rust-lang.org/building/how-to-build-and-run.html#building-the-compiler):** Reference
@@ -838,7 +838,7 @@ build/stage3/compiler auto/compiler/stage3/*.at -o build/stage4/
 
 **Can Start:** Immediately (before or during Plan 024)
 
-**Blocks:** Plan 026 (Self-Hosting Compiler)
+**Blocks:** Plan 033 (Self-Hosting Compiler)
 
 ---
 

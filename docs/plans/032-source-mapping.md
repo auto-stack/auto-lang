@@ -3,8 +3,8 @@
 ## Implementation Status: ⏳ PLANNED
 
 **Priority:** HIGH - Enables IDE-grade error messages in transpiled code
-**Dependencies:** Plan 026 (Self-Hosting Compiler)
-**Estimated Start:** During Plan 026 Phase 7 (Code Generation)
+**Dependencies:** Plan 033 (Self-Hosting Compiler)
+**Estimated Start:** During Plan 033 Phase 7 (Code Generation)
 **Timeline:** 6-8 weeks
 
 ## Executive Summary
@@ -850,7 +850,7 @@ cargo test -p auto-lang error_display
 
 ## 6. Related Documentation
 
-- **[Plan 026]:** Self-Hosting Compiler
+- **[Plan 033]:** Self-Hosting Compiler
 - **[Rust miette](https://docs.rs/miette/):** Reference for error display
 - **[Source Map Spec](https://sourcemaps.info/spec.html):** Source map format
 - **[LSP Spec](https://microsoft.github.io/language-server-protocol/):** Language Server Protocol
@@ -869,7 +869,7 @@ cargo test -p auto-lang error_display
 
 **Critical Path:** Phase 1 → 2 → 3
 
-**Can Start:** During Plan 026 Phase 7 (Code Generation)
+**Can Start:** During Plan 033 Phase 7 (Code Generation)
 
 ---
 

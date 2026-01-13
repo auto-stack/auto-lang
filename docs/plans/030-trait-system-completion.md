@@ -973,7 +973,7 @@ Help: Remove one of the conflicting implementations
 
 - **[Plan 019]:** Spec Trait System (foundation)
 - **[Plan 028]:** Generic Types and Monomorphization (dependency)
-- **[Plan 026]:** Self-Hosting Compiler (uses trait system)
+- **[Plan 033]:** Self-Hosting Compiler (uses trait system)
 - **[Rust Traits](https://doc.rust-lang.org/reference/items/traits.html)** (reference)
 
 ---
@@ -1003,7 +1003,7 @@ Help: Remove one of the conflicting implementations
 **Dependencies:**
 - Must wait for Plan 028 (Generic Types)
 - Can overlap with Plan 029 (Pattern Matching)
-- Blocks Plan 026 (Self-Hosting Compiler)
+- Blocks Plan 033 (Self-Hosting Compiler)
 
 ---
 

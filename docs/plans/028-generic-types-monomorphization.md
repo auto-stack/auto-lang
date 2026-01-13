@@ -1107,7 +1107,7 @@ fn main() {
 
 - **[Plan 024]:** Ownership-Based Memory System (dependency)
 - **[Plan 030]:** Trait System Completion (trait bounds)
-- **[Plan 026]:** Self-Hosting Compiler (uses generics)
+- **[Plan 033]:** Self-Hosting Compiler (uses generics)
 - **[Rust Generics](https://doc.rust-lang.org/reference/items/generics.html):** Reference
 
 ---
