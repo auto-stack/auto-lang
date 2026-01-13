@@ -6,6 +6,7 @@ use std::io::{self, Write};
 pub mod c;
 pub mod rust;
 pub mod python;
+pub mod javascript;
 
 pub struct Sink {
     pub name: AutoStr,
