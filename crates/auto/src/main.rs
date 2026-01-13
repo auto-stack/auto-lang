@@ -108,6 +108,8 @@ enum Commands {
     C { path: String },
     #[command(about = "Transpile Auto to Rust")]
     Rust { path: String },
+    #[command(about = "Transpile Auto to Python")]
+    Python { path: String },
 }
 
 fn main() -> Result<()> {
@@ -207,6 +209,16 @@ fn main() -> Result<()> {
                 to_miette_err(e)
             })?;
             println!("{}", r);
+        }
+        Some(Commands::Python { path }) => {
+            let py = auto_lang::trans_python(path.as_str()).map_err(|e| {
+                if matches!(format, OutputFormat::Json) {
+                    eprintln!("{}", format_error_json(&e));
+                    std::process::exit(1);
+                }
+                to_miette_err(e)
+            })?;
+            println!("{}", py);
         }
         None => {
             repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
