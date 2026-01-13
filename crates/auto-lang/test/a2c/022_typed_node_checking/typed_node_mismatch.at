@@ -1,0 +1,12 @@
+// Test typed node with type mismatch (should error)
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    // This should trigger TypeError::FieldMismatch
+    // y expects int but got str
+    let p = Point { x: 10, y: "hello" }
+    print(p.x)
+}

@@ -1,0 +1,10 @@
+// Test basic typed node with type checking
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    let p = Point { x: 10, y: 20 }
+    print(p.x)
+}

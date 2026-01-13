@@ -1,0 +1,12 @@
+// Test typed node with positional args
+// Note: Positional arg type checking not yet implemented (TODO in parser.rs:3303)
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    // Positional args - type checking not implemented yet
+    let p = Point(10, 20)
+    print(p.x)
+}

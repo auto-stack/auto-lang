@@ -1,0 +1,15 @@
+// Test typed node type checking
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    // This should work - types match
+    let p1 = Point { x: 10, y: 20 }
+
+    // This should trigger type error
+    let p2 = Point { x: "bad", y: 20 }
+
+    print(p1.x)
+}

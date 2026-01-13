@@ -240,7 +240,8 @@ impl AutoGen {
                 println!("generated: {}", out_file.to_astr());
             }
             Err(e) => {
-                println!("error: {}", e);
+                println!("error: {:?}", e);
+                // pretty print the error
                 let code = if mold.code.len() > 100 {
                     (mold.code[..100].to_string() + "...").into()
                 } else {

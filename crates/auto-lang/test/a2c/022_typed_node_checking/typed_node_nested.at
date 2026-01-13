@@ -1,0 +1,16 @@
+// Test nested typed nodes
+type Rectangle {
+    width int
+    height int
+}
+
+type Canvas {
+    rect Rectangle
+    color str
+}
+
+fn main() {
+    let r = Rectangle { width: 100, height: 200 }
+    let c = Canvas { rect: r, color: "blue" }
+    print(c.rect.width)
+}
