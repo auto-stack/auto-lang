@@ -1,0 +1,12 @@
+type Point {
+    x int
+    y int
+
+    fn modulus() int {
+        .x * .x + .y * .y
+    }
+}
+
+fn main() {
+    print("Method defined")
+}

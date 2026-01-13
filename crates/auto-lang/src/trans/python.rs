@@ -3,6 +3,7 @@ use crate::ast::*;
 use crate::universe::Universe;
 use crate::AutoResult;
 use auto_val::AutoStr;
+use auto_val::Op;
 use auto_val::{shared, Shared};
 use std::collections::HashSet;
 use std::io::Write;
@@ -63,9 +64,14 @@ impl PythonTrans {
 
             // Binary operations
             Expr::Bina(lhs, op, rhs) => {
-                self.expr(lhs, out)?;
-                out.write(format!(" {} ", op.op()).as_bytes()).to()?;
-                self.expr(rhs, out)
+                match op {
+                    Op::Dot => self.dot(lhs, rhs, out),
+                    _ => {
+                        self.expr(lhs, out)?;
+                        out.write(format!(" {} ", op.op()).as_bytes()).to()?;
+                        self.expr(rhs, out)
+                    }
+                }
             }
 
             // Unary operations
@@ -206,6 +212,53 @@ impl PythonTrans {
 
         // Check if function has a non-void return type (except main)
         let has_return = !matches!(func.ret, Type::Unknown) && func.name != "main";
+
+        // Process body statements
+        if has_return && !func.body.stmts.is_empty() {
+            // Handle all but last statement normally
+            for stmt in func.body.stmts.iter().take(func.body.stmts.len() - 1) {
+                self.stmt(stmt, out)?;
+            }
+
+            // Add return before last statement if it's an expression
+            if let Some(last_stmt) = func.body.stmts.last() {
+                if let Stmt::Expr(expr) = last_stmt {
+                    self.print_indent(out)?;
+                    out.write(b"return ")?;
+                    self.expr(expr, out)?;
+                    out.write(b"\n")?;
+                } else {
+                    // Last statement is not an expression, just process it normally
+                    self.stmt(last_stmt, out)?;
+                }
+            }
+        } else {
+            // No return type, process body normally
+            self.body(&func.body, out)?;
+        }
+
+        self.dedent();
+
+        Ok(())
+    }
+
+    fn fn_decl_in_class(&mut self, func: &Fn, _type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
+        self.print_indent(out)?;
+        out.write(b"def ")?;
+        out.write_all(func.name.as_bytes())?;
+        out.write(b"(self")?;
+
+        // Parameters
+        for param in &func.params {
+            out.write(b", ")?;
+            out.write_all(param.name.as_bytes())?;
+        }
+
+        out.write(b"):\n")?;
+        self.indent();
+
+        // Check if function has a non-void return type
+        let has_return = !matches!(func.ret, Type::Unknown);
 
         // Process body statements
         if has_return && !func.body.stmts.is_empty() {
@@ -411,6 +464,13 @@ impl PythonTrans {
         Ok(())
     }
 
+    fn dot(&mut self, lhs: &Expr, rhs: &Expr, out: &mut impl Write) -> AutoResult<()> {
+        self.expr(lhs, out)?;
+        out.write(b".")?;
+        self.expr(rhs, out)?;
+        Ok(())
+    }
+
     fn fstr(&mut self, fstr: &FStr, out: &mut impl Write) -> AutoResult<()> {
         out.write(b"f\"")?;
         for part in &fstr.parts {
@@ -437,8 +497,14 @@ impl PythonTrans {
     }
 
     fn type_decl(&mut self, type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
-        self.print_indent(out)?;
-        out.write(b"@dataclass\n")?;
+        let has_methods = !type_decl.methods.is_empty();
+
+        // Use @dataclass only if there are no methods
+        if !has_methods {
+            self.print_indent(out)?;
+            out.write(b"@dataclass\n")?;
+        }
+
         self.print_indent(out)?;
         out.write(b"class ")?;
         out.write_all(type_decl.name.as_bytes())?;
@@ -446,14 +512,51 @@ impl PythonTrans {
         self.indent();
 
         // Emit fields
-        for member in &type_decl.members {
-            self.print_indent(out)?;
-            out.write_all(member.name.as_bytes())?;
-            out.write(b": ")?;
-            // Simple type mapping for common types
-            let type_name = self.python_type_name(&member.ty);
-            out.write_all(type_name.as_bytes())?;
-            out.write(b"\n")?;
+        if has_methods {
+            // For classes with methods, use __init__ instead of @dataclass
+            if !type_decl.members.is_empty() {
+                self.print_indent(out)?;
+                out.write(b"def __init__(self")?;
+                for member in &type_decl.members {
+                    out.write(b", ")?;
+                    out.write_all(member.name.as_bytes())?;
+                    out.write(b": ")?;
+                    let type_name = self.python_type_name(&member.ty);
+                    out.write_all(type_name.as_bytes())?;
+                }
+                out.write(b"):\n")?;
+                self.indent();
+
+                for member in &type_decl.members {
+                    self.print_indent(out)?;
+                    out.write(b"self.")?;
+                    out.write_all(member.name.as_bytes())?;
+                    out.write(b" = ")?;
+                    out.write_all(member.name.as_bytes())?;
+                    out.write(b"\n")?;
+                }
+
+                self.dedent();
+                // Don't add newline here - let the method emission handle it
+            }
+        } else {
+            // For @dataclass, just list the fields
+            for member in &type_decl.members {
+                self.print_indent(out)?;
+                out.write_all(member.name.as_bytes())?;
+                out.write(b": ")?;
+                let type_name = self.python_type_name(&member.ty);
+                out.write_all(type_name.as_bytes())?;
+                out.write(b"\n")?;
+            }
+        }
+
+        // Emit methods (add blank line before first method)
+        for (i, method) in type_decl.methods.iter().enumerate() {
+            if i == 0 && has_methods {
+                out.write(b"\n")?;
+            }
+            self.fn_decl_in_class(method, type_decl, out)?;
         }
 
         self.dedent();
@@ -533,8 +636,8 @@ impl Trans for PythonTrans {
         // First pass: process declarations to collect imports
         for decl in &decls {
             if let Stmt::TypeDecl(type_decl) = decl {
-                // Collect import without emitting
-                if type_decl.members.len() > 0 {
+                // Only use dataclass if there are no methods
+                if type_decl.members.len() > 0 && type_decl.methods.is_empty() {
                     self.imports.insert("dataclass".into());
                 }
             } else if let Stmt::EnumDecl(enum_decl) = decl {
@@ -684,5 +787,10 @@ mod tests {
     #[test]
     fn test_007_enum() {
         test_a2p("007_enum").unwrap();
+    }
+
+    #[test]
+    fn test_008_method() {
+        test_a2p("008_method").unwrap();
     }
 }
