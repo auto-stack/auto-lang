@@ -351,79 +351,192 @@ is a {
 }
 ```
 
-### 类型系统
+### 面向对象编程
+
+Auto 提供完整的面向对象编程支持，包括类型定义、继承、组合和特征系统。
+
+#### 类型定义
 
 ```rust
-// 类型别名
-type MyInt = int
-
-// 类型组合
-type Num = int | float
-
-// 自定义类型
+// 定义类型
 type Point {
     x int
     y int
 
-    // 方法
+    // 实例方法
     fn distance(other Point) float {
         sqrt((.x - other.x) ** 2 + (.y - other.y) ** 2)
     }
-}
 
-// 构造函数
-Point {
-    pub static fn new(x int, y int) Point {
-        Point{x, y}
+    fn info() str {
+        f"Point(.x, .y)"
     }
 }
 
-// 使用
-mut p = Point.new(1, 2)
-println(p.distance(Point(x:4, y:6)))
+// 构造实例
+mut p = Point()
+p.x = 1
+p.y = 2
+println(p.info())        // "Point(1, 2)"
+println(p.distance(p))   // 0.0
 ```
 
-### 特征（Spec）
+#### 单继承（Inheritance）
 
-Auto 扩展了 Rust 的 trait 概念，提供三种特征：
+使用 `is` 关键字实现单继承，子类自动获得父类的所有字段和方法：
 
 ```rust
-// 1. 接口特征
-spec Printable {
-    fn print()
-}
+// 父类
+type Animal {
+    name str
 
-type MyInt { data int }
+    fn speak() {
+        print("Animal sound")
+    }
 
-// 实现接口
-ext MyInt {
-    pub fn print() {
-        println(.data)
+    fn info() str {
+        f"{.name}"
     }
 }
 
-// 2. 表达式特征（类型别名）
-spec Number = int | float | uint
+// 子类继承父类
+type Dog is Animal {
+    breed str
 
-fn add(a Number, b Number) Number {
-    a + b
-}
+    // 可以重写父类方法
+    fn speak() {
+        print("Woof!")
+    }
 
-// 3. 判别函数特征
-fn IsIterable(t type) bool {
-    is t {
-        as []any => true
-        if t.has_method("next") => true
-        else => false
+    // 可以添加新方法
+    fn fetch() {
+        print("Fetching...")
     }
 }
 
-fn process(arr if IsIterable) {
-    // 只有可迭代类型才能调用
+fn main() {
+    let dog = Dog()
+    dog.name = "Buddy"
+    dog.breed = "Labrador"
+
+    // 访问继承的字段
+    print(dog.name)
+
+    // 调用继承的方法（被重写）
+    dog.speak()  // "Woof!"
+
+    // 调用自己的方法
+    dog.fetch()
 }
 ```
 
-> 📖 **更多语法细节**？查看完整的 [语法详解文档](docs/syntax.cn.md)，包含所有特性的详细说明和更多示例。
+**继承特性**：
+- ✅ 字段继承：子类自动包含父类的所有字段
+- ✅ 方法继承：子类自动获得父类的所有方法
+- ✅ 方法重写：子类可以重写父类方法
+- ✅ 类型检查：继承关系在编译时验证
+
+#### 组合（Composition）
+
+使用 `has` 关键字实现组合，将其他类型的功能集成到当前类型：
+
+```rust
+type Engine {
+    power int
+
+    fn start() {
+        print("Engine started")
+    }
+}
+
+type Car {
+    has engine Engine
+
+    fn drive() {
+        .engine.start()
+        print("Driving...")
+    }
+}
+```
+
+#### 特征系统（Spec）
+
+Spec 定义接口契约，类型可以实现多个 spec：
+
+```rust
+// 定义 spec
+spec Reader {
+    fn read() str
+    fn is_eof() bool
+}
+
+spec Writer {
+    fn write(s str)
+    fn flush()
+}
+
+// 实现 spec
+type File is Reader, Writer {
+    path str
+
+    fn read() str {
+        // 读取文件
+    }
+
+    fn is_eof() bool {
+        // 检查是否结束
+    }
+
+    fn write(s str) {
+        // 写入文件
+    }
+
+    fn flush() {
+        // 刷新缓冲
+    }
+}
+
+// 多态函数
+fn copy(src Reader, dst Writer) {
+    while !src.is_eof() {
+        let line = src.read()
+        dst.write(line)
+    }
+    dst.flush()
+}
+```
+
+#### 转译器支持
+
+Auto 的 OOP 特性同时支持 C 和 Rust 转译：
+
+**C 转译**（扁平结构体 + 方法前缀）：
+```c
+struct Dog {
+    char* name;      // 继承的字段
+    char* breed;     // 自己的字段
+};
+
+void Dog_Speak(struct Dog *self) {
+    printf("%s\n", "Woof!");
+}
+```
+
+**Rust 转译**（扁平结构体 + impl 块）：
+```rust
+struct Dog {
+    name: String,      // 继承的字段
+    breed: String,     // 自己的字段
+}
+
+impl Dog {
+    fn speak(&self) {
+        println!("Woof!");
+    }
+}
+```
+
+> 📖 **更多 OOP 特性**？查看 [单继承实现文档](docs/plans/021-single-inheritance.md) 和 [Spec 多态文档](docs/plans/020-stdlib-io-expansion.md)
 
 ---
 

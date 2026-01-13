@@ -756,169 +756,192 @@ mut p = s as Shape::Point
 println(p.x, p.y)
 ```
 
-### 类型
+### Object-Oriented Programming
+
+Auto provides complete object-oriented programming support, including type definitions, inheritance, composition, and the spec system.
+
+#### Type Definitions
 
 ```rust
-// 类型别名
-type MyInt = int
-
-// 类型组合
-type Num = int | float
-
-// 自定以类型
+// Define a type
 type Point {
     x int
     y int
 
-    // 方法
+    // Instance method
     fn distance(other Point) float {
-        use std::math::sqrt;
-        // 注意：这里的`.x`表示“在当前类型的视野中寻找变量x”，即相当于其他语言的`this.x`或`self.x`
         sqrt((.x - other.x) ** 2 + (.y - other.y) ** 2)
     }
+
+    fn info() str {
+        f"Point(.x, .y)"
+    }
 }
+
+// Create instance
+mut p = Point()
+p.x = 1
+p.y = 2
+println(p.info())        // "Point(1, 2)"
+println(p.distance(p))   // 0.0
 ```
+
+#### Single Inheritance
+
+Use the `is` keyword for single inheritance. Child types automatically inherit all fields and methods from the parent:
 
 ```rust
-// 新建类型的实例
+// Parent class
+type Animal {
+    name str
 
-// 默认构造函数
-mut myint = MyInt(10)
-print(myint)
-
-// 命名构造函数
-mut p = Point(x:1, y:2)
-println(p.distance(Point(x:4, y:6)))
-
-// 自定义构造函数。注意：`::`表示方法是静态方法，一般用于构造函数。静态方法里不能用`.`来访问实例成员
-Point {
-    pub :: fn new(x int, y int) Point {
-        Point{x, y}
+    fn speak() {
+        print("Animal sound")
     }
 
-    pub :: fn stretch(p Point, scale float) Point {
-        Point{x: p.x * scale, y: p.y * scale}
+    fn info() str {
+        f"{.name}"
     }
 }
 
-// 使用自定义构造函数
-mut p1 = Point::new(1, 2)
-mut p2 = Point::stretch(p1, 2.0)
+// Child class inherits from parent
+type Dog is Animal {
+    breed str
+
+    // Can override parent methods
+    fn speak() {
+        print("Woof!")
+    }
+
+    // Can add new methods
+    fn fetch() {
+        print("Fetching...")
+    }
+}
+
+fn main() {
+    let dog = Dog()
+    dog.name = "Buddy"
+    dog.breed = "Labrador"
+
+    // Access inherited fields
+    print(dog.name)
+
+    // Call inherited method (overridden)
+    dog.speak()  // "Woof!"
+
+    // Call own method
+    dog.fetch()
+}
 ```
 
+**Inheritance Features**:
+- ✅ Field inheritance: Child types automatically include all parent fields
+- ✅ Method inheritance: Child types automatically get all parent methods
+- ✅ Method overriding: Child types can override parent methods
+- ✅ Type checking: Inheritance relationships are verified at compile time
 
-### 规标（Spec）
+#### Composition
 
-Auto语言扩展了Rust的接口（trait）概念，可以支持更多的模式匹配。
-在Auto语言中，用来匹配类型的结构，被称为一个“规标”（Spec）。
-
-Auto的规标有三类：
-
-1. 接口（Interface Spec）：和Rust的trait类似，可以判断某个类型是否符合规标所声明的方法。
+Use the `has` keyword for composition to integrate functionality from other types:
 
 ```rust
-// Interface Spec
-spec Printable {
-    fn print()
-}
+type Engine {
+    power int
 
-type MyInt {
-    data int
-}
-
-MyInt as Printable {
-    pub fn print() {
-        println(.data)
+    fn start() {
+        print("Engine started")
     }
 }
 
-// 多个方法的接口规标
-spec Indexable<T> {
-    fn size() usize
-    fn get(n usize) T
-    fn set(n usize, value T)
-}
+type Car {
+    has engine Engine
 
-type IntArray {
-    data []int
-
-    pub :: fn new(data int...) IntArray {
-        IntArray{data: data.pack()}
-    }
-
-    as Indexable<int> {
-        pub fn size() int {
-            .data.len()
-        }
-
-        pub fn get(n int) int {
-            .data[n]
-        }
-
-        pub fn set(n int, value int) {
-            .data[n] = value
-        }
+    fn drive() {
+        .engine.start()
+        print("Driving...")
     }
 }
 ```
 
-2. 表达式规标（Expr Spec）：类似于TypeScript的联合类型。
+#### Spec System
+
+Specs define interface contracts. Types can implement multiple specs:
 
 ```rust
-// 表达式规标
-
-spec Number = int | uint | byte | float
-
-// 使用表达式规标
-fn add(a Number, b Number) Number {
-    a + b
+// Define spec
+spec Reader {
+    fn read() str
+    fn is_eof() bool
 }
 
-add(1, 2) // OK
-add(1, 2.0) // OK
-add(1, "2") // Error!
+spec Writer {
+    fn write(s str)
+    fn flush()
+}
 
-// 如果名字太长，也可以这么写：
-fn <T = Number> add(a T, b T) T {
-    a + b
+// Implement spec
+type File is Reader, Writer {
+    path str
+
+    fn read() str {
+        // Read file
+    }
+
+    fn is_eof() bool {
+        // Check if end of file
+    }
+
+    fn write(s str) {
+        // Write to file
+    }
+
+    fn flush() {
+        // Flush buffer
+    }
+}
+
+// Polymorphic function
+fn copy(src Reader, dst Writer) {
+    while !src.is_eof() {
+        let line = src.read()
+        dst.write(line)
+    }
+    dst.flush()
 }
 ```
 
+#### Transpiler Support
 
-3. 判别式规标（Predicate Spec或Function Spec）：调用一个编译期函数，如果返回true，则表示类型判定通过。
+Auto's OOP features are supported by both C and Rust transpilers:
 
+**C Transpilation** (flat struct + method prefix):
+```c
+struct Dog {
+    char* name;      // inherited field
+    char* breed;     // own field
+};
+
+void Dog_Speak(struct Dog *self) {
+    printf("%s\n", "Woof!");
+}
+```
+
+**Rust Transpilation** (flat struct + impl block):
 ```rust
-
-// 复杂类型判断，参数为type，且返回bool的函数，可以用来做任意逻辑的类型判断
-fn IsArray(t type) bool {
-    is t {
-        // 数组，其元素类型可以任意
-        as []_ -> true
-        // 实现了Iterable接口
-        as Indexable -> true
-        else -> false
-    }
+struct Dog {
+    name: String,      // inherited field
+    breed: String,     // own field
 }
 
-// 这里参数arr的类型只要通过了IsArray(T)的判断，就能够调用，否则报错
-fn add_all(arr if IsArray) {
-    mut sum = 0
-    for n in arr {
-        sum += n
+impl Dog {
+    fn speak(&self) {
+        println!("Woof!");
     }
-    return sum
 }
-
-// OK，因为参数是一个`[]int`数组
-add_all([1, 2, 3, 4, 5])
-
-mut d = 15
-add_all(d) // Error! d既不是[]int数组，也没有实现Indexable接口
-
-// 由于IntArray实现了Indexable接口，所以可以用于add_all
-mut int_array = IntArray::new(1, 2, 3, 4, 5)
-add_all(int_array)
 ```
+
+> 📖 **More OOP Features**? See [Single Inheritance Implementation](docs/plans/021-single-inheritance.md) and [Spec Polymorphism Documentation](docs/plans/020-stdlib-io-expansion.md)
 
 ### 生成器（TODO）
 
