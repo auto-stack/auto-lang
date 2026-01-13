@@ -1397,12 +1397,23 @@ impl RustTrans {
         // Struct definition
         write!(sink.body, "struct {} {{", type_decl.name)?;
 
-        // Collect all members (including from composed types)
+        // Collect all members (including from parent and composed types)
         // Use a set to avoid duplicates
         let mut all_members = Vec::new();
         let mut seen_fields = std::collections::HashSet::new();
 
-        // First add members from composed types
+        // First add members from parent type (inheritance)
+        if let Some(ref parent_type) = type_decl.parent {
+            if let Type::User(parent_decl) = parent_type.as_ref() {
+                for member in &parent_decl.members {
+                    if seen_fields.insert(member.name.clone()) {
+                        all_members.push(member);
+                    }
+                }
+            }
+        }
+
+        // Then add members from composed types
         for has_type in &type_decl.has {
             if let Type::User(has_decl) = has_type {
                 for member in &has_decl.members {
@@ -1413,7 +1424,7 @@ impl RustTrans {
             }
         }
 
-        // Then add own members (can override composed ones)
+        // Then add own members (can override inherited and composed ones)
         for member in &type_decl.members {
             if seen_fields.insert(member.name.clone()) {
                 all_members.push(member);
@@ -2154,5 +2165,10 @@ mod tests {
     #[test]
     fn test_034_delegation_params() {
         test_a2r("034_delegation_params").unwrap();
+    }
+
+    #[test]
+    fn test_035_inheritance() {
+        test_a2r("035_inheritance").unwrap();
     }
 }

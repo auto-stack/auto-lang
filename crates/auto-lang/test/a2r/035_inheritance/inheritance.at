@@ -1,0 +1,26 @@
+// Test basic single inheritance
+
+type Animal {
+    name str
+
+    fn speak() {
+        print("Animal sound")
+    }
+}
+
+type Dog is Animal {
+    breed str
+
+    fn bark() {
+        print("Woof!")
+    }
+}
+
+fn main() {
+    let dog = Dog()
+    dog.name = "Buddy"
+    dog.breed = "Labrador"
+
+    dog.speak()
+    dog.bark()
+}
