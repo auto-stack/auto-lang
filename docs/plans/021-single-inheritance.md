@@ -6,6 +6,7 @@
 
 **实现日期**: 2025-01-13
 **状态**: ✅ 完成并测试通过
+**支持**: C transpiler 和 Rust transpiler 均已支持
 
 ## 语法
 
@@ -156,7 +157,74 @@ void Dog_Bark(struct Dog *self) {
 }
 ```
 
-### 5. 测试
+### 5. Rust Transpiler 支持
+
+**文件**: [crates/auto-lang/src/trans/rust.rs](../../crates/auto-lang/src/trans/rust.rs)
+
+Rust transpiler 也完全支持继承，生成的 Rust 代码使用扁平结构体（flat struct）：
+
+```rust
+struct Animal {
+    name: String,
+}
+
+impl Animal {
+    fn speak(&self) {
+        println!("Animal sound");
+    }
+}
+
+struct Dog {
+    name: String,      // 继承的字段
+    breed: String,     // 自己的字段
+}
+
+impl Dog {
+    fn speak(&self) {
+        println!("Animal sound");  // 继承的方法
+    }
+
+    fn bark(&self) {
+        println!("Woof!");  // 自己的方法
+    }
+}
+```
+
+**实现细节**：
+
+1. **字段继承**: 父类字段直接添加到子类结构体中
+2. **方法继承**: 继承的方法在子类 impl 块中生成
+3. **扁平结构**: 不使用嵌套结构体，而是将所有字段放在同一层级
+
+```rust
+// 字段收集顺序
+if let Some(ref parent_type) = type_decl.parent {
+    if let Type::User(parent_decl) = parent_type.as_ref() {
+        // 首先添加父类字段
+        for member in &parent_decl.members {
+            if seen_fields.insert(member.name.clone()) {
+                all_members.push(member);
+            }
+        }
+    }
+}
+
+// 然后添加组合类型字段
+for has_type in &type_decl.has {
+    // ...
+}
+
+// 最后添加自己的字段（可以覆盖）
+for member in &type_decl.members {
+    if seen_fields.insert(member.name.clone()) {
+        all_members.push(member);
+    }
+}
+```
+
+### 6. 测试
+
+#### C Transpiler 测试
 
 **测试文件**: [crates/auto-lang/test/a2c/112_inheritance/](../../crates/auto-lang/test/a2c/112_inheritance/)
 
@@ -164,6 +232,16 @@ void Dog_Bark(struct Dog *self) {
 - `inheritance.at` - 测试源代码
 - `inheritance.expected.c` - 期望的 C 代码
 - `inheritance.expected.h` - 期望的 C 头文件
+
+测试结果：✅ 通过
+
+#### Rust Transpiler 测试
+
+**测试文件**: [crates/auto-lang/test/a2r/035_inheritance/](../../crates/auto-lang/test/a2r/035_inheritance/)
+
+创建了基本的继承测试用例：
+- `inheritance.at` - 测试源代码
+- `inheritance.expected.rs` - 期望的 Rust 代码
 
 测试结果：✅ 通过
 
@@ -228,7 +306,7 @@ error: 'int' is not a user type
 
 ## 未来改进
 
-1. **Rust Transpiler 支持**: 生成 Rust 的继承代码（使用 trait 或组合）
+1. ~~**Rust Transpiler 支持**: 生成 Rust 的继承代码（使用 trait 或组合）~~ ✅ **已完成**
 2. **访问控制**: 添加 `private`, `protected`, `public` 关键字
 3. **构造函数**: 自动调用父类构造函数
 4. **`super` 关键字**: 显式调用父类方法
@@ -243,6 +321,10 @@ error: 'int' is not a user type
 - ✅ Parser 支持（解析 `is` 语法）
 - ✅ 继承机制（自动继承字段和方法）
 - ✅ C transpiler 支持（生成正确的 C 代码）
-- ✅ 测试用例（验证功能正确性）
+- ✅ **Rust transpiler 支持（生成正确的 Rust 代码）** - 新增
+- ✅ 测试用例（a2c 和 a2r 都有继承测试）
 
-所有 73 个转译器测试通过，没有破坏现有功能。
+**测试结果**:
+- C transpiler: 74 个测试通过（包括 test_112_inheritance）
+- Rust transpiler: 74 个测试通过（包括 test_035_inheritance）
+- 总计: 74 个转译器测试全部通过，没有破坏现有功能
