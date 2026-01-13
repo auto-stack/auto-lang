@@ -1048,12 +1048,119 @@ Auto语言编译器本身只依赖于Rust和Cargo。
 
 ## 架构说明
 
-AutoLang 有一个主要实现（Rust 编译器），支持三种执行模式：
+AutoLang 有一个主要实现（Rust 编译器），支持四种执行模式：
 
 1. **解释执行**: 直接运行 AutoLang 代码（REPL、脚本执行）
 2. **转译到 C (a2c)**: 将 AutoLang 转译为 C 代码，用于嵌入式系统
 3. **转译到 Rust (a2r)**: 将 AutoLang 转译为 Rust 代码，用于原生应用
+4. **转译到 Python (a2p)**: 将 AutoLang 转译为 Python 代码，用于快速原型和 Python 生态集成
 
 测试文件说明：
 - `crates/auto-lang/test/a2c/` - Auto 到 C 转译器测试
 - `crates/auto-lang/test/a2r/` - Auto 到 Rust 转译器测试
+- `crates/auto-lang/test/a2p/` - Auto 到 Python 转译器测试
+
+## Python Transpiler (a2p)
+
+AutoLang 支持转译到 Python 3.10+，实现以下特性：
+
+### 核心特性
+
+- ✅ **完美 F-string 映射**: AutoLang 和 Python 的 f-string 语法几乎相同
+- ✅ **模式匹配**: 完整支持 `match/case` 语句（需要 Python 3.10+）
+- ✅ **智能类生成**: 自动检测 `@dataclass` 和普通类
+- ✅ **类型支持**: 结构体、枚举、方法和继承
+- ✅ **零依赖**: 生成的 Python 代码只需要标准库
+
+### 使用方法
+
+```bash
+# 转译 AutoLang 到 Python
+auto.exe python hello.at
+
+# 运行生成的 Python
+python hello.py
+```
+
+### 代码示例
+
+**AutoLang 代码:**
+```auto
+type Point {
+    x int
+    y int
+
+    fn modulus() int {
+        .x * .x + .y * .y
+    }
+}
+
+fn main() {
+    let p = Point{x: 0, y: 0}
+    print(f"Modulus: ${p.modulus()}")
+}
+```
+
+**生成的 Python 代码:**
+```python
+class Point:
+    def __init__(self, x: int, y: int):
+        self.x = x
+        self.y = y
+
+    def modulus(self):
+        return self.x * self.x + self.y * self.y
+
+def main():
+    p = Point(x=0, y=0)
+    print(f"Modulus: {p.modulus()}")
+
+if __name__ == "__main__":
+    main()
+```
+
+### 语言映射
+
+| AutoLang | Python | 说明 |
+|----------|--------|------|
+| `type Point { x int }` | `@dataclass\nclass Point:` | 无方法时使用 @dataclass |
+| `type Point { fn m() {} }` | `class Point:\n def __init__...` | 有方法时使用普通类 |
+| `enum Color { Red }` | `class Color(Enum)` | 使用 enum.Enum |
+| `is x { 0 => print() }` | `match x:\n case 0:` | Python 3.10+ |
+| `for i in 0..10` | `for i in range(0, 10)` | 范围转换为 range() |
+| `f"hello $name"` | `f"hello {name}"` | 自动转换变量语法 |
+
+### 测试覆盖
+
+当前支持 10 个测试用例，全部通过 ✅：
+
+1. `000_hello` - 基础打印
+2. `002_array` - 数组和索引
+3. `003_func` - 函数
+4. `006_struct` - 结构体定义 (@dataclass)
+5. `007_enum` - 枚举定义 (class Enum)
+6. `008_method` - 类方法
+7. `010_if` - if/else 语句
+8. `011_for` - for 循环
+9. `012_is` - 模式匹配 (match/case)
+10. `015_str` - F-strings
+
+### 文档
+
+完整的 Python 转译器文档请参考：[Python Transpiler Documentation](docs/python-transpiler.md)
+
+### 限制
+
+以下特性尚未实现：
+
+- Lambda 函数
+- 块表达式
+- If 表达式（三元运算符）
+- 枚举变体访问（如 `Color.Red`）
+- 结构体构造语法（如 `Point{x: 1, y: 2}`）
+- for 循环中的 enumerate
+
+### Python 版本要求
+
+- **最低版本**: Python 3.10+
+- **原因**: `match/case` 语句需要 Python 3.10 或更高版本
