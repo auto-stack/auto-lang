@@ -45,7 +45,8 @@ pub use context::InferenceContext;
 pub use constraints::TypeConstraint;
 pub use expr::infer_expr;
 
-use crate::ast::Type;
+use crate::ast::{Type, Member};
+use crate::error::{AutoError, TypeError};
 
 /// 统一两个类型
 ///
@@ -86,4 +87,109 @@ pub fn check_stmt(
 ) -> Result<(), crate::error::TypeError> {
     // TODO: 实现完整的语句类型检查（阶段 3）
     Ok(())
+}
+
+/// 检查字段值是否匹配成员类型定义
+///
+/// # 参数
+///
+/// * `member` - 类型成员定义
+/// * `value_ty` - 值表达式的类型
+/// * `span` - 值表达式在源代码中的位置
+///
+/// # 返回
+///
+/// 如果类型匹配返回 `Ok(())`，否则返回 `TypeError::FieldMismatch`
+///
+/// # 示例
+///
+/// ```rust
+/// use auto_lang::infer::check_field_type;
+/// use auto_lang::ast::{Type, Member};
+/// use auto_val::AutoStr;
+/// use miette::SourceSpan;
+///
+/// let member = Member {
+///     name: "x".into(),
+///     ty: Type::Int,
+///     value: None,
+///     is_pub: false,
+/// };
+/// let result = check_field_type(&member, &Type::Int, SourceSpan::new(0.into(), 0.into()));
+/// assert!(result.is_ok());
+/// ```
+pub fn check_field_type(
+    member: &Member,
+    value_ty: &Type,
+    span: miette::SourceSpan,
+) -> Result<(), AutoError> {
+    let expected_ty = &member.ty;
+
+    // 如果期望类型是 Unknown，跳过检查
+    if matches!(expected_ty, Type::Unknown) {
+        return Ok(());
+    }
+
+    // 如果值类型是 Unknown，无法在编译时检查
+    if matches!(value_ty, Type::Unknown) {
+        return Ok(()); // 运行时检查
+    }
+
+    // 尝试统一类型
+    if !types_are_compatible(expected_ty, value_ty) {
+        return Err(TypeError::FieldMismatch {
+            span,
+            field: member.name.to_string(),
+            expected: expected_ty.to_string(),
+            found: value_ty.to_string(),
+        }.into());
+    }
+
+    Ok(())
+}
+
+/// 简化的类型兼容性检查
+///
+/// TODO: 后续可以使用完整的 unify 算法
+fn types_are_compatible(expected: &Type, found: &Type) -> bool {
+    match (expected, found) {
+        // Unknown 类型兼容任何类型
+        (Type::Unknown, _) | (_, Type::Unknown) => true,
+
+        // 整数类型兼容性（int 可以接受 uint）
+        (Type::Int, Type::Int) | (Type::Int, Type::Uint) => true,
+        (Type::Uint, Type::Uint) => true,
+
+        // 浮点类型兼容性（float 可以接受 double）
+        (Type::Float, Type::Float) | (Type::Float, Type::Double) => true,
+        (Type::Double, Type::Double) => true,
+
+        // 字符串类型
+        (Type::Str(_), Type::Str(_)) => true,
+
+        // 布尔类型
+        (Type::Bool, Type::Bool) => true,
+
+        // 字符类型
+        (Type::Char, Type::Char) => true,
+
+        // 数组类型：检查元素类型和长度
+        (Type::Array(a), Type::Array(b)) => {
+            a.len == b.len && types_are_compatible(&a.elem, &b.elem)
+        }
+
+        // 指针类型
+        (Type::Ptr(inner_a), Type::Ptr(inner_b)) => {
+            types_are_compatible(&inner_a.of.borrow(), &inner_b.of.borrow())
+        }
+
+        // 用户定义类型：按名称比较
+        (Type::User(a), Type::User(b)) => a.name == b.name,
+
+        // Spec 类型：按名称比较
+        (Type::Spec(_), Type::Spec(_)) => true, // 多态类型，总是兼容
+
+        // 其他情况不兼容
+        _ => false,
+    }
 }

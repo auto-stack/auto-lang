@@ -623,6 +623,20 @@ pub enum TypeError {
         #[label("not a constant integer")]
         span: SourceSpan,
     },
+
+    /// Field type mismatch in type instantiation
+    #[error("field type mismatch")]
+    #[diagnostic(
+        code(auto_type_E0106),
+        help("Check the type definition and ensure the value matches the expected type")
+    )]
+    FieldMismatch {
+        field: String,
+        expected: String,
+        found: String,
+        #[label("field `{field}` expects type `{expected}`, found `{found}`")]
+        span: SourceSpan,
+    },
 }
 
 // ============================================================================

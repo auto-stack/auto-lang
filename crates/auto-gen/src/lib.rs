@@ -246,6 +246,7 @@ impl AutoGen {
                 } else {
                     mold.code.clone()
                 };
+                println!("code: {}", code);
                 panic!("failed to evaluate mold: {}", code);
             }
         }

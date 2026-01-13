@@ -1,5 +1,6 @@
 use crate::ast::*;
 use crate::error::{pos_to_span, AutoError, AutoResult, NameError, SyntaxError};
+use crate::infer::check_field_type;
 use crate::lexer::Lexer;
 use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
@@ -3258,7 +3259,27 @@ impl<'a> Parser<'a> {
                     node.add_name_arg_unified(pair_name);
                 }
                 Arg::Pair(key, value) => {
-                    // Pair arg
+                    // Pair arg - check type before adding
+                    // 查找类型定义进行类型检查
+                    let typ = self.lookup_type(&node.name);
+
+                    if let Type::User(type_decl) = &*typ.borrow() {
+                        // 查找成员定义
+                        if let Some(member) = type_decl.members.iter().find(|m| &m.name == &key) {
+                            // 推断表达式类型
+                            let value_ty = self.infer_type_expr(&value);
+
+                            // 检查类型匹配（使用当前 token 位置作为近似位置）
+                            if let Err(err) = check_field_type(
+                                member,
+                                &value_ty,
+                                pos_to_span(self.cur.pos),
+                            ) {
+                                self.errors.push(err);
+                            }
+                        }
+                    }
+
                     node.add_arg_unified(key, value);
                 }
             }
