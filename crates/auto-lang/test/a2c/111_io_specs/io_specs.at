@@ -1,0 +1,26 @@
+// Test basic spec polymorphism
+
+spec Reader {
+    fn read() str
+}
+
+type MyReader as Reader {
+    data str
+
+    fn read() str {
+        .data
+    }
+}
+
+fn main() {
+    let reader = MyReader("Hello, spec!")
+
+    // Test polymorphic array
+    let readers []Reader = [reader]
+    for r in readers {
+        let text = r.read()
+        print(text)
+    }
+
+    print("Test passed!")
+}

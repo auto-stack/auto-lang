@@ -2441,6 +2441,11 @@ int add(int x, int y);
     }
 
     #[test]
+    fn test_111_io_specs() {
+        test_a2c("111_io_specs").unwrap();
+    }
+
+    #[test]
     fn test_021_type_error() {
         test_a2c("021_type_error").unwrap();
     }

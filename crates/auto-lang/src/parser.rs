@@ -1750,6 +1750,18 @@ impl<'a> Parser<'a> {
         let mut new_parser = Parser::new(file_content.as_str(), self.scope.clone());
         new_parser.set_dest(self.compile_dest.clone());
         let ast = new_parser.parse().unwrap();
+
+        // Extract spec declarations before ast is moved
+        let spec_decls: Vec<_> = ast.stmts.iter()
+            .filter_map(|stmt| {
+                if let Stmt::SpecDecl(spec_decl) = stmt {
+                    Some(spec_decl.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         self.scope.borrow_mut().import(
             scope_name.clone(),
             ast,
@@ -1764,6 +1776,15 @@ impl<'a> Parser<'a> {
             items.push(uses.paths.last().unwrap().clone());
         }
         println!("items: {:?}", items);
+
+        // Import all spec declarations from this module
+        // This ensures that specs are available even if not explicitly listed in use items
+        for spec_decl in spec_decls {
+            // Import spec into current scope
+            println!("Importing spec: {}", spec_decl.name);
+            self.define_rc(spec_decl.name.clone().as_str(), std::rc::Rc::new(Meta::Spec(spec_decl)));
+        }
+
         // Define items in scope
         for item in items.iter() {
             // lookup item's meta from its mod
