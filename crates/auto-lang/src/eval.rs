@@ -87,14 +87,28 @@ impl Evaler {
                     }
                     // For Array, we need to process it to consolidate nodes
                     if matches!(first_val, Value::Array(_)) {
-                        let mut node = auto_val::Node::new("root");
                         // Process the array using the same logic as multi-statement case
                         match first_val {
                             Value::Array(arr) => {
                                 use std::collections::HashMap;
                                 use auto_val::Array;
 
-                                // Group nodes by name for consolidation
+                                // First, check if array contains any config items (nodes, pairs, objs, instances)
+                                // If not, return the array as-is (pure value array)
+                                let has_config_items = arr.values.iter().any(|item| {
+                                    matches!(item,
+                                        Value::Node(_) |
+                                        Value::Pair(_, _) |
+                                        Value::Obj(_) |
+                                        Value::Instance(_)
+                                    )
+                                });
+
+                                if !has_config_items {
+                                    return Ok(Value::Array(arr));
+                                }
+
+                                // Has config items, need to consolidate
                                 let mut nodes_by_name: HashMap<AutoStr, Vec<auto_val::Node>> = HashMap::new();
                                 let mut other_items: Vec<Value> = Vec::new();
 
@@ -105,10 +119,14 @@ impl Evaler {
                                             nodes_by_name.entry(n.name.clone()).or_default().push(n);
                                         }
                                         Value::Pair(key, value) => {
+                                            let mut node = auto_val::Node::new("root");
                                             node.set_prop(key, *value);
+                                            return Ok(Value::Node(node));
                                         }
                                         Value::Obj(o) => {
+                                            let mut node = auto_val::Node::new("root");
                                             node.merge_obj(o);
+                                            return Ok(Value::Node(node));
                                         }
                                         Value::Instance(inst) => {
                                             // Convert instance to node with type name as node name
@@ -127,6 +145,9 @@ impl Evaler {
                                     }
                                 }
 
+                                // Consolidate into a root node
+                                let mut node = auto_val::Node::new("root");
+
                                 // Second pass: add consolidated nodes
                                 for (name, nodes) in nodes_by_name.into_iter() {
                                     if nodes.len() == 1 {
@@ -144,10 +165,11 @@ impl Evaler {
                                 for item in other_items.into_iter() {
                                     node.set_prop(item.to_astr(), item);
                                 }
+
+                                return Ok(Value::Node(node));
                             }
                             _ => unreachable!(),
                         }
-                        return Ok(Value::Node(node));
                     }
                     match first_val {
                         Value::Obj(_) => {

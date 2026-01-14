@@ -927,10 +927,9 @@ exe hello {
 
         let conf = AutoConfig::new(code).unwrap();
 
-        // TODO: should be `dir("a") {}` instead of `dir a {}`
         assert_eq!(
             conf.root.to_string(),
-            r#"root {name: "hello"; lib hello {[dir a {}]: [dir a {}]; [dir b {}]: [dir b {}]; [dir c {}]: [dir c {}]}}"#
+            r#"root {name: "hello"; lib hello {dir a {}; dir b {}; dir c {}}}"#
         );
     }
 
@@ -1401,7 +1400,7 @@ for d in dirs {
         let interp = eval_config(code, &auto_val::Obj::new()).unwrap();
         assert_eq!(
             interp.result.repr(),
-            r#"root {[dir a {at: VID(1)}]: [dir a {at: "a"}]; [dir b {at: VID(2)}]: [dir b {at: "b"}]; [dir c {at: VID(3)}]: [dir c {at: "c"}]}"#
+            r#"root {dirs: [dir a {at: "a"}, dir b {at: "b"}, dir c {at: "c"}]}"#
         );
     }
 }

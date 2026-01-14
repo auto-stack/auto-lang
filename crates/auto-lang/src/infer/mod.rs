@@ -105,17 +105,15 @@ pub fn check_stmt(
 ///
 /// ```rust
 /// use auto_lang::infer::check_field_type;
-/// use auto_lang::ast::{Type, Member};
-/// use auto_val::AutoStr;
+/// use auto_lang::ast::{Type, Member, Name};
 /// use miette::SourceSpan;
 ///
 /// let member = Member {
-///     name: "x".into(),
+///     name: Name::from("x"),
 ///     ty: Type::Int,
 ///     value: None,
-///     is_pub: false,
 /// };
-/// let result = check_field_type(&member, &Type::Int, SourceSpan::new(0.into(), 0.into()));
+/// let result = check_field_type(&member, &Type::Int, SourceSpan::new(0.into(), 0_usize));
 /// assert!(result.is_ok());
 /// ```
 pub fn check_field_type(
