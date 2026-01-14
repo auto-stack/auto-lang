@@ -13,6 +13,24 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::rc::Weak;
 
+/// Location information for a symbol definition
+#[derive(Debug, Clone)]
+pub struct SymbolLocation {
+    pub line: usize,
+    pub character: usize,
+    pub pos: usize,
+}
+
+impl SymbolLocation {
+    pub fn new(line: usize, character: usize, pos: usize) -> Self {
+        Self {
+            line,
+            character,
+            pos,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CodePak {
     pub sid: Sid,
@@ -42,6 +60,10 @@ pub struct Universe {
     value_counter: usize,
     pub values: HashMap<ValueID, Rc<RefCell<ValueData>>>,
     weak_refs: HashMap<ValueID, Weak<RefCell<ValueData>>>,
+
+    // NEW: Symbol location table for LSP support
+    // Maps symbol name -> definition location
+    pub symbol_locations: HashMap<AutoStr, SymbolLocation>,
 }
 
 impl Default for Universe {
@@ -76,6 +98,8 @@ impl Universe {
             value_counter: 0,
             values: HashMap::new(),
             weak_refs: HashMap::new(),
+            // NEW: Initialize symbol location table
+            symbol_locations: HashMap::new(),
         };
         uni.define_sys_types();
         uni.define_builtin_funcs();
@@ -209,7 +233,7 @@ impl Universe {
         if let Some(parent) = parent_sid {
             self.cur_spot = parent;
         } else {
-            println!("No parent scope to exit!");
+            // println!("No parent scope to exit!"); // LSP: disabled
         }
     }
 
@@ -351,6 +375,26 @@ impl Universe {
 
     pub fn define_global(&mut self, name: &str, meta: Rc<Meta>) {
         self.global_scope_mut().put_symbol(name, meta);
+    }
+
+    /// Register a symbol's definition location for LSP support
+    pub fn define_symbol_location(&mut self, name: impl Into<AutoStr>, location: SymbolLocation) {
+        self.symbol_locations.insert(name.into(), location);
+    }
+
+    /// Lookup a symbol's definition location
+    pub fn get_symbol_location(&self, name: &str) -> Option<&SymbolLocation> {
+        self.symbol_locations.get(name)
+    }
+
+    /// Get all symbol locations (for LSP workspace symbols)
+    pub fn get_all_symbol_locations(&self) -> &HashMap<AutoStr, SymbolLocation> {
+        &self.symbol_locations
+    }
+
+    /// Clear all symbol locations (when re-parsing a file)
+    pub fn clear_symbol_locations(&mut self) {
+        self.symbol_locations.clear();
     }
 
     pub fn is_fn(&self, name: &str) -> bool {

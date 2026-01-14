@@ -51,7 +51,7 @@ impl Sink {
 
     pub fn done(&mut self) -> AutoResult<&Vec<u8>> {
         // add include to self.h
-        println!("Sink Name: {}", self.name);
+        // println!("Sink Name: {}", self.name); // LSP: disabled
         if !self.header.is_empty() && !self.body.is_empty() {
             self.source.write(b"#include \"")?;
             self.source.write(self.name.as_bytes())?;

@@ -17,9 +17,9 @@ pub fn find_std_lib() -> AutoResult<AutoStr> {
 
     for dir in search_dirs {
         let std_path = PathBuf::from(dir).join(std_lib_pat);
-        println!("Checking {}", std_path.display());
+        // println!("Checking {}", std_path.display()); // LSP: disabled
         if std_path.is_dir() {
-            println!("debug: std lib location: {}", std_path.to_str().unwrap());
+            // println!("debug: std lib location: {}", std_path.to_str().unwrap()); // LSP: disabled
             return Ok(AutoStr::from(std_path.to_str().unwrap()));
         }
     }

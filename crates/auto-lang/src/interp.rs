@@ -65,7 +65,7 @@ impl Interpreter {
     }
 
     pub fn import(&mut self, path: AutoStr) -> Result<(), String> {
-        println!("import: {}", path);
+        // println!("import: {}", path); // LSP: disabled
         Ok(())
     }
 

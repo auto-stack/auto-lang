@@ -145,8 +145,8 @@ impl Scope {
     }
 
     pub fn dump(&self) {
-        println!("Vals: {:?}", self.vals);
-        println!("Symbols: {:?}", self.symbols);
+        // println!("Vals: {:?}", self.vals); // LSP: disabled
+        // println!("Symbols: {:?}", self.symbols); // LSP: disabled
     }
 
     pub fn set_val(&mut self, name: impl Into<AutoStr>, vid: ValueID) {

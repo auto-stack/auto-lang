@@ -12,6 +12,7 @@ pub mod libs;
 pub mod maker;
 pub mod ownership;
 pub mod parser;
+pub use parser::Parser;
 pub mod repl;
 pub mod scope;
 pub mod token;
@@ -32,9 +33,8 @@ mod vm_functions_test;
 
 use crate::scope::Meta;
 use crate::trans::c::CTrans;
-pub use crate::universe::Universe;
-use crate::{eval::EvalMode, trans::Sink};
-use crate::{parser::Parser, trans::Trans};
+pub use crate::universe::{Universe, SymbolLocation};
+use crate::{eval::EvalMode, trans::Sink, trans::Trans};
 use auto_val::{AutoPath, Obj, Value};
 use std::cell::RefCell;
 use std::path::Path;
@@ -91,6 +91,14 @@ pub fn parse(code: &str) -> AutoResult<ast::Code> {
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope.clone());
     parser.parse().map_err(|e| e.to_string().into())
+}
+
+/// Parse code and return proper AutoError (not converted to string)
+/// This is used by the LSP to get detailed error information
+pub fn parse_preserve_error(code: &str) -> Result<ast::Code, error::AutoError> {
+    let scope = Rc::new(RefCell::new(Universe::new()));
+    let mut parser = Parser::new(code, scope.clone());
+    parser.parse()
 }
 
 pub fn parse_with_scope(code: &str, scope: Rc<RefCell<Universe>>) -> AutoResult<ast::Code> {
@@ -164,7 +172,7 @@ pub fn trans_c(path: &str) -> AutoResult<String> {
     let cname = path.replace(".at", ".c");
 
     let fname = AutoPath::new(path).filename();
-    println!("trans_C fname: {}", fname);
+    // println!("trans_C fname: {}", fname); // LSP: disabled
 
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code.as_str(), scope);

@@ -836,7 +836,7 @@ impl Evaler {
                 let left_val = self.lookup(&name);
                 match left_val {
                     Value::Ref(target) => {
-                        println!("ref: {}", target);
+                        // println!("ref: {}", target); // LSP: disabled
                         if self.universe.borrow().exists(&target) {
                             self.universe.borrow_mut().update_val(&target, val);
                         } else {
@@ -1594,7 +1594,7 @@ impl Evaler {
                 // return self.eval_type_new(&name, &call.args);
                 // }
                 _ => {
-                    println!("Strange function call {}", meta_id);
+                    // println!("Strange function call {}", meta_id); // LSP: disabled
                 }
             },
             Value::ExtFn(extfn) => {
@@ -1645,7 +1645,7 @@ impl Evaler {
             }
         } else {
             // convert call to node intance
-            println!("call {} not found, try to eval node", call.get_name_text());
+            // println!("call {} not found, try to eval node", call.get_name_text()); // LSP: disabled
             let node: Node = call.clone().into();
             return self.eval_node(&node);
         }
@@ -1792,7 +1792,7 @@ impl Evaler {
                 if let Some(method_fn) = method_fn {
                     return Ok(method_fn(&target));
                 } else {
-                    println!("wrong method?: {}", s);
+                    // println!("wrong method?: {}", s); // LSP: disabled
                 }
             }
             Value::Instance(inst) => {
@@ -1801,8 +1801,8 @@ impl Evaler {
                 if let Some(meta) = meth {
                     match meta.as_ref() {
                         Meta::Fn(fn_decl) => {
-                            println!("Eval Method: {}", fn_decl.name);
-                            println!("Current Scope: {}", self.universe.borrow().cur_spot);
+                            // println!("Eval Method: {}", fn_decl.name); // LSP: disabled
+                            // println!("Current Scope: {}", self.universe.borrow().cur_spot); // LSP: disabled
                             // self.enter_scope();
                             self.universe.borrow_mut().set_local_obj(&inst.fields);
                             let mut args = args.clone();
@@ -1981,9 +1981,9 @@ impl Evaler {
 
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> AutoResult<Value> {
         // TODO: 需不需要一个单独的 enter_call()
-        println!("scope before enter: {}", self.universe.borrow().cur_spot);
+        // println!("scope before enter: {}", self.universe.borrow().cur_spot); // LSP: disabled
         self.universe.borrow_mut().enter_fn(&fn_decl.name);
-        println!("scope after enter: {}", self.universe.borrow().cur_spot);
+        // println!("scope after enter: {}", self.universe.borrow().cur_spot); // LSP: disabled
         // println!(
         //     "enter call scope {}",
         //     self.universe.borrow().current_scope().sid
@@ -2381,7 +2381,7 @@ impl Evaler {
                             // not a field, try method
                             let typ = instance.ty.name();
                             let combined_name: AutoStr = format!("{}::{}", typ, name).into();
-                            println!("Combined name: {}", combined_name);
+                            // println!("Combined name: {}", combined_name); // LSP: disabled
                             let method = self.universe.borrow().lookup_meta(&combined_name);
                             if let Some(meta) = method {
                                 match meta.as_ref() {
@@ -2531,7 +2531,7 @@ impl Evaler {
                     ev.set_prop("with", cond.cond.to_code());
                     nd.add_kid(ev);
                     for arrow in cond.subs.iter() {
-                        println!("NEWSUB!!!! {}", arrow.with.clone().unwrap().to_code());
+                        // println!("NEWSUB!!!! {}", arrow.with.clone().unwrap().to_code()); // LSP: disabled
                         let mut sub = auto_val::Node::new("ev");
                         sub.set_prop("src", src.clone());
                         if let Some(dest) = &arrow.dest {
@@ -2559,7 +2559,7 @@ impl Evaler {
         let name_expr = self.eval_expr(&expr);
         let args = self.eval_args(&node.args);
         if let Value::Type(Type::User(type_decl)) = name_expr {
-            println!("EVAL TYPE _NEWNWNWN");
+            // println!("EVAL TYPE _NEWNWNWN"); // LSP: disabled
             return Ok(self.eval_type_new(&type_decl, &args));
         }
 
@@ -2646,7 +2646,7 @@ impl Evaler {
                 // push node body to scope meta
                 // TODO: support multiple nodes of same name
                 body = MetaID::Body(name.clone().into());
-                println!("define global {}", name);
+                // println!("define global {}", name); // LSP: disabled
                 self.universe
                     .borrow_mut()
                     .define_global(&name, Rc::new(Meta::Body(node.body.clone())));

@@ -4,7 +4,7 @@ use crate::infer::check_field_type;
 use crate::lexer::Lexer;
 use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
-use crate::universe::Universe;
+use crate::universe::{SymbolLocation, Universe};
 use auto_val::AutoPath;
 use auto_val::AutoStr;
 use auto_val::Op;
@@ -579,7 +579,7 @@ impl<'a> Parser<'a> {
     }
 
     fn skip_line(&mut self) -> AutoResult<()> {
-        println!("Skiipping line");
+        // println!("Skiipping line"); // Debug output disabled for LSP
         while !self.is_kind(TokenKind::Newline) {
             self.next();
         }
@@ -1706,10 +1706,10 @@ impl<'a> Parser<'a> {
     // TODO: clean up code
     // TODO: search path from System Env, Default Locations and etc.
     pub fn import(&mut self, uses: &Use) -> AutoResult<()> {
-        println!("Trying to import use library");
+        // println!("Trying to import use library"); // LSP: disabled
         let path = uses.paths.join(".");
         let scope_name: AutoStr = path.clone().into();
-        println!("scope_name: {}", scope_name);
+        // println!("scope_name: {}", scope_name); // LSP: disabled
 
         // try to find stdlib in following locations
         // 1. ~/.auto/stdlib
@@ -1719,7 +1719,7 @@ impl<'a> Parser<'a> {
         let file_path = if path.starts_with("auto.") {
             // stdlib
             let std_path = crate::util::find_std_lib()?;
-            println!("debug: std lib location: {}", std_path);
+            // println!("debug: std lib location: {}", std_path); // LSP: disabled
             let path = path.replace("auto.", "");
             AutoPath::new(std_path).join(path.clone())
         } else {
@@ -1745,8 +1745,8 @@ impl<'a> Parser<'a> {
         for path in scope_name.split(".").into_iter() {
             self.scope.borrow_mut().enter_mod(path.to_string());
         }
-        println!("cur spot: {:?}", self.scope.borrow().cur_spot);
-        println!("parsing file content: {}", file_content);
+        // println!("cur spot: {:?}", self.scope.borrow().cur_spot); // LSP: disabled
+        // println!("parsing file content: {}", file_content); // LSP: disabled
 
         // self.scope.borrow_mut().enter_mod(scope_name.clone());
         let mut new_parser = Parser::new(file_content.as_str(), self.scope.clone());
@@ -1777,13 +1777,13 @@ impl<'a> Parser<'a> {
         if items.is_empty() && !uses.paths.is_empty() {
             items.push(uses.paths.last().unwrap().clone());
         }
-        println!("items: {:?}", items);
+        // println!("items: {:?}", items); // LSP: disabled
 
         // Import all spec declarations from this module
         // This ensures that specs are available even if not explicitly listed in use items
         for spec_decl in spec_decls {
             // Import spec into current scope
-            println!("Importing spec: {}", spec_decl.name);
+            // println!("Importing spec: {}", spec_decl.name); // LSP: disabled
             self.define_rc(spec_decl.name.clone().as_str(), std::rc::Rc::new(Meta::Spec(spec_decl)));
         }
 
@@ -2154,6 +2154,9 @@ impl<'a> Parser<'a> {
         // identifier name
         let mut name = self.parse_name()?;
 
+        // Capture the position of the variable name for LSP
+        let name_pos = self.prev.pos;
+
         // special case: c decl
         if name == "c" {
             name = self.parse_name()?;
@@ -2192,6 +2195,14 @@ impl<'a> Parser<'a> {
             self.define(name.as_str(), Meta::Store(store.clone()));
         }
 
+        // Register symbol location for LSP
+        let loc = SymbolLocation::new(
+            name_pos.line.saturating_sub(1), // Convert from 1-based to 0-based
+            name_pos.at,
+            name_pos.pos,
+        );
+        self.scope.borrow_mut().define_symbol_location(name.clone(), loc);
+
         Ok(Stmt::Store(store))
     }
 
@@ -2220,7 +2231,7 @@ impl<'a> Parser<'a> {
                 }
             }
             Expr::Ident(id) => {
-                println!("Infering type for identifier: {}", id);
+                // println!("Infering type for identifier: {}", id); // LSP: disabled
                 let meta = self.lookup_meta(id);
                 if let Some(m) = meta {
                     match m.as_ref() {
@@ -2299,6 +2310,10 @@ impl<'a> Parser<'a> {
         let name = self.cur.text.clone();
         self.expect(TokenKind::Ident)?;
 
+        // Capture the position of the function name for LSP
+        // self.prev now points to the name token after expect()
+        let name_pos = self.prev.pos;
+
         // enter function scope
         self.scope.borrow_mut().enter_fn(name.clone());
 
@@ -2330,7 +2345,16 @@ impl<'a> Parser<'a> {
         let fn_stmt = Stmt::Fn(fn_expr.clone());
 
         // define function in scope
-        self.define(name.as_str(), Meta::Fn(fn_expr));
+        self.define(name.as_str(), Meta::Fn(fn_expr.clone()));
+
+        // Register symbol location for LSP
+        let loc = SymbolLocation::new(
+            name_pos.line.saturating_sub(1),
+            name_pos.at,
+            name_pos.pos,
+        );
+        self.scope.borrow_mut().define_symbol_location(name.clone(), loc);
+
         Ok(fn_stmt)
     }
 
@@ -2355,6 +2379,10 @@ impl<'a> Parser<'a> {
 
         // parse function name
         let name = self.parse_name()?;
+
+        // Capture the position of the function name for LSP
+        // self.prev now points to the name token after parse_name()
+        let name_pos = self.prev.pos;
 
         // enter function scope
         self.scope.borrow_mut().enter_fn(name.clone());
@@ -2424,13 +2452,23 @@ impl<'a> Parser<'a> {
 
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         let unique_name = if parent_name.is_empty() {
-            name
+            name.clone()
         } else {
-            format!("{}::{}", parent_name, name).into()
+            format!("{}.{}", parent_name, name).into()
         };
 
         // define function in scope
-        self.define(unique_name.as_str(), Meta::Fn(fn_expr));
+        self.define(unique_name.as_str(), Meta::Fn(fn_expr.clone()));
+
+        // Register symbol location for LSP
+        // Use the saved name_pos which is the position of the function name
+        let loc = SymbolLocation::new(
+            name_pos.line.saturating_sub(1), // Convert from 1-based to 0-based
+            name_pos.at,
+            name_pos.pos,
+        );
+        self.scope.borrow_mut().define_symbol_location(unique_name.clone(), loc);
+
         Ok(fn_stmt)
     }
 
@@ -2457,8 +2495,10 @@ impl<'a> Parser<'a> {
         while self.is_kind(TokenKind::Ident) {
             // param name
             let name = self.cur.text.clone();
+            let name_pos = self.cur.pos; // Capture position before skipping name
             self.next(); // skip name
-                         // param type
+
+            // param type
             let mut ty = Type::Int;
             if self.is_type_name() {
                 ty = self.parse_type()?;
@@ -2478,7 +2518,16 @@ impl<'a> Parser<'a> {
                 ty: ty.clone(),
             };
             // TODO: should we consider Meta::Param instead of Meta::Var?
-            self.define(name.as_str(), Meta::Store(var));
+            self.define(name.as_str(), Meta::Store(var.clone()));
+
+            // Register symbol location for LSP
+            let loc = SymbolLocation::new(
+                name_pos.line.saturating_sub(1), // Convert from 1-based to 0-based
+                name_pos.at,
+                name_pos.pos,
+            );
+            self.scope.borrow_mut().define_symbol_location(name.clone(), loc);
+
             params.push(Param { name, ty, default });
             self.sep_params()?;
         }
@@ -2559,6 +2608,9 @@ impl<'a> Parser<'a> {
             if sub_kind == "c" {
                 let name = self.parse_name()?;
 
+                // Capture the position of the type name for LSP
+                let name_pos = self.prev.pos;
+
                 let decl = TypeDecl {
                     kind: TypeDeclKind::CType,
                     name: name.clone(),
@@ -2571,11 +2623,25 @@ impl<'a> Parser<'a> {
                 };
                 // put type in scope
                 self.define(name.as_str(), Meta::Type(Type::CStruct(decl.clone())));
+
+                // Register symbol location for LSP
+                let loc = SymbolLocation::new(
+                    name_pos.line.saturating_sub(1),
+                    name_pos.at,
+                    name_pos.pos,
+                );
+                self.scope.borrow_mut().define_symbol_location(name.clone(), loc);
+
                 return Ok(Stmt::TypeDecl(decl));
             }
         }
 
         let name = self.parse_name()?;
+
+        // Capture the position of the type name for LSP
+        // self.prev now points to the name token after parse_name()
+        let name_pos = self.prev.pos;
+
         let mut decl = TypeDecl {
             kind: TypeDeclKind::UserType,
             name: name.clone(),
@@ -2594,6 +2660,15 @@ impl<'a> Parser<'a> {
 
         // put type in scope
         self.define(name.as_str(), Meta::Type(Type::User(decl.clone())));
+
+        // Register symbol location for LSP
+        // Use the saved name_pos which is the position of the type name
+        let loc = SymbolLocation::new(
+            name_pos.line.saturating_sub(1),
+            name_pos.at,
+            name_pos.pos,
+        );
+        self.scope.borrow_mut().define_symbol_location(name.clone(), loc);
 
         // deal with `is` keyword (single inheritance)
         let mut parent = None;
@@ -2666,7 +2741,7 @@ impl<'a> Parser<'a> {
                 let delegation = self.parse_delegation()?;
                 delegations.push(delegation);
             } else {
-                let member = self.type_member()?;
+                let member = self.type_member(&name)?;
                 members.push(member);
             }
             self.expect_eos(false)?; // Not first statement in type body
@@ -2686,8 +2761,8 @@ impl<'a> Parser<'a> {
                         // change meth's parent to self
                         let mut inherited_meth = meth.clone();
                         inherited_meth.parent = Some(name.clone());
-                        // register this method as Self::method
-                        let unique_name = format!("{}::{}", &name, &inherited_meth.name);
+                        // register this method as Self.method
+                        let unique_name = format!("{}.{}", &name, &inherited_meth.name);
                         self.define(unique_name.as_str(), Meta::Fn(inherited_meth.clone()));
                         methods.push(inherited_meth);
                     }
@@ -2760,8 +2835,11 @@ impl<'a> Parser<'a> {
         Ok(Stmt::TypeDecl(decl))
     }
 
-    pub fn type_member(&mut self) -> AutoResult<Member> {
+    pub fn type_member(&mut self, type_name: &str) -> AutoResult<Member> {
+        // Capture the position of the field name for LSP
         let name = self.parse_name()?;
+        let name_pos = self.prev.pos;
+
         let ty = self.parse_type()?;
         let mut value = None;
         if self.is_kind(TokenKind::Asn) {
@@ -2779,6 +2857,16 @@ impl<'a> Parser<'a> {
             kind: StoreKind::Field,
         };
         self.define(name.as_str(), Meta::Store(store));
+
+        // Register field location for LSP with qualified name "TypeName.fieldName"
+        let qualified_name = format!("{}.{}", type_name, name);
+        let loc = SymbolLocation::new(
+            name_pos.line.saturating_sub(1),
+            name_pos.at,
+            name_pos.pos,
+        );
+        self.scope.borrow_mut().define_symbol_location(qualified_name.clone(), loc);
+
         Ok(Member::new(name, ty, value))
     }
 
@@ -2929,7 +3017,7 @@ impl<'a> Parser<'a> {
             || self.is_kind(TokenKind::U8)
         {
             let size = self.parse_ints()?;
-            println!("got int {}", size);
+            // println!("got int {}", size); // LSP: disabled
             self.get_usize(&size)?
         } else if self.is_kind(TokenKind::RSquare) {
             0
@@ -3581,7 +3669,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_event(&mut self) -> AutoResult<Event> {
         let src = self.parse_event_src()?;
-        println!("NEXT I S {}", self.kind());
+        // println!("NEXT I S {}", self.kind()); // LSP: disabled
         if self.is_kind(TokenKind::Arrow) || self.is_kind(TokenKind::Colon) {
             return Ok(Event::Arrow(self.parse_arrow(src)?));
         } else if self.is_kind(TokenKind::Question) {
@@ -3607,7 +3695,7 @@ impl<'a> Parser<'a> {
             self.skip_empty_lines();
             while !self.is_kind(TokenKind::RBrace) {
                 self.skip_empty_lines();
-                println!("cchecking branch: {}", self.cur);
+                // println!("cchecking branch: {}", self.cur); // LSP: disabled
                 branches.push(self.parse_goto_branch()?);
                 self.skip_empty_lines();
             }
@@ -4351,9 +4439,9 @@ exe hello {
         assert!(non_empty_stmts.len() >= 2);
         let spec_stmt = non_empty_stmts[0];
         let type_stmt = non_empty_stmts[1];
-        // Debug output
-        println!("Spec stmt: {}", spec_stmt.to_string());
-        println!("Type stmt: {}", type_stmt.to_string());
+        // Debug output (disabled for LSP)
+        // println!("Spec stmt: {}", spec_stmt.to_string());
+        // println!("Type stmt: {}", type_stmt.to_string());
         assert!(spec_stmt.to_string().contains("Flyer"));
         // The type should contain Pigeon
         let type_str = type_stmt.to_string();
@@ -4390,8 +4478,8 @@ exe hello {
 
         assert!(non_empty_stmts.len() >= 3);
         let duck_stmt = non_empty_stmts[2];
-        // Debug output
-        println!("Duck stmt: {}", duck_stmt.to_string());
+        // Debug output (disabled for LSP)
+        // println!("Duck stmt: {}", duck_stmt.to_string());
         let duck_str = duck_stmt.to_string();
         assert!(duck_str.contains("Duck") || duck_str.contains("duck"),
             "Type statement should contain 'Duck', got: {}", duck_str);

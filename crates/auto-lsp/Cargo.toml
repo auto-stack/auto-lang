@@ -1,0 +1,27 @@
+[package]
+name = "auto-lsp"
+version = "0.1.0"
+edition = "2021"
+description = "Language Server Protocol implementation for AutoLang"
+license = "MIT"
+
+[dependencies]
+tower-lsp = "0.20"
+lsp-types = "0.95"
+tokio = { version = "1", features = ["full"] }
+serde_json = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+miette = { workspace = true }
+auto-lang = { workspace = true }
+auto-val = { workspace = true }
+env_logger = "0.11"
+regex = "1.11"
+url = "2.5"
+
+[lib]
+name = "auto_lsp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "auto-lsp"
+path = "src/bin.rs"
