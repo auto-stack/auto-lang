@@ -933,7 +933,6 @@ impl Universe {
                 let id = node.id.clone();
                 let num_args = node.num_args;
                 let text = node.text.clone();
-                let args = &node.args;
 
                 // Create new node with same name and id
                 let mut dereferenced_node = auto_val::Node::new(name);
@@ -941,8 +940,21 @@ impl Universe {
                 dereferenced_node.num_args = num_args;
                 dereferenced_node.text = text;
 
-                // Copy args for backward compatibility
-                dereferenced_node.args = args.clone();
+                // Dereference all args (may contain ValueRef)
+                for arg in &node.args.args {
+                    let deref_arg = match arg {
+                        auto_val::Arg::Pos(v) => {
+                            auto_val::Arg::Pos(self.deref_val(v.clone()))
+                        }
+                        auto_val::Arg::Pair(k, v) => {
+                            auto_val::Arg::Pair(k.clone(), self.deref_val(v.clone()))
+                        }
+                        auto_val::Arg::Name(n) => {
+                            auto_val::Arg::Name(n.clone())
+                        }
+                    };
+                    dereferenced_node.args.args.push(deref_arg);
+                }
 
                 // Dereference all props (args are already in props)
                 for (key, prop_val) in node.props_iter() {

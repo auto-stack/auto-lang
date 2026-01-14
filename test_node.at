@@ -1,8 +1,36 @@
 let modules = ["moda", "modb", "modc"]
 
+if true {
+    bag("bagI") {
+        at: "I"
+    }
+
+    bag("bag2") {
+        at: "2"
+    }
+}
+
+let use_rtt = true
+
+lib("log") {
+    if use_rtt {
+        dir("rtt") {}
+    }
+}
+
+lib("osal") {
+    for d in modules {
+        dir (id: d) {
+            at: d
+        }
+    }
+    incs: ["inc"]
+    links: ["kernel", "common", "log"]
+}
+
 app hello {
     for m in modules {
-        dir (id: m) {
+        dir (id: m, s: m) {
             at: m
         }
     }

@@ -268,7 +268,6 @@ impl Node {
         let plural = format!("{}s", name);
         if self.has_prop(&plural) {
             let simple_kids = self.props.get_array_of(&plural);
-            println!("Simple kids:{:?}", simple_kids);
             for kid in simple_kids {
                 let mut n = Node::new(name.clone());
                 match kid {

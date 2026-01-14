@@ -62,8 +62,6 @@ impl Evaler {
     }
 
     pub fn eval(&mut self, code: &Code) -> AutoResult<Value> {
-        eprintln!("DEBUG eval: mode = {:?}", matches!(self.mode, EvalMode::CONFIG));
-        eprintln!("DEBUG eval: code.stmts.len() = {}", code.stmts.len());
         match self.mode {
             EvalMode::SCRIPT => {
                 let mut value = Value::Nil;
@@ -77,14 +75,6 @@ impl Evaler {
             EvalMode::CONFIG => {
                 if code.stmts.len() == 1 {
                     let first_val = self.eval_stmt(&code.stmts[0])?;
-                    // DEBUG
-                    eprintln!("DEBUG: first_val type = {:?}", matches!(first_val, Value::Array(_)));
-                    if let Value::Array(ref arr) = first_val {
-                        eprintln!("DEBUG: Array length = {}", arr.len());
-                        for (i, item) in arr.values.iter().enumerate() {
-                            eprintln!("DEBUG: arr[{}] = {} (is Node? = {})", i, item.repr(), matches!(item, Value::Node(_)));
-                        }
-                    }
                     // For Array, we need to process it to consolidate nodes
                     if matches!(first_val, Value::Array(_)) {
                         // Process the array using the same logic as multi-statement case
@@ -221,6 +211,32 @@ impl Evaler {
                         }
                         Value::Node(n) => {
                             node.add_kid(n);
+                        }
+                        Value::Block(arr) => {
+                            for item in arr.values.into_iter() {
+                                match item {
+                                    Value::Node(n) => {
+                                        node.add_kid(n);
+                                    }
+                                    Value::Pair(key, value) => {
+                                        node.set_prop(key, *value);
+                                    }
+                                    Value::Obj(o) => {
+                                        node.merge_obj(o);
+                                    }
+                                    Value::Instance(inst) => {
+                                        // Convert instance to node with type name as node name
+                                        let mut kid_node = auto_val::Node::new(&inst.ty.name());
+                                        // Add instance fields as node properties
+                                        for (k, v) in inst.fields.iter() {
+                                            kid_node.set_prop(k.clone(), v.clone());
+                                        }
+                                        node.add_kid(kid_node);
+                                    }
+                                    _ => {
+                                    }
+                                }
+                            }
                         }
                         Value::Array(arr) => {
                             eprintln!("DEBUG: Processing Array with {} items", arr.len());
@@ -426,7 +442,7 @@ impl Evaler {
         }
         let res = match self.mode {
             EvalMode::SCRIPT => Ok(res.last().unwrap_or(&Value::Nil).clone()),
-            EvalMode::CONFIG => Ok(Value::Array(Array::from_vec(self.collect_config_body(res)))),
+            EvalMode::CONFIG => Ok(Value::Block(Array::from_vec(self.collect_config_body(res)))),
             EvalMode::TEMPLATE => Ok(Value::Str(
                 res.iter()
                     .map(|v| match v {
@@ -2592,13 +2608,9 @@ impl Evaler {
                             props.set(key, *value);
                         }
                         Value::Node(node) => {
-                            eprintln!(
-                                "DEBUG pushing node to parent nodes: name={}, num_args={}",
-                                node.name, node.num_args
-                            );
                             nodes.push(node);
                         }
-                        Value::Array(arr) => {
+                        Value::Array(arr) | Value::Block(arr) => {
                             for item in arr.values.into_iter() {
                                 match item {
                                     Value::Pair(key, value) => {
