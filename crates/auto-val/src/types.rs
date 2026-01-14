@@ -77,6 +77,7 @@ impl TypeInfoStore {
             Value::Float(_) => self.lookup_method(Type::Float, name),
             Value::Bool(_) => self.lookup_method(Type::Bool, name),
             Value::Str(_) => self.lookup_method(Type::Str, name),
+            Value::OwnedStr(_) => self.lookup_method(Type::Str, name),
             _ => self.lookup_method(Type::Any, name),
         }
     }

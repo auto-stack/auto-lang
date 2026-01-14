@@ -11,6 +11,12 @@ pub use types::*;
 mod string;
 pub use string::*;
 
+mod owned_str;
+pub use owned_str::*;
+
+mod linear;
+pub use linear::*;
+
 mod shared;
 pub use shared::*;
 

@@ -2,6 +2,7 @@ use crate::array::*;
 use crate::meta::*;
 use crate::node::*;
 use crate::obj::*;
+use crate::owned_str::*;
 use crate::pair::*;
 use crate::string::*;
 use crate::types::Type;
@@ -36,6 +37,7 @@ pub enum ValueData {
     Char(char),
     Nil,
     Str(AutoStr),
+    OwnedStr(Str), // NEW: Owned string with move semantics (Phase 2)
 
     // Complex types with nested IDs (CHANGED from Value)
     Array(Vec<ValueID>),
@@ -95,6 +97,7 @@ pub enum Value {
     Bool(bool),
     Char(char),
     Str(AutoStr),
+    OwnedStr(Str), // NEW: Owned string with move semantics (Phase 2)
     Array(Array),
     Block(Array),
     Pair(ValueKey, Box<Value>),
@@ -133,6 +136,16 @@ impl Value {
 
     pub fn empty_str() -> Self {
         Value::Str(ASTR_EMPTY.clone())
+    }
+
+    /// Create an owned string value (with move semantics)
+    pub fn owned_str(text: &str) -> Self {
+        Value::OwnedStr(Str::from_str(text))
+    }
+
+    /// Create an empty owned string value
+    pub fn empty_owned_str() -> Self {
+        Value::OwnedStr(Str::from_str(""))
     }
 
     pub fn error(text: impl Into<AutoStr>) -> Self {
@@ -196,6 +209,7 @@ impl Value {
             Value::Char(v) => ValueData::Char(v),
             Value::Nil => ValueData::Nil,
             Value::Str(v) => ValueData::Str(v),
+            Value::OwnedStr(v) => ValueData::OwnedStr(v),
             Value::Array(v) => {
                 // Convert Array values to ValueIDs (simplified - allocates each)
                 // TODO: This is inefficient - needs batch allocation
@@ -236,6 +250,7 @@ impl Value {
             ValueData::Char(v) => Value::Char(v),
             ValueData::Nil => Value::Nil,
             ValueData::Str(v) => Value::Str(v),
+            ValueData::OwnedStr(v) => Value::OwnedStr(v),
             ValueData::Array(vids) => {
                 // Convert ValueIDs to ValueRefs for later resolution
                 let values: Vec<Value> = vids.iter().map(|vid| Value::ValueRef(*vid)).collect();
@@ -272,7 +287,7 @@ impl Value {
 
     pub fn get_type(&self) -> Type {
         match self {
-            Value::Str(_) => Type::Str,
+            Value::Str(_) | Value::OwnedStr(_) => Type::Str,
             Value::Int(_) => Type::Int,
             Value::Uint(_) => Type::Int,
             Value::Float(_) => Type::Float,
@@ -314,6 +329,7 @@ impl Display for Value {
         match self {
             Value::Char(value) => write!(f, "'{}'", value),
             Value::Str(value) => write!(f, "\"{}\"", value),
+            Value::OwnedStr(value) => write!(f, "\"{}\"", value.as_str()),
             Value::Int(value) => write!(f, "{}", value),
             Value::Uint(value) => write!(f, "{}u", value),
             Value::USize(value) => write!(f, "{}", value),
@@ -493,6 +509,7 @@ impl Value {
     pub fn v_upper(&self) -> Value {
         match self {
             Value::Str(s) => Value::Str(s.to_uppercase()),
+            Value::OwnedStr(s) => Value::OwnedStr(Str::from_str(s.as_str().to_uppercase().as_str())),
             _ => Value::Nil,
         }
     }
@@ -500,6 +517,7 @@ impl Value {
     pub fn v_lower(&self) -> Value {
         match self {
             Value::Str(s) => Value::Str(s.to_lowercase()),
+            Value::OwnedStr(s) => Value::OwnedStr(Str::from_str(s.as_str().to_lowercase().as_str())),
             _ => Value::Nil,
         }
     }
@@ -507,6 +525,7 @@ impl Value {
     pub fn v_len(&self) -> Value {
         match self {
             Value::Str(s) => Value::Int(s.len() as i32),
+            Value::OwnedStr(s) => Value::Int(s.len() as i32),
             _ => Value::Nil,
         }
     }
@@ -608,6 +627,7 @@ impl Value {
     pub fn to_astr(&self) -> AutoStr {
         match self {
             Value::Str(s) => s.clone(),
+            Value::OwnedStr(s) => s.as_str().into(),
             Value::Nil => "".into(),
             Value::Void => "".into(),
             _ => self.to_string().into(),
@@ -617,6 +637,7 @@ impl Value {
     pub fn to_astr_or(&self, default: &str) -> AutoStr {
         match self {
             Value::Str(s) => s.clone(),
+            Value::OwnedStr(s) => s.as_str().into(),
             Value::Nil => default.into(),
             _ => self.to_string().into(),
         }
@@ -634,6 +655,7 @@ impl Value {
         match self {
             Value::Node(node) => node.name.clone().into(),
             Value::Str(s) => s.clone().into(),
+            Value::OwnedStr(s) => s.as_str().into(),
             Value::Fn(f) => f.sig.name.clone().into(),
             _ => self.to_astr(),
         }

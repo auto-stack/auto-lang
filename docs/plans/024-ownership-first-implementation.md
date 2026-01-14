@@ -2,7 +2,7 @@
 
 ## Implementation Status: 🔄 IN PROGRESS - Phase 1
 
-**Priority:** FOUNDATIONAL - Must complete before String Types (Plan 025)
+**Priority:** FOUNDATIONAL - Must complete before str Types (Plan 025)
 **Dependencies:** None (this IS the foundation)
 **Started:** 2025-01-14
 **Current Phase:** Phase 1 - Move Semantics (Week 1-2 complete)
@@ -13,13 +13,50 @@ Implement AutoLang's ownership-based memory management system as described in [n
 
 **Timeline:** 4-5 months (hybrid approach)
 **Complexity:** Very High (requires borrow checker, control flow analysis)
-**Priority:** CRITICAL - Blocks Plan 025 (Strings) and Plan 027 (Stdlib)
+**Priority:** CRITICAL - Blocks Plan 025 (str type) and Plan 027 (Stdlib)
 
 ---
 
-## 1. Why Memory System Must Come First
+## 1.1 Naming Conventions
 
-### 1.1 Current State: No Memory Management
+**Type Naming Standards (aligned with existing codebase):**
+
+AutoLang uses lowercase for built-in primitive types and uppercase for user-defined types:
+
+| Category | Naming Pattern | Examples |
+|----------|---------------|----------|
+| **Built-in Primitive Types** | `lowercase` | `int`, `bool`, `char`, **`str`**, **`cstr`** |
+| **Complex Built-in Types** | `lowercase_with_suffix` | `str_slice`, `cstr` |
+| **User-Defined Types** | `PascalCase` | `type Point`, `type Mystr` |
+| **Generic/Slice Types** | `lowercase[T]` | `slice[str]`, `array[int]` |
+
+**str Type Hierarchy:**
+- **`str`** - Owned string with move semantics (like Rust's `str`, but lowercase)
+- **`cstr`** - C-style null-terminated string for FFI (`char*` in C)
+- **`str_slice`** - str slice/view (borrowed, requires Phase 3 borrow checker)
+- **`slice[T]`** - Generic slice type (future implementation)
+
+**Function Naming Pattern:**
+```auto
+// Constructor: `type_new()` or `type_from_*()`
+let s = str_new("hello", 5)
+let cs = cstr_from_str(s)
+
+// Methods: `type_action()`
+str_len(s)
+str_append(mut s, other)
+```
+
+**Rationale:**
+1. **Consistency** - Aligns with existing `ast/types.rs` and design docs
+2. **Clarity** - Built-in types (`str`) are distinct from user types (`type str`)
+3. **Simplicity** - Lowercase matches AutoLang's primitive style (`int`, `bool`, `char`)
+
+---
+
+## 1.2 Why Memory System Must Come First
+
+### 1.2 Current State: No Memory Management
 
 **Current Reality:**
 - ✅ NO ownership system exists
@@ -46,13 +83,13 @@ fn eval_store(&mut self, store: &Store) -> Value {
 **Plan 025's Approach (Manual Lifetime Tracking):**
 ```c
 // Manual lifetime tracking via global registry
-StringSlice String_slice(String* s) {
-    return (StringSlice){
+str_slice str_slice(str* s) {
+    return (str_slice){
         ._lifetime = s->_owner_id  // Manual tracking
     };
 }
 
-bool StringSlice_is_valid(StringSlice* sl) {
+bool str_slice_is_valid(str_slice* sl) {
     return owner_is_alive(sl->_lifetime);  // Runtime check
 }
 ```
@@ -60,7 +97,7 @@ bool StringSlice_is_valid(StringSlice* sl) {
 **Ownership System Approach (Compile-Time Safety):**
 ```rust
 // Compiler tracks lifetimes with NO runtime cost
-let s = String_new("hello", 5);
+let s = str_new("hello", 5);
 let slice = take s;  // Compiler: slice borrows from s
 // Compile-time guarantee: slice lives shorter than s
 ```
@@ -85,7 +122,7 @@ let slice = take s;  // Compiler: slice borrows from s
 - ✅ No rework
 - ❌ Longer to working code
 
-**Option B: Strings First (2.5 months)**
+**Option B: str Type First (2.5 months)**
 - ✅ Faster results
 - ❌ 60-70% throwaway work
 - ❌ Creates technical debt
@@ -107,12 +144,12 @@ let slice = take s;  // Compiler: slice borrows from s
 **What It Provides:**
 - Variables own data (no implicit cloning)
 - Automatic move on "last use"
-- `String` can be owned and moved
+- `str` can be owned and moved
 - NO borrowing yet (that's Phase 3)
 
 **Key Features:**
 ```auto
-let s = String_new("hello", 5)  // Owns string
+let s = str_new("hello", 5)  // Owns string
 let t = s                        // Move: s no longer valid
 use(t)                            // Last use: automatic cleanup
 ```
@@ -126,54 +163,54 @@ use(t)                            // Last use: automatic cleanup
 **Success Criteria:**
 - Variables move on last use
 - No memory leaks (valgrind clean)
-- `String` type works with moves
+- `str` type works with moves
 - 50+ tests passing
 
 ---
 
-### Phase 2: Owned Strings (6 weeks)
+### Phase 2: Owned str Type (6 weeks)
 
-**Objective:** Implement owned String type using move semantics
+**Objective:** Implement owned str type using move semantics
 
 **What It Provides:**
-- `String` type with move semantics
-- `CString` for C FFI
+- `str` type with move semantics
+- `cstr` for C FFI
 - UTF-8 support
-- NO borrowing (no `StringSlice` yet)
+- NO borrowing (no `str_slice` yet)
 
 **Key Features:**
 ```auto
-let mut s = String_new("hello", 5)
-String_push(mut s, ' ')
-String_append(mut s, "world", 5)  // Takes ownership
+let mut s = str_new("hello", 5)
+str_push(mut s, ' ')
+str_append(mut s, "world", 5)  // Takes ownership
 
-let cs = CString_from_string(s)   // Move: s consumed
-c_printf(CString_data(cs))
+let cs = cstr_from_str(s)   // Move: s consumed
+c_printf(cstr_data(cs))
 ```
 
-**String Type Design:**
+**str Type Design:**
 ```auto
-extern type String {
+extern type str {
     data *char     // Heap-allocated UTF-8
     len uint       // Byte length
     cap uint       // Capacity
 }
 
 // All operations consume or move
-fn String_new(utf8 str, len uint) Result<String, str>
-fn String_append(mut s String, other String) String  // Takes ownership
-fn String_push(mut s String, c char)
-fn String_drop(s String)  // Automatic via linear type
+fn str_new(utf8 str, len uint) Result<str, str>
+fn str_append(mut s str, other str) str  // Takes ownership
+fn str_push(mut s str, c char)
+fn str_drop(s str)  // Automatic via linear type
 ```
 
 **Deliverables:**
-- Owned `String` type (move semantics only)
-- `CString` for C FFI
+- Owned `str` type (move semantics only)
+- `cstr` for C FFI
 - UTF-8 validation
 - 100+ tests passing
 
 **Limitations:**
-- No `StringSlice` (borrows not available)
+- No `str_slice` (borrows not available)
 - No substring views (must copy)
 - No `take`/`edit` (that's Phase 3)
 
@@ -186,15 +223,15 @@ fn String_drop(s String)  // Automatic via linear type
 **What It Provides:**
 - `take` (immutable borrow)
 - `edit` (mutable borrow)
-- `StringSlice` with compile-time lifetimes
+- `str_slice` with compile-time lifetimes
 - `hold` path binding
 - Zero-cost safety
 
 **Key Features:**
 ```auto
-let s = String_new("hello", 5)
+let s = str_new("hello", 5)
 let slice = take s              // Immutable borrow
-let len = StringSlice_len(slice)
+let len = str_slice_len(slice)
 
 hold path s.data as bytes {
     edit bytes[0] = 'H'        // Mutable borrow via path
@@ -202,23 +239,23 @@ hold path s.data as bytes {
 // s still valid here (borrows ended)
 ```
 
-**StringSlice Design:**
+**str_slice Design:**
 ```auto
-extern type StringSlice {
+extern type str_slice {
     data *char     // Borrowed data
     len uint
     // NO _lifetime field - compiler tracks this!
 }
 
-fn String_slice(s String) StringSlice  // Compiler: s borrowed
-fn StringSlice_len(sl StringSlice) uint
+fn str_slice(s str) str_slice  // Compiler: s borrowed
+fn str_slice_len(sl str_slice) uint
 // Compiler guarantees sl lives shorter than source
 ```
 
 **Deliverables:**
 - Full borrow checker
 - `take`/`edit` keywords
-- `StringSlice` with compile-time lifetimes
+- `str_slice` with compile-time lifetimes
 - `hold` path binding
 - 200+ tests passing
 - Zero runtime overhead for borrows
@@ -231,20 +268,25 @@ fn StringSlice_len(sl StringSlice) uint
 
 **🔄 Current Progress (2025-01-14):**
 
-✅ **Completed:**
+✅ **Completed (Phase 1):**
 - Linear type system foundation (Linear trait, MoveState, MoveTracker)
 - Control flow analysis skeleton (LastUseAnalyzer)
 - AST Type enum extended with Linear variant
-- 5 core tests passing (linear types, move tracker, CFA)
+- Scope variable management (has_val, remove_val, moved_vars tracking)
+- Universe variable management (has_local, remove_local, move state methods)
+- Variable move state tracking in Scope (moved_vars HashSet)
+- Variable move state tracking in Universe (mark_moved, is_moved, clear_moved)
+- Use-after-move detection in lookup_val_recurse()
+- eval_store() enhanced with move semantics (clears moved status on reassignment)
+- exit_scope() scope exit (value cleanup deferred to Phase 3 due to ValueRef design)
+- 8 ownership tests passing (5 core + 3 integration)
+- All 399 unit tests + 42 doc tests passing
 
-🔄 **In Progress:**
-- Integrating move semantics into evaluator
-- Variable binding and move state tracking
-
-⏸️ **Pending:**
-- Drop glue and automatic cleanup
+⏸️ **Deferred to Phase 3:**
+- Value cleanup in Universe.values (requires borrow checker to track ValueRef lifetimes)
+- Drop glue and automatic cleanup for linear types
 - Stack unwinding for early returns
-- Comprehensive test suite (50+ tests)
+- Comprehensive test suite (50+ tests, 8/50 complete)
 
 ---
 
@@ -388,18 +430,18 @@ impl Universe {
 // tests/ownership/move_semantics.at
 
 fn test_move_basic() {
-    let s = String_new("hello", 5).unwrap()
+    let s = str_new("hello", 5).unwrap()
     let t = s  // Move: s no longer valid
-    assert(String_len(t) == 5)
+    assert(str_len(t) == 5)
 }
 
 fn test_last_use_detection() {
-    let s = String_new("hello", 5).unwrap()
+    let s = str_new("hello", 5).unwrap()
     consume(s)  // Last use: automatically dropped
 }
 
-fn consume(s String) {
-    assert(String_len(s) == 5)
+fn consume(s str) {
+    assert(str_len(s) == 5)
 }
 ```
 
@@ -412,16 +454,16 @@ fn consume(s String) {
 
 ---
 
-### Phase 2: Owned Strings (6 weeks)
+### Phase 2: Owned str Type (6 weeks)
 
-#### Week 1-2: Core String Type
+#### Week 1-2: Core str Type
 
 **Files to Create:**
 - `stdlib/string/string.h` - C header
 - `stdlib/string/string.c` - C implementation
 - `stdlib/string/string.at` - AutoLang interface
 
-**String Implementation:**
+**str Implementation:**
 
 ```c
 // stdlib/string/string.h
@@ -436,26 +478,26 @@ typedef struct {
     char* data;      // UTF-8 encoded bytes
     size_t len;      // Byte length (not char count)
     size_t cap;      // Capacity (for growth)
-} String;
+} str;
 
 // Lifecycle
-String* String_new(const char* utf8, size_t len);
-void String_drop(String* s);  // Called automatically by linear type system
+str* str_new(const char* utf8, size_t len);
+void str_drop(str* s);  // Called automatically by linear type system
 
 // Accessors
-const char* String_data(String* s);
-size_t String_len(String* s);
-size_t String_char_len(String* s);  // UTF-8 char count
+const char* str_data(str* s);
+size_t str_len(str* s);
+size_t str_char_len(str* s);  // UTF-8 char count
 
 // Modification (all take &self)
-String* String_append(String* s, const char* utf8, size_t len);
-String* String_push(String* s, char c);
+str* str_append(str* s, const char* utf8, size_t len);
+str* str_push(str* s, char c);
 
 // Conversion
-char* String_to_cstr(String* s);  // Returns null-terminated copy
+char* str_to_cstr(str* s);  // Returns null-terminated copy
 
 // UTF-8 validation
-bool String_is_valid_utf8(String* s);
+bool str_is_valid_utf8(str* s);
 
 #endif
 ```
@@ -467,26 +509,26 @@ bool String_is_valid_utf8(String* s);
 # C
 #include "string.h"
 
-extern type String {
+extern type str {
     data *char
     len uint
     cap uint
 }
 
 // Constructors
-spec extern String_new(utf8 str, len uint) Result<String, str>
+spec extern str_new(utf8 str, len uint) Result<str, str>
 
 // Accessors (no &self - all take ownership)
-spec extern String_data(s String) *char
-spec extern String_len(s String) uint
-spec extern String_char_len(s String) uint
+spec extern str_data(s str) *char
+spec extern str_len(s str) uint
+spec extern str_char_len(s str) uint
 
 // Modification (take mut self)
-spec extern String_append(mut s String, utf8 str, len uint) String
-spec extern String_push(mut s String, c char) String
+spec extern str_append(mut s str, utf8 str, len uint) str
+spec extern str_push(mut s str, c char) str
 
 // Conversion
-spec extern String_to_cstr(s String) *char
+spec extern str_to_cstr(s str) *char
 ```
 
 **Usage Examples:**
@@ -495,25 +537,25 @@ spec extern String_to_cstr(s String) *char
 // tests/string/test_string.at
 
 fn test_string_creation() {
-    let s = String_new("hello", 5).unwrap()
-    assert(String_len(s) == 5)
+    let s = str_new("hello", 5).unwrap()
+    assert(str_len(s) == 5)
 }
 
 fn test_string_append() {
-    let mut s = String_new("hello", 5).unwrap()
-    s = String_append(mut s, " world", 6)  // Takes ownership
-    assert(String_len(s) == 11)
+    let mut s = str_new("hello", 5).unwrap()
+    s = str_append(mut s, " world", 6)  // Takes ownership
+    assert(str_len(s) == 11)
 }
 
 fn test_string_move() {
-    let s = String_new("hello", 5).unwrap()
+    let s = str_new("hello", 5).unwrap()
     let t = s  // Move
-    assert(String_len(t) == 5)
+    assert(str_len(t) == 5)
     // s no longer valid here
 }
 ```
 
-#### Week 3-4: String Operations
+#### Week 3-4: str Operations
 
 **Additional Functions:**
 
@@ -521,22 +563,22 @@ fn test_string_move() {
 // string.h
 
 // Comparison
-bool String_equals(String* a, String* b);
+bool str_equals(str* a, str* b);
 
-// Substring (returns new String - must copy)
-String* String_substring(String* s, size_t start, size_t end);
+// Substring (returns new str - must copy)
+str* str_substring(str* s, size_t start, size_t end);
 
 // Splitting
-String** String_split(String* s, char delimiter, size_t* count);
+str** str_split(str* s, char delimiter, size_t* count);
 
 // UTF-8 operations
-size_t String_char_count(String* s);  // Count Unicode codepoints
-char* String_get_char(String* s, size_t byte_idx);
+size_t str_char_count(str* s);  // Count Unicode codepoints
+char* str_get_char(str* s, size_t byte_idx);
 ```
 
 #### Week 5-6: C Integration
 
-**CString Type:**
+**cstr Type:**
 
 ```c
 // stdlib/string/cstring.h
@@ -544,17 +586,17 @@ char* String_get_char(String* s, size_t byte_idx);
 typedef struct {
     char* data;      // Null-terminated
     size_t len;
-} CString;
+} cstr;
 
-CString* CString_new(const char* data, size_t len);
-void CString_drop(CString* cs);
+cstr* cstr_new(const char* data, size_t len);
+void cstr_drop(cstr* cs);
 
-const char* CString_data(CString* cs);  // Guaranteed null-terminated
-size_t CString_len(CString* cs);
+const char* cstr_data(cstr* cs);  // Guaranteed null-terminated
+size_t cstr_len(cstr* cs);
 
 // Conversions
-CString* CString_from_string(String* s);
-String* CString_to_string(CString* cs);
+cstr* cstr_from_str(str* s);
+str* cstr_to_str(cstr* cs);
 ```
 
 **Usage:**
@@ -565,16 +607,16 @@ String* CString_to_string(CString* cs);
 extern fn.c printf(fmt *char, ...)
 
 fn test_c_ffi() {
-    let s = String_new("Hello, world!\n", 14).unwrap()
-    let cs = CString_from_string(s)
-    printf(CString_data(cs))
+    let s = str_new("Hello, world!\n", 14).unwrap()
+    let cs = cstr_from_str(s)
+    printf(cstr_data(cs))
     // cs is dropped here
 }
 ```
 
 **Success Criteria:**
-- [ ] `String` type functional with move semantics
-- [ ] `CString` for C FFI working
+- [ ] `str` type functional with move semantics
+- [ ] `cstr` for C FFI working
 - [ ] UTF-8 validation
 - [ ] 100+ tests passing
 - [ ] Zero memory leaks
@@ -659,7 +701,7 @@ impl BorrowChecker {
         }
     }
 
-    pub fn check_borrow(&mut self, expr: &Expr, kind: BorrowKind) -> Result<(), String> {
+    pub fn check_borrow(&mut self, expr: &Expr, kind: BorrowKind) -> Result<(), str> {
         // Check if expr can be borrowed
         // Validate against existing borrows
         Ok(())
@@ -710,46 +752,46 @@ fn parse_expr(&mut self) -> Result<Expr, Error> {
 // tests/borrow/test_borrow.at
 
 fn test_take_borrow() {
-    let s = String_new("hello", 5).unwrap()
+    let s = str_new("hello", 5).unwrap()
     let slice = take s  // Immutable borrow
-    assert(String_len(slice) == 5)
+    assert(str_len(slice) == 5)
     // s still valid here
 }
 
 fn test_edit_borrow() {
-    let mut s = String_new("hello", 5).unwrap()
+    let mut s = str_new("hello", 5).unwrap()
     {
         let view = edit s  // Mutable borrow
-        String_push(mut view, 'X')  // Modify through borrow
+        str_push(mut view, 'X')  // Modify through borrow
     }
     // s now has 'X'
 }
 ```
 
-#### Week 4-5: String Slices
+#### Week 4-5: str Slices
 
-**StringSlice Implementation:**
+**str_slice Implementation:**
 
 ```auto
 // stdlib/string/slice.at
 
-extern type StringSlice {
+extern type str_slice {
     data *char     // Borrowed data
     len uint
     // NO _lifetime field - compiler tracks this!
 }
 
-spec extern String_slice(s String) StringSlice  // Compiler tracks lifetime
-spec extern StringSlice_len(sl StringSlice) uint
-spec extern StringSlice_subslice(sl StringSlice, start uint, end uint) Result<StringSlice, str>
+spec extern str_slice(s str) str_slice  // Compiler tracks lifetime
+spec extern str_slice_len(sl str_slice) uint
+spec extern str_slice_subslice(sl str_slice, start uint, end uint) Result<str_slice, str>
 ```
 
 **Compiler Integration:**
 
 ```rust
-// trans/c.rs - StringSlice transpilation
+// trans/c.rs - str_slice transpilation
 
-fn transpile_expr(&mut self, expr: &Expr) -> String {
+fn transpile_expr(&mut self, expr: &Expr) -> str {
     match expr {
         Expr::Take(inner) => {
             // Generate borrowed reference
@@ -767,17 +809,17 @@ fn transpile_expr(&mut self, expr: &Expr) -> String {
 // tests/slice/test_slice.at
 
 fn test_string_slice() {
-    let s = String_new("hello world", 11).unwrap()
-    let slice = String_slice(s)
-    assert(StringSlice_len(slice) == 11)
+    let s = str_new("hello world", 11).unwrap()
+    let slice = str_slice(s)
+    assert(str_slice_len(slice) == 11)
     // s still valid
 }
 
 fn test_subslice() {
-    let s = String_new("hello world", 11).unwrap()
-    let slice = String_slice(s)
-    let sub = StringSlice_subslice(slice, 0, 5).unwrap()
-    assert(StringSlice_len(sub) == 5)
+    let s = str_new("hello world", 11).unwrap()
+    let slice = str_slice(s)
+    let sub = str_slice_subslice(slice, 0, 5).unwrap()
+    assert(str_slice_len(sub) == 5)
 }
 ```
 
@@ -843,10 +885,10 @@ fn parse_stmt(&mut self) -> Result<Stmt, Error> {
 ```rust
 // trans/c.rs - Path binding
 
-fn transpile_stmt(&mut self, stmt: &Stmt, indent: usize) -> String {
+fn transpile_stmt(&mut self, stmt: &Stmt, indent: usize) -> str {
     match stmt {
         Stmt::Hold { path, binding, body } => {
-            let mut output = String::new();
+            let mut output = str::new();
 
             // Generate temporary variables for path
             let path_code = self.transpile_path(path);
@@ -889,7 +931,7 @@ fn test_hold_path() {
 **Success Criteria:**
 - [ ] Full borrow checker working
 - [ ] `take`/`edit` keywords functional
-- [ ] `StringSlice` with compile-time lifetimes
+- [ ] `str_slice` with compile-time lifetimes
 - [ ] `hold` path binding operational
 - [ ] 200+ tests passing
 - [ ] Zero runtime overhead for borrows
@@ -906,10 +948,10 @@ fn test_hold_path() {
 - [ ] Stack unwinding for early returns
 - [ ] 50+ tests passing (5/50 complete)
 
-### Phase 2: Owned Strings (6 weeks)
-- [ ] `String` type functional
+### Phase 2: Owned str Type (6 weeks)
+- [ ] `str` type functional
 - [ ] Move semantics working
-- [ ] `CString` for C FFI
+- [ ] `cstr` for C FFI
 - [ ] UTF-8 validation
 - [ ] 100+ tests passing
 - [ ] Zero memory leaks
@@ -917,7 +959,7 @@ fn test_hold_path() {
 ### Phase 3: Borrow Checker (8 weeks)
 - [ ] Borrow checker implemented
 - [ ] `take`/`edit` keywords working
-- [ ] `StringSlice` with compile-time lifetimes
+- [ ] `str_slice` with compile-time lifetimes
 - [ ] `hold` path binding
 - [ ] Zero runtime overhead
 - [ ] 200+ tests passing
@@ -925,7 +967,7 @@ fn test_hold_path() {
 ### Overall
 - [ ] Matches [new_memory.md](../language/design/new_memory.md) vision
 - [ ] Zero-cost safety achieved
-- [ ] Ready for Plan 025 (Strings) to use this system
+- [ ] Ready for Plan 025 (str type) to use this system
 - [ ] Foundation for collections, async, etc.
 
 ---
@@ -971,14 +1013,14 @@ fn test_hold_path() {
 | Phase | Duration | Complexity | Deliverable |
 |-------|----------|------------|-------------|
 | 1. Move Semantics | 6 weeks | Very High | Linear types, last use detection |
-| 2. Owned Strings | 6 weeks | High | `String` with moves, `CString` |
-| 3. Borrow Checker | 8 weeks | Very High | `take`/`edit`, `StringSlice`, `hold` |
+| 2. Owned str Type | 6 weeks | High | `str` with moves, `cstr` |
+| 3. Borrow Checker | 8 weeks | Very High | `take`/`edit`, `str_slice`, `hold` |
 
 **Total: 20 weeks (5 months)**
 
 **Critical Path:** Phase 1 → 2 → 3 (sequential)
 
-**Time to Usable Strings:** End of Phase 2 (3 months)
+**Time to Usable str:** End of Phase 2 (3 months)
 
 ---
 
@@ -986,10 +1028,10 @@ fn test_hold_path() {
 
 ### Comparison with Alternatives
 
-| Approach | Time to Strings | Total Time | Rework | Safety |
+| Approach | Time to str | Total Time | Rework | Safety |
 |----------|-----------------|------------|--------|--------|
 | A. Memory First (Full) | 6 months | 6 months | None | Compile-time |
-| B. Strings First (Plan 025) | 2.5 months | 4+ months | 60-70% | Runtime |
+| B. str Type First (Plan 025) | 2.5 months | 4+ months | 60-70% | Runtime |
 | **C. Hybrid** | **3 months** | **5 months** | **<5%** | **Compile-time** |
 
 ### Key Benefits
@@ -1018,14 +1060,14 @@ fn test_hold_path() {
    - Update evaluator
 
 3. **Prepare for Phase 2**
-   - Design owned `String` type
+   - Design owned `str` type
    - Plan C FFI integration
    - Define UTF-8 validation strategy
 
 ### First Quarter Goals
 
 - Complete Phase 1 (Move Semantics)
-- Start Phase 2 (Owned Strings)
+- Start Phase 2 (Owned str type)
 - Have working move-only strings
 
 ### First Year Goals
@@ -1040,7 +1082,7 @@ fn test_hold_path() {
 ## 9. Related Documentation
 
 - **[new_memory.md](../language/design/new_memory.md)** - Memory system design vision
-- **Plan 025**: String Type Redesign (BLOCKED - waits for this plan)
+- **Plan 025**: str Type Redesign (BLOCKED - waits for this plan)
 - **Plan 027**: Stdlib C Foundation (BLOCKED - waits for Plan 025)
 - **Plan 033**: Self-Hosting Compiler (BLOCKED - waits for Plans 025 & 027)
 
@@ -1057,4 +1099,4 @@ This plan provides the foundation for AutoLang's core innovation: ownership-base
 4. **Compile-time safety** (no runtime overhead)
 5. **Alignment with vision** (matches `new_memory.md`)
 
-This is the critical foundation that Plan 025 (Strings) and all subsequent plans depend on. Once complete, AutoLang will have Rust-level memory safety with GC-level ergonomics.
+This is the critical foundation that Plan 025 (str type) and all subsequent plans depend on. Once complete, AutoLang will have Rust-level memory safety with GC-level ergonomics.

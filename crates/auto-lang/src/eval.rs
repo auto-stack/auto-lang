@@ -771,6 +771,22 @@ impl Evaler {
         if matches!(store.ty, ast::Type::Byte) && matches!(value, Value::Int(_)) {
             value = Value::Byte(value.as_int() as u8);
         }
+
+        // Move semantics: Mark the right-hand side as moved if it's a variable reference
+        // This enforces ownership transfer: `let y = x` moves x to y
+        // TODO: Only move linear types when they are implemented (Phase 2)
+        self.mark_expr_as_moved(&store.expr);
+
+        // Move semantics: Check if this is a reassignment
+        // If so, the old value is dropped here (its last use)
+        if self.universe.borrow().has_local(&store.name) {
+            // Remove old value - this will trigger cleanup if implemented
+            // TODO: In Phase 2, we'll call drop_linear() here for linear types
+            self.universe.borrow_mut().remove_local(&store.name);
+            // Clear moved status since we're reassigning
+            self.universe.borrow_mut().clear_moved(&store.name);
+        }
+
         self.universe.borrow_mut().define(
             store.name.as_str(),
             Rc::new(scope::Meta::Store(store.clone())),
@@ -1457,6 +1473,43 @@ impl Evaler {
         }
     }
 
+    /// Mark a variable as moved if the expression is a variable reference
+    /// This is used to enforce move semantics when values are passed to functions
+    fn mark_expr_as_moved(&mut self, expr: &Expr) {
+        match expr {
+            // Direct variable reference: `x`
+            Expr::Ident(name) => {
+                self.universe.borrow_mut().mark_moved(name.as_str());
+            }
+            // Variable reference through `ref`: `ref x`
+            Expr::Ref(name) => {
+                self.universe.borrow_mut().mark_moved(name.as_str());
+            }
+            // For expressions, we need to check if the base is a variable
+            // e.g., `x.field` or `x[index` - x is moved
+            Expr::Bina(left, op, _right) => {
+                if *op == Op::Dot || *op == Op::LSquare {
+                    // Mark the base object as moved
+                    self.mark_expr_as_moved(left);
+                }
+            }
+            Expr::Index(base, _index) => {
+                // Mark the array as moved
+                self.mark_expr_as_moved(base);
+            }
+            // Nested expressions: recurse to find variable references
+            Expr::Unary(_op, inner_expr) => {
+                self.mark_expr_as_moved(inner_expr);
+            }
+            Expr::Bina(left, _op, right) => {
+                self.mark_expr_as_moved(left);
+                self.mark_expr_as_moved(right);
+            }
+            // Other expressions don't involve variable moves
+            _ => {}
+        }
+    }
+
     fn eval_array(&mut self, elems: &Vec<Expr>) -> Value {
         let mut values = Array::new();
         for elem in elems.iter() {
@@ -1795,6 +1848,19 @@ impl Evaler {
                     // println!("wrong method?: {}", s); // LSP: disabled
                 }
             }
+            Value::OwnedStr(s) => {
+                // OwnedStr supports the same methods as Str
+                let method_fn = self
+                    .universe
+                    .borrow()
+                    .types
+                    .lookup_method(Type::Str, name.clone());
+                if let Some(method_fn) = method_fn {
+                    return Ok(method_fn(&target));
+                } else {
+                    println!("wrong method?: {}", s.as_str());
+                }
+            }
             Value::Instance(inst) => {
                 // First, try to find the method directly in the type
                 let meth = self.universe.borrow().lookup_meta(&method.name);
@@ -1805,11 +1871,9 @@ impl Evaler {
                             // println!("Current Scope: {}", self.universe.borrow().cur_spot); // LSP: disabled
                             // self.enter_scope();
                             self.universe.borrow_mut().set_local_obj(&inst.fields);
-                            let mut args = args.clone();
-                            let self_ref = Arg::Pair("self".into(), Expr::Ident("x".into()));
-                            args.args.insert(0, self_ref);
-                            // args.args.push(Arg::Pair("self".into(), inst));
-                            let res = self.eval_fn_call(fn_decl, &args)?;
+                            // Fields are now available as local variables (x, y, etc.)
+                            // No need to add 'self' parameter - methods access fields directly
+                            let res = self.eval_fn_call(fn_decl, args)?;
                             // self.exit_scope();
                             return Ok(res);
                         }
@@ -1981,13 +2045,32 @@ impl Evaler {
 
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> AutoResult<Value> {
         // TODO: 需不需要一个单独的 enter_call()
-        // println!("scope before enter: {}", self.universe.borrow().cur_spot); // LSP: disabled
+        println!("scope before enter: {}", self.universe.borrow().cur_spot);
+
+        // IMPORTANT: Mark arguments as moved in caller's scope BEFORE entering function scope
+        // This ensures move semantics are tracked in the correct scope
+        for arg in args.args.iter() {
+            match arg {
+                Arg::Pair(_name, expr) => {
+                    self.mark_expr_as_moved(expr);
+                }
+                Arg::Pos(expr) => {
+                    self.mark_expr_as_moved(expr);
+                }
+                Arg::Name(_name) => {
+                    // Name-only args don't move anything
+                }
+            }
+        }
+
         self.universe.borrow_mut().enter_fn(&fn_decl.name);
         // println!("scope after enter: {}", self.universe.borrow().cur_spot); // LSP: disabled
         // println!(
         //     "enter call scope {}",
         //     self.universe.borrow().current_scope().sid
         // );
+
+        // Now evaluate and set arguments as local variables in function scope
         let mut arg_vals = Vec::new();
         for (i, arg) in args.args.iter().enumerate() {
             arg_vals.push(self.eval_fn_arg(arg, i, &fn_decl.params));
@@ -2051,6 +2134,13 @@ impl Evaler {
                 }
                 Value::Char(s.chars().nth(idx).unwrap())
             }
+            Value::OwnedStr(s) => {
+                let idx = idx as usize;
+                if idx >= s.len() {
+                    return Value::error(format!("Index out of bounds {}", idx));
+                }
+                Value::Char(s.as_str().chars().nth(idx).unwrap())
+            }
             _ => Value::error(format!("Invalid array {}", array_value)),
         }
     }
@@ -2067,7 +2157,7 @@ impl Evaler {
             Expr::Double(value, _) => Value::Double(*value),
             // Why not move here?
             Expr::Char(value) => Value::Char(*value),
-            Expr::Str(value) => Value::Str(value.clone().into()),
+            Expr::Str(value) => Value::OwnedStr(auto_val::Str::from_str(value.as_str())),
             Expr::CStr(value) => Value::Str(value.clone().into()),
             Expr::Bool(value) => Value::Bool(*value),
             Expr::Ref(target) => {
@@ -2661,8 +2751,14 @@ impl Evaler {
             if let Some(Expr::Ident(ident)) = first_arg {
                 let v = self.eval_ident(&ident);
                 let v = self.universe.borrow().deref_val(v);
-                if let Value::Str(s) = v {
-                    nd.id = s;
+                match v {
+                    Value::Str(s) => {
+                        nd.id = s;
+                    }
+                    Value::OwnedStr(s) => {
+                        nd.id = s.as_str().into();
+                    }
+                    _ => {}
                 }
             }
         }

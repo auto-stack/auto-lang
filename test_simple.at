@@ -1,9 +1,0 @@
-type Point {
-    x int
-    y int
-}
-
-fn main() {
-    let p = Point { x: "bad", y: 20 }
-    print(p.x)
-}

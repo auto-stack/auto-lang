@@ -229,6 +229,27 @@ impl Universe {
     }
 
     pub fn exit_scope(&mut self) {
+        // Automatic cleanup: Drop all local variables in current scope
+        // Get the current scope before we exit it
+        let current_sid = self.cur_spot.clone();
+
+        // Collect all ValueIDs from the current scope
+        let scope_vals_to_drop = if let Some(scope) = self.scopes.get(&current_sid) {
+            scope.vals.values().copied().collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        // NOTE: We cannot safely delete values here because ValueRefs don't
+        // increase Rc reference counts. A ValueRef in a return value would become
+        // a dangling reference if we delete the value here.
+        //
+        // Current strategy:
+        // - Scope.vals is cleared when the scope is dropped (normal Rust behavior)
+        // - Values in Universe.values persist until explicitly removed via remove_local()
+        // - In Phase 2, we'll implement proper reference counting or epoch-based reclamation
+
+        // Now move to parent scope
         let parent_sid = self.cur_spot.parent();
         if let Some(parent) = parent_sid {
             self.cur_spot = parent;
@@ -269,6 +290,36 @@ impl Universe {
         // Allocate value with proper nested allocation
         let vid = self.alloc_value_from_value(value);
         self.current_scope_mut().set_val(name, vid);
+    }
+
+    /// Check if a local variable exists in the current scope
+    pub fn has_local(&self, name: &str) -> bool {
+        self.current_scope().has_val(name)
+    }
+
+    /// Remove a local variable from the current scope
+    /// Returns the ValueID if found, None otherwise
+    ///
+    /// NOTE: This only removes the variable name from the scope, not the value data.
+    /// The value data in Universe.values persists because ValueRefs don't increase
+    /// Rc reference counts, and deleting values here could cause dangling references.
+    pub fn remove_local(&mut self, name: &str) -> Option<ValueID> {
+        self.current_scope_mut().remove_val(name)
+    }
+
+    /// Mark a variable as moved (for ownership semantics)
+    pub fn mark_moved(&mut self, name: &str) {
+        self.current_scope_mut().mark_moved(name);
+    }
+
+    /// Check if a variable has been moved
+    pub fn is_moved(&self, name: &str) -> bool {
+        self.current_scope().is_moved(name)
+    }
+
+    /// Clear moved status (used when variable is reassigned)
+    pub fn clear_moved(&mut self, name: &str) {
+        self.current_scope_mut().clear_moved(name);
     }
 
     pub fn set_local_obj(&mut self, obj: &Obj) {
@@ -451,6 +502,11 @@ impl Universe {
     fn lookup_val_recurse(&self, name: &str, sid: &Sid) -> Option<Value> {
         // First try to get ValueID from scopes
         if let Some(scope) = self.scopes.get(sid) {
+            // Check if variable has been moved (use-after-move prevention)
+            if scope.is_moved(name) {
+                // Return error value indicating use-after-move
+                return Some(Value::Error(format!("Use after move: variable '{}' has been moved", name).into()));
+            }
             if let Some(vid) = scope.get_val_id(name) {
                 // Resolve ValueID to Value (using ValueRef wrapper)
                 return Some(Value::ValueRef(vid));

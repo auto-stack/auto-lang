@@ -12,6 +12,10 @@ use std::fmt;
 /// and must be explicitly moved when transferred.
 pub trait Linear: Sized {
     /// Cleanup function called when the value is dropped
+    ///
+    /// This is called automatically when a linear value goes out of scope
+    /// or is explicitly moved. Implementations should free resources
+    /// and mark the value as invalid.
     fn drop_linear(&mut self);
 }
 

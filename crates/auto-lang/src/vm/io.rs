@@ -27,6 +27,28 @@ pub fn open(uni: Shared<Universe>, path: Value) -> Value {
                 Err(e) => Value::Error(format!("File {} not found: {}", p, e).into()),
             }
         }
+        Value::OwnedStr(p) => {
+            let f = File::open(p.as_str());
+            match f {
+                Ok(file) => {
+                    let ty = uni.borrow().lookup_type("File");
+                    match &ty {
+                        ast::Type::User(_) => {
+                            let b = Box::new(file);
+                            let id = uni.borrow_mut().add_vmref(b);
+                            let mut fields = Obj::new();
+                            fields.set("id", Value::USize(id));
+                            Value::Instance(Instance {
+                                ty: auto_val::Type::from(ty),
+                                fields,
+                            })
+                        }
+                        _ => Value::Error(format!("Type File not found!").into()),
+                    }
+                }
+                Err(e) => Value::Error(format!("File {} not found: {}", p.as_str(), e).into()),
+            }
+        }
         _ => Value::Nil,
     }
 }

@@ -20,9 +20,9 @@
 //! use(t)                            // Last use: automatic cleanup
 //! ```
 
-pub mod linear;
 pub mod cfa;
 
-// Re-exports for convenience
-pub use linear::{Linear, MoveState, MoveTracker};
+// Re-export Linear trait from auto-val (unified ownership system)
+pub use auto_val::{Linear, MoveState, MoveTracker};
+
 pub use cfa::LastUseAnalyzer;

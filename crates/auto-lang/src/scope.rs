@@ -1,7 +1,7 @@
 use crate::ast;
 use auto_val::{Value, ValueID};
 use ecow::EcoString as AutoStr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
 use std::sync::LazyLock;
@@ -123,6 +123,7 @@ pub struct Scope {
     pub symbols: HashMap<AutoStr, Rc<Meta>>,
     pub types: HashMap<AutoStr, Rc<Meta>>,
     pub vals: HashMap<AutoStr, ValueID>,  // CHANGED: Now stores ValueID instead of Value
+    pub moved_vars: HashSet<AutoStr>,     // Track moved variables for ownership semantics
 }
 
 impl Scope {
@@ -137,6 +138,7 @@ impl Scope {
             symbols: HashMap::new(),
             types: HashMap::new(),
             vals: HashMap::new(),
+            moved_vars: HashSet::new(),
         }
     }
 
@@ -162,6 +164,32 @@ impl Scope {
     /// Get value ID (NEW)
     pub fn get_val_id(&self, name: impl Into<AutoStr>) -> Option<ValueID> {
         self.vals.get(&name.into()).copied()
+    }
+
+    /// Check if a value exists in this scope
+    pub fn has_val(&self, name: impl Into<AutoStr>) -> bool {
+        self.vals.contains_key(&name.into())
+    }
+
+    /// Remove a value from this scope, returning its ValueID
+    /// Returns None if the value doesn't exist
+    pub fn remove_val(&mut self, name: impl Into<AutoStr>) -> Option<ValueID> {
+        self.vals.remove(&name.into())
+    }
+
+    /// Mark a variable as moved (use-after-move prevention)
+    pub fn mark_moved(&mut self, name: impl Into<AutoStr>) {
+        self.moved_vars.insert(name.into());
+    }
+
+    /// Check if a variable has been moved
+    pub fn is_moved(&self, name: impl Into<AutoStr>) -> bool {
+        self.moved_vars.contains(&name.into())
+    }
+
+    /// Clear moved status (used when variable is reassigned)
+    pub fn clear_moved(&mut self, name: impl Into<AutoStr>) {
+        self.moved_vars.remove(&name.into());
     }
 
     // REMOVED: get_val_mut - no longer needed with reference-based system
