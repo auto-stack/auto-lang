@@ -26,6 +26,7 @@ pub enum Type {
     Void,
     Unknown,
     CStruct(TypeDecl),
+    Linear(Box<Type>),  // Linear type (move-only semantics)
 }
 
 impl Type {
@@ -48,6 +49,7 @@ impl Type {
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             Type::Spec(spec_decl) => spec_decl.borrow().name.clone(),
             Type::CStruct(type_decl) => format!("struct {}", type_decl.name).into(),
+            Type::Linear(inner) => format!("linear<{}>", inner.unique_name()).into(),
             Type::Void => "void".into(),
             Type::Unknown => "<unknown>".into(),
             _ => format!("undefined_type_name<{}>", self).into(),
@@ -70,6 +72,7 @@ impl Type {
             Type::User(_) => "{}".into(),
             Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
             Type::Spec(_) => "{}".into(),  // Spec 默认值为空对象
+            Type::Linear(inner) => inner.default_value(),  // Linear type wraps inner type
             Type::CStruct(_) => "{}".into(),
             Type::Unknown => "<unknown>".into(),
             _ => "<unknown_type>".into(),
@@ -120,6 +123,7 @@ impl fmt::Display for Type {
             Type::Spec(spec_decl) => write!(f, "spec {}", spec_decl.borrow().name),
             Type::Union(u) => write!(f, "{}", u),
             Type::Tag(t) => write!(f, "{}", t.borrow()),
+            Type::Linear(inner) => write!(f, "linear<{}>", inner),
             Type::Void => write!(f, "void"),
             Type::Unknown => write!(f, "unknown"),
             Type::CStruct(type_decl) => write!(f, "struct {}", type_decl.name),
@@ -147,6 +151,7 @@ impl From<Type> for auto_val::Type {
             Type::Spec(decl) => auto_val::Type::User(decl.borrow().name.clone()),
             Type::Union(u) => auto_val::Type::Union(u.name),
             Type::Tag(t) => auto_val::Type::Tag(t.borrow().name.clone()),
+            Type::Linear(inner) => (*inner).into(),  // Linear wraps inner type
             Type::Void => auto_val::Type::Void,
             Type::Unknown => auto_val::Type::Void, // TODO: is this correct?
             Type::CStruct(_) => auto_val::Type::Void,
@@ -397,6 +402,9 @@ impl AtomWriter for Type {
             Type::Spec(spec_decl) => write!(f, "spec {}", spec_decl.borrow().name)?,
             Type::Union(u) => write!(f, "{}", u.name)?,
             Type::Tag(t) => write!(f, "{}", t.borrow().name)?,
+            Type::Linear(inner) => {
+                write!(f, "linear({})", inner.to_atom_str())?;
+            }
             Type::Void => write!(f, "void")?,
             Type::Unknown => write!(f, "unknown")?,
             Type::CStruct(type_decl) => write!(f, "struct {}", type_decl.name)?,

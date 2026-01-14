@@ -10,6 +10,7 @@ pub mod interp;
 mod lexer;
 pub mod libs;
 pub mod maker;
+pub mod ownership;
 pub mod parser;
 pub mod repl;
 pub mod scope;
@@ -62,23 +63,9 @@ pub fn run(code: &str) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::new();
 
     // Try to interpret, and attach source code if we get a syntax error
-    let result = interpreter.interpret(code);
-
-    match result {
-        Ok(_) => {
-            // Resolve any ValueRef in the result before converting to string
-            let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
-            Ok(resolved.repr().to_string())
-        }
-        Err(err) => {
-            // Attach source code to the error
-            Err(crate::error::attach_source(
-                err,
-                "<input>".to_string(),
-                code.to_string(),
-            ))
-        }
-    }
+    interpreter.interpret(code)?;
+    Ok(interpreter.result.repr().to_string())
+    
 }
 
 /// Run code and collect all errors during parsing
@@ -87,73 +74,17 @@ pub fn run(code: &str) -> AutoResult<String> {
 /// instead of aborting on the first error.
 pub fn run_with_errors(code: &str) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::new();
-
     // Enable error recovery
     interpreter.enable_error_recovery();
-
-    let result = interpreter.interpret(code);
-
-    match result {
-        Ok(_) => {
-            let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
-            Ok(resolved.repr().to_string())
-        }
-        Err(err) => {
-            // Attach source code to the error
-            Err(crate::error::attach_source(
-                err,
-                "<input>".to_string(),
-                code.to_string(),
-            ))
-        }
-    }
+    interpreter.interpret(code)?;
+    Ok(interpreter.result.repr().to_string())
 }
 
-/// Helper: Resolve ValueRef to actual value (for test output)
-fn resolve_value_in_result(
-    value: Value,
-    universe: &std::rc::Rc<std::cell::RefCell<Universe>>,
-) -> Value {
-    match value {
-        Value::ValueRef(vid) => {
-            if let Some(data) = universe.borrow().get_value(vid) {
-                let borrowed_data = data.borrow();
-                let data_clone = borrowed_data.clone();
-                drop(borrowed_data);
-                // Convert ValueData to Value, which will create nested ValueRefs
-                let val = Value::from_data(data_clone);
-                // Recursively resolve nested ValueRefs
-                resolve_value_in_result(val, universe)
-            } else {
-                Value::Nil
-            }
-        }
-        Value::Array(arr) => {
-            let resolved_vals: Vec<Value> = arr
-                .values
-                .into_iter()
-                .map(|v| resolve_value_in_result(v, universe))
-                .collect();
-            Value::Array(resolved_vals.into())
-        }
-        Value::Obj(obj) => {
-            let mut new_obj = auto_val::Obj::new();
-            for (k, v) in obj.iter() {
-                let resolved_v = resolve_value_in_result(v.clone(), universe);
-                new_obj.set(k.clone(), resolved_v);
-            }
-            Value::Obj(new_obj)
-        }
-        _ => value,
-    }
-}
 
 pub fn run_with_scope(code: &str, scope: Universe) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::with_scope(scope);
     interpreter.interpret(code)?;
-    // Resolve any ValueRef in the result before converting to string
-    let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
-    Ok(resolved.repr().to_string())
+    Ok(interpreter.result.repr().to_string())
 }
 
 pub fn parse(code: &str) -> AutoResult<ast::Code> {
@@ -183,19 +114,8 @@ pub fn run_file(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     let mut interpreter = interp::Interpreter::new();
-    let result = interpreter.interpret(&code);
-
-    match result {
-        Ok(_) => {
-            // Resolve any ValueRef in the result before converting to string
-            let resolved = resolve_value_in_result(interpreter.result, &interpreter.scope);
-            Ok(resolved.repr().to_string())
-        }
-        Err(err) => {
-            // Attach source code to all error types for better error messages
-            Err(crate::error::attach_source(err, path.to_string(), code))
-        }
-    }
+    interpreter.interpret(&code)?;
+    Ok(interpreter.result.repr().to_string())
 }
 
 pub fn interpret_file(path: &str) -> interp::Interpreter {

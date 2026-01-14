@@ -82,6 +82,11 @@ impl RustTrans {
             Type::Void => "()".to_string(),
             Type::Unknown => "/* unknown */".to_string(),
             Type::CStruct(decl) => decl.name.to_string(),
+            Type::Linear(inner) => {
+                // Linear types unwrap to their inner type for transpilation
+                // The move semantics are enforced by AutoLang's ownership system
+                self.rust_type_name(inner)
+            }
         }
     }
 
