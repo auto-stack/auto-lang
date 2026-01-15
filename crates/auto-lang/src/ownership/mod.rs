@@ -74,4 +74,4 @@ pub use auto_val::{Linear, MoveState, MoveTracker};
 
 pub use borrow::{Borrow, BorrowChecker, BorrowKind};
 pub use cfa::LastUseAnalyzer;
-pub use lifetime::{Lifetime, LifetimeContext};
+pub use lifetime::{Lifetime, LifetimeContext, LifetimeRegion};

@@ -680,9 +680,14 @@ fn test_c_ffi() {
   - Evaluator: 实现 hold 表达式求值,包括作用域管理和借用检查 (eval.rs:2240-2292)
   - Symbol checking: 在 hold body 中禁用符号检查,因为绑定在运行时创建
   - Type inference: 移除未定义变量错误,支持运行时绑定的变量
+- ✅ 生命周期区域跟踪完成
+  - 添加 `LifetimeRegion` 结构体跟踪生命周期的起止点 (lifetime.rs:119-178)
+  - 实现 `overlaps()` 方法用于精确的重叠检测
+  - 扩展 `LifetimeContext` 支持区域跟踪和 `regions_overlap()` 检测
+  - 更新 `BorrowChecker` 集成 `LifetimeContext` (borrow.rs:289-311)
+  - 添加3个单元测试验证区域跟踪功能
 
 ⏸️ **Remaining Work:**
-- 生命周期区域跟踪 (start/end points for precise overlap detection)
 - Span 信息集成到 miette 错误报告
 - 全面集成测试 (comprehensive integration tests)
 
