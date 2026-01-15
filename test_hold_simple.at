@@ -1,0 +1,15 @@
+// Simple test for hold expression
+
+fn main() {
+    let x = 10
+    print("before hold")
+    print(x)
+
+    hold x as value {
+        print("inside hold")
+        print(value)
+    }
+
+    print("after hold")
+    print(x)
+}

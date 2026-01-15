@@ -1,0 +1,6 @@
+// Test property keyword syntax
+fn main() {
+    let s = str_new("hello", 5)
+    let slice = s.view
+    print(str_len(slice))
+}

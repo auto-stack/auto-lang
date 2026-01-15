@@ -1,0 +1,18 @@
+// Test hold expression for temporary path binding
+
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    let p = Point{x: 10, y: 20};
+
+    hold p as point {
+        point.x = 30
+        point.y = 40
+    }
+
+    print(p.x)
+    print(p.y)
+}

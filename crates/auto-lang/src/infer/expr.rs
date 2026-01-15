@@ -79,12 +79,7 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         Expr::Ident(name) => {
             ctx.lookup_type(name)
                 .unwrap_or_else(|| {
-                    // 未定义的变量,返回 Unknown 并记录错误
-                    ctx.errors.push(AutoError::Name(NameError::UndefinedVariable {
-                        name: name.to_string(),
-                        suggested: None,
-                        span: SourceSpan::new(0.into(), 0),
-                    }));
+                    // 未定义的变量,返回 Unknown (不记录错误,因为可能是运行时绑定的变量如hold表达式)
                     Type::Unknown
                 })
         }

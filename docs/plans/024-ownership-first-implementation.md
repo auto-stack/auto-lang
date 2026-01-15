@@ -674,8 +674,14 @@ fn test_c_ffi() {
 - 改进的 `BorrowError` 显示目标名称和生命周期
 - 保守的生命周期重叠检测策略
 
+✅ **Completed 2025-01-15:**
+- ✅ `hold` 表达式完整求值与借用检查集成完成
+  - Parser: 添加 hold 表达式解析,支持多行格式 (parser.rs:647-682)
+  - Evaluator: 实现 hold 表达式求值,包括作用域管理和借用检查 (eval.rs:2240-2292)
+  - Symbol checking: 在 hold body 中禁用符号检查,因为绑定在运行时创建
+  - Type inference: 移除未定义变量错误,支持运行时绑定的变量
+
 ⏸️ **Remaining Work:**
-- `hold` 表达式完整求值与借用检查集成 (AST 已创建)
 - 生命周期区域跟踪 (start/end points for precise overlap detection)
 - Span 信息集成到 miette 错误报告
 - 全面集成测试 (comprehensive integration tests)

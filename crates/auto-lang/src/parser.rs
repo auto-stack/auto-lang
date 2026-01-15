@@ -659,8 +659,20 @@ impl<'a> Parser<'a> {
             let name = self.cur.text.clone();
             self.expect(TokenKind::Ident)?;
 
+            // Skip empty lines before body (allows newline between name and {)
+            if self.is_kind(TokenKind::Newline) {
+                self.skip_empty_lines();
+            }
+
+            // Disable symbol checking inside hold body (bindings are created at runtime)
+            let old_skip_check = self.skip_check;
+            self.skip_check = true;
+
             // Parse the body (a block)
             let body = self.body()?;
+
+            // Restore symbol checking
+            self.skip_check = old_skip_check;
 
             // Hold is a complete expression, return directly
             return Ok(Expr::Hold(crate::ast::Hold {
