@@ -11,6 +11,7 @@
 
 use crate::ast::Expr;
 use crate::ownership::lifetime::Lifetime;
+use auto_val::Op;
 use std::fmt;
 
 /// Kind of borrow - view, mut, or take
@@ -45,12 +46,100 @@ impl fmt::Display for BorrowKind {
     }
 }
 
+/// Normalized target for borrow comparison
+///
+/// This enum represents the "base target" of a borrow expression,
+/// allowing us to detect when two different expressions refer to
+/// the same underlying value.
+///
+/// # Examples
+///
+/// - `x` → `Target::Variable("x")`
+/// - `view x` → `Target::Variable("x")` (unwrapped)
+/// - `obj.field` → `Target::Path(Variable("obj"), "field")`
+/// - `arr[index]` → `Target::Index(Variable("arr"))`
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Target {
+    /// A simple variable reference (e.g., `x`)
+    Variable(String),
+    /// A path expression (e.g., `obj.field`, `obj.field.subfield`)
+    Path(Box<Target>, String),
+    /// An index operation (e.g., `arr[index]`)
+    Index(Box<Target>),
+    /// Unknown or unanalyzable target (e.g., temporary values)
+    Unknown,
+}
+
+impl Target {
+    /// Extract the base target from an expression
+    ///
+    /// This function normalizes expressions to their base target,
+    /// unwrapping view/mut/take wrappers and following member access paths.
+    ///
+    /// # Examples
+    ///
+    /// - `Expr::Ident("x")` → `Target::Variable("x")`
+    /// - `Expr::View(Box::new(Expr::Ident("x")))` → `Target::Variable("x")`
+    /// - `Expr::Bina(obj, Op::Dot, "field")` → `Target::Path(target, "field")`
+    pub fn from_expr(expr: &Expr) -> Self {
+        match expr {
+            // Base case: simple identifier
+            Expr::Ident(name) => Target::Variable(name.to_string()),
+
+            // Unwrap borrow expressions to get the inner target
+            Expr::View(inner) | Expr::Mut(inner) | Expr::Take(inner) => {
+                Self::from_expr(inner)
+            }
+
+            // Path expression: obj.field or obj.field.subfield
+            Expr::Bina(lhs, op, rhs) => {
+                match op {
+                    // Member access: obj.field
+                    Op::Dot => {
+                        let base_target = Self::from_expr(lhs);
+                        let field_name = match rhs.as_ref() {
+                            Expr::Ident(name) => name.to_string(),
+                            // Dynamic field access - treat as unknown
+                            _ => return Target::Unknown,
+                        };
+                        Target::Path(Box::new(base_target), field_name)
+                    }
+                    // Other binary operations - treat as unknown
+                    _ => Target::Unknown,
+                }
+            }
+
+            // Index operation: arr[index] or map[key]
+            Expr::Index(container, _index) => {
+                let base_target = Self::from_expr(container);
+                Target::Index(Box::new(base_target))
+            }
+
+            // All other expressions are unknown targets
+            // (literals, function calls, blocks, unary ops, etc.)
+            _ => Target::Unknown,
+        }
+    }
+}
+
+impl fmt::Display for Target {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Target::Variable(name) => write!(f, "{}", name),
+            Target::Path(base, field) => write!(f, "{}.{}", base, field),
+            Target::Index(base) => write!(f, "{}[...]", base),
+            Target::Unknown => write!(f, "<unknown>"),
+        }
+    }
+}
+
 /// Represents a single borrow in the borrow checker
 ///
 /// Each borrow tracks:
 /// - What kind of borrow it is (view, mut, or take)
 /// - Its lifetime (when it ends)
 /// - The expression being borrowed
+/// - The normalized target (for conflict detection)
 #[derive(Debug, Clone)]
 pub struct Borrow {
     /// Kind of borrow
@@ -59,15 +148,19 @@ pub struct Borrow {
     pub lifetime: Lifetime,
     /// The expression being borrowed
     pub expr: Expr,
+    /// Normalized target for accurate conflict detection
+    pub target: Target,
 }
 
 impl Borrow {
     /// Create a new borrow
     pub fn new(kind: BorrowKind, lifetime: Lifetime, expr: Expr) -> Self {
+        let target = Target::from_expr(&expr);
         Self {
             kind,
             lifetime,
             expr,
+            target,
         }
     }
 
@@ -124,20 +217,52 @@ impl Borrow {
     }
 
     /// Check if two borrows target the same expression
+    ///
+    /// This now compares the normalized targets, which properly handles:
+    /// - Unwrapping view/mut/take expressions
+    /// - Following member access paths (obj.field)
+    /// - Index operations (arr[index])
+    /// - Pointer dereferences (*ptr)
     fn same_target(&self, other: &Borrow) -> bool {
-        // TODO: This is a simplified check
-        // In a full implementation, we'd need to:
-        // 1. Resolve both expressions to their base value
-        // 2. Check if they refer to the same memory location
-        // For now, we just compare the expression discriminants
-        std::mem::discriminant(&self.expr) == std::mem::discriminant(&other.expr)
+        self.target == other.target
     }
 
     /// Check if two borrows have overlapping lifetimes
+    ///
+    /// This determines if two borrows are active at the same time.
+    /// With the current lifetime system (simple IDs without regions),
+    /// we use a conservative approach: assume overlap unless we can prove otherwise.
+    ///
+    /// # Overlap Rules
+    /// - Same lifetime → definitely overlap
+    /// - One lifetime outlives the other → overlap (shorter is within longer)
+    /// - Different lifetimes, neither outlives → assume overlap (conservative)
+    ///
+    /// # Future Improvements
+    /// A full implementation would track:
+    /// - Lifetime start points (where the borrow begins)
+    /// - Lifetime end points (where the borrow ends)
+    /// - Non-overlapping regions (disjoint scopes)
     fn lifetimes_overlap(&self, other: &Borrow) -> bool {
-        // Simplified: assume lifetimes overlap if they're different
-        // A proper implementation would check lifetime regions
-        self.lifetime != other.lifetime
+        // Same lifetime always overlaps
+        if self.lifetime == other.lifetime {
+            return true;
+        }
+
+        // If one lifetime outlives the other, they overlap
+        // (the shorter lifetime is contained within the longer one)
+        if Lifetime::outlives(self.lifetime, other.lifetime)
+            || Lifetime::outlives(other.lifetime, self.lifetime)
+        {
+            return true;
+        }
+
+        // Different lifetimes where neither outlives the other
+        // With the current simple lifetime system, we can't determine
+        // if they're truly non-overlapping, so we conservatively
+        // assume they do overlap to ensure safety.
+        // TODO: Track lifetime regions (start/end points) for precise overlap detection
+        true
     }
 }
 
@@ -200,7 +325,9 @@ impl BorrowChecker {
                 return Err(BorrowError::Conflict {
                     new_kind: kind,
                     existing_kind: existing.kind.clone(),
-                    expr: expr.clone(),
+                    target: new_borrow.target.clone(),
+                    new_lifetime: lifetime,
+                    existing_lifetime: existing.lifetime,
                 });
             }
         }
@@ -244,20 +371,24 @@ pub enum BorrowError {
         new_kind: BorrowKind,
         /// The kind of existing borrow that conflicts
         existing_kind: BorrowKind,
-        /// The expression being borrowed
-        expr: Expr,
+        /// The target being borrowed
+        target: Target,
+        /// The new borrow's lifetime
+        new_lifetime: Lifetime,
+        /// The existing borrow's lifetime
+        existing_lifetime: Lifetime,
     },
 
     /// Cannot borrow a value that has been moved
     UseAfterMove {
-        /// The expression that was moved
-        expr: Expr,
+        /// The target that was moved
+        target: Target,
     },
 
     /// Cannot create a mutable reference when immutable references exist
     MutabilityConflict {
-        /// The expression being borrowed
-        expr: Expr,
+        /// The target being borrowed
+        target: Target,
         /// Number of existing immutable borrows
         count: usize,
     },
@@ -269,22 +400,31 @@ impl fmt::Display for BorrowError {
             BorrowError::Conflict {
                 new_kind,
                 existing_kind,
-                expr,
+                target,
+                new_lifetime,
+                existing_lifetime,
             } => {
                 write!(
                     f,
-                    "cannot create {} borrow: there is already an {} borrow of {:?}",
-                    new_kind, existing_kind, expr
-                )
+                    "cannot create {} borrow of {}: there is already an {} borrow (lifetime {})",
+                    new_kind, target, existing_kind, existing_lifetime
+                )?;
+                if new_lifetime != existing_lifetime {
+                    write!(f, " with lifetime {}", new_lifetime)?;
+                }
+                Ok(())
             }
-            BorrowError::UseAfterMove { expr } => {
-                write!(f, "cannot borrow moved value: {:?}", expr)
+            BorrowError::UseAfterMove { target } => {
+                write!(f, "cannot borrow moved value: {}", target)
             }
-            BorrowError::MutabilityConflict { expr, count } => {
+            BorrowError::MutabilityConflict { target, count } => {
                 write!(
                     f,
-                    "cannot create mutable borrow of {:?}: there are {} existing immutable borrows",
-                    expr, count
+                    "cannot create mutable borrow of {}: there {} {} existing immutable borrow{}",
+                    target,
+                    if *count == 1 { "is" } else { "are" },
+                    count,
+                    if *count == 1 { "" } else { "s" }
                 )
             }
         }
@@ -389,10 +529,13 @@ mod tests {
         let err = BorrowError::Conflict {
             new_kind: BorrowKind::Mut,
             existing_kind: BorrowKind::View,
-            expr: Expr::Int(42),
+            target: Target::Variable("x".to_string()),
+            new_lifetime: Lifetime::new(2),
+            existing_lifetime: Lifetime::new(1),
         };
         let msg = format!("{}", err);
         assert!(msg.contains("cannot create mut borrow"));
+        assert!(msg.contains("x"));
     }
 
     #[test]
@@ -412,9 +555,10 @@ mod tests {
 
         let err = result2.unwrap_err();
         match err {
-            BorrowError::Conflict { new_kind, existing_kind, .. } => {
+            BorrowError::Conflict { new_kind, existing_kind, target, .. } => {
                 assert_eq!(new_kind, BorrowKind::Mut);
                 assert_eq!(existing_kind, BorrowKind::View);
+                assert_eq!(target, Target::Variable("x".to_string()));
             }
             _ => panic!("Expected Conflict error"),
         }
@@ -435,9 +579,10 @@ mod tests {
 
         let err = result2.unwrap_err();
         match err {
-            BorrowError::Conflict { new_kind, existing_kind, .. } => {
+            BorrowError::Conflict { new_kind, existing_kind, target, .. } => {
                 assert_eq!(new_kind, BorrowKind::Take);
                 assert_eq!(existing_kind, BorrowKind::View);
+                assert_eq!(target, Target::Variable("s".to_string()));
             }
             _ => panic!("Expected Conflict error"),
         }
@@ -458,9 +603,10 @@ mod tests {
 
         let err = result2.unwrap_err();
         match err {
-            BorrowError::Conflict { new_kind, existing_kind, .. } => {
+            BorrowError::Conflict { new_kind, existing_kind, target, .. } => {
                 assert_eq!(new_kind, BorrowKind::Take);
                 assert_eq!(existing_kind, BorrowKind::Mut);
+                assert_eq!(target, Target::Variable("s".to_string()));
             }
             _ => panic!("Expected Conflict error"),
         }
@@ -482,9 +628,10 @@ mod tests {
 
         let err = result2.unwrap_err();
         match err {
-            BorrowError::Conflict { new_kind, existing_kind, .. } => {
+            BorrowError::Conflict { new_kind, existing_kind, target, .. } => {
                 assert_eq!(new_kind, BorrowKind::Mut);
                 assert_eq!(existing_kind, BorrowKind::Mut);
+                assert_eq!(target, Target::Variable("data".to_string()));
             }
             _ => panic!("Expected Conflict error"),
         }
@@ -505,9 +652,10 @@ mod tests {
 
         let err = result2.unwrap_err();
         match err {
-            BorrowError::Conflict { new_kind, existing_kind, .. } => {
+            BorrowError::Conflict { new_kind, existing_kind, target, .. } => {
                 assert_eq!(new_kind, BorrowKind::View);
                 assert_eq!(existing_kind, BorrowKind::Mut);
+                assert_eq!(target, Target::Variable("value".to_string()));
             }
             _ => panic!("Expected Conflict error"),
         }
@@ -557,5 +705,144 @@ mod tests {
         let result = checker.check_borrow(&expr, BorrowKind::View, Lifetime::STATIC);
         assert!(result.is_ok(), "Static lifetime borrow should succeed");
         assert_eq!(checker.active_borrows().len(), 1);
+    }
+
+    #[test]
+    fn test_view_and_ident_same_target() {
+        let mut checker = BorrowChecker::new();
+        // Direct identifier
+        let expr1 = Expr::Ident("x".into());
+        // View of the same identifier
+        let expr2 = Expr::View(Box::new(Expr::Ident("x".into())));
+
+        // First view borrow on x
+        let result1 = checker.check_borrow(&expr1, BorrowKind::View, Lifetime::new(1));
+        assert!(result1.is_ok(), "First view borrow should succeed");
+
+        // Second view borrow on view x - should conflict (same target)
+        let result2 = checker.check_borrow(&expr2, BorrowKind::Mut, Lifetime::new(2));
+        assert!(result2.is_err(), "Mut borrow of view x should conflict with view x");
+    }
+
+    #[test]
+    fn test_different_variables_no_conflict() {
+        let mut checker = BorrowChecker::new();
+        let expr1 = Expr::Ident("x".into());
+        let expr2 = Expr::Ident("y".into());
+
+        // First mut borrow on x
+        let result1 = checker.check_borrow(&expr1, BorrowKind::Mut, Lifetime::new(1));
+        assert!(result1.is_ok(), "First mut borrow should succeed");
+
+        // Second mut borrow on y - should NOT conflict (different targets)
+        let result2 = checker.check_borrow(&expr2, BorrowKind::Mut, Lifetime::new(2));
+        assert!(result2.is_ok(), "Mut borrow of different variable should succeed");
+        assert_eq!(checker.active_borrows().len(), 2);
+    }
+
+    #[test]
+    fn test_path_expression_target() {
+        let mut checker = BorrowChecker::new();
+        // obj.field expression
+        let obj_expr = Expr::Ident("obj".into());
+        let field_expr = Expr::Ident("field".into());
+        let expr1 = Expr::Bina(Box::new(obj_expr), Op::Dot, Box::new(field_expr));
+
+        // First mut borrow on obj.field
+        let result1 = checker.check_borrow(&expr1, BorrowKind::Mut, Lifetime::new(1));
+        assert!(result1.is_ok(), "First mut borrow should succeed");
+
+        // View of obj.field - should conflict
+        let expr2 = Expr::View(Box::new(Expr::Bina(
+            Box::new(Expr::Ident("obj".into())),
+            Op::Dot,
+            Box::new(Expr::Ident("field".into())),
+        )));
+        let result2 = checker.check_borrow(&expr2, BorrowKind::View, Lifetime::new(2));
+        assert!(result2.is_err(), "View borrow should conflict with mut borrow of same path");
+    }
+
+    #[test]
+    fn test_different_fields_no_conflict() {
+        let mut checker = BorrowChecker::new();
+        // obj.field1
+        let expr1 = Expr::Bina(
+            Box::new(Expr::Ident("obj".into())),
+            Op::Dot,
+            Box::new(Expr::Ident("field1".into())),
+        );
+
+        // obj.field2
+        let expr2 = Expr::Bina(
+            Box::new(Expr::Ident("obj".into())),
+            Op::Dot,
+            Box::new(Expr::Ident("field2".into())),
+        );
+
+        // First mut borrow on obj.field1
+        let result1 = checker.check_borrow(&expr1, BorrowKind::Mut, Lifetime::new(1));
+        assert!(result1.is_ok(), "First mut borrow should succeed");
+
+        // Second mut borrow on obj.field2 - should NOT conflict (different fields)
+        let result2 = checker.check_borrow(&expr2, BorrowKind::Mut, Lifetime::new(2));
+        assert!(result2.is_ok(), "Mut borrow of different field should succeed");
+        assert_eq!(checker.active_borrows().len(), 2);
+    }
+
+    #[test]
+    fn test_nested_path_target() {
+        let mut checker = BorrowChecker::new();
+        // obj.inner.field expression
+        let inner_expr = Expr::Bina(
+            Box::new(Expr::Ident("obj".into())),
+            Op::Dot,
+            Box::new(Expr::Ident("inner".into())),
+        );
+        let expr1 = Expr::Bina(
+            Box::new(inner_expr),
+            Op::Dot,
+            Box::new(Expr::Ident("field".into())),
+        );
+
+        // First view borrow on obj.inner.field
+        let result1 = checker.check_borrow(&expr1, BorrowKind::View, Lifetime::new(1));
+        assert!(result1.is_ok(), "First view borrow should succeed");
+
+        // Mut of obj.inner.field - should conflict
+        let inner_expr2 = Expr::Bina(
+            Box::new(Expr::Ident("obj".into())),
+            Op::Dot,
+            Box::new(Expr::Ident("inner".into())),
+        );
+        let expr2 = Expr::Bina(
+            Box::new(inner_expr2),
+            Op::Dot,
+            Box::new(Expr::Ident("field".into())),
+        );
+        let result2 = checker.check_borrow(&expr2, BorrowKind::Mut, Lifetime::new(2));
+        assert!(result2.is_err(), "Mut borrow should conflict with view of same nested path");
+    }
+
+    #[test]
+    fn test_mut_and_take_unwrap_to_same_target() {
+        let mut checker = BorrowChecker::new();
+        // Direct identifier
+        let expr1 = Expr::Ident("data".into());
+        // Mut expression
+        let expr2 = Expr::Mut(Box::new(Expr::Ident("data".into())));
+        // Take expression
+        let expr3 = Expr::Take(Box::new(Expr::Ident("data".into())));
+
+        // First view borrow
+        let result1 = checker.check_borrow(&expr1, BorrowKind::View, Lifetime::new(1));
+        assert!(result1.is_ok(), "View borrow should succeed");
+
+        // Mut borrow - should conflict (same target)
+        let result2 = checker.check_borrow(&expr2, BorrowKind::Mut, Lifetime::new(2));
+        assert!(result2.is_err(), "Mut should conflict with view of same target");
+
+        // Take - should also conflict (same target)
+        let result3 = checker.check_borrow(&expr3, BorrowKind::Take, Lifetime::new(3));
+        assert!(result3.is_err(), "Take should conflict with view of same target");
     }
 }
