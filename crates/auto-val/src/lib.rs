@@ -17,6 +17,9 @@ pub use owned_str::*;
 mod str_slice;
 pub use str_slice::*;
 
+mod cstr;
+pub use cstr::*;
+
 mod linear;
 pub use linear::*;
 

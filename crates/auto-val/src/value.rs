@@ -1,4 +1,5 @@
 use crate::array::*;
+use crate::cstr::CStr;
 use crate::meta::*;
 use crate::node::*;
 use crate::obj::*;
@@ -40,6 +41,7 @@ pub enum ValueData {
     Str(AutoStr),
     OwnedStr(Str), // NEW: Owned string with move semantics (Phase 2)
     StrSlice(StrSlice), // NEW: Borrowed string slice (Phase 3)
+    CStr(CStr), // NEW: C-compatible null-terminated string (Plan 025)
 
     // Complex types with nested IDs (CHANGED from Value)
     Array(Vec<ValueID>),
@@ -101,6 +103,7 @@ pub enum Value {
     Str(AutoStr),
     OwnedStr(Str), // NEW: Owned string with move semantics (Phase 2)
     StrSlice(StrSlice), // NEW: Borrowed string slice (Phase 3)
+    CStr(CStr), // NEW: C-compatible null-terminated string (Plan 025)
     Array(Array),
     Block(Array),
     Pair(ValueKey, Box<Value>),
@@ -172,6 +175,21 @@ impl Value {
     /// Create an empty StrSlice
     pub fn empty_str_slice() -> Self {
         Value::StrSlice(StrSlice::empty())
+    }
+
+    /// Create a C-compatible null-terminated string
+    pub fn cstr(text: &str) -> Self {
+        Value::CStr(CStr::from_str(text))
+    }
+
+    /// Create a CStr from an AutoStr
+    pub fn cstr_from_astr(text: &AutoStr) -> Self {
+        Value::CStr(CStr::from_astr(text))
+    }
+
+    /// Create an empty CStr
+    pub fn empty_cstr() -> Self {
+        Value::CStr(CStr::from_str(""))
     }
 
     pub fn error(text: impl Into<AutoStr>) -> Self {
@@ -254,6 +272,7 @@ impl Value {
             Value::Range(l, r) => ValueData::Range(l, r),
             Value::RangeEq(l, r) => ValueData::RangeEq(l, r),
             Value::StrSlice(v) => ValueData::StrSlice(v),
+            Value::CStr(v) => ValueData::CStr(v),
             Value::Instance(v) => ValueData::Opaque(Box::new(Value::Instance(v))),
             // Other variants not yet supported in ValueData
             _ => ValueData::Nil,
@@ -279,6 +298,7 @@ impl Value {
             ValueData::Str(v) => Value::Str(v),
             ValueData::OwnedStr(v) => Value::OwnedStr(v),
             ValueData::StrSlice(v) => Value::StrSlice(v),
+            ValueData::CStr(v) => Value::CStr(v),
             ValueData::Array(vids) => {
                 // Convert ValueIDs to ValueRefs for later resolution
                 let values: Vec<Value> = vids.iter().map(|vid| Value::ValueRef(*vid)).collect();
@@ -359,6 +379,7 @@ impl Display for Value {
             Value::Str(value) => write!(f, "\"{}\"", value),
             Value::OwnedStr(value) => write!(f, "\"{}\"", value.as_str()),
             Value::StrSlice(value) => write!(f, "\"{}\"", value),
+            Value::CStr(value) => write!(f, "\"{}\"", value.as_str()),
             Value::Int(value) => write!(f, "{}", value),
             Value::Uint(value) => write!(f, "{}u", value),
             Value::USize(value) => write!(f, "{}", value),

@@ -833,3 +833,141 @@ pub fn str_char_at(args: &Args) -> Value {
 
     Value::Str(chars[index as usize].to_string().into())
 }
+
+// ==================== C FFI Functions (Plan 025) ====================
+
+/// Create a C-compatible null-terminated string
+///
+/// # Arguments
+/// * `s` - String to convert to C string
+///
+/// # Returns
+/// C string value with null terminator
+///
+/// # Example
+/// ```auto
+/// let cs = cstr_new("hello")
+/// // cs now has null terminator for passing to C functions
+/// ```
+pub fn cstr_new(args: &Args) -> Value {
+    if args.args.is_empty() {
+        return Value::Error("cstr_new requires 1 argument".into());
+    }
+
+    let s = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::StrSlice(s)) => unsafe { s.as_str() },
+        _ => return Value::Error("cstr_new expects a string".into()),
+    };
+
+    Value::cstr(s)
+}
+
+/// Get the length of a C string (excluding null terminator)
+///
+/// # Arguments
+/// * `cs` - C string value
+///
+/// # Returns
+/// Length in bytes
+///
+/// # Example
+/// ```auto
+/// let cs = cstr_new("hello")
+/// let len = cstr_len(cs)  // 5
+/// ```
+pub fn cstr_len(args: &Args) -> Value {
+    if args.args.is_empty() {
+        return Value::Error("cstr_len requires 1 argument".into());
+    }
+
+    match &args.args[0] {
+        Arg::Pos(Value::CStr(cs)) => Value::Int(cs.len() as i32),
+        _ => Value::Error("cstr_len expects a cstr".into()),
+    }
+}
+
+/// Get a string pointer for FFI (returns pointer as int)
+///
+/// # Arguments
+/// * `cs` - C string value
+///
+/// # Returns
+/// Pointer address as integer
+///
+/// # Note
+/// This is primarily for debugging and advanced FFI use.
+/// The pointer is only valid as long as the CStr exists.
+///
+/// # Example
+/// ```auto
+/// let cs = cstr_new("hello")
+/// let ptr = cstr_as_ptr(cs)
+/// // ptr can be passed to C functions expecting char*
+/// ```
+pub fn cstr_as_ptr(args: &Args) -> Value {
+    if args.args.is_empty() {
+        return Value::Error("cstr_as_ptr requires 1 argument".into());
+    }
+
+    match &args.args[0] {
+        Arg::Pos(Value::CStr(cs)) => {
+            let ptr = cs.as_ptr();
+            Value::USize(ptr as usize)
+        }
+        _ => Value::Error("cstr_as_ptr expects a cstr".into()),
+    }
+}
+
+/// Convert C string to regular string
+///
+/// # Arguments
+/// * `cs` - C string value
+///
+/// # Returns
+/// Regular string value
+///
+/// # Example
+/// ```auto
+/// let cs = cstr_new("hello")
+/// let s = cstr_to_str(cs)  // "hello"
+/// ```
+pub fn cstr_to_str(args: &Args) -> Value {
+    if args.args.is_empty() {
+        return Value::Error("cstr_to_str requires 1 argument".into());
+    }
+
+    match &args.args[0] {
+        Arg::Pos(Value::CStr(cs)) => Value::Str(cs.to_astr()),
+        _ => Value::Error("cstr_to_str expects a cstr".into()),
+    }
+}
+
+/// Convert regular string to C string
+///
+/// # Arguments
+/// * `s` - String value
+///
+/// # Returns
+/// C string value with null terminator
+///
+/// # Example
+/// ```auto
+/// let s = "hello"
+/// let cs = to_cstr(s)
+/// ```
+pub fn to_cstr(args: &Args) -> Value {
+    if args.args.is_empty() {
+        return Value::Error("to_cstr requires 1 argument".into());
+    }
+
+    let s = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        Arg::Pos(Value::StrSlice(s)) => unsafe { s.as_str() },
+        _ => return Value::Error("to_cstr expects a string".into()),
+    };
+
+    Value::cstr(s)
+}

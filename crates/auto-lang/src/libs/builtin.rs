@@ -84,6 +84,22 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
     let name: AutoStr = "slice_get".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_slice_get, name }));
 
+    // C FFI functions (Plan 025)
+    let name: AutoStr = "cstr_new".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::cstr_new, name }));
+
+    let name: AutoStr = "cstr_len".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::cstr_len, name }));
+
+    let name: AutoStr = "cstr_as_ptr".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::cstr_as_ptr, name }));
+
+    let name: AutoStr = "cstr_to_str".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::cstr_to_str, name }));
+
+    let name: AutoStr = "to_cstr".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::to_cstr, name }));
+
     builtins
 }
 
