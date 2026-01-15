@@ -1,0 +1,150 @@
+// String Operations Examples
+// Demonstrates various string manipulation functions in AutoLang
+
+fn main() {
+    print("=== Basic String Operations ===")
+
+    // Create new strings
+    let s1 = str_new("hello")
+    print("Created: " + s1)
+
+    // String length
+    let len = str_len(s1)
+    print("Length: " + str_from_int(len))
+
+    // Append to string
+    let mut s2 = str_new("hello")
+    str_append(mut s2, " world")
+    print("Appended: " + s2)
+
+    // Uppercase and lowercase
+    let upper = str_upper(s2)
+    let lower = str_lower(upper)
+    print("Upper: " + upper)
+    print("Lower: " + lower)
+
+    // Substring
+    let sub = str_sub(s2, 0, 5)
+    print("Substring [0:5]: " + sub)
+
+    print("\n=== Search Operations ===")
+
+    // Contains
+    let has_world = str_contains(s2, "world")
+    print("Contains 'world': " + str_from_bool(has_world))
+
+    // Starts with
+    let starts_hello = str_starts_with(s2, "hello")
+    print("Starts with 'hello': " + str_from_bool(starts_hello))
+
+    // Ends with
+    let ends_world = str_ends_with(s2, "world")
+    print("Ends with 'world': " + str_from_bool(ends_world))
+
+    // Find
+    let pos = str_find(s2, "world")
+    print("Position of 'world': " + str_from_int(pos))
+
+    print("\n=== Transform Operations ===")
+
+    // Trim
+    let s3 = str_new("  hello world  ")
+    let trimmed = str_trim(s3)
+    print("Trimmed: '" + trimmed + "'")
+
+    // Replace
+    let original = str_new("hello world")
+    let replaced = str_replace(original, "world", "AutoLang")
+    print("Replaced: " + replaced)
+
+    print("\n=== Split and Join ===")
+
+    // Split
+    let csv = str_new("one,two,three,four")
+    let parts = str_split(csv, ",")
+    print("Split result:")
+    for i in 0..3 {
+        print("  [" + str_from_int(i) + "]: " + parts[i])
+    }
+
+    // Join
+    let words = ["hello", "world", "from", "AutoLang"]
+    let joined = str_join(words, " ")
+    print("Joined: " + joined)
+
+    print("\n=== Compare Operations ===")
+
+    // Compare
+    let cmp1 = str_compare("apple", "banana")
+    let cmp2 = str_compare("hello", "hello")
+    let cmp3 = str_compare("zebra", "apple")
+    print("'apple' vs 'banana': " + str_from_int(cmp1))
+    print("'hello' vs 'hello': " + str_from_int(cmp2))
+    print("'zebra' vs 'apple': " + str_from_int(cmp3))
+
+    // Case-insensitive compare
+    let eq = str_eq_ignore_case("HELLO", "hello")
+    print("'HELLO' eq 'hello' (ignore case): " + str_from_bool(eq))
+
+    print("\n=== Utility Operations ===")
+
+    // Repeat
+    let ha = str_new("ha")
+    let laugh = str_repeat(ha, 3)
+    print("Repeated: " + laugh)
+
+    // Char at
+    let s4 = str_new("hello")
+    let char = str_char_at(s4, 1)
+    print("Char at index 1: " + char)
+
+    print("\n=== String Slices ===")
+
+    let s5 = str_new("hello world")
+    let slice = as_slice(s5)
+    let slice_len = slice_len(slice)
+    print("Slice length: " + str_from_int(slice_len))
+
+    let first_char = slice_get(slice, 0)
+    print("First char: " + first_char)
+
+    print("\n=== C FFI Operations ===")
+
+    // Create C string
+    let cs = cstr_new("hello")
+    print("C string created")
+
+    // Get C string length
+    let cs_len = cstr_len(cs)
+    print("C string length: " + str_from_int(cs_len))
+
+    // Convert back to regular string
+    let regular = cstr_to_str(cs)
+    print("Converted back: " + regular)
+
+    print("\n=== All Examples Complete! ===")
+}
+
+// Helper functions for printing (these would be in stdlib in real usage)
+fn str_from_int(n int) str {
+    // Simple implementation - in real code this would be more robust
+    if n == 0 { return "0" }
+    if n < 0 { return "-" + str_from_int(-n) }
+
+    let mut result = str_new("")
+    let mut n = n
+
+    while n > 0 {
+        let digit = n % 10
+        let char = str_char_at("0123456789", digit)
+        str_append(mut result, char)
+        n = n / 10
+    }
+
+    result
+}
+
+fn str_from_bool(b bool) str {
+    if b { return "true" }
+    return "false"
+}
