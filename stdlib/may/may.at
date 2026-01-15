@@ -1,0 +1,121 @@
+// stdlib/may/may.at
+// Unified May<T> type for AutoLang
+// Three-state enum: Empty, Value, Error
+// Syntactic sugar: ?T (e.g., ?int, ?str)
+
+# C
+#include "may.h"
+
+// May<T> type with three states
+extern type May<T> {
+    Empty      // No value (like None)
+    Value(T)   // Has value (like Some/Ok)
+    Error      // Has error (like Err)
+}
+
+// ==================== Creation Functions ====================
+
+// Create an Empty May (no value)
+spec extern May_empty<T>() May<T>
+
+// Create a May with a value
+spec extern May_value<T>(value T) May<T>
+
+// Create a May with an error
+spec extern May_error<T>(error) May<T>
+
+// ==================== Inspection Functions ====================
+
+// Check if May is Empty
+spec extern May_is_empty<T>(may May<T>) bool
+
+// Check if May has a Value
+spec extern May_is_value<T>(may May<T>) bool
+
+// Check if May has an Error
+spec extern May_is_error<T>(may May<T>) bool
+
+// ==================== Unwrapping Functions ====================
+
+// Get the value (unsafe if Empty or Error)
+spec extern May_unwrap<T>(may May<T>) T
+
+// Get the value or return default
+spec extern May_unwrap_or<T>(may May<T>, default T) T
+
+// Get the value or return NULL
+spec extern May_unwrap_or_null<T>(may May<T>) T
+
+// Get the error message (unsafe if not Error)
+spec extern May_unwrap_error<T>(may May<T>) error
+
+// Get the error or return default_error
+spec extern May_unwrap_error_or<T>(may May<T>, default_error error) error
+
+// ==================== Cleanup Functions ====================
+
+// Clean up May resources
+spec extern May_drop<T>(may May<T>)
+
+// ==================== Examples ====================
+
+// Example 1: Basic May usage
+// fn find_user(id int) ?str {
+//     if id == 1 {
+//         return May_value("Alice")
+//     }
+//     if id == 2 {
+//         return May_error("User not found")
+//     }
+//     return May_empty()
+// }
+//
+// fn main() {
+//     let user1 = find_user(1)
+//     if May_is_value(user1) {
+//         let name = May_unwrap(user1)
+//         print(f"Found: $name")
+//     }
+//
+//     let user2 = find_user(2)
+//     if May_is_error(user2) {
+//         let err = May_unwrap_error(user2)
+//         print(f"Error: $err")
+//     }
+// }
+
+// Example 2: Divide function with May
+// fn divide(a int, b int) ?int {
+//     if b == 0 {
+//         return May_error("division by zero")
+//     }
+//     return May_value(a / b)
+// }
+//
+// fn test_divide() {
+//     let result1 = divide(10, 2)
+//     if May_is_value(result1) {
+//         let value = May_unwrap(result1)
+//         assert(value == 5)
+//     }
+//
+//     let result2 = divide(10, 0)
+//     if May_is_error(result2) {
+//         let error = May_unwrap_error(result2)
+//         assert(error == "division by zero")
+//     }
+// }
+
+// Example 3: Default values
+// fn get_config(key str) ?int {
+//     if key == "timeout" {
+//         return May_value(30)
+//     }
+//     return May_empty()
+// }
+//
+// fn main() {
+//     let timeout = get_config("timeout")
+//     let value = May_unwrap_or(timeout, 60)
+//     print(f"Timeout: $value seconds")
+// }

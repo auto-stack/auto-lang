@@ -147,6 +147,40 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
     let name: AutoStr = "Result_unwrap_err_or".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::result_unwrap_err_or, name }));
 
+    // May functions (Plan 027 Phase 1b)
+    let name: AutoStr = "May_empty".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::may::may_empty, name }));
+
+    let name: AutoStr = "May_value".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::may::may_value, name }));
+
+    let name: AutoStr = "May_error".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::may::may_error, name }));
+
+    let name: AutoStr = "May_is_empty".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::may::may_is_empty, name }));
+
+    let name: AutoStr = "May_is_value".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::may::may_is_value, name }));
+
+    let name: AutoStr = "May_is_error".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::may::may_is_error, name }));
+
+    let name: AutoStr = "May_unwrap".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::may::may_unwrap, name }));
+
+    let name: AutoStr = "May_unwrap_or".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::may::may_unwrap_or, name }));
+
+    let name: AutoStr = "May_unwrap_or_null".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::may::may_unwrap_or_null, name }));
+
+    let name: AutoStr = "May_unwrap_error".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::may::may_unwrap_error, name }));
+
+    let name: AutoStr = "May_unwrap_error_or".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::may::may_unwrap_error_or, name }));
+
     builtins
 }
 

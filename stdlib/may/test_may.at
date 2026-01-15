@@ -1,0 +1,252 @@
+// stdlib/may/test_may.at
+// Comprehensive tests for May<T> type
+// Three-state enum: Empty, Value, Error
+
+// ==================== Creation Tests ====================
+
+fn test_may_empty() {
+    let may = May_empty<int>()
+    assert(May_is_empty(may))
+    assert(!May_is_value(may))
+    assert(!May_is_error(may))
+}
+
+fn test_may_value() {
+    let may = May_value(42)
+    assert(!May_is_empty(may))
+    assert(May_is_value(may))
+    assert(!May_is_error(may))
+    assert(May_unwrap(may) == 42)
+}
+
+fn test_may_value_str() {
+    let may = May_value("hello")
+    assert(May_is_value(may))
+    let value = May_unwrap(may)
+    assert(value == "hello")
+}
+
+fn test_may_error() {
+    let may = May_error<int>("something went wrong")
+    assert(!May_is_empty(may))
+    assert(!May_is_value(may))
+    assert(May_is_error(may))
+    let err = May_unwrap_error(may)
+    assert(err == "something went wrong")
+}
+
+// ==================== Unwrap Tests ====================
+
+fn test_may_unwrap_or_value() {
+    let may = May_value(42)
+    let value = May_unwrap_or(may, 100)
+    assert(value == 42)
+}
+
+fn test_may_unwrap_or_empty() {
+    let may = May_empty<int>()
+    let value = May_unwrap_or(may, 100)
+    assert(value == 100)
+}
+
+fn test_may_unwrap_or_error() {
+    let may = May_error<int>("error")
+    let value = May_unwrap_or(may, 100)
+    assert(value == 100)
+}
+
+fn test_may_unwrap_or_null_value() {
+    let may = May_value(42)
+    let value = May_unwrap_or_null(may)
+    assert(value == 42)
+}
+
+fn test_may_unwrap_or_null_empty() {
+    let may = May_empty<int>()
+    let value = May_unwrap_or_null(may)
+    assert(value == null)
+}
+
+fn test_may_unwrap_or_null_error() {
+    let may = May_error<int>("error")
+    let value = May_unwrap_or_null(may)
+    assert(value == null)
+}
+
+fn test_may_unwrap_error_or_error() {
+    let may = May_error<int>("actual error")
+    let err = May_unwrap_error_or(may, "default error")
+    assert(err == "actual error")
+}
+
+fn test_may_unwrap_error_or_value() {
+    let may = May_value(42)
+    let err = May_unwrap_error_or(may, "default error")
+    assert(err == "default error")
+}
+
+fn test_may_unwrap_error_or_empty() {
+    let may = May_empty<int>()
+    let err = May_unwrap_error_or(may, "default error")
+    assert(err == "default error")
+}
+
+// ==================== Usage Examples ====================
+
+fn divide(a int, b int) ?int {
+    if b == 0 {
+        return May_error("division by zero")
+    }
+    return May_value(a / b)
+}
+
+fn test_divide_success() {
+    let res = divide(10, 2)
+    assert(May_is_value(res))
+    let value = May_unwrap(res)
+    assert(value == 5)
+}
+
+fn test_divide_by_zero() {
+    let res = divide(10, 0)
+    assert(May_is_error(res))
+    let error = May_unwrap_error(res)
+    assert(error == "division by zero")
+}
+
+fn find_user(id int) ?str {
+    if id == 1 {
+        return May_value("Alice")
+    }
+    if id == 2 {
+        return May_error("User not found")
+    }
+    return May_empty()
+}
+
+fn test_find_user_value() {
+    let user = find_user(1)
+    assert(May_is_value(user))
+    let name = May_unwrap(user)
+    assert(name == "Alice")
+}
+
+fn test_find_user_error() {
+    let user = find_user(2)
+    assert(May_is_error(user))
+    let err = May_unwrap_error(user)
+    assert(err == "User not found")
+}
+
+fn test_find_user_empty() {
+    let user = find_user(3)
+    assert(May_is_empty(user))
+}
+
+fn get_config(key str) ?int {
+    if key == "timeout" {
+        return May_value(30)
+    }
+    return May_empty()
+}
+
+fn test_get_config_with_default() {
+    let timeout = get_config("timeout")
+    let value = May_unwrap_or(timeout, 60)
+    assert(value == 30)
+
+    let port = get_config("port")
+    let value = May_unwrap_or(port, 8080)
+    assert(value == 8080)
+}
+
+// ==================== State Transitions ====================
+
+fn test_value_to_empty_conversion() {
+    let value = May_value(42)
+    // Can't convert, but can check
+    assert(May_is_value(value))
+    assert(!May_is_empty(value))
+}
+
+fn test_error_to_empty_conversion() {
+    let error = May_error<int>("error")
+    assert(May_is_error(error))
+    assert(!May_is_empty(error))
+}
+
+// ==================== Main Test Runner ====================
+
+fn main() {
+    print("Running May<T> tests...")
+
+    print("  Creation tests...")
+    test_may_empty()
+    print("    ✓ test_may_empty")
+
+    test_may_value()
+    print("    ✓ test_may_value")
+
+    test_may_value_str()
+    print("    ✓ test_may_value_str")
+
+    test_may_error()
+    print("    ✓ test_may_error")
+
+    print("  Unwrap tests...")
+    test_may_unwrap_or_value()
+    print("    ✓ test_may_unwrap_or_value")
+
+    test_may_unwrap_or_empty()
+    print("    ✓ test_may_unwrap_or_empty")
+
+    test_may_unwrap_or_error()
+    print("    ✓ test_may_unwrap_or_error")
+
+    test_may_unwrap_or_null_value()
+    print("    ✓ test_may_unwrap_or_null_value")
+
+    test_may_unwrap_or_null_empty()
+    print("    ✓ test_may_unwrap_or_null_empty")
+
+    test_may_unwrap_or_null_error()
+    print("    ✓ test_may_unwrap_or_null_error")
+
+    test_may_unwrap_error_or_error()
+    print("    ✓ test_may_unwrap_error_or_error")
+
+    test_may_unwrap_error_or_value()
+    print("    ✓ test_may_unwrap_error_or_value")
+
+    test_may_unwrap_error_or_empty()
+    print("    ✓ test_may_unwrap_error_or_empty")
+
+    print("  Usage examples...")
+    test_divide_success()
+    print("    ✓ test_divide_success")
+
+    test_divide_by_zero()
+    print("    ✓ test_divide_by_zero")
+
+    test_find_user_value()
+    print("    ✓ test_find_user_value")
+
+    test_find_user_error()
+    print("    ✓ test_find_user_error")
+
+    test_find_user_empty()
+    print("    ✓ test_find_user_empty")
+
+    test_get_config_with_default()
+    print("    ✓ test_get_config_with_default")
+
+    print("  State transition tests...")
+    test_value_to_empty_conversion()
+    print("    ✓ test_value_to_empty_conversion")
+
+    test_error_to_empty_conversion()
+    print("    ✓ test_error_to_empty_conversion")
+
+    print("")
+    print("All May<T> tests passed! (20 tests)")
+}
