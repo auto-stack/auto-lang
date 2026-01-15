@@ -1,0 +1,48 @@
+// stdlib/result/option.at
+// Option type for AutoLang
+// Represents an optional value: either Some(T) or None
+
+# C
+#include "option.h"
+
+// Option type - represents an optional value
+extern type Option<T> {
+    None
+    Some(value T)
+}
+
+// Create a None value
+spec extern Option_none<T>() Option<T>
+
+// Create a Some value
+spec extern Option_some<T>(value T) Option<T>
+
+// Check if Option contains a value
+spec extern Option_is_some<T>(opt Option<T>) bool
+
+// Check if Option is None
+spec extern Option_is_none<T>(opt Option<T>) bool
+
+// Get the contained value (panics if None)
+spec extern Option_unwrap<T>(opt Option<T>) T
+
+// Get the contained value or return default
+spec extern Option_unwrap_or<T>(opt Option<T>, default T) T
+
+// Get the contained value or NULL (only for pointer types)
+spec extern Option_unwrap_or_null<T>(opt Option<T>) T
+
+// Examples:
+// fn test_option_some() {
+//     let opt = Option_some(42)
+//     assert(Option_is_some(opt))
+//     let value = Option_unwrap(opt)
+//     assert(value == 42)
+// }
+//
+// fn test_option_none() {
+//     let opt = Option_none<int>()
+//     assert(Option_is_none(opt))
+//     let value = Option_unwrap_or(opt, 0)
+//     assert(value == 0)
+// }

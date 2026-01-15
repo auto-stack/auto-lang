@@ -1,0 +1,58 @@
+// stdlib/result/result.at
+// Result type for AutoLang
+// Represents either success (Ok) or error (Err)
+
+# C
+#include "result.h"
+
+// Result type - represents either success (Ok) or error (Err)
+extern type Result<T, E> {
+    Ok(value T)
+    Err(error E)
+}
+
+// Create an Ok value
+spec extern Result_ok<T, E>(value T) Result<T, E>
+
+// Create an Err value
+spec extern Result_err<T, E>(error E) Result<T, E>
+
+// Check if Result is Ok
+spec extern Result_is_ok<T, E>(res Result<T, E>) bool
+
+// Check if Result is Err
+spec extern Result_is_err<T, E>(res Result<T, E>) bool
+
+// Get the contained value (panics if Err)
+spec extern Result_unwrap<T, E>(res Result<T, E>) T
+
+// Get the contained error message (panics if Ok)
+spec extern Result_unwrap_err<T, E>(res Result<T, E>) E
+
+// Get the contained value or default
+spec extern Result_unwrap_or<T, E>(res Result<T, E>, default T) T
+
+// Get the error message or default
+spec extern Result_unwrap_err_or<T, E>(res Result<T, E>, default_error E) E
+
+// Examples:
+// fn test_result_ok() {
+//     let res = Result_ok<int, str>(42)
+//     assert(Result_is_ok(res))
+//     let value = Result_unwrap(res)
+//     assert(value == 42)
+// }
+//
+// fn test_result_err() {
+//     let res = Result_err<int, str>("something went wrong")
+//     assert(Result_is_err(res))
+//     let error_msg = Result_unwrap_err(res)
+//     assert(error_msg == "something went wrong")
+// }
+//
+// fn divide(a int, b int) Result<int, str> {
+//     if b == 0 {
+//         return Result_err<int, str>("division by zero")
+//     }
+//     return Result_ok<int, str>(a / b)
+// }

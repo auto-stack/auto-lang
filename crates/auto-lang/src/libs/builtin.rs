@@ -100,6 +100,53 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
     let name: AutoStr = "to_cstr".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::to_cstr, name }));
 
+    // Option functions (Plan 027)
+    let name: AutoStr = "Option_some".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::option_some, name }));
+
+    let name: AutoStr = "Option_none".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::option_none, name }));
+
+    let name: AutoStr = "Option_is_some".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::option_is_some, name }));
+
+    let name: AutoStr = "Option_is_none".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::option_is_none, name }));
+
+    let name: AutoStr = "Option_unwrap".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::option_unwrap, name }));
+
+    let name: AutoStr = "Option_unwrap_or".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::option_unwrap_or, name }));
+
+    let name: AutoStr = "Option_unwrap_or_null".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::option_unwrap_or_null, name }));
+
+    // Result functions (Plan 027)
+    let name: AutoStr = "Result_ok".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::result_ok, name }));
+
+    let name: AutoStr = "Result_err".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::result_err, name }));
+
+    let name: AutoStr = "Result_is_ok".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::result_is_ok, name }));
+
+    let name: AutoStr = "Result_is_err".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::result_is_err, name }));
+
+    let name: AutoStr = "Result_unwrap".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::result_unwrap, name }));
+
+    let name: AutoStr = "Result_unwrap_err".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::result_unwrap_err, name }));
+
+    let name: AutoStr = "Result_unwrap_or".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::result_unwrap_or, name }));
+
+    let name: AutoStr = "Result_unwrap_err_or".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::result::result_unwrap_err_or, name }));
+
     builtins
 }
 

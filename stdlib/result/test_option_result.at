@@ -1,0 +1,266 @@
+// stdlib/result/test_option_result.at
+// Comprehensive tests for Option and Result types
+
+// Test Option_some with integer value
+fn test_option_some_int() {
+    let opt = Option_some(42)
+    assert(Option_is_some(opt))
+    assert(!Option_is_none(opt))
+    let value = Option_unwrap(opt)
+    assert(value == 42)
+}
+
+// Test Option_some with string value
+fn test_option_some_str() {
+    let opt = Option_some("hello")
+    assert(Option_is_some(opt))
+    let value = Option_unwrap(opt)
+    assert(value == "hello")
+}
+
+// Test Option_none
+fn test_option_none() {
+    let opt = Option_none()
+    assert(Option_is_none(opt))
+    assert(!Option_is_some(opt))
+}
+
+// Test Option_unwrap_or with Some
+fn test_option_unwrap_or_some() {
+    let opt = Option_some(42)
+    let value = Option_unwrap_or(opt, 100)
+    assert(value == 42)
+}
+
+// Test Option_unwrap_or with None
+fn test_option_unwrap_or_none() {
+    let opt = Option_none()
+    let value = Option_unwrap_or(opt, 100)
+    assert(value == 100)
+}
+
+// Test Option_unwrap_or_null with Some
+fn test_option_unwrap_or_null_some() {
+    let opt = Option_some(42)
+    let value = Option_unwrap_or_null(opt)
+    assert(value == 42)
+}
+
+// Test Option_unwrap_or_null with None
+fn test_option_unwrap_or_null_none() {
+    let opt = Option_none()
+    let value = Option_unwrap_or_null(opt)
+    assert(value == null)
+}
+
+// Test Result_ok with integer
+fn test_result_ok_int() {
+    let res = Result_ok(42)
+    assert(Result_is_ok(res))
+    assert(!Result_is_err(res))
+    let value = Result_unwrap(res)
+    assert(value == 42)
+}
+
+// Test Result_ok with string
+fn test_result_ok_str() {
+    let res = Result_ok("success")
+    assert(Result_is_ok(res))
+    let value = Result_unwrap(res)
+    assert(value == "success")
+}
+
+// Test Result_err
+fn test_result_err() {
+    let res = Result_err("something went wrong")
+    assert(Result_is_err(res))
+    assert(!Result_is_ok(res))
+    let error = Result_unwrap_err(res)
+    assert(error == "something went wrong")
+}
+
+// Test Result_unwrap_or with Ok
+fn test_result_unwrap_or_ok() {
+    let res = Result_ok(42)
+    let value = Result_unwrap_or(res, 100)
+    assert(value == 42)
+}
+
+// Test Result_unwrap_or with Err
+fn test_result_unwrap_or_err() {
+    let res = Result_err("error")
+    let value = Result_unwrap_or(res, 100)
+    assert(value == 100)
+}
+
+// Test Result_unwrap_err_or with Ok
+fn test_result_unwrap_err_or_ok() {
+    let res = Result_ok(42)
+    let error = Result_unwrap_err_or(res, "default error")
+    assert(error == "default error")
+}
+
+// Test Result_unwrap_err_or with Err
+fn test_result_unwrap_err_or_err() {
+    let res = Result_err("actual error")
+    let error = Result_unwrap_err_or(res, "default error")
+    assert(error == "actual error")
+}
+
+// Test divide function with Result type
+fn divide(a int, b int) Result<int, str> {
+    if b == 0 {
+        return Result_err("division by zero")
+    }
+    return Result_ok(a / b)
+}
+
+// Test successful division
+fn test_divide_success() {
+    let res = divide(10, 2)
+    assert(Result_is_ok(res))
+    let value = Result_unwrap(res)
+    assert(value == 5)
+}
+
+// Test division by zero
+fn test_divide_by_zero() {
+    let res = divide(10, 0)
+    assert(Result_is_err(res))
+    let error = Result_unwrap_err(res)
+    assert(error == "division by zero")
+}
+
+// Test Option chaining pattern
+fn test_option_chaining() {
+    let opt1 = Option_some(10)
+    if Option_is_some(opt1) {
+        let value = Option_unwrap(opt1)
+        let opt2 = Option_some(value * 2)
+        assert(Option_unwrap(opt2) == 20)
+    }
+}
+
+// Test Result chaining pattern
+fn test_result_chaining() {
+    let res1 = Result_ok(10)
+    if Result_is_ok(res1) {
+        let value = Result_unwrap(res1)
+        let res2 = Result_ok(value * 2)
+        assert(Result_unwrap(res2) == 20)
+    }
+}
+
+// Test Option with default value
+fn get_optional_value(should_return bool) Option<int> {
+    if should_return {
+        return Option_some(42)
+    }
+    return Option_none()
+}
+
+fn test_optional_with_default() {
+    let opt1 = get_optional_value(true)
+    let value1 = Option_unwrap_or(opt1, 0)
+    assert(value1 == 42)
+
+    let opt2 = get_optional_value(false)
+    let value2 = Option_unwrap_or(opt2, 0)
+    assert(value2 == 0)
+}
+
+// Test Result error propagation
+fn parse_int(s str) Result<int, str> {
+    if s == "" {
+        return Result_err("empty string")
+    }
+    // Simulate successful parse
+    return Result_ok(42)
+}
+
+fn validate_and_parse(s str) Result<int, str> {
+    if Result_is_err(parse_int(s)) {
+        return Result_err("parse failed")
+    }
+    return parse_int(s)
+}
+
+fn test_error_propagation() {
+    let res1 = validate_and_parse("123")
+    assert(Result_is_ok(res1))
+
+    let res2 = validate_and_parse("")
+    assert(Result_is_err(res2))
+    let error = Result_unwrap_err(res2)
+    assert(error == "parse failed")
+}
+
+// Main test runner
+fn main() {
+    print("Running Option tests...")
+
+    test_option_some_int()
+    print("  ✓ test_option_some_int")
+
+    test_option_some_str()
+    print("  ✓ test_option_some_str")
+
+    test_option_none()
+    print("  ✓ test_option_none")
+
+    test_option_unwrap_or_some()
+    print("  ✓ test_option_unwrap_or_some")
+
+    test_option_unwrap_or_none()
+    print("  ✓ test_option_unwrap_or_none")
+
+    test_option_unwrap_or_null_some()
+    print("  ✓ test_option_unwrap_or_null_some")
+
+    test_option_unwrap_or_null_none()
+    print("  ✓ test_option_unwrap_or_null_none")
+
+    print("Running Result tests...")
+
+    test_result_ok_int()
+    print("  ✓ test_result_ok_int")
+
+    test_result_ok_str()
+    print("  ✓ test_result_ok_str")
+
+    test_result_err()
+    print("  ✓ test_result_err")
+
+    test_result_unwrap_or_ok()
+    print("  ✓ test_result_unwrap_or_ok")
+
+    test_result_unwrap_or_err()
+    print("  ✓ test_result_unwrap_or_err")
+
+    test_result_unwrap_err_or_ok()
+    print("  ✓ test_result_unwrap_err_or_ok")
+
+    test_result_unwrap_err_or_err()
+    print("  ✓ test_result_unwrap_err_or_err")
+
+    test_divide_success()
+    print("  ✓ test_divide_success")
+
+    test_divide_by_zero()
+    print("  ✓ test_divide_by_zero")
+
+    test_option_chaining()
+    print("  ✓ test_option_chaining")
+
+    test_result_chaining()
+    print("  ✓ test_result_chaining")
+
+    test_optional_with_default()
+    print("  ✓ test_optional_with_default")
+
+    test_error_propagation()
+    print("  ✓ test_error_propagation")
+
+    print("")
+    print("All tests passed! (20 tests)")
+}
