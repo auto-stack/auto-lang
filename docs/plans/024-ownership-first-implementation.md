@@ -643,6 +643,19 @@ fn test_c_ffi() {
 - 23 个借用检查器测试全部通过 (6 个新增)
 - 完整的文档: [borrow-checker-improvements.md](../borrow-checker-improvements.md)
 
+✅ **Completed (Phase 3 - Value System Integration):**
+- **ValueRef 解引用修复**: 在 `eval_ident` 中添加 `Value::ValueRef` 处理
+- **StrSlice 显式支持**:
+  - `alloc_value_from_value`: 添加 StrSlice/OwnedStr 分配
+  - `into_data`: 添加 StrSlice 转换
+  - `from_data`: StrSlice 解包支持
+- **函数命名修复**: 避免类型名冲突
+  - `str_slice` → `as_slice` (创建切片)
+  - `str_slice_len` → `slice_len` (获取长度)
+  - `str_slice_get` → `slice_get` (获取字节)
+- **print 函数改进**: 使用 `stdout.lock()` 确保输出立即显示
+- **str_slice 测试通过**: 所有 4 个测试用例输出正确
+
 ✅ **Borrow Checker Core Features:**
 - `Borrow` 结构体包含 `target` 字段用于精确冲突检测
 - `Target::from_expr()` 方法支持:
@@ -655,11 +668,10 @@ fn test_c_ffi() {
 - 保守的生命周期重叠检测策略
 
 ⏸️ **Remaining Work:**
-- `view`/`mut`/`take` 关键字语法解析 (已添加到 token.rs)
-- `str_slice` 类型完全集成 (Value 系统已支持)
-- `hold` 表达式语法和求值 (AST 结构已创建)
-- 生命周期区域跟踪 (start/end points)
-- Span 信息集成到错误报告
+- `view`/`mut`/`take` 关键字完全集成到 eval (parser 已支持)
+- `hold` 表达式完整求值与借用检查集成 (AST 已创建)
+- 生命周期区域跟踪 (start/end points for precise overlap detection)
+- Span 信息集成到 miette 错误报告
 
 ---
 
