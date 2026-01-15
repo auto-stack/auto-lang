@@ -1,17 +1,18 @@
 # Ownership-Based Memory System Implementation Plan
 
-## Implementation Status: 🔄 Phase 3 IN PROGRESS - Borrow Checker Core Complete
+## Implementation Status: 🔄 Phase 3 IN PROGRESS - Borrow Checker Core Complete, Property Keywords Complete
 
 **Priority:** FOUNDATIONAL - Must complete before str Types (Plan 025)
 **Dependencies:** None (this IS the foundation)
 **Started:** 2025-01-14
-**Current Phase:** Phase 3 - Borrow Checker (🔄 Week 1-3: Core Complete, Week 4-8: Integration Pending)
+**Current Phase:** Phase 3 - Borrow Checker (✅ Core Complete, ✅ Property Keywords Complete, ⏸️ Integration Pending)
 
 **Completed:**
 - ✅ Phase 1: Move Semantics (Linear types, use-after-move detection, 440+ tests)
 - ✅ Phase 2: Owned str Type (OwnedStr implementation, string functions, UTF-8 support)
 - ✅ Phase 3 Core: Borrow Checker (Target system, conflict detection, 23 tests) - **[详细文档](../borrow-checker-improvements.md)**
 - ✅ Phase 3 Integration: C transpiler view/mut/take support (generates proper pointer references)
+- ✅ Phase 3 Integration: Property keywords implementation (s.view, s.mut, s.take syntax) - **[Plan 026](026-property-keywords.md)**
 
 **Next Steps:**
 - Phase 3 Integration: Complete hold eval, str_slice safety
@@ -674,10 +675,10 @@ fn test_c_ffi() {
 - 保守的生命周期重叠检测策略
 
 ⏸️ **Remaining Work:**
-- `view`/`mut`/`take` 关键字完全集成到 eval (parser 已支持)
 - `hold` 表达式完整求值与借用检查集成 (AST 已创建)
 - 生命周期区域跟踪 (start/end points for precise overlap detection)
 - Span 信息集成到 miette 错误报告
+- 全面集成测试 (comprehensive integration tests)
 
 ---
 
@@ -1055,11 +1056,11 @@ fn test_hold_path() {
 
 **Success Criteria:**
 - [x] Borrow checker core working ✅ (Target system, conflict detection)
-- [ ] `view`/`mut`/`take` keywords functional ⏸️ (token added, parser integration pending)
+- [x] `view`/`mut`/`take` keywords functional ✅ (property keyword syntax complete, Plan 026)
 - [x] `str_slice` type implemented ✅ (Value system + 3 builtin functions)
 - [x] `hold` path binding AST ✅ (parser implemented, eval integration pending)
 - [x] 23 borrow checker tests passing ✅ (6 new comprehensive tests)
-- [ ] 200+ total tests ⏸️ (target: comprehensive test suite)
+- [x] 452+ total tests ✅ (exceeds 200 target, includes all borrow tests)
 - [ ] Zero runtime overhead for borrows ⏸️ (compile-time checks implemented)
 
 ---
@@ -1084,11 +1085,12 @@ fn test_hold_path() {
 
 ### Phase 3: Borrow Checker (8 weeks) 🔄 IN PROGRESS
 - [x] Borrow checker core implemented ✅ (Target system, conflict detection, 23 tests)
-- [ ] `view`/`mut`/`take` keywords working ⏸️ (token & parser partial, eval pending)
+- [x] `view`/`mut`/`take` keywords working ✅ (property keyword syntax complete, Plan 026)
 - [x] `str_slice` type implemented ✅ (unsafe API, 3 builtin functions, Phase 3 experimental)
 - [x] `hold` path binding AST ✅ (parser implemented, eval with borrow checking pending)
+- [x] Property keywords syntax ✅ (s.view, s.mut, s.take - 452 tests passing)
 - [ ] Zero runtime overhead ⏸️ (compile-time checks designed, integration pending)
-- [ ] 200+ tests passing ⏸️ (23 borrow tests passing, 440+ total tests)
+- [ ] 200+ tests passing ⏸️ (23 borrow tests passing, 452 total tests)
 
 ### Overall
 - [ ] Matches [new_memory.md](../language/design/new_memory.md) vision
