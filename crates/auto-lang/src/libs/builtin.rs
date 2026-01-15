@@ -8,7 +8,7 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
     let name: AutoStr = "print".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: print, name }));
 
-    // String functions
+    // String functions - Basic
     let name: AutoStr = "str_new".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_new, name }));
 
@@ -26,6 +26,53 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
 
     let name: AutoStr = "str_sub".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_sub, name }));
+
+    // String functions - Search (Plan 025)
+    let name: AutoStr = "str_contains".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_contains, name }));
+
+    let name: AutoStr = "str_starts_with".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_starts_with, name }));
+
+    let name: AutoStr = "str_ends_with".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_ends_with, name }));
+
+    let name: AutoStr = "str_find".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_find, name }));
+
+    // String functions - Transform (Plan 025)
+    let name: AutoStr = "str_trim".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_trim, name }));
+
+    let name: AutoStr = "str_trim_left".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_trim_left, name }));
+
+    let name: AutoStr = "str_trim_right".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_trim_right, name }));
+
+    let name: AutoStr = "str_replace".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_replace, name }));
+
+    // String functions - Split/Join (Plan 025)
+    let name: AutoStr = "str_split".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_split, name }));
+
+    let name: AutoStr = "str_join".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_join, name }));
+
+    // String functions - Compare (Plan 025)
+    let name: AutoStr = "str_compare".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_compare, name }));
+
+    let name: AutoStr = "str_eq_ignore_case".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_eq_ignore_case, name }));
+
+    // String functions - Utilities (Plan 025)
+    let name: AutoStr = "str_repeat".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_repeat, name }));
+
+    let name: AutoStr = "str_char_at".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_char_at, name }));
 
     // String slice functions (Phase 3)
     let name: AutoStr = "as_slice".into();

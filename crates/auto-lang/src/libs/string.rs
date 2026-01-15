@@ -395,3 +395,441 @@ mod tests {
         assert_eq!(result, Value::Int(104));
     }
 }
+
+// ============================================================================
+// Plan 025: Additional String Operations
+// ============================================================================
+
+/// Check if a string contains a substring
+///
+/// # Arguments
+/// * `args` - Expected: (s: str, pattern: str)
+///
+/// # Example
+/// ```auto
+/// let contains = str_contains("hello world", "world")  // returns true
+/// ```
+pub fn str_contains(args: &Args) -> Value {
+    if args.args.len() < 2 {
+        return Value::Error("str_contains requires 2 arguments".into());
+    }
+
+    let s = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        _ => return Value::Error("str_contains expects string as first argument".into()),
+    };
+
+    let pattern = match &args.args[1] {
+        Arg::Pos(Value::Str(p)) => p.as_str(),
+        Arg::Pos(Value::OwnedStr(p)) => p.as_str(),
+        _ => return Value::Error("str_contains expects string as second argument".into()),
+    };
+
+    Value::Bool(s.contains(pattern))
+}
+
+/// Check if a string starts with a prefix
+///
+/// # Arguments
+/// * `args` - Expected: (s: str, prefix: str)
+///
+/// # Example
+/// ```auto
+/// let starts = str_starts_with("hello", "he")  // returns true
+/// ```
+pub fn str_starts_with(args: &Args) -> Value {
+    if args.args.len() < 2 {
+        return Value::Error("str_starts_with requires 2 arguments".into());
+    }
+
+    let s = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        _ => return Value::Error("str_starts_with expects string as first argument".into()),
+    };
+
+    let prefix = match &args.args[1] {
+        Arg::Pos(Value::Str(p)) => p.as_str(),
+        Arg::Pos(Value::OwnedStr(p)) => p.as_str(),
+        _ => return Value::Error("str_starts_with expects string as second argument".into()),
+    };
+
+    Value::Bool(s.starts_with(prefix))
+}
+
+/// Check if a string ends with a suffix
+///
+/// # Arguments
+/// * `args` - Expected: (s: str, suffix: str)
+///
+/// # Example
+/// ```auto
+/// let ends = str_ends_with("hello", "lo")  // returns true
+/// ```
+pub fn str_ends_with(args: &Args) -> Value {
+    if args.args.len() < 2 {
+        return Value::Error("str_ends_with requires 2 arguments".into());
+    }
+
+    let s = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        _ => return Value::Error("str_ends_with expects string as first argument".into()),
+    };
+
+    let suffix = match &args.args[1] {
+        Arg::Pos(Value::Str(p)) => p.as_str(),
+        Arg::Pos(Value::OwnedStr(p)) => p.as_str(),
+        _ => return Value::Error("str_ends_with expects string as second argument".into()),
+    };
+
+    Value::Bool(s.ends_with(suffix))
+}
+
+/// Find the index of a substring (returns -1 if not found)
+///
+/// # Arguments
+/// * `args` - Expected: (s: str, pattern: str)
+///
+/// # Example
+/// ```auto
+/// let index = str_find("hello world", "world")  // returns 6
+/// let not_found = str_find("hello", "xyz")     // returns -1
+/// ```
+pub fn str_find(args: &Args) -> Value {
+    if args.args.len() < 2 {
+        return Value::Error("str_find requires 2 arguments".into());
+    }
+
+    let s = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        _ => return Value::Error("str_find expects string as first argument".into()),
+    };
+
+    let pattern = match &args.args[1] {
+        Arg::Pos(Value::Str(p)) => p.as_str(),
+        Arg::Pos(Value::OwnedStr(p)) => p.as_str(),
+        _ => return Value::Error("str_find expects string as second argument".into()),
+    };
+
+    match s.find(pattern) {
+        Some(index) => Value::Int(index as i32),
+        None => Value::Int(-1),
+    }
+}
+
+/// Trim whitespace from both ends of a string
+///
+/// # Arguments
+/// * `args` - Expected: (s: str)
+///
+/// # Example
+/// ```auto
+/// let trimmed = str_trim("  hello  ")  // returns "hello"
+/// ```
+pub fn str_trim(args: &Args) -> Value {
+    if args.args.is_empty() {
+        return Value::Error("str_trim requires 1 argument".into());
+    }
+
+    match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().trim())),
+        Arg::Pos(Value::OwnedStr(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().trim())),
+        _ => Value::Error("str_trim expects a string argument".into()),
+    }
+}
+
+/// Trim whitespace from the left side of a string
+///
+/// # Arguments
+/// * `args` - Expected: (s: str)
+///
+/// # Example
+/// ```auto
+/// let trimmed = str_trim_left("  hello  ")  // returns "hello  "
+/// ```
+pub fn str_trim_left(args: &Args) -> Value {
+    if args.args.is_empty() {
+        return Value::Error("str_trim_left requires 1 argument".into());
+    }
+
+    match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().trim_start())),
+        Arg::Pos(Value::OwnedStr(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().trim_start())),
+        _ => Value::Error("str_trim_left expects a string argument".into()),
+    }
+}
+
+/// Trim whitespace from the right side of a string
+///
+/// # Arguments
+/// * `args` - Expected: (s: str)
+///
+/// # Example
+/// ```auto
+/// let trimmed = str_trim_right("  hello  ")  // returns "  hello"
+/// ```
+pub fn str_trim_right(args: &Args) -> Value {
+    if args.args.is_empty() {
+        return Value::Error("str_trim_right requires 1 argument".into());
+    }
+
+    match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().trim_end())),
+        Arg::Pos(Value::OwnedStr(s)) => Value::OwnedStr(auto_val::Str::from_str(s.as_str().trim_end())),
+        _ => Value::Error("str_trim_right expects a string argument".into()),
+    }
+}
+
+/// Replace all occurrences of a pattern in a string
+///
+/// # Arguments
+/// * `args` - Expected: (s: str, from: str, to: str)
+///
+/// # Example
+/// ```auto
+/// let replaced = str_replace("hello world", "world", "rust")  // returns "hello rust"
+/// ```
+pub fn str_replace(args: &Args) -> Value {
+    if args.args.len() < 3 {
+        return Value::Error("str_replace requires 3 arguments".into());
+    }
+
+    let s = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str().to_string(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str().to_string(),
+        _ => return Value::Error("str_replace expects string as first argument".into()),
+    };
+
+    let from = match &args.args[1] {
+        Arg::Pos(Value::Str(p)) => p.as_str(),
+        Arg::Pos(Value::OwnedStr(p)) => p.as_str(),
+        _ => return Value::Error("str_replace expects string as second argument".into()),
+    };
+
+    let to = match &args.args[2] {
+        Arg::Pos(Value::Str(p)) => p.as_str(),
+        Arg::Pos(Value::OwnedStr(p)) => p.as_str(),
+        _ => return Value::Error("str_replace expects string as third argument".into()),
+    };
+
+    let result = s.replace(from, to);
+    Value::OwnedStr(auto_val::Str::from_str(result.as_str()))
+}
+
+/// Split a string by a delimiter
+///
+/// # Arguments
+/// * `args` - Expected: (s: str, delimiter: str)
+///
+/// # Example
+/// ```auto
+/// let parts = str_split("a,b,c", ",")  // returns array ["a", "b", "c"]
+/// ```
+pub fn str_split(args: &Args) -> Value {
+    if args.args.len() < 2 {
+        return Value::Error("str_split requires 2 arguments".into());
+    }
+
+    let s = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str().to_string(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str().to_string(),
+        _ => return Value::Error("str_split expects string as first argument".into()),
+    };
+
+    let delimiter = match &args.args[1] {
+        Arg::Pos(Value::Str(p)) => p.as_str().to_string(),
+        Arg::Pos(Value::OwnedStr(p)) => p.as_str().to_string(),
+        _ => return Value::Error("str_split expects string as second argument".into()),
+    };
+
+    let parts: Vec<Value> = if delimiter.is_empty() {
+        // Split by characters
+        s.chars().map(|c| Value::Str(c.to_string().into())).collect()
+    } else {
+        s.split(&delimiter)
+            .map(|part| Value::OwnedStr(auto_val::Str::from_str(part)))
+            .collect()
+    };
+
+    Value::Array(parts.into())
+}
+
+/// Join an array of strings with a delimiter
+///
+/// # Arguments
+/// * `args` - Expected: (parts: array[str], delimiter: str)
+///
+/// # Example
+/// ```auto
+/// let parts = ["a", "b", "c"]
+/// let joined = str_join(parts, ",")  // returns "a,b,c"
+/// ```
+pub fn str_join(args: &Args) -> Value {
+    if args.args.len() < 2 {
+        return Value::Error("str_join requires 2 arguments".into());
+    }
+
+    let parts = match &args.args[0] {
+        Arg::Pos(Value::Array(arr)) => arr,
+        _ => return Value::Error("str_join expects array as first argument".into()),
+    };
+
+    let delimiter = match &args.args[1] {
+        Arg::Pos(Value::Str(d)) => d.as_str(),
+        Arg::Pos(Value::OwnedStr(d)) => d.as_str(),
+        _ => return Value::Error("str_join expects string as second argument".into()),
+    };
+
+    let strings: Result<Vec<String>, String> = parts
+        .iter()
+        .map(|v| match v {
+            Value::Str(s) => Ok(s.as_str().to_string()),
+            Value::OwnedStr(s) => Ok(s.as_str().to_string()),
+            _ => Err("str_join: array must contain only strings".to_string()),
+        })
+        .collect();
+
+    match strings {
+        Ok(strs) => {
+            let result = strs.join(delimiter);
+            Value::OwnedStr(auto_val::Str::from_str(result.as_str()))
+        }
+        Err(e) => Value::Error(e.into()),
+    }
+}
+
+/// Compare two strings (returns 0 if equal, < 0 if s1 < s2, > 0 if s1 > s2)
+///
+/// # Arguments
+/// * `args` - Expected: (s1: str, s2: str)
+///
+/// # Example
+/// ```auto
+/// let cmp = str_compare("apple", "banana")  // returns negative number
+/// let eq = str_compare("hello", "hello")    // returns 0
+/// ```
+pub fn str_compare(args: &Args) -> Value {
+    if args.args.len() < 2 {
+        return Value::Error("str_compare requires 2 arguments".into());
+    }
+
+    let s1 = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        _ => return Value::Error("str_compare expects string as first argument".into()),
+    };
+
+    let s2 = match &args.args[1] {
+        Arg::Pos(Value::Str(s)) => s.as_str(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        _ => return Value::Error("str_compare expects string as second argument".into()),
+    };
+
+    match s1.cmp(s2) {
+        std::cmp::Ordering::Less => Value::Int(-1),
+        std::cmp::Ordering::Equal => Value::Int(0),
+        std::cmp::Ordering::Greater => Value::Int(1),
+    }
+}
+
+/// Check if two strings are equal (case-insensitive)
+///
+/// # Arguments
+/// * `args` - Expected: (s1: str, s2: str)
+///
+/// # Example
+/// ```auto
+/// let eq = str_eq_ignore_case("HELLO", "hello")  // returns true
+/// ```
+pub fn str_eq_ignore_case(args: &Args) -> Value {
+    if args.args.len() < 2 {
+        return Value::Error("str_eq_ignore_case requires 2 arguments".into());
+    }
+
+    let s1 = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str().to_lowercase(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str().to_lowercase(),
+        _ => return Value::Error("str_eq_ignore_case expects string as first argument".into()),
+    };
+
+    let s2 = match &args.args[1] {
+        Arg::Pos(Value::Str(s)) => s.as_str().to_lowercase(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str().to_lowercase(),
+        _ => return Value::Error("str_eq_ignore_case expects string as second argument".into()),
+    };
+
+    Value::Bool(s1 == s2)
+}
+
+/// Repeat a string n times
+///
+/// # Arguments
+/// * `args` - Expected: (s: str, n: int)
+///
+/// # Example
+/// ```auto
+/// let repeated = str_repeat("ha", 3)  // returns "hahaha"
+/// ```
+pub fn str_repeat(args: &Args) -> Value {
+    if args.args.len() < 2 {
+        return Value::Error("str_repeat requires 2 arguments".into());
+    }
+
+    let s = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str().to_string(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str().to_string(),
+        _ => return Value::Error("str_repeat expects string as first argument".into()),
+    };
+
+    let n = match &args.args[1] {
+        Arg::Pos(Value::Int(n)) => *n,
+        _ => return Value::Error("str_repeat expects int as second argument".into()),
+    };
+
+    if n < 0 {
+        return Value::Error("str_repeat: count cannot be negative".into());
+    }
+
+    let result = s.repeat(n as usize);
+    Value::OwnedStr(auto_val::Str::from_str(result.as_str()))
+}
+
+/// Get the character at a specific index
+///
+/// # Arguments
+/// * `args` - Expected: (s: str, index: int)
+///
+/// # Example
+/// ```auto
+/// let ch = str_char_at("hello", 1)  // returns "e"
+/// ```
+pub fn str_char_at(args: &Args) -> Value {
+    if args.args.len() < 2 {
+        return Value::Error("str_char_at requires 2 arguments".into());
+    }
+
+    let s = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        _ => return Value::Error("str_char_at expects string as first argument".into()),
+    };
+
+    let index = match &args.args[1] {
+        Arg::Pos(Value::Int(i)) => *i,
+        _ => return Value::Error("str_char_at expects int as second argument".into()),
+    };
+
+    if index < 0 {
+        return Value::Error("str_char_at: index cannot be negative".into());
+    }
+
+    let chars: Vec<char> = s.chars().collect();
+    if index as usize >= chars.len() {
+        return Value::Error("str_char_at: index out of bounds".into());
+    }
+
+    Value::Str(chars[index as usize].to_string().into())
+}
