@@ -1,0 +1,7 @@
+// Test mut (mutable borrow) expression
+fn main() {
+    let s = str_new("hello", 10)
+    let mut_ref = mut s
+    str_append(mut_ref, " world")
+    print(s)  // s is modified in place
+}

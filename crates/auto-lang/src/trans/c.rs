@@ -757,6 +757,11 @@ impl CTrans {
             Expr::Cover(cover) => self.cover(cover, out),
             Expr::Null => self.null(out),
             Expr::Nil => self.nil(out),
+            // Borrow expressions (Phase 3) - transpile as the underlying expression
+            // C doesn't have borrow checking, so these are no-ops
+            Expr::View(e) => self.expr(e, out),
+            Expr::Mut(e) => self.expr(e, out),
+            Expr::Take(e) => self.expr(e, out),
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
     }
@@ -2501,5 +2506,27 @@ int add(int x, int y);
     #[test]
     fn test_112_inheritance() {
         test_a2c("112_inheritance").unwrap();
+    }
+
+    // ===================== Phase 3: Borrow Checker tests =======================
+
+    #[test]
+    fn test_030_borrow_view() {
+        test_a2c("030_borrow_view").unwrap();
+    }
+
+    #[test]
+    fn test_031_borrow_mut() {
+        test_a2c("031_borrow_mut").unwrap();
+    }
+
+    #[test]
+    fn test_032_borrow_take() {
+        test_a2c("032_borrow_take").unwrap();
+    }
+
+    #[test]
+    fn test_033_borrow_conflicts() {
+        test_a2c("033_borrow_conflicts").unwrap();
     }
 }

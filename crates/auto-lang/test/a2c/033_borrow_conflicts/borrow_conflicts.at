@@ -1,0 +1,13 @@
+// Test borrow conflicts - multiple borrows of the same value
+fn main() {
+    let s = "hello"
+
+    // Multiple view borrows - should be OK
+    let v1 = view s
+    let v2 = view s
+
+    // Note: In the evaluator, borrow checking would catch conflicts
+    // but for C transpilation, these just become regular assignments
+    print(v1)
+    print(v2)
+}

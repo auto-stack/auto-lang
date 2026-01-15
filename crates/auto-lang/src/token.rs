@@ -85,6 +85,8 @@ pub enum TokenKind {
     Tag,
     Let,
     Mut,
+    View,  // ADDED: view keyword for immutable borrow (Phase 3)
+    Take,  // ADDED: take keyword for move semantics (Phase 3)
     Has,
     Spec,
     Use,
@@ -154,6 +156,8 @@ impl fmt::Display for Token {
             TokenKind::Var => write!(f, "<var>"),
             TokenKind::Let => write!(f, "<let>"),
             TokenKind::Mut => write!(f, "<mut>"),
+            TokenKind::View => write!(f, "<view>"),
+            TokenKind::Take => write!(f, "<take>"),
             TokenKind::In => write!(f, "<in>"),
             TokenKind::Fn => write!(f, "<fn>"),
             TokenKind::Type => write!(f, "<type>"),
@@ -260,6 +264,8 @@ impl Token {
             "tag" => Some(TokenKind::Tag),
             "let" => Some(TokenKind::Let),
             "mut" => Some(TokenKind::Mut),
+            "view" => Some(TokenKind::View),
+            "take" => Some(TokenKind::Take),
             "has" => Some(TokenKind::Has),
             "spec" => Some(TokenKind::Spec),
             "use" => Some(TokenKind::Use),

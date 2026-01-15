@@ -644,6 +644,22 @@ impl<'a> Parser<'a> {
     pub fn expr_pratt(&mut self, min_power: u8) -> AutoResult<Expr> {
         // Prefix
         let lhs = match self.kind() {
+            // borrow expressions (Phase 3)
+            TokenKind::View => {
+                self.next(); // skip view
+                let expr = self.expr_pratt(0)?;
+                Expr::View(Box::new(expr))
+            }
+            TokenKind::Mut => {
+                self.next(); // skip mut
+                let expr = self.expr_pratt(0)?;
+                Expr::Mut(Box::new(expr))
+            }
+            TokenKind::Take => {
+                self.next(); // skip take
+                let expr = self.expr_pratt(0)?;
+                Expr::Take(Box::new(expr))
+            }
             // unary
             TokenKind::Add | TokenKind::Sub | TokenKind::Not => {
                 let op = self.op();

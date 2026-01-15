@@ -32,6 +32,10 @@ pub struct Evaler {
     mode: EvalMode,
     // skip_check
     skip_check: bool,
+    // borrow checker for Phase 3 ownership system
+    borrow_checker: crate::ownership::borrow::BorrowChecker,
+    // lifetime context for Phase 3 ownership system
+    lifetime_ctx: crate::ownership::lifetime::LifetimeContext,
 }
 
 impl Evaler {
@@ -41,6 +45,8 @@ impl Evaler {
             tempo_for_nodes: HashMap::new(),
             mode: EvalMode::SCRIPT,
             skip_check: false,
+            borrow_checker: crate::ownership::borrow::BorrowChecker::new(),
+            lifetime_ctx: crate::ownership::lifetime::LifetimeContext::new(),
         }
     }
 
@@ -2163,6 +2169,73 @@ impl Evaler {
             Expr::Ref(target) => {
                 let target_val = self.eval_expr(&Expr::Ident(target.clone()));
                 target_val
+            }
+            Expr::View(e) => {
+                // View borrow: immutable borrow (like Rust &T)
+                // Evaluate the expression and create an immutable borrow
+                let value = self.eval_expr(e);
+
+                // Generate a fresh lifetime for this borrow
+                let lifetime = self.lifetime_ctx.fresh_lifetime();
+
+                // Check borrow conflicts
+                if let Err(err) = self.borrow_checker.check_borrow(
+                    e,
+                    crate::ownership::borrow::BorrowKind::View,
+                    lifetime,
+                ) {
+                    // Borrow conflict detected
+                    return Value::Error(format!("Borrow error: {}", err).into());
+                }
+
+                // Return the value (immutable borrow)
+                // TODO: Track that this value is a borrow with the given lifetime
+                value
+            }
+            Expr::Mut(e) => {
+                // Mut borrow: mutable borrow (like Rust &mut T)
+                // Evaluate the expression and create a mutable borrow
+                let value = self.eval_expr(e);
+
+                // Generate a fresh lifetime for this borrow
+                let lifetime = self.lifetime_ctx.fresh_lifetime();
+
+                // Check borrow conflicts
+                if let Err(err) = self.borrow_checker.check_borrow(
+                    e,
+                    crate::ownership::borrow::BorrowKind::Mut,
+                    lifetime,
+                ) {
+                    // Borrow conflict detected
+                    return Value::Error(format!("Borrow error: {}", err).into());
+                }
+
+                // Return the value (mutable borrow)
+                // TODO: Track that this value is a mut borrow with the given lifetime
+                value
+            }
+            Expr::Take(e) => {
+                // Take: move semantics (like Rust move or std::mem::take)
+                // Evaluate the expression and transfer ownership
+                let value = self.eval_expr(e);
+
+                // Generate a fresh lifetime for this take
+                let lifetime = self.lifetime_ctx.fresh_lifetime();
+
+                // Check borrow conflicts (take conflicts with all borrows)
+                if let Err(err) = self.borrow_checker.check_borrow(
+                    e,
+                    crate::ownership::borrow::BorrowKind::Take,
+                    lifetime,
+                ) {
+                    // Borrow conflict detected
+                    return Value::Error(format!("Borrow error: {}", err).into());
+                }
+
+                // Return the value (ownership transferred)
+                // TODO: Mark the original value as moved/invalidate it
+                // The Phase 1 Linear trait should handle this automatically
+                value
             }
             Expr::Ident(name) => self.eval_ident(name),
             Expr::GenName(name) => Value::Str(name.into()),

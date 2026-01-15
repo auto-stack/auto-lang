@@ -231,6 +231,23 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
 
         // ========== Node 表达式 ==========
         Expr::Node(_node) => Type::Unknown,
+
+        // ========== Borrow 表达式 (Phase 3) ==========
+        Expr::View(expr) => {
+            // View/immutable borrow: 类型与被借用的表达式相同 (like Rust &T)
+            // TODO: 实现 view 借用类型推导 (Phase 3 Week 1)
+            infer_expr(ctx, expr)
+        }
+        Expr::Mut(expr) => {
+            // Mutable borrow: 类型与被借用的表达式相同 (like Rust &mut T)
+            // TODO: 实现 mut 借用类型推导 (Phase 3 Week 1)
+            infer_expr(ctx, expr)
+        }
+        Expr::Take(expr) => {
+            // Take/move: 类型与被移动的表达式相同 (like Rust move)
+            // TODO: 实现 take 移动类型推导 (Phase 3 Week 1)
+            infer_expr(ctx, expr)
+        }
     }
 }
 

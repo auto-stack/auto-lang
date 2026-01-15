@@ -4,7 +4,7 @@ fn main() {
     print("Hello, world!")
 
     let code = `print("Hello, world!")`
-    let src = Src(code, 22, Pos(0, 0, 0))
+    let src Src = Src(code, 22, Pos(0, 0, 0))
     for {
         let ch char = src.next_char()
         if ch == -1 {

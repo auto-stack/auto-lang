@@ -1411,6 +1411,157 @@ for d in dirs {
             r#"root {dirs: [dir a {at: "a"}, dir b {at: "b"}, dir c {at: "c"}]}"#
         );
     }
+
+    // ===== Phase 3: Borrow Checker Tests =====
+
+    #[test]
+    fn test_borrow_view_basic() {
+        // Test basic view borrow - should work like a regular read
+        let code = r#"
+            let s = "hello"
+            let v = view s
+            v
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_borrow_view_multiple() {
+        // Test multiple view borrows - they should coexist
+        let code = r#"
+            let x = 42
+            let v1 = view x
+            let v2 = view x
+            v1 + v2
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "84");
+    }
+
+    #[test]
+    fn test_borrow_mut_basic() {
+        // Test basic mut borrow
+        let code = r#"
+            let s = str_new("hello", 10)
+            let m = mut s
+            str_append(m, " world")
+            s
+        "#;
+        let result = run(code).unwrap();
+        // Note: In current implementation, str_append modifies in place
+        // The borrow checking is functional but doesn't prevent all mutations yet
+        assert!(result.contains("hello"));
+    }
+
+    #[test]
+    fn test_borrow_take_basic() {
+        // Test basic take (move semantics)
+        let code = r#"
+            let s1 = "hello"
+            let s2 = take s1
+            s2
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_borrow_view_preserves_original() {
+        // Test that view borrow preserves original value
+        let code = r#"
+            let x = 100
+            let v = view x
+            x
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "100");
+    }
+
+    #[test]
+    fn test_borrow_nested_view() {
+        // Test nested view expressions
+        let code = r#"
+            let x = 42
+            let v1 = view x
+            let v2 = view v1
+            v2
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "42");
+    }
+
+    #[test]
+    fn test_borrow_with_arithmetic() {
+        // Test borrow with arithmetic operations
+        let code = r#"
+            let a = 10
+            let b = 5
+            let va = view a
+            let vb = view b
+            (va + vb) * 2
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "30");
+    }
+
+    #[test]
+    fn test_borrow_view_in_array() {
+        // Test view borrow in array context
+        let code = r#"
+            let x = 10
+            let y = 20
+            let v = view x
+            [v, y]
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "[10, 20]");
+    }
+
+    #[test]
+    fn test_borrow_view_in_expression() {
+        // Test view borrow used in arithmetic expression
+        let code = r#"
+            let a = 5
+            let b = 3
+            let va = view a
+            let vb = view b
+            va * vb
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "15");
+    }
+
+    #[test]
+    fn test_borrow_different_types() {
+        // Test borrow expressions with different value types
+        let code = r#"
+            let num = 42
+            let text = "hello"
+            let v_num = view num
+            let v_text = view text
+            [v_num, v_text]
+        "#;
+        let result = run(code);
+        // Result should be an array with both values
+        assert!(result.is_ok());
+        let result_str = result.unwrap();
+        assert!(result_str.contains("42") && result_str.contains("hello"));
+    }
+
+    #[test]
+    fn test_borrow_take_chaining() {
+        // Test chaining take operations on different values
+        let code = r#"
+            let s1 = "first"
+            let s2 = "second"
+            let t1 = take s1
+            let t2 = take s2
+            t1  // should be "first"
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "first");
+    }
 }
 
 #[cfg(test)]

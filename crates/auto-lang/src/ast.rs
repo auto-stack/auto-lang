@@ -242,6 +242,10 @@ pub enum Expr {
     GenName(Name), // names that is generated during parsing or gen that need not to be stored in SymbolTable
     // composite exprs
     Ref(Name),
+    // Borrow expressions (Phase 3)
+    View(Box<Expr>),    // Immutable borrow (like Rust &T)
+    Mut(Box<Expr>),     // Mutable borrow (like Rust &mut T)
+    Take(Box<Expr>),    // Move semantics (like Rust move or std::mem::take)
     Unary(Op, Box<Expr>),
     Bina(Box<Expr>, Op, Box<Expr>),
     Range(Range),
@@ -306,6 +310,9 @@ impl fmt::Display for Expr {
             Expr::CStr(s) => write!(f, "(cstr \"{}\")", s),
             Expr::Ident(n) => write!(f, "(name {})", n),
             Expr::Ref(n) => write!(f, "(ref {})", n),
+            Expr::View(e) => write!(f, "(view {})", e),
+            Expr::Mut(e) => write!(f, "(mut {})", e),
+            Expr::Take(e) => write!(f, "(take {})", e),
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
             Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
             Expr::Array(elems) => fmt_array(f, elems),
@@ -653,6 +660,21 @@ impl ToNode for Expr {
             Expr::Ref(n) => {
                 let mut node = AutoNode::new("ref");
                 node.add_arg(auto_val::Arg::Pos(Value::Str(n.clone())));
+                node
+            }
+            Expr::View(e) => {
+                let mut node = AutoNode::new("view");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::Mut(e) => {
+                let mut node = AutoNode::new("mut");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::Take(e) => {
+                let mut node = AutoNode::new("take");
+                node.add_kid(e.to_node());
                 node
             }
             Expr::Bina(l, op, r) => {
