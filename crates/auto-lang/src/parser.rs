@@ -647,6 +647,8 @@ impl<'a> Parser<'a> {
     pub fn expr_pratt(&mut self, min_power: u8) -> AutoResult<Expr> {
         // hold expression (Phase 3) - special case that returns directly
         if self.is_kind(TokenKind::Hold) {
+            let start_pos = self.cur.pos; // Record start position
+
             self.next(); // skip hold
 
             // Parse the path expression (identifier with optional member access)
@@ -674,12 +676,15 @@ impl<'a> Parser<'a> {
             // Restore symbol checking
             self.skip_check = old_skip_check;
 
+            // Calculate span: (offset, length)
+            let span = Some((start_pos.pos, self.cur.pos.pos - start_pos.pos));
+
             // Hold is a complete expression, return directly
             return Ok(Expr::Hold(crate::ast::Hold {
                 path: Box::new(path),
                 name,
                 body,
-                span: None,
+                span,
             }));
         }
 

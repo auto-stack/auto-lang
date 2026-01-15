@@ -11,7 +11,9 @@
 
 use crate::ast::Expr;
 use crate::ownership::lifetime::{Lifetime, LifetimeContext};
+use crate::error::pos_to_span;
 use auto_val::Op;
+use miette::{self, Diagnostic, LabeledSpan, SourceSpan};
 use std::fmt;
 
 /// Kind of borrow - view, mut, or take
@@ -342,6 +344,7 @@ impl BorrowChecker {
                     target: new_borrow.target.clone(),
                     new_lifetime: lifetime,
                     existing_lifetime: existing.lifetime,
+                    span: expr_span(expr),
                 });
             }
         }
@@ -391,12 +394,16 @@ pub enum BorrowError {
         new_lifetime: Lifetime,
         /// The existing borrow's lifetime
         existing_lifetime: Lifetime,
+        /// Span information for error reporting
+        span: SourceSpan,
     },
 
     /// Cannot borrow a value that has been moved
     UseAfterMove {
         /// The target that was moved
         target: Target,
+        /// Span information for error reporting
+        span: SourceSpan,
     },
 
     /// Cannot create a mutable reference when immutable references exist
@@ -405,6 +412,8 @@ pub enum BorrowError {
         target: Target,
         /// Number of existing immutable borrows
         count: usize,
+        /// Span information for error reporting
+        span: SourceSpan,
     },
 }
 
@@ -417,6 +426,7 @@ impl fmt::Display for BorrowError {
                 target,
                 new_lifetime,
                 existing_lifetime,
+                ..
             } => {
                 write!(
                     f,
@@ -428,10 +438,10 @@ impl fmt::Display for BorrowError {
                 }
                 Ok(())
             }
-            BorrowError::UseAfterMove { target } => {
+            BorrowError::UseAfterMove { target, .. } => {
                 write!(f, "cannot borrow moved value: {}", target)
             }
-            BorrowError::MutabilityConflict { target, count } => {
+            BorrowError::MutabilityConflict { target, count, .. } => {
                 write!(
                     f,
                     "cannot create mutable borrow of {}: there {} {} existing immutable borrow{}",
@@ -446,6 +456,94 @@ impl fmt::Display for BorrowError {
 }
 
 impl std::error::Error for BorrowError {}
+
+impl Diagnostic for BorrowError {
+    fn code(&self) -> Option<Box<dyn fmt::Display + '_>> {
+        Some(Box::new("auto_borrow_E0001"))
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        Some(miette::Severity::Error)
+    }
+
+    fn help(&self) -> Option<Box<dyn fmt::Display + '_>> {
+        match self {
+            BorrowError::Conflict {
+                new_kind,
+                existing_kind,
+                ..
+            } => {
+                if matches!(new_kind, BorrowKind::Mut) && matches!(existing_kind, BorrowKind::View) {
+                    Some(Box::new(
+                        "Mutable borrows cannot coexist with immutable borrows. \
+                         Consider ending the immutable borrow before creating a mutable one, \
+                         or use .take to transfer ownership instead."
+                    ))
+                } else if matches!(new_kind, BorrowKind::Take) {
+                    Some(Box::new(
+                        "You cannot take ownership of a value that is already borrowed. \
+                         Wait for the existing borrow to end first."
+                    ))
+                } else {
+                    Some(Box::new(
+                        "Borrows must follow Rust's borrowing rules: \
+                         multiple immutable borrows (.view) are OK, \
+                         but only one mutable borrow (.mut) is allowed at a time."
+                    ))
+                }
+            }
+            BorrowError::UseAfterMove { .. } => Some(Box::new(
+                "This value has been moved and is no longer valid. \
+                 If you need to use it again, consider using .view or .mut instead of .take."
+            )),
+            BorrowError::MutabilityConflict { .. } => Some(Box::new(
+                "Cannot create mutable borrow while immutable borrows are active. \
+                 End all immutable borrows before creating a mutable one."
+            )),
+        }
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        match self {
+            BorrowError::Conflict { span, .. }
+            | BorrowError::UseAfterMove { span, .. }
+            | BorrowError::MutabilityConflict { span, .. } => {
+                Some(Box::new(std::iter::once(miette::LabeledSpan::new_with_span(
+                    Some(self.label_text()),
+                    *span,
+                ))))
+            }
+        }
+    }
+}
+
+impl BorrowError {
+    fn label_text(&self) -> String {
+        match self {
+            BorrowError::Conflict { new_kind, .. } => {
+                format!("cannot create {} borrow here", new_kind)
+            }
+            BorrowError::UseAfterMove { .. } => "value used after move".to_string(),
+            BorrowError::MutabilityConflict { .. } => {
+                "mutable borrow conflicts with immutable borrows".to_string()
+            }
+        }
+    }
+}
+
+/// Helper function to extract span from an expression
+fn expr_span(expr: &Expr) -> SourceSpan {
+    // Try to get span from Hold expressions first
+    if let Expr::Hold(hold) = expr {
+        if let Some((offset, len)) = hold.span {
+            return SourceSpan::new(offset.into(), len.into());
+        }
+    }
+
+    // Default to zero-length span at the beginning
+    // In production, we'd track spans for all expression types
+    SourceSpan::new(0_usize.into(), 0_usize.into())
+}
 
 #[cfg(test)]
 mod tests {
@@ -546,6 +644,7 @@ mod tests {
             target: Target::Variable("x".to_string()),
             new_lifetime: Lifetime::new(2),
             existing_lifetime: Lifetime::new(1),
+            span: SourceSpan::new(0_usize.into(), 0_usize.into()),
         };
         let msg = format!("{}", err);
         assert!(msg.contains("cannot create mut borrow"));
@@ -858,5 +957,51 @@ mod tests {
         // Take - should also conflict (same target)
         let result3 = checker.check_borrow(&expr3, BorrowKind::Take, Lifetime::new(3));
         assert!(result3.is_err(), "Take should conflict with view of same target");
+    }
+
+    #[test]
+    fn test_borrow_error_diagnostic_traits() {
+        // Test that BorrowError implements Diagnostic properly
+        let err = BorrowError::Conflict {
+            new_kind: BorrowKind::Mut,
+            existing_kind: BorrowKind::View,
+            target: Target::Variable("x".to_string()),
+            new_lifetime: Lifetime::new(2),
+            existing_lifetime: Lifetime::new(1),
+            span: SourceSpan::new(10_usize.into(), 5_usize.into()),
+        };
+
+        // Check that Diagnostic methods work
+        assert!(err.code().is_some());
+        assert_eq!(format!("{}", err.code().unwrap()), "auto_borrow_E0001");
+
+        assert!(err.severity().is_some());
+        assert_eq!(err.severity().unwrap(), miette::Severity::Error);
+
+        assert!(err.help().is_some());
+        let help = format!("{}", err.help().unwrap());
+        assert!(help.contains("Mutable borrows cannot coexist"));
+
+        assert!(err.labels().is_some());
+        let labels: Vec<_> = err.labels().unwrap().collect();
+        assert_eq!(labels.len(), 1);
+        let expected_label = format!("cannot create {} borrow here", BorrowKind::Mut);
+        assert_eq!(labels[0].label(), Some(expected_label.as_str()));
+    }
+
+    #[test]
+    fn test_borrow_error_from_hold_expression() {
+        // Test that we can extract span from Hold expressions
+        use crate::ast::Body;
+        let hold_expr = Expr::Hold(Box::new(crate::ast::Hold::new(
+            Expr::Ident("x".into()),
+            "value".into(),
+            Body::new(),
+        )).with_span(100, 50));
+
+        // Verify span is extracted correctly
+        let span = expr_span(&hold_expr);
+        assert_eq!(span.offset(), 100);
+        assert_eq!(span.len(), 50);
     }
 }
