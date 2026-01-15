@@ -356,6 +356,42 @@ impl<'a> Lexer<'a> {
             }
             return Token::new(TokenKind::Range, self.pos(2), "..".into());
         }
+
+        // Check for property keywords: .view, .mut, .take
+        // Clone the iterator to peek ahead without consuming
+        let iter = self.chars.clone();
+        let mut lookahead = String::new();
+
+        for ch in iter {
+            if ch.is_alphabetic() || ch == '_' || ch.is_numeric() {
+                lookahead.push(ch);
+            } else {
+                break;
+            }
+        }
+
+        // Check if it's a property keyword
+        match lookahead.as_str() {
+            "view" => {
+                // Consume the identifier characters
+                for _ in 0..4 { self.chars.next(); }
+                return Token::new(TokenKind::DotView, self.pos(5), ".view".into());
+            }
+            "mut" => {
+                // Consume the identifier characters
+                for _ in 0..3 { self.chars.next(); }
+                return Token::new(TokenKind::DotMut, self.pos(4), ".mut".into());
+            }
+            "take" => {
+                // Consume the identifier characters
+                for _ in 0..4 { self.chars.next(); }
+                return Token::new(TokenKind::DotTake, self.pos(5), ".take".into());
+            }
+            _ => {
+                // Not a property keyword, return regular Dot
+            }
+        }
+
         Token::new(TokenKind::Dot, self.pos(1), ".".into())
     }
 

@@ -1,7 +1,7 @@
 // Test take (move semantics) expression
 fn main() {
     let s1 = str_new("hello", 10)
-    let s2 = take s1
+    let s2 = s1.take
     print(str_len(s2))
     // s1 is no longer valid here (would be compiler error in full implementation)
 }

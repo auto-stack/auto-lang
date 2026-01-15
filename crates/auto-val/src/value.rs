@@ -425,6 +425,10 @@ pub enum Op {
     Dot,
     Colon,
     In,
+    // Property keywords (Phase 3: postfix property syntax)
+    DotView,
+    DotMut,
+    DotTake,
 }
 
 impl Value {
@@ -718,6 +722,9 @@ impl fmt::Display for Op {
             Op::LBrace => write!(f, "(op {{)"),
             Op::Colon => write!(f, "(op :)"),
             Op::In => write!(f, "(op in)"),
+            Op::DotView => write!(f, "(op .view)"),
+            Op::DotMut => write!(f, "(op .mut)"),
+            Op::DotTake => write!(f, "(op .take)"),
         }
     }
 }
@@ -754,6 +761,9 @@ impl Op {
             Op::Dot => ".",
             Op::Colon => ":",
             Op::In => "in",
+            Op::DotView => ".view",
+            Op::DotMut => ".mut",
+            Op::DotTake => ".take",
         }
     }
 }

@@ -3,8 +3,8 @@ fn main() {
     let s = "hello"
 
     // Multiple view borrows - should be OK
-    let v1 = view s
-    let v2 = view s
+    let v1 = s.view
+    let v2 = s.view
 
     // Note: In the evaluator, borrow checking would catch conflicts
     // but for C transpilation, these just become regular assignments

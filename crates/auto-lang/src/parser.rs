@@ -107,6 +107,8 @@ fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
         Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(PREC_CMP),
         Op::Range | Op::RangeEq => Ok(PREC_RANGE),
         Op::Dot => Ok(PREC_DOT),
+        // Property keywords (Phase 3): same precedence as dot
+        Op::DotView | Op::DotMut | Op::DotTake => Ok(PREC_DOT),
         _ => Err(SyntaxError::Generic {
             message: format!("Invalid infix operator: {}", op),
             span,
@@ -671,22 +673,6 @@ impl<'a> Parser<'a> {
 
         // Prefix
         let lhs = match self.kind() {
-            // borrow expressions (Phase 3)
-            TokenKind::View => {
-                self.next(); // skip view
-                let expr = self.expr_pratt(0)?;
-                Expr::View(Box::new(expr))
-            }
-            TokenKind::Mut => {
-                self.next(); // skip mut
-                let expr = self.expr_pratt(0)?;
-                Expr::Mut(Box::new(expr))
-            }
-            TokenKind::Take => {
-                self.next(); // skip take
-                let expr = self.expr_pratt(0)?;
-                Expr::Take(Box::new(expr))
-            }
             // unary
             TokenKind::Add | TokenKind::Sub | TokenKind::Not => {
                 let op = self.op();
@@ -770,6 +756,11 @@ impl<'a> Parser<'a> {
                 | TokenKind::Div
                 | TokenKind::Not => self.op(),
                 TokenKind::AddEq | TokenKind::SubEq | TokenKind::MulEq | TokenKind::DivEq => {
+                    self.op()
+                }
+                TokenKind::DotView | TokenKind::DotMut | TokenKind::DotTake => {
+                    // Property keywords: .view, .mut, .take (Phase 3)
+                    // These are postfix operators with same precedence as dot
                     self.op()
                 }
                 TokenKind::Dot => self.op(),
@@ -856,24 +847,42 @@ impl<'a> Parser<'a> {
                 }
                 _ => {}
             }
-            let rhs = self.expr_pratt(power.r)?;
             match op {
-                Op::Range => {
-                    lhs = Expr::Range(Range {
-                        start: Box::new(lhs),
-                        end: Box::new(rhs),
-                        eq: false,
-                    });
+                // Property keywords (Phase 3): postfix operators, no rhs needed
+                Op::DotView => {
+                    lhs = Expr::View(Box::new(lhs));
+                    continue;
                 }
-                Op::RangeEq => {
-                    lhs = Expr::Range(Range {
-                        start: Box::new(lhs),
-                        end: Box::new(rhs),
-                        eq: true,
-                    });
+                Op::DotMut => {
+                    lhs = Expr::Mut(Box::new(lhs));
+                    continue;
+                }
+                Op::DotTake => {
+                    lhs = Expr::Take(Box::new(lhs));
+                    continue;
                 }
                 _ => {
-                    lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
+                    // Regular infix operators need rhs
+                    let rhs = self.expr_pratt(power.r)?;
+                    match op {
+                        Op::Range => {
+                            lhs = Expr::Range(Range {
+                                start: Box::new(lhs),
+                                end: Box::new(rhs),
+                                eq: false,
+                            });
+                        }
+                        Op::RangeEq => {
+                            lhs = Expr::Range(Range {
+                                start: Box::new(lhs),
+                                end: Box::new(rhs),
+                                eq: true,
+                            });
+                        }
+                        _ => {
+                            lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
+                        }
+                    }
                 }
             }
         }
@@ -927,6 +936,9 @@ impl<'a> Parser<'a> {
             TokenKind::RangeEq => Op::RangeEq,
             TokenKind::Dot => Op::Dot,
             TokenKind::Colon => Op::Colon,
+            TokenKind::DotView => Op::DotView,
+            TokenKind::DotMut => Op::DotMut,
+            TokenKind::DotTake => Op::DotTake,
             _ => {
                 // This should never happen if called from correct match branches
                 // Return a default operator to avoid panic

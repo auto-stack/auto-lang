@@ -16,20 +16,23 @@
 //!
 //! # Borrow Types (Phase 3)
 //!
-//! AutoLang provides three keywords for memory management:
+//! AutoLang provides three **property keywords** for memory management:
 //!
-//! 1. **`view`** - Immutable borrow (like Rust `&T`)
+//! 1. **`.view`** - Immutable borrow (like Rust `&T`)
+//!    - Used as: `s.view` (postfix property syntax)
 //!    - Multiple view borrows can coexist
 //!    - Cannot modify the borrowed value
 //!    - Original value remains valid
 //!
-//! 2. **`mut`** - Mutable borrow (like Rust `&mut T`)
+//! 2. **`.mut`** - Mutable borrow (like Rust `&mut T`)
+//!    - Used as: `s.mut` (postfix property syntax)
 //!    - Only one mut borrow at a time
 //!    - Cannot coexist with other borrows
 //!    - Can modify the borrowed value
 //!    - Original value remains valid
 //!
-//! 3. **`take`** - Move semantics (like Rust `move`)
+//! 3. **`.take`** - Move semantics (like Rust `move`)
+//!    - Used as: `s.take` (postfix property syntax)
 //!    - Transfers ownership to new location
 //!    - Original value no longer valid
 //!    - Conflicts with all other borrows
@@ -39,21 +42,27 @@
 //! ```auto
 //! // View borrow (immutable reference)
 //! let s = str_new("hello", 5)
-//! let slice = view s      // Immutable borrow: like &s in Rust
+//! let slice = s.view     // Property keyword: like &s in Rust
 //! let len = str_len(slice) // Can read through the borrow
 //! // s still valid here, both s and slice can be used
 //!
 //! // Mut borrow (mutable reference)
 //! let s = str_new("hello", 5)
-//! let mut_ref = mut s     // Mutable borrow: like &mut s in Rust
+//! let mut_ref = s.mut    // Property keyword: like &mut s in Rust
 //! str_push(mut_ref, '!')  // Can modify through the borrow
 //! // s reflects the modification
 //!
 //! // Take (move semantics)
 //! let s1 = str_new("hello", 5)
-//! let s2 = take s1        // Move: s1 invalidated, ownership transferred
+//! let s2 = s1.take       // Property keyword: transfer ownership
 //! str_drop(s2)            // s2 owns the data now
 //! // s1 cannot be used here (use-after-move error)
+//!
+//! // Function parameters use prefix syntax
+//! fn process(mut data int) int {  // mut comes BEFORE parameter
+//!     data.mut = data * 2
+//!     data
+//! }
 //! ```
 
 pub mod borrow;

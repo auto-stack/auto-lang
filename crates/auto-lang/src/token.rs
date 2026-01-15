@@ -97,6 +97,11 @@ pub enum TokenKind {
     Alias,
     Node, // ADDED: node keyword for typed node definitions
 
+    // Property Keywords (Phase 3: postfix property syntax)
+    DotView,  // .view
+    DotMut,   // .mut
+    DotTake,  // .take
+
     // Format Str
     FStrStart,
     FStrPart,
