@@ -34,6 +34,9 @@ mod vm_functions_test;
 #[cfg(test)]
 mod ownership_tests;
 
+#[cfg(test)]
+mod string_tests;
+
 use crate::scope::Meta;
 use crate::trans::c::CTrans;
 pub use crate::universe::{Universe, SymbolLocation};
