@@ -1564,6 +1564,136 @@ for d in dirs {
     }
 }
 
+// ===== Phase 3: str_slice Type Tests =====
+
+#[test]
+fn test_str_slice_type_lookup() {
+    // Test that str_slice type is registered in universe
+    let code = r#"
+        // str_slice type should be accessible
+        str_slice
+    "#;
+    let result = run(code);
+    // Type lookup should work (returns the type name)
+    assert!(result.is_ok());
+    let result_str = result.unwrap();
+    assert!(result_str.contains("str_slice"));
+}
+
+#[test]
+fn test_str_slice_borrow_with_view() {
+    // Test creating borrow with view expression
+    let code = r#"
+        let s = "hello world"
+        let slice = view s
+        slice
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "hello world");
+}
+
+#[test]
+fn test_str_slice_multiple_borrows() {
+    // Test multiple view borrows (all should be str_slice type)
+    let code = r#"
+        let s = "hello world"
+        let s1 = view s
+        let s2 = view s
+        [s1, s2]
+    "#;
+    let result = run(code).unwrap();
+    assert!(result.contains("hello world") && result.contains("hello world"));
+}
+
+#[test]
+fn test_str_slice_nested_borrow() {
+    // Test nested view borrows
+    let code = r#"
+        let s = "hello"
+        let s1 = view s
+        let s2 = view s1
+        s2
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "hello");
+}
+
+#[test]
+fn test_str_slice_in_array() {
+    // Test view borrow in array context
+    let code = r#"
+        let s = "hello"
+        let slice = view s
+        [slice, "world"]
+    "#;
+    let result = run(code).unwrap();
+    assert!(result.contains("hello") && result.contains("world"));
+}
+
+#[test]
+fn test_str_slice_with_take() {
+    // Test that take works with strings
+    let code = r#"
+        let s1 = "hello"
+        let s2 = take s1
+        s2
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "hello");
+}
+
+#[test]
+fn test_str_slice_mixed_borrows() {
+    // Test mixing view and take on different values
+    let code = r#"
+        let s1 = "first"
+        let s2 = "second"
+        let v = view s1
+        let t = take s2
+        v  // View of s1 should work
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "first");
+}
+
+#[test]
+fn test_str_slice_preserves_original() {
+    // Test that view borrow preserves original value
+    let code = r#"
+        let s = "hello"
+        let slice = view s
+        s  // Original should still be accessible
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "hello");
+}
+
+#[test]
+fn test_str_slice_in_expression() {
+    // Test str_slice (view) in expression context
+    let code = r#"
+        let a = "hello"
+        let b = "world"
+        let va = view a
+        let vb = view b
+        [va, vb]
+    "#;
+    let result = run(code).unwrap();
+    assert!(result.contains("hello") && result.contains("world"));
+}
+
+#[test]
+fn test_str_slice_type_coercion() {
+    // Test that str_slice (from view) can be used like str
+    let code = r#"
+        let s = "test"
+        let slice = view s
+        slice
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "test");
+}
+
 #[cfg(test)]
 mod test_multiline {
     use super::*;

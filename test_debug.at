@@ -1,0 +1,5 @@
+let s1 = "first"
+let s2 = "second"
+let v = view s1
+let t = take s2
+[v, t]
