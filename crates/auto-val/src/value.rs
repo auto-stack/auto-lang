@@ -253,6 +253,7 @@ impl Value {
             }
             Value::Range(l, r) => ValueData::Range(l, r),
             Value::RangeEq(l, r) => ValueData::RangeEq(l, r),
+            Value::StrSlice(v) => ValueData::StrSlice(v),
             Value::Instance(v) => ValueData::Opaque(Box::new(Value::Instance(v))),
             // Other variants not yet supported in ValueData
             _ => ValueData::Nil,

@@ -2338,6 +2338,10 @@ impl Evaler {
                 let target_val = self.eval_expr(&Expr::Ident(target));
                 target_val
             }
+            Value::ValueRef(vid) => {
+                // Resolve ValueRef to actual value
+                self.universe.borrow().deref_val(Value::ValueRef(vid))
+            }
             Value::Nil => {
                 // Try types
                 let typ = self.universe.borrow().lookup_type(name);

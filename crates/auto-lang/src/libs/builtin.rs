@@ -28,13 +28,13 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_sub, name }));
 
     // String slice functions (Phase 3)
-    let name: AutoStr = "str_slice".into();
+    let name: AutoStr = "as_slice".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_slice, name }));
 
-    let name: AutoStr = "str_slice_len".into();
+    let name: AutoStr = "slice_len".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_slice_len, name }));
 
-    let name: AutoStr = "str_slice_get".into();
+    let name: AutoStr = "slice_get".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_slice_get, name }));
 
     builtins
@@ -42,12 +42,19 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
 
 // TODO: fix for named args
 pub fn print(args: &Args) -> Value {
+    use std::io::{self, Write};
+
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+
     for (i, arg) in args.args.iter().enumerate() {
-        print!("{}", arg);
+        write!(handle, "{}", arg).ok();
         if i < args.args.len() - 1 {
-            print!(", ");
+            write!(handle, ", ").ok();
         }
     }
-    println!();
+    writeln!(handle).ok();
+    handle.flush().ok();
+
     Value::Void
 }
