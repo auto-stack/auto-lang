@@ -3061,6 +3061,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Char => auto_val::Type::Char,
         ast::Type::Str(_) => auto_val::Type::Str,
         ast::Type::CStr => auto_val::Type::CStr,
+        ast::Type::StrSlice => auto_val::Type::StrSlice,  // Borrowed string slice (Phase 3)
         ast::Type::Array(_) => auto_val::Type::Array,
         ast::Type::Ptr(_) => auto_val::Type::Ptr,
         ast::Type::User(type_decl) => auto_val::Type::User(type_decl.name.clone()),

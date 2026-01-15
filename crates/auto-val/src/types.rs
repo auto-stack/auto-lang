@@ -17,6 +17,7 @@ pub enum Type {
     Char,
     Str,
     CStr,
+    StrSlice,  // Borrowed string slice (Phase 3)
     Array,
     Ptr,
     User(AutoStr),
@@ -60,6 +61,7 @@ impl TypeInfoStore {
         types.insert("double".into(), type_info_double());
         types.insert("bool".into(), type_info_bool());
         types.insert("str".into(), type_info_str());
+        types.insert("str_slice".into(), type_info_str_slice());
         types.insert("char".into(), type_info_char());
         Self {
             types,
@@ -107,6 +109,7 @@ impl TypeInfoStore {
             Type::Bool => self.types.get("bool").unwrap(),
             Type::Str => self.types.get("str").unwrap(),
             Type::CStr => self.types.get("cstr").unwrap(),
+            Type::StrSlice => self.types.get("str_slice").unwrap(),
             Type::Char => self.types.get("char").unwrap(),
             Type::Array => self.types.get("array").unwrap(),
             Type::Ptr => self.types.get("ptr").unwrap(),
@@ -194,6 +197,15 @@ fn type_info_char() -> TypeInfo {
     }
 }
 
+fn type_info_str_slice() -> TypeInfo {
+    let mut methods: HashMap<AutoStr, ValueMethod> = HashMap::new();
+    methods.insert("len".into(), Value::v_len);  // Reuse str len method
+    TypeInfo {
+        name: "str_slice".into(),
+        methods,
+    }
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -207,6 +219,7 @@ impl fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Str => write!(f, "str"),
             Type::CStr => write!(f, "cstr"),
+            Type::StrSlice => write!(f, "str_slice"),
             Type::Char => write!(f, "char"),
             Type::Array => write!(f, "array"),
             Type::Ptr => write!(f, "ptr"),

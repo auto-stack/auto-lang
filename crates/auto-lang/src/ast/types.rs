@@ -16,6 +16,7 @@ pub enum Type {
     Char, // char is actually u8/ubyte
     Str(usize),
     CStr,
+    StrSlice,  // Borrowed string slice (Phase 3)
     Array(ArrayType),
     Ptr(PtrType),
     User(TypeDecl),
@@ -41,6 +42,7 @@ impl Type {
             Type::Char => "char".into(),
             Type::Str(_) => "str".into(),
             Type::CStr => "cstr".into(),
+            Type::StrSlice => "str_slice".into(),
             Type::Array(array_type) => {
                 format!("[{}]{}", array_type.elem.unique_name(), array_type.len).into()
             }
@@ -67,6 +69,7 @@ impl Type {
             Type::Char => "0".into(),
             Type::Str(_) => "\"\"".into(),
             Type::CStr => "\"\"".into(),
+            Type::StrSlice => "\"\"".into(),  // Default empty slice
             Type::Array(_) => "[]".into(),
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
             Type::User(_) => "{}".into(),
@@ -116,6 +119,7 @@ impl fmt::Display for Type {
             Type::Char => write!(f, "char"),
             Type::Str(_) => write!(f, "str"),
             Type::CStr => write!(f, "cstr"),
+            Type::StrSlice => write!(f, "str_slice"),
             Type::Array(array_type) => write!(f, "{}", array_type),
             Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
             Type::User(type_decl) => write!(f, "{}", type_decl),
@@ -144,6 +148,7 @@ impl From<Type> for auto_val::Type {
             Type::Char => auto_val::Type::Char,
             Type::Str(_) => auto_val::Type::Str,
             Type::CStr => auto_val::Type::CStr,
+            Type::StrSlice => auto_val::Type::StrSlice,
             Type::Array(_) => auto_val::Type::Array,
             Type::Ptr(_) => auto_val::Type::Ptr,
             Type::User(decl) => auto_val::Type::User(decl.name),
@@ -386,6 +391,7 @@ impl AtomWriter for Type {
             Type::Char => write!(f, "char")?,
             Type::Str(_) => write!(f, "str")?,
             Type::CStr => write!(f, "cstr")?,
+            Type::StrSlice => write!(f, "str_slice")?,
             Type::Array(array_type) => {
                 write!(
                     f,

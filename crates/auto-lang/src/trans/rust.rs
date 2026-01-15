@@ -64,6 +64,7 @@ impl RustTrans {
             Type::Char => "char".to_string(),
             Type::Str(_) => "String".to_string(),
             Type::CStr => "&str".to_string(),
+            Type::StrSlice => "&str".to_string(),  // Borrowed string slice (Phase 3)
             Type::Array(arr) => {
                 format!("[{}; {}]", self.rust_type_name(&arr.elem), arr.len)
             }

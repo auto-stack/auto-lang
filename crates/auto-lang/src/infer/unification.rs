@@ -131,7 +131,7 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         Type::Void => false,
 
         // 字符串类型
-        Type::Str(_) | Type::CStr => false,
+        Type::Str(_) | Type::CStr | Type::StrSlice => false,
 
         // Unknown 类型
         Type::Unknown => false,

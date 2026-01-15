@@ -170,6 +170,7 @@ impl Universe {
         self.define("bool", Rc::new(Meta::Type(ast::Type::Bool)));
         self.define("str", Rc::new(Meta::Type(ast::Type::Str(0))));
         self.define("cstr", Rc::new(Meta::Type(ast::Type::CStr)));
+        self.define("str_slice", Rc::new(Meta::Type(ast::Type::StrSlice)));  // Borrowed string slice (Phase 3)
         self.define("byte", Rc::new(Meta::Type(ast::Type::Byte)));
         self.define("char", Rc::new(Meta::Type(ast::Type::Char)));
         self.define("void", Rc::new(Meta::Type(ast::Type::Void)));
