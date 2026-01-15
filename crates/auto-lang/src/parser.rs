@@ -398,6 +398,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::Let
                 | TokenKind::Var
                 | TokenKind::Mut
+                | TokenKind::Hold
                 | TokenKind::For
                 | TokenKind::If
                 | TokenKind::Break
@@ -642,6 +643,32 @@ impl<'a> Parser<'a> {
     // simple Pratt parser
     // ref: https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
     pub fn expr_pratt(&mut self, min_power: u8) -> AutoResult<Expr> {
+        // hold expression (Phase 3) - special case that returns directly
+        if self.is_kind(TokenKind::Hold) {
+            self.next(); // skip hold
+
+            // Parse the path expression (identifier with optional member access)
+            let path = self.parse_path_expr()?;
+
+            // Expect 'as' keyword
+            self.expect(TokenKind::As)?;
+
+            // Get the binding name
+            let name = self.cur.text.clone();
+            self.expect(TokenKind::Ident)?;
+
+            // Parse the body (a block)
+            let body = self.body()?;
+
+            // Hold is a complete expression, return directly
+            return Ok(Expr::Hold(crate::ast::Hold {
+                path: Box::new(path),
+                name,
+                body,
+                span: None,
+            }));
+        }
+
         // Prefix
         let lhs = match self.kind() {
             // borrow expressions (Phase 3)
@@ -692,6 +719,27 @@ impl<'a> Parser<'a> {
             _ => self.atom()?,
         };
         self.expr_pratt_with_left(lhs, min_power)
+    }
+
+    /// Parse a path expression (identifier with optional member access)
+    /// Used for hold expressions to parse paths like `obj.field.subfield`
+    /// Stops before keywords like 'as', 'in', etc.
+    fn parse_path_expr(&mut self) -> AutoResult<Expr> {
+        let mut lhs = self.atom()?;
+
+        // Allow member access (dot operator) for paths like obj.field
+        loop {
+            if self.is_kind(TokenKind::Dot) {
+                self.next(); // skip .
+                let field_name = self.cur.text.clone();
+                self.expect(TokenKind::Ident)?;
+                lhs = Expr::Bina(Box::new(lhs), Op::Dot, Box::new(Expr::Ident(field_name)));
+            } else {
+                break;
+            }
+        }
+
+        Ok(lhs)
     }
 
     fn dot_item(&mut self) -> AutoResult<Expr> {

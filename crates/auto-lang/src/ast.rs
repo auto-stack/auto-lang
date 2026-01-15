@@ -16,6 +16,8 @@ mod fstr;
 pub use fstr::*;
 mod grid;
 pub use grid::*;
+mod hold;
+pub use hold::*;
 mod if_;
 pub use if_::*;
 mod is;
@@ -246,6 +248,7 @@ pub enum Expr {
     View(Box<Expr>),    // Immutable borrow (like Rust &T)
     Mut(Box<Expr>),     // Mutable borrow (like Rust &mut T)
     Take(Box<Expr>),    // Move semantics (like Rust move or std::mem::take)
+    Hold(Hold),         // Hold path binding (temporary borrow with syntax sugar)
     Unary(Op, Box<Expr>),
     Bina(Box<Expr>, Op, Box<Expr>),
     Range(Range),
@@ -313,6 +316,7 @@ impl fmt::Display for Expr {
             Expr::View(e) => write!(f, "(view {})", e),
             Expr::Mut(e) => write!(f, "(mut {})", e),
             Expr::Take(e) => write!(f, "(take {})", e),
+            Expr::Hold(hold) => write!(f, "{}", hold),
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
             Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
             Expr::Array(elems) => fmt_array(f, elems),
@@ -723,6 +727,13 @@ impl ToNode for Expr {
             Expr::GenName(name) => {
                 let mut node = AutoNode::new("gen-name");
                 node.add_arg(auto_val::Arg::Pos(Value::Str(name.clone())));
+                node
+            }
+            Expr::Hold(hold) => {
+                let mut node = AutoNode::new("hold");
+                node.add_kid(hold.path.to_node());
+                node.add_arg(auto_val::Arg::Pos(Value::Str(hold.name.clone())));
+                node.add_kid(hold.body.to_node());
                 node
             }
             Expr::Nil => AutoNode::new("nil"),

@@ -27,6 +27,16 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
     let name: AutoStr = "str_sub".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_sub, name }));
 
+    // String slice functions (Phase 3)
+    let name: AutoStr = "str_slice".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_slice, name }));
+
+    let name: AutoStr = "str_slice_len".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_slice_len, name }));
+
+    let name: AutoStr = "str_slice_get".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_slice_get, name }));
+
     builtins
 }
 

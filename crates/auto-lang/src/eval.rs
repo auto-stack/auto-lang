@@ -2237,6 +2237,58 @@ impl Evaler {
                 // The Phase 1 Linear trait should handle this automatically
                 value
             }
+            Expr::Hold(hold) => {
+                // Hold expression: temporary path binding with syntax sugar
+                // This is equivalent to:
+                // {
+                //     let <name> = mut <path>
+                //     <body>
+                //     // <name>'s lifetime ends here
+                // }
+
+                // Evaluate the path expression
+                let path_value = self.eval_expr(&hold.path);
+
+                // Create a mutable borrow (like Mut expression)
+                let lifetime = self.lifetime_ctx.fresh_lifetime();
+                if let Err(err) = self.borrow_checker.check_borrow(
+                    &hold.path,
+                    crate::ownership::borrow::BorrowKind::Mut,
+                    lifetime,
+                ) {
+                    return Value::Error(format!("Hold borrow error: {}", err).into());
+                }
+
+                // Create a new scope for the hold block
+                self.enter_scope();
+
+                // Create a Store AST node for the binding (similar to let/mut)
+                use crate::ast::{Store, StoreKind};
+                let store = Store {
+                    kind: StoreKind::Mut,  // Hold creates a mutable binding
+                    name: hold.name.clone(),
+                    ty: crate::ast::Type::Unknown,
+                    expr: *hold.path.clone(),
+                };
+
+                // Bind the path value to the name (using Meta::Store)
+                self.universe.borrow_mut().define(
+                    hold.name.clone(),
+                    std::rc::Rc::new(crate::scope::Meta::Store(store)),
+                );
+                self.universe.borrow_mut().set_local_val(&hold.name, path_value);
+
+                // Evaluate the body
+                let result = match self.eval_body(&hold.body) {
+                    Ok(v) => v,
+                    Err(e) => Value::Error(format!("Error in hold body: {:?}", e).into()),
+                };
+
+                // Pop scope (ends the borrow)
+                self.exit_scope();
+
+                result
+            }
             Expr::Ident(name) => self.eval_ident(name),
             Expr::GenName(name) => Value::Str(name.into()),
             Expr::Unary(op, e) => self.eval_una(op, e),

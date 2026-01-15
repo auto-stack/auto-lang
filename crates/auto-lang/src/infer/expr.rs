@@ -248,6 +248,20 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
             // TODO: 实现 take 移动类型推导 (Phase 3 Week 1)
             infer_expr(ctx, expr)
         }
+
+        // ========== Hold 表达式 (Phase 3) ==========
+        Expr::Hold(hold) => {
+            // Hold: 临时路径绑定,类型为body的类型
+            // Hold表达式返回body的结果类型（最后一个表达式的类型）
+            if let Some(last_stmt) = hold.body.stmts.last() {
+                match last_stmt {
+                    crate::ast::Stmt::Expr(expr) => infer_expr(ctx, expr),
+                    _ => Type::Void,
+                }
+            } else {
+                Type::Void
+            }
+        }
     }
 }
 

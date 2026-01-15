@@ -87,6 +87,7 @@ pub enum TokenKind {
     Mut,
     View,  // ADDED: view keyword for immutable borrow (Phase 3)
     Take,  // ADDED: take keyword for move semantics (Phase 3)
+    Hold,  // ADDED: hold keyword for temporary path binding (Phase 3)
     Has,
     Spec,
     Use,
@@ -158,6 +159,7 @@ impl fmt::Display for Token {
             TokenKind::Mut => write!(f, "<mut>"),
             TokenKind::View => write!(f, "<view>"),
             TokenKind::Take => write!(f, "<take>"),
+            TokenKind::Hold => write!(f, "<hold>"),
             TokenKind::In => write!(f, "<in>"),
             TokenKind::Fn => write!(f, "<fn>"),
             TokenKind::Type => write!(f, "<type>"),
@@ -266,6 +268,7 @@ impl Token {
             "mut" => Some(TokenKind::Mut),
             "view" => Some(TokenKind::View),
             "take" => Some(TokenKind::Take),
+            "hold" => Some(TokenKind::Hold),
             "has" => Some(TokenKind::Has),
             "spec" => Some(TokenKind::Spec),
             "use" => Some(TokenKind::Use),

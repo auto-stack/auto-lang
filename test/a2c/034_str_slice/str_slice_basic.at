@@ -1,0 +1,24 @@
+// Test basic str_slice functionality (Phase 3)
+
+fn main() {
+    // Create an owned string
+    let s = str_new("hello world", 20)
+
+    // Create a slice from the string
+    let slice = str_slice(s)
+
+    // Get the length of the slice
+    let len = str_slice_len(slice)
+    print(len)  // Expected: 11
+
+    // Get the first byte
+    let first = str_slice_get(slice, 0)
+    print(first)  // Expected: 104 (ASCII 'h')
+
+    // Get another byte
+    let w = str_slice_get(slice, 6)
+    print(w)  // Expected: 119 (ASCII 'w')
+
+    // Original string still valid
+    print(s)  // Expected: "hello world"
+}

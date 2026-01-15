@@ -1,0 +1,21 @@
+// Test basic hold expression syntax
+// hold creates a temporary mutable binding to a path
+
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    let p = Point { x: 10, y: 20 }
+
+    // Use hold to temporarily bind p for modification
+    hold p as point {
+        point.x = 30
+        point.y = 40
+    }
+
+    // After hold, the changes should be reflected
+    print(p.x)
+    print(p.y)
+}

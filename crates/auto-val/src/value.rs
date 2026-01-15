@@ -4,6 +4,7 @@ use crate::node::*;
 use crate::obj::*;
 use crate::owned_str::*;
 use crate::pair::*;
+use crate::str_slice::StrSlice;
 use crate::string::*;
 use crate::types::Type;
 use crate::AutoStr;
@@ -38,6 +39,7 @@ pub enum ValueData {
     Nil,
     Str(AutoStr),
     OwnedStr(Str), // NEW: Owned string with move semantics (Phase 2)
+    StrSlice(StrSlice), // NEW: Borrowed string slice (Phase 3)
 
     // Complex types with nested IDs (CHANGED from Value)
     Array(Vec<ValueID>),
@@ -98,6 +100,7 @@ pub enum Value {
     Char(char),
     Str(AutoStr),
     OwnedStr(Str), // NEW: Owned string with move semantics (Phase 2)
+    StrSlice(StrSlice), // NEW: Borrowed string slice (Phase 3)
     Array(Array),
     Block(Array),
     Pair(ValueKey, Box<Value>),
@@ -146,6 +149,29 @@ impl Value {
     /// Create an empty owned string value
     pub fn empty_owned_str() -> Self {
         Value::OwnedStr(Str::from_str(""))
+    }
+
+    /// Create a StrSlice from a string slice
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure the string outlives the StrSlice
+    pub unsafe fn str_slice(s: &str) -> Self {
+        Value::StrSlice(StrSlice::from_str(s))
+    }
+
+    /// Create a StrSlice from an AutoStr
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure the AutoStr outlives the StrSlice
+    pub unsafe fn str_slice_from_auto_str(s: &AutoStr) -> Self {
+        Value::StrSlice(StrSlice::from_auto_str(s))
+    }
+
+    /// Create an empty StrSlice
+    pub fn empty_str_slice() -> Self {
+        Value::StrSlice(StrSlice::empty())
     }
 
     pub fn error(text: impl Into<AutoStr>) -> Self {
@@ -251,6 +277,7 @@ impl Value {
             ValueData::Nil => Value::Nil,
             ValueData::Str(v) => Value::Str(v),
             ValueData::OwnedStr(v) => Value::OwnedStr(v),
+            ValueData::StrSlice(v) => Value::StrSlice(v),
             ValueData::Array(vids) => {
                 // Convert ValueIDs to ValueRefs for later resolution
                 let values: Vec<Value> = vids.iter().map(|vid| Value::ValueRef(*vid)).collect();
@@ -330,6 +357,7 @@ impl Display for Value {
             Value::Char(value) => write!(f, "'{}'", value),
             Value::Str(value) => write!(f, "\"{}\"", value),
             Value::OwnedStr(value) => write!(f, "\"{}\"", value.as_str()),
+            Value::StrSlice(value) => write!(f, "\"{}\"", value),
             Value::Int(value) => write!(f, "{}", value),
             Value::Uint(value) => write!(f, "{}u", value),
             Value::USize(value) => write!(f, "{}", value),
