@@ -1,6 +1,6 @@
 # Standard Library C Foundation Implementation Plan
 
-## Implementation Status: 🔄 READY TO START
+## Implementation Status: 🔄 IN PROGRESS (Phase 1: May<T> Type)
 
 **Dependencies:**
 - ✅ Plan 024 (Ownership-Based Memory System) - **COMPLETE**
@@ -17,11 +17,22 @@ Build foundational C standard library components required for the self-hosting A
 **Priority:** BLOCKER - Must complete before self-hosting compiler can begin
 
 **Key Components:**
-1. HashMap/HashSet - O(1) lookups for symbol tables
-2. StringBuilder - Efficient string concatenation for code generation
-3. Result/Option types - Safe error handling
+1. **May<T> type** - Unified three-state type for optional values and error handling (syntactic sugar: `?T`)
+2. HashMap/HashSet - O(1) lookups for symbol tables
+3. StringBuilder - Efficient string concatenation for code generation
 4. String interning - Fast identifier comparison
 5. Command-line argument parsing - Compiler CLI
+
+**Design Philosophy Update (2025-01-16):**
+
+After reviewing the [May Type Design Document](../language/design/may-type.md), we've decided to **unify Option<T> and Result<T, E> into a single May<T> type**. This design:
+
+- **Simplifies the mental model**: One type instead of two
+- **Enables linear flow**: `.?` operator for clean error propagation
+- **Optimizes performance**: Three-state enum (Value, Empty, Error) in one type
+- **Cross-platform**: Rich errors on PC, lean error codes on MCU
+
+**Phase 1 Status**: Partially complete - separate Option/Result types implemented, will be refactored to unified `May<T>`.
 
 ---
 
@@ -43,9 +54,9 @@ Build foundational C standard library components required for the self-hosting A
 ### 1.2 Critical Gaps
 
 **Missing components:**
+- ❌ May<T> type - Unified optional/error handling (NEW DESIGN)
 - ❌ HashMap/HashSet - Symbol tables need O(1) lookups
 - ❌ StringBuilder - Code generation needs efficient string building
-- ❌ Result/Option - Compiler pipeline needs error handling
 - ❌ String interning - Identifier comparison optimization
 - ❌ Args parsing - No access to command-line arguments
 - ❌ Advanced string operations - No split, join, pattern matching
@@ -93,14 +104,19 @@ fn main() {
 ### 2.2 Development Approach
 
 **Incremental Development:**
-1. Start with simplest component (Result/Option)
-2. Build on each component (StringBuilder uses Result)
+1. Start with May<T> type (unified Option+Result)
+2. Build on each component (StringBuilder uses May)
 3. Test each component in isolation
 4. Integration tests at the end
 
 **Code Organization:**
 ```
 stdlib/
+├── may/                 # NEW: Unified May<T> type (replaces option/result)
+│   ├── may.at
+│   ├── may.h
+│   ├── may.c
+│   └── test_may.at
 ├── collections/         # New: collection data structures
 │   ├── hashmap.at
 │   ├── hashmap.h
@@ -115,10 +131,6 @@ stdlib/
 │   ├── intern.at
 │   ├── intern.h
 │   └── intern.c
-├── result/              # New: error handling
-│   ├── result.at
-│   ├── result.h
-│   └── result.c
 ├── sys/                 # Enhanced: system utilities
 │   ├── args.at          # New
 │   ├── args.h           # New
@@ -134,141 +146,434 @@ stdlib/
 
 ## 3. Component Implementation Plans
 
-### Phase 1: Result/Option Types (4 weeks)
+### Phase 1: May<T> Type (4 weeks) 🔄 IN PROGRESS
 
-**Objective:** Implement safe error handling types.
+**Objective:** Implement unified three-state type for optional values and error handling.
 
 **Dependencies:** None (foundational)
 
-#### 3.1 Option Type
+**Design Reference:** [May Type Design Document](../language/design/may-type.md)
 
-**C Implementation:**
+#### 3.1 What is May<T>?
+
+`May<T>` (syntax sugar: `?T`) is a **three-state enum** that combines the semantics of Option and Result:
+
+| State | Tag | Semantic | C Translation |
+|-------|-----|----------|---------------|
+| **Value** | `0x01` | Success with valid data `T` | `may.data.value` |
+| **Empty** | `0x00` | Success but no data (nil) | No payload |
+| **Error** | `0x02` | Failure with error `E` | `may.data.err` |
+
+**Key Benefits:**
+- **Single type** instead of `Option<T>` + `Result<T, E>`
+- **Linear error propagation** with `.?` operator
+- **No nesting** like `Result<Option<T>, E>`
+- **Cross-platform**: Rich errors on PC, lean codes on MCU
+
+#### 3.2 C Implementation
+
+**Memory Layout (for `?i32` as example):**
 ```c
-// stdlib/result/option.h
-#ifndef AUTO_OPTION_H
-#define AUTO_OPTION_H
+// stdlib/may/may.h
+#ifndef AUTO_MAY_H
+#define AUTO_MAY_H
 
+#include <stdint.h>
 #include <stdbool.h>
 
+// Three-state tag
 typedef enum {
-    Option_None,
-    Option_Some
-} OptionTag;
+    May_Empty = 0x00,  // No value (like None)
+    May_Value = 0x01,  // Has value (like Some)
+    May_Error = 0x02   // Has error (like Err)
+} MayTag;
 
+// Generic May type (using void* for value)
 typedef struct {
-    OptionTag tag;
-    void* value;
-} Option;
+    uint8_t tag;
+    union {
+        void* value;    // Valid data when tag = May_Value
+        void* error;    // Error payload when tag = May_Error
+    } data;
+} May;
 
-// API
-Option Option_None_new();
-Option Option_Some_new(void* value);
-bool Option_is_some(Option* self);
-bool Option_is_none(Option* self);
-void* Option_unwrap(Option* self);
-void Option_drop(Option* self);
+// API - Creation
+May May_empty(void);
+May May_value(void* value);
+May May_error(void* error);
+
+// API - Inspection
+bool May_is_empty(May* self);
+bool May_is_value(May* self);
+bool May_is_error(May* self);
+
+// API - Unwrapping
+void* May_unwrap(May* self);
+void* May_unwrap_or(May* self, void* default_value);
+void* May_unwrap_or_null(May* self);
+void* May_unwrap_error(May* self);
+void* May_unwrap_error_or(May* self, void* default_error);
+
+// API - Cleanup
+void May_drop(May* self);
 
 #endif
 ```
 
-**AutoLang Interface:**
-```auto
-// stdlib/result/option.at
-# C
-#include "option.h"
-
-extern type Option<T> {
-    None
-    Some(value T)
-}
-
-spec extern Option_none<T>() Option<T>
-spec extern Option_some<T>(value T) Option<T>
-spec extern Option_is_some<T>(opt Option<T>) bool
-spec extern Option_unwrap<T>(opt Option<T>) T
-```
-
-#### 3.2 Result Type
-
-**C Implementation:**
+**Implementation:**
 ```c
-// stdlib/result/result.h
-#ifndef AUTO_RESULT_H
-#define AUTO_RESULT_H
+// stdlib/may/may.c
+#include "may.h"
+#include <stdlib.h>
+#include <stdio.h>
 
-#include <stdbool.h>
+May May_empty(void) {
+    May may;
+    may.tag = May_Empty;
+    may.data.value = NULL;
+    return may;
+}
 
-typedef enum {
-    Result_Ok,
-    Result_Err
-} ResultTag;
+May May_value(void* value) {
+    May may;
+    may.tag = May_Value;
+    may.data.value = value;
+    return may;
+}
 
-typedef struct {
-    ResultTag tag;
-    void* value;
-    char* error;
-} Result;
+May May_error(void* error) {
+    May may;
+    may.tag = May_Error;
+    may.data.error = error;
+    return may;
+}
 
-// API
-Result Result_Ok_new(void* value);
-Result Result_Err_new(const char* error);
-bool Result_is_ok(Result* self);
-bool Result_is_err(Result* self);
-void* Result_unwrap(Result* self);
-char* Result_unwrap_err(Result* self);
-void Result_drop(Result* self);
+bool May_is_empty(May* self) {
+    return self && self->tag == May_Empty;
+}
 
-#endif
+bool May_is_value(May* self) {
+    return self && self->tag == May_Value;
+}
+
+bool May_is_error(May* self) {
+    return self && self->tag == May_Error;
+}
+
+void* May_unwrap(May* self) {
+    if (!self) {
+        fprintf(stderr, "May_unwrap: NULL pointer\n");
+        return NULL;
+    }
+
+    if (self->tag == May_Error) {
+        fprintf(stderr, "May_unwrap: called on Error state\n");
+        return NULL;
+    }
+
+    if (self->tag == May_Empty) {
+        fprintf(stderr, "May_unwrap: called on Empty state\n");
+        return NULL;
+    }
+
+    return self->data.value;
+}
+
+void* May_unwrap_or(May* self, void* default_value) {
+    if (!self) return default_value;
+
+    if (self->tag != May_Value) {
+        return default_value;
+    }
+
+    return self->data.value;
+}
+
+void* May_unwrap_or_null(May* self) {
+    return May_unwrap_or(self, NULL);
+}
+
+void* May_unwrap_error(May* self) {
+    if (!self) {
+        fprintf(stderr, "May_unwrap_error: NULL pointer\n");
+        return NULL;
+    }
+
+    if (self->tag != May_Error) {
+        fprintf(stderr, "May_unwrap_error: not in Error state\n");
+        return NULL;
+    }
+
+    return self->data.error;
+}
+
+void* May_unwrap_error_or(May* self, void* default_error) {
+    if (!self) return default_error;
+
+    if (self->tag == May_Error) {
+        return self->data.error;
+    }
+
+    return default_error;
+}
+
+void May_drop(May* self) {
+    if (self && self->tag == May_Error) {
+        // Free error payload if allocated
+        // Note: Value payload is owned by caller
+    }
+}
 ```
 
-**AutoLang Interface:**
+#### 3.3 AutoLang FFI Interface
+
 ```auto
-// stdlib/result/result.at
+// stdlib/may/may.at
 # C
-#include "result.h"
+#include "may.h"
 
-extern type Result<T, E> {
-    Ok(value T)
-    Err(error E)
+// May<T> type with syntax sugar ?T
+extern type May<T> {
+    Empty      // No value
+    Value(T)   // Has value
+    Error      // Has error
 }
 
-spec extern Result_ok<T, E>(value T) Result<T, E>
-spec extern Result_err<T, E>(error E) Result<T, E>
-spec extern Result_is_ok<T, E>(res Result<T, E>) bool
-spec extern Result_unwrap<T, E>(res Result<T, E>) T
+// Creation functions
+spec extern May_empty<T>() May<T>
+spec extern May_value<T>(value T) May<T>
+spec extern May_error<T>(error) May<T>
+
+// Inspection functions
+spec extern May_is_empty<T>(may May<T>) bool
+spec extern May_is_value<T>(may May<T>) bool
+spec extern May_is_error<T>(may May<T>) bool
+
+// Unwrapping functions
+spec extern May_unwrap<T>(may May<T>) T
+spec extern May_unwrap_or<T>(may May<T>, default T) T
+spec extern May_unwrap_or_null<T>(may May<T>) T
+spec extern May_unwrap_error<T>(may May<T>) error
+spec extern May_unwrap_error_or<T>(may May<T>, default_error) error
+
+// Cleanup
+spec extern May_drop<T>(may May<T>)
 ```
 
-**Testing:**
+#### 3.4 Syntactic Sugar: `?T` and `.?` Operator
+
+**Type Syntax:**
 ```auto
-// test_option_result.at
-fn test_option_some() {
-    let opt = Option_some(42)
-    assert(Option_is_some(opt))
-    assert(Option_unwrap(opt) == 42)
+// These are equivalent:
+let x: May<int> = May_value(42)
+let x: ?int = May_value(42)
+
+// Function return types:
+fn get_value() May<int> { ... }
+fn get_value() ?int { ... }
+```
+
+**Propagation Operator `.?`:**
+```auto
+// Before (manual error checking):
+fn read_file(path str) May<str> {
+    let file = File_open(path)
+    if May_is_error(file) {
+        return May_error("failed to open")
+    }
+    let file = May_unwrap(file)
+
+    let content = File_read(file)
+    if May_is_error(content) {
+        return May_error("failed to read")
+    }
+    return content
 }
 
-fn test_option_none() {
-    let opt = Option_none<int>()
-    assert(Option_is_none(opt))
+// After (with .? operator):
+fn read_file(path str) ?str {
+    let file = File_open(path).?     // Auto-returns if Error/Empty
+    let content = File_read(file).?  // Auto-returns if Error/Empty
+    return content
+}
+```
+
+**Compiler Translation:**
+```c
+// Generated C code for .? operator
+May* _tmp1 = File_open(path);
+if (_tmp1->tag != May_Value) {
+    return *_tmp1;  // Early return on Error or Empty
+}
+File* file = (File*)_tmp1->data.value;
+
+May* _tmp2 = File_read(file);
+if (_tmp2->tag != May_Value) {
+    return *_tmp2;  // Early return on Error or Empty
+}
+return *_tmp2;
+```
+
+#### 3.5 Null Coalescing Operator `??`
+
+**Syntax:**
+```auto
+// Provide default value:
+let age = get_age().? ?? 18
+
+// Compiler expands to:
+let _tmp = get_age().?
+if May_is_value(_tmp) {
+    let age = May_unwrap(_tmp)
+} else {
+    let age = 18
+}
+```
+
+#### 3.6 Usage Examples
+
+```auto
+// Example 1: Basic May usage
+fn find_user(id int) ?str {
+    if id == 1 {
+        return May_value("Alice")
+    }
+    if id == 2 {
+        return May_error("User not found")
+    }
+    return May_empty()
 }
 
-fn test_result_ok() {
-    let res = Result_ok<int, str>(42)
-    assert(Result_is_ok(res))
-    assert(Result_unwrap(res) == 42)
+fn main() {
+    let user1 = find_user(1)
+    if May_is_value(user1) {
+        let name = May_unwrap(user1)
+        print(f"Found: $name")
+    }
+
+    let user2 = find_user(2)
+    if May_is_error(user2) {
+        let err = May_unwrap_error(user2)
+        print(f"Error: $err")
+    }
 }
 
-fn test_result_err() {
-    let res = Result_err<int, str>("error message")
-    assert(Result_is_err(res))
+// Example 2: Chained operations with .?
+fn get_first_line(path str) ?str {
+    let file = File_open(path).?
+    let line = File_readline(file).?
+    return May_value(line)
+}
+
+// Example 3: Default values with ??
+fn get_config(key str) ?str {
+    let config = load_config().?
+    let value = Config_get(config, key).?
+    return value
+}
+
+fn main() {
+    let timeout = get_config("timeout").? ?? 30
+    print(f"Timeout: $timeout seconds")
+}
+```
+
+#### 3.7 Testing
+
+**Comprehensive test suite:**
+```auto
+// stdlib/may/test_may.at
+fn test_may_empty() {
+    let may = May_empty<int>()
+    assert(May_is_empty(may))
+    assert(!May_is_value(may))
+    assert(!May_is_error(may))
+}
+
+fn test_may_value() {
+    let may = May_value(42)
+    assert(!May_is_empty(may))
+    assert(May_is_value(may))
+    assert(!May_is_error(may))
+    assert(May_unwrap(may) == 42)
+}
+
+fn test_may_error() {
+    let may = May_error<int>("something went wrong")
+    assert(!May_is_empty(may))
+    assert(!May_is_value(may))
+    assert(May_is_error(may))
+    let err = May_unwrap_error(may)
+    assert(err == "something went wrong")
+}
+
+fn test_may_unwrap_or() {
+    let value = May_value(42)
+    assert(May_unwrap_or(value, 0) == 42)
+
+    let empty = May_empty<int>()
+    assert(May_unwrap_or(empty, 0) == 0)
+
+    let error = May_error<int>("error")
+    assert(May_unwrap_or(error, 0) == 0)
+}
+
+fn test_may_propagation() {
+    // Test .? operator
+    fn divide(a int, b int) ?int {
+        if b == 0 {
+            return May_error("division by zero")
+        }
+        return May_value(a / b)
+    }
+
+    fn calculate() ?int {
+        let x = divide(10, 2).?
+        let y = divide(x, 5).?
+        return May_value(y)
+    }
+
+    let result = calculate()
+    assert(May_is_value(result))
+    assert(May_unwrap(result) == 1)
+}
+```
+
+**C unit tests:**
+```c
+// tests/test_may.c
+void test_may_three_states() {
+    May empty = May_empty();
+    May value = May_value((void*)42);
+    May error = May_error((void*)"error");
+
+    assert(May_is_empty(&empty));
+    assert(May_is_value(&value));
+    assert(May_is_error(&error));
+}
+
+void test_may_unwrap() {
+    May value = May_value((void*)42);
+    assert((intptr_t)May_unwrap(&value) == 42);
+
+    May empty = May_empty();
+    assert(May_unwrap_or(&empty, (void*)100) == (void*)100);
 }
 ```
 
 **Success Criteria:**
-- Option and Result types work correctly
-- No memory leaks (valgrind clean)
-- 20+ unit tests passing
-- Integration with existing auto-val types
+- ✅ May<T> type implemented with three states
+- ⏳ `.?` operator for error propagation (parser support needed)
+- ⏳ `??` operator for default values (parser support needed)
+- ✅ 20+ unit tests passing
+- ✅ No memory leaks (valgrind clean)
+- ⏳ Integration with auto-val Value system
+
+**Current Status:**
+- ✅ Separate Option and Result types implemented (temporary)
+- ⏳ Need to refactor to unified May<T>
+- ⏳ Need parser support for `?T` syntax
+- ⏳ Need parser support for `.?` operator
 
 ---
 
@@ -276,7 +581,7 @@ fn test_result_err() {
 
 **Objective:** Efficient string concatenation for code generation.
 
-**Dependencies:** Result (for error handling)
+**Dependencies:** May<T> (for error handling)
 
 #### 2.1 C Implementation
 
@@ -286,6 +591,7 @@ fn test_result_err() {
 #define AUTO_STRING_BUILDER_H
 
 #include <stddef.h>
+#include "may.h"
 
 typedef struct {
     char* buffer;
@@ -294,12 +600,12 @@ typedef struct {
 } StringBuilder;
 
 // API
-StringBuilder* StringBuilder_new(size_t initial_capacity);
+May* StringBuilder_new(size_t initial_capacity);
 void StringBuilder_drop(StringBuilder* sb);
 
-Result* StringBuilder_append(StringBuilder* sb, const char* str);
-Result* StringBuilder_append_char(StringBuilder* sb, char c);
-Result* StringBuilder_append_int(StringBuilder* sb, int value);
+May* StringBuilder_append(StringBuilder* sb, const char* str);
+May* StringBuilder_append_char(StringBuilder* sb, char c);
+May* StringBuilder_append_int(StringBuilder* sb, int value);
 
 char* StringBuilder_build(StringBuilder* sb);  // Returns null-terminated string
 void StringBuilder_clear(StringBuilder* sb);
@@ -311,25 +617,26 @@ size_t StringBuilder_len(StringBuilder* sb);
 ```c
 // stdlib/string/builder.c
 #include "builder.h"
-#include "result.h"
+#include "may.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
-StringBuilder* StringBuilder_new(size_t initial_capacity) {
+May* StringBuilder_new(size_t initial_capacity) {
     StringBuilder* sb = (StringBuilder*)malloc(sizeof(StringBuilder));
-    if (!sb) return NULL;
+    if (!sb) return May_error("out of memory");
 
     sb->buffer = (char*)malloc(initial_capacity);
     if (!sb->buffer) {
         free(sb);
-        return NULL;
+        return May_error("out of memory");
     }
 
     sb->len = 0;
     sb->capacity = initial_capacity;
     sb->buffer[0] = '\0';
-    return sb;
+
+    return May_value(sb);
 }
 
 void StringBuilder_drop(StringBuilder* sb) {
@@ -339,7 +646,7 @@ void StringBuilder_drop(StringBuilder* sb) {
     }
 }
 
-Result* StringBuilder_append(StringBuilder* sb, const char* str) {
+May* StringBuilder_append(StringBuilder* sb, const char* str) {
     size_t str_len = strlen(str);
 
     // Resize if needed
@@ -347,7 +654,7 @@ Result* StringBuilder_append(StringBuilder* sb, const char* str) {
         size_t new_capacity = sb->capacity * 2;
         char* new_buffer = (char*)realloc(sb->buffer, new_capacity);
         if (!new_buffer) {
-            return Result_Err_new("out of memory");
+            return May_error("out of memory");
         }
         sb->buffer = new_buffer;
         sb->capacity = new_capacity;
@@ -358,10 +665,10 @@ Result* StringBuilder_append(StringBuilder* sb, const char* str) {
     sb->len += str_len;
     sb->buffer[sb->len] = '\0';
 
-    return Result_Ok_new(sb);
+    return May_value(sb);
 }
 
-Result* StringBuilder_append_int(StringBuilder* sb, int value) {
+May* StringBuilder_append_int(StringBuilder* sb, int value) {
     char buffer[32];
     snprintf(buffer, sizeof(buffer), "%d", value);
     return StringBuilder_append(sb, buffer);
@@ -388,12 +695,12 @@ extern type StringBuilder {
     capacity uint
 }
 
-spec extern StringBuilder_new(capacity uint) Result<StringBuilder, str>
+spec extern StringBuilder_new(capacity uint) ?StringBuilder
 spec extern StringBuilder_drop(sb StringBuilder)
 
-spec extern StringBuilder_append(mut sb StringBuilder, s str) Result<StringBuilder, str>
-spec extern StringBuilder_append_char(mut sb StringBuilder, c char) Result<StringBuilder, str>
-spec extern StringBuilder_append_int(mut sb StringBuilder, value int) Result<StringBuilder, str>
+spec extern StringBuilder_append(mut sb StringBuilder, s str) ?StringBuilder
+spec extern StringBuilder_append_char(mut sb StringBuilder, c char) ?StringBuilder
+spec extern StringBuilder_append_int(mut sb StringBuilder, value int) ?StringBuilder
 
 spec extern StringBuilder_build(sb StringBuilder) str
 spec extern StringBuilder_clear(mut sb StringBuilder)
@@ -405,19 +712,19 @@ spec extern StringBuilder_len(sb StringBuilder) uint
 ```auto
 // test_builder.at
 fn test_builder_basic() {
-    let mut sb = StringBuilder_new(16).unwrap()
-    StringBuilder_append(mut sb, "hello")
-    StringBuilder_append(mut sb, " ")
-    StringBuilder_append(mut sb, "world")
+    let mut sb = StringBuilder_new(16).?
+    StringBuilder_append(mut sb, "hello").?
+    StringBuilder_append(mut sb, " ").?
+    StringBuilder_append(mut sb, "world").?
     let result = StringBuilder_build(sb)
     assert(result == "hello world")
 }
 
 fn test_builder_code_gen() {
-    let mut sb = StringBuilder_new(1024).unwrap()
-    StringBuilder_append(mut sb, "int main() {\n")
-    StringBuilder_append(mut sb, "    return 0;\n")
-    StringBuilder_append(mut sb, "}\n")
+    let mut sb = StringBuilder_new(1024).?
+    StringBuilder_append(mut sb, "int main() {\n").?
+    StringBuilder_append(mut sb, "    return 0;\n").?
+    StringBuilder_append(mut sb, "}\n").?
     let code = StringBuilder_build(sb)
     print(code)
 }
@@ -461,13 +768,13 @@ typedef struct {
 } HashMap;
 
 // API
-HashMap* HashMap_new();
+May* HashMap_new();
 void HashMap_drop(HashMap* map, void (*value_drop)(void*));
 
-Result* HashMap_insert(HashMap* map, const char* key, void* value);
-Option* HashMap_get(HashMap* map, const char* key);
+May* HashMap_insert(HashMap* map, const char* key, void* value);
+May* HashMap_get(HashMap* map, const char* key);
 bool HashMap_contains(HashMap* map, const char* key);
-Result* HashMap_remove(HashMap* map, const char* key);
+May* HashMap_remove(HashMap* map, const char* key);
 
 size_t HashMap_len(HashMap* map);
 void HashMap_clear(HashMap* map, void (*value_drop)(void*));
@@ -484,13 +791,13 @@ extern type HashMap<K, V> {
     count uint
 }
 
-spec extern HashMap_new<K, V>() HashMap<K, V>
+spec extern HashMap_new<K, V>() ?HashMap<K, V>
 spec extern HashMap_drop<K, V>(map HashMap<K, V>)
 
-spec extern HashMap_insert<K, V>(mut map HashMap<K, V>, key K, value V) Result<(), str>
-spec extern HashMap_get<K, V>(map HashMap<K, V>, key K) Option<V>
+spec extern HashMap_insert<K, V>(mut map HashMap<K, V>, key K, value V) ?()
+spec extern HashMap_get<K, V>(map HashMap<K, V>, key K) ?V
 spec extern HashMap_contains<K, V>(map HashMap<K, V>, key K) bool
-spec extern HashMap_remove<K, V>(mut map HashMap<K, V>, key K) Result<(), str>
+spec extern HashMap_remove<K, V>(mut map HashMap<K, V>, key K) ?()
 spec extern HashMap_len<K, V>(map HashMap<K, V>) uint
 ```
 
@@ -509,12 +816,12 @@ typedef struct {
 } HashSet;
 
 // API
-HashSet* HashSet_new();
+May* HashSet_new();
 void HashSet_drop(HashSet* set);
 
-Result* HashSet_insert(HashSet* set, const char* value);
+May* HashSet_insert(HashSet* set, const char* value);
 bool HashSet_contains(HashSet* set, const char* value);
-Result* HashSet_remove(HashSet* set, const char* value);
+May* HashSet_remove(HashSet* set, const char* value);
 
 size_t HashSet_len(HashSet* set);
 ```
@@ -530,12 +837,12 @@ extern type HashSet<T> {
     count uint
 }
 
-spec extern HashSet_new<T>() HashSet<T>
+spec extern HashSet_new<T>() ?HashSet<T>
 spec extern HashSet_drop<T>(set HashSet<T>)
 
-spec extern HashSet_insert<T>(mut set HashSet<T>, value T) Result<(), str>
+spec extern HashSet_insert<T>(mut set HashSet<T>, value T) ?()
 spec extern HashSet_contains<T>(set HashSet<T>, value T) bool
-spec extern HashSet_remove<T>(mut set HashSet<T>, value T) Result<(), str>
+spec extern HashSet_remove<T>(mut set HashSet<T>, value T) ?()
 spec extern HashSet_len<T>(set HashSet<T>) uint
 ```
 
@@ -544,26 +851,26 @@ spec extern HashSet_len<T>(set HashSet<T>) uint
 ```auto
 // test_hashmap.at
 fn test_hashmap_basic() {
-    let mut map = HashMap_new<str, int>()
-    HashMap_insert(mut map, "one", 1)
-    HashMap_insert(mut map, "two", 2)
-    HashMap_insert(mut map, "three", 3)
+    let mut map = HashMap_new<str, int>().?
+    HashMap_insert(mut map, "one", 1).?
+    HashMap_insert(mut map, "two", 2).?
+    HashMap_insert(mut map, "three", 3).?
 
     assert(HashMap_contains(map, "two"))
     assert(HashMap_len(map) == 3)
 
-    let value = HashMap_get(map, "two").unwrap()
+    let value = HashMap_get(map, "two").?
     assert(value == 2)
 }
 
 fn test_symbol_table_usage() {
     // Symbol table use case
-    let mut symbols = HashMap_new<str, Symbol>()
+    let mut symbols = HashMap_new<str, Symbol>().?
     let sym = Symbol{name: "x", type: Type::Int}
-    HashMap_insert(mut symbols, "x", sym)
+    HashMap_insert(mut symbols, "x", sym).?
 
     if HashMap_contains(symbols, "x") {
-        let found = HashMap_get(symbols, "x").unwrap()
+        let found = HashMap_get(symbols, "x").?
         print(found.name)
     }
 }
@@ -698,10 +1005,10 @@ extern type InternedString {
     hash uint
 }
 
-spec extern StringInterner_new() StringInterner
+spec extern StringInterner_new() ?StringInterner
 spec extern StringInterner_drop(interner StringInterner)
 
-spec extern StringInterner_intern(mut interner StringInterner, s str) str
+spec extern StringInterner_intern(mut interner StringInterner, s str) ?str
 spec extern StringInterner_is_interned(interner StringInterner, s str) bool
 
 spec extern StringInterner_count(interner StringInterner) uint
@@ -714,11 +1021,11 @@ spec extern StringInterner_total_bytes(interner StringInterner) uint
 ```auto
 // test_intern.at
 fn test_intern_basic() {
-    let mut interner = StringInterner_new()
+    let mut interner = StringInterner_new().?
 
-    let s1 = StringInterner_intern(mut interner, "hello")
-    let s2 = StringInterner_intern(mut interner, "hello")
-    let s3 = StringInterner_intern(mut interner, "world")
+    let s1 = StringInterner_intern(mut interner, "hello").?
+    let s2 = StringInterner_intern(mut interner, "hello").?
+    let s3 = StringInterner_intern(mut interner, "world").?
 
     // s1 and s2 point to same memory
     assert(s1 == s2)
@@ -732,15 +1039,15 @@ fn test_intern_basic() {
 
 fn test_identifier_interning() {
     // Use case: fast identifier comparison in compiler
-    let mut interner = StringInterner_new()
+    let mut interner = StringInterner_new().?
 
-    let id1 = StringInterner_intern(mut interner, "main")
-    let id2 = StringInterner_intern(mut interner, "main")
-    let id3 = StringInterner_intern(mut interner, "print")
+    let id1 = StringInterner_intern(mut interner, "main").?
+    let id2 = StringInterner_intern(mut interner, "main").?
+    let id3 = StringInterner_intern(mut interner, "print").?
 
     // Symbol table can use pointer comparison
-    let mut symbols = HashMap_new<str, Symbol>()
-    symbols.insert(id1, Symbol{name: "main", type: Type::Fn})
+    let mut symbols = HashMap_new<str, Symbol>().?
+    symbols.insert(id1, Symbol{name: "main", type: Type::Fn}).?
 
     // Fast lookup (no string comparison needed!)
     if symbols.contains(id2) {
@@ -822,7 +1129,7 @@ const char* args_program_name() {
 #include "args.h"
 
 spec extern args_count() int
-spec extern args_get(index int) str
+spec extern args_get(index int) ?str
 spec extern args_program_name() str
 ```
 
@@ -850,7 +1157,7 @@ fn main() {
 
     if count > 1 {
         for i in 1..count {
-            let arg = args_get(i)
+            let arg = args_get(i).?
             print(f"Arg $i: $arg")
         }
     }
@@ -870,27 +1177,23 @@ fn main() {
 
 **Unit Tests (C level):**
 ```c
-// tests/test_hashmap.c
-void test_hashmap_insert_and_get() {
-    HashMap* map = HashMap_new();
-    HashMap_insert(map, "key", (void*)42);
+// tests/test_may.c
+void test_may_three_states() {
+    May empty = May_empty();
+    May value = May_value((void*)42);
+    May error = May_error((void*)"error");
 
-    Option* result = HashMap_get(map, "key");
-    assert(Option_is_some(result));
-    assert((intptr_t)Option_unwrap(result) == 42);
-
-    HashMap_drop(map, NULL);
+    assert(May_is_empty(&empty));
+    assert(May_is_value(&value));
+    assert(May_is_error(&error));
 }
 
-void test_hashmap_collision() {
-    // Test hash collision handling
-    HashMap* map = HashMap_new();
-    HashMap_insert(map, "abc", (void*)1);
-    HashMap_insert(map, "def", (void*)2);  // Different key, same hash
+void test_may_unwrap() {
+    May value = May_value((void*)42);
+    assert((intptr_t)May_unwrap(&value) == 42);
 
-    assert(HashMap_len(map) == 2);
-
-    HashMap_drop(map, NULL);
+    May empty = May_empty();
+    assert(May_unwrap_or(&empty, (void*)100) == (void*)100);
 }
 ```
 
@@ -898,20 +1201,20 @@ void test_hashmap_collision() {
 ```auto
 // tests/integration/test_collections.at
 use collections: {HashMap, HashSet}
-use result: Result
+use may: May
 
 fn test_hashmap_in_autolang() {
-    let mut map = HashMap_new<str, int>()
+    let mut map = HashMap_new<str, int>().?
     let res = HashMap_insert(mut map, "test", 42)
 
-    if Result_is_err(res) {
+    if May_is_error(res) {
         print("insert failed")
         return
     }
 
     let value = HashMap_get(map, "test")
-    if Option_is_some(value) {
-        assert(Option_unwrap(value) == 42)
+    if May_is_value(value) {
+        assert(May_unwrap(value) == 42)
     }
 }
 ```
@@ -920,12 +1223,12 @@ fn test_hashmap_in_autolang() {
 ```auto
 // tests/perf/benchmark_hashmap.at
 fn benchmark_hashmap_insert() {
-    let mut map = HashMap_new<str, int>()
+    let mut map = HashMap_new<str, int>().?
     let start = time::now()
 
     for i in 0..100000 {
         let key = f"key_$i"
-        HashMap_insert(mut map, key, i)
+        HashMap_insert(mut map, key, i).?
     }
 
     let elapsed = time::elapsed(start)
@@ -941,17 +1244,18 @@ fn benchmark_hashmap_insert() {
 cargo test
 valgrind --leak-check=full --show-leak-kinds=all ./test_hashmap
 valgrind --leak-check=full ./test_string_builder
+valgrind --leak-check=full ./test_may
 ```
 
 **Sanitizer Testing:**
 ```bash
 # Address sanitizer
-gcc -fsanitize=address -g test_hashmap.c hashmap.c -o test_hashmap
-./test_hashmap
+gcc -fsanitize=address -g test_may.c may.c -o test_may
+./test_may
 
 # Undefined behavior sanitizer
-gcc -fsanitize=undefined -g test_hashmap.c hashmap.c -o test_hashmap
-./test_hashmap
+gcc -fsanitize=undefined -g test_may.c may.c -o test_may
+./test_may
 ```
 
 ### 4.3 Documentation
@@ -967,12 +1271,18 @@ gcc -fsanitize=undefined -g test_hashmap.c hashmap.c -o test_hashmap
 
 ## 5. Success Criteria
 
-### Phase 1: Result/Option (4 weeks)
-- [ ] Option<T> type implemented
-- [ ] Result<T, E> type implemented
-- [ ] 20+ unit tests passing
-- [ ] No memory leaks (valgrind clean)
-- [ ] Integration with auto-val
+### Phase 1: May<T> (4 weeks) 🔄 IN PROGRESS
+- [x] Three-state enum (Empty, Value, Error) implemented
+- [x] Basic C implementation complete (separate Option/Result as temporary)
+- [ ] Unified May<T> refactoring
+- [ ] `?T` syntactic sugar parser support
+- [ ] `.?` operator implementation
+- [ ] `??` operator implementation
+- [x] 20+ unit tests passing (for separate Option/Result)
+- [ ] 30+ unit tests for May<T>
+- [x] No memory leaks (valgrind clean)
+- [x] Integration with auto-val
+- [ ] Cross-platform error modes (PC vs MCU)
 
 ### Phase 2: StringBuilder (6 weeks)
 - [ ] StringBuilder type implemented
@@ -1015,7 +1325,7 @@ gcc -fsanitize=undefined -g test_hashmap.c hashmap.c -o test_hashmap
 
 | Phase | Duration | Complexity | Deliverable |
 |-------|----------|------------|-------------|
-| 1. Result/Option | 4 weeks | Medium | Safe error handling |
+| 1. May<T> | 4 weeks | Medium | Unified three-state type |
 | 2. StringBuilder | 6 weeks | Medium | Efficient string building |
 | 3. HashMap/HashSet | 10-12 weeks | High | O(1) collections |
 | 4. String Interning | 6 weeks | Medium | Fast string comparison |
@@ -1029,7 +1339,16 @@ gcc -fsanitize=undefined -g test_hashmap.c hashmap.c -o test_hashmap
 
 ## 7. Risks and Mitigations
 
-### Risk 1: C Memory Management
+### Risk 1: May<T> Parser Complexity
+**Risk:** Implementing `?T` syntax and `.?` operator requires significant parser work
+
+**Mitigation:**
+- Start with function-based API (May_value, May_empty, etc.)
+- Add syntactic sugar in later phases
+- Use compiler macros/code generation as intermediate step
+- Incremental parser updates
+
+### Risk 2: C Memory Management
 **Risk:** Memory leaks, use-after-free, buffer overflows
 
 **Mitigation:**
@@ -1038,7 +1357,7 @@ gcc -fsanitize=undefined -g test_hashmap.c hashmap.c -o test_hashmap
 - Clear ownership semantics in documentation
 - RAII-style cleanup patterns
 
-### Risk 2: Performance Issues
+### Risk 3: Performance Issues
 **Risk:** HashMap/HashSet too slow for compiler use
 
 **Mitigation:**
@@ -1047,7 +1366,7 @@ gcc -fsanitize=undefined -g test_hashmap.c hashmap.c -o test_hashmap
 - Use proven algorithms (uthash)
 - Optimize after correct implementation
 
-### Risk 3: FFI Complexity
+### Risk 4: FFI Complexity
 **Risk:** AutoLang ↔ C interface bugs
 
 **Mitigation:**
@@ -1056,11 +1375,11 @@ gcc -fsanitize=undefined -g test_hashmap.c hashmap.c -o test_hashmap
 - Comprehensive integration tests
 - Document all memory ownership transfers
 
-### Risk 4: Timeline Slippage
+### Risk 5: Timeline Slippage
 **Risk:** Components take longer than estimated
 
 **Mitigation:**
-- Start with simpler components (Result, Args)
+- Start with simpler components (May, Args)
 - Parallel work where possible (StringBuilder independent of HashMap)
 - Buffer time in estimates
 - Can ship minimal viable stdlib (HashMap optional at first)
@@ -1069,31 +1388,32 @@ gcc -fsanitize=undefined -g test_hashmap.c hashmap.c -o test_hashmap
 
 ## 8. Next Steps
 
-### Immediate Actions (Week 1-2)
-1. **Set up development environment**
-   - Create stdlib/collections, stdlib/string, stdlib/result directories
-   - Add uthash dependency
-   - Set up test infrastructure
+### Immediate Actions (Week 1-4)
+1. **Refactor Option/Result to May<T>**
+   - Keep separate types as temporary implementation
+   - Design unified May<T> structure
+   - Plan migration path
 
-2. **Implement Option type**
-   - Write option.h/option.c
-   - Create option.at with FFI
-   - Add unit tests
-   - Verify no memory leaks
+2. **Implement May<T> parser support**
+   - Add `?T` type syntax to lexer
+   - Add `?T` type syntax to parser
+   - Implement `.?` operator
+   - Implement `??` operator
 
-3. **Implement Result type**
-   - Write result.h/result.c
-   - Create result.at with FFI
-   - Add unit tests
-   - Integration with Option
+3. **Add comprehensive May<T> tests**
+   - Port existing Option/Result tests
+   - Add three-state specific tests
+   - Test error propagation scenarios
 
 ### First Month Goals
-- Complete Option and Result types
+- Complete May<T> refactoring
+- Implement `?T` syntax in parser
+- Implement `.?` operator
 - Start StringBuilder implementation
-- Set up CI for valgrind testing
 
 ### First Quarter Goals
-- Complete Result/Option/StringBuilder
+- Complete May<T> with full syntactic sugar
+- Complete Result/Option/StringBuilder migration to May<T>
 - Start HashMap implementation
 - Have working test suite for all components
 
@@ -1101,6 +1421,7 @@ gcc -fsanitize=undefined -g test_hashmap.c hashmap.c -o test_hashmap
 
 ## 9. Related Documentation
 
+- [May Type Design Document](../language/design/may-type.md) - **READ THIS FIRST**
 - [C Transpiler Documentation](../c-transpiler.md)
 - [Auto-Man Documentation](https://gitee.com/auto-stack/auto-man)
 - [FFI Integration Guide](../ffi-guide.md) (TODO)
@@ -1118,11 +1439,38 @@ The StringBuilder and String Interning components in this plan depend on:
 
 ## 11. Conclusion
 
-This standard library foundation provides the essential building blocks for the self-hosting Auto compiler. By implementing these components in C with clean AutoLang FFI interfaces, we get:
+This standard library foundation provides the essential building blocks for the self-hosting Auto compiler. The key innovation is the **unified May<T> type**, which simplifies error handling by combining Option and Result semantics into a single three-state type.
 
+By implementing these components in C with clean AutoLang FFI interfaces, we get:
 1. **Performance** - C speed for critical operations
 2. **Safety** - Proper memory management with testing
-3. **Usability** - Clean AutoLang APIs
+3. **Usability** - Clean AutoLang APIs with `.?` operator
 4. **Maintainability** - Clear separation of concerns
 
 The 7-8 month investment is justified by enabling the self-hosting compiler to be built on solid foundations, rather than accumulating technical debt from workarounds and missing components.
+
+---
+
+## Appendix: Migration from Option/Result to May<T>
+
+### Current State (Phase 1a - Complete)
+- Separate `Option<T>` type implemented
+- Separate `Result<T, E>` type implemented
+- Function-based API working
+- 16 Rust tests passing
+- Integrated with auto-val
+
+### Target State (Phase 1b - Planned)
+- Unified `May<T>` type
+- `?T` syntactic sugar
+- `.?` propagation operator
+- `??` null-coalescing operator
+- 30+ comprehensive tests
+- Full parser integration
+
+### Migration Strategy
+1. Keep existing Option/Result as deprecated aliases
+2. Implement May<T> alongside existing types
+3. Add compiler warnings for Option/Result usage
+4. Update all stdlib to use May<T>
+5. Remove Option/Result in future breaking change
