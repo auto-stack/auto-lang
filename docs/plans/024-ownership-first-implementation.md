@@ -11,9 +11,13 @@
 - ✅ Phase 1: Move Semantics (Linear types, use-after-move detection, 440+ tests)
 - ✅ Phase 2: Owned str Type (OwnedStr implementation, string functions, UTF-8 support)
 - ✅ Phase 3 Core: Borrow Checker (Target system, conflict detection, 23 tests) - **[详细文档](../borrow-checker-improvements.md)**
+- ✅ Phase 3 Integration: C transpiler view/mut/take support (generates proper pointer references)
 
 **Next Steps:**
-- Phase 3 Integration: Complete view/mut/take keywords, hold eval, str_slice safety
+- Phase 3 Integration: Complete hold eval, str_slice safety
+- Add lifetime region tracking for precise overlap detection
+- Integrate Span information into miette error reporting
+- Write comprehensive integration tests
 
 ## Executive Summary
 
@@ -229,8 +233,9 @@ fn str_drop(s str)  // Automatic via linear type
 **Objective:** Complete ownership system with borrowing
 
 **What It Provides:**
-- `take` (immutable borrow)
-- `edit` (mutable borrow)
+- `view` (immutable borrow, like Rust `&T`)
+- `mut` (mutable borrow, like Rust `&mut T`)
+- `take` (move semantics, like Rust `move`)
 - `str_slice` with compile-time lifetimes
 - `hold` path binding
 - Zero-cost safety
@@ -238,11 +243,12 @@ fn str_drop(s str)  // Automatic via linear type
 **Key Features:**
 ```auto
 let s = str_new("hello", 5)
-let slice = take s              // Immutable borrow
+let slice = view s             // Immutable borrow (&s)
 let len = str_slice_len(slice)
 
 hold path s.data as bytes {
-    edit bytes[0] = 'H'        // Mutable borrow via path
+    // bytes is mutable reference to s.data
+    bytes[0] = 'H'             // Can modify through mut borrow
 }
 // s still valid here (borrows ended)
 ```
@@ -262,7 +268,7 @@ fn str_slice_len(sl str_slice) uint
 
 **Deliverables:**
 - Full borrow checker
-- `take`/`edit` keywords
+- `view`/`mut`/`take` keywords
 - `str_slice` with compile-time lifetimes
 - `hold` path binding
 - 200+ tests passing

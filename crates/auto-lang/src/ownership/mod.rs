@@ -16,7 +16,7 @@
 //!
 //! # Borrow Types (Phase 3)
 //!
-//! AutoLang provides three ways to borrow values:
+//! AutoLang provides three keywords for memory management:
 //!
 //! 1. **`view`** - Immutable borrow (like Rust `&T`)
 //!    - Multiple view borrows can coexist
@@ -25,11 +25,11 @@
 //!
 //! 2. **`mut`** - Mutable borrow (like Rust `&mut T`)
 //!    - Only one mut borrow at a time
-//!    - Cannot coexist with view borrows
+//!    - Cannot coexist with other borrows
 //!    - Can modify the borrowed value
 //!    - Original value remains valid
 //!
-//! 3. **`take`** - Move semantics (like Rust `move` or `std::mem::take`)
+//! 3. **`take`** - Move semantics (like Rust `move`)
 //!    - Transfers ownership to new location
 //!    - Original value no longer valid
 //!    - Conflicts with all other borrows
@@ -37,23 +37,23 @@
 //! # Example
 //!
 //! ```auto
-//! // View borrow (immutable)
-//! let s = "hello"
-//! let slice = view s      // Immutable borrow
-//! let len = str_len(slice)
-//! // s still valid here
+//! // View borrow (immutable reference)
+//! let s = str_new("hello", 5)
+//! let slice = view s      // Immutable borrow: like &s in Rust
+//! let len = str_len(slice) // Can read through the borrow
+//! // s still valid here, both s and slice can be used
 //!
-//! // Mut borrow (mutable)
-//! let s = str_new("hello", 10)
-//! let mut_ref = mut s     // Mutable borrow
-//! str_append(mut_ref, " world")
-//! // s modified in place
+//! // Mut borrow (mutable reference)
+//! let s = str_new("hello", 5)
+//! let mut_ref = mut s     // Mutable borrow: like &mut s in Rust
+//! str_push(mut_ref, '!')  // Can modify through the borrow
+//! // s reflects the modification
 //!
 //! // Take (move semantics)
-//! let s1 = "hello"
-//! let s2 = take s1        // Move: s1 no longer valid
-//! use(s2)                 // Last use: automatic cleanup
-//! // s1 cannot be used here (compiler error)
+//! let s1 = str_new("hello", 5)
+//! let s2 = take s1        // Move: s1 invalidated, ownership transferred
+//! str_drop(s2)            // s2 owns the data now
+//! // s1 cannot be used here (use-after-move error)
 //! ```
 
 pub mod borrow;

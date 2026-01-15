@@ -3,8 +3,8 @@
 int main(void) {
     char* s = "hello";
 
-    unknown v1 = s;
-    unknown v2 = s;
+    unknown v1 = &(s);
+    unknown v2 = &(s);
 
     printf("%d\n", v1);
     printf("%d\n", v2);

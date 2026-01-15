@@ -757,11 +757,27 @@ impl CTrans {
             Expr::Cover(cover) => self.cover(cover, out),
             Expr::Null => self.null(out),
             Expr::Nil => self.nil(out),
-            // Borrow expressions (Phase 3) - transpile as the underlying expression
-            // C doesn't have borrow checking, so these are no-ops
-            Expr::View(e) => self.expr(e, out),
-            Expr::Mut(e) => self.expr(e, out),
-            Expr::Take(e) => self.expr(e, out),
+            // Borrow expressions (Phase 3)
+            // C doesn't have borrow checking, so we generate pointer references
+            Expr::View(e) => {
+                // Immutable borrow: generate pointer (&)
+                out.write_all(b"&(").to()?;
+                self.expr(e, out)?;
+                out.write_all(b")").to()
+            }
+            Expr::Mut(e) => {
+                // Mutable borrow: generate pointer (&)
+                // Note: C doesn't distinguish const from mut at the pointer level
+                // The borrow checker (AutoLang compiler) ensures safety
+                out.write_all(b"&(").to()?;
+                self.expr(e, out)?;
+                out.write_all(b")").to()
+            }
+            Expr::Take(e) => {
+                // Move semantics: in C, this is just the value itself
+                // The borrow checker ensures the source isn't used again
+                self.expr(e, out)
+            }
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
     }
