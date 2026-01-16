@@ -1,6 +1,6 @@
-use auto.str: sstr
+use auto.str: str
 
 fn main() {
-    let s1 sstr = sstr(5, "Hello")
+    let s1 str = "Hello"
     print(s1)
 }

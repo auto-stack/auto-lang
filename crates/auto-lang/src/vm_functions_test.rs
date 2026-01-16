@@ -78,8 +78,10 @@ let file = open("nonexistent_vm_test_file.txt")
 file
 "#;
     let result = run(code);
-    assert!(result.is_ok());
-    let output = result.unwrap();
-    assert!(output.contains("Error") || output.contains("not found"),
-            "Expected error for nonexistent file, got: {}", output);
+    // Evaluation errors are returned as Err, not Ok with error message
+    assert!(result.is_err(), "Expected error for nonexistent file, got: {:?}", result);
+    let err = result.unwrap_err();
+    let err_msg = format!("{}", err);
+    assert!(err_msg.contains("Error") || err_msg.contains("not found") || err_msg.contains("找不到"),
+            "Expected error message to contain 'Error' or 'not found', got: {}", err_msg);
 }

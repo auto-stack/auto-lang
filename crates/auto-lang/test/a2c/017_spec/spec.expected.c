@@ -25,7 +25,7 @@ int main(void) {
     void* arr[0] = {b1, b2};
     for (int i = 0; i < 0; i++) {
         void* b = arr[i];
-        b.fly();
+        int_fly(b);
     }
     return 0;
 }

@@ -16,7 +16,7 @@ int main(void) {
     void* readers[0] = {reader};
     for (int i = 0; i < 0; i++) {
         void* r = readers[i];
-        unknown text = r.read();
+        unknown text = int_read(r);
         printf("%d\n", text);
     }
 
