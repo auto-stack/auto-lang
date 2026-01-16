@@ -1,0 +1,10 @@
+// Test array return types
+
+fn get_numbers() []int {
+    [1, 2, 3, 4, 5]
+}
+
+fn main() {
+    let nums = get_numbers()
+    print(nums[0])
+}

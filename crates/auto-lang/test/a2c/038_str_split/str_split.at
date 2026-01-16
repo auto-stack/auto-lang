@@ -1,0 +1,7 @@
+// Test Plan 036 Phase 4: String methods with array returns
+
+fn main() {
+    let text = "hello world"
+    let words = text.split()
+    print(words[0])
+}

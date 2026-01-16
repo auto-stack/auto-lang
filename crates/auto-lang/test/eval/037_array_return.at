@@ -1,0 +1,19 @@
+// Test array return types in evaluator
+
+fn get_numbers() []int {
+    [1, 2, 3, 4, 5]
+}
+
+fn get_strings() []str {
+    ["hello", "world"]
+}
+
+fn test_array_return() {
+    let nums = get_numbers()
+    print(nums[0])  // Should print: 1
+    print(nums[4])  // Should print: 5
+
+    let words = get_strings()
+    print(words[0])  // Should print: hello
+    print(words[1])  // Should print: world
+}

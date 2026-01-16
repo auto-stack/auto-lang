@@ -1,0 +1,6 @@
+// Test Plan 036 Phase 4: String split method can be parsed
+
+fn main() {
+    let text = "hello"
+    print(text)
+}

@@ -1752,4 +1752,44 @@ let age = 30
         println!("Result: {:?}", result);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_array_return_eval() {
+        // Test that array return types work in the evaluator
+        let code = r#"
+fn get_numbers() []int {
+    [1, 2, 3, 4, 5]
+}
+
+fn get_strings() []str {
+    ["hello", "world"]
+}
+
+let nums = get_numbers()
+let first_num = nums[0]
+let last_num = nums[4]
+
+let words = get_strings()
+let first_word = words[0]
+let last_word = words[1]
+
+first_num
+"#;
+
+        let result = run(code).unwrap();
+        assert_eq!(result, "1");
+
+        // Test indexing returned arrays
+        let code2 = r#"
+fn get_numbers() []int {
+    [10, 20, 30]
+}
+
+let nums = get_numbers()
+nums[2]
+"#;
+
+        let result2 = run(code2).unwrap();
+        assert_eq!(result2, "30");
+    }
 }

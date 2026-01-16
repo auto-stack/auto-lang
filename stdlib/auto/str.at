@@ -107,29 +107,17 @@ ext str {
     // ============================================================================
     // These methods are implemented in AutoLang itself, not in VM/C
     // They demonstrate AutoLang's expressiveness and capabilities
-    //
-    // NOTE: Due to current parser limitations, complex methods like split(),
-    // join(), and trim() cannot be implemented yet. They require:
-    // - Array return types [str]
-    // - Complex expression support (self.sub(i, i+1))
-    // - Method chaining support
-    //
-    // Simple field access methods work within ext blocks:
 
     /// Get the size/length of the string
     /// Example: "hello".char_count()  // returns 5
     fn char_count() int {
         .size
     }
-}
 
-// ============================================================================
-// Split and Join Methods (Not Yet Supported)
-// ============================================================================
-// Note: These methods are commented out because:
-// - split() requires array return type [str]
-// - join() requires static method support
-// - Parser doesn't support complex expressions yet (e.g., self.sub(i, i+1))
-//
-// fn.vm split(delimiter str) [str]
-// static fn.vm join(parts [str], delimiter str) str
+    /// Split string by delimiter into array of strings
+    /// NOTE: Placeholder implementation - full version requires complex expressions
+    fn split(delimiter str) []str {
+        let result = []
+        result
+    }
+}

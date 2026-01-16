@@ -1,0 +1,8 @@
+// Test Plan 036 Phase 4: String split method signature
+
+fn main() {
+    let text = "hello"
+    let parts = text.split(" ")
+    let count = parts.len()
+    print(count)
+}

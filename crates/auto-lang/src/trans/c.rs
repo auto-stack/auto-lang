@@ -480,7 +480,7 @@ impl CTrans {
             )?;
             out.write(b") ")?;
             // method body
-            self.body(&method.body, sink, &method.ret, "")?;
+            self.body(&method.body, sink, &method.ret, "", "")?;
             sink.body.write(b"\n")?;
         }
 
@@ -1090,9 +1090,9 @@ impl CTrans {
                 out.write(b" ").to()?;
                 self.scope.borrow_mut().enter_fn(fn_decl.name.clone());
                 if fn_decl.name == "main" {
-                    self.body(&fn_decl.body, sink, &Type::Int, "")?;
+                    self.body(&fn_decl.body, sink, &Type::Int, "", &fn_decl.name)?;
                 } else {
-                    self.body(&fn_decl.body, sink, &fn_decl.ret, "")?;
+                    self.body(&fn_decl.body, sink, &fn_decl.ret, "", &fn_decl.name)?;
                 }
                 self.scope.borrow_mut().exit_fn();
             }
@@ -1174,8 +1174,11 @@ impl CTrans {
         sink: &mut Sink,
         ret_type: &Type,
         insert: &str,
+        fn_name: &str,
     ) -> AutoResult<()> {
         let has_return = !matches!(ret_type, Type::Void | Type::Unknown { .. });
+        let ret_is_array = matches!(ret_type, Type::Array(_));
+
         self.scope.borrow_mut().enter_scope();
         sink.body.write(b"{\n")?;
         self.indent();
@@ -1194,12 +1197,54 @@ impl CTrans {
                 // last stmt
                 if has_return {
                     if self.is_returnable(stmt) {
-                        sink.body.write(b"return ")?;
+                        // Check if this is an array literal return
+                        if ret_is_array {
+                            if let Stmt::Expr(Expr::Array(arr)) = stmt {
+                                // Generate static array and return pointer
+                                if let Type::Array(array_type) = ret_type {
+                                    let elem_type = self.c_type_name(&array_type.elem);
+                                    // Use actual array length if type says 0, otherwise use type's length
+                                    let len = if array_type.len == 0 { arr.len() } else { array_type.len };
+                                    let temp_name = format!("_static_{}", fn_name);
+
+                                    // Declare static array
+                                    self.print_indent(&mut sink.body)?;
+                                    sink.body.write(format!(
+                                        "static {} {}[] = {{",
+                                        elem_type, temp_name
+                                    ).as_bytes()).to()?;
+
+                                    // Write array elements
+                                    for (j, elem) in arr.iter().enumerate() {
+                                        if j > 0 {
+                                            sink.body.write(b", ").to()?;
+                                        }
+                                        self.expr(elem, &mut sink.body)?;
+                                    }
+                                    sink.body.write(b"};\n").to()?;
+
+                                    // Set out_size and return pointer
+                                    self.print_indent(&mut sink.body)?;
+                                    sink.body.write(format!("*out_size = {};\n", len).as_bytes()).to()?;
+                                    self.print_indent(&mut sink.body)?;
+                                    sink.body.write(format!("return {};\n", temp_name).as_bytes()).to()?;
+                                }
+                            } else {
+                                sink.body.write(b"return ")?;
+                            }
+                        } else {
+                            sink.body.write(b"return ")?;
+                        }
                     }
                 }
-                self.stmt(stmt, sink)?;
-                sink.body.write(b"\n")?;
-                if has_return && !self.is_returnable(stmt) {
+
+                // Skip the statement if we already handled the array return above
+                if !(ret_is_array && matches!(stmt, Stmt::Expr(Expr::Array(_)))) {
+                    self.stmt(stmt, sink)?;
+                    sink.body.write(b"\n")?;
+                }
+
+                if has_return && !self.is_returnable(stmt) && !ret_is_array {
                     match ret_type {
                         Type::Void | Type::Unknown { .. } => {}
                         _ => {
@@ -1270,13 +1315,72 @@ impl CTrans {
             return Ok(());
         }
 
-        // If type is Unknown, try to infer it and update the scope
-        if matches!(store.ty, Type::Unknown) {
+        // Check if the expression is a function call that returns an array
+        let expr_is_array_call = if let Expr::Call(call) = &store.expr {
+            if let Expr::Ident(fn_name) = &call.name.as_ref() {
+                if let Some(meta) = self.lookup_meta(fn_name) {
+                    if let Meta::Fn(fn_decl) = meta.as_ref() {
+                        matches!(fn_decl.ret, Type::Array(_))
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        // Special handling for array-returning function calls
+        // This must come before the type checking below, so it takes priority
+        if expr_is_array_call {
+            // Get the array return type from the function declaration
+            let array_type = if let Expr::Call(call) = &store.expr {
+                if let Expr::Ident(fn_name) = &call.name.as_ref() {
+                    if let Some(meta) = self.lookup_meta(fn_name) {
+                        if let Meta::Fn(fn_decl) = meta.as_ref() {
+                            if let Type::Array(arr) = &fn_decl.ret {
+                                Some(arr.clone())
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            if let Some(array_type) = array_type {
+                let elem_type = self.c_type_name(&array_type.elem);
+                let size_var = format!("_size_{}", store.name);
+
+                // Declare size variable first (before the variable declaration)
+                out.write(format!("int {};\n    ", size_var).as_bytes()).to()?;
+
+                // Declare pointer variable
+                out.write(format!("{}* {} = ", elem_type, store.name).as_bytes()).to()?;
+            } else {
+                // Fallback: couldn't get array type, use store type
+                let type_name = self.c_type_name(&store.ty);
+                out.write(format!("{} {} = ", type_name, store.name).as_bytes()).to()?;
+            }
+        } else if matches!(store.ty, Type::Unknown) {
             if let Some(inferred_type) = self.infer_expr_type(&store.expr) {
                 // Update the scope with the inferred type for future lookups
                 self.scope
                     .borrow_mut()
                     .update_store_type(&store.name, inferred_type.clone());
+
                 let type_name = self.c_type_name(&inferred_type);
                 out.write(format!("{} {} = ", type_name, store.name).as_bytes())
                     .to()?;
@@ -1301,7 +1405,41 @@ impl CTrans {
                 }
             }
         }
-        self.expr(&store.expr, out)?;
+
+        // For array-returning calls, we need to handle the call specially
+        if expr_is_array_call {
+            if let Expr::Call(call) = &store.expr {
+                if let Expr::Ident(_fn_name) = &call.name.as_ref() {
+                    let size_var = format!("_size_{}", store.name);
+
+                    // Write the function call
+                    self.expr(&call.name, out)?;
+                    out.write(b"(").to()?;
+
+                    // Write existing arguments
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        self.arg(arg, out)?;
+                        if i < call.args.args.len() - 1 {
+                            out.write(b", ").to()?;
+                        }
+                    }
+
+                    // Add size parameter
+                    if !call.args.args.is_empty() {
+                        out.write(b", ").to()?;
+                    }
+                    out.write(b"&").to()?;
+                    out.write(size_var.as_bytes()).to()?;
+                    out.write(b")").to()?;
+                } else {
+                    self.expr(&store.expr, out)?;
+                }
+            } else {
+                self.expr(&store.expr, out)?;
+            }
+        } else {
+            self.expr(&store.expr, out)?;
+        }
         Ok(())
     }
 
@@ -1344,7 +1482,7 @@ impl CTrans {
                     sink.body.write(b":\n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, &Type::Void, "")?;
+                    self.body(body, sink, &Type::Void, "", "")?;
                     sink.body.write(b"\n")?;
                     self.print_with_indent(&mut sink.body, "break;\n")?;
                     self.dedent();
@@ -1355,7 +1493,7 @@ impl CTrans {
                     sink.body.write(b": \n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, &Type::Void, "")?;
+                    self.body(body, sink, &Type::Void, "", "")?;
                     sink.body.write(b"\n")?;
                     self.print_with_indent(&mut sink.body, "break;\n")?;
                     self.dedent();
@@ -1364,7 +1502,7 @@ impl CTrans {
                     sink.body.write(b"default:\n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, &Type::Void, "")?;
+                    self.body(body, sink, &Type::Void, "", "")?;
                     sink.body.write(b"\n")?;
                     self.print_with_indent(&mut sink.body, "break;\n")?;
                     self.dedent();
@@ -1392,6 +1530,16 @@ impl CTrans {
         match expr {
             // For method calls like file.read_text()
             Expr::Call(call) => {
+                // First check if it's a direct function call
+                if let Expr::Ident(fn_name) = &call.name.as_ref() {
+                    if let Some(meta) = self.lookup_meta(fn_name) {
+                        if let Meta::Fn(fn_decl) = meta.as_ref() {
+                            return Some(fn_decl.ret.clone());
+                        }
+                    }
+                }
+
+                // Then check if it's a method call (obj.method())
                 if let Expr::Bina(lhs, Op::Dot, rhs) = call.name.as_ref() {
                     if let Expr::Ident(obj_name) = lhs.as_ref() {
                         if let Expr::Ident(method_name) = rhs.as_ref() {
@@ -1497,7 +1645,7 @@ impl CTrans {
             }
         }
         sink.body.write(b") ").to()?;
-        self.body(&for_stmt.body, sink, &Type::Void, iter_var.as_str())?;
+        self.body(&for_stmt.body, sink, &Type::Void, iter_var.as_str(), "")?;
         Ok(())
     }
 
@@ -1536,14 +1684,14 @@ impl CTrans {
             sink.body.write(b"(").to()?;
             self.expr(&branch.cond, &mut sink.body)?;
             sink.body.write(b") ").to()?;
-            self.body(&branch.body, sink, &Type::Void, "")?;
+            self.body(&branch.body, sink, &Type::Void, "", "")?;
             if i < if_.branches.len() - 1 {
                 sink.body.write(b" else ")?;
             }
         }
         if let Some(body) = &if_.else_ {
             sink.body.write(b" else ").to()?;
-            self.body(body, sink, &Type::Void, "")?;
+            self.body(body, sink, &Type::Void, "", "")?;
         }
         Ok(())
     }
@@ -2636,6 +2784,15 @@ int add(int x, int y);
     fn test_037_for_complex() {
         test_a2c("037_complex_expr").unwrap();
     }
+
+    #[test]
+    fn test_037_array_return() {
+        test_a2c("037_array_return").unwrap();
+    }
+
+    // TODO: Test 038 - string methods with array returns
+    // Currently str.split() signature is added but full implementation
+    // requires more expression support (loop conditions, string manipulation)
 
     #[test]
     fn test_021_type_error() {

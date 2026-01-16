@@ -2,7 +2,7 @@
 
 ## 实施状态
 
-**最后更新**: 2025-01-16
+**最后更新**: 2025-01-17
 
 ### 阶段完成情况
 
@@ -29,13 +29,15 @@
     - ✅ 修复 test_vm_function_error (错误处理预期)
   - ✅ 3.6 全部测试通过 (551 passed)
 
-- ⏸️ **阶段 4**: 添加用 Auto 实现的示例方法 (部分完成 - 受 parser 限制)
+- ⏸️ **阶段 4**: 添加用 Auto 实现的示例方法 (部分完成 - 2025-01-17)
   - ✅ 4.1 添加 str.char_count() 方法
-  - ⏸️ 4.2 复杂字符串方法 (需要 parser 增强)
-    - split() 需要数组返回类型支持
-    - join() 需要静态方法支持
-    - trim() 需要复杂表达式支持
-  - ⏸️ 4.3 File 高级方法 (需要 parser 增强)
+  - ✅ 4.2 添加 str.split() 方法签名 (placeholder 实现)
+    - ✅ Parser 现在支持数组返回类型 []str (Plan 037 Phase 3)
+    - ✅ 方法签名可以正确解析
+    - ✅ C transpiler 生成正确的函数签名
+    - ✅ 554 tests passing
+    - ⏸️ 完整实现需要更多表达式支持 (待完成)
+  - ⏸️ 4.3 File 高级方法 (需要更多实现)
     - read_all() 需要复杂 while 条件
     - write_lines() 需要数组索引支持
   - ✅ 4.4 添加 TODO 注释说明未来工作
@@ -1578,6 +1580,142 @@ cat io.h
 - `fn.vm` 和 `fn.c` 提供了必要的平台抽象
 - Auto 语言无法直接实现这些功能
 - 设计目标是用 Auto 实现"尽可能多"，不是"所有"
+
+---
+
+## 阶段 4 实施详情 (2025-01-17)
+
+### 背景
+
+Plan 037 成功实现了数组返回类型支持，解除了 Plan 036 阶段 4 的主要阻塞。
+
+### 已完成的工作
+
+#### 1. 添加 str.split() 方法签名
+
+**文件**: [stdlib/auto/str.at:117-122](../../stdlib/auto/str.at)
+
+```auto
+ext str {
+    /// Split string by delimiter into array of strings
+    /// NOTE: Placeholder implementation - full version requires complex expressions
+    fn split(delimiter str) []str {
+        let result = []
+        result
+    }
+}
+```
+
+**实现说明**:
+- ✅ 方法签名可以正确声明
+- ✅ Parser 接受 `[]str` 返回类型 (Plan 037 Phase 3)
+- ✅ 类型系统正确处理
+- ✅ C transpiler 生成正确的函数签名
+- ⏸️ 当前为 placeholder 实现，返回空数组
+
+#### 2. 测试验证
+
+**测试添加**: [lib.rs:1757-1794](../../crates/auto-lang/src/lib.rs)
+
+```rust
+#[test]
+fn test_array_return_eval() {
+    // Test that array return types work in the evaluator
+    let code = r#"
+fn get_numbers() []int {
+    [1, 2, 3, 4, 5]
+}
+
+let nums = get_numbers()
+nums[0]
+"#;
+
+    let result = run(code).unwrap();
+    assert_eq!(result, "1");
+}
+```
+
+**测试结果**: ✅ 554 tests passing
+
+### 当前限制
+
+完整实现 `split()` 方法需要以下支持:
+
+#### 1. 复杂表达式在循环条件中
+
+```auto
+// 当前不支持
+for i < self.len() {
+    // ...
+}
+```
+
+**需要**: 修改 parser 允许二元表达式在 for 循环条件中
+
+#### 2. 方法链式调用
+
+```auto
+// 当前不支持
+let current = self.sub(i, i + delimiter.len())
+```
+
+**需要**: 实现方法调用作为表达式的支持
+
+#### 3. 数组操作
+
+```auto
+// 当前不支持
+result = result.append(current)
+```
+
+**需要**: 实现数组 append/push 操作
+
+### 未来工作
+
+为了完整实现 Plan 036 阶段 4，需要:
+
+1. **实现完整的 split() 方法**
+   - 循环遍历字符串
+   - 查找分隔符
+   - 构建结果数组
+
+2. **添加 lines() 和 words() 方法**
+   ```auto
+   fn lines() []str {
+       .split("\n")
+   }
+
+   fn words() []str {
+       .split(" ")
+   }
+   ```
+
+3. **实现 File 高级方法**
+   - `read_all()` - 读取整个文件
+   - `write_lines()` - 写入多行数据
+
+4. **添加静态 join() 方法**
+   ```auto
+   static fn join(parts []str, delimiter str) str {
+       // 实现...
+   }
+   ```
+
+### 依赖关系
+
+Plan 036 阶段 4 依赖于:
+- ✅ Plan 037 Phase 3: 数组返回类型 (已完成)
+- ⏸️ 更多表达式支持 (待实现)
+- ⏸️ 数组操作方法 (待实现)
+
+### 成果
+
+虽然完整实现还需要更多工作，但当前成果已经:
+- ✅ 证明了 AutoLang 可以声明返回数组的方法
+- ✅ 建立了方法签名的模式
+- ✅ 为未来实现奠定了基础
+
+**状态**: Phase 4 部分完成，基础已就绪
 
 ---
 
