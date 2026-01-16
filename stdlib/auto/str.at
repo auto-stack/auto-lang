@@ -115,9 +115,14 @@ ext str {
     }
 
     /// Split string by delimiter into array of strings
-    /// NOTE: Placeholder implementation - full version requires complex expressions
-    fn split(delimiter str) []str {
-        let result = []
-        result
-    }
+    /// Example: "hello world".split(" ")  // returns ["hello", "world"]
+    fn.vm split(delimiter str) []str
+
+    /// Split string into lines (split by newline)
+    /// Example: "hello\nworld".lines()  // returns ["hello", "world"]
+    fn.vm lines() []str
+
+    /// Split string into words (split by whitespace)
+    /// Example: "hello world".words()  // returns ["hello", "world"]
+    fn.vm words() []str
 }

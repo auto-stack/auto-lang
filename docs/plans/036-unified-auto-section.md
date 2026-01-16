@@ -31,12 +31,14 @@
 
 - ⏸️ **阶段 4**: 添加用 Auto 实现的示例方法 (部分完成 - 2025-01-17)
   - ✅ 4.1 添加 str.char_count() 方法
-  - ✅ 4.2 添加 str.split() 方法签名 (placeholder 实现)
-    - ✅ Parser 现在支持数组返回类型 []str (Plan 037 Phase 3)
+  - ✅ 4.2 添加 str.split() 方法 (VM 实现)
+    - ✅ Parser 支持数组返回类型 []str (Plan 037)
     - ✅ 方法签名可以正确解析
     - ✅ C transpiler 生成正确的函数签名
+    - ✅ VM 函数实现: str_split(), str_lines(), str_words()
+    - ✅ 注册到 builtin 系统
     - ✅ 554 tests passing
-    - ⏸️ 完整实现需要更多表达式支持 (待完成)
+    - ⚠️ 方法调用语法 (.split()) 需要方法调用表达式支持
   - ⏸️ 4.3 File 高级方法 (需要更多实现)
     - read_all() 需要复杂 while 条件
     - write_lines() 需要数组索引支持

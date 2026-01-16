@@ -57,6 +57,12 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
     let name: AutoStr = "str_split".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_split, name }));
 
+    let name: AutoStr = "str_lines".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_lines, name }));
+
+    let name: AutoStr = "str_words".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_words, name }));
+
     let name: AutoStr = "str_join".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::string::str_join, name }));
 

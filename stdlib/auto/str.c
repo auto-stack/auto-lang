@@ -40,6 +40,8 @@ int str_char_count(char* self) {
     return self->size;
 }
 char** str_split(int* out_size, char* self, char* delimiter) {
-    unknown result[0] = {};
-    return result;
+}
+char** str_lines(int* out_size, char* self) {
+}
+char** str_words(int* out_size, char* self) {
 }

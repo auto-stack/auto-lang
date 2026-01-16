@@ -657,6 +657,64 @@ pub fn str_split(args: &Args) -> Value {
     Value::Array(parts.into())
 }
 
+/// Split string into lines (by newline)
+///
+/// # Arguments
+/// * `args` - Expected: (s: str)
+///
+/// # Example
+/// ```auto
+/// let text = "hello\nworld"
+/// let lines = str_lines(text)  // returns ["hello", "world"]
+/// ```
+pub fn str_lines(args: &Args) -> Value {
+    if args.args.is_empty() {
+        return Value::Error("str_lines requires 1 argument".into());
+    }
+
+    let s = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        _ => return Value::Error("str_lines expects a string argument".into()),
+    };
+
+    let parts: Vec<Value> = s
+        .split('\n')
+        .map(|part| Value::OwnedStr(auto_val::Str::from_str(part)))
+        .collect();
+
+    Value::Array(parts.into())
+}
+
+/// Split string into words (by whitespace)
+///
+/// # Arguments
+/// * `args` - Expected: (s: str)
+///
+/// # Example
+/// ```auto
+/// let text = "hello world"
+/// let words = str_words(text)  // returns ["hello", "world"]
+/// ```
+pub fn str_words(args: &Args) -> Value {
+    if args.args.is_empty() {
+        return Value::Error("str_words requires 1 argument".into());
+    }
+
+    let s = match &args.args[0] {
+        Arg::Pos(Value::Str(s)) => s.as_str(),
+        Arg::Pos(Value::OwnedStr(s)) => s.as_str(),
+        _ => return Value::Error("str_words expects a string argument".into()),
+    };
+
+    let parts: Vec<Value> = s
+        .split_whitespace()
+        .map(|part| Value::OwnedStr(auto_val::Str::from_str(part)))
+        .collect();
+
+    Value::Array(parts.into())
+}
+
 /// Join an array of strings with a delimiter
 ///
 /// # Arguments
