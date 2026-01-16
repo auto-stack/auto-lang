@@ -1,36 +1,114 @@
-/// Static string
-type sstr {
-    size usize
-    data [size]char
+# AUTO
 
-    fn print() {
-        for ch in .data[0...size] {
-            print(ch)
-        }
-    }
+/// String Extension Methods - Plan 025 OOP Migration
+///
+/// This file extends the str type with utility methods using the ext statement.
+/// These methods provide a more object-oriented API compared to the functional API.
+
+ext str {
+    // ============================================================================
+    // Basic String Operations
+    // ============================================================================
+
+    /// Get the length of the string
+    /// Example: "hello".len()  // returns 5
+    fn.vm len() int
+
+    /// Append another string to this string
+    /// Example: "hello".append(" world")  // returns "hello world"
+    fn.vm append(other str) str
+
+    /// Convert string to uppercase
+    /// Example: "hello".upper()  // returns "HELLO"
+    fn.vm upper() str
+
+    /// Convert string to lowercase
+    /// Example: "HELLO".lower()  // returns "hello"
+    fn.vm lower() str
+
+    /// Get a substring from start to end (exclusive)
+    /// Example: "hello".sub(1, 4)  // returns "ell"
+    fn.vm sub(start int, end int) str
+
+    // ============================================================================
+    // Search Methods
+    // ============================================================================
+
+    /// Check if string contains a pattern
+    /// Example: "hello world".contains("world")  // returns true
+    fn.vm contains(pattern str) bool
+
+    /// Check if string starts with a prefix
+    /// Example: "hello".starts_with("he")  // returns true
+    fn.vm starts_with(prefix str) bool
+
+    /// Check if string ends with a suffix
+    /// Example: "hello".ends_with("lo")  // returns true
+    fn.vm ends_with(suffix str) bool
+
+    /// Find the index of a pattern (returns -1 if not found)
+    /// Example: "hello world".find("world")  // returns 6
+    fn.vm find(pattern str) int
+
+    // ============================================================================
+    // Transform Methods
+    // ============================================================================
+
+    /// Trim whitespace from both ends
+    /// Example: "  hello  ".trim()  // returns "hello"
+    fn.vm trim() str
+
+    /// Trim whitespace from the left side
+    /// Example: "  hello  ".trim_left()  // returns "hello  "
+    fn.vm trim_left() str
+
+    /// Trim whitespace from the right side
+    /// Example: "  hello  ".trim_right()  // returns "  hello"
+    fn.vm trim_right() str
+
+    /// Replace all occurrences of a pattern
+    /// Example: "hello world".replace("world", "rust")  // returns "hello rust"
+    fn.vm replace(from str, to str) str
+
+    // ============================================================================
+    // Compare Methods
+    // ============================================================================
+
+    /// Compare two strings (returns 0 if equal, < 0 if self < other, > 0 if self > other)
+    /// Example: "apple".compare("banana")  // returns negative number
+    fn.vm compare(other str) int
+
+    /// Check if two strings are equal (case-insensitive)
+    /// Example: "HELLO".eq_ignore_case("hello")  // returns true
+    fn.vm eq_ignore_case(other str) bool
+
+    // ============================================================================
+    // Utility Methods
+    // ============================================================================
+
+    /// Repeat the string n times
+    /// Example: "ha".repeat(3)  // returns "hahaha"
+    fn.vm repeat(n int) str
+
+    /// Get the character at a specific index
+    /// Example: "hello".char_at(1)  // returns "e"
+    fn.vm char_at(index int) str
+
+    // ============================================================================
+    // C FFI Methods (for interoperability with C code)
+    // ============================================================================
+
+    /// Convert to C-compatible null-terminated string
+    /// Example: "hello".to_cstr()  // returns cstr value
+    fn.vm to_cstr() cstr
 }
 
-/// dynamic string
-type dstr {
-    size usize
-    data []char
-
-    fn print() {
-        for ch in .data[0...size] {
-
-        }
-
-    }
-}
-
-/// view string / virtual string / slice
-type vstr {
-    size usize
-    data *char
-}
-
-/// 
-// spec.T slice {
-    // size usize
-    // data *T
-// }
+// ============================================================================
+// Split and Join Methods (Not Yet Supported)
+// ============================================================================
+// Note: These methods are commented out because:
+// - split() requires array return type [str]
+// - join() requires static method support
+//
+// fn.vm split(delimiter str) [str]
+// static fn.vm join(parts [str], delimiter str) str

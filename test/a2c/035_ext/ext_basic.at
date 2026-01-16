@@ -1,0 +1,15 @@
+// Test basic ext statement parsing
+ext str {
+    fn len() int {
+        return .size
+    }
+
+    static fn new(data *char, size int) str {
+        return str_new(data, size)
+    }
+}
+
+fn main() {
+    let s = "hello"
+    print(s.len())
+}

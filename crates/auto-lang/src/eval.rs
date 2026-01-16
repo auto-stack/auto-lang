@@ -1562,11 +1562,22 @@ impl Evaler {
             Value::Double(_) => "double".to_string(),
             Value::Bool(_) => "bool".to_string(),
             Value::Str(_) => "str".to_string(),
+            Value::OwnedStr(_) => "str".to_string(),  // OwnedStr is also a string type
             Value::CStr(_) => "cstr".to_string(),
             Value::Char(_) => "char".to_string(),
             Value::Array(_) => "array".to_string(),
             Value::Instance(ref inst) => inst.ty.name().to_string(),
-            Value::Type(ref ty) => ty.name().to_string(),  // Plan 035 Phase 4: Handle type values for static methods
+            Value::Type(ref ty) => ty.name().to_string(),
+            Value::ValueRef(vid) => {
+                // Resolve ValueRef to get actual type
+                if let Some(data) = self.resolve_value(value) {
+                    let borrowed = data.borrow();
+                    let value_from_data = Value::from_data(borrowed.clone());
+                    self.get_type_name(&value_from_data)
+                } else {
+                    "unknown".to_string()
+                }
+            },
             _ => "unknown".to_string(),
         }
     }
@@ -1894,6 +1905,7 @@ impl Evaler {
         // methods for Any
         match target.as_ref() {
             Value::Str(s) => {
+                // First, check the types system for built-in methods
                 let method_fn = self
                     .universe
                     .borrow()
@@ -1901,8 +1913,17 @@ impl Evaler {
                     .lookup_method(Type::Str, name.clone());
                 if let Some(method_fn) = method_fn {
                     return Ok(method_fn(&target));
-                } else {
-                    // println!("wrong method?: {}", s); // LSP: disabled
+                }
+
+                // Plan 025 String Migration: Check for ext methods in universe
+                // name might already be qualified (e.g., "str::contains") or simple (e.g., "contains")
+                let ext_method = self.universe.borrow().lookup_meta(name);
+                if let Some(meta) = ext_method {
+                    if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
+                        // Bind self and call the ext method
+                        self.universe.borrow_mut().set_local_val("self", target.as_ref().clone());
+                        return self.eval_fn_call(fn_decl, args);
+                    }
                 }
             }
             Value::OwnedStr(s) => {
@@ -1914,8 +1935,15 @@ impl Evaler {
                     .lookup_method(Type::Str, name.clone());
                 if let Some(method_fn) = method_fn {
                     return Ok(method_fn(&target));
-                } else {
-                    println!("wrong method?: {}", s.as_str());
+                }
+
+                // Plan 025 String Migration: Check for ext methods
+                let ext_method = self.universe.borrow().lookup_meta(name);
+                if let Some(meta) = ext_method {
+                    if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
+                        self.universe.borrow_mut().set_local_val("self", target.as_ref().clone());
+                        return self.eval_fn_call(fn_decl, args);
+                    }
                 }
             }
             Value::Instance(inst) => {
@@ -2065,7 +2093,7 @@ impl Evaler {
     }
 
     pub fn eval_vm_fn_call(&mut self, fn_decl: &Fn, args: &Vec<Value>) -> Value {
-        // Look up the function in the VM registry
+        // First, try to look up the function in the VM registry
         let registry = crate::vm::VM_REGISTRY.lock().unwrap();
 
         // Search all modules for the function
@@ -2096,14 +2124,77 @@ impl Evaler {
                     )
                 }
             }
-            None => Value::Error(format!("VM function '{}' not found", fn_decl.name).into()),
+            None => {
+                // Plan 025 String Migration: Fallback to ExtFn lookup
+                // If the function is not in VM_REGISTRY, try to find it as an ExtFn builtin
+                // This allows string extension methods to work with existing Rust implementations
+
+                // Convert method name "str::len" to builtin function name "str_len"
+                let lookup_name = if fn_decl.name.contains("::") {
+                    // This is a method name like "str::len", convert to "str_len"
+                    fn_decl.name.replace("::", "_")
+                } else {
+                    fn_decl.name.clone()
+                };
+
+                let builtin_opt = {
+                    let universe = self.universe.borrow();
+                    universe.lookup_val(&lookup_name)
+                };
+
+                if let Some(Value::ExtFn(extfn)) = builtin_opt {
+                    // Check if this is an instance method (has parent) and needs self as first arg
+                    let is_instance_method = fn_decl.parent.is_some() && !fn_decl.is_static;
+
+                    // Build the complete args list for ExtFn
+                    let mut final_args = Vec::new();
+
+                    if is_instance_method {
+                        // Add self as the first argument
+                        // Note: self was bound in eval_method, but we need to get it here
+                        // Try to get self from current scope
+                        let self_val = self.universe.borrow().lookup_val("self");
+
+                        match self_val {
+                            Some(val) => {
+                                // If self is a ValueRef, resolve it to get the actual value
+                                let resolved_val = if matches!(val, Value::ValueRef(_)) {
+                                    if let Some(data) = self.resolve_value(&val) {
+                                        let borrowed = data.borrow();
+                                        Value::from_data(borrowed.clone())
+                                    } else {
+                                        val
+                                    }
+                                } else {
+                                    val
+                                };
+
+                                final_args.push(auto_val::Arg::Pos(resolved_val));
+                            },
+                            None => {
+                                return Value::Error(format!("Method '{}' requires 'self' but it's not bound", fn_decl.name).into());
+                            }
+                        }
+                    }
+
+                    // Add the rest of the arguments
+                    for arg in args.iter() {
+                        final_args.push(auto_val::Arg::Pos(arg.clone()));
+                    }
+
+                    let args_struct = auto_val::Args {
+                        args: final_args,
+                    };
+
+                    (extfn.fun)(&args_struct)
+                } else {
+                    Value::Error(format!("VM function '{}' not found in registry or builtins", fn_decl.name).into())
+                }
+            }
         }
     }
 
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> AutoResult<Value> {
-        // TODO: 需不需要一个单独的 enter_call()
-        println!("scope before enter: {}", self.universe.borrow().cur_spot);
-
         // IMPORTANT: Mark arguments as moved in caller's scope BEFORE entering function scope
         // This ensures move semantics are tracked in the correct scope
         for arg in args.args.iter() {
@@ -2500,9 +2591,10 @@ impl Evaler {
                 }
             }
 
-            // Clone method and ensure parent is set correctly
+            // Clone method and ensure parent and name are set correctly
             let mut registered_method = method.clone();
             registered_method.parent = Some(ext.target.clone());
+            registered_method.name = method_name.clone();  // Update name to qualified name (e.g., "str::contains")
 
             // Register in universe with qualified name
             self.universe.borrow_mut().define(
@@ -2725,17 +2817,35 @@ impl Evaler {
                 // try to lookup method
                 match right {
                     Expr::Ident(name) => {
-                        // TODO: too long
-                        if self
+                        // First, check the types system for built-in methods
+                        let found_in_types = self
                             .universe
                             .borrow()
                             .types
                             .lookup_method_for_value(&left_value, name.clone())
-                            .is_some()
-                        {
+                            .is_some();
+
+                        if found_in_types {
                             Some(Value::Method(Method::new(left_value.clone(), name.clone())))
                         } else {
-                            None
+                            // Plan 025 String Migration: Check for ext methods in universe
+                            // Build qualified name like "str::contains"
+                            let type_name = self.get_type_name(&left_value);
+                            let qualified_method_name: AutoStr = format!("{}::{}", type_name, name).into();
+
+                            // Check if this method exists in universe (registered by ext statement)
+                            let method_exists = self
+                                .universe
+                                .borrow()
+                                .lookup_meta(&qualified_method_name)
+                                .is_some();
+
+                            if method_exists {
+                                // Return Method with qualified name
+                                Some(Value::Method(Method::new(left_value.clone(), qualified_method_name)))
+                            } else {
+                                None
+                            }
                         }
                     }
                     _ => None,
