@@ -10,6 +10,8 @@ mod cover;
 pub use cover::*;
 mod enums;
 pub use enums::*;
+mod ext;
+pub use ext::*;
 mod fun;
 pub use fun::*;
 mod fstr;
@@ -167,6 +169,7 @@ pub enum Stmt {
     Alias(Alias),
     EmptyLine(usize),
     Break,
+    Ext(Ext),  // Type extension (like Rust's impl)
 }
 
 impl Stmt {
@@ -186,7 +189,8 @@ impl Stmt {
             | Stmt::Union(_)
             | Stmt::Tag(_)
             | Stmt::SpecDecl(_)
-            | Stmt::Alias(_) => true,
+            | Stmt::Alias(_)
+            | Stmt::Ext(_) => true,  // Plan 035 Phase 5.2: Ext statement is a declaration
             _ => false,
         }
     }
@@ -221,6 +225,7 @@ impl fmt::Display for Stmt {
             Stmt::Tag(tag) => write!(f, "{}", tag),
             Stmt::SpecDecl(spec_decl) => write!(f, "{}", spec_decl),
             Stmt::Break => write!(f, "(break)"),
+            Stmt::Ext(ext) => write!(f, "{}", ext),
         }
     }
 }
@@ -773,6 +778,7 @@ impl ToNode for Stmt {
                 node
             }
             Stmt::Break => AutoNode::new("break"),
+            Stmt::Ext(ext) => ext.to_node(),
         }
     }
 }
@@ -807,6 +813,7 @@ impl ToAtom for Stmt {
             Stmt::Alias(alias) => alias.to_atom(),
             Stmt::EmptyLine(n) => format!("(nl (count {}))", n).into(),
             Stmt::Break => "(break)".into(),
+            Stmt::Ext(ext) => ext.to_atom(),
         }
     }
 }

@@ -1,0 +1,13 @@
+// Test ext statement with instance method (Plan 035)
+
+ext int {
+    fn double() int {
+        self + self
+    }
+}
+
+fn main() {
+    let x = 21
+    let result = x.double()
+    print(result)
+}

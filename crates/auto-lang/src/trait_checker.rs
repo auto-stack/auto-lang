@@ -203,6 +203,7 @@ mod tests {
             body: Body::new(),
             ret,
             ret_name: None,
+            is_static: false,  // Plan 035 Phase 4: Default to instance method
         }
     }
 

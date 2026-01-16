@@ -1,0 +1,7 @@
+// Test ext method with return value
+
+ext int {
+    fn double() int {
+        return 42
+    }
+}

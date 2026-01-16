@@ -1,0 +1,15 @@
+// Test ext statement runtime behavior (Phase 3)
+
+// Extend int type with a simple method
+ext int {
+    fn triple() int {
+        return 15
+    }
+}
+
+fn main() {
+    let x = 5
+    // Test the method call
+    let result = x.triple()
+    print(result)  // Expected: 15
+}

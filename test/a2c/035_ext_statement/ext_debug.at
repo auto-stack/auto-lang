@@ -1,0 +1,7 @@
+// Test ext statement - debug version
+
+ext int {
+    static fn answer() int {
+        42
+    }
+}

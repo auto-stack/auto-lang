@@ -200,6 +200,11 @@ impl CTrans {
             Stmt::Break => {
                 sink.body.write(b"break;")?;
             }
+            Stmt::Ext(ext) => {
+                // Plan 035 Phase 5.2: Handle ext statement
+                // Generate C functions for each method
+                self.ext_stmt(ext, sink)?;
+            }
             _ => {
                 return Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into());
             }
@@ -1007,6 +1012,55 @@ impl CTrans {
         Ok(())
     }
 
+    /// Plan 035 Phase 5.2: Generate C functions for ext statement
+    /// C doesn't have extension methods, so we generate regular functions
+    /// with names like "TypeName_method_name"
+    fn ext_stmt(&mut self, ext: &Ext, sink: &mut Sink) -> AutoResult<()> {
+        for method in &ext.methods {
+            // Create a modified Fn for C generation
+            let mut c_method = method.clone();
+
+            // Change function name to "TypeName_method_name" format
+            c_method.name = format!("{}_{}", ext.target, method.name).into();
+
+            // For instance methods, add self as first parameter
+            if !method.is_static {
+                // Convert type name to Type enum
+                let self_type = self.name_to_type(&ext.target);
+
+                let self_param: Param = Param::new(
+                    "self".into(),
+                    self_type,
+                    None,
+                );
+                c_method.params.insert(0, self_param);
+            }
+
+            // Generate the function declaration
+            self.fn_decl(&c_method, sink)?;
+        }
+
+        Ok(())
+    }
+
+    /// Convert type name to Type enum for built-in types
+    fn name_to_type(&self, name: &AutoStr) -> Type {
+        match name.as_str() {
+            "int" => Type::Int,
+            "uint" => Type::Uint,
+            "byte" => Type::Byte,
+            "float" => Type::Float,
+            "double" => Type::Double,
+            "bool" => Type::Bool,
+            "char" => Type::Char,
+            "str" => Type::Str(0),  // Size unknown at compile time
+            "cstr" => Type::CStr,
+            // For user-defined types, we'd need to lookup TypeDecl
+            // For now, use Unknown as fallback
+            _ => Type::Unknown,
+        }
+    }
+
     fn fn_decl(&mut self, fn_decl: &Fn, sink: &mut Sink) -> AutoResult<()> {
         let out = &mut sink.body;
         // header
@@ -1787,7 +1841,52 @@ impl CTrans {
         call: &Call,
         out: &mut impl Write,
     ) -> AutoResult<bool> {
-        // get type decl of lhs
+        // Plan 035 Phase 5.2: Handle ext methods for built-in types
+        // Check if lhs is a built-in type or variable
+        let lhs_type = self.get_expr_type(lhs);
+
+        // If lhs has a known type, check if it's a built-in type (ext method)
+        // or user-defined type (regular method)
+        if !matches!(lhs_type, Type::Unknown) {
+            let Expr::Ident(method_name) = rhs.as_ref() else {
+                return Ok(false);
+            };
+
+            // Check if it's a built-in type (ext method) or user-defined type
+            match &lhs_type {
+                Type::Int | Type::Uint | Type::Byte | Type::Float | Type::Double |
+                Type::Bool | Type::Char | Type::Str(_) | Type::CStr => {
+                    // Built-in type: ext method, pass by value
+                    let type_name = self.type_to_name(&lhs_type);
+                    let c_function_name = format!("{}_{}", type_name, method_name);
+
+                    // Write the function call
+                    out.write_all(c_function_name.as_bytes()).to()?;
+                    out.write(b"(").to()?;
+
+                    // Write self as first argument (by value)
+                    self.expr(lhs, out)?;
+
+                    // Write remaining arguments
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        out.write(b", ").to()?;
+                        self.arg(arg, out)?;
+                    }
+
+                    out.write(b")").to()?;
+                    return Ok(true);
+                }
+                Type::User(decl) => {
+                    // User-defined type: regular method, pass by pointer
+                    // Fall through to original logic below
+                }
+                _ => {
+                    // Other types: try original logic
+                }
+            }
+        }
+
+        // Original logic for Tag and Store methods
         let Expr::Ident(lname) = lhs.as_ref() else {
             return Ok(false);
         };
@@ -1817,6 +1916,42 @@ impl CTrans {
                 Ok(self.handle_store_method(decl, lname, method_name, call, out)?)
             }
             _ => Ok(false),
+        }
+    }
+
+    /// Get the type of an expression (Plan 035 Phase 5.2 helper)
+    fn get_expr_type(&self, expr: &Expr) -> Type {
+        match expr {
+            Expr::Ident(name) => {
+                // Try to lookup variable type
+                if let Some(meta) = self.lookup_meta(name) {
+                    match meta.as_ref() {
+                        Meta::Store(store) => store.ty.clone(),
+                        _ => Type::Unknown,
+                    }
+                } else {
+                    // Check if it's a built-in type name
+                    self.name_to_type(name)
+                }
+            }
+            _ => Type::Unknown,
+        }
+    }
+
+    /// Convert Type to its name string (Plan 035 Phase 5.2 helper)
+    fn type_to_name(&self, ty: &Type) -> String {
+        match ty {
+            Type::Int => "int".to_string(),
+            Type::Uint => "uint".to_string(),
+            Type::Byte => "byte".to_string(),
+            Type::Float => "float".to_string(),
+            Type::Double => "double".to_string(),
+            Type::Bool => "bool".to_string(),
+            Type::Char => "char".to_string(),
+            Type::Str(_) => "str".to_string(),
+            Type::CStr => "cstr".to_string(),
+            Type::User(decl) => decl.name.to_string(),
+            _ => "unknown".to_string(),
         }
     }
 

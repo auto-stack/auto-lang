@@ -1,0 +1,13 @@
+// Test ext method call with explicit type
+
+ext int {
+    fn double() int {
+        self + self
+    }
+}
+
+fn main() {
+    let x int = 21
+    let result = x.double()
+    print(result)
+}

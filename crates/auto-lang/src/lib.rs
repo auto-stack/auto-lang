@@ -833,13 +833,46 @@ $ }
             y int
 
             fn absquare() int {
-                x * x + y * y
+                .x * .x + .y * .y
             }
         }"#;
         let mut interpreter = interpret(code).unwrap();
         let code = "var p = Point(3, 4); p.absquare()";
         let result = interpreter.eval(code);
         assert_eq!(result.repr(), "25");
+    }
+
+    #[test]
+    fn test_ext_statement_instance_method() {
+        // Plan 035 Phase 4: Test ext statement with instance methods
+        let code = r#"
+        ext int {
+            fn double() int {
+                self + self
+            }
+        }
+        "#;
+        let mut interpreter = interpret(code).unwrap();
+        let result = interpreter.eval("var x = 5; x.double()");
+        assert_eq!(result.repr(), "10");
+    }
+
+    #[test]
+    fn test_ext_statement_static_method() {
+        // Plan 035 Phase 4: Test ext statement with static methods
+        // Static methods don't have self, so they can be called without instance
+        let code = r#"
+        ext int {
+            static fn get_default() int {
+                42
+            }
+        }
+        "#;
+        let mut interpreter = interpret(code).unwrap();
+        // Static method call on type
+        let result = interpreter.eval("int.get_default()");
+        println!("Static method result: {:?}", result);
+        assert_eq!(result.repr(), "42");
     }
 
     #[test]

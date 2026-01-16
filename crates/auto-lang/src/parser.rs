@@ -1593,6 +1593,8 @@ impl<'a> Parser<'a> {
             TokenKind::On => Stmt::OnEvents(self.parse_on_events()?),
             // Alias stmt
             TokenKind::Alias => self.parse_alias_stmt()?,
+            // Ext statement (Plan 035)
+            TokenKind::Ext => self.parse_ext_stmt()?,
             // Otherwise, try to parse as an expression
             _ => self.expr_stmt()?,
         };
@@ -1609,6 +1611,81 @@ impl<'a> Parser<'a> {
         // define alias meta in scope
         self.define_alias(alias.clone(), target.clone());
         Ok(Stmt::Alias(Alias { alias, target }))
+    }
+
+    /// Parse ext statement: ext Target { methods... }
+    ///
+    /// Adds methods to an existing type (like Rust's impl block).
+    /// Both instance methods (fn) and static methods (static fn) are supported.
+    ///
+    /// # Example
+    ///
+    /// ```auto
+    /// ext str {
+    ///     fn len() int {
+    ///         return .size
+    ///     }
+    ///
+    ///     static fn new(data *char, size int) str {
+    ///         return str_new(data, size)
+    ///     }
+    /// }
+    /// ```
+    fn parse_ext_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `ext` keyword
+
+        // Parse target type name (e.g., "str", "Point")
+        let target = self.parse_name()?;
+
+        // Expect opening brace
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        // Parse methods
+        let mut methods = Vec::new();
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            // Allow both fn and static fn declarations
+            if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
+                // Track if this is a static method (Plan 035 Phase 4)
+                let is_static_method = self.is_kind(TokenKind::Static);
+
+                // If static fn, skip the static keyword first
+                if self.is_kind(TokenKind::Static) {
+                    self.next(); // skip `static` keyword
+                    // Now we expect `fn` keyword
+                    if !self.is_kind(TokenKind::Fn) {
+                        return Err(SyntaxError::Generic {
+                            message: format!("expected 'fn' after 'static', found {:?}", self.kind()),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                }
+                let fn_stmt = self.fn_decl_stmt(&target)?;
+                if let Stmt::Fn(mut fn_expr) = fn_stmt {
+                    // Set is_static flag for static methods (Plan 035 Phase 4.2)
+                    if is_static_method {
+                        fn_expr.is_static = true;
+                    }
+                    methods.push(fn_expr);
+                }
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "ext blocks can only contain method declarations (fn or static fn), found {:?}",
+                        self.kind()
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            self.expect_eos(false)?;
+        }
+
+        // Expect closing brace
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(Stmt::Ext(Ext::new(target, methods)))
     }
 
     /// Format: enum { item1, item2, item3 }

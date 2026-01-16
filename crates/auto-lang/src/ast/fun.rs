@@ -22,6 +22,7 @@ pub struct Fn {
     pub body: Body,
     pub ret: Type,
     pub ret_name: Option<Name>, // Original return type name (for unresolved types)
+    pub is_static: bool,         // Plan 035 Phase 4: true for static methods, false for instance methods
 }
 
 impl Serialize for Fn {
@@ -35,7 +36,7 @@ impl Serialize for Fn {
 
 impl PartialEq for Fn {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.params == other.params
+        self.name == other.name && self.params == other.params && self.is_static == other.is_static
     }
 }
 
@@ -77,6 +78,7 @@ impl Fn {
             body,
             ret,
             ret_name: None,
+            is_static: false, // Default to instance method
         }
     }
 
@@ -97,6 +99,7 @@ impl Fn {
             body,
             ret,
             ret_name: Some(ret_name),
+            is_static: false, // Default to instance method
         }
     }
 }

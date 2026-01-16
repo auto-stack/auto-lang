@@ -353,6 +353,7 @@ impl Evaler {
             Stmt::Tag(_) => Ok(Value::Void),
             Stmt::SpecDecl(spec_decl) => Ok(self.spec_decl(spec_decl)),
             Stmt::Break => Ok(Value::Void),
+            Stmt::Ext(ext) => Ok(self.eval_ext(ext)),
         }
     }
 
@@ -1550,9 +1551,29 @@ impl Evaler {
         }
     }
 
+    /// Get the type name of a Value (for method lookup)
+    fn get_type_name(&self, value: &Value) -> String {
+        match value {
+            Value::Int(_) => "int".to_string(),
+            Value::Uint(_) => "uint".to_string(),
+            Value::I8(_) => "i8".to_string(),
+            Value::U8(_) => "u8".to_string(),
+            Value::Float(_) => "float".to_string(),
+            Value::Double(_) => "double".to_string(),
+            Value::Bool(_) => "bool".to_string(),
+            Value::Str(_) => "str".to_string(),
+            Value::CStr(_) => "cstr".to_string(),
+            Value::Char(_) => "char".to_string(),
+            Value::Array(_) => "array".to_string(),
+            Value::Instance(ref inst) => inst.ty.name().to_string(),
+            Value::Type(ref ty) => ty.name().to_string(),  // Plan 035 Phase 4: Handle type values for static methods
+            _ => "unknown".to_string(),
+        }
+    }
+
     // TODO: 需要整理一下，逻辑比较乱
     fn eval_call(&mut self, call: &Call) -> AutoResult<Value> {
-        // Check if this is a method call like `file.close()`
+        // Check if this is a method call like `file.close()` or `x.triple()`
         if let Expr::Bina(left, op, right) = &*call.name {
             if *op == Op::Dot {
                 // This is a dot expression - check if it's a method call
@@ -1575,10 +1596,13 @@ impl Evaler {
                 };
 
                 if let Some(inst) = instance_resolved {
-                    // Check if it's an instance and try to call as a VM method
-                    if let Value::Instance(ref inst_data) = &inst {
-                        if let Expr::Ident(method_name) = &**right {
-                            // Look up the method in the VM registry
+                    // Get the type name of the instance
+                    let type_name = self.get_type_name(&inst);
+
+                    // Check if right side is an identifier (method name)
+                    if let Expr::Ident(method_name) = &**right {
+                        // First, check if it's a VM method (for instances)
+                        if let Value::Instance(ref inst_data) = &inst {
                             let registry = crate::vm::VM_REGISTRY.lock().unwrap();
                             let method = registry
                                 .get_method(&inst_data.ty.name(), method_name.as_str())
@@ -1601,6 +1625,33 @@ impl Evaler {
                                 let uni = self.universe.clone();
                                 return Ok(method(uni, &mut inst.clone(), arg_vals));
                             }
+                        }
+
+                        // Next, check if it's an ext method (Plan 035) or type method
+                        // Look for "TypeName::method_name" in universe (using double colon)
+                        let qualified_method_name: AutoStr = format!("{}::{}", type_name, method_name).into();
+                        let fn_decl_opt = {
+                            let universe = self.universe.borrow();
+                            universe.lookup_meta(&qualified_method_name).map(|meta| {
+                                if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
+                                    Some(fn_decl.clone())
+                                } else {
+                                    None
+                                }
+                            }).flatten()
+                        };
+
+                        if let Some(fn_decl) = fn_decl_opt {
+                            // Plan 035 Phase 4.3: Only bind self for instance methods
+                            // Static methods (is_static == true) don't have self
+                            if !fn_decl.is_static {
+                                // Bind self to the instance value before calling the method
+                                // This allows the method body to access the instance via 'self'
+                                self.universe.borrow_mut().set_local_val("self", inst.clone());
+                            }
+
+                            // Call the method
+                            return self.eval_fn_call(&fn_decl, &call.args);
                         }
                     }
                 }
@@ -2406,6 +2457,45 @@ impl Evaler {
             self.universe.borrow_mut().define(
                 method_name,
                 std::rc::Rc::new(scope::Meta::Fn(method.clone()))
+            );
+        }
+
+        Value::Void
+    }
+
+    /// Evaluate ext statement (Plan 035)
+    ///
+    /// Extends a type with additional methods (like Rust's impl block).
+    /// This enables adding methods to built-in types (str, int, etc.) and
+    /// user-defined types after their initial definition.
+    ///
+    /// # Arguments
+    /// * `ext` - The Ext statement containing target type and methods
+    ///
+    /// # Example
+    ///
+    /// ```auto
+    /// ext str {
+    ///     fn len() int {
+    ///         return .size
+    ///     }
+    /// }
+    /// ```
+    fn eval_ext(&mut self, ext: &ast::Ext) -> Value {
+        // Register each method in the ext block
+        for method in &ext.methods {
+            // Create fully qualified method name: TypeName::method_name
+            // Use double colon (::) to match type_decl's convention
+            let method_name: AutoStr = format!("{}::{}", ext.target, method.name).into();
+
+            // Clone method and ensure parent is set correctly
+            let mut registered_method = method.clone();
+            registered_method.parent = Some(ext.target.clone());
+
+            // Register in universe with qualified name
+            self.universe.borrow_mut().define(
+                method_name,
+                std::rc::Rc::new(scope::Meta::Fn(registered_method))
             );
         }
 
