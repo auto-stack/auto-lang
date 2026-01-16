@@ -1,8 +1,4 @@
-# C
-
-use.c <unistd.h>
-
-fn.c getpid() int
+# AUTO
 
 fn get_pid() int {
     getpid()
