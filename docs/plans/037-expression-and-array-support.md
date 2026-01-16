@@ -11,10 +11,23 @@
 - ✅ All 98 transpiler tests passing
 - ⏸️ **PAUSED**: Plan needs revision based on discovery
 
-**Key Finding**: The plan was written based on incorrect assumptions. AutoLang does NOT have `while` statements, and complex expressions in for ranges already work. The actual limitations are:
-- Array indexing (`arr[i]`) - NOT YET IMPLEMENTED
-- Array return types (`fn() [str]`) - NOT YET IMPLEMENTED
-- Static methods - PARTIALLY WORKS (parser supports, needs testing)
+**Key Findings**:
+1. **AutoLang doesn't need `while` statements** - The `for` statement is multi-purpose:
+   - `for { ... }` - Infinite loop
+   - `for condition { ... }` - While loop equivalent
+   - `for init; condition { ... }` - Go-style for with initializer
+   - `for init; condition; step { ... }` - Traditional C-style for
+   - See: `docs/tutorials/for-loop-guide.md`
+2. Complex expressions in for ranges ALREADY WORK (`for i in 0..len`)
+3. ✅ Array indexing WORKS (`arr[i]`, `arr[idx+1]`)
+4. ❌ Array return types DON'T WORK (`fn get() []int` causes parser error) - **THIS IS THE MAIN BLOCKER**
+5. Static method declarations WORK (parser support added in Plan 035)
+6. **Type syntax design**: All type modifiers are PREFIX operators (intentional design):
+   - Arrays: `[]int` (not `int[]`)
+   - Pointers: `*int` (not `int*`)
+   - Multi-dimensional: `[2][3]int` (not `int[2][3]`)
+   - Maybe/Optional: `?T` (not `T?`)
+   - This creates a consistent, right-to-left type reading
 
 **Priority:** HIGH - Unblocks Plan 036 Phase 4 completion and enables advanced stdlib methods
 

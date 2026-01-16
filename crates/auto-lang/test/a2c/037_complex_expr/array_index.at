@@ -1,0 +1,15 @@
+// Test array indexing
+
+fn main() {
+    let arr = [12, 13, 14, 15]
+    let idx = 2
+
+    // Test array indexing with literal
+    print(arr[2])
+
+    // Test array indexing with variable
+    print(arr[idx])
+
+    // Test array indexing with expression
+    print(arr[0 + 1])
+}
