@@ -1,8 +1,20 @@
 # Plan 037: Expression and Array Support
 
-## Implementation Status: 📝 PLANNED
+## Implementation Status: 🚧 IN PROGRESS
 
-**Last Updated**: 2025-01-16
+**Last Updated**: 2025-01-16 (Phase 1 discovery)
+
+**Phase 1 Progress:**
+- ✅ **DISCOVERY**: Complex expressions in for loop ranges ALREADY WORK!
+- ✅ Test created: `crates/auto-lang/test/a2c/037_complex_expr/complex_expr.at`
+- ✅ Test validates: `for i in 0..len` works where `len` is a variable
+- ✅ All 98 transpiler tests passing
+- ⏸️ **PAUSED**: Plan needs revision based on discovery
+
+**Key Finding**: The plan was written based on incorrect assumptions. AutoLang does NOT have `while` statements, and complex expressions in for ranges already work. The actual limitations are:
+- Array indexing (`arr[i]`) - NOT YET IMPLEMENTED
+- Array return types (`fn() [str]`) - NOT YET IMPLEMENTED
+- Static methods - PARTIALLY WORKS (parser supports, needs testing)
 
 **Priority:** HIGH - Unblocks Plan 036 Phase 4 completion and enables advanced stdlib methods
 

@@ -1,0 +1,11 @@
+// Test Plan 037 Phase 1: Complex Expression Support
+// Test binary expressions in for loop range
+
+fn main() {
+    let len = 10
+
+    // Test: for loop with variable in range expression
+    for i in 0..len {
+        print(i)
+    }
+}

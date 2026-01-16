@@ -2608,6 +2608,11 @@ int add(int x, int y);
     }
 
     #[test]
+    fn test_037_for_complex() {
+        test_a2c("037_complex_expr").unwrap();
+    }
+
+    #[test]
     fn test_021_type_error() {
         test_a2c("021_type_error").unwrap();
     }
