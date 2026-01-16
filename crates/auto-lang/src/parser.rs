@@ -2641,8 +2641,11 @@ impl<'a> Parser<'a> {
         let mut ret_type = Type::Unknown;
         let mut ret_type_name: Option<AutoStr> = None;
         // TODO: determine return type with last stmt if it's not specified
-        if self.is_kind(TokenKind::Ident) {
-            ret_type_name = Some(self.cur.text.clone());
+        // Support: Ident (int, str), LSquare ([]int), Star (*int)
+        if self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::LSquare) || self.is_kind(TokenKind::Star) {
+            if self.is_kind(TokenKind::Ident) {
+                ret_type_name = Some(self.cur.text.clone());
+            }
             ret_type = self.parse_type()?;
         } else if self.is_kind(TokenKind::LBrace) {
             ret_type = Type::Void;

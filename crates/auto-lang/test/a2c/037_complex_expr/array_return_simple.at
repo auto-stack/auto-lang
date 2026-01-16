@@ -1,0 +1,9 @@
+fn get_numbers() []int {
+    let result = [1, 2, 3, 4, 5]
+    result
+}
+
+fn main() {
+    let nums = get_numbers()
+    print(nums[0])
+}
