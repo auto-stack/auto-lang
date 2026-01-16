@@ -1872,7 +1872,24 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Use(uses))
     }
 
+    /// Get file extensions to load based on compile destination
+    /// Plan 036: Returns extensions in load order (bottom layer first, then top layer)
+    fn get_file_extensions(&self) -> Vec<&'static str> {
+        match self.compile_dest {
+            CompileDest::Interp => vec![".vm.at", ".at"],     // Interpreter: VM (bottom) → Auto (top)
+            CompileDest::TransC => vec![".c.at", ".at"],      // Transpiler: C (bottom) → Auto (top)
+            CompileDest::TransRust => vec![".rust.at", ".at"], // Rust transpiler
+        }
+    }
+
+    /// Check if a file exists at the given path
+    fn file_exists(&self, dir: &std::path::Path, name: &str, ext: &str) -> bool {
+        let file_path = dir.join(format!("{}{}", name, ext));
+        file_path.exists()
+    }
+
     /// Import a path from `use` statement
+    /// Plan 036: Supports loading and merging multiple files (.vm.at + .at or .c.at + .at)
     // TODO: clean up code
     // TODO: search path from System Env, Default Locations and etc.
     pub fn import(&mut self, uses: &Use) -> AutoResult<()> {
@@ -1905,26 +1922,79 @@ impl<'a> Parser<'a> {
             }
             .into());
         }
-        // Read file
-        let file_path = dir.join(name.to_str().unwrap().to_string() + ".at");
-        let file_content = std::fs::read_to_string(file_path.path()).unwrap();
 
+        // Plan 036: Load multiple files and merge their content
+        // Strategy: Merge file contents (bottom layer first, then top layer), then parse as one file
+        let extensions = self.get_file_extensions();
+        let name_str = name.to_str().unwrap();
+        let mut file_contents = Vec::new();
+        let mut loaded_files = Vec::new();
+
+        // Save current scope spot
         let cur_spot = self.scope.borrow().cur_spot.clone();
         self.scope.borrow_mut().reset_spot();
 
         for path in scope_name.split(".").into_iter() {
             self.scope.borrow_mut().enter_mod(path.to_string());
         }
-        // println!("cur spot: {:?}", self.scope.borrow().cur_spot); // LSP: disabled
-        // println!("parsing file content: {}", file_content); // LSP: disabled
 
-        // self.scope.borrow_mut().enter_mod(scope_name.clone());
-        let mut new_parser = Parser::new(file_content.as_str(), self.scope.clone());
+        // Load files in order (bottom layer first, then top layer)
+        for ext in extensions.iter() {
+            let file_path_str = dir.join(format!("{}{}", name_str, ext));
+            if file_path_str.exists() {
+                let content = std::fs::read_to_string(file_path_str.path())
+                    .map_err(|e| SyntaxError::Generic {
+                        message: format!("Failed to read file {}: {}", file_path_str.path().display(), e),
+                        span: pos_to_span(self.cur.pos),
+                    })?;
+                file_contents.push((content, file_path_str.clone()));
+                loaded_files.push(file_path_str);
+            }
+        }
+
+        // Fallback: if no split files found, try original .at file
+        if loaded_files.is_empty() {
+            let file_path_str = dir.join(format!("{}.at", name_str));
+            if file_path_str.exists() {
+                let content = std::fs::read_to_string(file_path_str.path())
+                    .map_err(|e| SyntaxError::Generic {
+                        message: format!("Failed to read file {}: {}", file_path_str.path().display(), e),
+                        span: pos_to_span(self.cur.pos),
+                    })?;
+                file_contents.push((content, file_path_str.clone()));
+                loaded_files.push(file_path_str);
+            } else {
+                // No files found at all
+                return Err(SyntaxError::Generic {
+                    message: format!("Cannot find file: {}{}", name_str, ".at"),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
+        }
+
+        // Merge all file contents with newlines between them
+        // Filter out section marker lines (lines starting with "# AUTO", "# C", etc.)
+        let merged_content: String = file_contents
+            .iter()
+            .map(|(content, _)| {
+                content
+                    .lines()
+                    .filter(|line| !line.trim().starts_with("# ") && !line.trim().starts_with("#\t"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        // Parse the merged content as a single file
+        let mut new_parser = Parser::new(&merged_content, self.scope.clone());
         new_parser.set_dest(self.compile_dest.clone());
-        let ast = new_parser.parse().unwrap();
+        let ast = new_parser.parse()?;
 
-        // Extract spec declarations before ast is moved
-        let spec_decls: Vec<_> = ast.stmts.iter()
+        // Extract spec declarations
+        let spec_decls: Vec<_> = ast
+            .stmts
+            .iter()
             .filter_map(|stmt| {
                 if let Stmt::SpecDecl(spec_decl) = stmt {
                     Some(spec_decl.clone())
@@ -1934,11 +2004,14 @@ impl<'a> Parser<'a> {
             })
             .collect();
 
+        // Import the merged AST into scope
+        // Use the path of the last loaded file (usually the main .at file)
+        let last_file_path = loaded_files.last().unwrap();
         self.scope.borrow_mut().import(
             scope_name.clone(),
             ast,
-            file_path.to_astr(),
-            file_content.into(),
+            last_file_path.to_astr(),
+            merged_content.into(),
         );
 
         self.scope.borrow_mut().set_spot(cur_spot);

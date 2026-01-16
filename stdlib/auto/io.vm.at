@@ -1,0 +1,24 @@
+# AUTO - VM Specific
+
+// Spec declarations for polymorphic I/O
+spec Reader {
+    fn read_line() str
+    fn is_eof() bool
+}
+
+spec Writer {
+    fn write_line(s str)
+    fn flush()
+}
+
+spec Seekable {
+    fn seek(offset int, origin int) int
+    fn tell() int
+    fn rewind()
+}
+
+enum SeekOrigin {
+    Set = 0
+    Cur = 1
+    End = 2
+}

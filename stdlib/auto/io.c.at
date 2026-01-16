@@ -1,0 +1,34 @@
+# AUTO - C Specific
+
+use.c <stdlib.h>
+fn.c exit(status int) void
+
+use.c <stdio.h>
+
+fn.c printf(fmt cstr, arg cstr)
+type.c FILE
+fn.c getline(lineptr *cstr, n *int, stream *FILE) int
+let c stdin *FILE
+let c stdout *FILE
+let c stderr *FILE
+
+fn.c fopen(filename cstr, mode cstr) *FILE
+fn.c fclose(stream *FILE)
+fn.c fgets(buf cstr, n int, stream *FILE) cstr
+fn.c fputs(s cstr, stream *FILE) int
+fn.c fflush(stream *FILE) int
+
+fn.c fgetc(stream *FILE) int
+fn.c fputc(c int, stream *FILE) int
+fn.c ungetc(c int, stream *FILE) int
+
+fn.c fread(ptr *void, size int, count int, stream *FILE) int
+fn.c fwrite(ptr *void, size int, count int, stream *FILE) int
+
+fn.c fseek(stream *FILE, offset int, origin int) int
+fn.c ftell(stream *FILE) int
+fn.c rewind(stream *FILE)
+
+fn.c feof(stream *FILE) int
+fn.c ferror(stream *FILE) int
+fn.c clearerr(stream *FILE)
