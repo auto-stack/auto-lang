@@ -2,4 +2,4 @@
 
 #include <stdio.h>
 
-int[0] get_numbers(void);
+int* get_numbers(int* out_size);

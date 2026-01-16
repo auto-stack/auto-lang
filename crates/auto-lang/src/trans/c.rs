@@ -1110,9 +1110,20 @@ impl CTrans {
             return Ok(());
         }
         // return type
+        // Check if return type is array - C can't return arrays by value
+        let ret_is_array = matches!(fn_decl.ret, Type::Array(_));
+
         if !matches!(fn_decl.ret, Type::Unknown) {
-            out.write(format!("{} ", self.c_type_name(&fn_decl.ret)).as_bytes())
-                .to()?;
+            if ret_is_array {
+                // For array returns, return pointer to element type instead
+                if let Type::Array(array_type) = &fn_decl.ret {
+                    let elem_type = self.c_type_name(&array_type.elem);
+                    out.write(format!("{}* ", elem_type).as_bytes()).to()?;
+                }
+            } else {
+                out.write(format!("{} ", self.c_type_name(&fn_decl.ret)).as_bytes())
+                    .to()?;
+            }
         } else {
             out.write(b"void ").to()?;
         }
@@ -1121,16 +1132,30 @@ impl CTrans {
         out.write(name.as_bytes()).to()?;
         // params
         out.write(b"(").to()?;
-        if fn_decl.params.is_empty() {
-            out.write(b"void").to()?;
-        } else {
+
+        // Build parameter list
+        let mut params_vec = Vec::new();
+
+        // Add output size parameter for array returns
+        if ret_is_array {
+            params_vec.push("int* out_size".to_string());
+        }
+
+        // Add existing parameters
+        if !fn_decl.params.is_empty() {
             let params = fn_decl
                 .params
                 .iter()
                 .map(|p| format!("{} {}", self.c_type_name(&p.ty), p.name))
-                .collect::<Vec<_>>()
-                .join(", ");
-            out.write(params.as_bytes()).to()?;
+                .collect::<Vec<_>>();
+            params_vec.extend(params);
+        }
+
+        // Write parameters
+        if params_vec.is_empty() {
+            out.write(b"void").to()?;
+        } else {
+            out.write(params_vec.join(", ").as_bytes()).to()?;
         }
 
         for p in fn_decl.params.iter() {

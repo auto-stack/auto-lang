@@ -1,6 +1,6 @@
 #include "array_return.at.h"
 
-int[0] get_numbers(void) {
+int* get_numbers(int* out_size) {
     return {1, 2, 3, 4, 5};
 }
 
