@@ -1,0 +1,12 @@
+// Test ext statement with static method (Plan 035)
+
+ext int {
+    static fn default() int {
+        42
+    }
+}
+
+fn main() {
+    let x = int.default()
+    print(x)
+}

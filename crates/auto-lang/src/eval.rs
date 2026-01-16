@@ -2488,6 +2488,18 @@ impl Evaler {
             // Use double colon (::) to match type_decl's convention
             let method_name: AutoStr = format!("{}::{}", ext.target, method.name).into();
 
+            // Plan 035 Phase 5: Check for duplicate method definitions
+            if let Some(existing_meta) = self.universe.borrow().lookup_meta(&method_name) {
+                // Method already exists, issue a warning
+                if let scope::Meta::Fn(existing_fn) = existing_meta.as_ref() {
+                    eprintln!(
+                        "Warning: Method '{}' already defined for type '{}'. Overwriting previous definition.",
+                        method.name, ext.target
+                    );
+                    // Optionally: could check if the definitions are compatible
+                }
+            }
+
             // Clone method and ensure parent is set correctly
             let mut registered_method = method.clone();
             registered_method.parent = Some(ext.target.clone());

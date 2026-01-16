@@ -1,0 +1,21 @@
+// Test multiple ext blocks for same type (Plan 035)
+
+ext int {
+    fn double() int {
+        self + self
+    }
+}
+
+ext int {
+    fn triple() int {
+        self + self + self
+    }
+}
+
+fn main() {
+    let x = 5
+    let d = x.double()
+    let t = x.triple()
+    print(d)
+    print(t)
+}

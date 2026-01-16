@@ -1,0 +1,18 @@
+// Test ext statement with .prop shorthand (Plan 035)
+
+type Point {
+    x int
+    y int
+}
+
+ext Point {
+    fn sum() int {
+        .x + .y
+    }
+}
+
+fn main() {
+    let p = Point { x: 3, y: 4 }
+    let result = p.sum()
+    print(result)
+}

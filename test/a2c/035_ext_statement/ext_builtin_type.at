@@ -1,0 +1,13 @@
+// Test ext statement with built-in type str (Plan 035)
+
+ext str {
+    fn len() int {
+        .size
+    }
+}
+
+fn main() {
+    let s = "hello"
+    let length = s.len()
+    print(length)
+}

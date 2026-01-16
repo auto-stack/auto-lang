@@ -1,0 +1,21 @@
+// Test duplicate method detection (Plan 035 Phase 5)
+
+ext int {
+    fn double() int {
+        self + self
+    }
+}
+
+// This should trigger a warning
+ext int {
+    fn double() int {
+        self * 2
+    }
+}
+
+fn main() {
+    let x = 5
+    // Should use the last definition
+    let result = x.double()
+    print(result)
+}
