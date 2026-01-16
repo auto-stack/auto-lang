@@ -101,6 +101,26 @@ ext str {
     /// Convert to C-compatible null-terminated string
     /// Example: "hello".to_cstr()  // returns cstr value
     fn.vm to_cstr() cstr
+
+    // ============================================================================
+    // Auto-Implemented Methods (Phase 4 - Plan 036)
+    // ============================================================================
+    // These methods are implemented in AutoLang itself, not in VM/C
+    // They demonstrate AutoLang's expressiveness and capabilities
+    //
+    // NOTE: Due to current parser limitations, complex methods like split(),
+    // join(), and trim() cannot be implemented yet. They require:
+    // - Array return types [str]
+    // - Complex expression support (self.sub(i, i+1))
+    // - Method chaining support
+    //
+    // Simple field access methods work within ext blocks:
+
+    /// Get the size/length of the string
+    /// Example: "hello".char_count()  // returns 5
+    fn char_count() int {
+        .size
+    }
 }
 
 // ============================================================================
@@ -109,6 +129,7 @@ ext str {
 // Note: These methods are commented out because:
 // - split() requires array return type [str]
 // - join() requires static method support
+// - Parser doesn't support complex expressions yet (e.g., self.sub(i, i+1))
 //
 // fn.vm split(delimiter str) [str]
 // static fn.vm join(parts [str], delimiter str) str

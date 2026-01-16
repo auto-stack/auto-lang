@@ -95,6 +95,40 @@ type File {
     fn clear_error() {
         clearerr(.file)
     }
+
+    // ============================================================================
+    // TODO: Auto-Implemented Methods (Phase 4 - Plan 036)
+    // ============================================================================
+    // The following methods are planned to be implemented in AutoLang itself.
+    // They cannot be implemented yet due to parser limitations:
+    // - Array indexing support (lines[i])
+    // - Complex expression evaluation in while conditions
+    //
+    // Planned methods (from Plan 036 Phase 4.2):
+    //
+    // /// Read entire file content into a string
+    // /// Example: file.read_all()  // returns all content
+    // fn read_all() str {
+    //     let mut result = ""
+    //     while !self.is_eof() {
+    //         let line = self.read_line()
+    //         if self.is_eof() && line.len() == 0 {
+    //             break
+    //         }
+    //         result = result.append(line)
+    //     }
+    //     result
+    // }
+    //
+    // /// Write multiple lines to file
+    // /// Example: file.write_lines(["hello", "world"])
+    // fn write_lines(lines []str) {
+    //     let mut i = 0
+    //     while i < lines.len() {
+    //         self.write_line(lines[i])
+    //         i = i + 1
+    //     }
+    // }
 }
 
 fn open(path str) File {
