@@ -2205,9 +2205,12 @@ impl<'a> Parser<'a> {
         }
 
         // No initializer, try to parse as iterator pattern: for ident in range { ... }
+        // Or conditional loop: for ident < max { ... }
         if self.is_kind(TokenKind::Ident) {
+            // Consume the identifier first
             let ident = self.parse_name()?;
 
+            // Now check what comes next to determine the pattern
             if self.is_kind(TokenKind::In) {
                 // for ident in range { ... }
                 self.next(); // skip 'in'
@@ -2279,6 +2282,43 @@ impl<'a> Parser<'a> {
                     init: None,
                 }));
             }
+
+            // Check if next token is a binary operator (like <, >, <=, >=, ==, !=, +, -, *, /)
+            let next_is_binop = matches!(self.kind(),
+                TokenKind::Lt | TokenKind::Gt | TokenKind::Le | TokenKind::Ge |
+                TokenKind::Eq | TokenKind::Neq | TokenKind::Add | TokenKind::Sub |
+                TokenKind::Star | TokenKind::Div
+            );
+
+            if next_is_binop {
+                // This is a binary expression like "for i < max { ... }"
+                // We've already consumed 'i', so we need to prepend it to the expression
+                let ident_expr = Expr::Ident(ident.clone());
+                let rest = self.expr_pratt_with_left(ident_expr, 0)?;
+                let body = self.body()?;
+                let has_new_line = body.has_new_line;
+                return Ok(Stmt::For(For {
+                    iter: Iter::Cond,
+                    range: rest,
+                    body,
+                    new_line: has_new_line,
+                    init: None,
+                }));
+            }
+
+            // Identifier followed by something else (member access, etc.)
+            // Fall through to parse as a general expression starting with this ident
+            let ident_expr = Expr::Ident(ident);
+            let condition = self.expr_pratt_with_left(ident_expr, 0)?;
+            let body = self.body()?;
+            let has_new_line = body.has_new_line;
+            return Ok(Stmt::For(For {
+                iter: Iter::Cond,
+                range: condition,
+                body,
+                new_line: has_new_line,
+                init: None,
+            }));
         }
 
         // Otherwise, parse as conditional for loop: for condition { ... }

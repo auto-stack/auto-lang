@@ -596,10 +596,19 @@ impl Evaler {
         // Handle conditional for loop: for condition { ... }
         if matches!(iter, Iter::Cond) {
             let mut res = Array::new();
-            self.universe.borrow_mut().enter_scope();
+
+            // Only enter a new scope if there's an initializer
+            // For simple conditionals like "for i < max { ... }", use outer scope
+            let has_init = for_stmt.init.is_some();
+            if has_init {
+                self.universe.borrow_mut().enter_scope();
+            }
+
             loop {
                 if max_loop <= 0 {
-                    self.universe.borrow_mut().exit_scope();
+                    if has_init {
+                        self.universe.borrow_mut().exit_scope();
+                    }
                     return Ok(Value::error("Max loop reached"));
                 }
                 max_loop -= 1;
@@ -620,12 +629,16 @@ impl Evaler {
                         }
                     }
                     Err(e) => {
-                        self.universe.borrow_mut().exit_scope();
+                        if has_init {
+                            self.universe.borrow_mut().exit_scope();
+                        }
                         return Err(e);
                     }
                 }
             }
-            self.universe.borrow_mut().exit_scope();
+            if has_init {
+                self.universe.borrow_mut().exit_scope();
+            }
 
             return Ok(match self.mode {
                 EvalMode::SCRIPT => Value::Void,
