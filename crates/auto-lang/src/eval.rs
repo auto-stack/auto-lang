@@ -1677,6 +1677,36 @@ impl Evaler {
                             // Call the method
                             return self.eval_fn_call(&fn_decl, &call.args);
                         }
+
+                        // Plan 038: Try to find VM function (e.g., str_split for str.split())
+                        // VM function naming convention: {type}_{method}
+                        let vm_function_name: AutoStr = format!("{}_{}", type_name, method_name).into();
+                        let vm_fn = {
+                            let universe = self.universe.borrow();
+                            universe.lookup_val(&vm_function_name)
+                        };
+
+                        if let Some(Value::ExtFn(ext_fn)) = vm_fn {
+                            // Call VM function with self as first argument
+                            // Build args: prepend self (the instance) to the provided arguments
+                            let mut evaluated_args = Vec::new();
+                            evaluated_args.push(auto_val::Arg::Pos(inst.clone()));
+
+                            // Evaluate the provided arguments
+                            for arg in &call.args.args {
+                                match arg {
+                                    ast::Arg::Pos(expr) => {
+                                        let val = self.eval_expr(expr);
+                                        evaluated_args.push(auto_val::Arg::Pos(val));
+                                    }
+                                    _ => {}
+                                }
+                            }
+
+                            let args = auto_val::Args { args: evaluated_args };
+                            let result = (ext_fn.fun)(&args);
+                            return Ok(result);
+                        }
                     }
                 }
             }

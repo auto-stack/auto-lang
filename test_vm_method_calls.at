@@ -1,0 +1,24 @@
+// Test Plan 038: VM Method Call Expressions
+
+fn main() {
+    // Test 1: Basic VM method call
+    let words = "hello world".split(" ")
+    print(words[0])  // Should print: hello
+    
+    // Test 2: Method chaining with array indexing
+    let first = "hello world".split(" ")[0]
+    print(first)  // Should print: hello
+    
+    // Test 3: Multiple VM method calls
+    let text = "line1\nline2"
+    let all_lines = text.lines()
+    print(all_lines[0])  // Should print: line1
+    
+    // Test 4: Words method
+    let ws = "hello world rust".words()
+    print(ws[2])  // Should print: rust
+    
+    // Test 5: Verify existing methods still work
+    let len = "hello".len()
+    print(len)  // Should print: 5
+}
