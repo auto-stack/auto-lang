@@ -1,0 +1,32 @@
+use auto.io: say
+
+fn main() {
+    // Test basic StringBuilder usage
+    let sb = StringBuilder_new(1024)
+
+    // Append strings
+    StringBuilder_append(sb, "Hello, ")
+    StringBuilder_append(sb, "World!")
+
+    // Build and get the result
+    let result = StringBuilder_build(sb)
+    say(result)
+
+    // Test append_char
+    StringBuilder_clear(sb)
+    StringBuilder_append(sb, "Count: ")
+    StringBuilder_append_int(sb, 42)
+    let result2 = StringBuilder_build(sb)
+    say(result2)
+
+    // Test append_char
+    StringBuilder_clear(sb)
+    StringBuilder_append(sb, "Char: ")
+    StringBuilder_append_char(sb, 'A')
+    let result3 = StringBuilder_build(sb)
+    say(result3)
+
+    // Test len
+    let len = StringBuilder_len(sb)
+    say(f"Length: $len")
+}

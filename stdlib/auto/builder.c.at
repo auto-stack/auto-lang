@@ -1,0 +1,30 @@
+use.c <stdlib.h>
+use.c <stdio.h>
+use.c <string.h>
+
+// StringBuilder type definition
+type.c StringBuilder
+
+// Create a new StringBuilder with initial capacity
+fn.c StringBuilder_new(capacity int) *StringBuilder
+
+// Drop/free a StringBuilder
+fn.c StringBuilder_drop(sb *StringBuilder) void
+
+// Append a string to the builder
+fn.c StringBuilder_append(sb *StringBuilder, str cstr) *May
+
+// Append a character to the builder
+fn.c StringBuilder_append_char(sb *StringBuilder, c char) *May
+
+// Append an integer to the builder
+fn.c StringBuilder_append_int(sb *StringBuilder, value int) *May
+
+// Build and return the final string (caller owns the result)
+fn.c StringBuilder_build(sb *StringBuilder) cstr
+
+// Clear the builder (keeps capacity)
+fn.c StringBuilder_clear(sb *StringBuilder) void
+
+// Get the current length
+fn.c StringBuilder_len(sb *StringBuilder) int

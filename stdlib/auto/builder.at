@@ -1,0 +1,67 @@
+/// StringBuilder - Efficient string concatenation
+///
+/// StringBuilder provides efficient string building for code generation
+/// and other scenarios where many string concatenations are needed.
+/// It avoids the O(n²) cost of repeated string concatenation.
+///
+/// Phase 2: StringBuilder Implementation (Plan 027)
+
+# C
+#ifndef AUTO_STRING_BUILDER_H
+#define AUTO_STRING_BUILDER_H
+
+#include <stddef.h>
+#include "may.h"
+
+typedef struct {
+    char* buffer;
+    size_t len;
+    size_t capacity;
+} StringBuilder;
+
+// API - Creation
+May* StringBuilder_new(size_t initial_capacity);
+void StringBuilder_drop(StringBuilder* sb);
+
+// API - Building
+May* StringBuilder_append(StringBuilder* sb, const char* str);
+May* StringBuilder_append_char(StringBuilder* sb, char c);
+May* StringBuilder_append_int(StringBuilder* sb, int value);
+
+// API - Finalization
+char* StringBuilder_build(StringBuilder* sb);  // Returns null-terminated string (caller owns it)
+void StringBuilder_clear(StringBuilder* sb);
+size_t StringBuilder_len(StringBuilder* sb);
+
+#endif
+# END C
+
+ext StringBuilder {
+    /// Create a new StringBuilder with initial capacity
+    /// Example: StringBuilder.new(1024)
+    fn.vm new(capacity int) StringBuilder
+
+    /// Append a string to the builder
+    /// Example: sb.append("hello")
+    fn.vm append(str str) May
+
+    /// Append a character to the builder
+    /// Example: sb.append_char('!')
+    fn.vm append_char(c char) May
+
+    /// Append an integer to the builder
+    /// Example: sb.append_int(42)
+    fn.vm append_int(value int) May
+
+    /// Build and return the final string
+    /// Example: sb.build()  // returns "hello world!"
+    fn.vm build() str
+
+    /// Clear the builder (keeps capacity)
+    /// Example: sb.clear()
+    fn.vm clear()
+
+    /// Get the current length of the builder
+    /// Example: sb.len()  // returns 11
+    fn.vm len() int
+}
