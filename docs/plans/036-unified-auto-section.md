@@ -47,7 +47,10 @@
     - ✅ 554 tests passing
     - ⏸️ 实际文件 I/O 逻辑待实现 (目前为 placeholder)
   - ✅ 4.4 添加 TODO 注释说明未来工作
-- ⏸️ **阶段 5**: 文档和测试 (待实施)
+- ✅ **阶段 5**: 文档和测试 (已完成 - 2025-01-17)
+  - ✅ 5.1 创建文档: `docs/tutorials/stdlib-organization.md`
+  - ✅ 5.2 添加测试: `test/a2c/037_unified_section/`
+  - ✅ 5.3 所有测试通过 (556 tests passing)
 
 ### 标准库文件拆分状态
 

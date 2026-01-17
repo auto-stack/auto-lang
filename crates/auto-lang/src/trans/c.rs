@@ -2836,6 +2836,13 @@ int add(int x, int y);
         test_a2c("106_file_operations").unwrap();
     }
 
+    // ===================== Phase 5: Unified Section tests =======================
+
+    #[test]
+    fn test_037_unified_functions() {
+        test_a2c("037_unified_section").unwrap();
+    }
+
     #[test]
     fn test_110_bool() {
         test_a2c("110_bool").unwrap();

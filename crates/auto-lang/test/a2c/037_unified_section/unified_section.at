@@ -1,0 +1,13 @@
+// Test unified section functions
+// This test verifies that functions from different sections work together
+
+// Common function (Auto implementation)
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() {
+    let sum = add(1, 2)
+    print(sum)
+    print("\n")
+}
