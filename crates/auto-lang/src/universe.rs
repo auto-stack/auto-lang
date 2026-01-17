@@ -49,7 +49,7 @@ pub struct Universe {
     pub env_vals: HashMap<AutoStr, Box<dyn Any>>,
     pub shared_vals: HashMap<AutoStr, Rc<RefCell<Value>>>,
     pub builtins: HashMap<AutoStr, Value>, // Value of builtin functions
-    pub vm_refs: HashMap<usize, Box<dyn Any>>,
+    pub vm_refs: HashMap<usize, RefCell<Box<dyn Any>>>,
     pub types: TypeInfoStore,
     pub args: Obj,
     lambda_counter: usize,
@@ -870,12 +870,22 @@ impl Universe {
     pub fn add_vmref(&mut self, data: Box<dyn Any>) -> usize {
         self.vmref_counter += 1;
         let refid = self.vmref_counter;
-        self.vm_refs.insert(refid, data);
+        self.vm_refs.insert(refid, RefCell::new(data));
         refid
     }
 
-    pub fn get_vmref(&mut self, refid: usize) -> Option<&mut Box<dyn Any>> {
-        self.vm_refs.get_mut(&refid)
+    /// DEPRECATED: Use get_vmref_ref() instead
+    /// This method is kept for backward compatibility but returns None
+    pub fn get_vmref(&mut self, _refid: usize) -> Option<&mut Box<dyn Any>> {
+        // Cannot return mutable reference through RefCell
+        // Use get_vmref_ref() to get &RefCell<Box<dyn Any>>, then borrow_mut()
+        None
+    }
+
+    /// Get a reference to the RefCell containing the VM data
+    /// This allows mutable access through interior mutability
+    pub fn get_vmref_ref(&self, refid: usize) -> Option<&RefCell<Box<dyn Any>>> {
+        self.vm_refs.get(&refid)
     }
 
     pub fn drop_vmref(&mut self, refid: usize) {

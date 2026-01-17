@@ -34,6 +34,8 @@ impl Interpreter {
 
         // Initialize VM modules
         crate::vm::init_io_module();
+        crate::vm::init_collections_module();
+        crate::vm::init_builder_module();
 
         interpreter
     }

@@ -11,7 +11,7 @@
 #define INITIAL_CAPACITY 16
 
 // ============================================================================
-// HashMap Implementation
+// HashMap Implementation (OOP style)
 // ============================================================================
 
 HashMap* HashMap_new() {
@@ -44,14 +44,16 @@ void HashMap_drop(HashMap* map) {
     free(map);
 }
 
-void HashMap_insert(HashMap* map, const char* key, void* value) {
-    if (!map || !key) return;
+void HashMap_insert_str(HashMap* map, const char* key, const char* value) {
+    if (!map || !key || !value) return;
 
     // Check if key already exists
     for (size_t i = 0; i < map->size; i++) {
         if (strcmp(map->entries[i].key, key) == 0) {
             // Update existing entry
-            map->entries[i].value = value;
+            free(map->entries[i].key);
+            map->entries[i].key = strdup(key);
+            map->entries[i].value = strdup(value);
             return;
         }
     }
@@ -75,20 +77,67 @@ void HashMap_insert(HashMap* map, const char* key, void* value) {
 
     // Add new entry
     map->entries[map->size].key = strdup(key);
-    map->entries[map->size].value = value;
+    map->entries[map->size].value = strdup(value);
     map->size++;
 }
 
-void* HashMap_get(HashMap* map, const char* key) {
+void HashMap_insert_int(HashMap* map, const char* key, int value) {
+    if (!map || !key) return;
+
+    // Check if key already exists
+    for (size_t i = 0; i < map->size; i++) {
+        if (strcmp(map->entries[i].key, key) == 0) {
+            // Update existing entry
+            map->entries[i].value = (void*)(intptr_t)value;  // Store as void pointer
+            return;
+        }
+    }
+
+    // Check if we need to expand
+    if (map->size >= map->capacity) {
+        size_t new_capacity = map->capacity * 2;
+        HashMapEntry* new_entries = (HashMapEntry*)realloc(map->entries,
+            sizeof(HashMapEntry) * new_capacity);
+        if (!new_entries) return;  // OOM
+
+        // Initialize new entries
+        for (size_t i = map->size; i < new_capacity; i++) {
+            new_entries[i].key = NULL;
+            new_entries[i].value = NULL;
+        }
+
+        map->entries = new_entries;
+        map->capacity = new_capacity;
+    }
+
+    // Add new entry
+    map->entries[map->size].key = strdup(key);
+    map->entries[map->size].value = (void*)(intptr_t)value;
+    map->size++;
+}
+
+const char* HashMap_get_str(HashMap* map, const char* key) {
     if (!map || !key) return NULL;
 
     for (size_t i = 0; i < map->size; i++) {
         if (strcmp(map->entries[i].key, key) == 0) {
-            return map->entries[i].value;
+            return (const char*)map->entries[i].value;
         }
     }
 
     return NULL;
+}
+
+int HashMap_get_int(HashMap* map, const char* key) {
+    if (!map || !key) return 0;
+
+    for (size_t i = 0; i < map->size; i++) {
+        if (strcmp(map->entries[i].key, key) == 0) {
+            return (int)(intptr_t)map->entries[i].value;
+        }
+    }
+
+    return 0;
 }
 
 int HashMap_contains(HashMap* map, const char* key) {
@@ -103,30 +152,24 @@ int HashMap_contains(HashMap* map, const char* key) {
     return 0;
 }
 
-void* HashMap_remove(HashMap* map, const char* key) {
-    if (!map || !key) return NULL;
+void HashMap_remove(HashMap* map, const char* key) {
+    if (!map || !key) return;
 
     for (size_t i = 0; i < map->size; i++) {
         if (strcmp(map->entries[i].key, key) == 0) {
-            // Found it
-            void* value = map->entries[i].value;
+            // Found it - shift remaining entries
             free(map->entries[i].key);
-
-            // Shift remaining entries
             for (size_t j = i; j < map->size - 1; j++) {
                 map->entries[j] = map->entries[j + 1];
             }
-
             map->size--;
-            return value;
+            return;
         }
     }
-
-    return NULL;
 }
 
-int HashMap_size(HashMap* map) {
-    return map ? (int)map->size : 0;
+size_t HashMap_size(HashMap* map) {
+    return map ? map->size : 0;
 }
 
 void HashMap_clear(HashMap* map) {

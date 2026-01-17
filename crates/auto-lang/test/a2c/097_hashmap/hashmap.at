@@ -1,0 +1,117 @@
+fn test_hashmap_new() int {
+    let map = HashMap_new()
+    HashMap_drop(map)
+    0
+}
+
+fn test_hashmap_insert_str() int {
+    let map = HashMap_new()
+    HashMap_insert_str(map, "name", "Alice")
+    HashMap_insert_str(map, "city", "Wonderland")
+
+    let name = HashMap_get_str(map, "name")
+    let city = HashMap_get_str(map, "city")
+    HashMap_drop(map)
+
+    if name == "Alice" && city == "Wonderland {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashmap_insert_int() int {
+    let map = HashMap_new()
+    HashMap_insert_int(map, "count", 42)
+    HashMap_insert_int(map, "age", 25)
+
+    let count = HashMap_get_int(map, "count")
+    let age = HashMap_get_int(map, "age")
+    HashMap_drop(map)
+
+    if count == 42 && age == 25 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashmap_contains() int {
+    let map = HashMap_new()
+    HashMap_insert_str(map, "test", "data")
+
+    let has_test = HashMap_contains(map, "test")
+    let has_missing = HashMap_contains(map, "missing")
+    HashMap_drop(map)
+
+    if has_test == 1 && has_missing == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashmap_size() int {
+    let map = HashMap_new()
+    HashMap_insert_str(map, "a", "1")
+    HashMap_insert_str(map, "b", "2")
+    HashMap_insert_str(map, "c", "3")
+
+    let size = HashMap_size(map)
+    HashMap_drop(map)
+
+    if size == 3 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashmap_remove() int {
+    let map = HashMap_new()
+    HashMap_insert_str(map, "temp", "data")
+
+    // Remove should work
+    HashMap_remove(map, "temp")
+
+    // After removal, should not contain
+    let has_after = HashMap_contains(map, "temp")
+    HashMap_drop(map)
+
+    if has_after == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashmap_clear() int {
+    let map = HashMap_new()
+    HashMap_insert_str(map, "a", "1")
+    HashMap_insert_str(map, "b", "2")
+
+    // Clear should remove all
+    HashMap_clear(map)
+
+    let size = HashMap_size(map)
+    HashMap_drop(map)
+
+    if size == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn main() {
+    let r1 = test_hashmap_new()
+    let r2 = test_hashmap_insert_str()
+    let r3 = test_hashmap_insert_int()
+    let r4 = test_hashmap_contains()
+    let r5 = test_hashmap_size()
+    let r6 = test_hashmap_remove()
+    let r7 = test_hashmap_clear()
+
+    // All tests should return 1
+    r1 + r2 + r3 + r4 + r5 + r6 + r7
+}

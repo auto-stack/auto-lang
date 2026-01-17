@@ -1793,3 +1793,279 @@ nums[2]
         assert_eq!(result2, "30");
     }
 }
+
+// ===== HashMap OOP API Tests =====
+// These tests use the VM implementation in Rust
+
+#[test]
+fn test_hashmap_oop_new() {
+    let code = r#"
+        let map = HashMap.new()
+        map.drop()
+        0
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "0");
+}
+
+#[test]
+fn test_hashmap_oop_insert_str() {
+    let code = r#"
+        let map = HashMap.new()
+        map.insert_str("name", "Alice")
+        map.insert_str("city", "Wonderland")
+        let name = map.get_str("name")
+        let city = map.get_str("city")
+        map.drop()
+        [name, city]
+    "#;
+    let result = run(code).unwrap();
+    assert!(result.contains("Alice") && result.contains("Wonderland"));
+}
+
+#[test]
+fn test_hashmap_oop_insert_int() {
+    let code = r#"
+        let map = HashMap.new()
+        map.insert_int("count", 42)
+        map.insert_int("age", 25)
+        let count = map.get_int("count")
+        let age = map.get_int("age")
+        map.drop()
+        count + age
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "67");
+}
+
+#[test]
+fn test_hashmap_oop_contains() {
+    let code = r#"
+        let map = HashMap.new()
+        map.insert_str("test", "data")
+        let has_test = map.contains("test")
+        let has_missing = map.contains("missing")
+        map.drop()
+        [has_test, has_missing]
+    "#;
+    let result = run(code).unwrap();
+    assert!(result.contains("true") && result.contains("false"));
+}
+
+#[test]
+fn test_hashmap_oop_size() {
+    let code = r#"
+        let map = HashMap.new()
+        map.insert_str("a", "1")
+        map.insert_str("b", "2")
+        map.insert_str("c", "3")
+        let size = map.size()
+        map.drop()
+        size
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "3");
+}
+
+#[test]
+fn test_hashmap_oop_remove() {
+    let code = r#"
+        let map = HashMap.new()
+        map.insert_str("temp", "data")
+        map.remove("temp")
+        let has_after = map.contains("temp")
+        map.drop()
+        has_after
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "false");
+}
+
+#[test]
+fn test_hashmap_oop_clear() {
+    let code = r#"
+        let map = HashMap.new()
+        map.insert_str("a", "1")
+        map.insert_str("b", "2")
+        map.clear()
+        let size = map.size()
+        map.drop()
+        size
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "0");
+}
+
+// ===== HashSet OOP API Tests =====
+
+#[test]
+fn test_hashset_oop_new() {
+    let code = r#"
+        let set = HashSet.new()
+        set.drop()
+        0
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "0");
+}
+
+#[test]
+fn test_hashset_oop_insert() {
+    let code = r#"
+        let set = HashSet.new()
+        set.insert("apple")
+        set.insert("banana")
+        set.insert("cherry")
+        let has_apple = set.contains("apple")
+        let has_banana = set.contains("banana")
+        let has_cherry = set.contains("cherry")
+        set.drop()
+        [has_apple, has_banana, has_cherry]
+    "#;
+    let result = run(code).unwrap();
+    // Should have all true
+    assert!(result.contains("true") && result.matches(&["true", "true", "true"][..]));
+}
+
+#[test]
+fn test_hashset_oop_duplicate() {
+    let code = r#"
+        let set = HashSet.new()
+        set.insert("unique")
+        set.insert("unique")
+        set.insert("unique")
+        let size = set.size()
+        set.drop()
+        size
+    "#;
+    let result = run(code).unwrap();
+    // Should still have size 1 (duplicate ignored)
+    assert_eq!(result, "1");
+}
+
+#[test]
+fn test_hashset_oop_remove() {
+    let code = r#"
+        let set = HashSet.new()
+        set.insert("data")
+        set.remove("data")
+        let has_data = set.contains("data")
+        set.drop()
+        has_data
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "false");
+}
+
+#[test]
+fn test_hashset_oop_size() {
+    let code = r#"
+        let set = HashSet.new()
+        set.insert("one")
+        set.insert("two")
+        set.insert("three")
+        let size = set.size()
+        set.drop()
+        size
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "3");
+}
+
+#[test]
+fn test_hashset_oop_clear() {
+    let code = r#"
+        let set = HashSet.new()
+        set.insert("a")
+        set.insert("b")
+        set.clear()
+        let size = set.size()
+        set.drop()
+        size
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "0");
+}
+
+// ===== StringBuilder OOP API Tests =====
+
+#[test]
+fn test_stringbuilder_oop_new() {
+    let code = r#"
+        let sb = StringBuilder.new(1024)
+        sb.drop()
+        0
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "0");
+}
+
+#[test]
+fn test_stringbuilder_oop_append() {
+    let code = r#"
+        let sb = StringBuilder.new(1024)
+        sb.append("hello")
+        sb.append(" ")
+        sb.append("world")
+        let result = sb.build()
+        sb.drop()
+        result
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "hello world");
+}
+
+#[test]
+fn test_stringbuilder_oop_append_char() {
+    let code = r#"
+        let sb = StringBuilder.new(1024)
+        sb.append("hello")
+        sb.append_char('!')
+        let result = sb.build()
+        sb.drop()
+        result
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "hello!");
+}
+
+#[test]
+fn test_stringbuilder_oop_append_int() {
+    let code = r#"
+        let sb = StringBuilder.new(1024)
+        sb.append("count: ")
+        sb.append_int(42)
+        let result = sb.build()
+        sb.drop()
+        result
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "count: 42");
+}
+
+#[test]
+fn test_stringbuilder_oop_len() {
+    let code = r#"
+        let sb = StringBuilder.new(1024)
+        sb.append("hello")
+        let len = sb.len()
+        sb.drop()
+        len
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "5");
+}
+
+#[test]
+fn test_stringbuilder_oop_clear() {
+    let code = r#"
+        let sb = StringBuilder.new(1024)
+        sb.append("hello")
+        sb.clear()
+        let len = sb.len()
+        sb.drop()
+        len
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "0");
+}

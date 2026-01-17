@@ -1,0 +1,33 @@
+# Test HashMap VM borrowing fix
+
+use collections::HashMap
+
+fn main() {
+    let map = HashMap.new()
+
+    # Test insert
+    map.insert_str("key1", "value1")
+    map.insert_str("key2", "value2")
+
+    # Test get
+    let val1 = map.get_str("key1")
+    let val2 = map.get_str("key2")
+
+    # Test contains
+    let has1 = map.contains("key1")
+    let has2 = map.contains("key3")
+
+    # Test size
+    let size = map.size()
+
+    # Test remove
+    map.remove("key1")
+
+    # Test clear
+    map.clear()
+
+    # Test drop
+    map.drop()
+
+    "success"
+}

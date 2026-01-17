@@ -1,0 +1,107 @@
+fn test_hashset_new() int {
+    let set = HashSet_new()
+    HashSet_drop(set)
+    0
+}
+
+fn test_hashset_insert() int {
+    let set = HashSet_new()
+    HashSet_insert(set, "apple")
+    HashSet_insert(set, "banana")
+    HashSet_insert(set, "cherry")
+
+    let has_apple = HashSet_contains(set, "apple")
+    let has_banana = HashSet_contains(set, "banana")
+    let has_cherry = HashSet_contains(set, "cherry")
+
+    HashSet_drop(set)
+
+    if has_apple == 1 && has_banana == 1 && has_cherry == 1 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashset_duplicate() int {
+    let set = HashSet_new()
+    HashSet_insert(set, "unique")
+
+    // Insert same value twice
+    HashSet_insert(set, "unique")
+    HashSet_insert(set, "unique")
+
+    let size = HashSet_size(set)
+    HashSet_drop(set)
+
+    // Should still have size 1 (duplicate ignored)
+    if size == 1 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashset_remove() int {
+    let set = HashSet_new()
+    HashSet_insert(set, "data")
+
+    // Remove the value
+    HashSet_remove(set, "data")
+
+    // Should not contain anymore
+    let has_data = HashSet_contains(set, "data")
+    HashSet_drop(set)
+
+    if has_data == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashset_size() int {
+    let set = HashSet_new()
+    HashSet_insert(set, "one")
+    HashSet_insert(set, "two")
+    HashSet_insert(set, "three")
+
+    let size = HashSet_size(set)
+    HashSet_drop(set)
+
+    if size == 3 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashset_clear() int {
+    let set = HashSet_new()
+    HashSet_insert(set, "a")
+    HashSet_insert(set, "b")
+
+    // Clear should remove all
+    HashSet_clear(set)
+
+    let size = HashSet_size(set)
+    HashSet_drop(set)
+
+    if size == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn main() {
+    let r1 = test_hashset_new()
+    let r2 = test_hashset_insert()
+    let r3 = test_hashset_duplicate()
+    let r4 = test_hashset_remove()
+    let r5 = test_hashset_size()
+    let r6 = test_hashset_clear()
+
+    // All tests should return 1
+    r1 + r2 + r3 + r4 + r5 + r6
+}

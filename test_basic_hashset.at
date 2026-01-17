@@ -1,0 +1,110 @@
+/// Test HashSet OOP-style API
+/// This demonstrates the new OOP approach with type declarations
+
+fn test_hashset_new() int {
+    let set = HashSet.new()
+    set.drop()
+    0
+}
+
+fn test_hashset_insert() int {
+    let set = HashSet.new()
+    set.insert("apple")
+    set.insert("banana")
+    set.insert("cherry")
+
+    let has_apple = set.contains("apple")
+    let has_banana = set.contains("banana")
+    let has_cherry = set.contains("cherry")
+
+    set.drop()
+
+    if has_apple == 1 && has_banana == 1 && has_cherry == 1 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashset_duplicate() int {
+    let set = HashSet.new()
+    set.insert("unique")
+
+    // Insert same value twice
+    set.insert("unique")
+    set.insert("unique")
+
+    let size = set.size()
+    set.drop()
+
+    // Should still have size 1 (duplicate ignored)
+    if size == 1 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashset_remove() int {
+    let set = HashSet.new()
+    set.insert("data")
+
+    // Remove the value
+    set.remove("data")
+
+    // Should not contain anymore
+    let has_data = set.contains("data")
+    set.drop()
+
+    if has_data == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashset_size() int {
+    let set = HashSet.new()
+    set.insert("one")
+    set.insert("two")
+    set.insert("three")
+
+    let size = set.size()
+    set.drop()
+
+    if size == 3 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_hashset_clear() int {
+    let set = HashSet.new()
+    set.insert("a")
+    set.insert("b")
+
+    // Clear should remove all
+    set.clear()
+
+    let size = set.size()
+    set.drop()
+
+    if size == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn main() {
+    let r1 = test_hashset_new()
+    let r2 = test_hashset_insert()
+    let r3 = test_hashset_duplicate()
+    let r4 = test_hashset_remove()
+    let r5 = test_hashset_size()
+    let r6 = test_hashset_clear()
+
+    // All tests should return 1
+    r1 + r2 + r3 + r4 + r5 + r6
+}

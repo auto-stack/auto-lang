@@ -3256,6 +3256,14 @@ int add(int x, int y);
         test_a2c("112_inheritance").unwrap();
     }
 
+    // ===================== Phase 3: HashMap/HashSet tests =======================
+
+    #[test]
+    fn test_097_hashmap() { test_a2c("097_hashmap").unwrap(); }
+
+    #[test]
+    fn test_098_hashset() { test_a2c("098_hashset").unwrap(); }
+
     // ===================== Phase 3: Borrow Checker tests =======================
 
     #[test]
