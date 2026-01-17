@@ -1924,7 +1924,7 @@ fn test_hashset_oop_insert() {
     "#;
     let result = run(code).unwrap();
     // Should have all true
-    assert!(result.contains("true") && result.matches(&["true", "true", "true"][..]));
+    assert!(result.contains("true") && result.matches("true").count() >= 3);
 }
 
 #[test]
