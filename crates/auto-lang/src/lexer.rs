@@ -357,6 +357,12 @@ impl<'a> Lexer<'a> {
             return Token::new(TokenKind::Range, self.pos(2), "..".into());
         }
 
+        // Check for ?. (error propagate operator)
+        if self.peek('?') {
+            self.chars.next();
+            return Token::new(TokenKind::DotQuestion, self.pos(2), "?.".into());
+        }
+
         // Check for property keywords: .view, .mut, .take
         // Clone the iterator to peek ahead without consuming
         let iter = self.chars.clone();
@@ -375,17 +381,17 @@ impl<'a> Lexer<'a> {
             "view" => {
                 // Consume the identifier characters
                 for _ in 0..4 { self.chars.next(); }
-                return Token::new(TokenKind::DotView, self.pos(5), ".view".into());
+                return Token::new(TokenKind::DotView, self.pos(5), ".view ".into());
             }
             "mut" => {
                 // Consume the identifier characters
                 for _ in 0..3 { self.chars.next(); }
-                return Token::new(TokenKind::DotMut, self.pos(4), ".mut".into());
+                return Token::new(TokenKind::DotMut, self.pos(4), ".mut ".into());
             }
             "take" => {
                 // Consume the identifier characters
                 for _ in 0..4 { self.chars.next(); }
-                return Token::new(TokenKind::DotTake, self.pos(5), ".take".into());
+                return Token::new(TokenKind::DotTake, self.pos(5), ".take ".into());
             }
             _ => {
                 // Not a property keyword, return regular Dot
@@ -549,6 +555,20 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn question_or_operators(&mut self, c: char) -> Token {
+        self.chars.next();
+        if let Some(&next) = self.chars.peek() {
+            if next == '?' {
+                self.chars.next();
+                Token::new(TokenKind::QuestionQuestion, self.pos(2), "??".into())
+            } else {
+                Token::new(TokenKind::Question, self.pos(1), c.into())
+            }
+        } else {
+            Token::new(TokenKind::Question, self.pos(1), c.into())
+        }
+    }
+
     fn next_step(&mut self) -> AutoResult<Token> {
         self.skip_whitespace();
         while let Some(&c) = self.chars.peek() {
@@ -650,7 +670,7 @@ impl<'a> Lexer<'a> {
                     return self.fstr();
                 }
                 '?' => {
-                    return Ok(self.single(TokenKind::Question, c));
+                    return Ok(self.question_or_operators(c));
                 }
                 '@' => {
                     return Ok(self.single(TokenKind::At, c));

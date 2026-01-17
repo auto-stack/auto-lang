@@ -63,6 +63,8 @@ pub enum TokenKind {
     Arrow,          // ->
     DoubleArrow,    // =>
     Question,       // ?
+    QuestionQuestion, // ??
+    DotQuestion,    // ?.
     At,             // @
     Hash,           // #
 
@@ -188,6 +190,8 @@ impl fmt::Display for Token {
             TokenKind::When => write!(f, "<when>"),
             TokenKind::On => write!(f, "<on>"),
             TokenKind::Question => write!(f, "<?>"),
+            TokenKind::QuestionQuestion => write!(f, "??"),
+            TokenKind::DotQuestion => write!(f, "?."),
             TokenKind::Use => write!(f, "<use>"),
             TokenKind::Spec => write!(f, "<spec>"),
             TokenKind::CStr => write!(f, "<cstr:{}>", self.text),
