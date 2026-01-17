@@ -2658,22 +2658,72 @@ impl<'a> Parser<'a> {
         Ok(fn_stmt)
     }
 
+    /// Parse function annotations: [c], [vm], [c,vm]
+    ///
+    /// Returns (has_c, has_vm) tuple
+    fn parse_fn_annotations(&mut self) -> AutoResult<(bool, bool)> {
+        let mut has_c = false;
+        let mut has_vm = false;
+
+        if self.is_kind(TokenKind::LSquare) {
+            self.next(); // skip [
+
+            while self.is_kind(TokenKind::Ident) {
+                let annot = self.cur.text.clone();
+                match annot.as_str() {
+                    "c" => has_c = true,
+                    "vm" => has_vm = true,
+                    _ => {
+                        return Err(SyntaxError::Generic {
+                            message: format!("Unknown annotation '{}'. Valid: [c], [vm], [c,vm]", annot),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                }
+
+                if self.is_kind(TokenKind::Comma) {
+                    self.next(); // skip ,
+                    continue;
+                }
+
+                if self.is_kind(TokenKind::RSquare) {
+                    self.next(); // skip ]
+                    break;
+                } else {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected ',', ']', or annotation, found {:?}", self.kind()),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            }
+        }
+
+        Ok((has_c, has_vm))
+    }
+
     // Function Declaration
     pub fn fn_decl_stmt(&mut self, parent_name: &str) -> AutoResult<Stmt> {
         self.next(); // skip keyword `fn`
 
         let mut is_vm = false;
+        let mut is_c = false;
 
-        if self.is_kind(TokenKind::Dot) {
+        // Check for annotations: [c], [vm], [c,vm]
+        if self.is_kind(TokenKind::LSquare) {
+            let (has_c, has_vm) = self.parse_fn_annotations()?;
+            is_c = has_c;
+            is_vm = has_vm;
+        } else if self.is_kind(TokenKind::Dot) {
             self.next(); // skipt .
                          // parse fn sub kind
             let sub_kind = self.cur.text.clone();
             // special case for `fn c` cdecl statement
             if sub_kind == "c" {
-                return self.fn_cdecl_stmt();
+                is_c = true;
+                self.next(); // skip 'c' keyword
             } else if sub_kind == "vm" {
                 is_vm = true;
-                self.next();
+                self.next(); // skip 'vm' keyword
             }
         }
 
@@ -2725,7 +2775,7 @@ impl<'a> Parser<'a> {
         }
 
         // parse function body
-        let body = if !is_vm { self.body()? } else { Body::new() };
+        let body = if !is_vm && !is_c { self.body()? } else { Body::new() };
 
         // exit function scope
         self.exit_scope();
@@ -2738,6 +2788,8 @@ impl<'a> Parser<'a> {
         };
         let kind = if is_vm {
             FnKind::VmFunction
+        } else if is_c {
+            FnKind::CFunction
         } else {
             FnKind::Function
         };
