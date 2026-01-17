@@ -896,6 +896,24 @@ impl CTrans {
                 // The borrow checker ensures the source isn't used again
                 self.expr(e, out)
             }
+            // May type operators (Phase 1b.3)
+            Expr::NullCoalesce(left, right) => {
+                // Null-coalescing operator: left ?? right
+                // In C, we use ternary operator: (left_is_some ? left_value : right)
+                // For May types: (_tmp.tag == May_Val ? _tmp.data.val : right)
+                self.expr(left, out)?;
+                out.write_all(b" != NULL ? ")?;
+                self.expr(left, out)?;
+                out.write_all(b" : ")?;
+                self.expr(right, out)
+            }
+            Expr::ErrorPropagate(expr) => {
+                // Error propagation operator: expression.?
+                // For May types, this unwraps the value if present
+                // In C: (_tmp.tag == May_Val ? _tmp.data.val : return early)
+                // For now, just emit the expression (TODO: implement proper early return)
+                self.expr(expr, out)
+            }
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
     }

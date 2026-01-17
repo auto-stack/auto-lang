@@ -1,5 +1,5 @@
-fn test_operators() int {
-    let x = 42
-    let y = x
+fn test_null_coalesce() int {
+    let x = 10
+    let y = x ?? 0
     y
 }
