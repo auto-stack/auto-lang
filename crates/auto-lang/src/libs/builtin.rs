@@ -194,6 +194,10 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
     let name: AutoStr = "file_write_lines".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::file::file_write_lines, name }));
 
+    // System functions
+    let name: AutoStr = "getpid".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::sys::sys_getpid, name }));
+
     builtins
 }
 
