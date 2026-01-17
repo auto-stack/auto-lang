@@ -509,10 +509,17 @@ let trimmed = "  hello  ".trim()
 **Known Limitations**:
 - Phase 1 (Parser registration) skipped - not needed
 - Phase 3 (TypeInfoStore integration) skipped - not needed
-- Phase 5 (Documentation) pending
+- ✅ Phase 5 (Documentation) completed - `docs/tutorials/method-calls.md`
+
+**Documentation**:
+- ✅ Tutorial created: `docs/tutorials/method-calls.md`
+- ✅ Examples for both regular and VM methods
+- ✅ Migration guide from global functions to methods
+- ✅ Best practices and usage guidelines
 
 ---
 
-**Status**: ✅ **COMPLETED**
+**Status**: ✅ **FULLY COMPLETED**
 **Actual Duration**: 1 day (faster than estimated 2-3 days)
 **Date Completed**: 2025-01-17
+**Phases Completed**: 1 (skipped), 2 (done), 3 (skipped), 4 (skipped), 5 (done)
