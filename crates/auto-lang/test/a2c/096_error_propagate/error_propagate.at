@@ -1,0 +1,9 @@
+fn test_propagate() int {
+    let x = 10
+    let y = x.?
+    y
+}
+
+fn main() {
+    let result = test_propagate()
+}

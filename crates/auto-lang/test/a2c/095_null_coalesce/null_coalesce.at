@@ -1,0 +1,16 @@
+fn test_coalesce_int() int {
+    let x = 10
+    let y = x ?? 0
+    y
+}
+
+fn test_coalesce_with_nil() int {
+    let x = nil
+    let y = x ?? 42
+    y
+}
+
+fn main() {
+    let a = test_coalesce_int()
+    let b = test_coalesce_with_nil()
+}

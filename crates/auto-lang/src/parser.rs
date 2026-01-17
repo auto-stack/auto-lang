@@ -109,7 +109,8 @@ fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
         Op::Range | Op::RangeEq => Ok(PREC_RANGE),
         Op::Dot => Ok(PREC_DOT),
         // Property keywords (Phase 3): same precedence as dot
-        Op::DotView | Op::DotMut | Op::DotTake => Ok(PREC_DOT),
+        // Error propagation (Phase 1b..3): ?. same precedence as dot
+        Op::DotView | Op::DotMut | Op::DotTake | Op::DotQuestion => Ok(PREC_DOT),
         // May type operators (Phase 1b.3)
         Op::QuestionQuestion => Ok(PREC_NULLCOALESCE),
         _ => Err(SyntaxError::Generic {

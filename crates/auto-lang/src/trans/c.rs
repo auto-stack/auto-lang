@@ -3241,6 +3241,12 @@ int add(int x, int y);
     fn test_094_question_negative() { test_a2c("094_question_negative").unwrap(); }
 
     #[test]
+    fn test_095_null_coalesce() { test_a2c("095_null_coalesce").unwrap(); }
+
+    #[test]
+    fn test_096_error_propagate() { test_a2c("096_error_propagate").unwrap(); }
+
+    #[test]
     fn test_110_bool() {
         test_a2c("110_bool").unwrap();
     }
