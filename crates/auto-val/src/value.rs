@@ -450,6 +450,9 @@ pub enum Op {
     DotView,
     DotMut,
     DotTake,
+    // May type operators (Phase 1b.3)
+    QuestionQuestion,  // ?? - null-coalescing operator
+    DotQuestion,       // ?. - error propagation operator
 }
 
 impl Value {
@@ -746,6 +749,8 @@ impl fmt::Display for Op {
             Op::DotView => write!(f, "(op .view)"),
             Op::DotMut => write!(f, "(op .mut)"),
             Op::DotTake => write!(f, "(op .take)"),
+            Op::QuestionQuestion => write!(f, "(op ??)"),
+            Op::DotQuestion => write!(f, "(op ?.)"),
         }
     }
 }
@@ -785,6 +790,8 @@ impl Op {
             Op::DotView => ".view",
             Op::DotMut => ".mut",
             Op::DotTake => ".take",
+            Op::QuestionQuestion => "??",
+            Op::DotQuestion => "?.",
         }
     }
 }

@@ -66,6 +66,7 @@ const PREC_CMP: InfixPrec = infix_prec(8);
 const PREC_RANGE: InfixPrec = infix_prec(9);
 const PREC_ADD: InfixPrec = infix_prec(10);
 const PREC_MUL: InfixPrec = infix_prec(11);
+const PREC_NULLCOALESCE: InfixPrec = infix_prec(5);  // ?? operator (same as OR)
 
 const _PREC_REF: PrefixPrec = prefix_prec(12);
 const PREC_SIGN: PrefixPrec = prefix_prec(13);
@@ -109,6 +110,8 @@ fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
         Op::Dot => Ok(PREC_DOT),
         // Property keywords (Phase 3): same precedence as dot
         Op::DotView | Op::DotMut | Op::DotTake => Ok(PREC_DOT),
+        // May type operators (Phase 1b.3)
+        Op::QuestionQuestion => Ok(PREC_NULLCOALESCE),
         _ => Err(SyntaxError::Generic {
             message: format!("Invalid infix operator: {}", op),
             span,
@@ -775,8 +778,9 @@ impl<'a> Parser<'a> {
                 TokenKind::AddEq | TokenKind::SubEq | TokenKind::MulEq | TokenKind::DivEq => {
                     self.op()
                 }
-                TokenKind::DotView | TokenKind::DotMut | TokenKind::DotTake => {
+                TokenKind::DotView | TokenKind::DotMut | TokenKind::DotTake | TokenKind::DotQuestion => {
                     // Property keywords: .view, .mut, .take (Phase 3)
+                    // Error propagation: ?. (Phase 1b.3)
                     // These are postfix operators with same precedence as dot
                     self.op()
                 }
@@ -792,6 +796,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::Gt
                 | TokenKind::Le
                 | TokenKind::Ge => self.op(),
+                TokenKind::QuestionQuestion => self.op(),
                 TokenKind::RSquare => break,
                 TokenKind::RParen => break,
                 _ => {
@@ -878,6 +883,11 @@ impl<'a> Parser<'a> {
                     lhs = Expr::Take(Box::new(lhs));
                     continue;
                 }
+                // May type operators (Phase 1b.3): ?. error propagation
+                Op::DotQuestion => {
+                    lhs = Expr::ErrorPropagate(Box::new(lhs));
+                    continue;
+                }
                 _ => {
                     // Regular infix operators need rhs
                     let rhs = self.expr_pratt(power.r)?;
@@ -895,6 +905,10 @@ impl<'a> Parser<'a> {
                                 end: Box::new(rhs),
                                 eq: true,
                             });
+                        }
+                        Op::QuestionQuestion => {
+                            // Null-coalescing operator: left ?? right
+                            lhs = Expr::NullCoalesce(Box::new(lhs), Box::new(rhs));
                         }
                         _ => {
                             lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
@@ -956,6 +970,8 @@ impl<'a> Parser<'a> {
             TokenKind::DotView => Op::DotView,
             TokenKind::DotMut => Op::DotMut,
             TokenKind::DotTake => Op::DotTake,
+            TokenKind::QuestionQuestion => Op::QuestionQuestion,
+            TokenKind::DotQuestion => Op::DotQuestion,
             _ => {
                 // This should never happen if called from correct match branches
                 // Return a default operator to avoid panic

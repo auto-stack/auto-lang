@@ -273,6 +273,9 @@ pub enum Expr {
     If(If),
     Nil,
     Null,
+    // May type operators (Phase 1b.3)
+    NullCoalesce(Box<Expr>, Box<Expr>),  // left ?? right
+    ErrorPropagate(Box<Expr>),            // expression.?
 }
 
 fn fmt_array(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
@@ -341,6 +344,8 @@ impl fmt::Display for Expr {
             Expr::Nil => write!(f, "(nil)"),
             Expr::Null => write!(f, "(null)"),
             Expr::Range(r) => write!(f, "{}", r),
+            Expr::NullCoalesce(l, r) => write!(f, "(?? {} {})", l, r),
+            Expr::ErrorPropagate(e) => write!(f, "(?. {})", e),
         }
     }
 }
@@ -744,6 +749,17 @@ impl ToNode for Expr {
             Expr::Nil => AutoNode::new("nil"),
             Expr::Null => AutoNode::new("null"),
             Expr::Range(r) => r.to_node(),
+            Expr::NullCoalesce(l, r) => {
+                let mut node = AutoNode::new("??");
+                node.add_kid(l.to_node());
+                node.add_kid(r.to_node());
+                node
+            }
+            Expr::ErrorPropagate(e) => {
+                let mut node = AutoNode::new("?.");
+                node.add_kid(e.to_node());
+                node
+            }
         }
     }
 }

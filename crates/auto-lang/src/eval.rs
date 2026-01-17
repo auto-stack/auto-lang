@@ -2567,6 +2567,40 @@ impl Evaler {
             Expr::Uncover(_) => Value::Void,
             Expr::Null => Value::Null,
             Expr::Nil => Value::Nil,
+            Expr::NullCoalesce(left, right) => {
+                // Null-coalescing operator: left ?? right
+                // If left evaluates to some value, return it
+                // Otherwise return right
+                let left_val = self.eval_expr(left);
+                match left_val {
+                    Value::Nil => self.eval_expr(right),
+                    _ => left_val,
+                }
+            }
+            Expr::ErrorPropagate(expr) => {
+                // Error propagation operator: expression.?
+                // If expression evaluates to MayInt.Val(v), return v
+                // If expression evaluates to MayInt.Nil or MayInt.Err, return early
+                // This is like Rust's ? operator
+                let expr_val = self.eval_expr(expr);
+                match &expr_val {
+                    Value::Node(node) => {
+                        // Check if this is a May type with Val variant
+                        match node.get_prop("is_some") {
+                            Value::Bool(true) => {
+                                // Return the unwrapped value
+                                node.get_prop("value")
+                            }
+                            _ => {
+                                // Early return for Nil or Err
+                                // TODO: Implement proper error propagation
+                                expr_val
+                            }
+                        }
+                    }
+                    _ => expr_val,
+                }
+            }
         }
     }
 

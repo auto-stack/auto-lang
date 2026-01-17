@@ -257,6 +257,34 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
                 Type::Void
             }
         }
+
+        // ========== May type operators (Phase 1b.3) ==========
+        Expr::NullCoalesce(left, right) => {
+            // Null-coalescing operator: left ?? right
+            // Type is the union of left and right types
+            // In most cases, if left is May<T>, result is T
+            let left_ty = infer_expr(ctx, left);
+            let right_ty = infer_expr(ctx, right);
+
+            // If left is May<T>, unwrap it
+            match left_ty {
+                Type::May(inner) => (*inner).clone(),
+                _ => {
+                    // Otherwise, unify the two types (clone left_ty to avoid move)
+                    ctx.unify(left_ty.clone(), right_ty).unwrap_or(left_ty)
+                }
+            }
+        }
+        Expr::ErrorPropagate(expr) => {
+            // Error propagation operator: expression.?
+            // If expression is May<T>, result is T
+            // Otherwise, result is the expression type
+            let expr_ty = infer_expr(ctx, expr);
+            match expr_ty {
+                Type::May(inner) => (*inner).clone(),
+                _ => expr_ty,
+            }
+        }
     }
 }
 
