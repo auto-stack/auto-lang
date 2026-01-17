@@ -28,6 +28,8 @@ void File_Rewind(struct File *self);
 bool File_IsEof(struct File *self);
 bool File_HasError(struct File *self);
 void File_ClearError(struct File *self);
+str File_ReadAll(struct File *self);
+<unknown> File_WriteLines(struct File *self, [str]0);
 struct File open(char* path);
 struct File open_read(char* path);
 struct File open_write(char* path);

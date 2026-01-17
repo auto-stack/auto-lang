@@ -76,6 +76,10 @@ bool File_HasError(struct File *self) {
 void File_ClearError(struct File *self) {
     clearerr(self->file);
 }
+str File_ReadAll(struct File *self) {
+}
+<unknown> File_WriteLines(struct File *self, [str]0) {
+}
 
 struct File open(char* path) {
     open_read(path);

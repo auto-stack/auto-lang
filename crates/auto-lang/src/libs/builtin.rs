@@ -187,6 +187,13 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
     let name: AutoStr = "May_unwrap_error_or".into();
     builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::may::may_unwrap_error_or, name }));
 
+    // File I/O methods (Plan 036 Phase 4)
+    let name: AutoStr = "file_read_all".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::file::file_read_all, name }));
+
+    let name: AutoStr = "file_write_lines".into();
+    builtins.insert(name.clone(), Value::ExtFn(ExtFn { fun: crate::libs::file::file_write_lines, name }));
+
     builtins
 }
 
