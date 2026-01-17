@@ -15,8 +15,8 @@
   - ✅ Phase 1b.1: Basic May<T> - **COMPLETE** (2025-01-17, 34 tests passing)
   - ✅ Phase 1b.2: `?T` Syntactic Sugar - **COMPLETE** (2025-01-17, 19 tests passing)
   - ✅ Phase 1b.3: `.?` and `??` Operators - **COMPLETE** (2025-01-17, 2 tests passing)
-- 🔄 Phase 2: StringBuilder - **READY TO START**
-- ⏸️ Phase 3: HashMap/HashSet - PLANNED
+- ✅ Phase 2: StringBuilder - **COMPLETE** (2025-01-17)
+- 🔄 Phase 3: HashMap/HashSet - **READY TO START**
 - ⏸️ Phase 4: String Interning - PLANNED
 - ⏸️ Phase 5: Args Parser - PLANNED
 
