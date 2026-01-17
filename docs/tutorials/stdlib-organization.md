@@ -2,6 +2,8 @@
 
 This tutorial explains how AutoLang's standard library is organized across multiple files with different purposes.
 
+**Important**: Section markers (`# AUTO`, `# VM`, `# C`) have been deprecated and removed from all files. The file extensions now indicate the compilation target. See [stdlib-file-organization.md](../stdlib-file-organization.md) for the complete convention documentation.
+
 ## File Organization Structure
 
 AutoLang standard library uses a **file-based separation** strategy to organize code for different compilation targets:
@@ -157,11 +159,11 @@ Only use `fn.vm` or `fn.c` when necessary:
 - **Bottom layer** provides interfaces
 - **Top layer** implements features
 
-## Section Markers (Legacy)
+## Section Markers (Deprecated - Removed)
 
-**Note**: Section markers like `# AUTO`, `# VM`, `# C` are **legacy syntax**. The new approach uses **separate files** instead.
+**Note**: Section markers like `# AUTO`, `# VM`, `# C` have been **deprecated and removed** from all standard library files (as of 2025-01-17).
 
-**Old approach** (still supported):
+**Old approach** (no longer used):
 ```auto
 # AUTO
 fn add(a int, b int) int { a + b }
@@ -173,14 +175,14 @@ fn.vm subtract(a int, b int) int
 fn.c subtract(a int, b int) int
 ```
 
-**New approach** (recommended):
+**Current approach** (file-based separation):
 ```
-io.at      → # AUTO section
-io.vm.at   → # VM section
-io.c.at    → # C section
+io.at      → Common Auto code (no section marker)
+io.vm.at   → VM-specific code (no section marker)
+io.c.at    → C-specific code (no section marker)
 ```
 
-Both approaches work, but file separation is cleaner for large standard libraries.
+**Migration Status**: ✅ All section markers have been removed from standard library files. File extensions now indicate the compilation target. See [stdlib-file-organization.md](../stdlib-file-organization.md) for details.
 
 ## Method Call Syntax
 

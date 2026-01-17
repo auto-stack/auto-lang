@@ -1,5 +1,3 @@
-# AUTO - VM Specific
-
 // Spec declarations for polymorphic I/O
 spec Reader {
     fn read_line() str

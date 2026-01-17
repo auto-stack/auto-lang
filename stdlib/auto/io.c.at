@@ -1,5 +1,3 @@
-# AUTO - C Specific
-
 use.c <stdlib.h>
 fn.c exit(status int) void
 

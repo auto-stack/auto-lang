@@ -1,5 +1,3 @@
-# AUTO - C Specific
-
 use.c <unistd.h>
 
 fn.c getpid() int

@@ -1,5 +1,3 @@
-# AUTO
-
 fn say(msg str) {
     printf(c"%s\n", msg)
 }

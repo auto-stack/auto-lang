@@ -1,5 +1,3 @@
-# AUTO
-
 fn get_pid() int {
     getpid()
 }
