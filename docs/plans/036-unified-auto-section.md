@@ -39,9 +39,13 @@
     - ✅ 注册到 builtin 系统
     - ✅ 方法调用语法支持 (Plan 038)
     - ✅ 554 tests passing
-  - ⏸️ 4.3 File 高级方法 (需要更多实现)
-    - read_all() 需要复杂 while 条件
-    - write_lines() 需要数组索引支持
+  - ✅ 4.3 File 高级方法 (VM 实现 - 2025-01-17)
+    - ✅ 声明 fn.vm read_all() 和 fn.vm write_lines()
+    - ✅ 创建 crates/auto-lang/src/libs/file.rs
+    - ✅ 注册 file_read_all 和 file_write_lines 到 builtin
+    - ✅ 支持点语法调用: file.read_all(), file.write_lines(lines)
+    - ✅ 554 tests passing
+    - ⏸️ 实际文件 I/O 逻辑待实现 (目前为 placeholder)
   - ✅ 4.4 添加 TODO 注释说明未来工作
 - ⏸️ **阶段 5**: 文档和测试 (待实施)
 
