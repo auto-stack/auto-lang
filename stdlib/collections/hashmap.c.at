@@ -1,0 +1,31 @@
+/// HashMap<K, V> - Hash table for key-value pairs
+///
+/// Uses C implementation for storage (via FFI)
+/// Provides clean AutoLang API
+
+# C Implementation
+use.c <stdlib.h>
+use.c <string.h>
+
+// Forward declarations
+type.c HashMap
+type.c HashSet
+
+// HashMap C FFI bindings
+fn.c HashMap_new() *HashMap
+fn.c HashMap_drop(map *HashMap) void
+fn.c HashMap_insert(map *HashMap, key cstr, value *void) void
+fn.c HashMap_get(map *HashMap, key cstr) *void
+fn.c HashMap_contains(map *HashMap, key cstr) int
+fn.c HashMap_remove(map *HashMap, key cstr) *void
+fn.c HashMap_size(map *HashMap) int
+fn.c HashMap_clear(map *HashMap) void
+
+// HashSet C FFI bindings
+fn.c HashSet_new() *HashSet
+fn.c HashSet_drop(set *HashSet) void
+fn.c HashSet_insert(set *HashSet, value cstr) void
+fn.c HashSet_contains(set *HashSet, value cstr) int
+fn.c HashSet_remove(set *HashSet, value cstr) void
+fn.c HashSet_size(set *HashSet) int
+fn.c HashSet_clear(set *HashSet) void

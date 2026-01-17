@@ -1,71 +1,56 @@
-#ifndef AUTO_HASHMAP_H
-#define AUTO_HASHMAP_H
+#pragma once
 
-#include <stddef.h>
-#include "may.h"
+#include <stdlib.h>
+#include <string.h>
 
-// Uthash is a header-only library
-#define UTHASH_IMPLEMENTATION
-#include "uthash.h"
-
-// Hash map entry (for string keys)
+// HashMap entry structure
 typedef struct {
-    char* key;              // String key (owned by HashMap)
-    void* value;            // Value pointer (not owned by HashMap)
-    UT_hash_handle hh;      // Uthash handle
+    char* key;
+    void* value;
 } HashMapEntry;
 
-// Hash map structure
+// HashMap structure (simplified - linear search array-based)
 typedef struct {
-    HashMapEntry* entries;  // Hash table (uthash manages this)
-    size_t count;           // Number of entries
+    HashMapEntry* entries;
+    size_t capacity;
+    size_t size;
 } HashMap;
 
-// ============================================================================
-// API - Creation
-// ============================================================================
+// HashSet entry structure
+typedef struct {
+    char* value;
+} HashSetEntry;
 
-/// Create a new HashMap
-May* HashMap_new();
-
-/// Free a HashMap and all its entries
-/// @param value_drop Optional callback to free values (NULL if values don't need freeing)
-void HashMap_drop(HashMap* map, void (*value_drop)(void*));
-
-// ============================================================================
-// API - Operations
-// ============================================================================
-
-/// Insert a key-value pair into the map
-/// If key already exists, replaces the value (caller responsible for freeing old value)
-/// Returns May::error on allocation failure
-May* HashMap_insert(HashMap* map, const char* key, void* value);
-
-/// Get a value from the map by key
-/// Returns May::value(value) if found, May::nil if not found
-May* HashMap_get(HashMap* map, const char* key);
-
-/// Check if a key exists in the map
-bool HashMap_contains(HashMap* map, const char* key);
-
-/// Remove a key from the map
-/// Returns May::value(removed_value) if key was found (caller must free if needed)
-/// Returns May::nil if key was not found
-May* HashMap_remove(HashMap* map, const char* key);
+// HashSet structure (simplified - linear search array-based)
+typedef struct {
+    HashSetEntry* entries;
+    size_t capacity;
+    size_t size;
+} HashSet;
 
 // ============================================================================
-// API - Utilities
+// HashMap API
 // ============================================================================
 
-/// Get the number of entries in the map
-size_t HashMap_len(HashMap* map);
+HashMap* HashMap_new();
+void HashMap_drop(HashMap* map);
 
-/// Clear all entries from the map
-/// @param value_drop Optional callback to free values
-void HashMap_clear(HashMap* map, void (*value_drop)(void*));
+void HashMap_insert(HashMap* map, const char* key, void* value);
+void* HashMap_get(HashMap* map, const char* key);
+int HashMap_contains(HashMap* map, const char* key);
+void* HashMap_remove(HashMap* map, const char* key);
+int HashMap_size(HashMap* map);
+void HashMap_clear(HashMap* map);
 
-/// Iterate over all entries in the map
-/// Callback function: (key, value, user_data) -> bool (return false to stop iteration)
-void HashMap_iter(HashMap* map, bool (*callback)(const char* key, void* value, void* user_data), void* user_data);
+// ============================================================================
+// HashSet API
+// ============================================================================
 
-#endif
+HashSet* HashSet_new();
+void HashSet_drop(HashSet* set);
+
+void HashSet_insert(HashSet* set, const char* value);
+int HashSet_contains(HashSet* set, const char* value);
+void HashSet_remove(HashSet* set, const char* value);
+int HashSet_size(HashSet* set);
+void HashSet_clear(HashSet* set);

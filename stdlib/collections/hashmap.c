@@ -1,178 +1,254 @@
-// HashMap Implementation using uthash
+// HashMap/HashSet C Implementation
 // Phase 3: HashMap/HashSet (Plan 027)
+//
+// Simple linear-search implementation for now
+// TODO: Optimize with proper hash table (separate phase)
 
 #include "hashmap.h"
-#include "may.h"
 #include <stdlib.h>
 #include <string.h>
 
+#define INITIAL_CAPACITY 16
+
 // ============================================================================
-// API - Creation
+// HashMap Implementation
 // ============================================================================
 
-May* HashMap_new() {
+HashMap* HashMap_new() {
     HashMap* map = (HashMap*)malloc(sizeof(HashMap));
-    if (!map) {
-        return May_error("out of memory");
+    if (!map) return NULL;
+
+    map->entries = (HashMapEntry*)calloc(INITIAL_CAPACITY, sizeof(HashMapEntry));
+    if (!map->entries) {
+        free(map);
+        return NULL;
     }
 
-    map->entries = NULL;
-    map->count = 0;
+    map->capacity = INITIAL_CAPACITY;
+    map->size = 0;
 
-    return May_value(map);
+    return map;
 }
 
-void HashMap_drop(HashMap* map, void (*value_drop)(void*)) {
-    if (!map) {
-        return;
+void HashMap_drop(HashMap* map) {
+    if (!map) return;
+
+    // Free all keys
+    for (size_t i = 0; i < map->size; i++) {
+        if (map->entries[i].key) {
+            free(map->entries[i].key);
+        }
     }
 
-    // Clear all entries first
-    HashMap_clear(map, value_drop);
-
-    // Free the map structure itself
+    free(map->entries);
     free(map);
 }
 
-// ============================================================================
-// API - Operations
-// ============================================================================
-
-May* HashMap_insert(HashMap* map, const char* key, void* value) {
-    if (!map || !key) {
-        return May_error("null argument");
-    }
+void HashMap_insert(HashMap* map, const char* key, void* value) {
+    if (!map || !key) return;
 
     // Check if key already exists
-    HashMapEntry* entry = NULL;
-    HASH_FIND_STR(map->entries, key, entry);
-
-    if (entry) {
-        // Key exists: update value
-        entry->value = value;
-        return May_value(map);
+    for (size_t i = 0; i < map->size; i++) {
+        if (strcmp(map->entries[i].key, key) == 0) {
+            // Update existing entry
+            map->entries[i].value = value;
+            return;
+        }
     }
 
-    // Key doesn't exist: create new entry
-    entry = (HashMapEntry*)malloc(sizeof(HashMapEntry));
-    if (!entry) {
-        return May_error("out of memory");
+    // Check if we need to expand
+    if (map->size >= map->capacity) {
+        size_t new_capacity = map->capacity * 2;
+        HashMapEntry* new_entries = (HashMapEntry*)realloc(map->entries,
+            sizeof(HashMapEntry) * new_capacity);
+        if (!new_entries) return;  // OOM
+
+        // Initialize new entries
+        for (size_t i = map->size; i < new_capacity; i++) {
+            new_entries[i].key = NULL;
+            new_entries[i].value = NULL;
+        }
+
+        map->entries = new_entries;
+        map->capacity = new_capacity;
     }
 
-    // Duplicate the key (HashMap owns the key string)
-    entry->key = strdup(key);
-    if (!entry->key) {
-        free(entry);
-        return May_error("out of memory");
-    }
-
-    entry->value = value;
-
-    // Add to hash table
-    HASH_ADD_STR(map->entries, key, entry);
-    map->count++;
-
-    return May_value(map);
+    // Add new entry
+    map->entries[map->size].key = strdup(key);
+    map->entries[map->size].value = value;
+    map->size++;
 }
 
-May* HashMap_get(HashMap* map, const char* key) {
-    if (!map || !key) {
-        return May_error("null argument");
+void* HashMap_get(HashMap* map, const char* key) {
+    if (!map || !key) return NULL;
+
+    for (size_t i = 0; i < map->size; i++) {
+        if (strcmp(map->entries[i].key, key) == 0) {
+            return map->entries[i].value;
+        }
     }
 
-    HashMapEntry* entry = NULL;
-    HASH_FIND_STR(map->entries, key, entry);
-
-    if (entry) {
-        return May_value(entry->value);
-    }
-
-    return May_nil();
+    return NULL;
 }
 
-bool HashMap_contains(HashMap* map, const char* key) {
-    if (!map || !key) {
-        return false;
+int HashMap_contains(HashMap* map, const char* key) {
+    if (!map || !key) return 0;
+
+    for (size_t i = 0; i < map->size; i++) {
+        if (strcmp(map->entries[i].key, key) == 0) {
+            return 1;
+        }
     }
 
-    HashMapEntry* entry = NULL;
-    HASH_FIND_STR(map->entries, key, entry);
-
-    return entry != NULL;
+    return 0;
 }
 
-May* HashMap_remove(HashMap* map, const char* key) {
-    if (!map || !key) {
-        return May_error("null argument");
+void* HashMap_remove(HashMap* map, const char* key) {
+    if (!map || !key) return NULL;
+
+    for (size_t i = 0; i < map->size; i++) {
+        if (strcmp(map->entries[i].key, key) == 0) {
+            // Found it
+            void* value = map->entries[i].value;
+            free(map->entries[i].key);
+
+            // Shift remaining entries
+            for (size_t j = i; j < map->size - 1; j++) {
+                map->entries[j] = map->entries[j + 1];
+            }
+
+            map->size--;
+            return value;
+        }
     }
 
-    HashMapEntry* entry = NULL;
-    HASH_FIND_STR(map->entries, key, entry);
+    return NULL;
+}
 
-    if (!entry) {
-        return May_nil();
+int HashMap_size(HashMap* map) {
+    return map ? (int)map->size : 0;
+}
+
+void HashMap_clear(HashMap* map) {
+    if (!map) return;
+
+    for (size_t i = 0; i < map->size; i++) {
+        if (map->entries[i].key) {
+            free(map->entries[i].key);
+        }
     }
 
-    // Remove from hash table
-    HASH_DEL(map->entries, entry);
-    map->count--;
-
-    // Get the value before freeing entry
-    void* value = entry->value;
-
-    // Free the key and entry
-    free(entry->key);
-    free(entry);
-
-    return May_value(value);
+    map->size = 0;
 }
 
 // ============================================================================
-// API - Utilities
+// HashSet Implementation
 // ============================================================================
 
-size_t HashMap_len(HashMap* map) {
-    return map ? map->count : 0;
+HashSet* HashSet_new() {
+    HashSet* set = (HashSet*)malloc(sizeof(HashSet));
+    if (!set) return NULL;
+
+    set->entries = (HashSetEntry*)calloc(INITIAL_CAPACITY, sizeof(HashSetEntry));
+    if (!set->entries) {
+        free(set);
+        return NULL;
+    }
+
+    set->capacity = INITIAL_CAPACITY;
+    set->size = 0;
+
+    return set;
 }
 
-void HashMap_clear(HashMap* map, void (*value_drop)(void*)) {
-    if (!map) {
-        return;
-    }
+void HashSet_drop(HashSet* set) {
+    if (!set) return;
 
-    HashMapEntry* entry;
-    HashMapEntry* tmp;
-
-    // Iterate over all entries
-    HASH_ITER(hh, map->entries, entry, tmp) {
-        // Call value_drop if provided
-        if (value_drop && entry->value) {
-            value_drop(entry->value);
+    // Free all values
+    for (size_t i = 0; i < set->size; i++) {
+        if (set->entries[i].value) {
+            free(set->entries[i].value);
         }
-
-        // Free the key
-        free(entry->key);
-
-        // Remove from hash table and free entry
-        HASH_DEL(map->entries, entry);
-        free(entry);
     }
 
-    map->count = 0;
+    free(set->entries);
+    free(set);
 }
 
-void HashMap_iter(HashMap* map, bool (*callback)(const char* key, void* value, void* user_data), void* user_data) {
-    if (!map || !callback) {
-        return;
-    }
+void HashSet_insert(HashSet* set, const char* value) {
+    if (!set || !value) return;
 
-    HashMapEntry* entry;
-    HashMapEntry* tmp;
-
-    HASH_ITER(hh, map->entries, entry, tmp) {
-        bool should_continue = callback(entry->key, entry->value, user_data);
-        if (!should_continue) {
-            break;
+    // Check if value already exists
+    for (size_t i = 0; i < set->size; i++) {
+        if (strcmp(set->entries[i].value, value) == 0) {
+            return;  // Already exists
         }
     }
+
+    // Check if we need to expand
+    if (set->size >= set->capacity) {
+        size_t new_capacity = set->capacity * 2;
+        HashSetEntry* new_entries = (HashSetEntry*)realloc(set->entries,
+            sizeof(HashSetEntry) * new_capacity);
+        if (!new_entries) return;  // OOM
+
+        // Initialize new entries
+        for (size_t i = set->size; i < new_capacity; i++) {
+            new_entries[i].value = NULL;
+        }
+
+        set->entries = new_entries;
+        set->capacity = new_capacity;
+    }
+
+    // Add new entry
+    set->entries[set->size].value = strdup(value);
+    set->size++;
+}
+
+int HashSet_contains(HashSet* set, const char* value) {
+    if (!set || !value) return 0;
+
+    for (size_t i = 0; i < set->size; i++) {
+        if (strcmp(set->entries[i].value, value) == 0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+void HashSet_remove(HashSet* set, const char* value) {
+    if (!set || !value) return;
+
+    for (size_t i = 0; i < set->size; i++) {
+        if (strcmp(set->entries[i].value, value) == 0) {
+            // Found it
+            free(set->entries[i].value);
+
+            // Shift remaining entries
+            for (size_t j = i; j < set->size - 1; j++) {
+                set->entries[j] = set->entries[j + 1];
+            }
+
+            set->size--;
+            return;
+        }
+    }
+}
+
+int HashSet_size(HashSet* set) {
+    return set ? (int)set->size : 0;
+}
+
+void HashSet_clear(HashSet* set) {
+    if (!set) return;
+
+    for (size_t i = 0; i < set->size; i++) {
+        if (set->entries[i].value) {
+            free(set->entries[i].value);
+        }
+    }
+
+    set->size = 0;
 }

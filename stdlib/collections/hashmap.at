@@ -1,0 +1,73 @@
+/// HashMap<K, V> - Hash table for key-value pairs
+///
+/// Implementation note: Uses C arrays for storage (via FFI)
+/// while providing a clean AutoLang API
+
+# C
+#ifndef AUTO_HASHMAP_H
+#define AUTO_HASHMAP_H
+
+#include <stddef.h>
+
+// Forward declarations
+typedef struct HashMap HashMap;
+typedef struct HashSet HashSet;
+
+// HashMap API (implemented in C)
+HashMap* HashMap_new();
+void HashMap_drop(HashMap* map);
+
+void HashMap_insert(HashMap* map, const char* key, void* value);
+void* HashMap_get(HashMap* map, const char* key);
+int HashMap_contains(HashMap* map, const char* key);
+void* HashMap_remove(HashMap* map, const char* key);
+int HashMap_size(HashMap* map);
+void HashMap_clear(HashMap* map);
+
+// HashSet API
+HashSet* HashSet_new();
+void HashSet_drop(HashSet* set);
+
+void HashSet_insert(HashSet* set, const char* value);
+int HashSet_contains(HashSet* set, const char* value);
+void HashSet_remove(HashSet* set, const char* value);
+int HashSet_size(HashSet* set);
+void HashSet_clear(HashSet* set);
+
+#endif
+# END C
+
+# C Implementation
+use.c <stdlib.h>
+use.c <string.h>
+
+// HashMap C implementation (simplified, using arrays)
+// Note: This is a basic linear search implementation
+// A proper hash table would be implemented here
+
+type.c HashMap
+type.c HashSet
+
+# END C
+
+// AutoLang bindings (using fn.c to call C functions)
+use.c <stdlib.h>
+
+// HashMap bindings
+fn.c HashMap_new() *HashMap
+fn.c HashMap_drop(map *HashMap) void
+fn.c HashMap_insert(map *HashMap, key cstr, value *void) void
+fn.c HashMap_get(map *HashMap, key cstr) *void
+fn.c HashMap_contains(map *HashMap, key cstr) int
+fn.c HashMap_remove(map *HashMap, key cstr) *void
+fn.c HashMap_size(map *HashMap) int
+fn.c HashMap_clear(map *HashMap) void
+
+// HashSet bindings
+fn.c HashSet_new() *HashSet
+fn.c HashSet_drop(set *HashSet) void
+fn.c HashSet_insert(set *HashSet, value cstr) void
+fn.c HashSet_contains(set *HashSet, value cstr) int
+fn.c HashSet_remove(set *HashSet, value cstr) void
+fn.c HashSet_size(set *HashSet) int
+fn.c HashSet_clear(set *HashSet) void
