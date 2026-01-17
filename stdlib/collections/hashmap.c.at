@@ -3,7 +3,6 @@
 /// Uses C implementation for storage (via FFI)
 /// Provides clean AutoLang API
 
-# C Implementation
 use.c <stdlib.h>
 use.c <string.h>
 

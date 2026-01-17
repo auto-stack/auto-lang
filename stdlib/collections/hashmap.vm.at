@@ -1,0 +1,12 @@
+ext HashMap {
+    static fn.vm new() HashMap
+    fn.vm insert_str(key cstr, value cstr) void
+    fn.vm insert_int(key cstr, value int) void
+    fn.vm get_str(key cstr) cstr
+    fn.vm get_int(key cstr) int
+    fn.vm contains(key cstr) int
+    fn.vm remove(key cstr) void
+    fn.vm size() size_t
+    fn.vm clear() void
+    fn.vm drop()
+}

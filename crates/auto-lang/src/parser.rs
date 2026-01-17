@@ -3465,7 +3465,14 @@ impl<'a> Parser<'a> {
             Expr::Bina(l, op, _) => match op {
                 Op::Dot => {
                     if let Expr::Ident(name) = l.as_ref() {
-                        if !self.exists(&name) {
+                        // Check if it's a type name (for static method calls like HashMap.new())
+                        let is_type = self.lookup_type(name);
+                        let is_type_valid = match *is_type.borrow() {
+                            Type::User(_) | Type::Tag(_) => true,
+                            _ => false,
+                        };
+
+                        if !self.exists(&name) && !is_type_valid {
                             let candidates = self.scope.borrow().get_defined_names();
                             return Err(NameError::undefined_variable(
                                 name.to_string(),
@@ -3500,12 +3507,16 @@ impl<'a> Parser<'a> {
                         // }
                     }
                     Expr::Bina(lhs, op, _rhs) => {
-                        // check tag creation
+                        // check tag creation or static method call (TypeName.method())
                         if let Op::Dot = op {
                             if let Expr::Ident(lname) = lhs.as_ref() {
                                 let ltype = self.lookup_type(lname);
                                 match *ltype.borrow() {
                                     Type::Tag(ref _t) => {}
+                                    Type::User(ref _name) => {
+                                        // Allow type names for static method calls (e.g., HashMap.new())
+                                        // The evaluator will route these to the VM registry
+                                    }
                                     _ => {}
                                 };
                             }

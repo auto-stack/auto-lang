@@ -1,50 +1,7 @@
 /// HashMap<K, V> - Hash table for key-value pairs
 ///
-/// OOP-style collections implemented in C via FFI
+/// OOP-style collections
 /// Provides clean, intuitive API similar to Rust's HashMap
-
-# C
-#ifndef AUTO_HASHMAP_H
-#define AUTO_HASHMAP_H
-
-#include <stddef.h>
-
-// Forward declarations
-typedef struct HashMap HashMap;
-typedef struct HashSet HashSet;
-
-// HashMap API (implemented in C)
-HashMap* HashMap_new();
-void HashMap_drop(HashMap* map);
-
-void HashMap_insert_str(HashMap* map, const char* key, const char* value);
-void HashMap_insert_int(HashMap* map, const char* key, int value);
-const char* HashMap_get_str(HashMap* map, const char* key);
-int HashMap_get_int(HashMap* map, const char* key);
-int HashMap_contains(HashMap* map, const char* key);
-void HashMap_remove(HashMap* map, const char* key);
-size_t HashMap_size(HashMap* map);
-void HashMap_clear(HashMap* map);
-
-// HashSet API
-HashSet* HashSet_new();
-void HashSet_drop(HashSet* set);
-
-void HashSet_insert(HashSet* set, const char* value);
-int HashSet_contains(HashSet* set, const char* value);
-void HashSet_remove(HashSet* set, const char* value);
-size_t HashSet_size(HashSet* set);
-void HashSet_clear(HashSet* set);
-
-#endif
-# END C
-
-use.c <stdlib.h>
-use.c <string.h>
-
-// Forward declarations
-type.c HashMap
-type.c HashSet
 
 /// HashMap type for storing key-value pairs
 type HashMap {
@@ -56,7 +13,7 @@ type HashMap {
 
     /// Create a new empty HashMap
     /// Example: HashMap.new()
-    static fn.vm new() HashMap
+    static fn new() HashMap
 
     // ========================================================================
     // Instance Methods - Insertion
@@ -64,11 +21,11 @@ type HashMap {
 
     /// Insert a string key-value pair
     /// Example: map.insert_str("name", "Alice")
-    fn.vm insert_str(key cstr, value cstr) void
+    fn insert_str(key cstr, value cstr) void
 
     /// Insert a string key with integer value
     /// Example: map.insert_int("count", 42)
-    fn.vm insert_int(key cstr, value int) void
+    fn insert_int(key cstr, value int) void
 
     // ========================================================================
     // Instance Methods - Retrieval
@@ -76,15 +33,15 @@ type HashMap {
 
     /// Get string value by key
     /// Example: map.get_str("name")  // returns "Alice"
-    fn.vm get_str(key cstr) cstr
+    fn get_str(key cstr) cstr
 
     /// Get integer value by key
     /// Example: map.get_int("count")  // returns 42
-    fn.vm get_int(key cstr) int
+    fn get_int(key cstr) int
 
     /// Check if key exists in map
     /// Example: map.contains("name")  // returns 1 (true)
-    fn.vm contains(key cstr) int
+    fn contains(key cstr) int
 
     // ========================================================================
     // Instance Methods - Management
@@ -92,15 +49,15 @@ type HashMap {
 
     /// Remove a key-value pair
     /// Example: map.remove("temp")
-    fn.vm remove(key cstr) void
+    fn remove(key cstr) void
 
     /// Get the number of entries
     /// Example: map.size()  // returns 3
-    fn.vm size() size_t
+    fn size() size_t
 
     /// Remove all entries
     /// Example: map.clear()
-    fn.vm clear() void
+    fn clear() void
 
     // ========================================================================
     // Instance Methods - Lifecycle
@@ -108,7 +65,7 @@ type HashMap {
 
     /// Free the HashMap's resources
     /// Example: map.drop()
-    fn.vm drop()
+    fn drop()
 }
 
 /// HashSet type for storing unique values
@@ -121,7 +78,7 @@ type HashSet {
 
     /// Create a new empty HashSet
     /// Example: HashSet.new()
-    static fn.vm new() HashSet
+    static fn new() HashSet
 
     // ========================================================================
     // Instance Methods - Insertion
@@ -129,7 +86,7 @@ type HashSet {
 
     /// Insert a value (duplicates are ignored)
     /// Example: set.insert("apple")
-    fn.vm insert(value cstr) void
+    fn insert(value cstr) void
 
     // ========================================================================
     // Instance Methods - Query
@@ -137,7 +94,7 @@ type HashSet {
 
     /// Check if value exists in set
     /// Example: set.contains("apple")  // returns 1 (true)
-    fn.vm contains(value cstr) int
+    fn contains(value cstr) int
 
     // ========================================================================
     // Instance Methods - Management
@@ -145,15 +102,15 @@ type HashSet {
 
     /// Remove a value from the set
     /// Example: set.remove("apple")
-    fn.vm remove(value cstr) void
+    fn remove(value cstr) void
 
     /// Get the number of values
     /// Example: set.size()  // returns 3
-    fn.vm size() size_t
+    fn size() size_t
 
     /// Remove all values
     /// Example: set.clear()
-    fn.vm clear() void
+    fn clear() void
 
     // ========================================================================
     // Instance Methods - Lifecycle
@@ -161,5 +118,5 @@ type HashSet {
 
     /// Free the HashSet's resources
     /// Example: set.drop()
-    fn.vm drop()
+    fn drop()
 }
