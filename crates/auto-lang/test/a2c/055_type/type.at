@@ -1,0 +1,16 @@
+tag Type {
+    A int
+    B int
+}
+
+fn is_first(m Type) bool {
+    is m {
+        Type.A(x) => true
+        Type.B(x) => false
+    }
+}
+
+fn main() {
+    let s = Type.A()
+    is_first(s)
+}

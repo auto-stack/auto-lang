@@ -1,0 +1,12 @@
+tag Atom {
+    Int int
+
+    fn test() int {
+        42
+    }
+}
+
+fn main() {
+    let a = Atom.Int(10)
+    a.test()
+}

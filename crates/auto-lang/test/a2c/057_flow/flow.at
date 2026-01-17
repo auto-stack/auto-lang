@@ -1,0 +1,16 @@
+tag Flow {
+    In int
+    Out int
+}
+
+fn is_first(m Flow) bool {
+    is m {
+        Flow.In(x) => true
+        Flow.Out(x) => false
+    }
+}
+
+fn main() {
+    let s = Flow.In()
+    is_first(s)
+}

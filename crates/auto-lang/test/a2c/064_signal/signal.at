@@ -1,0 +1,16 @@
+tag Signal {
+    High int
+    Low int
+}
+
+fn is_first(m Signal) bool {
+    is m {
+        Signal.High(x) => true
+        Signal.Low(x) => false
+    }
+}
+
+fn main() {
+    let s = Signal.High()
+    is_first(s)
+}

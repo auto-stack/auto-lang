@@ -1,0 +1,19 @@
+tag MayInt {
+    Nil int
+    Val int
+    Err int
+}
+
+fn is_nil(m MayInt) bool {
+    is m {
+        MayInt.Nil(x) => true
+        MayInt.Val(x) => false
+        MayInt.Err(x) => false
+    }
+}
+
+fn main() {
+    let x = MayInt.Nil(0)
+    let y = is_nil(x)
+    y
+}

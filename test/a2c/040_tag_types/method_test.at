@@ -1,0 +1,26 @@
+// Test tag with methods
+tag Atom {
+    Int int
+    Float float
+
+    fn is_int(self) bool {
+        is self {
+            Atom.Int(_) => true
+            _ => false
+        }
+    }
+
+    fn get_value(self) int {
+        is self {
+            Atom.Int(i) => i
+            _ => 0
+        }
+    }
+}
+
+fn main() {
+    let atom = Atom.Int(42)
+    let is_int = atom.is_int()
+    let value = atom.get_value()
+    value
+}

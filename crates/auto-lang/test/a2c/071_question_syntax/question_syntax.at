@@ -1,0 +1,17 @@
+fn test_question_int() ?int {
+    42
+}
+
+fn test_question_str() ?str {
+    "hello"
+}
+
+fn test_question_bool() ?bool {
+    true
+}
+
+fn main() {
+    let x = test_question_int()
+    let y = test_question_str()
+    let z = test_question_bool()
+}

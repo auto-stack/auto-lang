@@ -1,0 +1,16 @@
+tag Mode2 {
+    Auto int
+    Manual int
+}
+
+fn is_first(m Mode2) bool {
+    is m {
+        Mode2.Auto(x) => true
+        Mode2.Manual(x) => false
+    }
+}
+
+fn main() {
+    let s = Mode2.Auto()
+    is_first(s)
+}

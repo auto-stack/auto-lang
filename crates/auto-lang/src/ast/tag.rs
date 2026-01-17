@@ -7,6 +7,7 @@ use std::{fmt, io as stdio};
 pub struct Tag {
     pub name: Name,
     pub fields: Vec<TagField>,
+    pub methods: Vec<super::Fn>,
 }
 
 #[derive(Debug, Clone)]
@@ -17,7 +18,19 @@ pub struct TagField {
 
 impl Tag {
     pub fn new(name: Name, fields: Vec<TagField>) -> Self {
-        Self { name, fields }
+        Self {
+            name,
+            fields,
+            methods: Vec::new(),
+        }
+    }
+
+    pub fn with_methods(name: Name, fields: Vec<TagField>, methods: Vec<super::Fn>) -> Self {
+        Self {
+            name,
+            fields,
+            methods,
+        }
     }
 
     pub fn enum_name(&self, field_name: &str) -> AutoStr {
@@ -65,6 +78,10 @@ impl ToNode for Tag {
 
         for field in &self.fields {
             node.add_kid(field.to_node());
+        }
+
+        for method in &self.methods {
+            node.add_kid(method.to_node());
         }
 
         node

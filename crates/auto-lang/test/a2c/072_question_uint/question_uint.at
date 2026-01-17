@@ -1,0 +1,7 @@
+fn test_question_uint() ?uint {
+    42
+}
+
+fn main() {
+    let result = test_question_uint()
+}

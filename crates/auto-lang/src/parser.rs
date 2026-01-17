@@ -2682,7 +2682,7 @@ impl<'a> Parser<'a> {
         let mut ret_type_name: Option<AutoStr> = None;
         // TODO: determine return type with last stmt if it's not specified
         // Support: Ident (int, str), LSquare ([]int), Star (*int)
-        if self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::LSquare) || self.is_kind(TokenKind::Star) {
+        if self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::LSquare) || self.is_kind(TokenKind::Star) || self.is_kind(TokenKind::Question) {
             if self.is_kind(TokenKind::Ident) {
                 ret_type_name = Some(self.cur.text.clone());
             }
@@ -3216,24 +3216,40 @@ impl<'a> Parser<'a> {
         let name = self.parse_name()?;
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
+
         let mut fields = Vec::new();
-        let mut field_index = 0;
-        while !self.is_kind(TokenKind::RBrace) {
-            let member = self.tag_field()?;
-            fields.push(member);
-            let is_first = field_index == 0;
-            self.expect_eos(is_first)?;
-            field_index += 1;
+        let mut methods = Vec::new();
+
+        // Parse fields and methods (EXACTLY like type_decl_stmt)
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            if self.is_kind(TokenKind::Fn) {
+                let fn_stmt = self.fn_decl_stmt(&name)?;
+                if let Stmt::Fn(fn_expr) = fn_stmt {
+                    methods.push(fn_expr);
+                }
+            } else {
+                let field = self.tag_field()?;
+                fields.push(field);
+            }
+            self.expect_eos(false)?; // Single EOS call after both branches
         }
         self.expect(TokenKind::RBrace)?;
+
+        // Register tag type with fields and methods
         self.define(
             name.as_str(),
-            Meta::Type(Type::Tag(shared(Tag {
-                name: name.clone(),
-                fields: fields.clone(),
-            }))),
+            Meta::Type(Type::Tag(shared(Tag::with_methods(
+                name.clone(),
+                fields.clone(),
+                methods.clone(),
+            )))),
         );
-        Ok(Stmt::Tag(Tag { name, fields }))
+
+        Ok(Stmt::Tag(Tag {
+            name,
+            fields,
+            methods,
+        }))
     }
 
     pub fn tag_field(&mut self) -> AutoResult<TagField> {
@@ -3395,6 +3411,7 @@ impl<'a> Parser<'a> {
 
     fn is_type_name(&mut self) -> bool {
         self.is_kind(TokenKind::Ident) // normal types like `int`
+        || self.is_kind(TokenKind::Question) // May types like `?int`
         || self.is_kind(TokenKind::LSquare) // array types like `[5]int`
         || self.is_kind(TokenKind::Star) // ptr types like `*int`
         || self.is_kind(TokenKind::At) // ref types like `@int`
@@ -3402,6 +3419,12 @@ impl<'a> Parser<'a> {
 
     pub fn parse_type(&mut self) -> AutoResult<Type> {
         match self.cur.kind {
+            TokenKind::Question => {
+                // Parse ?T as May<T>
+                self.next(); // Consume '?'
+                let inner_type = self.parse_type()?;
+                Ok(Type::May(Box::new(inner_type)))
+            }
             TokenKind::Ident => self.parse_ident_type(),
             TokenKind::Star => self.parse_ptr_type(),
             TokenKind::LSquare => self.parse_array_type(),

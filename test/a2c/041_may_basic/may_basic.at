@@ -1,0 +1,56 @@
+tag MayInt {
+    Nil Nil
+    Val int
+    Err int
+}
+
+fn is_nil(m MayInt) bool {
+    is m {
+        MayInt.Nil => true
+        _ => false
+    }
+}
+
+fn is_some(m MayInt) bool {
+    is m {
+        MayInt.Val(_) => true
+        _ => false
+    }
+}
+
+fn is_err(m MayInt) bool {
+    is m {
+        MayInt.Err(_) => true
+        _ => false
+    }
+}
+
+fn unwrap(m MayInt) int {
+    is m {
+        MayInt.Val(v) => v
+        MayInt.Nil => panic("unwrap on nil")
+        MayInt.Err(e) => panic("unwrap on error")
+    }
+}
+
+fn unwrap_or(m MayInt, default int) int {
+    is m {
+        MayInt.Val(v) => v
+        _ => default
+    }
+}
+
+fn main() {
+    let x = MayInt.Val(42)
+    assert(is_some(x))
+    assert(unwrap(x) == 42)
+
+    let y = MayInt.Nil()
+    assert(is_nil(y))
+    assert(unwrap_or(y, 0) == 0)
+
+    let z = MayInt.Err(1)
+    assert(is_err(z))
+
+    print("MayInt tests passed!")
+}

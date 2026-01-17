@@ -1,0 +1,7 @@
+fn test_question_return_int() ?int {
+    42
+}
+
+fn main() {
+    let result = test_question_return_int()
+}

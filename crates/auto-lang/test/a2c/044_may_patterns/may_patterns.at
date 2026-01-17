@@ -1,0 +1,37 @@
+tag Result {
+    Ok int
+    Err int
+}
+
+fn get_message(r Result) str {
+    is r {
+        Result.Ok(v) => "success"
+        Result.Err(e) => "error"
+    }
+}
+
+fn is_ok(r Result) bool {
+    is r {
+        Result.Ok(x) => true
+        Result.Err(x) => false
+    }
+}
+
+fn is_err(r Result) bool {
+    is r {
+        Result.Ok(x) => false
+        Result.Err(x) => true
+    }
+}
+
+fn main() {
+    let r1 = Result.Ok(42)
+    let msg1 = get_message(r1)
+    let check1 = is_ok(r1)
+
+    let r2 = Result.Err(1)
+    let msg2 = get_message(r2)
+    let check2 = is_err(r2)
+
+    check1
+}

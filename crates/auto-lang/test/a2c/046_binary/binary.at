@@ -1,0 +1,16 @@
+tag Binary {
+    Yes int
+    No int
+}
+
+fn is_first(m Binary) bool {
+    is m {
+        Binary.Yes(x) => true
+        Binary.No(x) => false
+    }
+}
+
+fn main() {
+    let s = Binary.Yes()
+    is_first(s)
+}

@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::ast::*;
-use crate::error::AutoResult;
+use crate::error::{AutoError, AutoResult};
 use crate::scope;
 use crate::scope::Meta;
 use crate::universe::Universe;
@@ -350,7 +350,7 @@ impl Evaler {
             Stmt::Alias(_) => Ok(Value::Void),
             Stmt::EmptyLine(_) => Ok(Value::Void),
             Stmt::Union(_) => Ok(Value::Void),
-            Stmt::Tag(_) => Ok(Value::Void),
+            Stmt::Tag(tag) => Ok(self.eval_tag_decl(tag)),
             Stmt::SpecDecl(spec_decl) => Ok(self.spec_decl(spec_decl)),
             Stmt::Break => Ok(Value::Void),
             Stmt::Ext(ext) => Ok(self.eval_ext(ext)),
@@ -501,6 +501,27 @@ impl Evaler {
         for br in &stmt.branches {
             match br {
                 IsBranch::EqBranch(expr, body) => {
+                    // Check if this is a tag pattern match
+                    if let Expr::Cover(cover) = &expr {
+                        if let ast::Cover::Tag(tag_cover) = cover {
+                            // Tag pattern matching: is atom { Atom.Int(i) => ... }
+                            if self.matches_tag_pattern(t, tag_cover)? {
+                                // Bind the element variable if present
+                                if tag_cover.elem != "" {
+                                    let target_val = self.eval_expr(t);
+                                    if let Value::Node(node) = target_val {
+                                        let payload = node.get_prop("payload");
+                                        self.universe.borrow_mut().set_local_val(tag_cover.elem.as_str(), payload);
+                                    }
+                                }
+                                return self.eval_body(&body);
+                            } else {
+                                continue; // Try next branch
+                            }
+                        }
+                    }
+
+                    // Regular equality comparison
                     // Resolve ValueRefs before comparison
                     let target_val = self.eval_expr(t);
                     let expr_val = self.eval_expr(&expr);
@@ -524,6 +545,33 @@ impl Evaler {
             }
         }
         Ok(Value::Void)
+    }
+
+    fn matches_tag_pattern(&mut self, target: &Expr, pattern: &ast::TagCover) -> AutoResult<bool> {
+        // Evaluate the target to get the tag value
+        let target_val = self.eval_expr(target);
+
+        // Check if target is a Node with tag properties
+        if let Value::Node(node) = target_val {
+            let tag_name = &node.name;
+            let variant = node.get_prop("variant");
+
+            // Match tag kind (e.g., "Atom" in Atom.Int)
+            if tag_name != &pattern.kind {
+                return Ok(false);
+            }
+
+            // Match variant name (e.g., "Int" in Atom.Int)
+            let variant_str = variant.to_string();
+            if variant_str != pattern.tag {
+                return Ok(false);
+            }
+
+            // Pattern matches!
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 
     fn eval_if(&mut self, if_: &If) -> AutoResult<Value> {
@@ -1598,8 +1646,21 @@ impl Evaler {
     // TODO: 需要整理一下，逻辑比较乱
     fn eval_call(&mut self, call: &Call) -> AutoResult<Value> {
         // Check if this is a method call like `file.close()` or `x.triple()`
+        // OR a tag construction like `Atom.Int(5)`
         if let Expr::Bina(left, op, right) = &*call.name {
             if *op == Op::Dot {
+                // First, check if this is tag construction: `Tag.Variant(args)`
+                if let Expr::Ident(tag_name) = &**left {
+                    if let Expr::Ident(variant_name) = &**right {
+                        // Check if tag_name is a tag type
+                        let tag_type = self.universe.borrow().lookup_type(tag_name);
+                        if matches!(tag_type, ast::Type::Tag(_)) {
+                            // This is tag construction!
+                            return self.eval_tag_construction(tag_name, variant_name, &call.args);
+                        }
+                    }
+                }
+
                 // This is a dot expression - check if it's a method call
                 // Evaluate the left side to get the instance
                 let instance = self.eval_expr(left);
@@ -2649,6 +2710,39 @@ impl Evaler {
         Value::Void
     }
 
+    fn eval_tag_decl(&mut self, tag: &ast::Tag) -> Value {
+        // Register each method in the tag definition
+        for method in &tag.methods {
+            // Create fully qualified method name: TagName::method_name
+            // Use double colon (::) to match type_decl's convention
+            let method_name: AutoStr = format!("{}::{}", tag.name, method.name).into();
+
+            // Check for duplicate method definitions
+            if let Some(existing_meta) = self.universe.borrow().lookup_meta(&method_name) {
+                // Method already exists, issue a warning
+                if let scope::Meta::Fn(_existing_fn) = existing_meta.as_ref() {
+                    eprintln!(
+                        "Warning: Method '{}' already defined for tag '{}'. Overwriting previous definition.",
+                        method.name, tag.name
+                    );
+                }
+            }
+
+            // Clone method and ensure parent and name are set correctly
+            let mut registered_method = method.clone();
+            registered_method.parent = Some(tag.name.clone());
+            registered_method.name = method_name.clone();  // Update name to qualified name
+
+            // Register in universe with qualified name
+            self.universe.borrow_mut().define(
+                method_name,
+                std::rc::Rc::new(scope::Meta::Fn(registered_method))
+            );
+        }
+
+        Value::Void
+    }
+
     fn spec_decl(&mut self, _spec_decl: &ast::SpecDecl) -> Value {
         // The spec is already registered in the parser
         // In the future, we might want to:
@@ -2709,6 +2803,43 @@ impl Evaler {
                 }
             }
             _ => Value::Nil,
+        }
+    }
+
+    fn eval_tag_construction(
+        &mut self,
+        tag_name: &AutoStr,
+        variant_name: &AutoStr,
+        args: &ast::Args
+    ) -> AutoResult<Value> {
+        // Get the tag type definition
+        let tag_type = self.universe.borrow().lookup_type(tag_name);
+        match tag_type {
+            ast::Type::Tag(tag) => {
+                let tag = tag.borrow();
+                // Find the variant in the tag definition
+                let field = tag.fields.iter()
+                    .find(|f| f.name == *variant_name)
+                    .ok_or_else(|| format!("Undefined variant: {}.{}", tag_name, variant_name))?;
+
+                // Evaluate payload from arguments
+                let payload = if args.args.len() > 0 {
+                    match &args.args[0] {
+                        ast::Arg::Pos(expr) => self.eval_expr(expr),
+                        _ => Value::Nil,
+                    }
+                } else {
+                    Value::Nil
+                };
+
+                // Create a Node to represent the tag value
+                let mut node = auto_val::Node::new(tag.name.as_str());
+                node.set_prop("variant", auto_val::Value::str(variant_name.as_str()));
+                node.set_prop("payload", payload);
+
+                Ok(auto_val::Value::Node(node))
+            }
+            _ => Ok(Value::Nil),
         }
     }
 
@@ -3380,6 +3511,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Spec(decl) => auto_val::Type::User(decl.borrow().name.clone()),
         ast::Type::Union(u) => auto_val::Type::Union(u.name.clone()),
         ast::Type::Tag(tag) => auto_val::Type::Tag(tag.borrow().name.clone()),
+        ast::Type::May(inner) => to_value_type(inner),  // May<T> transpiles to inner type
         ast::Type::Linear(inner) => to_value_type(inner),  // Linear wraps inner type
         ast::Type::Void => auto_val::Type::Void,
         ast::Type::Unknown => auto_val::Type::Any,

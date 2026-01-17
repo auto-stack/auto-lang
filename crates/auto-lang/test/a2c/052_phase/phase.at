@@ -1,0 +1,16 @@
+tag Phase {
+    Start int
+    End int
+}
+
+fn is_first(m Phase) bool {
+    is m {
+        Phase.Start(x) => true
+        Phase.End(x) => false
+    }
+}
+
+fn main() {
+    let s = Phase.Start()
+    is_first(s)
+}

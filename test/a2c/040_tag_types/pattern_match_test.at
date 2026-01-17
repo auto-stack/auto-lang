@@ -1,0 +1,6 @@
+tag Atom { Int int, Float float }
+let atom = Atom.Int(42)
+is atom {
+    Atom.Int(i) => i
+    Atom.Float(f) => f
+}

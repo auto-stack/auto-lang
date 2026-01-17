@@ -1,0 +1,41 @@
+tag MayBool {
+    Nil int
+    Val bool
+    Err int
+}
+
+fn is_nil(m MayBool) bool {
+    is m {
+        MayBool.Nil(x) => true
+        MayBool.Val(x) => false
+        MayBool.Err(x) => false
+    }
+}
+
+fn is_some(m MayBool) bool {
+    is m {
+        MayBool.Nil(x) => false
+        MayBool.Val(x) => true
+        MayBool.Err(x) => false
+    }
+}
+
+fn unwrap_or(m MayBool, default bool) bool {
+    is m {
+        MayBool.Nil(x) => default
+        MayBool.Val(v) => v
+        MayBool.Err(x) => default
+    }
+}
+
+fn main() {
+    let x = MayBool.Val(true)
+    let check1 = is_some(x)
+    let val1 = unwrap_or(x, false)
+
+    let y = MayBool.Nil()
+    let check2 = is_nil(y)
+    let val2 = unwrap_or(y, true)
+
+    val1
+}

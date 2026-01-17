@@ -1,0 +1,58 @@
+# Simple May type without generics
+
+tag MayInt {
+    nil Nil
+    val int
+    err int
+
+    fn is_nil() bool {
+        is self {
+            nil => true
+            _ => false
+        }
+    }
+
+    fn is_some() bool {
+        is self {
+            val(_) => true
+            _ => false
+        }
+    }
+
+    fn is_err() bool {
+        is self {
+            err(_) => true
+            _ => false
+        }
+    }
+
+    fn unwrap() int {
+        is self {
+            val(v) => v
+            nil => panic("unwrap on nil")
+            err(e) => panic(f"unwrap on error: $e")
+        }
+    }
+
+    fn unwrap_or(default int) int {
+        is self {
+            val(v) => v
+            _ => default
+        }
+    }
+}
+
+fn main() {
+    let x = MayInt.val(42)
+    assert(x.is_some())
+    assert(x.unwrap() == 42)
+
+    let y = MayInt.nil()
+    assert(y.is_nil())
+    assert(y.unwrap_or(0) == 0)
+
+    let z = MayInt.err(1)
+    assert(z.is_err())
+
+    print("MayInt tests passed!")
+}

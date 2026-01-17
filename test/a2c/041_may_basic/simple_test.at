@@ -1,0 +1,13 @@
+tag MayInt {
+    Nil Nil
+    Val int
+    Err int
+}
+
+fn main() {
+    let x = MayInt.Val(42)
+    let y = MayInt.Nil()
+    let z = MayInt.Err(1)
+
+    print("MayInt basic test passed!")
+}

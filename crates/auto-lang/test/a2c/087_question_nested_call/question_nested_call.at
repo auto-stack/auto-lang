@@ -1,0 +1,11 @@
+fn helper() int {
+    42
+}
+
+fn test_nested_call() ?int {
+    helper()
+}
+
+fn main() {
+    let result = test_nested_call()
+}

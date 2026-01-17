@@ -1,0 +1,18 @@
+tag Zone {
+    A int
+    B int
+    C int
+}
+
+fn is_first(m Zone) bool {
+    is m {
+        Zone.A(x) => true
+        Zone.B(x) => false
+        Zone.C(x) => false
+    }
+}
+
+fn main() {
+    let s = Zone.A()
+    is_first(s)
+}

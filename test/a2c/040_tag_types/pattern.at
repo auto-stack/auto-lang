@@ -1,0 +1,23 @@
+// Test tag pattern matching
+tag Atom {
+    Int int
+    Float float
+}
+
+fn test_tag_match() int {
+    let atom = Atom.Int(42)
+
+    is atom {
+        Atom.Int(i) => {
+            return i
+        }
+        Atom.Float(f) => {
+            return 0
+        }
+    }
+}
+
+fn main() {
+    let result = test_tag_match()
+    result
+}

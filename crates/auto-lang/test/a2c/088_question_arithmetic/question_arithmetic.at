@@ -1,0 +1,7 @@
+fn test_arithmetic() ?int {
+    10 + 32
+}
+
+fn main() {
+    let result = test_arithmetic()
+}

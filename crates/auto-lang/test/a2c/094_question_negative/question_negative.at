@@ -1,0 +1,7 @@
+fn test_question_negative() ?int {
+    0
+}
+
+fn main() {
+    let result = test_question_negative()
+}

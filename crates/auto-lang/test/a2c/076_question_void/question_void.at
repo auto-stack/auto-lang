@@ -1,0 +1,7 @@
+fn test_question_void() ?void {
+    ()
+}
+
+fn main() {
+    let result = test_question_void()
+}

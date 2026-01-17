@@ -1,0 +1,16 @@
+tag Level {
+    High int
+    Low int
+}
+
+fn is_first(m Level) bool {
+    is m {
+        Level.High(x) => true
+        Level.Low(x) => false
+    }
+}
+
+fn main() {
+    let s = Level.High()
+    is_first(s)
+}

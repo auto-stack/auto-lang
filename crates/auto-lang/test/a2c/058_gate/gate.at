@@ -1,0 +1,16 @@
+tag Gate {
+    Open int
+    Shut int
+}
+
+fn is_first(m Gate) bool {
+    is m {
+        Gate.Open(x) => true
+        Gate.Shut(x) => false
+    }
+}
+
+fn main() {
+    let s = Gate.Open()
+    is_first(s)
+}

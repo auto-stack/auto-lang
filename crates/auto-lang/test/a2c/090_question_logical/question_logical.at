@@ -1,0 +1,7 @@
+fn test_logical() ?bool {
+    true && false
+}
+
+fn main() {
+    let result = test_logical()
+}

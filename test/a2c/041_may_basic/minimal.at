@@ -1,0 +1,10 @@
+tag MayInt {
+    Nil Nil
+    Val int
+    Err int
+}
+
+fn main() {
+    let x = MayInt.Val(42)
+    print("MayInt test")
+}

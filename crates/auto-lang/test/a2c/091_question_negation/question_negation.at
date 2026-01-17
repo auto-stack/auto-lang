@@ -1,0 +1,7 @@
+fn test_negation() ?int {
+    -42
+}
+
+fn main() {
+    let result = test_negation()
+}

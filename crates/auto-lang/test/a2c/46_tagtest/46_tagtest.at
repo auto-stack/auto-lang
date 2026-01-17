@@ -1,0 +1,16 @@
+tag TagTest {
+    First int
+    Second int
+}
+
+fn is_first(m TagTest) bool {
+    is m {
+        TagTest.First(x) => true
+        TagTest.Second(x) => false
+    }
+}
+
+fn main() {
+    let t = TagTest.First()
+    is_first(t)
+}

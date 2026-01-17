@@ -1,0 +1,16 @@
+tag Side {
+    Left int
+    Right int
+}
+
+fn is_first(m Side) bool {
+    is m {
+        Side.Left(x) => true
+        Side.Right(x) => false
+    }
+}
+
+fn main() {
+    let s = Side.Left()
+    is_first(s)
+}

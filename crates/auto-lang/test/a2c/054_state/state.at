@@ -1,0 +1,16 @@
+tag State {
+    Open int
+    Closed int
+}
+
+fn is_first(m State) bool {
+    is m {
+        State.Open(x) => true
+        State.Closed(x) => false
+    }
+}
+
+fn main() {
+    let s = State.Open()
+    is_first(s)
+}

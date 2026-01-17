@@ -1,0 +1,16 @@
+tag Result {
+    Pass int
+    Fail int
+}
+
+fn is_first(m Result) bool {
+    is m {
+        Result.Pass(x) => true
+        Result.Fail(x) => false
+    }
+}
+
+fn main() {
+    let s = Result.Pass()
+    is_first(s)
+}

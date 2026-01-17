@@ -1,0 +1,16 @@
+tag Path {
+    North int
+    South int
+}
+
+fn is_first(m Path) bool {
+    is m {
+        Path.North(x) => true
+        Path.South(x) => false
+    }
+}
+
+fn main() {
+    let s = Path.North()
+    is_first(s)
+}

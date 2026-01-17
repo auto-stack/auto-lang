@@ -1,0 +1,16 @@
+tag Color {
+    Red int
+    Blue int
+}
+
+fn is_first(m Color) bool {
+    is m {
+        Color.Red(x) => true
+        Color.Blue(x) => false
+    }
+}
+
+fn main() {
+    let s = Color.Red()
+    is_first(s)
+}

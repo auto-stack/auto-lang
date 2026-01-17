@@ -1,0 +1,9 @@
+use auto.io: File
+
+fn main() {
+    let mut result = ""
+    for !false {
+        break
+    }
+    result
+}

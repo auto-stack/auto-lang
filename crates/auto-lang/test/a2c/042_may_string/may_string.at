@@ -1,0 +1,41 @@
+tag MayStr {
+    Nil int
+    Val str
+    Err int
+}
+
+fn is_nil(m MayStr) bool {
+    is m {
+        MayStr.Nil(x) => true
+        MayStr.Val(x) => false
+        MayStr.Err(x) => false
+    }
+}
+
+fn is_some(m MayStr) bool {
+    is m {
+        MayStr.Nil(x) => false
+        MayStr.Val(x) => true
+        MayStr.Err(x) => false
+    }
+}
+
+fn unwrap_or(m MayStr, default str) str {
+    is m {
+        MayStr.Nil(x) => default
+        MayStr.Val(v) => v
+        MayStr.Err(x) => default
+    }
+}
+
+fn main() {
+    let x = MayStr.Val("hello")
+    let check1 = is_some(x)
+    let val1 = unwrap_or(x, "default")
+
+    let y = MayStr.Nil()
+    let check2 = is_nil(y)
+    let val2 = unwrap_or(y, "fallback")
+
+    val1
+}

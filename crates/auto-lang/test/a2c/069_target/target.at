@@ -1,0 +1,16 @@
+tag Target {
+    Near int
+    Far int
+}
+
+fn is_first(m Target) bool {
+    is m {
+        Target.Near(x) => true
+        Target.Far(x) => false
+    }
+}
+
+fn main() {
+    let s = Target.Near()
+    is_first(s)
+}

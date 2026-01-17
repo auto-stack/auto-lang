@@ -1,0 +1,11 @@
+// Test basic tag type definition
+tag May {
+    Empty Empty
+    Value int
+    Error str
+}
+
+// Test tag construction
+let x = May.Value(42)
+let y = May.Empty
+let z = May.Error(c"something went wrong")

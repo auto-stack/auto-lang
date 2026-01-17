@@ -1,0 +1,7 @@
+fn test_comparison() ?bool {
+    42 > 10
+}
+
+fn main() {
+    let result = test_comparison()
+}

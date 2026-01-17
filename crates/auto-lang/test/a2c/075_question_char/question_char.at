@@ -1,0 +1,7 @@
+fn test_question_char() ?char {
+    'a'
+}
+
+fn main() {
+    let result = test_question_char()
+}

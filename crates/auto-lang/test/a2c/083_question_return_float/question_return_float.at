@@ -1,0 +1,7 @@
+fn test_question_return_float() ?float {
+    3.14
+}
+
+fn main() {
+    let result = test_question_return_float()
+}

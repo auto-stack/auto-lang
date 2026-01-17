@@ -1,0 +1,16 @@
+tag Format {
+    Text int
+    Binary int
+}
+
+fn is_first(m Format) bool {
+    is m {
+        Format.Text(x) => true
+        Format.Binary(x) => false
+    }
+}
+
+fn main() {
+    let s = Format.Text()
+    is_first(s)
+}

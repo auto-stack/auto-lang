@@ -1,0 +1,4 @@
+tag Atom {
+    Int int
+    Float float
+}

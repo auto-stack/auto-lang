@@ -1,0 +1,31 @@
+tag Option {
+    Some int
+    None int
+}
+
+fn double_or_default(opt Option, default int) int {
+    is opt {
+        Option.Some(v) => v * 2
+        Option.None(x) => default
+    }
+}
+
+fn get_value(opt Option) int {
+    is opt {
+        Option.Some(x) => x
+        Option.None(x) => 0
+    }
+}
+
+fn main() {
+    let a = Option.Some(10)
+    let b = Option.None()
+
+    let result1 = double_or_default(a, 0)
+    let result2 = double_or_default(b, 100)
+    let v1 = get_value(a)
+    let v2 = get_value(b)
+    let result3 = v1 + v2
+
+    result3
+}

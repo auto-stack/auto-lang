@@ -1,0 +1,7 @@
+fn test_question_return_str() ?str {
+    "test"
+}
+
+fn main() {
+    let result = test_question_return_str()
+}

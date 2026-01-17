@@ -1,0 +1,16 @@
+tag Direction {
+    Up int
+    Down int
+}
+
+fn is_first(m Direction) bool {
+    is m {
+        Direction.Up(x) => true
+        Direction.Down(x) => false
+    }
+}
+
+fn main() {
+    let s = Direction.Up()
+    is_first(s)
+}

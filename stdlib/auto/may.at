@@ -1,0 +1,72 @@
+# C
+// May<T> is implemented using AutoLang's tag type system
+// No external C code needed - all functionality is in AutoLang
+
+tag May<T> {
+    nil Nil
+    val T
+    err int
+
+    // Static methods
+    static fn empty() May<T> {
+        May.nil()
+    }
+
+    static fn value(v T) May<T> {
+        May.val(v)
+    }
+
+    static fn error(e int) May<T> {
+        May.err(e)
+    }
+
+    // Instance methods
+    fn is_nil() bool {
+        is self {
+            nil => true
+            _ => false
+        }
+    }
+
+    fn is_some() bool {
+        is self {
+            val(_) => true
+            _ => false
+        }
+    }
+
+    fn is_err() bool {
+        is self {
+            err(_) => true
+            _ => false
+        }
+    }
+
+    fn unwrap() T {
+        is self {
+            val(v) => v
+            nil => panic("unwrap on nil")
+            err(e) => panic(f"unwrap on error: $e")
+        }
+    }
+
+    fn unwrap_or(default T) T {
+        is self {
+            val(v) => v
+            _ => default
+        }
+    }
+}
+
+// Convenience functions (alias static methods)
+fn some<T>(v T) May<T> {
+    May.value(v)
+}
+
+fn nil<T>() May<T> {
+    May.empty()
+}
+
+fn err<T>(e int) May<T> {
+    May.error(e)
+}

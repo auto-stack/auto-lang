@@ -1,0 +1,16 @@
+tag Speed {
+    Fast int
+    Slow int
+}
+
+fn is_first(m Speed) bool {
+    is m {
+        Speed.Fast(x) => true
+        Speed.Slow(x) => false
+    }
+}
+
+fn main() {
+    let s = Speed.Fast()
+    is_first(s)
+}

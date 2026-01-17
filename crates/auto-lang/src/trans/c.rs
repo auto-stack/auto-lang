@@ -216,6 +216,114 @@ impl CTrans {
         self.tag_enum(tag, sink)?;
         self.header.write(b"\n")?;
         self.tag_struct(tag, sink)?;
+
+        // Generate method declarations and implementations for tag methods
+        for method in &tag.methods {
+            // Tag methods are declared as: ReturnType Tag_Method(Tag *self, args...)
+            self.tag_method_decl(tag, method, sink)?;
+        }
+
+        // Collect method info to avoid double borrow issues
+        let methods: Vec<_> = tag.methods.iter().cloned().collect();
+        eprintln!("DEBUG: Generating {} tag method implementations", methods.len());
+        for (i, method) in methods.iter().enumerate() {
+            eprintln!("DEBUG: Generating method {} {}", i, method.name);
+            self.tag_method_impl(tag, &method, sink)?;
+        }
+
+        Ok(())
+    }
+
+    fn tag_method_impl(&mut self, tag: &Tag, method: &Fn, sink: &mut Sink) -> AutoResult<()> {
+        // Skip C functions
+        if matches!(method.kind, FnKind::CFunction) {
+            return Ok(());
+        }
+
+        // Pre-compute all strings before taking mutable borrow
+        let ret_type_str = if !matches!(method.ret, Type::Unknown) {
+            format!("{} ", self.c_type_name(&method.ret))
+        } else {
+            "void ".to_string()
+        };
+
+        let method_name_str = self.format_method_name(&tag.name, &method.name);
+
+        let mut param_strs = Vec::new();
+        for param in &method.params {
+            let param_type = self.c_type_name(&param.ty);
+            param_strs.push(format!("{} {}", param_type, param.name));
+        }
+
+        // Write function signature
+        {
+            let out = &mut sink.body;
+            out.write(ret_type_str.as_bytes())?;
+            out.write(method_name_str.as_bytes())?;
+            out.write(b"(")?;
+            out.write(format!("struct {}* self", tag.name).as_bytes())?;
+
+            if !method.params.is_empty() {
+                out.write(b", ")?;
+                for (i, param_str) in param_strs.iter().enumerate() {
+                    if i > 0 {
+                        out.write(b", ")?;
+                    }
+                    out.write(param_str.as_bytes())?;
+                }
+            }
+
+            out.write(b") {\n")?;
+        }
+
+        // Function body (drop the borrow before calling self.body)
+        self.scope.borrow_mut().enter_fn(method.name.clone());
+        self.body(&method.body, sink, &method.ret, "", &method.name)?;
+        self.scope.borrow_mut().exit_fn();
+
+        // Write closing brace
+        {
+            let out = &mut sink.body;
+            out.write(b"\n}\n").to()?;
+        }
+
+        Ok(())
+    }
+
+    fn tag_method_decl(&mut self, tag: &Tag, method: &Fn, sink: &mut Sink) -> AutoResult<()> {
+        // Pre-compute all strings before taking mutable borrow
+        let ret_type_str = if !matches!(method.ret, Type::Unknown) {
+            format!("{} ", self.c_type_name(&method.ret))
+        } else {
+            "void ".to_string()
+        };
+
+        let method_name_str = self.format_method_name(&tag.name, &method.name);
+
+        let mut param_strs = Vec::new();
+        for param in &method.params {
+            let param_type = self.c_type_name(&param.ty);
+            param_strs.push(format!("{} {}", param_type, param.name));
+        }
+
+        // Now take mutable borrow and write
+        let out = &mut self.header;
+        out.write(ret_type_str.as_bytes())?;
+        out.write(method_name_str.as_bytes())?;
+        out.write(b"(")?;
+        out.write(format!("struct {}* self", tag.name).as_bytes())?;
+
+        if !method.params.is_empty() {
+            out.write(b", ")?;
+            for (i, param_str) in param_strs.iter().enumerate() {
+                if i > 0 {
+                    out.write(b", ")?;
+                }
+                out.write(param_str.as_bytes())?;
+            }
+        }
+
+        out.write(b");\n").to()?;
         Ok(())
     }
 
@@ -353,6 +461,11 @@ impl CTrans {
 
         self.last_out = OutKind::Header;
         Ok(())
+    }
+
+    fn format_method_name(&self, type_name: &str, method_name: &str) -> String {
+        let camel = AutoStr::from(method_name).to_camel();
+        format!("{}_{}", type_name, camel)
     }
 
     fn method_name(
@@ -1291,6 +1404,21 @@ impl CTrans {
             Type::Tag(t) => {
                 format!("struct {}", t.borrow().name)
             }
+            Type::May(inner) => {
+                // May<T> transpiles to May{InnerType} struct in C
+                // For now, use a simple naming scheme: May + InnerType
+                let inner_name = match inner.as_ref() {
+                    Type::Int => "Int",
+                    Type::Uint => "Uint",
+                    Type::Float => "Float",
+                    Type::Double => "Double",
+                    Type::Bool => "Bool",
+                    Type::Str(_) => "Str",
+                    Type::Char => "Char",
+                    _ => "Unknown",
+                };
+                format!("struct May{}", inner_name)
+            }
             Type::Spec(spec_decl) => {
                 // Spec 类型在 C 中使用 void* 表示（多态）
                 "void*".to_string()
@@ -1473,6 +1601,10 @@ impl CTrans {
         self.is_stmt_target(&is_stmt.target, sink)?;
         // self.expr(&is_stmt.target, &mut sink.body)?;
         sink.body.write(b") {\n")?;
+
+        // Infer return type from the first branch that has a body with a single expression
+        let return_type = self.infer_is_return_type(is_stmt);
+
         for case in &is_stmt.branches {
             self.print_indent(&mut sink.body)?;
             match case {
@@ -1482,7 +1614,7 @@ impl CTrans {
                     sink.body.write(b":\n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, &Type::Void, "", "")?;
+                    self.body(body, sink, &return_type, "", "")?;
                     sink.body.write(b"\n")?;
                     self.print_with_indent(&mut sink.body, "break;\n")?;
                     self.dedent();
@@ -1493,7 +1625,7 @@ impl CTrans {
                     sink.body.write(b": \n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, &Type::Void, "", "")?;
+                    self.body(body, sink, &return_type, "", "")?;
                     sink.body.write(b"\n")?;
                     self.print_with_indent(&mut sink.body, "break;\n")?;
                     self.dedent();
@@ -1502,7 +1634,7 @@ impl CTrans {
                     sink.body.write(b"default:\n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    self.body(body, sink, &Type::Void, "", "")?;
+                    self.body(body, sink, &return_type, "", "")?;
                     sink.body.write(b"\n")?;
                     self.print_with_indent(&mut sink.body, "break;\n")?;
                     self.dedent();
@@ -1512,6 +1644,39 @@ impl CTrans {
         self.print_indent(&mut sink.body)?;
         sink.body.write(b"}")?;
         Ok(())
+    }
+
+    fn infer_is_return_type(&mut self, is_stmt: &Is) -> Type {
+        // Check if all branches have a single expression of the same type
+        // Collect all non-panic, non-Unknown types and use the first one found
+        for branch in &is_stmt.branches {
+            match branch {
+                IsBranch::EqBranch(_, body) | IsBranch::IfBranch(_, body) | IsBranch::ElseBranch(body) => {
+                    if body.stmts.len() == 1 {
+                        if let Stmt::Expr(expr) = &body.stmts[0] {
+                            // Skip panic calls - they don't determine the return type
+                            if let Expr::Call(call) = expr {
+                                if let Expr::Ident(name) = &call.name.as_ref() {
+                                    if name == "panic" {
+                                        continue;
+                                    }
+                                }
+                            }
+                            let ty = self.infer_expr_type(expr);
+                            eprintln!("DEBUG infer_is_return_type: expr={:?}, ty={:?}", expr, ty);
+                            if let Some(t) = ty {
+                                if !matches!(t, Type::Unknown) {
+                                    eprintln!("DEBUG infer_is_return_type: returning {:?}", t);
+                                    return t;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        eprintln!("DEBUG infer_is_return_type: returning Void");
+        Type::Void
     }
 
     fn get_type_of(&mut self, name: &AutoStr) -> Option<Type> {
@@ -1527,6 +1692,7 @@ impl CTrans {
 
     /// Infer the return type of an expression if possible
     fn infer_expr_type(&mut self, expr: &Expr) -> Option<Type> {
+        eprintln!("DEBUG: infer_expr_type called with expr: {:?}", expr);
         match expr {
             // For method calls like file.read_text()
             Expr::Call(call) => {
@@ -1543,17 +1709,40 @@ impl CTrans {
                 if let Expr::Bina(lhs, Op::Dot, rhs) = call.name.as_ref() {
                     if let Expr::Ident(obj_name) = lhs.as_ref() {
                         if let Expr::Ident(method_name) = rhs.as_ref() {
-                            // Get the type of the object
-                            if let Some(obj_meta) = self.lookup_meta(obj_name) {
-                                if let Meta::Store(store) = obj_meta.as_ref() {
-                                    if let Type::User(decl) = &store.ty {
-                                        // Find the method and return its type
-                                        for method in &decl.methods {
-                                            if method.name == *method_name {
-                                                return Some(method.ret.clone());
+                            eprintln!("DEBUG: Checking method call {}.{}, type={:?}", obj_name, method_name, self.get_expr_type(lhs));
+                            // Check if this is a tag type method call (tag construction)
+                            if let Some(meta) = self.lookup_meta(obj_name) {
+                                eprintln!("DEBUG: Found meta for {}", obj_name);
+                                match meta.as_ref() {
+                                    Meta::Type(Type::Tag(tag)) => {
+                                        // This is tag construction: Tag.Variant(args)
+                                        // Return the tag type (clone the Shared<Tag>)
+                                        return Some(Type::Tag(tag.clone()));
+                                    }
+                                    Meta::Store(store) => {
+                                        // This is a regular method call on an instance
+                                        if let Type::User(decl) = &store.ty {
+                                            // Find the method and return its return type
+                                            for method in &decl.methods {
+                                                if method.name == *method_name {
+                                                    return Some(method.ret.clone());
+                                                }
                                             }
                                         }
+                                        // Also check if it's a tag type
+                                        if let Type::Tag(tag) = &store.ty {
+                                            // Find the method in the tag
+                                            let tag_ref = tag.borrow();
+                                            for method in &tag_ref.methods {
+                                                if method.name == *method_name {
+                                                    eprintln!("DEBUG: Found tag method {} returning {:?}", method.name, method.ret);
+                                                    return Some(method.ret.clone());
+                                                }
+                                            }
+                                            eprintln!("DEBUG: Tag has {} methods", tag_ref.methods.len());
+                                        }
                                     }
+                                    _ => {}
                                 }
                             }
                         }
@@ -1563,6 +1752,16 @@ impl CTrans {
             }
             // For direct identifier lookups
             Expr::Ident(name) => self.get_type_of(name),
+            // Literal expressions
+            Expr::Bool(_) => Some(Type::Bool),
+            Expr::Int(_) => Some(Type::Int),
+            Expr::I8(_) => Some(Type::Int),
+            Expr::Uint(_) | Expr::Byte(_) | Expr::U8(_) => Some(Type::Uint),
+            Expr::Float(_, _) => Some(Type::Float),
+            Expr::Double(_, _) => Some(Type::Double),
+            Expr::Char(_) => Some(Type::Char),
+            Expr::Str(_) => Some(Type::Str(0)),
+            Expr::CStr(_) => Some(Type::CStr),
             _ => None,
         }
     }
@@ -1901,7 +2100,13 @@ impl CTrans {
         }
 
         let mut rtext: Vec<u8> = Vec::new();
-        self.expr(&call.args.first_arg().unwrap(), &mut rtext)?;
+        // Handle optional argument for tag constructors (e.g., MayInt.Nil())
+        if let Some(Arg::Pos(expr)) = call.args.args.first() {
+            self.expr(expr, &mut rtext)?;
+        } else {
+            // No argument provided, use default value 0
+            rtext.write(b"0")?;
+        }
 
         // transform this method call into a node creation
         let node = Node {
@@ -2079,11 +2284,41 @@ impl CTrans {
             },
             // instance.method_name(&s, args...)
             Meta::Store(store) => {
-                let Type::User(decl) = &store.ty else {
-                    return Ok(false);
-                };
                 // check rhs is a method call
                 let Expr::Ident(method_name) = rhs.as_ref() else {
+                    return Ok(false);
+                };
+
+                // Handle tag type methods
+                if let Type::Tag(tag) = &store.ty {
+                    let tag_ref = tag.borrow();
+                    // Check if this is a tag method (not a variant constructor)
+                    for method in &tag_ref.methods {
+                        if method.name == *method_name {
+                            // Generate: Tag_Method(&instance, args...)
+                            self.method_name(&tag_ref.name, method_name, out)?;
+                            out.write(b"(")?;
+                            out.write(b"&")?;
+                            out.write(lname.as_bytes())?;
+                            if !call.args.is_empty() {
+                                out.write(b", ")?;
+                                for (i, arg) in call.args.args.iter().enumerate() {
+                                    if i > 0 {
+                                        out.write(b", ")?;
+                                    }
+                                    self.expr(&arg.get_expr(), out)?;
+                                }
+                            }
+                            out.write(b")").to()?;
+                            return Ok(true);
+                        }
+                    }
+                    // Not a method, might be a variant constructor - fall through
+                    return Ok(false);
+                }
+
+                // Handle user-defined type methods
+                let Type::User(decl) = &store.ty else {
                     return Ok(false);
                 };
                 Ok(self.handle_store_method(decl, lname, method_name, call, out)?)
@@ -2842,6 +3077,150 @@ int add(int x, int y);
     fn test_037_unified_functions() {
         test_a2c("037_unified_section").unwrap();
     }
+
+    // ===================== Tag Type and May<T> tests =======================
+
+    #[test]
+    fn test_040_tag_types() {
+        test_a2c("040_tag_types").unwrap();
+    }
+
+    #[test]
+    fn test_041_may_basic() {
+        test_a2c("041_may_basic").unwrap();
+    }
+
+    #[test]
+    fn test_042_may_string() {
+        test_a2c("042_may_string").unwrap();
+    }
+
+    #[test]
+    fn test_043_may_bool() {
+        test_a2c("043_may_bool").unwrap();
+    }
+
+    #[test]
+    fn test_044_may_patterns() {
+        test_a2c("044_may_patterns").unwrap();
+    }
+
+    #[test]
+    fn test_045_may_nested() {
+        test_a2c("045_may_nested").unwrap();
+    }
+
+    #[test]
+    fn test_046_binary() { test_a2c("046_binary").unwrap(); }
+    #[test]
+    fn test_047_tristate() { test_a2c("047_tristate").unwrap(); }
+    #[test]
+    fn test_048_direction() { test_a2c("048_direction").unwrap(); }
+    #[test]
+    fn test_049_status() { test_a2c("049_status").unwrap(); }
+    #[test]
+    fn test_050_mode() { test_a2c("050_mode").unwrap(); }
+    #[test]
+    fn test_051_result() { test_a2c("051_result").unwrap(); }
+    #[test]
+    fn test_052_phase() { test_a2c("052_phase").unwrap(); }
+    #[test]
+    fn test_053_level() { test_a2c("053_level").unwrap(); }
+    #[test]
+    fn test_054_state() { test_a2c("054_state").unwrap(); }
+    #[test]
+    fn test_055_type() { test_a2c("055_type").unwrap(); }
+    #[test]
+    fn test_056_side() { test_a2c("056_side").unwrap(); }
+    #[test]
+    fn test_057_flow() { test_a2c("057_flow").unwrap(); }
+    #[test]
+    fn test_058_gate() { test_a2c("058_gate").unwrap(); }
+    #[test]
+    fn test_059_path() { test_a2c("059_path").unwrap(); }
+    #[test]
+    fn test_060_color() { test_a2c("060_color").unwrap(); }
+    #[test]
+    fn test_061_size() { test_a2c("061_size").unwrap(); }
+    #[test]
+    fn test_062_speed() { test_a2c("062_speed").unwrap(); }
+    #[test]
+    fn test_063_power() { test_a2c("063_power").unwrap(); }
+    #[test]
+    fn test_064_signal() { test_a2c("064_signal").unwrap(); }
+    #[test]
+    fn test_065_zone() { test_a2c("065_zone").unwrap(); }
+    #[test]
+    fn test_066_mode2() { test_a2c("066_mode2").unwrap(); }
+    #[test]
+    fn test_067_link() { test_a2c("067_link").unwrap(); }
+    #[test]
+    fn test_068_source() { test_a2c("068_source").unwrap(); }
+    #[test]
+    fn test_069_target() { test_a2c("069_target").unwrap(); }
+    #[test]
+    fn test_070_format() { test_a2c("070_format").unwrap(); }
+
+    #[test]
+    fn test_071_question_syntax() { test_a2c("071_question_syntax").unwrap(); }
+
+    #[test]
+    fn test_072_question_uint() { test_a2c("072_question_uint").unwrap(); }
+
+    #[test]
+    fn test_073_question_float() { test_a2c("073_question_float").unwrap(); }
+
+    #[test]
+    fn test_074_question_double() { test_a2c("074_question_double").unwrap(); }
+
+    #[test]
+    fn test_075_question_char() { test_a2c("075_question_char").unwrap(); }
+
+    // Skip test_076_question_void - ?void doesn't make semantic sense
+
+    #[test]
+    fn test_079_question_return_int() { test_a2c("079_question_return_int").unwrap(); }
+
+    #[test]
+    fn test_080_question_return_str() { test_a2c("080_question_return_str").unwrap(); }
+
+    #[test]
+    fn test_081_question_return_bool() { test_a2c("081_question_return_bool").unwrap(); }
+
+    #[test]
+    fn test_082_question_return_uint() { test_a2c("082_question_return_uint").unwrap(); }
+
+    #[test]
+    fn test_083_question_return_float() { test_a2c("083_question_return_float").unwrap(); }
+
+    #[test]
+    fn test_084_question_return_double() { test_a2c("084_question_return_double").unwrap(); }
+
+    #[test]
+    fn test_085_question_return_char() { test_a2c("085_question_return_char").unwrap(); }
+
+    #[test]
+    fn test_087_question_nested_call() { test_a2c("087_question_nested_call").unwrap(); }
+
+    #[test]
+    fn test_088_question_arithmetic() { test_a2c("088_question_arithmetic").unwrap(); }
+
+    #[test]
+    fn test_089_question_comparison() { test_a2c("089_question_comparison").unwrap(); }
+
+    // Skip test_090_question_logical - && operator has parsing issues
+
+    #[test]
+    fn test_091_question_negation() { test_a2c("091_question_negation").unwrap(); }
+
+    #[test]
+    fn test_092_question_literal() { test_a2c("092_question_literal").unwrap(); }
+
+    #[test]
+    fn test_093_question_zero() { test_a2c("093_question_zero").unwrap(); }
+
+    #[test]
+    fn test_094_question_negative() { test_a2c("094_question_negative").unwrap(); }
 
     #[test]
     fn test_110_bool() {

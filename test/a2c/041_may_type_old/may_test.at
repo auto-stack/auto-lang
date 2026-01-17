@@ -1,0 +1,78 @@
+use may: {some, nil, err}
+
+fn test_may_construction() {
+    let x = some(42)
+    assert(x.is_some())
+    assert(!x.is_nil())
+    assert(!x.is_err())
+}
+
+fn test_may_nil() {
+    let x = nil()
+    assert(x.is_nil())
+    assert(!x.is_some())
+    assert(!x.is_err())
+}
+
+fn test_may_error() {
+    let x = err(42)
+    assert(x.is_err())
+    assert(!x.is_some())
+    assert(!x.is_nil())
+}
+
+fn test_may_pattern_matching() {
+    let x = some(42)
+    is x {
+        val(v) => assert(v == 42)
+        nil => assert(false)
+        err(e) => assert(false)
+    }
+
+    let y = nil()
+    is y {
+        val(v) => assert(false)
+        nil => assert(true)
+        err(e) => assert(false)
+    }
+
+    let z = err(1)
+    is z {
+        val(v) => assert(false)
+        nil => assert(false)
+        err(e) => assert(e == 1)
+    }
+}
+
+fn test_may_unwrap() {
+    let x = some(42)
+    assert(x.unwrap() == 42)
+
+    let y = nil()
+    assert(y.unwrap_or(0) == 0)
+
+    let z = err(1)
+    assert(z.unwrap_or(99) == 99)
+}
+
+fn test_may_static_methods() {
+    let x = May.empty()
+    assert(x.is_nil())
+
+    let y = May.value(42)
+    assert(y.is_some())
+
+    let z = May.error(1)
+    assert(z.is_err())
+}
+
+fn main() {
+    test_may_construction()
+    test_may_nil()
+    test_may_error()
+    test_may_pattern_matching()
+    test_may_unwrap()
+    test_may_static_methods()
+
+    print("All May<T> tests passed!")
+}

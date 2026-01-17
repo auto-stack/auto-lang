@@ -1,0 +1,16 @@
+tag Source {
+    Internal int
+    External int
+}
+
+fn is_first(m Source) bool {
+    is m {
+        Source.Internal(x) => true
+        Source.External(x) => false
+    }
+}
+
+fn main() {
+    let s = Source.Internal()
+    is_first(s)
+}

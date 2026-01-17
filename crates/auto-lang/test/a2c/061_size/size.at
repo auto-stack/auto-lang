@@ -1,0 +1,16 @@
+tag Size {
+    Big int
+    Small int
+}
+
+fn is_first(m Size) bool {
+    is m {
+        Size.Big(x) => true
+        Size.Small(x) => false
+    }
+}
+
+fn main() {
+    let s = Size.Big()
+    is_first(s)
+}

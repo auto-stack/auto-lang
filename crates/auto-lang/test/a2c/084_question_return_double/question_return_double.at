@@ -1,0 +1,7 @@
+fn test_question_return_double() ?double {
+    2.71
+}
+
+fn main() {
+    let result = test_question_return_double()
+}

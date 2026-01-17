@@ -1,0 +1,60 @@
+tag MayInt {
+    Nil Nil
+    Val int
+    Err int
+}
+
+fn is_nil(m MayInt) bool {
+    is m {
+        MayInt.Nil(x) => true
+        MayInt.Val(x) => false
+        MayInt.Err(x) => false
+    }
+}
+
+fn is_some(m MayInt) bool {
+    is m {
+        MayInt.Nil(x) => false
+        MayInt.Val(x) => true
+        MayInt.Err(x) => false
+    }
+}
+
+fn is_err(m MayInt) bool {
+    is m {
+        MayInt.Nil(x) => false
+        MayInt.Val(x) => false
+        MayInt.Err(x) => true
+    }
+}
+
+fn unwrap(m MayInt) int {
+    is m {
+        MayInt.Nil(x) => panic("unwrap on nil")
+        MayInt.Val(v) => v
+        MayInt.Err(x) => panic("unwrap on error")
+    }
+}
+
+fn unwrap_or(m MayInt, default int) int {
+    is m {
+        MayInt.Nil(x) => default
+        MayInt.Val(v) => v
+        MayInt.Err(x) => default
+    }
+}
+
+fn main() {
+    let x = MayInt.Val(42)
+    let check1 = is_some(x)
+    let val1 = unwrap(x)
+
+    let y = MayInt.Nil()
+    let check2 = is_nil(y)
+    let val2 = unwrap_or(y, 0)
+
+    let z = MayInt.Err(1)
+    let check3 = is_err(z)
+
+    val1
+}

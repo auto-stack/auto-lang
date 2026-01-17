@@ -1,0 +1,16 @@
+tag Link {
+    Connected int
+    Disconnected int
+}
+
+fn is_first(m Link) bool {
+    is m {
+        Link.Connected(x) => true
+        Link.Disconnected(x) => false
+    }
+}
+
+fn main() {
+    let s = Link.Connected()
+    is_first(s)
+}

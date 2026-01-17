@@ -1,0 +1,16 @@
+tag Status {
+    Active int
+    Inactive int
+}
+
+fn is_first(m Status) bool {
+    is m {
+        Status.Active(x) => true
+        Status.Inactive(x) => false
+    }
+}
+
+fn main() {
+    let s = Status.Active()
+    is_first(s)
+}

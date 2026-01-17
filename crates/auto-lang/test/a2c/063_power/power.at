@@ -1,0 +1,16 @@
+tag Power {
+    On int
+    Off int
+}
+
+fn is_first(m Power) bool {
+    is m {
+        Power.On(x) => true
+        Power.Off(x) => false
+    }
+}
+
+fn main() {
+    let s = Power.On()
+    is_first(s)
+}

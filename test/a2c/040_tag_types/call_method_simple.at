@@ -1,0 +1,13 @@
+tag Atom {
+    Int int
+
+    fn get_value() int {
+        42
+    }
+}
+
+fn main() {
+    let a = Atom.Int(10)
+    let result = a.get_value()
+    result
+}

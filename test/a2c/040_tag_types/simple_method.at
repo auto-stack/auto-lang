@@ -1,0 +1,14 @@
+tag Atom {
+    Int int
+    Float float
+
+    fn is_int() bool {
+        true
+    }
+}
+
+fn main() {
+    let a = Atom.Int(42)
+    let result = a.is_int()
+    result
+}

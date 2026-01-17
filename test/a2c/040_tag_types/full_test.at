@@ -1,0 +1,14 @@
+tag Atom {
+    Int int
+    Float float
+
+    fn get_value() int {
+        42
+    }
+}
+
+fn main() {
+    let a = Atom.Int(10)
+    let v = a.get_value()
+    v
+}

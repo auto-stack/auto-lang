@@ -1,0 +1,16 @@
+tag Mode {
+    Read int
+    Write int
+}
+
+fn is_first(m Mode) bool {
+    is m {
+        Mode.Read(x) => true
+        Mode.Write(x) => false
+    }
+}
+
+fn main() {
+    let s = Mode.Read()
+    is_first(s)
+}

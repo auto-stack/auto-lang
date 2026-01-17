@@ -1,0 +1,18 @@
+tag TriState {
+    On int
+    Off int
+    Unknown int
+}
+
+fn is_first(m TriState) bool {
+    is m {
+        TriState.On(x) => true
+        TriState.Off(x) => false
+        TriState.Unknown(x) => false
+    }
+}
+
+fn main() {
+    let s = TriState.On()
+    is_first(s)
+}

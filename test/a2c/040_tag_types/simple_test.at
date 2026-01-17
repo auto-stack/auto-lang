@@ -1,0 +1,9 @@
+// Test simple tag type definition (from parser tests)
+tag Atom {
+    Int int
+    Float float
+}
+
+// Test tag construction
+let x = Atom.Int(5)
+let y = Atom.Float(3.14)

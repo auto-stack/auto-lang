@@ -1,0 +1,11 @@
+tag Atom {
+    Int int
+    fn test() bool {
+        true
+    }
+}
+
+fn main() {
+    let a = Atom.Int(42)
+    a.test()
+}
