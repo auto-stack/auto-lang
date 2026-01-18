@@ -290,7 +290,7 @@ impl CTrans {
         Ok(())
     }
 
-    fn tag_method_decl(&mut self, tag: &Tag, method: &Fn, sink: &mut Sink) -> AutoResult<()> {
+    fn tag_method_decl(&mut self, tag: &Tag, method: &Fn, _sink: &mut Sink) -> AutoResult<()> {
         // Pre-compute all strings before taking mutable borrow
         let ret_type_str = if !matches!(method.ret, Type::Unknown) {
             format!("{} ", self.c_type_name(&method.ret))
@@ -1437,7 +1437,7 @@ impl CTrans {
                 };
                 format!("struct May{}", inner_name)
             }
-            Type::Spec(spec_decl) => {
+            Type::Spec(_spec_decl) => {
                 // Spec 类型在 C 中使用 void* 表示（多态）
                 "void*".to_string()
             }
@@ -2264,7 +2264,7 @@ impl CTrans {
                     self.expr(lhs, out)?;
 
                     // Write remaining arguments
-                    for (i, arg) in call.args.args.iter().enumerate() {
+                    for (_i, arg) in call.args.args.iter().enumerate() {
                         out.write(b", ").to()?;
                         self.arg(arg, out)?;
                     }
@@ -2272,7 +2272,7 @@ impl CTrans {
                     out.write(b")").to()?;
                     return Ok(true);
                 }
-                Type::User(decl) => {
+                Type::User(_decl) => {
                     // User-defined type: regular method, pass by pointer
                     // Fall through to original logic below
                 }

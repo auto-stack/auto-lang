@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::ast::*;
-use crate::error::{AutoError, AutoResult};
+use crate::error::AutoResult;
 use crate::scope;
 use crate::scope::Meta;
 use crate::universe::Universe;
@@ -247,7 +247,7 @@ impl Evaler {
                         Value::Array(arr) => {
                             eprintln!("DEBUG: Processing Array with {} items", arr.len());
                             use std::collections::HashMap;
-                            use auto_val::{Array, ValueKey};
+                            use auto_val::Array;
 
                             // Group nodes by name for consolidation
                             let mut nodes_by_name: HashMap<AutoStr, Vec<auto_val::Node>> = HashMap::new();
@@ -503,21 +503,23 @@ impl Evaler {
                 IsBranch::EqBranch(expr, body) => {
                     // Check if this is a tag pattern match
                     if let Expr::Cover(cover) = &expr {
-                        if let ast::Cover::Tag(tag_cover) = cover {
-                            // Tag pattern matching: is atom { Atom.Int(i) => ... }
-                            if self.matches_tag_pattern(t, tag_cover)? {
-                                // Bind the element variable if present
-                                if tag_cover.elem != "" {
-                                    let target_val = self.eval_expr(t);
-                                    if let Value::Node(node) = target_val {
-                                        let payload = node.get_prop("payload");
-                                        self.universe.borrow_mut().set_local_val(tag_cover.elem.as_str(), payload);
-                                    }
+                        // Cover::Tag is the only variant
+                        let tag_cover = match cover {
+                            ast::Cover::Tag(tc) => tc,
+                        };
+                        // Tag pattern matching: is atom { Atom.Int(i) => ... }
+                        if self.matches_tag_pattern(t, tag_cover)? {
+                            // Bind the element variable if present
+                            if tag_cover.elem != "" {
+                                let target_val = self.eval_expr(t);
+                                if let Value::Node(node) = target_val {
+                                    let payload = node.get_prop("payload");
+                                    self.universe.borrow_mut().set_local_val(tag_cover.elem.as_str(), payload);
                                 }
-                                return self.eval_body(&body);
-                            } else {
-                                continue; // Try next branch
                             }
+                            return self.eval_body(&body);
+                        } else {
+                            continue; // Try next branch
                         }
                     }
 
@@ -1555,10 +1557,14 @@ impl Evaler {
             }
             // For expressions, we need to check if the base is a variable
             // e.g., `x.field` or `x[index` - x is moved
-            Expr::Bina(left, op, _right) => {
+            Expr::Bina(left, op, right) => {
                 if *op == Op::Dot || *op == Op::LSquare {
                     // Mark the base object as moved
                     self.mark_expr_as_moved(left);
+                } else {
+                    // For other binary ops, mark both operands as potentially moved
+                    self.mark_expr_as_moved(left);
+                    self.mark_expr_as_moved(right);
                 }
             }
             Expr::Index(base, _index) => {
@@ -1568,10 +1574,6 @@ impl Evaler {
             // Nested expressions: recurse to find variable references
             Expr::Unary(_op, inner_expr) => {
                 self.mark_expr_as_moved(inner_expr);
-            }
-            Expr::Bina(left, _op, right) => {
-                self.mark_expr_as_moved(left);
-                self.mark_expr_as_moved(right);
             }
             // Other expressions don't involve variable moves
             _ => {}
@@ -1629,7 +1631,7 @@ impl Evaler {
             Value::Array(_) => "array".to_string(),
             Value::Instance(ref inst) => inst.ty.name().to_string(),
             Value::Type(ref ty) => ty.name().to_string(),
-            Value::ValueRef(vid) => {
+            Value::ValueRef(_vid) => {
                 // Resolve ValueRef to get actual type
                 if let Some(data) = self.resolve_value(value) {
                     let borrowed = data.borrow();
@@ -2008,7 +2010,7 @@ impl Evaler {
         let name = &method.name;
         // methods for Any
         match target.as_ref() {
-            Value::Str(s) => {
+            Value::Str(_s) => {
                 // First, check the types system for built-in methods
                 let method_fn = self
                     .universe
@@ -2030,7 +2032,7 @@ impl Evaler {
                     }
                 }
             }
-            Value::OwnedStr(s) => {
+            Value::OwnedStr(_s) => {
                 // OwnedStr supports the same methods as Str
                 let method_fn = self
                     .universe
@@ -2720,7 +2722,7 @@ impl Evaler {
             // Plan 035 Phase 5: Check for duplicate method definitions
             if let Some(existing_meta) = self.universe.borrow().lookup_meta(&method_name) {
                 // Method already exists, issue a warning
-                if let scope::Meta::Fn(existing_fn) = existing_meta.as_ref() {
+                if let scope::Meta::Fn(_existing_fn) = existing_meta.as_ref() {
                     eprintln!(
                         "Warning: Method '{}' already defined for type '{}'. Overwriting previous definition.",
                         method.name, ext.target
@@ -2852,7 +2854,7 @@ impl Evaler {
             ast::Type::Tag(tag) => {
                 let tag = tag.borrow();
                 // Find the variant in the tag definition
-                let field = tag.fields.iter()
+                let _field = tag.fields.iter()
                     .find(|f| f.name == *variant_name)
                     .ok_or_else(|| format!("Undefined variant: {}.{}", tag_name, variant_name))?;
 

@@ -30,7 +30,7 @@
 //! ```
 
 use crate::ast::{ArrayType, Call, Expr, If, PtrType, Range, Type};
-use crate::error::{AutoError, NameError, TypeError, Warning};
+use crate::error::{AutoError, TypeError, Warning};
 use crate::infer::context::InferenceContext;
 use crate::infer::constraints::TypeConstraint;
 use miette::SourceSpan;

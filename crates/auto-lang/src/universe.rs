@@ -247,7 +247,7 @@ impl Universe {
         let current_sid = self.cur_spot.clone();
 
         // Collect all ValueIDs from the current scope
-        let scope_vals_to_drop = if let Some(scope) = self.scopes.get(&current_sid) {
+        let _scope_vals_to_drop = if let Some(scope) = self.scopes.get(&current_sid) {
             scope.vals.values().copied().collect::<Vec<_>>()
         } else {
             Vec::new()

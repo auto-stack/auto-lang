@@ -3,7 +3,6 @@
 //! Provides bidirectional conversion between AutoLang's Value type and Shell's ShellValue type.
 
 use auto_val::Value;
-use auto_val::AutoStr;
 
 use super::value::ShellValue;
 

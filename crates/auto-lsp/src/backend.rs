@@ -14,6 +14,7 @@ use crate::goto_def;
 #[derive(Debug, Clone)]
 struct DocumentState {
     content: String,
+    #[allow(dead_code)]
     version: i32,
 }
 
@@ -426,6 +427,7 @@ impl Backend {
     }
 
     /// Publish diagnostics for a document (legacy method - deprecated)
+    #[allow(dead_code)]
     async fn publish_diagnostics(&self, uri: &str) {
         self.publish_diagnostics_for_uri(uri).await;
     }
@@ -433,7 +435,7 @@ impl Backend {
 
 /// Apply a text change to content at the given range
 fn apply_text_change(content: &str, new_text: &str, range: Range) -> String {
-    let lines: Vec<&str> = content.lines().collect();
+    let _lines: Vec<&str> = content.lines().collect();
 
     // Convert LSP position to byte offset
     let start = position_to_offset(content, &range.start);

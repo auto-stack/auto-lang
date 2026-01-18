@@ -19,7 +19,7 @@ pub fn parse_diagnostics(
 }
 
 /// Implementation of diagnostics parsing
-fn parse_diagnostics_impl(uri: &str, content: &str) -> Vec<Diagnostic> {
+fn parse_diagnostics_impl(_uri: &str, content: &str) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
     // Suppress stdout/stderr during parsing to prevent debug output from corrupting LSP

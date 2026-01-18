@@ -11,6 +11,7 @@ use std::io::Write;
 pub struct PythonTrans {
     indent: usize,
     imports: HashSet<AutoStr>,
+    #[allow(dead_code)]
     name: AutoStr,
     scope: Shared<Universe>,
 }
@@ -340,7 +341,7 @@ impl PythonTrans {
                 out.write(b", ")?;
                 out.write_all(name.as_bytes())?;
             }
-            Iter::Call(call) => {
+            Iter::Call(_call) => {
                 // Function call as iterator - skip for now
                 out.write(b"_")?;
             }

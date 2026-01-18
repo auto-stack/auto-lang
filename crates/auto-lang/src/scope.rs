@@ -209,7 +209,9 @@ impl Scope {
 
     pub fn define_type(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
         let name = name.into();
-        self.types.insert(name, meta);
+        self.types.insert(name.clone(), meta.clone());
+        // Also put in symbols so lookup_meta can find it
+        self.symbols.insert(name, meta);
         // println!("types: {:?}", self.types);
     }
 

@@ -11,9 +11,8 @@
 
 use crate::ast::Expr;
 use crate::ownership::lifetime::{Lifetime, LifetimeContext};
-use crate::error::pos_to_span;
 use auto_val::Op;
-use miette::{self, Diagnostic, LabeledSpan, SourceSpan};
+use miette::{self, Diagnostic, SourceSpan};
 use std::fmt;
 
 /// Kind of borrow - view, mut, or take

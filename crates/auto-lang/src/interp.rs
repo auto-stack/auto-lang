@@ -139,7 +139,7 @@ impl Interpreter {
         self
     }
 
-    pub fn import(&mut self, path: AutoStr) -> Result<(), String> {
+    pub fn import(&mut self, _path: AutoStr) -> Result<(), String> {
         // println!("import: {}", path); // LSP: disabled
         Ok(())
     }

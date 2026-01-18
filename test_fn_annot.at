@@ -1,0 +1,6 @@
+[vm]
+fn test() void
+
+fn main() {
+    "success"
+}

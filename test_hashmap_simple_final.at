@@ -1,0 +1,3 @@
+let map = HashMap.new()
+map.insert_str("key", "value")
+map.contains("key")

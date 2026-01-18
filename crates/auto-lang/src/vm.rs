@@ -82,6 +82,16 @@ lazy_static::lazy_static! {
 
 /// Initialize and register the IO module with the VM registry
 pub fn init_io_module() {
+    use std::sync::Mutex;
+
+    static INIT: Mutex<bool> = Mutex::new(false);
+    let mut initialized = INIT.lock().unwrap();
+    if *initialized {
+        return;
+    }
+    *initialized = true;
+    drop(initialized);
+
     let mut io_module = VmModule {
         name: "auto.io".into(),
         functions: HashMap::new(),
@@ -119,6 +129,16 @@ pub fn init_io_module() {
 
 /// Initialize and register the collections module with the VM registry
 pub fn init_collections_module() {
+    use std::sync::Mutex;
+
+    static INIT: Mutex<bool> = Mutex::new(false);
+    let mut initialized = INIT.lock().unwrap();
+    if *initialized {
+        return;
+    }
+    *initialized = true;
+    drop(initialized);
+
     let mut collections_module = VmModule {
         name: "collections".into(),
         functions: HashMap::new(),
@@ -214,6 +234,16 @@ pub fn init_collections_module() {
 
 /// Initialize and register the builder module with the VM registry
 pub fn init_builder_module() {
+    use std::sync::Mutex;
+
+    static INIT: Mutex<bool> = Mutex::new(false);
+    let mut initialized = INIT.lock().unwrap();
+    if *initialized {
+        return;
+    }
+    *initialized = true;
+    drop(initialized);
+
     let mut builder_module = VmModule {
         name: "auto.builder".into(),
         functions: HashMap::new(),

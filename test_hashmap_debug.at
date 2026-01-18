@@ -1,0 +1,26 @@
+fn test_hashmap_oop() int {
+    let map = HashMap.new()
+
+    HashMap_insert_str(map, "name", "Alice")
+    HashMap_insert_str(map, "city", "Wonderland")
+
+    let name = HashMap_get_str(map, "name")
+    let city = HashMap_get_str(map, "city")
+
+    let has_name = HashMap_contains(map, "name")
+    let has_age = HashMap_contains(map, "age")
+
+    let size = HashMap_size(map)
+
+    HashMap_insert_int(map, "count", 42)
+    let count = HashMap_get_int(map, "count")
+
+    HashMap_drop(map)
+
+    count
+}
+
+fn main() {
+    let result = test_hashmap_oop()
+    "result: " + result
+}

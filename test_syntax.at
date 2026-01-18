@@ -1,0 +1,9 @@
+type TestType {
+    static fn [vm] new() TestType;
+    fn [vm] do_something(x int) void;
+    fn [c, vm] hybrid_method(s str) void;
+}
+
+fn main() {
+    "success"
+}

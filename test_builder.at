@@ -1,0 +1,9 @@
+fn main() {
+    let sb = StringBuilder.new()
+    sb.append("Hello")
+    sb.append(" ")
+    sb.append("World")
+    let result = sb.build()
+    sb.drop()
+    result
+}

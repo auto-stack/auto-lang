@@ -1,6 +1,6 @@
 use miette::Result;
 use reedline::{
-    default_emacs_keybindings, ColumnarMenu, MenuBuilder, DefaultCompleter, DefaultPrompt,
+    default_emacs_keybindings, ColumnarMenu, MenuBuilder, DefaultPrompt,
     Emacs, FileBackedHistory, KeyCode, KeyModifiers, Reedline, ReedlineEvent, ReedlineMenu, Signal,
 };
 use std::path::PathBuf;

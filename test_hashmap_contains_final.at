@@ -1,0 +1,17 @@
+fn test_contains() int {
+    let map = HashMap.new()
+    map.insert_str("key", "value")
+
+    let has_key = map.contains("key")
+    let has_missing = map.contains("missing")
+
+    map.drop()
+
+    if has_key == 1 && has_missing == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+test_contains()

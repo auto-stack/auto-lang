@@ -1,4 +1,8 @@
+type TestType {
+    [vm]
+    static fn new() TestType
+}
+
 fn main() {
-    let i = 0
-    print(i)
+    "success"
 }

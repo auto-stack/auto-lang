@@ -123,6 +123,57 @@ Located in `crates/auto-lang/test/a2r/`:
 - **Functions**: `fn add(a int, b int) int { a + b }`
 - **Imports**: `use math::add` or `use c <stdio.h>`
 
+### Function Annotations
+
+AutoLang supports function annotations to specify implementation targets:
+
+**Annotation Syntax**:
+```auto
+[vm]
+fn my_function(x int) void;
+
+[c]
+fn c_function(s str) int;
+
+[c, vm]
+fn hybrid_function(data []byte) void;
+```
+
+**Annotation Placement**:
+- Annotations come **before** the `fn` keyword
+- Annotations should be on their own line (with newlines between annotation and function declaration)
+- Supported annotations: `[c]`, `[vm]`, `[c, vm]`
+
+**In Type Definitions**:
+```auto
+type MyType {
+    [vm]
+    static fn new() MyType;
+
+    [vm]
+    fn instance_method(x int) void;
+
+    [c, vm]
+    fn hybrid_method(s str) void;
+}
+```
+
+**Static vs Instance Methods**:
+- `static fn` - Type-level methods (called on the type, e.g., `MyType.new()`)
+- Regular `fn` - Instance methods (called on instances, e.g., `instance.method()`)
+
+**Backwards Compatibility**:
+The old syntax `fn.c` and `fn.vm` (dot notation after `fn`) is still supported for backwards compatibility:
+```auto
+fn.c old_c_function(s str) int
+fn.vm old_vm_function(x int) void
+```
+
+**VM vs C Functions**:
+- **VM functions** (`[vm]`): Implemented in Rust via VM registry, executed at runtime
+- **C functions** (`[c]`): Transpiled to C, compiled with C compiler
+- **Hybrid** (`[c, vm]`): Both implementations available (for flexibility)
+
 ## Implementation Strategy
 
 ### Primary Implementation: Rust (`crates/`)

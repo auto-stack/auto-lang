@@ -1,0 +1,59 @@
+/// HashSet type for storing unique values
+type HashSet {
+    // Internal VM and C implementations handle the actual data storage
+
+    // ========================================================================
+    // Static Methods - Creation
+    // ========================================================================
+
+    /// Create a new empty HashSet
+    /// Example: HashSet.new()
+    [c, vm]
+    static fn new() HashSet
+
+    // ========================================================================
+    // Instance Methods - Insertion
+    // ========================================================================
+
+    /// Insert a value (duplicates are ignored)
+    /// Example: set.insert("apple")
+    [c, vm]
+    fn insert(value cstr) void
+
+    // ========================================================================
+    // Instance Methods - Query
+    // ========================================================================
+
+    /// Check if value exists in set
+    /// Example: set.contains("apple")  // returns 1 (true)
+    [c, vm]
+    fn contains(value cstr) int
+
+    // ========================================================================
+    // Instance Methods - Management
+    // ========================================================================
+
+    /// Remove a value from the set
+    /// Example: set.remove("apple")
+    [c, vm]
+    fn remove(value cstr) void
+
+    /// Get the number of values
+    /// Example: set.size()  // returns 3
+    [c, vm]
+    fn size() size_t
+
+    /// Remove all values
+    /// Example: set.clear()
+    [c, vm]
+    fn clear() void
+
+    // ========================================================================
+    // Instance Methods - Lifecycle
+    // ========================================================================
+
+    /// Free the HashSet's resources
+    /// Example: set.drop()
+    [c, vm]
+    fn drop()
+}

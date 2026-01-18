@@ -2,7 +2,6 @@
 //!
 //! Implements commands for filtering and transforming text data
 
-use miette::Result;
 
 /// Sort lines of input
 pub fn sort_command(input: &str, reverse: bool, unique: bool) -> String {

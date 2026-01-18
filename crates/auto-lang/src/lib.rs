@@ -41,7 +41,7 @@ use crate::scope::Meta;
 use crate::trans::c::CTrans;
 pub use crate::universe::{Universe, SymbolLocation};
 use crate::{eval::EvalMode, trans::Sink, trans::Trans};
-use auto_val::{AutoPath, Obj, Value};
+use auto_val::{AutoPath, Obj};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;

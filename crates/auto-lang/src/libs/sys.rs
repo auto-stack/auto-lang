@@ -2,7 +2,7 @@
 //!
 //! Provides built-in functions for system-level operations.
 
-use auto_val::{Arg, Args, Value};
+use auto_val::{Args, Value};
 
 /// Get the process ID
 ///
@@ -13,7 +13,7 @@ use auto_val::{Arg, Args, Value};
 /// ```auto
 /// let pid = getpid()
 /// ```
-pub fn sys_getpid(args: &Args) -> Value {
+pub fn sys_getpid(_args: &Args) -> Value {
     use std::process;
 
     // Return the process ID as an integer

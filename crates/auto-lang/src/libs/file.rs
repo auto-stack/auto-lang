@@ -2,7 +2,7 @@
 //!
 //! Provides built-in methods for File type operations.
 
-use auto_val::{Arg, Args, Value};
+use auto_val::{Args, Value};
 
 /// Read entire file content into a string
 ///
@@ -14,7 +14,7 @@ use auto_val::{Arg, Args, Value};
 /// let f = File.open_read("test.txt")
 /// let content = f.read_all()
 /// ```
-pub fn file_read_all(args: &Args) -> Value {
+pub fn file_read_all(_args: &Args) -> Value {
     // TODO: Implement actual file reading
     // For now, return empty string as placeholder
     Value::Str("".into())
@@ -30,7 +30,7 @@ pub fn file_read_all(args: &Args) -> Value {
 /// let f = File.open_write("test.txt")
 /// f.write_lines(["hello", "world"])
 /// ```
-pub fn file_write_lines(args: &Args) -> Value {
+pub fn file_write_lines(_args: &Args) -> Value {
     // TODO: Implement actual file writing
     // For now, just return nil
     Value::Nil

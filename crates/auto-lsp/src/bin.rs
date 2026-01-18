@@ -9,11 +9,11 @@ async fn main() {
     #[cfg(target_os = "windows")]
     {
         use std::fs::OpenOptions;
-        use std::os::windows::io::AsRawHandle;
+        
 
         // Open NUL device for discarding output
         if let Ok(nul) = OpenOptions::new().write(true).open("NUL") {
-            use std::os::windows::io::RawHandle;
+            
             use std::mem;
 
             // NOTE: This doesn't actually redirect stdout/stderr at the OS level.

@@ -1,0 +1,17 @@
+use collections: HashMap
+
+fn test() int {
+    let map = HashMap.new()
+    map.insert_str("key", "value")
+
+    let val = map.get_str("key")
+    map.drop()
+
+    if val == "value" {
+        1
+    } else {
+        0
+    }
+}
+
+test()

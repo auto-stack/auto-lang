@@ -5,7 +5,7 @@
 
 /// HashMap type for storing key-value pairs
 type HashMap {
-    // Internal C implementation handles the actual data storage
+    // Internal VM and C implementations handle the actual data storage
 
     // ========================================================================
     // Static Methods - Creation
@@ -13,6 +13,7 @@ type HashMap {
 
     /// Create a new empty HashMap
     /// Example: HashMap.new()
+    [c, vm]
     static fn new() HashMap
 
     // ========================================================================
@@ -21,10 +22,12 @@ type HashMap {
 
     /// Insert a string key-value pair
     /// Example: map.insert_str("name", "Alice")
+    [c, vm]
     fn insert_str(key cstr, value cstr) void
 
     /// Insert a string key with integer value
     /// Example: map.insert_int("count", 42)
+    [c, vm]
     fn insert_int(key cstr, value int) void
 
     // ========================================================================
@@ -33,14 +36,17 @@ type HashMap {
 
     /// Get string value by key
     /// Example: map.get_str("name")  // returns "Alice"
+    [c, vm]
     fn get_str(key cstr) cstr
 
     /// Get integer value by key
     /// Example: map.get_int("count")  // returns 42
+    [c, vm]
     fn get_int(key cstr) int
 
     /// Check if key exists in map
     /// Example: map.contains("name")  // returns 1 (true)
+    [c, vm]
     fn contains(key cstr) int
 
     // ========================================================================
@@ -49,14 +55,17 @@ type HashMap {
 
     /// Remove a key-value pair
     /// Example: map.remove("temp")
+    [c, vm]
     fn remove(key cstr) void
 
     /// Get the number of entries
     /// Example: map.size()  // returns 3
+    [c, vm]
     fn size() size_t
 
     /// Remove all entries
     /// Example: map.clear()
+    [c, vm]
     fn clear() void
 
     // ========================================================================
@@ -65,58 +74,6 @@ type HashMap {
 
     /// Free the HashMap's resources
     /// Example: map.drop()
-    fn drop()
-}
-
-/// HashSet type for storing unique values
-type HashSet {
-    // Internal C implementation handles the actual data storage
-
-    // ========================================================================
-    // Static Methods - Creation
-    // ========================================================================
-
-    /// Create a new empty HashSet
-    /// Example: HashSet.new()
-    static fn new() HashSet
-
-    // ========================================================================
-    // Instance Methods - Insertion
-    // ========================================================================
-
-    /// Insert a value (duplicates are ignored)
-    /// Example: set.insert("apple")
-    fn insert(value cstr) void
-
-    // ========================================================================
-    // Instance Methods - Query
-    // ========================================================================
-
-    /// Check if value exists in set
-    /// Example: set.contains("apple")  // returns 1 (true)
-    fn contains(value cstr) int
-
-    // ========================================================================
-    // Instance Methods - Management
-    // ========================================================================
-
-    /// Remove a value from the set
-    /// Example: set.remove("apple")
-    fn remove(value cstr) void
-
-    /// Get the number of values
-    /// Example: set.size()  // returns 3
-    fn size() size_t
-
-    /// Remove all values
-    /// Example: set.clear()
-    fn clear() void
-
-    // ========================================================================
-    // Instance Methods - Lifecycle
-    // ========================================================================
-
-    /// Free the HashSet's resources
-    /// Example: set.drop()
+    [c, vm]
     fn drop()
 }

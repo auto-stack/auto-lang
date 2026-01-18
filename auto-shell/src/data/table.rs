@@ -2,7 +2,6 @@
 //!
 //! Provides structured table display with alignment and color support.
 
-use indexmap::IndexMap;
 use nu_ansi_term::{Color, Style};
 
 /// Alignment for table columns

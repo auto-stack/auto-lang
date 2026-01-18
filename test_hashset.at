@@ -1,0 +1,8 @@
+fn main() {
+    let set = HashSet.new()
+    set.insert("apple")
+    set.insert("banana")
+    let has = set.contains("apple")
+    set.drop()
+    "success"
+}

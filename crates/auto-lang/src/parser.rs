@@ -1900,6 +1900,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Check if a file exists at the given path
+    #[allow(dead_code)]
     fn file_exists(&self, dir: &std::path::Path, name: &str, ext: &str) -> bool {
         let file_path = dir.join(format!("{}{}", name, ext));
         file_path.exists()
@@ -2603,6 +2604,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn fn_cdecl_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip keyword `c`
 
@@ -2680,6 +2682,7 @@ impl<'a> Parser<'a> {
                         }.into());
                     }
                 }
+                self.next(); // skip the annotation identifier (c or vm)
 
                 if self.is_kind(TokenKind::Comma) {
                     self.next(); // skip ,
@@ -2703,21 +2706,22 @@ impl<'a> Parser<'a> {
 
     // Function Declaration
     pub fn fn_decl_stmt(&mut self, parent_name: &str) -> AutoResult<Stmt> {
+        // Check for annotations: [c], [vm], [c,vm] BEFORE fn keyword
+        let (has_c, has_vm) = if self.is_kind(TokenKind::LSquare) {
+            self.parse_fn_annotations()?
+        } else {
+            (false, false)
+        };
+
         self.next(); // skip keyword `fn`
 
-        let mut is_vm = false;
-        let mut is_c = false;
+        let mut is_vm = has_vm;
+        let mut is_c = has_c;
 
-        // Check for annotations: [c], [vm], [c,vm]
-        if self.is_kind(TokenKind::LSquare) {
-            let (has_c, has_vm) = self.parse_fn_annotations()?;
-            is_c = has_c;
-            is_vm = has_vm;
-        } else if self.is_kind(TokenKind::Dot) {
-            self.next(); // skipt .
-                         // parse fn sub kind
+        // Backwards compatibility: check for fn.c and fn.vm after fn keyword
+        if !is_vm && !is_c && self.is_kind(TokenKind::Dot) {
+            self.next(); // skip .
             let sub_kind = self.cur.text.clone();
-            // special case for `fn c` cdecl statement
             if sub_kind == "c" {
                 is_c = true;
                 self.next(); // skip 'c' keyword
@@ -2775,7 +2779,15 @@ impl<'a> Parser<'a> {
         }
 
         // parse function body
-        let body = if !is_vm && !is_c { self.body()? } else { Body::new() };
+        let body = if !is_vm && !is_c {
+            self.body()?
+        } else {
+            // For VM and C functions, check if there's a semicolon
+            if self.is_kind(TokenKind::Semi) {
+                self.next(); // skip semicolon
+            }
+            Body::new()
+        };
 
         // exit function scope
         self.exit_scope();
@@ -2804,6 +2816,131 @@ impl<'a> Parser<'a> {
         } else {
             Fn::new(kind, name.clone(), parent, params, body, ret_type)
         };
+
+        let fn_stmt = Stmt::Fn(fn_expr.clone());
+        let unique_name = if parent_name.is_empty() {
+            name.clone()
+        } else {
+            format!("{}.{}", parent_name, name).into()
+        };
+
+        // define function in scope
+        self.define(unique_name.as_str(), Meta::Fn(fn_expr.clone()));
+
+        // Register symbol location for LSP
+        // Use the saved name_pos which is the position of the function name
+        let loc = SymbolLocation::new(
+            name_pos.line.saturating_sub(1), // Convert from 1-based to 0-based
+            name_pos.at,
+            name_pos.pos,
+        );
+        self.scope.borrow_mut().define_symbol_location(unique_name.clone(), loc);
+
+        Ok(fn_stmt)
+    }
+
+    // Function Declaration with pre-parsed annotations
+    pub fn fn_decl_stmt_with_annotations(
+        &mut self,
+        parent_name: &str,
+        has_c: bool,
+        has_vm: bool,
+        is_static: bool,
+    ) -> AutoResult<Stmt> {
+        self.next(); // skip keyword `fn`
+
+        let is_c = has_c;
+        let is_vm = has_vm;
+
+        // parse function name
+        let name = self.parse_name()?;
+
+        // Capture the position of the function name for LSP
+        // self.prev now points to the name token after parse_name()
+        let name_pos = self.prev.pos;
+
+        // enter function scope
+        self.scope.borrow_mut().enter_fn(name.clone());
+
+        // parse function parameters
+        self.expect(TokenKind::LParen)?;
+        let params = self.fn_params()?;
+        self.expect(TokenKind::RParen)?;
+
+        //
+
+        // parse return type
+        let mut ret_type = Type::Unknown;
+        let mut ret_type_name: Option<AutoStr> = None;
+        // TODO: determine return type with last stmt if it's not specified
+        // Support: Ident (int, str), LSquare ([]int), Star (*int)
+        if self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::LSquare) || self.is_kind(TokenKind::Star) || self.is_kind(TokenKind::Question) {
+            if self.is_kind(TokenKind::Ident) {
+                ret_type_name = Some(self.cur.text.clone());
+            }
+            ret_type = self.parse_type()?;
+        } else if self.is_kind(TokenKind::LBrace) {
+            ret_type = Type::Void;
+        }
+
+        // if has parent_name, define `self` in current scope
+        if !parent_name.is_empty() {
+            let parent_type = self.scope.borrow().find_type_for_name(parent_name);
+            if let Some(parent_type) = parent_type {
+                self.define(
+                    "self",
+                    Meta::Store(Store {
+                        kind: StoreKind::Let,
+                        name: "self".into(),
+                        ty: parent_type.clone(),
+                        expr: Expr::Ident("self".into()),
+                    }),
+                );
+            }
+        }
+
+        // parse function body
+        let body = if !is_vm && !is_c {
+            self.body()?
+        } else {
+            // For VM and C functions, check if there's a semicolon
+            if self.is_kind(TokenKind::Semi) {
+                self.next(); // skip semicolon
+            }
+            Body::new()
+        };
+
+        // exit function scope
+        self.exit_scope();
+
+        // parent name for method?
+        let parent = if parent_name.is_empty() {
+            None
+        } else {
+            Some(parent_name.into())
+        };
+        let kind = if is_vm {
+            FnKind::VmFunction
+        } else if is_c {
+            FnKind::CFunction
+        } else {
+            FnKind::Function
+        };
+
+        // Create function, preserving return type name if type is Unknown
+        let fn_expr = if matches!(ret_type, Type::Unknown) {
+            if let Some(ret_name) = ret_type_name {
+                Fn::with_ret_name(kind, name.clone(), parent, params, body, ret_type, ret_name)
+            } else {
+                Fn::new(kind, name.clone(), parent, params, body, ret_type)
+            }
+        } else {
+            Fn::new(kind, name.clone(), parent, params, body, ret_type)
+        };
+
+        // Set is_static flag
+        let mut fn_expr = fn_expr;
+        fn_expr.is_static = is_static;
 
         let fn_stmt = Stmt::Fn(fn_expr.clone());
         let unique_name = if parent_name.is_empty() {
@@ -3086,8 +3223,31 @@ impl<'a> Parser<'a> {
         let mut methods = Vec::new();
         let mut delegations = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            if self.is_kind(TokenKind::Fn) {
-                let fn_stmt = self.fn_decl_stmt(&name)?;
+            // Check for annotations [c], [vm], [c,vm] before function declarations
+            let (has_c, has_vm) = if self.is_kind(TokenKind::LSquare) {
+                self.parse_fn_annotations()?
+            } else {
+                (false, false)
+            };
+
+            self.skip_empty_lines(); // Skip newlines after annotations
+
+            // Check for static fn or fn
+            if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Fn) {
+                let is_static = self.is_kind(TokenKind::Static);
+                if is_static {
+                    self.next(); // skip static keyword
+                }
+
+                // Now expect fn keyword
+                if !self.is_kind(TokenKind::Fn) {
+                    return Err(SyntaxError::Generic {
+                        message: format!("expected 'fn' after 'static', found {:?}", self.kind()),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+
+                let fn_stmt = self.fn_decl_stmt_with_annotations(&name, has_c, has_vm, is_static)?;
                 if let Stmt::Fn(fn_expr) = fn_stmt {
                     methods.push(fn_expr);
                 }
@@ -3623,6 +3783,21 @@ impl<'a> Parser<'a> {
                                             return Ok(rtype);
                                         }
                                     }
+                                    Type::User(_) => {
+                                        // Allow type names for static method calls (e.g., HashMap.new())
+                                        // The return type will be determined by the evaluator
+                                        if let Expr::Ident(rname) = &**rhs {
+                                            // For static methods, try to look up the method signature
+                                            let combined_name = format!("{}::{}", lname, rname);
+                                            if let Some(method_meta) = self.lookup_meta(&combined_name) {
+                                                if let Meta::Fn(fn_decl) = method_meta.as_ref() {
+                                                    return Ok(fn_decl.ret.clone());
+                                                }
+                                            }
+                                            // Default: assume it returns the type itself (like constructors)
+                                            return Ok(typ.clone());
+                                        }
+                                    }
                                     _ => {}
                                 },
                                 _ => {}
@@ -3679,6 +3854,18 @@ impl<'a> Parser<'a> {
                                             }
                                             let rtype = tag.borrow().get_field_type(rname);
                                             return Ok(rtype);
+                                        }
+                                    }
+                                    Type::User(_) => {
+                                        // Allow type names for static method calls (e.g., HashMap.new())
+                                        if let Expr::Ident(rname) = &**rhs {
+                                            let combined_name = format!("{}::{}", lname, rname);
+                                            if let Some(method_meta) = self.lookup_meta(&combined_name) {
+                                                if let Meta::Fn(fn_decl) = method_meta.as_ref() {
+                                                    return Ok(fn_decl.ret.clone());
+                                                }
+                                            }
+                                            return Ok(typ.clone());
                                         }
                                     }
                                     _ => {}

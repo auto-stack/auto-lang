@@ -1,6 +1,5 @@
 type TestType {
-    [vm]
-    fn do_something(x int) void
+    fn do_something(x int) void;
 }
 
 fn main() {

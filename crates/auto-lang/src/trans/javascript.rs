@@ -8,6 +8,7 @@ use auto_val::{shared, Shared};
 use std::io::Write;
 
 pub struct JavaScriptTrans {
+    #[allow(dead_code)]
     name: AutoStr,
     scope: Shared<Universe>,
 }
@@ -285,6 +286,7 @@ impl JavaScriptTrans {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn body_in_line(&mut self, body: &Body, out: &mut impl Write) -> AutoResult<()> {
         if body.stmts.len() == 1 {
             out.write(b" ")?;

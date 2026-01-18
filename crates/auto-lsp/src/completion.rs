@@ -87,6 +87,7 @@ enum CompletionContext {
     /// Default keyword context
     Keyword,
     /// Unknown context
+    #[allow(dead_code)]
     Unknown,
 }
 
@@ -209,6 +210,7 @@ fn variable_completions(content: &str, position: Position) -> Vec<CompletionItem
 }
 
 /// Get field completions (after dot) - DEPRECATED, use member_completions instead
+#[allow(dead_code)]
 fn field_completions() -> Vec<CompletionItem> {
     generic_field_completions()
 }
@@ -243,7 +245,7 @@ fn extract_var_before_dot(before_cursor: &str, trigger_dot: Option<char>) -> Opt
 
     // Extract the identifier (walk backwards while alphanumeric or underscore)
     let chars: Vec<char> = before_dot.chars().collect();
-    let mut end = chars.len();
+    let end = chars.len();
 
     if end == 0 {
         return None;
@@ -383,6 +385,7 @@ fn infer_variable_type_from_parser_with_scope(content: &str, var_name: &str) -> 
 
 /// Infer the type of a variable using the parser's type information
 /// This tries to use the parser's metadata, with a fallback to text-based heuristics
+#[allow(dead_code)]
 fn infer_variable_type_from_parser(universe: &auto_lang::Universe, var_name: &str) -> Option<String> {
     use auto_lang::scope::Meta;
 

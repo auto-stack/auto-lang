@@ -1,0 +1,8 @@
+fn main() {
+    let map = HashMap.new()
+    map.insert_str("key", "value")
+    let result = map.contains("key")
+    map.drop()
+
+    "result is: " + result
+}

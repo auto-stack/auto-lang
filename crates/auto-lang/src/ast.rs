@@ -50,6 +50,7 @@ pub use atom_helpers::*;
 
 mod parsers;
 
+#[allow(hidden_glob_reexports)]
 use auto_val::{AutoResult, AutoStr, Node as AutoNode, Op, Value};
 use std::{fmt, io};
 
