@@ -1,0 +1,43 @@
+// Test List dynamic array functionality using List.new()
+
+fn test_list_new() int {
+    let list = List.new()
+    let is_empty = list.is_empty()
+    if is_empty == 1 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_list_push() int {
+    let list = List.new()
+    list.push(42)
+    list.push(100)
+    let len = list.len()
+    if len == 2 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_list_pop() int {
+    let list = List.new()
+    list.push(42)
+    let popped = list.pop()
+    if popped == 42 {
+        1
+    } else {
+        0
+    }
+}
+
+fn main() {
+    let r1 = test_list_new()
+    let r2 = test_list_push()
+    let r3 = test_list_pop()
+
+    // All tests should return 1
+    r1 + r2 + r3
+}

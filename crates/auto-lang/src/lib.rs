@@ -2069,3 +2069,237 @@ fn test_stringbuilder_oop_clear() {
     let result = run(code).unwrap();
     assert_eq!(result, "0");
 }
+
+// ===== List OOP API Tests =====
+
+#[test]
+fn test_list_oop_new() {
+    let code = r#"
+        let list = List.new()
+        let is_empty = list.is_empty()
+        list.drop()
+        is_empty
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "1");
+}
+
+#[test]
+fn test_list_oop_push_pop() {
+    let code = r#"
+        let list = List.new()
+        list.push(10)
+        list.push(20)
+        list.push(30)
+        let popped = list.pop()
+        let len = list.len()
+        list.drop()
+        len + popped
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "32"); // 2 + 30
+}
+
+#[test]
+fn test_list_oop_push_pop_multiple() {
+    let code = r#"
+        let list = List.new()
+        list.push(42)
+        list.push(100)
+        let len = list.len()
+        let popped = list.pop()
+        let is_empty = list.is_empty()
+        list.drop()
+        if len != 2 {
+            0
+        } else {
+            if popped != 100 {
+                0
+            } else {
+                if is_empty != 0 {
+                    0
+                } else {
+                    1
+                }
+            }
+        }
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "1");
+}
+
+#[test]
+fn test_list_oop_len() {
+    let code = r#"
+        let list = List.new()
+        list.push(1)
+        list.push(2)
+        list.push(3)
+        let len = list.len()
+        list.drop()
+        len
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "3");
+}
+
+#[test]
+fn test_list_oop_is_empty() {
+    let code = r#"
+        let list = List.new()
+        let empty1 = list.is_empty()
+        list.push(42)
+        let empty2 = list.is_empty()
+        list.drop()
+        [empty1, empty2]
+    "#;
+    let result = run(code).unwrap();
+    assert!(result.contains("1") && result.contains("0"));
+}
+
+#[test]
+fn test_list_oop_clear() {
+    let code = r#"
+        let list = List.new()
+        list.push(1)
+        list.push(2)
+        list.push(3)
+        list.clear()
+        let len = list.len()
+        list.drop()
+        len
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "0");
+}
+
+#[test]
+fn test_list_oop_get_set() {
+    let code = r#"
+        let list = List.new()
+        list.push(10)
+        list.push(20)
+        list.push(30)
+        let first = list.get(0)
+        let second = list.get(1)
+        list.set(0, 15)
+        let updated = list.get(0)
+        list.drop()
+        [first, second, updated]
+    "#;
+    let result = run(code).unwrap();
+    assert!(result.contains("10") && result.contains("20") && result.contains("15"));
+}
+
+#[test]
+fn test_list_oop_insert_remove() {
+    let code = r#"
+        let list = List.new()
+        list.push(1)
+        list.push(3)
+        list.insert(1, 2)
+        let val1 = list.get(0)
+        let val2 = list.get(1)
+        let val3 = list.get(2)
+        let removed = list.remove(1)
+        let len = list.len()
+        list.drop()
+        if val1 != 1 {
+            0
+        } else {
+            if val2 != 2 {
+                0
+            } else {
+                if val3 != 3 {
+                    0
+                } else {
+                    if removed != 2 {
+                        0
+                    } else {
+                        if len != 2 {
+                            0
+                        } else {
+                            1
+                        }
+                    }
+                }
+            }
+        }
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "1");
+}
+
+#[test]
+fn test_list_oop_reserve() {
+    let code = r#"
+        let list = List.new()
+        list.reserve(100)
+        list.push(1)
+        list.push(2)
+        let len = list.len()
+        list.drop()
+        len
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "2");
+}
+
+#[test]
+fn test_list_oop_comprehensive() {
+    let code = r#"
+        let list = List.new()
+
+        // Test push
+        list.push(1)
+        list.push(2)
+        list.push(3)
+
+        // Test len
+        let len = list.len()
+        if len != 3 {
+            0
+        } else {
+            // Test clear
+            list.clear()
+            let is_empty = list.is_empty()
+            if is_empty == 1 {
+                1
+            } else {
+                0
+            }
+        }
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "1");
+}
+
+#[test]
+fn test_list_oop_multiple_operations() {
+    let code = r#"
+        let list = List.new()
+        list.push(100)
+        list.push(200)
+        list.push(300)
+        let val = list.get(1)
+        list.set(1, 250)
+        let updated = list.get(1)
+        let len = list.len()
+        list.drop()
+        if val == 200 {
+            if updated == 250 {
+                if len == 3 {
+                    1
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "1");
+}

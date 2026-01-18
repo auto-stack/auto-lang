@@ -41,6 +41,78 @@ pub enum VmRefData {
     HashSet(HashSetData),
     StringBuilder(StringBuilderData),
     File(File),
+    List(ListData),
+}
+
+/// Data for dynamic lists (similar to Rust's Vec<T>)
+#[derive(Debug)]
+pub struct ListData {
+    pub elems: Vec<Value>,
+}
+
+impl ListData {
+    pub fn new() -> Self {
+        Self {
+            elems: Vec::new(),
+        }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            elems: Vec::with_capacity(capacity),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.elems.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.elems.is_empty()
+    }
+
+    pub fn push(&mut self, elem: Value) {
+        self.elems.push(elem);
+    }
+
+    pub fn pop(&mut self) -> Option<Value> {
+        self.elems.pop()
+    }
+
+    pub fn clear(&mut self) {
+        self.elems.clear();
+    }
+
+    pub fn reserve(&mut self, additional: usize) {
+        self.elems.reserve(additional);
+    }
+
+    pub fn get(&self, index: usize) -> Option<&Value> {
+        self.elems.get(index)
+    }
+
+    pub fn set(&mut self, index: usize, elem: Value) -> bool {
+        if index < self.elems.len() {
+            self.elems[index] = elem;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn insert(&mut self, index: usize, elem: Value) {
+        if index <= self.elems.len() {
+            self.elems.insert(index, elem);
+        }
+    }
+
+    pub fn remove(&mut self, index: usize) -> Option<Value> {
+        if index < self.elems.len() {
+            Some(self.elems.remove(index))
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

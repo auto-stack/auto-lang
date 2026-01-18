@@ -17,7 +17,8 @@ pub enum Type {
     Str(usize),
     CStr,
     StrSlice,  // Borrowed string slice (Phase 3)
-    Array(ArrayType),
+    Array(ArrayType),         // [N]T - static array
+    List(Box<Type>),          // [~]T - dynamic list
     Ptr(PtrType),
     User(TypeDecl),
     Union(Union),
@@ -47,6 +48,7 @@ impl Type {
             Type::Array(array_type) => {
                 format!("[{}]{}", array_type.elem.unique_name(), array_type.len).into()
             }
+            Type::List(elem) => format!("[~]{}", elem.unique_name()).into(),
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().unique_name()).into(),
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
@@ -73,6 +75,7 @@ impl Type {
             Type::CStr => "\"\"".into(),
             Type::StrSlice => "\"\"".into(),  // Default empty slice
             Type::Array(_) => "[]".into(),
+            Type::List(_) => "[~]".into(),  // Empty list literal
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
             Type::User(_) => "{}".into(),
             Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
@@ -124,6 +127,7 @@ impl fmt::Display for Type {
             Type::CStr => write!(f, "cstr"),
             Type::StrSlice => write!(f, "str_slice"),
             Type::Array(array_type) => write!(f, "{}", array_type),
+            Type::List(elem) => write!(f, "[~]{}", elem),
             Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
             Type::User(type_decl) => write!(f, "{}", type_decl),
             Type::Enum(enum_decl) => write!(f, "{}", enum_decl.borrow()),
@@ -154,6 +158,7 @@ impl From<Type> for auto_val::Type {
             Type::CStr => auto_val::Type::CStr,
             Type::StrSlice => auto_val::Type::StrSlice,
             Type::Array(_) => auto_val::Type::Array,
+            Type::List(_) => auto_val::Type::Array,  // TODO: Add List to auto_val::Type
             Type::Ptr(_) => auto_val::Type::Ptr,
             Type::User(decl) => auto_val::Type::User(decl.name),
             Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
@@ -404,6 +409,9 @@ impl AtomWriter for Type {
                     array_type.elem.to_atom_str(),
                     array_type.len
                 )?;
+            }
+            Type::List(elem) => {
+                write!(f, "list({})", elem.to_atom_str())?;
             }
             Type::Ptr(ptr_type) => {
                 write!(f, "ptr({})", ptr_type.of.borrow().to_atom_str())?;

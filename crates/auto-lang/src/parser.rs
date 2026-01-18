@@ -3540,8 +3540,56 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_array_type(&mut self) -> AutoResult<Type> {
-        // parse array type name, e.g. `[10]int`
+        // parse array type name, e.g. `[10]int` or `[~]int`
         self.next(); // skip `[`
+
+        // Check for dynamic list: [~]T
+        if self.is_kind(TokenKind::Tilde) {
+            self.next(); // consume `~`
+            self.expect(TokenKind::RSquare)?; // skip `]`
+
+            // Parse element type
+            let type_name = self.parse_ident()?;
+            match type_name {
+                Expr::Ident(name) => {
+                    let elem_ty = self.lookup_type(&name).borrow().clone();
+                    let list_ty_name = format!("[~]{}", name);
+
+                    // Check if list type already exists
+                    let list_meta = self.lookup_meta(&list_ty_name);
+                    match list_meta {
+                        Some(meta) => {
+                            if let Meta::Type(list_ty) = meta.as_ref() {
+                                return Ok(list_ty.clone());
+                            } else {
+                                return Err(SyntaxError::Generic {
+                                    message: format!("Expected list type, got {:?}", meta),
+                                    span: pos_to_span(self.cur.pos),
+                                }
+                                .into());
+                            }
+                        }
+                        None => {
+                            // Create new list type
+                            let list_ty = Type::List(Box::new(elem_ty.clone()));
+                            self.scope
+                                .borrow_mut()
+                                .define_type(list_ty_name, Rc::new(Meta::Type(list_ty.clone())));
+                            return Ok(list_ty);
+                        }
+                    }
+                }
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected type identifier, got {:?}", type_name),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            }
+        }
+
+        // Parse static array: [N]T
         let array_size = if self.is_kind(TokenKind::Int)
             || self.is_kind(TokenKind::Uint)
             || self.is_kind(TokenKind::I8)

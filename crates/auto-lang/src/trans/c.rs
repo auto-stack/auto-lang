@@ -1409,6 +1409,11 @@ impl CTrans {
                 let len = array_type.len;
                 format!("{}[{}]", self.c_type_name(elem_type), len)
             }
+            Type::List(elem) => {
+                // [~]T transpiles to list_T* (wrapper around dynamic array)
+                let elem_type = self.c_type_name(elem);
+                format!("list_{}*", elem_type)
+            }
             Type::User(usr_type) => format!("struct {}", usr_type.name),
             Type::Ptr(ptr) => {
                 format!("{}*", self.c_type_name(&ptr.of.borrow()))

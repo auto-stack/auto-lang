@@ -67,6 +67,7 @@ pub enum TokenKind {
     DotQuestion,    // ?.
     At,             // @
     Hash,           // #
+    Tilde,          // ~
 
     // Keywords
     True,
@@ -196,6 +197,7 @@ impl fmt::Display for Token {
             TokenKind::Spec => write!(f, "<spec>"),
             TokenKind::CStr => write!(f, "<cstr:{}>", self.text),
             TokenKind::At => write!(f, "<@>"),
+            TokenKind::Tilde => write!(f, "<~>"),
             _ => write!(f, "<{}:{}>", self.kind, self.text),
         }
     }

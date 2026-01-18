@@ -675,6 +675,9 @@ impl<'a> Lexer<'a> {
                 '@' => {
                     return Ok(self.single(TokenKind::At, c));
                 }
+                '~' => {
+                    return Ok(self.single(TokenKind::Tilde, c));
+                }
                 _ => {
                     if c == self.fstr_note {
                         return Ok(self.single(TokenKind::FStrNote, c));

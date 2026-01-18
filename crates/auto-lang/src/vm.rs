@@ -5,6 +5,7 @@ use std::sync::Mutex;
 pub mod io;
 pub mod collections;
 pub mod builder;
+pub mod list;
 
 /// VM function signature: takes universe and single value argument
 pub type VmFunction = fn(Shared<crate::Universe>, auto_val::Value) -> auto_val::Value;
@@ -227,6 +228,58 @@ pub fn init_collections_module() {
     );
 
     collections_module.types.insert("HashSet".into(), hashset_type);
+
+    // Register List type with methods
+    let mut list_type = VmTypeEntry {
+        name: "List".into(),
+        methods: HashMap::new(),
+    };
+
+    list_type
+        .methods
+        .insert("push".into(), list::list_push as VmMethod);
+    list_type
+        .methods
+        .insert("pop".into(), list::list_pop as VmMethod);
+    list_type
+        .methods
+        .insert("len".into(), list::list_len as VmMethod);
+    list_type
+        .methods
+        .insert("is_empty".into(), list::list_is_empty as VmMethod);
+    list_type
+        .methods
+        .insert("clear".into(), list::list_clear as VmMethod);
+    list_type
+        .methods
+        .insert("reserve".into(), list::list_reserve as VmMethod);
+    list_type
+        .methods
+        .insert("get".into(), list::list_get as VmMethod);
+    list_type
+        .methods
+        .insert("set".into(), list::list_set as VmMethod);
+    list_type
+        .methods
+        .insert("insert".into(), list::list_insert as VmMethod);
+    list_type
+        .methods
+        .insert("remove".into(), list::list_remove as VmMethod);
+    list_type
+        .methods
+        .insert("drop".into(), list::list_drop as VmMethod);
+
+    // Register List.new() as a static function
+    collections_module.functions.insert(
+        "List.new".into(),
+        VmFunctionEntry {
+            name: "List.new".into(),
+            func: list::list_new_static,
+            is_method: false,
+        },
+    );
+
+    collections_module.types.insert("List".into(), list_type);
 
     // Register the module
     VM_REGISTRY.lock().unwrap().register_module(collections_module);

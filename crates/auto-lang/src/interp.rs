@@ -37,7 +37,7 @@ impl Interpreter {
         crate::vm::init_collections_module();
         crate::vm::init_builder_module();
 
-        // Load standard type definitions to register HashMap, HashSet, StringBuilder types
+        // Load standard type definitions to register HashMap, HashSet, StringBuilder, List types
         Self::load_stdlib_types(&interpreter.scope);
 
         interpreter
@@ -111,6 +111,22 @@ impl Interpreter {
             "File",
             std::rc::Rc::new(crate::scope::Meta::Type(Type::User(file_type))),
         );
+
+        // Register List type
+        let list_type = TypeDecl {
+            name: Name::from("List"),
+            kind: TypeDeclKind::UserType,
+            parent: None,
+            has: Vec::new(),
+            specs: Vec::new(),
+            members: Vec::new(),
+            delegations: Vec::new(),
+            methods: Vec::new(),  // Methods are registered separately via VM registry
+        };
+        scope.borrow_mut().define_type(
+            "List",
+            std::rc::Rc::new(crate::scope::Meta::Type(Type::User(list_type))),
+        );
     }
 
     pub fn with_fstr_note(mut self, note: char) -> Self {
@@ -127,6 +143,11 @@ impl Interpreter {
             skip_check: false,
             enable_error_recovery: false,
         };
+
+        // Load standard type definitions to register HashMap, HashSet, StringBuilder, List types
+        // This must be called for each new Universe/scope
+        Self::load_stdlib_types(&interp.scope);
+
         interp
     }
 

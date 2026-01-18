@@ -119,6 +119,11 @@ Located in `crates/auto-lang/test/a2r/`:
 - **F-strings**: `f"hello $name"` or `f"result: ${1 + 2}"`
 - **Ranges**: `0..10` (exclusive) or `0..=10` (inclusive)
 - **Arrays**: `[1, 2, 3]` with indexing `arr[0]`
+  - Static arrays: `[N]T` where N is compile-time size (e.g., `[10]int`)
+  - Slices: `[]T` for borrowed slice of array
+  - **Dynamic lists**: `[~]T` for growable lists (e.g., `[~]int`)
+    - Creates via `List.new()`: `let list = List.new()`
+    - Methods: `push()`, `pop()`, `len()`, `is_empty()`, `clear()`, `get()`, `set()`, `insert()`, `remove()`, `reserve()`
 - **Objects**: `{key: value, ...}` with field access `obj.key`
 - **Functions**: `fn add(a int, b int) int { a + b }`
 - **Imports**: `use math::add` or `use c <stdio.h>`
@@ -252,6 +257,57 @@ pub struct Obj {
 - `Obj::new()` is not const
 - Use `OnceLock` for static Obj instances (see `value.rs:node_nil()` and `obj_empty()`)
 - Removed `Obj::EMPTY` constant; use `Obj::new()` instead
+
+### ListData Structure
+
+The `ListData` structure (in `crates/auto-lang/src/universe.rs`) implements dynamic lists similar to Rust's `Vec<T>`:
+
+```rust
+#[derive(Debug)]
+pub struct ListData {
+    pub elems: Vec<Value>,
+}
+```
+
+**Syntax**: `[~]T` transpiles to backend-specific types:
+- C: `list_T*` (wrapper around dynamic array)
+- Python: `list`
+- Rust: `Vec<T>`
+
+**Creation**: `let list = List.new()`
+
+**Methods**:
+- `push(elem)` - Add element to end
+- `pop()` - Remove and return last element
+- `len()` - Return number of elements
+- `is_empty()` - Return 1 if empty, 0 otherwise
+- `clear()` - Remove all elements
+- `get(index)` - Get element at index (0-based)
+- `set(index, elem)` - Set element at index
+- `insert(index, elem)` - Insert element at index
+- `remove(index)` - Remove and return element at index
+- `reserve(additional)` - Reserve capacity for additional elements
+
+**Example Usage**:
+```auto
+fn main() {
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+
+    let len = list.len()  // Returns 3
+    let first = list.get(0)  // Returns 1
+
+    list.set(0, 10)
+    let updated = list.get(0)  // Returns 10
+
+    list.insert(1, 5)  // [10, 5, 2, 3]
+
+    let removed = list.remove(1)  // Returns 5, list is [10, 2, 3]
+    let popped = list.pop()  // Returns 3, list is [10, 2]
+}
+```
 
 ## Common Development Tasks
 

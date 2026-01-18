@@ -139,6 +139,8 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         // 复合类型：递归检查
         Type::Array(arr) => occurs_in(var_name, &arr.elem),
 
+        Type::List(elem) => occurs_in(var_name, elem),
+
         Type::Ptr(ptr) => {
             let inner_ty = ptr.of.borrow();
             occurs_in(var_name, &inner_ty)

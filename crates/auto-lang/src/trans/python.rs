@@ -592,6 +592,7 @@ impl PythonTrans {
             Type::CStr => "str".into(),
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
+            Type::List(_) => "list".into(),  // [~]T → list in Python
             _ => "Any".into(), // Fallback for complex types
         }
     }

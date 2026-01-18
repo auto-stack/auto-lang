@@ -68,6 +68,10 @@ impl RustTrans {
             Type::Array(arr) => {
                 format!("[{}; {}]", self.rust_type_name(&arr.elem), arr.len)
             }
+            Type::List(elem) => {
+                // [~]T transpiles to Vec<T> in Rust
+                format!("Vec<{}>", self.rust_type_name(elem))
+            }
             Type::Ptr(ptr) => {
                 // Check if we need reference or Box
                 match &*ptr.of.borrow() {
