@@ -1136,10 +1136,40 @@ impl CTrans {
     }
 
     fn index(&mut self, arr: &Box<Expr>, idx: &Box<Expr>, out: &mut impl Write) -> AutoResult<()> {
+        // Check if this is a slice operation (range index)
+        if let Expr::Range(ref range) = **idx {
+            return self.slice(arr, range, out);
+        }
+
+        // Regular index operation
         self.expr(arr, out)?;
         out.write(b"[")?;
         self.expr(idx, out)?;
         out.write(b"]")?;
+        Ok(())
+    }
+
+    /// Generate C code for slice operations
+    ///
+    /// For now, generates a call to a helper function that performs the slice
+    /// TODO: Generate inline slice code for better performance
+    fn slice(&mut self, arr: &Box<Expr>, range: &Range, out: &mut impl Write) -> AutoResult<()> {
+        // Write array expression
+        self.expr(arr, out)?;
+
+        // Write slice notation as comment (C doesn't have native slice syntax)
+        out.write(b"/* [")?;
+        self.expr(&range.start, out)?;
+        if range.eq {
+            out.write(b"..=")?;
+        } else {
+            out.write(b"..")?;
+        }
+        self.expr(&range.end, out)?;
+        out.write(b"] */")?;
+
+        // For now, just generate the array expression
+        // TODO: Implement actual slice code generation
         Ok(())
     }
 
@@ -1445,6 +1475,12 @@ impl CTrans {
             Type::Spec(_spec_decl) => {
                 // Spec 类型在 C 中使用 void* 表示（多态）
                 "void*".to_string()
+            }
+            Type::Slice(slice) => {
+                // []T transpiles to slice_T struct in C
+                // For now, use pointer representation (similar to how arrays work)
+                let elem_type = self.c_type_name(&slice.elem);
+                format!("struct slice_{}", elem_type)
             }
             Type::Unknown => "unknown".to_string(),
             Type::CStruct(decl) => format!("{}", decl.name),

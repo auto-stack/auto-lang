@@ -72,6 +72,10 @@ impl RustTrans {
                 // [~]T transpiles to Vec<T> in Rust
                 format!("Vec<{}>", self.rust_type_name(elem))
             }
+            Type::Slice(slice) => {
+                // []T transpiles to &[T] in Rust
+                format!("&[{}]", self.rust_type_name(&slice.elem))
+            }
             Type::Ptr(ptr) => {
                 // Check if we need reference or Box
                 match &*ptr.of.borrow() {

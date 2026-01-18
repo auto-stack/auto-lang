@@ -3540,8 +3540,56 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_array_type(&mut self) -> AutoResult<Type> {
-        // parse array type name, e.g. `[10]int` or `[~]int`
+        // parse array type name, e.g. `[10]int`, `[~]int`, or `[]int` (slice)
         self.next(); // skip `[`
+
+        // Check for slice type: []T (empty brackets)
+        if self.is_kind(TokenKind::RSquare) {
+            self.next(); // consume `]`
+
+            // Parse element type
+            let type_name = self.parse_ident()?;
+            match type_name {
+                Expr::Ident(name) => {
+                    let elem_ty = self.lookup_type(&name).borrow().clone();
+                    let slice_ty_name = format!("[]{}", name);
+
+                    // Check if slice type already exists
+                    let slice_meta = self.lookup_meta(&slice_ty_name);
+                    match slice_meta {
+                        Some(meta) => {
+                            if let Meta::Type(slice_ty) = meta.as_ref() {
+                                return Ok(slice_ty.clone());
+                            } else {
+                                return Err(SyntaxError::Generic {
+                                    message: format!("Expected slice type, got {:?}", meta),
+                                    span: pos_to_span(self.cur.pos),
+                                }
+                                .into());
+                            }
+                        }
+                        None => {
+                            // Create new slice type
+                            use crate::ast::SliceType;
+                            let slice_ty = Type::Slice(SliceType {
+                                elem: Box::new(elem_ty.clone()),
+                            });
+                            self.scope
+                                .borrow_mut()
+                                .define_type(slice_ty_name, Rc::new(Meta::Type(slice_ty.clone())));
+                            return Ok(slice_ty);
+                        }
+                    }
+                }
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected type identifier, got {:?}", type_name),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            }
+        }
 
         // Check for dynamic list: [~]T
         if self.is_kind(TokenKind::Tilde) {

@@ -1,0 +1,63 @@
+type dstr {
+    data List
+
+    static fn new() dstr {
+        dstr(data: List.new())
+    }
+
+    static fn from_byte(b u8) dstr {
+        let list = List.new()
+        list.push(b)
+        dstr(data: list)
+    }
+
+    static fn from_bytes(b1 u8, b2 u8) dstr {
+        let list = List.new()
+        list.push(b1)
+        list.push(b2)
+        dstr(data: list)
+    }
+
+    fn len() int {
+        let data = .data
+        data.len()
+    }
+
+    fn is_empty() bool {
+        let data = .data
+        data.is_empty()
+    }
+
+    fn get(index int) u8 {
+        let data = .data
+        data.get(index)
+    }
+
+    fn push(b u8) {
+        .data.push(b)
+    }
+
+    fn pop() u8 {
+        .data.pop()
+    }
+
+    fn set(index int, b u8) int {
+        .data.set(index, b)
+    }
+
+    fn insert(index int, b u8) {
+        .data.insert(index, b)
+    }
+
+    fn remove(index int) u8 {
+        .data.remove(index)
+    }
+
+    fn clear() {
+        .data.clear()
+    }
+
+    fn reserve(capacity int) {
+        .data.reserve(capacity)
+    }
+}

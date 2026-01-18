@@ -19,6 +19,7 @@ pub enum Type {
     StrSlice,  // Borrowed string slice (Phase 3)
     Array(ArrayType),         // [N]T - static array
     List(Box<Type>),          // [~]T - dynamic list
+    Slice(SliceType),         // []T - slice type
     Ptr(PtrType),
     User(TypeDecl),
     Union(Union),
@@ -49,6 +50,7 @@ impl Type {
                 format!("[{}]{}", array_type.elem.unique_name(), array_type.len).into()
             }
             Type::List(elem) => format!("[~]{}", elem.unique_name()).into(),
+            Type::Slice(slice_type) => format!("[]{}", slice_type.elem.unique_name()).into(),
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().unique_name()).into(),
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
@@ -76,6 +78,7 @@ impl Type {
             Type::StrSlice => "\"\"".into(),  // Default empty slice
             Type::Array(_) => "[]".into(),
             Type::List(_) => "[~]".into(),  // Empty list literal
+            Type::Slice(_) => "[]".into(),  // Empty slice literal
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
             Type::User(_) => "{}".into(),
             Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
@@ -112,6 +115,17 @@ impl fmt::Display for ArrayType {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SliceType {
+    pub elem: Box<Type>,
+}
+
+impl fmt::Display for SliceType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(slice-type (elem {}))", &self.elem)
+    }
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -128,6 +142,7 @@ impl fmt::Display for Type {
             Type::StrSlice => write!(f, "str_slice"),
             Type::Array(array_type) => write!(f, "{}", array_type),
             Type::List(elem) => write!(f, "[~]{}", elem),
+            Type::Slice(slice_type) => write!(f, "{}", slice_type),
             Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
             Type::User(type_decl) => write!(f, "{}", type_decl),
             Type::Enum(enum_decl) => write!(f, "{}", enum_decl.borrow()),
@@ -159,6 +174,7 @@ impl From<Type> for auto_val::Type {
             Type::StrSlice => auto_val::Type::StrSlice,
             Type::Array(_) => auto_val::Type::Array,
             Type::List(_) => auto_val::Type::Array,  // TODO: Add List to auto_val::Type
+            Type::Slice(_) => auto_val::Type::Array,  // TODO: Add Slice to auto_val::Type
             Type::Ptr(_) => auto_val::Type::Ptr,
             Type::User(decl) => auto_val::Type::User(decl.name),
             Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
@@ -412,6 +428,9 @@ impl AtomWriter for Type {
             }
             Type::List(elem) => {
                 write!(f, "list({})", elem.to_atom_str())?;
+            }
+            Type::Slice(slice_type) => {
+                write!(f, "slice({})", slice_type.elem.to_atom_str())?;
             }
             Type::Ptr(ptr_type) => {
                 write!(f, "ptr({})", ptr_type.of.borrow().to_atom_str())?;

@@ -141,6 +141,8 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
 
         Type::List(elem) => occurs_in(var_name, elem),
 
+        Type::Slice(slice) => occurs_in(var_name, &slice.elem),
+
         Type::Ptr(ptr) => {
             let inner_ty = ptr.of.borrow();
             occurs_in(var_name, &inner_ty)

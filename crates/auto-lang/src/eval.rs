@@ -804,6 +804,70 @@ impl Evaler {
                     max_loop -= 1;
                 }
             }
+            Value::Instance(ref instance) => {
+                // Handle iteration over VM instances (e.g., List)
+                if let auto_val::Type::User(ref_name) = &instance.ty {
+                    if ref_name.as_str() == "List" {
+                        // Get the list ID and retrieve elements
+                        if let Some(Value::USize(list_id)) = instance.fields.get("id") {
+                            // Clone the list elements to avoid holding the borrow across the loop
+                            let list_elems = {
+                                let uni = self.universe.borrow();
+                                if let Some(vmref) = uni.get_vmref_ref(list_id) {
+                                    let ref_box = vmref.borrow();
+                                    if let crate::universe::VmRefData::List(list_data) = &*ref_box {
+                                        list_data.elems.clone()
+                                    } else {
+                                        vec![]
+                                    }
+                                } else {
+                                    vec![]
+                                }
+                            };
+
+                            let len = list_elems.len();
+                            for (idx, item) in list_elems.iter().enumerate() {
+                                if idx == len - 1 {
+                                    is_mid = false;
+                                }
+                                self.eval_iter(iter, idx, item.clone());
+                                match self.eval_loop_body(body, is_mid, is_new_line) {
+                                    Ok(val) => {
+                                        if let Value::Array(arr) = &val {
+                                            res.extend(arr);
+                                        } else {
+                                            res.push(val);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        self.universe.borrow_mut().exit_scope();
+                                        return Err(e);
+                                    }
+                                }
+                                max_loop -= 1;
+                            }
+                            self.universe.borrow_mut().exit_scope();
+                            return Ok(match self.mode {
+                                EvalMode::SCRIPT => Value::Void,
+                                EvalMode::CONFIG => Value::Array(res),
+                                EvalMode::TEMPLATE => Value::Str(
+                                    res.iter()
+                                        .filter(|v| match v {
+                                            Value::Nil => false,
+                                            Value::Str(s) => !s.is_empty(),
+                                            _ => true,
+                                        })
+                                        .map(|v| v.to_astr())
+                                        .collect::<Vec<AutoStr>>()
+                                        .join(sep)
+                                        .into(),
+                                ),
+                            });
+                        }
+                    }
+                }
+                return Ok(Value::error(format!("Cannot iterate over instance of type {:?}", instance.ty)));
+            }
             _ => {
                 return Ok(Value::error(format!("Invalid range {}", range_final)));
             }
@@ -1568,8 +1632,12 @@ impl Evaler {
                 }
             }
             Expr::Index(base, _index) => {
-                // Mark the array as moved
-                self.mark_expr_as_moved(base);
+                // Mark the array as moved, unless it's a VM reference type (List, HashMap, etc.)
+                // VM reference types use VmRef which is like a shared pointer, so indexing doesn't move them
+                let base_value = self.eval_expr(base);
+                if !matches!(base_value, Value::Instance(inst) if matches!(&inst.ty, auto_val::Type::User(name) if matches!(name.as_str(), "List" | "HashMap" | "HashSet" | "StringBuilder"))) {
+                    self.mark_expr_as_moved(base);
+                }
             }
             // Nested expressions: recurse to find variable references
             Expr::Unary(_op, inner_expr) => {
@@ -2186,13 +2254,15 @@ impl Evaler {
             }).collect();
 
             // VM static functions take (universe, Value)
+            // For varargs support (e.g., List.new(1, 2, 3)), pack multiple args into an Array
             if arg_vals.len() == 0 {
                 return Ok((func_entry.func)(uni, Value::Nil));
             } else if arg_vals.len() == 1 {
                 return Ok((func_entry.func)(uni, arg_vals[0].clone()));
             } else {
-                let msg: AutoStr = format!("VM function {} called with {} args, expected 0 or 1", sig.name.as_str(), arg_vals.len()).into();
-                return Ok(Value::error(msg));
+                // Pack multiple arguments into an Array for varargs functions
+                let args_array = Value::Array(auto_val::Array { values: arg_vals });
+                return Ok((func_entry.func)(uni, args_array));
             }
         }
 
@@ -2388,11 +2458,16 @@ impl Evaler {
 
     fn index(&mut self, array: &Expr, index: &Expr) -> Value {
         let mut array_value = self.eval_expr(array);
+
+        // Check if index is a range expression for slicing
+        if let Expr::Range(ref range) = index {
+            return self.slice(&array_value, range);
+        }
+
         let index_value = self.eval_expr(index);
         let mut idx = match index_value {
             Value::Int(index) => index,
             // TODO: support negative index
-            // TODO: support range index
             _ => return Value::error(format!("Invalid index {}", index_value)),
         };
 
@@ -2434,7 +2509,120 @@ impl Evaler {
                 }
                 Value::Char(s.as_str().chars().nth(idx).unwrap())
             }
+            Value::Instance(ref instance) => {
+                // Handle index operations on VM instances (e.g., List, HashMap)
+                if let auto_val::Type::User(ref_name) = &instance.ty {
+                    match ref_name.as_str() {
+                        "List" => {
+                            // Use the list_get VM method
+                            let id = instance.fields.get("id");
+                            if let Some(Value::USize(_list_id)) = id {
+                                let uni = self.universe.clone();
+                                crate::vm::list::list_get(uni, &mut array_value, vec![index_value])
+                            } else {
+                                Value::error(format!("Invalid List instance"))
+                            }
+                        }
+                        "HashMap" | "HashSet" | "StringBuilder" => {
+                            // These types don't support index operations
+                            Value::error(format!("Type {} does not support index operations", ref_name))
+                        }
+                        _ => Value::error(format!("Unknown type {}", ref_name)),
+                    }
+                } else {
+                    Value::error(format!("Invalid instance type"))
+                }
+            }
             _ => Value::error(format!("Invalid array {}", array_value)),
+        }
+    }
+
+    /// Slice a value using a range expression
+    ///
+    /// Supports slicing for:
+    /// - str (Value::Str, Value::OwnedStr) → returns substring
+    /// - Array (Value::Array) → returns subarray
+    /// - List (VM instance) → returns new List with slice
+    fn slice(&mut self, value: &Value, range: &ast::Range) -> Value {
+        // Evaluate range bounds
+        let start_val = self.eval_expr(&range.start);
+        let end_val = self.eval_expr(&range.end);
+
+        let start = match start_val {
+            Value::Int(i) => i as usize,
+            Value::Uint(u) => u as usize,
+            _ => return Value::error(format!("Invalid range start: {:?}", start_val)),
+        };
+
+        let mut end = match end_val {
+            Value::Int(i) => i as usize,
+            Value::Uint(u) => u as usize,
+            _ => return Value::error(format!("Invalid range end: {:?}", end_val)),
+        };
+
+        // Adjust end based on whether it's inclusive (..=) or exclusive (..)
+        if range.eq {
+            end += 1; // Inclusive range, so add 1 to end
+        }
+
+        match value {
+            Value::Str(s) => {
+                let bytes = s.as_bytes();
+                if start > bytes.len() || end > bytes.len() || start > end {
+                    return Value::error(format!("Slice out of bounds: [{}..{}], len={}", start, end, bytes.len()));
+                }
+                let slice_str = &s[start..end];
+                Value::Str(slice_str.into())
+            }
+            Value::OwnedStr(s) => {
+                let s_str = s.as_str();
+                if start > s_str.len() || end > s_str.len() || start > end {
+                    return Value::error(format!("Slice out of bounds: [{}..{}], len={}", start, end, s_str.len()));
+                }
+                let slice_str = &s_str[start..end];
+                Value::OwnedStr(auto_val::Str::from_str(slice_str))
+            }
+            Value::Array(values) => {
+                if start > values.len() || end > values.len() || start > end {
+                    return Value::error(format!("Slice out of bounds: [{}..{}], len={}", start, end, values.len()));
+                }
+                let sliced_values: Vec<Value> = values.values[start..end].to_vec();
+                Value::Array(auto_val::Array::from_vec(sliced_values))
+            }
+            Value::Instance(ref instance) => {
+                // Handle slicing on VM instances (e.g., List, dstr)
+                if let auto_val::Type::User(ref_name) = &instance.ty {
+                    match ref_name.as_str() {
+                        "List" => {
+                            // Get the list data
+                            let id = instance.fields.get("id");
+                            if let Some(Value::USize(list_id)) = id {
+                                let uni = self.universe.clone();
+                                // Create a new list from the slice
+                                // TODO: Implement efficient List slicing
+                                Value::error(format!("List slicing not yet implemented"))
+                            } else {
+                                Value::error(format!("Invalid List instance"))
+                            }
+                        }
+                        "dstr" => {
+                            // dstr has a List field called "data"
+                            let data_field = instance.fields.get("data");
+                            if let Some(Value::Instance(ref list_inst)) = data_field {
+                                // Slice the underlying List
+                                // TODO: Implement dstr slicing
+                                Value::error(format!("dstr slicing not yet implemented"))
+                            } else {
+                                Value::error(format!("Invalid dstr instance"))
+                            }
+                        }
+                        _ => Value::error(format!("Type {} does not support slicing", ref_name)),
+                    }
+                } else {
+                    Value::error(format!("Invalid instance type"))
+                }
+            }
+            _ => Value::error(format!("Cannot slice type {:?}", value)),
         }
     }
 
@@ -3648,6 +3836,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::StrSlice => auto_val::Type::StrSlice,  // Borrowed string slice (Phase 3)
         ast::Type::Array(_) => auto_val::Type::Array,
         ast::Type::List(_) => auto_val::Type::Array,  // TODO: Add List to auto_val::Type
+        ast::Type::Slice(_) => auto_val::Type::Array,  // TODO: Add Slice to auto_val::Type
         ast::Type::Ptr(_) => auto_val::Type::Ptr,
         ast::Type::User(type_decl) => auto_val::Type::User(type_decl.name.clone()),
         ast::Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
