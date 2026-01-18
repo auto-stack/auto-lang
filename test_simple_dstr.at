@@ -1,0 +1,17 @@
+type dstr {
+    data List
+
+    fn new() dstr {
+        dstr(data: List.new())
+    }
+
+    fn len() int {
+        let data = .data
+        data.len()
+    }
+}
+
+fn main() {
+    let s = dstr.new()
+    s.len()
+}

@@ -1,0 +1,35 @@
+// This is what a linked list WILL look like once field access is implemented
+// For now, this won't work due to the limitation mentioned above
+
+type ListNode {
+    data int
+    next ListNode
+
+    static fn new(val int) ListNode {
+        ListNode(data: val, next: nil)
+    }
+
+    fn get_data() int {
+        .data
+    }
+
+    fn get_next() ListNode {
+        .next
+    }
+
+    fn set_next(node ListNode) {
+        .next = node
+    }
+}
+
+// Example usage:
+// fn main() {
+//     let node3 = ListNode.new(30)
+//     let node2 = ListNode.new(20)
+//     node2.set_next(node3)
+//     let node1 = ListNode.new(10)
+//     node1.set_next(node2)
+//
+//     // Traverse: 10 -> 20 -> 30 -> nil
+//     node1.get_data()  // returns 10
+// }

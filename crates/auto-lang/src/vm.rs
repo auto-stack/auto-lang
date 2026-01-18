@@ -274,7 +274,7 @@ pub fn init_collections_module() {
         "List.new".into(),
         VmFunctionEntry {
             name: "List.new".into(),
-            func: list::list_new_static,
+            func: list::list_new,
             is_method: false,
         },
     );

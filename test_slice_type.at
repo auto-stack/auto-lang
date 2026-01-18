@@ -1,0 +1,4 @@
+fn test_slice_type_syntax() {
+    let x []int
+    x
+}

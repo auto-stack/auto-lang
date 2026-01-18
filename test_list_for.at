@@ -1,0 +1,57 @@
+// Test for loop iteration over List
+
+fn test_for_list_sum() int {
+    let list = List.new(1, 2, 3, 4, 5)
+    mut sum = 0
+    for v in list {
+        sum = sum + v
+    }
+    sum
+}
+
+fn test_for_list_count() int {
+    let list = List.new(10, 20, 30)
+    mut count = 0
+    for v in list {
+        count = count + 1
+    }
+    if count == 3 {
+        1
+    } else {
+        0
+    }
+}
+
+fn test_for_list_empty() int {
+    let list = List.new()
+    mut count = 0
+    for v in list {
+        count = count + 1
+    }
+    if count == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn main() {
+    let r1 = test_for_list_sum()
+    let r2 = test_for_list_count()
+    let r3 = test_for_list_empty()
+
+    // r1 should be 15 (1+2+3+4+5), r2 and r3 should be 1
+    if r1 == 15 {
+        if r2 == 1 {
+            if r3 == 1 {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    }
+}

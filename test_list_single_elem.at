@@ -1,0 +1,4 @@
+fn main() {
+    let list = List.new(65)
+    list.len()
+}

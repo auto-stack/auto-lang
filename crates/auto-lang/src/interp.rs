@@ -23,7 +23,7 @@ pub struct Interpreter {
 impl Interpreter {
     pub fn new() -> Self {
         let scope = shared(Universe::new());
-        let interpreter = Self {
+        let mut interpreter = Self {
             evaler: Evaler::new(scope.clone()),
             scope,
             result: Value::Nil,
@@ -39,6 +39,24 @@ impl Interpreter {
 
         // Load standard type definitions to register HashMap, HashSet, StringBuilder, List types
         Self::load_stdlib_types(&interpreter.scope);
+
+        // Load dstr.at to register dstr type and methods
+        let dstr_code = std::fs::read_to_string("../../stdlib/auto/dstr.at").unwrap_or_else(|_| {
+            // Try alternate path
+            std::fs::read_to_string("stdlib/auto/dstr.at").unwrap_or(String::new())
+        });
+        if !dstr_code.is_empty() {
+            let _ = interpreter.interpret(&dstr_code);
+        }
+
+        // Load list_node.at to register ListNode type and methods
+        let list_node_code = std::fs::read_to_string("../../stdlib/auto/list_node.at").unwrap_or_else(|_| {
+            // Try alternate path
+            std::fs::read_to_string("stdlib/auto/list_node.at").unwrap_or(String::new())
+        });
+        if !list_node_code.is_empty() {
+            let _ = interpreter.interpret(&list_node_code);
+        }
 
         interpreter
     }

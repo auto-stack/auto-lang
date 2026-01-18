@@ -1,0 +1,10 @@
+fn main() {
+    let s = dstr.new()
+    s.push(72)
+    s.push(101)
+    s.push(108)
+    s.push(108)
+    s.push(111)
+    let len = s.len()
+    len
+}

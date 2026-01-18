@@ -1,0 +1,4 @@
+fn main() {
+    let node3 = ListNode(data: 30, next: nil)
+    node3.get_data()
+}

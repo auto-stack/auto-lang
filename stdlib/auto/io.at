@@ -1,3 +1,6 @@
+use c.stdio: printf, fopen, fclose, fputs, fgets, fgetc, fputc, ungetc, fread, fwrite, fseek, ftell, rewind, feof, ferror, clearerr, fflush, FILE
+use c.stdlib: exit
+
 fn say(msg str) {
     printf(c"%s\n", msg)
 }

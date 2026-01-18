@@ -1922,17 +1922,33 @@ impl<'a> Parser<'a> {
         // 3. /usr/lib/auto
 
         let file_path = if path.starts_with("auto.") {
-            // stdlib
+            // stdlib/auto
             let std_path = crate::util::find_std_lib()?;
             // println!("debug: std lib location: {}", std_path); // LSP: disabled
             let path = path.replace("auto.", "");
             AutoPath::new(std_path).join(path.clone())
+        } else if path.starts_with("c.") {
+            // stdlib/c (C standard library layer)
+            let std_path = crate::util::find_std_lib()?;
+            // Get parent of stdlib/auto, which is stdlib, then join c/
+            let stdlib_auto: &str = &std_path;
+            if let Some(parent) = stdlib_auto.rfind("/auto") {
+                let stdlib_base = &stdlib_auto[..parent];
+                let path = path.replace("c.", "c/");
+                AutoPath::new(stdlib_base).join(path.clone())
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Cannot find stdlib parent directory"),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
         } else {
             // local lib
             AutoPath::new(".").join(path.clone())
         };
         let dir = file_path.parent();
         let name = file_path.path().file_name().unwrap();
+
         if !dir.exists() {
             return Err(SyntaxError::Generic {
                 message: format!("Invalid import path: {}", path),
@@ -1943,7 +1959,14 @@ impl<'a> Parser<'a> {
 
         // Plan 036: Load multiple files and merge their content
         // Strategy: Merge file contents (bottom layer first, then top layer), then parse as one file
-        let extensions = self.get_file_extensions();
+
+        // For C stdlib layer, always load .c.at files regardless of compile destination
+        let extensions = if path.starts_with("c.") {
+            vec![".c.at"]
+        } else {
+            self.get_file_extensions()
+        };
+
         let name_str = name.to_str().unwrap();
         let mut file_contents = Vec::new();
         let mut loaded_files = Vec::new();
@@ -2051,11 +2074,31 @@ impl<'a> Parser<'a> {
         // Define items in scope
         for item in items.iter() {
             // lookup item's meta from its mod
-            let meta = self
-                .scope
-                .borrow()
-                .lookup(item.as_str(), scope_name.clone())
-                .unwrap();
+            let meta = if let Some(found_meta) = self.scope.borrow().lookup(item.as_str(), scope_name.clone()) {
+                found_meta
+            } else {
+                // For C library functions (c.stdio, c.stdlib, etc.), create a placeholder meta
+                // These are external C functions that will be linked by the transpiler
+                if scope_name.starts_with("c.") {
+                    use crate::ast::{Fn, FnKind, Name, Param, TypeDecl};
+                    let c_fn = Fn {
+                        kind: FnKind::CFunction,
+                        name: item.clone(),
+                        parent: None,
+                        params: vec![],
+                        body: crate::ast::Body::new(),
+                        ret: Type::Int,
+                        ret_name: None,
+                        is_static: false,
+                    };
+                    std::rc::Rc::new(Meta::Fn(c_fn))
+                } else {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Cannot find symbol: {} in {}", item, scope_name),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            };
             // define item with its name in current scope
             self.define_rc(item.as_str(), meta);
         }

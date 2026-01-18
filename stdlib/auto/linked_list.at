@@ -1,0 +1,30 @@
+type LinkedList {
+    data List
+
+    static fn new() LinkedList {
+        LinkedList(data: List.new())
+    }
+
+    static fn from(val int) LinkedList {
+        let list = List.new()
+        list.push(val)
+        list.push(0)
+        LinkedList(data: list)
+    }
+
+    fn push(val int) {
+        .data.push(val)
+        .data.push(0)
+    }
+
+    fn get(index int) int {
+        let idx = index * 2
+        .data.get(idx)
+    }
+
+    fn len() int {
+        let data = .data
+        let len = data.len()
+        len / 2
+    }
+}

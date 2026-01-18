@@ -1,0 +1,13 @@
+type Test {
+    data List
+
+    fn test_push() {
+        .data.push(65)
+    }
+}
+
+fn main() {
+    mut t = Test(data: List.new())
+    t.test_push()
+    t.data.len()
+}

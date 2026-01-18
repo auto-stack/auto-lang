@@ -1,0 +1,10 @@
+type TestStruct {
+    data [~]u8
+}
+
+fn main() {
+    let list = List.new(1, 2, 3)
+    let s = TestStruct(data: list)
+    let len = s.data.len()
+    len
+}

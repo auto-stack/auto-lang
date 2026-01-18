@@ -1,0 +1,24 @@
+type ListNode {
+    data int
+    next ListNode
+
+    static fn new(val int, next_node ListNode) ListNode {
+        ListNode(data: val, next: next_node)
+    }
+
+    fn get_data() int {
+        .data
+    }
+
+    fn get_next() ListNode {
+        .next
+    }
+
+    fn set_data(val int) {
+        .data = val
+    }
+
+    fn set_next(next_node ListNode) {
+        .next = next_node
+    }
+}

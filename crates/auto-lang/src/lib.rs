@@ -3,6 +3,7 @@ pub mod atom;
 pub mod atom_error;
 pub mod atom_tests;
 pub mod config;
+pub mod dstr_tests;
 pub mod error;
 pub mod eval;
 pub mod infer;
@@ -2303,3 +2304,90 @@ fn test_list_oop_multiple_operations() {
     let result = run(code).unwrap();
     assert_eq!(result, "1");
 }
+
+#[test]
+fn test_list_oop_index() {
+    let code = r#"
+    let list = List.new(10, 20, 30)
+    let first = list[0]
+    let second = list[1]
+    let third = list[2]
+
+    if first == 10 {
+        if second == 20 {
+            if third == 30 {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    }
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "1");
+}
+
+#[test]
+fn test_list_oop_varargs() {
+    let code = r#"
+    let list = List.new(1, 2, 3, 4, 5)
+    let len = list.len()
+
+    if len == 5 {
+        1
+    } else {
+        0
+    }
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "1");
+}
+
+#[test]
+fn test_list_oop_varargs_empty() {
+    let code = r#"
+    let list = List.new()
+    let len = list.len()
+
+    if len == 0 {
+        1
+    } else {
+        0
+    }
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "1");
+}
+
+#[test]
+fn test_list_oop_for_iteration() {
+    let code = r#"
+    let list = List.new(1, 2, 3, 4, 5)
+    mut sum = 0
+    for v in list {
+        sum = sum + v
+    }
+    sum
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "15");
+}
+
+#[test]
+fn test_list_oop_for_empty() {
+    let code = r#"
+    let list = List.new()
+    mut count = 0
+    for v in list {
+        count = count + 1
+    }
+    count
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "0");
+}
+

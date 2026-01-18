@@ -13,8 +13,13 @@ pub fn list_new_static(uni: Shared<Universe>, _arg: Value) -> Value {
     list_new(uni, Value::USize(0))
 }
 
-/// Create a new List with specified capacity
-pub fn list_new(uni: Shared<Universe>, _capacity: Value) -> Value {
+/// Create a new List with optional initial elements
+/// Syntax: List.new() or List.new(1, 2, 3)
+///
+/// This function supports varargs for initialization:
+/// - List.new() creates an empty list
+/// - List.new(1, 2, 3) creates a list with elements [1, 2, 3]
+pub fn list_new(uni: Shared<Universe>, initial: Value) -> Value {
     // Clone the type to avoid holding the borrow across the add_vmref call
     let ty = {
         let uni_borrow = uni.borrow();
@@ -23,9 +28,19 @@ pub fn list_new(uni: Shared<Universe>, _capacity: Value) -> Value {
 
     match &ty {
         ast::Type::User(_) => {
-            let list_data = ListData {
-                elems: Vec::new(),
-            };
+            // Parse initial elements from the argument
+            let mut elems = Vec::new();
+
+            // Check if initial is an array (multiple arguments passed)
+            if let Value::Array(array) = &initial {
+                for v in &array.values {
+                    elems.push(v.clone());
+                }
+            }
+            // If initial is Nil, create empty list
+            // Otherwise, single element initialization
+
+            let list_data = ListData { elems };
             let id = uni.borrow_mut().add_vmref(crate::universe::VmRefData::List(list_data));
 
             let mut fields = Obj::new();
