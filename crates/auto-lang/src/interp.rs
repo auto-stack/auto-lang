@@ -37,7 +37,80 @@ impl Interpreter {
         crate::vm::init_collections_module();
         crate::vm::init_builder_module();
 
+        // Load standard type definitions to register HashMap, HashSet, StringBuilder types
+        Self::load_stdlib_types(&interpreter.scope);
+
         interpreter
+    }
+
+    /// Load standard library type definitions (HashMap, HashSet, StringBuilder)
+    /// This makes types like HashMap available for static method calls (HashMap.new())
+    fn load_stdlib_types(scope: &Shared<Universe>) {
+        use crate::ast::{Name, Type, TypeDecl, TypeDeclKind};
+
+        // Register HashMap type
+        let hashmap_type = TypeDecl {
+            name: Name::from("HashMap"),
+            kind: TypeDeclKind::UserType,
+            parent: None,
+            has: Vec::new(),
+            specs: Vec::new(),
+            members: Vec::new(),
+            delegations: Vec::new(),
+            methods: Vec::new(),  // Methods are registered separately via VM registry
+        };
+        scope.borrow_mut().define_type(
+            "HashMap",
+            std::rc::Rc::new(crate::scope::Meta::Type(Type::User(hashmap_type))),
+        );
+
+        // Register HashSet type
+        let hashset_type = TypeDecl {
+            name: Name::from("HashSet"),
+            kind: TypeDeclKind::UserType,
+            parent: None,
+            has: Vec::new(),
+            specs: Vec::new(),
+            members: Vec::new(),
+            delegations: Vec::new(),
+            methods: Vec::new(),
+        };
+        scope.borrow_mut().define_type(
+            "HashSet",
+            std::rc::Rc::new(crate::scope::Meta::Type(Type::User(hashset_type))),
+        );
+
+        // Register StringBuilder type
+        let builder_type = TypeDecl {
+            name: Name::from("StringBuilder"),
+            kind: TypeDeclKind::UserType,
+            parent: None,
+            has: Vec::new(),
+            specs: Vec::new(),
+            members: Vec::new(),
+            delegations: Vec::new(),
+            methods: Vec::new(),
+        };
+        scope.borrow_mut().define_type(
+            "StringBuilder",
+            std::rc::Rc::new(crate::scope::Meta::Type(Type::User(builder_type))),
+        );
+
+        // Register File type
+        let file_type = TypeDecl {
+            name: Name::from("File"),
+            kind: TypeDeclKind::UserType,
+            parent: None,
+            has: Vec::new(),
+            specs: Vec::new(),
+            members: Vec::new(),
+            delegations: Vec::new(),
+            methods: Vec::new(),  // Methods are registered separately via VM registry
+        };
+        scope.borrow_mut().define_type(
+            "File",
+            std::rc::Rc::new(crate::scope::Meta::Type(Type::User(file_type))),
+        );
     }
 
     pub fn with_fstr_note(mut self, note: char) -> Self {
