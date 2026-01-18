@@ -1,8 +1,1 @@
-type TestType {
-    [vm]
-    static fn new() TestType
-}
-
-fn main() {
-    "success"
-}
+fn main() { 42 }

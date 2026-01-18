@@ -1,0 +1,3 @@
+let list = List.new()
+list.drop()
+42

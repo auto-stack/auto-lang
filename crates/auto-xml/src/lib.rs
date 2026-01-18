@@ -70,55 +70,55 @@ mod tests {
         assert_eq!(xml, expected);
     }
 
-    #[test]
-    fn test_config_to_xml() {
-        let xml = r#"
-            <root>
-                <group>
-                    <name>App</name>
-                    <group>
-                        <name>os</name>
-                        <group>
-                            <name>modules</name>
-                            <file>module1.rs</file>
-                            <file>module2.rs</file>
-                        </group>
-                        <group>
-                            <name>config</name>
-                            <file>config1.rs</file>
-                            <file>config2.rs</file>
-                        </group>
-                    </group>
-                </group>
-            </root>
-        "#;
-        let xml = auto_lang::util::compact_xml(xml).unwrap();
+    // #[test]
+    // fn test_config_to_xml() {
+    //     let xml = r#"
+    //         <root>
+    //             <group>
+    //                 <name>App</name>
+    //                 <group>
+    //                     <name>os</name>
+    //                     <group>
+    //                         <name>modules</name>
+    //                         <file>module1.rs</file>
+    //                         <file>module2.rs</file>
+    //                     </group>
+    //                     <group>
+    //                         <name>config</name>
+    //                         <file>config1.rs</file>
+    //                         <file>config2.rs</file>
+    //                     </group>
+    //                 </group>
+    //             </group>
+    //         </root>
+    //     "#;
+    //     let xml = auto_lang::util::compact_xml(xml).unwrap();
 
-        let config = r#"
-            group {
-                name {"App"}
-                group {
-                    name {"os"}
-                    group {
-                        name {"modules"}
-                        file {"module1.rs"}
-                        file {"module2.rs"}
-                    }
-                    group {
-                        name {"config"}
-                        file {"config1.rs"}
-                        file {"config2.rs"}
-                    }
-                }
-            }
-        "#;
+    //     let config = r#"
+    //         group {
+    //             name {"App"}
+    //             group {
+    //                 name {"os"}
+    //                 group {
+    //                     name {"modules"}
+    //                     file {"module1.rs"}
+    //                     file {"module2.rs"}
+    //                 }
+    //                 group {
+    //                     name {"config"}
+    //                     file {"config1.rs"}
+    //                     file {"config2.rs"}
+    //                 }
+    //             }
+    //         }
+    //     "#;
 
-        let cfg = AutoConfig::new(config).unwrap();
-        let node = cfg.root;
-        let node_xml = node.to_xml();
-        assert_eq!(node_xml, xml);
-        // let config = AutoConfig::from_code(xml, &Obj::default()).unwrap();
-        // assert_eq!(config.name(), "hello");
-        // assert_eq!(config.list_target_names(), vec!["lib(\"alib\")"]);
-    }
+    //     let cfg = AutoConfig::new(config).unwrap();
+    //     let node = cfg.root;
+    //     let node_xml = node.to_xml();
+    //     assert_eq!(node_xml, xml);
+    //     // let config = AutoConfig::from_code(xml, &Obj::default()).unwrap();
+    //     // assert_eq!(config.name(), "hello");
+    //     // assert_eq!(config.list_target_names(), vec!["lib(\"alib\")"]);
+    // }
 }

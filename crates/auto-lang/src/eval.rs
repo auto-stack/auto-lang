@@ -2154,11 +2154,50 @@ impl Evaler {
     }
 
     fn eval_fn_call_with_sig(&mut self, sig: &Sig, args: &Args) -> AutoResult<Value> {
-        let meta = self.universe.borrow().lookup_sig(sig).unwrap();
-        match meta.as_ref() {
-            scope::Meta::Fn(fn_decl) => self.eval_fn_call(fn_decl, args),
-            _ => Ok(Value::error(format!("Invalid function call {}", sig.name))),
+        // Try to lookup in universe first
+        let fn_decl_opt = self.universe.borrow().lookup_sig(sig).map(|meta| {
+            match meta.as_ref() {
+                scope::Meta::Fn(fn_decl) => Some(fn_decl.clone()),
+                _ => None,
+            }
+        }).flatten();
+
+        if let Some(fn_decl) = fn_decl_opt {
+            return self.eval_fn_call(&fn_decl, args);
         }
+
+        // If not found in universe, try VM registry (for static methods like HashMap.new(), List.new())
+        let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+        let func_entry = registry
+            .modules()
+            .values()
+            .find_map(|module| module.functions.get(sig.name.as_str()))
+            .cloned();
+        drop(registry);
+
+        if let Some(func_entry) = func_entry {
+            // This is a VM static function - call it directly
+            let uni = self.universe.clone();
+            let arg_vals: Vec<Value> = args.args.iter().filter_map(|arg| {
+                match arg {
+                    ast::Arg::Pos(expr) => Some(self.eval_expr(expr)),
+                    _ => None,
+                }
+            }).collect();
+
+            // VM static functions take (universe, Value)
+            if arg_vals.len() == 0 {
+                return Ok((func_entry.func)(uni, Value::Nil));
+            } else if arg_vals.len() == 1 {
+                return Ok((func_entry.func)(uni, arg_vals[0].clone()));
+            } else {
+                let msg: AutoStr = format!("VM function {} called with {} args, expected 0 or 1", sig.name.as_str(), arg_vals.len()).into();
+                return Ok(Value::error(msg));
+            }
+        }
+
+        let msg: AutoStr = format!("Invalid function call {}", sig.name.as_str()).into();
+        Ok(Value::error(msg))
     }
 
     #[inline]
@@ -2902,6 +2941,40 @@ impl Evaler {
                             _ => None,
                         }
                     }
+                    Type::User(type_name) => {
+                        // Handle static method calls on User types (e.g., HashMap.new(), List.new())
+                        // Build the fully qualified function name (e.g., "HashMap.new", "List.new")
+                        if let Expr::Ident(method_name) = right {
+                            let qualified_name: AutoStr = format!("{}.{}", type_name.as_str(), method_name).into();
+
+                            // Look up the function in the VM registry
+                            let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+                            let func_entry = registry
+                                .modules()
+                                .values()
+                                .find_map(|module| module.functions.get(qualified_name.as_str()))
+                                .cloned();
+                            drop(registry);
+
+                            if let Some(_func_entry) = func_entry {
+                                // Return the function as a VmFunction metadata entry
+                                let fn_decl = ast::Fn::new(
+                                    ast::FnKind::VmFunction,
+                                    qualified_name.clone(),
+                                    None,
+                                    vec![],
+                                    ast::Body::new(),
+                                    ast::Type::Unknown,
+                                );
+
+                                Some(Value::Meta(MetaID::Fn(to_value_sig(&fn_decl))))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
                     _ => None,
                 }
             }
@@ -2911,6 +2984,39 @@ impl Evaler {
                     MetaID::Enum(name) => {
                         let right_name = right.repr();
                         Some(self.enum_val(name, &AutoStr::from(right_name)))
+                    }
+                    MetaID::Type(type_name) => {
+                        // Handle static method calls on Type meta (e.g., HashMap.new(), List.new())
+                        if let Expr::Ident(method_name) = right {
+                            let qualified_name: AutoStr = format!("{}.{}", type_name, method_name).into();
+
+                            // Look up the function in the VM registry
+                            let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+                            let func_entry = registry
+                                .modules()
+                                .values()
+                                .find_map(|module| module.functions.get(qualified_name.as_str()))
+                                .cloned();
+                            drop(registry);
+
+                            if let Some(_func_entry) = func_entry {
+                                // Return the function as a VmFunction metadata entry
+                                let fn_decl = ast::Fn::new(
+                                    ast::FnKind::VmFunction,
+                                    qualified_name.clone(),
+                                    None,
+                                    vec![],
+                                    ast::Body::new(),
+                                    ast::Type::Unknown,
+                                );
+
+                                Some(Value::Meta(MetaID::Fn(to_value_sig(&fn_decl))))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
                     }
                     _ => None,
                 }

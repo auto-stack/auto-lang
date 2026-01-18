@@ -1,0 +1,14 @@
+fn test() int {
+    let list = List.new()
+    list.push(42)
+    let len = list.len()
+    if len == 1 {
+        1
+    } else {
+        0
+    }
+}
+
+fn main() {
+    test()
+}

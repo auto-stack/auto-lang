@@ -1,0 +1,5 @@
+fn main() {
+    let list = List.new()
+    let is_empty = list.is_empty()
+    is_empty
+}

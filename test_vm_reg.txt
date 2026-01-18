@@ -1,0 +1,18 @@
+#[test]
+fn test_vm_registry_has_list() {
+    crate::vm::init_io_module();
+    crate::vm::init_collections_module();
+    crate::vm::init_builder_module();
+    
+    let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+    
+    // Check if List.new exists
+    let list_new = registry.get_function("collections", "List.new");
+    assert!(list_new.is_some(), "List.new should exist in VM registry");
+    
+    // Check if HashMap.new exists
+    let hashmap_new = registry.get_function("collections", "HashMap.new");
+    assert!(hashmap_new.is_some(), "HashMap.new should exist in VM registry");
+    
+    println!("Both List.new and HashMap.new exist in VM registry");
+}

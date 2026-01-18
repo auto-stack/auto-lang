@@ -1,0 +1,5 @@
+fn main() {
+    let r1 = test_list_new()
+    let r2 = test_list_push_pop()
+    r1 + r2
+}
