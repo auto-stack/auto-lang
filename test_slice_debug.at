@@ -1,7 +1,0 @@
-use auto.io: say
-
-fn main() {
-    let s = "hello"
-    let slice = s[0..3]
-    say(slice)
-}

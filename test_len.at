@@ -1,7 +1,0 @@
-use auto.io: File
-
-fn main() {
-    let mut s = "hello"
-    let len = s.len()
-    print(len)
-}

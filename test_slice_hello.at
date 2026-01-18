@@ -1,4 +1,0 @@
-fn main() {
-    let s = "hello"
-    say(s[0..3])
-}

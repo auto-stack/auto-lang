@@ -272,6 +272,74 @@ impl<'a> Parser<'a> {
         self.peek().kind == kind
     }
 
+    /// Check if the current position is a function annotation followed by fn
+    /// This is used by the statement parser to distinguish between:
+    /// - [c] fn foo() ...  (function declaration)
+    /// - [1, 2, 3]         (array literal)
+    #[allow(dead_code)]
+    fn is_fn_annotation(&mut self) -> bool {
+        // We're at [ now, need to check if this is [c] or [vm] followed by fn
+        // Manually peek ahead by consuming and checking tokens
+        // Collect tokens to restore if this isn't an annotation
+        let mut tokens = Vec::new();
+
+        // Save the current token ([)
+        tokens.push(self.cur.clone());
+
+        // Skip the [ and check the next token
+        self.next(); // Now self.cur is the token after [
+
+        // Check for c or vm identifier
+        let is_annot = self.cur.kind == TokenKind::Ident
+            && (self.cur.text == "c" || self.cur.text == "vm");
+
+        if !is_annot {
+            // Not an annotation, restore and return false
+            // We need to restore self.cur to the saved [
+            for token in tokens.into_iter().rev() {
+                self.lexer.push_token(token);
+            }
+            // Restore self.cur
+            self.next();
+            return false;
+        }
+
+        // Save the c/vm token
+        tokens.push(self.cur.clone());
+
+        // Skip the annotation, check for ]
+        self.next(); // Now self.cur is the token after c/vm
+
+        if self.cur.kind != TokenKind::RSquare {
+            // Not a properly formed annotation, restore
+            for token in tokens.into_iter().rev() {
+                self.lexer.push_token(token);
+            }
+            self.next();
+            return false;
+        }
+
+        // Save the ] token
+        tokens.push(self.cur.clone());
+
+        // Skip ], check for fn
+        self.next(); // Now self.cur is the token after ]
+
+        let has_fn = self.cur.kind == TokenKind::Fn;
+
+        // Save the fn token
+        tokens.push(self.cur.clone());
+
+        // Restore all tokens in reverse order
+        for token in tokens.into_iter().rev() {
+            self.lexer.push_token(token);
+        }
+        // Restore self.cur to the first token
+        self.next();
+
+        has_fn
+    }
+
     pub fn skip_comments(&mut self) {
         loop {
             match self.kind() {
@@ -1597,6 +1665,59 @@ impl<'a> Parser<'a> {
             TokenKind::Let => self.parse_store_stmt()?,
             TokenKind::Mut => self.parse_store_stmt()?,
             TokenKind::Fn => self.fn_decl_stmt("")?,
+            TokenKind::LSquare => {
+                // This could be:
+                // 1. An annotation like [c] or [vm] followed by fn or type
+                // 2. An array literal or index expression
+                // Try to parse annotations first
+                let annot_result = self.parse_fn_annotations();
+
+                if let Ok((has_c, has_vm)) = annot_result {
+                    // Successfully parsed annotations, now skip empty lines
+                    self.skip_empty_lines();
+
+                    // Check what comes next
+                    if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
+                        // Function declaration - annotations already parsed above
+                        let is_static = self.is_kind(TokenKind::Static);
+                        if is_static {
+                            self.next(); // skip static keyword
+                        }
+                        self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static)?
+                    } else if self.is_kind(TokenKind::Type) {
+                        // Type declaration - pass annotation info
+                        self.type_decl_stmt_with_annotation(has_c)?
+                    } else {
+                        // Not a declaration, fall back to expression parsing
+                        return Err(SyntaxError::Generic {
+                            message: "Expected 'fn' or 'type' after annotation".to_string(),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                } else {
+                    // Failed to parse annotations, treat as array literal
+                    // Try fn_decl_stmt first (might have backwards compatible .c/.vm syntax)
+                    match self.fn_decl_stmt("") {
+                        Ok(stmt) => stmt,
+                        Err(e) => {
+                            // If fn_decl failed, try type_decl
+                            match self.type_decl_stmt() {
+                                Ok(stmt) => stmt,
+                                Err(e2) => {
+                                    // If both failed, check if first error was UnexpectedToken
+                                    // If so, fall back to expr_stmt (might be array literal)
+                                    match &e {
+                                        AutoError::Syntax(SyntaxError::UnexpectedToken { .. }) => {
+                                            self.expr_stmt()?
+                                        },
+                                        _ => return Err(e2),
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
             TokenKind::Type => self.type_decl_stmt()?,
             TokenKind::Union => self.union_stmt()?,
             TokenKind::Tag => self.tag_stmt()?,
@@ -2756,6 +2877,9 @@ impl<'a> Parser<'a> {
             (false, false)
         };
 
+        // Skip empty lines after annotations
+        self.skip_empty_lines();
+
         self.next(); // skip keyword `fn`
 
         let mut is_vm = has_vm;
@@ -2801,7 +2925,24 @@ impl<'a> Parser<'a> {
                 ret_type_name = Some(self.cur.text.clone());
             }
             ret_type = self.parse_type()?;
+            // Skip empty lines after return type (but not for C/VM functions - they need the newlines for EOS)
+            if !(is_c || is_vm) {
+                self.skip_empty_lines();
+            }
+            // For C or VM functions, after return type we accept semicolon, newline, or nothing
+            if !(is_c || is_vm) && !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Semi) {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected '{{' or ';', found {:?}", self.kind()),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
         } else if self.is_kind(TokenKind::LBrace) {
+            ret_type = Type::Void;
+        } else if (is_c || is_vm) && self.is_kind(TokenKind::Semi) {
+            // For C or VM functions without a return type, default to void
+            ret_type = Type::Void;
+        } else if is_c || is_vm {
+            // For C or VM functions without return type and no semicolon (newline-terminated)
             ret_type = Type::Void;
         }
 
@@ -2922,7 +3063,24 @@ impl<'a> Parser<'a> {
                 ret_type_name = Some(self.cur.text.clone());
             }
             ret_type = self.parse_type()?;
+            // Skip empty lines after return type (but not for C/VM functions - they need the newlines for EOS)
+            if !(is_c || is_vm) {
+                self.skip_empty_lines();
+            }
+            // For C or VM functions, after return type we accept semicolon, newline, or nothing
+            if !(is_c || is_vm) && !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Semi) {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected '{{' or ';', found {:?}", self.kind()),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
         } else if self.is_kind(TokenKind::LBrace) {
+            ret_type = Type::Void;
+        } else if (is_c || is_vm) && self.is_kind(TokenKind::Semi) {
+            // For C or VM functions without a return type, default to void
+            ret_type = Type::Void;
+        } else if is_c || is_vm {
+            // For C or VM functions without return type and no semicolon (newline-terminated)
             ret_type = Type::Void;
         }
 
@@ -3066,6 +3224,26 @@ impl<'a> Parser<'a> {
             params.push(Param { name, ty, default });
             self.sep_params()?;
         }
+
+        // Handle variadic arguments (...) for C functions
+        if self.is_kind(TokenKind::Range) {
+            self.next(); // skip .. (Range token)
+            if !self.is_kind(TokenKind::Dot) {
+                return Err(SyntaxError::Generic {
+                    message: "Expected '...' for variadic arguments, found '..'".to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
+            self.next(); // skip final .
+            // Add a variadic marker parameter
+            // Use a special name to indicate variadic
+            params.push(Param {
+                name: "...".into(),
+                ty: Type::Variadic,
+                default: None,
+            });
+        }
+
         Ok(params)
     }
 
@@ -3134,8 +3312,22 @@ impl<'a> Parser<'a> {
     }
 
     pub fn type_decl_stmt(&mut self) -> AutoResult<Stmt> {
+        self.type_decl_stmt_with_annotation(false)
+    }
+
+    pub fn type_decl_stmt_with_annotation(&mut self, has_c_annotation: bool) -> AutoResult<Stmt> {
         // TODO: deal with scope
         self.next(); // skip `type` keyword
+
+        // Check for [c] annotation before the type name (if not already provided)
+        let has_c_annotation = if !has_c_annotation && self.is_kind(TokenKind::LSquare) {
+            self.parse_fn_annotations()?.0
+        } else {
+            has_c_annotation
+        };
+
+        // Skip empty lines after annotation
+        self.skip_empty_lines();
 
         if self.is_kind(TokenKind::Dot) {
             self.next();
@@ -3171,6 +3363,13 @@ impl<'a> Parser<'a> {
             }
         }
 
+        // If we have [c] annotation, treat as C type
+        let kind = if has_c_annotation {
+            TypeDeclKind::CType
+        } else {
+            TypeDeclKind::UserType
+        };
+
         let name = self.parse_name()?;
 
         // Capture the position of the type name for LSP
@@ -3178,7 +3377,7 @@ impl<'a> Parser<'a> {
         let name_pos = self.prev.pos;
 
         let mut decl = TypeDecl {
-            kind: TypeDeclKind::UserType,
+            kind: kind.clone(),
             name: name.clone(),
             parent: None,
             specs: Vec::new(),
@@ -3204,6 +3403,13 @@ impl<'a> Parser<'a> {
             name_pos.pos,
         );
         self.scope.borrow_mut().define_symbol_location(name.clone(), loc);
+
+        // For C types, there's no body - they're opaque types
+        if kind == TypeDeclKind::CType {
+            // C types are opaque, no body needed
+            // Type already registered above at line 3356
+            return Ok(Stmt::TypeDecl(decl));
+        }
 
         // deal with `is` keyword (single inheritance)
         let mut parent = None;
@@ -3258,7 +3464,7 @@ impl<'a> Parser<'a> {
         }
         decl.has = has;
 
-        // type body
+        // type body (for user types)
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
         // list of members, methods, or delegations

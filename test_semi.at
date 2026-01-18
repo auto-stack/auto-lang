@@ -1,7 +1,0 @@
-type TestType {
-    fn do_something(x int) void;
-}
-
-fn main() {
-    "success"
-}

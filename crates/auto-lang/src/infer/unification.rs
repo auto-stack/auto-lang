@@ -154,6 +154,9 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         // Linear 类型：递归检查内部类型
         Type::Linear(inner) => occurs_in(var_name, inner),
 
+        // Variadic 类型：不包含类型变量
+        Type::Variadic => false,
+
         // 用户类型：暂时假设不包含类型变量
         Type::User(_) | Type::CStruct(_) => false,
 

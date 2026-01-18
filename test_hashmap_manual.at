@@ -1,3 +1,0 @@
-let map = HashMap.new()
-map.drop()
-42

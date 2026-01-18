@@ -2,7 +2,12 @@ use c.stdio: printf, fopen, fclose, fputs, fgets, fgetc, fputc, ungetc, fread, f
 use c.stdlib: exit
 
 fn say(msg str) {
+# C {
     printf(c"%s\n", msg)
+# }
+# VM {
+    print(msg)
+# }
 }
 
 type File {
@@ -103,11 +108,13 @@ type File {
 
     /// Read entire file content into a string
     /// Example: file.read_all()  // returns all content
-    fn.vm read_all() str
+    [vm]
+    fn read_all() str
 
     /// Write multiple lines to file
     /// Example: file.write_lines(["hello", "world"])
-    fn.vm write_lines(lines []str)
+    [vm]
+    fn write_lines(lines []str)
 }
 
 fn open(path str) File {

@@ -92,6 +92,7 @@ impl RustTrans {
                 // May<T> transpiles to Option<T> in Rust
                 format!("Option<{}>", self.rust_type_name(inner))
             }
+            Type::Variadic => "...".to_string(),  // C variadic, not used in Rust
             Type::Void => "()".to_string(),
             Type::Unknown => "/* unknown */".to_string(),
             Type::CStruct(decl) => decl.name.to_string(),

@@ -1,5 +1,0 @@
-fn test() {
-    let list = List.new()
-    list.push(65)
-    list.len()
-}

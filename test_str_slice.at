@@ -1,5 +1,0 @@
-fn main() {
-    let s = "hello"
-    let x = s[0..3]
-    x
-}

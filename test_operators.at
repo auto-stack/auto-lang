@@ -1,5 +1,0 @@
-fn test_null_coalesce() int {
-    let x = 10
-    let y = x ?? 0
-    y
-}

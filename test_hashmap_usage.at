@@ -1,8 +1,0 @@
-fn main() {
-    let map = HashMap_new()
-    HashMap_insert(map, "one", 1)
-    HashMap_insert(map, "two", 2)
-    HashMap_insert(map, "three", 3)
-
-    let size = HashMap_size(map)
-}

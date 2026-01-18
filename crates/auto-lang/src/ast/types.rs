@@ -31,6 +31,7 @@ pub enum Type {
     Unknown,
     CStruct(TypeDecl),
     Linear(Box<Type>),  // Linear type (move-only semantics)
+    Variadic,  // C variadic functions (...)
 }
 
 impl Type {
@@ -58,6 +59,7 @@ impl Type {
             Type::May(inner) => format!("May<{}>", inner.unique_name()).into(),
             Type::CStruct(type_decl) => format!("struct {}", type_decl.name).into(),
             Type::Linear(inner) => format!("linear<{}>", inner.unique_name()).into(),
+            Type::Variadic => "...".into(),
             Type::Void => "void".into(),
             Type::Unknown => "<unknown>".into(),
             _ => format!("undefined_type_name<{}>", self).into(),
@@ -85,6 +87,7 @@ impl Type {
             Type::Spec(_) => "{}".into(),  // Spec 默认值为空对象
             Type::May(_) => "May.nil()".into(),  // May<T> defaults to nil
             Type::Linear(inner) => inner.default_value(),  // Linear type wraps inner type
+            Type::Variadic => "...".into(),  // Variadic has no default value
             Type::CStruct(_) => "{}".into(),
             Type::Unknown => "<unknown>".into(),
             _ => "<unknown_type>".into(),
@@ -151,6 +154,7 @@ impl fmt::Display for Type {
             Type::Tag(t) => write!(f, "{}", t.borrow()),
             Type::May(inner) => write!(f, "?{}", inner),
             Type::Linear(inner) => write!(f, "linear<{}>", inner),
+            Type::Variadic => write!(f, "..."),
             Type::Void => write!(f, "void"),
             Type::Unknown => write!(f, "unknown"),
             Type::CStruct(type_decl) => write!(f, "struct {}", type_decl.name),
@@ -183,6 +187,7 @@ impl From<Type> for auto_val::Type {
             Type::Tag(t) => auto_val::Type::Tag(t.borrow().name.clone()),
             Type::May(inner) => (*inner).into(),  // May<T> transpiles to inner type
             Type::Linear(inner) => (*inner).into(),  // Linear wraps inner type
+            Type::Variadic => auto_val::Type::Void,  // Variadic transpiles to void for now
             Type::Void => auto_val::Type::Void,
             Type::Unknown => auto_val::Type::Void, // TODO: is this correct?
             Type::CStruct(_) => auto_val::Type::Void,
@@ -193,7 +198,7 @@ impl From<Type> for auto_val::Type {
 // currently, spec is just a name
 pub type Spec = AutoStr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeDeclKind {
     UserType,
     CType,
@@ -446,6 +451,7 @@ impl AtomWriter for Type {
             Type::Linear(inner) => {
                 write!(f, "linear({})", inner.to_atom_str())?;
             }
+            Type::Variadic => write!(f, "...")?,
             Type::Void => write!(f, "void")?,
             Type::Unknown => write!(f, "unknown")?,
             Type::CStruct(type_decl) => write!(f, "struct {}", type_decl.name)?,

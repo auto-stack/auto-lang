@@ -1,0 +1,47 @@
+[c]
+fn malloc(size int) *void
+
+[c]
+fn calloc(n int, size int) *void
+
+[c]
+fn realloc(ptr *void, size int) *void
+
+[c]
+fn free(ptr *void)
+
+[c]
+fn abort()
+
+[c]
+fn exit(status int)
+
+[c]
+fn system(command str) int
+
+[c]
+fn getenv(name str) str
+
+[c]
+fn abs(x int) int
+
+[c]
+fn labs(x int) int
+
+[c]
+fn atoi(str str) int
+
+[c]
+fn atof(str str) float
+
+[c]
+fn rand() int
+
+[c]
+fn srand(seed int)
+
+[c]
+type div_t
+
+[c]
+type ldiv_t

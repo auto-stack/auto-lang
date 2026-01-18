@@ -39,9 +39,9 @@ char* str_to_cstr(char* self) {
 int str_char_count(char* self) {
     return self->size;
 }
-char** str_split(int* out_size, char* self, char* delimiter) {
+struct slice_char* str_split(char* self, char* delimiter) {
 }
-char** str_lines(int* out_size, char* self) {
+struct slice_char* str_lines(char* self) {
 }
-char** str_words(int* out_size, char* self) {
+struct slice_char* str_words(char* self) {
 }

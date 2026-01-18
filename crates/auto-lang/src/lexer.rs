@@ -78,6 +78,12 @@ impl<'a> Lexer<'a> {
         }
         Token::new(kind1, self.pos(1), c.into())
     }
+
+    /// Push a token back to the front of the buffer.
+    /// This is used for lookahead operations where tokens need to be restored.
+    pub fn push_token(&mut self, token: Token) {
+        self.buffer.push_front(token);
+    }
 }
 
 // Lexer methods for various token types

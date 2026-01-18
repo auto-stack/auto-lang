@@ -1,0 +1,143 @@
+[c]
+type FILE
+
+[c]
+fn printf(format str, ...) int
+
+[c]
+fn fprintf(stream *FILE, format str, ...) int
+
+[c]
+fn sprintf(buf str, format str, ...) int
+
+[c]
+fn snprintf(buf str, size int, format str, ...) int
+
+[c]
+fn vprintf(format str, args va_list) int
+
+[c]
+fn vfprintf(stream *FILE, format str, args va_list) int
+
+[c]
+fn vsprintf(buf str, format str, args va_list) int
+
+[c]
+fn vsnprintf(buf str, size int, format str, args va_list) int
+
+[c]
+fn scanf(format str, ...) int
+
+[c]
+fn fscanf(stream *FILE, format str, ...) int
+
+[c]
+fn sscanf(buf str, format str, ...) int
+
+[c]
+fn vscanf(format str, args va_list) int
+
+[c]
+fn vfscanf(stream *FILE, format str, args va_list) int
+
+[c]
+fn vsscanf(buf str, format str, args va_list) int
+
+[c]
+fn fopen(filename str, mode str) *FILE
+
+[c]
+fn fclose(stream *FILE) int
+
+[c]
+fn freopen(filename str, mode str, stream *FILE) *FILE
+
+[c]
+fn fflush(stream *FILE) int
+
+[c]
+fn setbuf(stream *FILE, buf str) void
+
+[c]
+fn setvbuf(stream *FILE, buf str, mode int, size int) void
+
+[c]
+fn fseek(stream *FILE, offset int, origin int) int
+
+[c]
+fn ftell(stream *FILE) int
+
+[c]
+fn rewind(stream *FILE) void
+
+[c]
+fn fgetpos(stream *FILE, pos *fpos_t) int
+
+[c]
+fn fsetpos(stream *FILE, pos *fpos_t) int
+
+[c]
+fn clearerr(stream *FILE) void
+
+[c]
+fn feof(stream *FILE) int
+
+[c]
+fn ferror(stream *FILE) int
+
+[c]
+fn perror(s str) void
+
+[c]
+fn fgetc(stream *FILE) int
+
+[c]
+fn fgets(buf str, n int, stream *FILE) str
+
+[c]
+fn fputc(c int, stream *FILE) int
+
+[c]
+fn fputs(s str, stream *FILE) int
+
+[c]
+fn getc(stream *FILE) int
+
+[c]
+fn getchar() int
+
+[c]
+fn puts(s str) int
+
+[c]
+fn putchar(c int) int
+
+[c]
+fn ungetc(c int, stream *FILE) int
+
+[c]
+fn fread(ptr str, size int, count int, stream *FILE) int
+
+[c]
+fn fwrite(ptr str, size int, count int, stream *FILE) int
+
+[c]
+fn remove(filename str) int
+
+[c]
+fn rename(oldname str, newname str) int
+
+[c]
+fn tmpfile() *FILE
+
+[c]
+fn tmpnam(s str) str
+
+[c]
+type va_list
+
+[c]
+type fpos_t
+
+[c]
+type size_t

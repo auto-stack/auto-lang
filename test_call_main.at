@@ -1,5 +1,0 @@
-fn main() int {
-    42
-}
-
-main()

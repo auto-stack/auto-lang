@@ -1,4 +1,0 @@
-fn main() {
-    say("testing")
-    42
-}

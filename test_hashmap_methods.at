@@ -1,7 +1,0 @@
-fn main() {
-    let map = HashMap.new()
-    map.insert_str("key1", "value1")
-    let val = map.get_str("key1")
-    map.drop()
-    "success"
-}
