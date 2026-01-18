@@ -5,8 +5,9 @@ use crate::{ast, Universe};
 // StringBuilder Implementation
 // ============================================================================
 
+#[derive(Debug)]
 pub struct StringBuilderData {
-    buffer: String,
+    pub buffer: String,
 }
 
 pub fn string_builder_new(uni: Shared<Universe>, capacity: Value) -> Value {
@@ -22,8 +23,7 @@ pub fn string_builder_new(uni: Shared<Universe>, capacity: Value) -> Value {
             let builder_data = StringBuilderData {
                 buffer: String::with_capacity(_cap),
             };
-            let b = Box::new(builder_data);
-            let id = uni.borrow_mut().add_vmref(b);
+            let id = uni.borrow_mut().add_vmref(crate::universe::VmRefData::StringBuilder(builder_data));
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
             Value::Instance(Instance {
@@ -45,8 +45,7 @@ pub fn string_builder_append(uni: Shared<Universe>, instance: &mut Value, args: 
                     let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        let any = &mut *ref_box as &mut dyn std::any::Any;
-                        if let Some(builder) = any.downcast_mut::<StringBuilderData>() {
+                        if let crate::universe::VmRefData::StringBuilder(builder) = &mut *ref_box {
                             if args.len() >= 1 {
                                 let s = args[0].to_astr();
                                 builder.buffer.push_str(s.as_str());
@@ -71,8 +70,7 @@ pub fn string_builder_append_char(uni: Shared<Universe>, instance: &mut Value, a
                     let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        let any = &mut *ref_box as &mut dyn std::any::Any;
-                        if let Some(builder) = any.downcast_mut::<StringBuilderData>() {
+                        if let crate::universe::VmRefData::StringBuilder(builder) = &mut *ref_box {
                             if args.len() >= 1 {
                                 if let Value::Char(c) = args[0] {
                                     builder.buffer.push(c);
@@ -98,8 +96,7 @@ pub fn string_builder_append_int(uni: Shared<Universe>, instance: &mut Value, ar
                     let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        let any = &mut *ref_box as &mut dyn std::any::Any;
-                        if let Some(builder) = any.downcast_mut::<StringBuilderData>() {
+                        if let crate::universe::VmRefData::StringBuilder(builder) = &mut *ref_box {
                             if args.len() >= 1 {
                                 let s = args[0].to_astr();
                                 builder.buffer.push_str(s.as_str());
@@ -124,8 +121,7 @@ pub fn string_builder_build(uni: Shared<Universe>, instance: &mut Value, _args: 
                     let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        let any = &**ref_box as &dyn std::any::Any;
-                        if let Some(builder) = any.downcast_ref::<StringBuilderData>() {
+                        if let crate::universe::VmRefData::StringBuilder(builder) = &*ref_box {
                             return Value::Str(builder.buffer.clone().into());
                         }
                     }
@@ -146,8 +142,7 @@ pub fn string_builder_clear(uni: Shared<Universe>, instance: &mut Value, _args: 
                     let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        let any = &mut *ref_box as &mut dyn std::any::Any;
-                        if let Some(builder) = any.downcast_mut::<StringBuilderData>() {
+                        if let crate::universe::VmRefData::StringBuilder(builder) = &mut *ref_box {
                             builder.buffer.clear();
                             return Value::Nil;
                         }
@@ -169,8 +164,7 @@ pub fn string_builder_len(uni: Shared<Universe>, instance: &mut Value, _args: Ve
                     let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        let any = &**ref_box as &dyn std::any::Any;
-                        if let Some(builder) = any.downcast_ref::<StringBuilderData>() {
+                        if let crate::universe::VmRefData::StringBuilder(builder) = &*ref_box {
                             return Value::Int(builder.buffer.len() as i32);
                         }
                     }

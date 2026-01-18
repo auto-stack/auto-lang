@@ -12,8 +12,7 @@ pub fn open(uni: Shared<Universe>, path: Value) -> Value {
                     let ty = uni.borrow().lookup_type("File");
                     match &ty {
                         ast::Type::User(_) => {
-                            let b = Box::new(file);
-                            let id = uni.borrow_mut().add_vmref(b);
+                            let id = uni.borrow_mut().add_vmref(crate::universe::VmRefData::File(file));
                             let mut fields = Obj::new();
                             fields.set("id", Value::USize(id));
                             Value::Instance(Instance {
@@ -34,8 +33,7 @@ pub fn open(uni: Shared<Universe>, path: Value) -> Value {
                     let ty = uni.borrow().lookup_type("File");
                     match &ty {
                         ast::Type::User(_) => {
-                            let b = Box::new(file);
-                            let id = uni.borrow_mut().add_vmref(b);
+                            let id = uni.borrow_mut().add_vmref(crate::universe::VmRefData::File(file));
                             let mut fields = Obj::new();
                             fields.set("id", Value::USize(id));
                             Value::Instance(Instance {
@@ -59,10 +57,11 @@ pub fn read_text(uni: Shared<Universe>, file: &mut Value) -> Value {
             if decl == "File" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let mut uni = uni.borrow_mut();
-                    let b = uni.get_vmref(id);
+                    let uni = uni.borrow();
+                    let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
-                        if let Some(mut f) = b.downcast_ref::<File>() {
+                        let mut ref_box = b.borrow_mut();
+                        if let crate::universe::VmRefData::File(f) = &mut *ref_box {
                             let mut s = String::new();
                             if let Ok(_) = f.read_to_string(&mut s) {
                                 return Value::Str(s.into());

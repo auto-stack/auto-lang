@@ -3,13 +3,16 @@ use crate::ast::FnKind;
 use crate::ast::{self, Type};
 use crate::atom::Atom;
 use crate::libs;
+use crate::vm::collections::{HashMapData, HashSetData};
+use crate::vm::builder::StringBuilderData;
 use auto_val::{
     shared, AccessError, AccessPath, Args, AutoStr, ExtFn, Obj, PathComponent, Sig, TypeInfoStore,
     Value, ValueData, ValueID,
 };
-use std::any::Any;
+use std::any::Any; // Still needed for env_vals
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fs::File;
 use std::rc::Rc;
 use std::rc::Weak;
 
@@ -31,6 +34,15 @@ impl SymbolLocation {
     }
 }
 
+/// Enum-based storage for VM references, avoiding TypeId/downcasting issues
+#[derive(Debug)]
+pub enum VmRefData {
+    HashMap(HashMapData),
+    HashSet(HashSetData),
+    StringBuilder(StringBuilderData),
+    File(File),
+}
+
 #[derive(Debug, Clone)]
 pub struct CodePak {
     pub sid: Sid,
@@ -49,7 +61,7 @@ pub struct Universe {
     pub env_vals: HashMap<AutoStr, Box<dyn Any>>,
     pub shared_vals: HashMap<AutoStr, Rc<RefCell<Value>>>,
     pub builtins: HashMap<AutoStr, Value>, // Value of builtin functions
-    pub vm_refs: HashMap<usize, RefCell<Box<dyn Any>>>,
+    pub vm_refs: HashMap<usize, RefCell<VmRefData>>,
     pub types: TypeInfoStore,
     pub args: Obj,
     lambda_counter: usize,
@@ -867,7 +879,7 @@ impl Universe {
         }
     }
 
-    pub fn add_vmref(&mut self, data: Box<dyn Any>) -> usize {
+    pub fn add_vmref(&mut self, data: VmRefData) -> usize {
         self.vmref_counter += 1;
         let refid = self.vmref_counter;
         self.vm_refs.insert(refid, RefCell::new(data));
@@ -876,7 +888,7 @@ impl Universe {
 
     /// DEPRECATED: Use get_vmref_ref() instead
     /// This method is kept for backward compatibility but returns None
-    pub fn get_vmref(&mut self, _refid: usize) -> Option<&mut Box<dyn Any>> {
+    pub fn get_vmref(&mut self, _refid: usize) -> Option<&mut VmRefData> {
         // Cannot return mutable reference through RefCell
         // Use get_vmref_ref() to get &RefCell<Box<dyn Any>>, then borrow_mut()
         None
@@ -884,7 +896,7 @@ impl Universe {
 
     /// Get a reference to the RefCell containing the VM data
     /// This allows mutable access through interior mutability
-    pub fn get_vmref_ref(&self, refid: usize) -> Option<&RefCell<Box<dyn Any>>> {
+    pub fn get_vmref_ref(&self, refid: usize) -> Option<&RefCell<VmRefData>> {
         self.vm_refs.get(&refid)
     }
 

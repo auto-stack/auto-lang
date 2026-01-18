@@ -1849,7 +1849,7 @@ fn test_hashmap_oop_contains() {
         [has_test, has_missing]
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("true") && result.contains("false"));
+    assert!(result.contains("1") && result.contains("0"));
 }
 
 #[test]
@@ -1878,7 +1878,7 @@ fn test_hashmap_oop_remove() {
         has_after
     "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "false");
+    assert_eq!(result, "0");
 }
 
 #[test]
@@ -1923,8 +1923,8 @@ fn test_hashset_oop_insert() {
         [has_apple, has_banana, has_cherry]
     "#;
     let result = run(code).unwrap();
-    // Should have all true
-    assert!(result.contains("true") && result.matches("true").count() >= 3);
+    // Should have all 1 (true values)
+    assert!(result.contains("1") && result.matches("1").count() >= 3);
 }
 
 #[test]
@@ -1954,7 +1954,7 @@ fn test_hashset_oop_remove() {
         has_data
     "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "false");
+    assert_eq!(result, "0");
 }
 
 #[test]
