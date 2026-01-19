@@ -1,5 +1,38 @@
 use auto_val::{Args, AutoStr, ExtFn, Value};
 use std::collections::HashMap;
+use std::cell::RefCell;
+
+// Test output capture support
+thread_local! {
+    static TEST_OUTPUT_CAPTURE: RefCell<Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>> = RefCell::new(None);
+}
+
+/// Enable test mode and return a buffer for capturing output
+#[cfg(test)]
+pub fn enable_test_capture() -> std::sync::Arc<std::sync::Mutex<Vec<u8>>> {
+    use std::sync::{Arc, Mutex};
+
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    TEST_OUTPUT_CAPTURE.with(|capture| {
+        *capture.borrow_mut() = Some(buffer.clone());
+    });
+    buffer
+}
+
+/// Disable test mode and clear the capture buffer
+#[cfg(test)]
+pub fn disable_test_capture() {
+    TEST_OUTPUT_CAPTURE.with(|capture| {
+        *capture.borrow_mut() = None;
+    });
+}
+
+/// Get the captured output as a string
+#[cfg(test)]
+pub fn get_captured_output(buffer: &std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> String {
+    let data = buffer.lock().unwrap();
+    String::from_utf8(data.clone()).unwrap_or_default()
+}
 
 pub fn builtins() -> HashMap<AutoStr, Value> {
     let mut builtins = HashMap::new();
@@ -203,19 +236,45 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
 
 // TODO: fix for named args
 pub fn print(args: &Args) -> Value {
-    use std::io::{self, Write};
+    // Check if we're in test mode
+    let test_capture = TEST_OUTPUT_CAPTURE.with(|capture| capture.borrow().clone());
 
-    let stdout = io::stdout();
-    let mut handle = stdout.lock();
-
-    for (i, arg) in args.args.iter().enumerate() {
-        write!(handle, "{}", arg).ok();
-        if i < args.args.len() - 1 {
-            write!(handle, ", ").ok();
+    if let Some(buffer) = test_capture {
+        // Test mode: write to buffer
+        let mut output = String::new();
+        for (i, arg) in args.args.iter().enumerate() {
+            // Get the value from the Arg
+            let value = arg.get_val();
+            // Use repr() for strings to avoid quotes
+            output.push_str(&value.repr());
+            if i < args.args.len() - 1 {
+                output.push(' ');
+            }
         }
+        output.push('\n');
+
+        // Write to buffer
+        let mut buf = buffer.lock().unwrap();
+        buf.extend_from_slice(output.as_bytes());
+    } else {
+        // Normal mode: write to stdout
+        use std::io::{self, Write};
+
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+
+        for (i, arg) in args.args.iter().enumerate() {
+            // Get the value from the Arg
+            let value = arg.get_val();
+            // Use repr() for strings to avoid quotes
+            write!(handle, "{}", value.repr()).ok();
+            if i < args.args.len() - 1 {
+                write!(handle, " ").ok();
+            }
+        }
+        writeln!(handle).ok();
+        handle.flush().ok();
     }
-    writeln!(handle).ok();
-    handle.flush().ok();
 
     Value::Void
 }
