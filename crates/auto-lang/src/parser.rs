@@ -1868,16 +1868,124 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
 
-        // Parse methods
+        // Parse fields and methods
+        let mut fields = Vec::new();
         let mut methods = Vec::new();
+
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            // Allow both fn and static fn declarations
-            if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
+            // Check for annotations [c], [vm], [c,vm] or #[c], #[vm], #[c,vm] before function declarations
+            let (has_c, has_vm) = if self.is_kind(TokenKind::LSquare) {
+                self.parse_fn_annotations()?
+            } else if self.is_kind(TokenKind::Hash) {
+                // Check for #[...] annotation syntax
+                let saved_cur = self.cur.clone();
+                self.next(); // consume # to check next token
+                let is_annotation = self.is_kind(TokenKind::LSquare);
+                // Restore
+                self.lexer.push_token(self.cur.clone());
+                self.cur = saved_cur;
+
+                if is_annotation {
+                    // This is a #[...] annotation
+                    self.next(); // skip #
+                    self.next(); // skip [
+
+                    // Parse annotation content (c, vm, or c, vm)
+                    let mut has_c = false;
+                    let mut has_vm = false;
+
+                    while self.is_kind(TokenKind::Ident) {
+                        let annot = self.cur.text.clone();
+                        match annot.as_str() {
+                            "c" => has_c = true,
+                            "vm" => has_vm = true,
+                            _ => {
+                                return Err(SyntaxError::Generic {
+                                    message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[c, vm]", annot),
+                                    span: pos_to_span(self.cur.pos),
+                                }.into());
+                            }
+                        }
+                        self.next(); // skip annotation identifier
+
+                        if self.is_kind(TokenKind::Comma) {
+                            self.next(); // skip ,
+                            continue;
+                        }
+
+                        if self.is_kind(TokenKind::RSquare) {
+                            self.next(); // skip ]
+                            break;
+                        } else {
+                            return Err(SyntaxError::Generic {
+                                message: format!("Expected ',', ']', or annotation, found {:?}", self.kind()),
+                                span: pos_to_span(self.cur.pos),
+                            }.into());
+                        }
+                    }
+                    (has_c, has_vm)
+                } else {
+                    (false, false)
+                }
+            } else {
+                (false, false)
+            };
+
+            self.skip_empty_lines(); // Skip newlines after annotations
+
+            // Check if this annotation should be skipped for current compile destination
+            let should_skip = match self.compile_dest {
+                CompileDest::TransC if has_vm && !has_c => true,   // Skip #[vm] in C transpiler
+                CompileDest::TransRust if has_vm && !has_c => true, // Skip #[vm] in Rust transpiler
+                CompileDest::Interp if has_c && !has_vm => true,    // Skip #[c] in interpreter
+                _ => false,
+            };
+
+            // Parse field declarations: name Type (same syntax as type members)
+            // Fields must come before methods
+            if self.is_kind(TokenKind::Ident) {
+                // Check if this is a field (next token is a type)
+                // Lookahead: if current token is Ident and next token is NOT a keyword that starts a statement
+                let is_field = match self.peek().kind {
+                    TokenKind::Fn | TokenKind::Static | TokenKind::Has | TokenKind::RBrace => false,
+                    TokenKind::Colon => {
+                        // Old syntax with colon - reject with helpful error
+                        return Err(SyntaxError::Generic {
+                            message: "ext field syntax should be 'name Type' (without colon), same as type members. Use: '_fp *FILE' not '_fp: *FILE'".to_string(),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                    _ => true,
+                };
+
+                if is_field {
+                    // Parse field: name Type [optional_default_value]
+                    let field_name = self.parse_name()?;
+                    let field_type = self.parse_type()?;
+                    let mut value = None;
+                    if self.is_kind(TokenKind::Asn) {
+                        self.next(); // skip =
+                        let expr = self.parse_expr()?;
+                        value = Some(expr);
+                    }
+
+                    // ext fields are always private
+                    fields.push(crate::ast::Member::new(field_name, field_type, value));
+
+                    self.expect_eos(false)?;
+                    self.skip_empty_lines();
+                    continue;
+                }
+            }
+
+            // Parse method declarations (fn or static fn)
+            // IMPORTANT: Check Static BEFORE Fn, since "static fn" starts with Static
+            if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Fn) {
                 // Track if this is a static method (Plan 035 Phase 4)
                 let is_static_method = self.is_kind(TokenKind::Static);
 
                 // If static fn, skip the static keyword first
-                if self.is_kind(TokenKind::Static) {
+                if is_static_method {
                     self.next(); // skip `static` keyword
                     // Now we expect `fn` keyword
                     if !self.is_kind(TokenKind::Fn) {
@@ -1888,7 +1996,18 @@ impl<'a> Parser<'a> {
                         .into());
                     }
                 }
-                let fn_stmt = self.fn_decl_stmt(&target)?;
+
+                // Check if we should skip this based on annotation
+                if should_skip {
+                    // Skip the entire function declaration
+                    // Parse with the actual annotation flags to correctly handle the function syntax
+                    let _ = self.fn_decl_stmt_with_annotations(&target, has_c, has_vm, is_static_method);
+                    self.expect_eos(false)?;
+                    self.skip_empty_lines();
+                    continue;
+                }
+
+                let fn_stmt = self.fn_decl_stmt_with_annotations(&target, has_c, has_vm, is_static_method)?;
                 if let Stmt::Fn(mut fn_expr) = fn_stmt {
                     // Set is_static flag for static methods (Plan 035 Phase 4.2)
                     if is_static_method {
@@ -1896,23 +2015,31 @@ impl<'a> Parser<'a> {
                     }
                     methods.push(fn_expr);
                 }
+                self.expect_eos(false)?;
+                self.skip_empty_lines();
             } else {
                 return Err(SyntaxError::Generic {
                     message: format!(
-                        "ext blocks can only contain method declarations (fn or static fn), found {:?}",
+                        "ext blocks can only contain field (name Type) or method declarations (fn or static fn), found {:?}",
                         self.kind()
                     ),
                     span: pos_to_span(self.cur.pos),
                 }
                 .into());
             }
-            self.expect_eos(false)?;
         }
 
         // Expect closing brace
         self.expect(TokenKind::RBrace)?;
 
-        Ok(Stmt::Ext(Ext::new(target, methods)))
+        // TODO: Implement proper module tracking
+        // For now, assume same-module (will be enhanced in future task)
+        let module_path: AutoStr = "".into();
+        let is_same_module = true;
+
+        // Create Ext with fields and methods
+        let ext = Ext::with_fields(target, fields, methods, module_path, is_same_module);
+        Ok(Stmt::Ext(ext))
     }
 
     /// Format: enum { item1, item2, item3 }
