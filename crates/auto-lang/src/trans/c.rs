@@ -205,6 +205,11 @@ impl CTrans {
                 // Generate C functions for each method
                 self.ext_stmt(ext, sink)?;
             }
+            Stmt::Node(_node) => {
+                // CONFIG mode constructs - skip in C transpilation
+                // These are only used for config evaluation, not for C code generation
+                return Ok(false);
+            }
             _ => {
                 return Err(format!("C Transpiler: unsupported statement: {:?}", stmt).into());
             }
