@@ -1,6 +1,6 @@
-use auto.sys: get_pid
+use auto.sys: getpid
 
 fn main() {
-    let pid = get_pid()
+    let pid = getpid()
     print("Pid is:", pid)
 }

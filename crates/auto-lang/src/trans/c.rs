@@ -9,7 +9,6 @@ use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::StrExt;
 use auto_val::{shared, Shared};
-use miette::{Diagnostic, ReportHandler};
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashSet;

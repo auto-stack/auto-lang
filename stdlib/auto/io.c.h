@@ -1,0 +1,14 @@
+#pragma once
+
+#include "c/stdio.h"
+
+struct File {
+    char* path;
+    struct FILE* file;
+};
+
+File File_Open(struct File *self, str);
+str File_ReadText(struct File *self);
+str File_ReadLine(struct File *self);
+void File_Close(struct File *self);
+void say(char* msg);

@@ -1,3 +1,4 @@
 use.c <unistd.h>
 
-fn.c getpid() int
+#[pub, c]
+fn getpid() int;

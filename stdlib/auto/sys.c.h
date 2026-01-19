@@ -2,4 +2,4 @@
 
 #include <unistd.h>
 
-int get_pid(void);
+int getpid(void);

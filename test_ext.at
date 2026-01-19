@@ -1,0 +1,12 @@
+ext File {
+    file *FILE
+
+    #[pub]
+    static fn open(path str) File {
+        let f *FILE = fopen(path, c"r")
+        File {
+            path: path
+            file: f
+        }
+    }
+}

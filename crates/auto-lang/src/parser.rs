@@ -1782,7 +1782,7 @@ impl<'a> Parser<'a> {
             TokenKind::Hash => {
                 // #[...] annotation syntax (Rust-style)
                 // Use centralized parse_fn_annotations() function
-                let (has_c, has_vm, has_pub) = self.parse_fn_annotations()?;
+                let (has_c, has_vm, _has_pub) = self.parse_fn_annotations()?;
 
                 // Skip empty lines after annotation
                 self.skip_empty_lines();
@@ -1945,7 +1945,7 @@ impl<'a> Parser<'a> {
 
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[pub], #[c,vm] before function declarations
-            let (has_c, has_vm, has_pub) = self.parse_fn_annotations()?;
+            let (has_c, has_vm, _has_pub) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
@@ -2445,7 +2445,7 @@ impl<'a> Parser<'a> {
                 // For C library functions (c.stdio, c.stdlib, etc.), create a placeholder meta
                 // These are external C functions that will be linked by the transpiler
                 if scope_name.starts_with("c.") {
-                    use crate::ast::{Fn, FnKind, Name, Param, TypeDecl};
+                    use crate::ast::{Fn, FnKind};
                     let c_fn = Fn {
                         kind: FnKind::CFunction,
                         name: item.clone(),

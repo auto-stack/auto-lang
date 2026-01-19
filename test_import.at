@@ -1,0 +1,5 @@
+use auto.io: say
+
+fn main() {
+    say("hello!")
+}

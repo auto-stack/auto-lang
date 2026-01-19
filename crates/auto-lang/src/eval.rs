@@ -2596,8 +2596,8 @@ impl Evaler {
                         "List" => {
                             // Get the list data
                             let id = instance.fields.get("id");
-                            if let Some(Value::USize(list_id)) = id {
-                                let uni = self.universe.clone();
+                            if let Some(Value::USize(_list_id)) = id {
+                                let _uni = self.universe.clone();
                                 // Create a new list from the slice
                                 // TODO: Implement efficient List slicing
                                 Value::error(format!("List slicing not yet implemented"))
@@ -2608,7 +2608,7 @@ impl Evaler {
                         "dstr" => {
                             // dstr has a List field called "data"
                             let data_field = instance.fields.get("data");
-                            if let Some(Value::Instance(ref list_inst)) = data_field {
+                            if let Some(Value::Instance(ref _list_inst)) = data_field {
                                 // Slice the underlying List
                                 // TODO: Implement dstr slicing
                                 Value::error(format!("dstr slicing not yet implemented"))

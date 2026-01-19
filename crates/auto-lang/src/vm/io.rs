@@ -1,5 +1,5 @@
 use auto_val::{Instance, Obj, Shared, Type, Value};
-use std::{fs::File, io::{BufReader, Read}};
+use std::{fs::File, io::{BufRead, Read}};
 
 use crate::{ast, Universe};
 
@@ -89,7 +89,6 @@ pub fn read_line(uni: Shared<Universe>, file: &mut Value) -> Value {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::File(f) = &mut *ref_box {
                             // f is now &mut BufReader<File>, which implements BufRead
-                            use std::io::BufRead;
                             let mut line = String::new();
                             return match f.read_line(&mut line) {
                                 Ok(0) => Value::empty_str(), // EOF
