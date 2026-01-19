@@ -121,6 +121,9 @@ pub fn init_io_module() {
     file_type
         .methods
         .insert("read_text".into(), io::read_text_method as VmMethod);
+    file_type
+        .methods
+        .insert("read_line".into(), io::read_line_method as VmMethod);
 
     io_module.types.insert("File".into(), file_type);
 

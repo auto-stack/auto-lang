@@ -1,0 +1,10 @@
+use auto.io: File
+
+fn main() {
+    let f = File.open("Cargo.toml")
+
+    let s = f.read_line()
+    print(s)
+
+    f.close()
+}

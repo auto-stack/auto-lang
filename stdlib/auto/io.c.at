@@ -6,14 +6,25 @@ ext File {
     #[pub]
     static fn open(path str) File {
         let f *FILE = fopen(path, c"r")
-        File {
-            path: path
-            file: f
-        }
+        File(path: path, file: f)
     }
 
     #[pub]
     fn read_text() str {
+        if .file == nil {
+            return ""
+        }
+
+        let buf str = c"                                                                                "
+        let result = fgets(buf, 80, .file)
+        if result == nil {
+            return ""
+        }
+        result
+    }
+
+    #[pub]
+    fn read_line() str {
         if .file == nil {
             return ""
         }

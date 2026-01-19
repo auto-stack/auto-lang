@@ -1,5 +1,5 @@
 use auto_val::{Instance, Obj, Shared, Type, Value};
-use std::{fs::File, io::Read};
+use std::{fs::File, io::{BufReader, Read}};
 
 use crate::{ast, Universe};
 
@@ -12,7 +12,8 @@ pub fn open(uni: Shared<Universe>, path: Value) -> Value {
                     let ty = uni.borrow().lookup_type("File");
                     match &ty {
                         ast::Type::User(_) => {
-                            let id = uni.borrow_mut().add_vmref(crate::universe::VmRefData::File(file));
+                            let reader = std::io::BufReader::new(file);
+                            let id = uni.borrow_mut().add_vmref(crate::universe::VmRefData::File(reader));
                             let mut fields = Obj::new();
                             fields.set("id", Value::USize(id));
                             Value::Instance(Instance {
@@ -33,7 +34,8 @@ pub fn open(uni: Shared<Universe>, path: Value) -> Value {
                     let ty = uni.borrow().lookup_type("File");
                     match &ty {
                         ast::Type::User(_) => {
-                            let id = uni.borrow_mut().add_vmref(crate::universe::VmRefData::File(file));
+                            let reader = std::io::BufReader::new(file);
+                            let id = uni.borrow_mut().add_vmref(crate::universe::VmRefData::File(reader));
                             let mut fields = Obj::new();
                             fields.set("id", Value::USize(id));
                             Value::Instance(Instance {
@@ -75,6 +77,43 @@ pub fn read_text(uni: Shared<Universe>, file: &mut Value) -> Value {
     Value::empty_str()
 }
 
+pub fn read_line(uni: Shared<Universe>, file: &mut Value) -> Value {
+    if let Value::Instance(inst) = file {
+        if let Type::User(decl) = &inst.ty {
+            if decl == "File" {
+                let id = inst.fields.get("id");
+                if let Some(Value::USize(id)) = id {
+                    let uni = uni.borrow();
+                    let b = uni.get_vmref_ref(id);
+                    if let Some(b) = b {
+                        let mut ref_box = b.borrow_mut();
+                        if let crate::universe::VmRefData::File(f) = &mut *ref_box {
+                            // f is now &mut BufReader<File>, which implements BufRead
+                            use std::io::BufRead;
+                            let mut line = String::new();
+                            return match f.read_line(&mut line) {
+                                Ok(0) => Value::empty_str(), // EOF
+                                Ok(_) => {
+                                    // Remove trailing newline if present
+                                    if line.ends_with('\n') {
+                                        line.pop();
+                                        if line.ends_with('\r') {
+                                            line.pop();
+                                        }
+                                    }
+                                    Value::Str(line.into())
+                                }
+                                Err(_) => Value::Error("Failed to read line".into()),
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Value::empty_str()
+}
+
 pub fn close(uni: Shared<Universe>, file: &mut Value) -> Value {
     if let Value::Instance(inst) = file {
         if let Type::User(decl) = &inst.ty {
@@ -98,4 +137,9 @@ pub fn read_text_method(uni: Shared<Universe>, instance: &mut Value, _args: Vec<
 /// Wrapper for close to match VmMethod signature
 pub fn close_method(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
     close(uni, instance)
+}
+
+/// Wrapper for read_line to match VmMethod signature
+pub fn read_line_method(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+    read_line(uni, instance)
 }

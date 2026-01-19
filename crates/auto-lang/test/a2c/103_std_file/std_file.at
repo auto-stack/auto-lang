@@ -1,25 +1,9 @@
-use auto.io: fopen, fgets, printf, FILE, fclose, File, open
+use auto.io: File
 
-fn test_file_method() {
-    let file = open(c"Cargo.toml")
-    let line = file.read_text()
-    print(line)
-    file.close()
-}
-
-fn test_c_file_functions() {
-    mut fp *FILE = null
-    fp = fopen(c"Cargo.toml", c"r")
-
-    mut buf [100]char = [0]
-    for fgets(buf, 100, fp) ? {
-        printf(c"%s", buf)
-    }
-
-    fclose(fp);
-}
 
 fn main() {
-    test_file_method()
-    test_c_file_functions()
+    let file = File.open(c"Cargo.toml")
+    let s = file.read_text()
+    print(s)
+    file.close()
 }

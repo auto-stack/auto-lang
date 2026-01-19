@@ -29,6 +29,9 @@ ext File {
     fn read_text() str
 
     #[vm]
+    fn read_line() str
+
+    #[vm]
     fn close()
 }
 

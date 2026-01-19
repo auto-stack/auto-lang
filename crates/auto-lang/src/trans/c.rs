@@ -9,6 +9,7 @@ use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::StrExt;
 use auto_val::{shared, Shared};
+use miette::{Diagnostic, ReportHandler};
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -3114,13 +3115,36 @@ int add(int x, int y);
     }
 
     #[test]
-    fn test_102_std_getline() {
-        test_a2c("102_std_getline").unwrap();
+    fn test_102_std_readline() {
+        test_a2c("102_std_readline").unwrap();
     }
 
     #[test]
     fn test_103_std_file() {
-        test_a2c("103_std_file").unwrap();
+        match test_a2c("103_std_file") {
+            Ok(_) => {},
+            Err(e) => {
+                // Print full error using Miette for better diagnostics
+                eprintln!("\n=== Transpilation Error ===\n");
+
+                // Check if it's a SyntaxWithSource error (has source code attached)
+                match &e {
+                    crate::error::AutoError::SyntaxWithSource(err) => {
+                        // This has source code - print with rich formatting
+                        eprintln!("{}\n", err);
+                    }
+                    _ => {
+                        // Fallback to simple display
+                        eprintln!("{}\n", e);
+                    }
+                }
+
+                // Also print debug for more details
+                eprintln!("Debug info:\n{:?}\n", e);
+
+                panic!("Transpilation failed");
+            }
+        }
     }
 
     #[test]

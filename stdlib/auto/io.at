@@ -9,6 +9,9 @@ type File {
     fn read_text() str;
 
     #[pub]
+    fn read_line() str;
+
+    #[pub]
     fn close();
 }
 
