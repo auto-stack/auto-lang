@@ -1,0 +1,16 @@
+// Test: Path utility functions
+use auto.path: join, is_absolute, is_relative
+
+fn main() {
+    // Test join
+    let result = join("/home/user", "file.txt")
+    print(result)
+
+    // Test is_absolute
+    let abs = is_absolute("/home/user")
+    print(abs)
+
+    // Test is_relative
+    let rel = is_relative("user/file")
+    print(rel)
+}
