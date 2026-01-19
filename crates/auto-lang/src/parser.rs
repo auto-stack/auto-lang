@@ -693,6 +693,9 @@ impl<'a> Parser<'a> {
             }
         }
 
+        // Track which Ext statements were successfully merged
+        let mut merged_ext_indices: Vec<usize> = Vec::new();
+
         // Process each Ext statement and merge into target TypeDecl
         for (ext_idx, ext) in ext_statements {
             // Find the target TypeDecl
@@ -700,18 +703,47 @@ impl<'a> Parser<'a> {
                 // Clone the TypeDecl, merge ext into it, then replace
                 if let Stmt::TypeDecl(ref decl) = &stmts[decl_idx] {
                     let mut merged_decl = decl.clone();
-                    // Merge ext fields and methods into the TypeDecl
-                    merged_decl.members.extend(ext.fields.clone());
-                    merged_decl.methods.extend(ext.methods.clone());
+
+                    // Merge fields: ext fields override type fields with same name
+                    for ext_field in ext.fields.clone() {
+                        // Remove existing field with same name if it exists
+                        merged_decl.members.retain(|m| m.name != ext_field.name);
+                        // Add the ext field
+                        merged_decl.members.push(ext_field);
+                    }
+
+                    // Merge methods: ext methods override type methods with same name
+                    for ext_method in ext.methods.clone() {
+                        // Remove existing method with same name if it exists
+                        merged_decl.methods.retain(|m| m.name != ext_method.name);
+                        // Add the ext method
+                        merged_decl.methods.push(ext_method);
+                    }
+
                     stmts[decl_idx] = Stmt::TypeDecl(merged_decl);
+                    // Mark this Ext as merged
+                    merged_ext_indices.push(ext_idx);
                 }
+            }
+            // If no TypeDecl exists (extending built-in type like int, str, etc.),
+            // the Ext statement is kept in the AST for later processing
+        }
+
+        // Remove only Ext statements that were successfully merged
+        let mut final_stmts: Vec<Stmt> = Vec::new();
+        for (i, stmt) in stmts.into_iter().enumerate() {
+            if let Stmt::Ext(_) = stmt {
+                // Only keep this Ext if it wasn't merged
+                if !merged_ext_indices.contains(&i) {
+                    final_stmts.push(stmt);
+                }
+                // If it was merged, skip it (don't add to final_stmts)
+            } else {
+                final_stmts.push(stmt);
             }
         }
 
-        // Remove all Ext statements after merging
-        stmts.retain(|stmt| !matches!(stmt, Stmt::Ext(_)));
-
-        Ok(stmts)
+        Ok(final_stmts)
     }
 
     fn skip_line(&mut self) -> AutoResult<()> {

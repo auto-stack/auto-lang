@@ -99,11 +99,11 @@ pub fn init_io_module() {
         types: HashMap::new(),
     };
 
-    // Register 'open' function
+    // Register 'File.open' as a static function
     io_module.functions.insert(
-        "open".into(),
+        "File.open".into(),
         VmFunctionEntry {
-            name: "open".into(),
+            name: "File.open".into(),
             func: io::open,
             is_method: false,
         },

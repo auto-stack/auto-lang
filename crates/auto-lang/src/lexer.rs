@@ -692,7 +692,7 @@ impl<'a> Lexer<'a> {
                         return Ok(self.number());
                     }
 
-                    if c.is_alphabetic() {
+                    if c.is_alphabetic() || c == '_' {
                         return self.identifier_or_special_block();
                     }
 
