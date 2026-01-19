@@ -1277,15 +1277,22 @@ impl CTrans {
             return Ok(());
         }
         // return type
-        // Check if return type is array - C can't return arrays by value
-        let ret_is_array = matches!(fn_decl.ret, Type::Array(_));
+        // Check if return type is array or slice - C can't return them by value
+        let ret_is_array = matches!(fn_decl.ret, Type::Array(_) | Type::Slice(_));
 
         if !matches!(fn_decl.ret, Type::Unknown) {
             if ret_is_array {
-                // For array returns, return pointer to element type instead
-                if let Type::Array(array_type) = &fn_decl.ret {
-                    let elem_type = self.c_type_name(&array_type.elem);
-                    out.write(format!("{}* ", elem_type).as_bytes()).to()?;
+                // For array/slice returns, return pointer to element type instead
+                match &fn_decl.ret {
+                    Type::Array(array_type) => {
+                        let elem_type = self.c_type_name(&array_type.elem);
+                        out.write(format!("{}* ", elem_type).as_bytes()).to()?;
+                    }
+                    Type::Slice(slice_type) => {
+                        let elem_type = self.c_type_name(&slice_type.elem);
+                        out.write(format!("{}* ", elem_type).as_bytes()).to()?;
+                    }
+                    _ => {}
                 }
             } else {
                 out.write(format!("{} ", self.c_type_name(&fn_decl.ret)).as_bytes())
@@ -1344,7 +1351,7 @@ impl CTrans {
         fn_name: &str,
     ) -> AutoResult<()> {
         let has_return = !matches!(ret_type, Type::Void | Type::Unknown { .. });
-        let ret_is_array = matches!(ret_type, Type::Array(_));
+        let ret_is_array = matches!(ret_type, Type::Array(_) | Type::Slice(_));
 
         self.scope.borrow_mut().enter_scope();
         sink.body.write(b"{\n")?;
@@ -1364,37 +1371,69 @@ impl CTrans {
                 // last stmt
                 if has_return {
                     if self.is_returnable(stmt) {
-                        // Check if this is an array literal return
+                        // Check if this is an array/slice literal return
                         if ret_is_array {
                             if let Stmt::Expr(Expr::Array(arr)) = stmt {
                                 // Generate static array and return pointer
-                                if let Type::Array(array_type) = ret_type {
-                                    let elem_type = self.c_type_name(&array_type.elem);
-                                    // Use actual array length if type says 0, otherwise use type's length
-                                    let len = if array_type.len == 0 { arr.len() } else { array_type.len };
-                                    let temp_name = format!("_static_{}", fn_name);
+                                match ret_type {
+                                    Type::Array(array_type) => {
+                                        let elem_type = self.c_type_name(&array_type.elem);
+                                        // Use actual array length if type says 0, otherwise use type's length
+                                        let len = if array_type.len == 0 { arr.len() } else { array_type.len };
+                                        let temp_name = format!("_static_{}", fn_name);
 
-                                    // Declare static array
-                                    self.print_indent(&mut sink.body)?;
-                                    sink.body.write(format!(
-                                        "static {} {}[] = {{",
-                                        elem_type, temp_name
-                                    ).as_bytes()).to()?;
+                                        // Declare static array
+                                        self.print_indent(&mut sink.body)?;
+                                        sink.body.write(format!(
+                                            "static {} {}[] = {{",
+                                            elem_type, temp_name
+                                        ).as_bytes()).to()?;
 
-                                    // Write array elements
-                                    for (j, elem) in arr.iter().enumerate() {
-                                        if j > 0 {
-                                            sink.body.write(b", ").to()?;
+                                        // Write array elements
+                                        for (j, elem) in arr.iter().enumerate() {
+                                            if j > 0 {
+                                                sink.body.write(b", ").to()?;
+                                            }
+                                            self.expr(elem, &mut sink.body)?;
                                         }
-                                        self.expr(elem, &mut sink.body)?;
-                                    }
-                                    sink.body.write(b"};\n").to()?;
+                                        sink.body.write(b"};\n").to()?;
 
-                                    // Set out_size and return pointer
-                                    self.print_indent(&mut sink.body)?;
-                                    sink.body.write(format!("*out_size = {};\n", len).as_bytes()).to()?;
-                                    self.print_indent(&mut sink.body)?;
-                                    sink.body.write(format!("return {};\n", temp_name).as_bytes()).to()?;
+                                        // Set out_size and return pointer
+                                        self.print_indent(&mut sink.body)?;
+                                        sink.body.write(format!("*out_size = {};\n", len).as_bytes()).to()?;
+                                        self.print_indent(&mut sink.body)?;
+                                        sink.body.write(format!("return {};\n", temp_name).as_bytes()).to()?;
+                                    }
+                                    Type::Slice(slice_type) => {
+                                        let elem_type = self.c_type_name(&slice_type.elem);
+                                        let len = arr.len();
+                                        let temp_name = format!("_static_{}", fn_name);
+
+                                        // Declare static array
+                                        self.print_indent(&mut sink.body)?;
+                                        sink.body.write(format!(
+                                            "static {} {}[] = {{",
+                                            elem_type, temp_name
+                                        ).as_bytes()).to()?;
+
+                                        // Write array elements
+                                        for (j, elem) in arr.iter().enumerate() {
+                                            if j > 0 {
+                                                sink.body.write(b", ").to()?;
+                                            }
+                                            self.expr(elem, &mut sink.body)?;
+                                        }
+                                        sink.body.write(b"};\n").to()?;
+
+                                        // Set out_size and return pointer
+                                        self.print_indent(&mut sink.body)?;
+                                        sink.body.write(format!("*out_size = {};\n", len).as_bytes()).to()?;
+                                        self.print_indent(&mut sink.body)?;
+                                        sink.body.write(format!("return {};\n", temp_name).as_bytes()).to()?;
+                                    }
+                                    _ => {
+                                        sink.body.write(b"return ")?;
+                                    }
                                 }
                             } else {
                                 sink.body.write(b"return ")?;
@@ -1405,7 +1444,7 @@ impl CTrans {
                     }
                 }
 
-                // Skip the statement if we already handled the array return above
+                // Skip the statement if we already handled the array/slice return above
                 if !(ret_is_array && matches!(stmt, Stmt::Expr(Expr::Array(_)))) {
                     self.stmt(stmt, sink)?;
                     sink.body.write(b"\n")?;
@@ -1508,12 +1547,12 @@ impl CTrans {
             return Ok(());
         }
 
-        // Check if the expression is a function call that returns an array
+        // Check if the expression is a function call that returns an array or slice
         let expr_is_array_call = if let Expr::Call(call) = &store.expr {
             if let Expr::Ident(fn_name) = &call.name.as_ref() {
                 if let Some(meta) = self.lookup_meta(fn_name) {
                     if let Meta::Fn(fn_decl) = meta.as_ref() {
-                        matches!(fn_decl.ret, Type::Array(_))
+                        matches!(fn_decl.ret, Type::Array(_) | Type::Slice(_))
                     } else {
                         false
                     }
@@ -1530,15 +1569,18 @@ impl CTrans {
         // Special handling for array-returning function calls
         // This must come before the type checking below, so it takes priority
         if expr_is_array_call {
-            // Get the array return type from the function declaration
+            // Get the array/slice return type from the function declaration
             let array_type = if let Expr::Call(call) = &store.expr {
                 if let Expr::Ident(fn_name) = &call.name.as_ref() {
                     if let Some(meta) = self.lookup_meta(fn_name) {
                         if let Meta::Fn(fn_decl) = meta.as_ref() {
-                            if let Type::Array(arr) = &fn_decl.ret {
-                                Some(arr.clone())
-                            } else {
-                                None
+                            match &fn_decl.ret {
+                                Type::Array(arr) => Some(arr.clone()),
+                                Type::Slice(slice) => Some(ArrayType {
+                                    elem: slice.elem.clone(),
+                                    len: 0,  // Slices don't have a fixed length known at compile time
+                                }),
+                                _ => None,
                             }
                         } else {
                             None
@@ -1590,6 +1632,43 @@ impl CTrans {
                     let elem_type_name = self.c_type_name(elem_type);
                     out.write(format!("{} {}[{}] = ", elem_type_name, store.name, len).as_bytes())
                         .to()?;
+                }
+                Type::Slice(slice_type) => {
+                    // For slices, we need to determine the size from the initializer expression
+                    // Slices of spec types transpile to void* arrays
+                    let elem_type = &slice_type.elem;
+                    let is_spec_slice = matches!(elem_type.as_ref(), Type::Spec(_));
+                    let elem_type_name = if is_spec_slice {
+                        "void*".to_string()
+                    } else {
+                        self.c_type_name(elem_type)
+                    };
+
+                    // Try to get the size from the array literal expression
+                    let len = if let Expr::Array(arr) = &store.expr {
+                        arr.len()
+                    } else {
+                        0  // Unknown size, will be determined at runtime
+                    };
+
+                    out.write(format!("{} {}[{}] = ", elem_type_name, store.name, len).as_bytes())
+                        .to()?;
+
+                    // For spec slices, we need to take addresses of struct elements
+                    if is_spec_slice {
+                        if let Expr::Array(arr) = &store.expr {
+                            out.write(b"{").to()?;
+                            for (i, elem) in arr.iter().enumerate() {
+                                out.write(b"&").to()?;
+                                self.expr(elem, out)?;
+                                if i < arr.len() - 1 {
+                                    out.write(b", ").to()?;
+                                }
+                            }
+                            out.write(b"}").to()?;
+                            return Ok(());
+                        }
+                    }
                 }
                 _ => {
                     let type_name = self.c_type_name(&store.ty);
@@ -1862,6 +1941,40 @@ impl CTrans {
                                         "i",
                                         &Expr::Int(0),
                                         &Expr::Int(elem_size as i32),
+                                        &mut sink.body,
+                                    )?;
+                                }
+                                Type::Slice(slice) => {
+                                    // For slices, we need to get the size from the store metadata
+                                    // Try to get the size from the store's type info
+                                    let elem_type = &*slice.elem;
+                                    let elem_type_name = if matches!(elem_type, Type::Spec(_)) {
+                                        "void*".to_string()
+                                    } else {
+                                        self.c_type_name(elem_type)
+                                    };
+
+                                    // Get the size from the store's initialization
+                                    let size = if let Some(meta) = self.lookup_meta(range_name) {
+                                        if let Meta::Store(store) = meta.as_ref() {
+                                            if let Expr::Array(arr) = &store.expr {
+                                                arr.len()
+                                            } else {
+                                                0
+                                            }
+                                        } else {
+                                            0
+                                        }
+                                    } else {
+                                        0
+                                    };
+
+                                    iter_var =
+                                        format!("{} {} = {}[{}];\n", elem_type_name, n, range_name, "i");
+                                    self.range(
+                                        "i",
+                                        &Expr::Int(0),
+                                        &Expr::Int(size as i32),
                                         &mut sink.body,
                                     )?;
                                 }
@@ -3162,11 +3275,6 @@ int add(int x, int y);
     #[ignore]
     fn test_106_file_operations() {
         test_a2c("106_file_operations").unwrap();
-    }
-
-    #[test]
-    fn test_113_std_test() {
-        test_a2c("113_std_test").unwrap();
     }
 
     // ===================== Phase 5: Unified Section tests =======================

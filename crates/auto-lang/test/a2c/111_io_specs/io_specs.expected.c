@@ -13,8 +13,8 @@ int main(void) {
     struct MyReader reader = {.data = "Hello, spec!"};
 
 
-    void* readers[0] = {reader};
-    for (int i = 0; i < 0; i++) {
+    void* readers[1] = {&reader};
+    for (int i = 0; i < 1; i++) {
         void* r = readers[i];
         unknown text = int_read(r);
         printf("%d\n", text);

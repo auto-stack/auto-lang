@@ -22,8 +22,8 @@ int main(void) {
     struct Pigeon b1 = {};
     struct Hawk b2 = {};
 
-    void* arr[0] = {b1, b2};
-    for (int i = 0; i < 0; i++) {
+    void* arr[2] = {&b1, &b2};
+    for (int i = 0; i < 2; i++) {
         void* b = arr[i];
         int_fly(b);
     }
