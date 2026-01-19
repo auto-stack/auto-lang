@@ -525,37 +525,55 @@ impl<'a> Parser<'a> {
         let mut stmt_index = 0; // Track statement index for is_first_stmt check
 
         while !self.is_kind(TokenKind::EOF) {
-            // deal with sections
+            // deal with sections (but not #[...] annotations)
             if self.is_kind(TokenKind::Hash) {
+                // Check if this is a #[...] annotation by looking ahead
+                // Save current state for lookahead
+                let saved_cur = self.cur.clone();
+                // Consume # and check next token
                 self.next();
-                let section = self.parse_name()?;
-                match section.as_str() {
-                    "C" => {
-                        current_section = CodeSection::C;
-                    }
-                    "RUST" => {
-                        current_section = CodeSection::Rust;
-                    }
-                    "AUTO" => {
-                        current_section = CodeSection::Auto;
-                    }
-                    _ => {
-                        let error = SyntaxError::Generic {
-                            message: format!("Unknown section {}", section),
-                            span: pos_to_span(self.cur.pos),
+                let is_annotation = self.is_kind(TokenKind::LSquare);
+                // Restore state
+                self.lexer.push_token(self.cur.clone());
+                self.cur = saved_cur;
+
+                if is_annotation {
+                    // This is #[...], let parse_stmt() handle it
+                    // Don't process as section, continue to parse_stmt()
+                } else {
+                    // This is a #section declaration
+                    self.next();
+                    let section = self.parse_name()?;
+                    match section.as_str() {
+                        "C" => {
+                            current_section = CodeSection::C;
                         }
-                        .into();
-                        if !self.add_error(error) {
-                            return Err(self.errors.pop().unwrap()); // Error limit exceeded
+                        "RUST" => {
+                            current_section = CodeSection::Rust;
                         }
-                        self.synchronize();
-                        continue;
+                        "AUTO" => {
+                            current_section = CodeSection::Auto;
+                        }
+                        _ => {
+                            let error = SyntaxError::Generic {
+                                message: format!("Unknown section {}", section),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                            .into();
+                            if !self.add_error(error) {
+                                return Err(self.errors.pop().unwrap()); // Error limit exceeded
+                            }
+                            self.synchronize();
+                            continue;
+                        }
                     }
+                    // skip until newline
+                    let _ = self.skip_line();
+                    continue;
                 }
-                // skip until newline
-                let _ = self.skip_line();
-                continue;
-            } else {
+            }
+
+            if !self.is_kind(TokenKind::Hash) {
                 match self.compile_dest {
                     CompileDest::Interp => match current_section {
                         CodeSection::None | CodeSection::Auto => {}
@@ -659,6 +677,27 @@ impl<'a> Parser<'a> {
             self.next();
         }
         self.skip_empty_lines();
+        Ok(())
+    }
+
+    fn skip_block(&mut self) -> AutoResult<()> {
+        // Skip a { ... } block, handling nested braces
+        self.expect(TokenKind::LBrace)?;
+        let mut depth = 1;
+        while depth > 0 && !self.is_kind(TokenKind::EOF) {
+            if self.is_kind(TokenKind::LBrace) {
+                depth += 1;
+            } else if self.is_kind(TokenKind::RBrace) {
+                depth -= 1;
+            }
+            self.next();
+        }
+        if depth > 0 {
+            return Err(SyntaxError::Generic {
+                message: "Unclosed block, missing '}'".to_string(),
+                span: pos_to_span(self.prev.pos),
+            }.into());
+        }
         Ok(())
     }
 
@@ -1667,8 +1706,15 @@ impl<'a> Parser<'a> {
             TokenKind::Fn => self.fn_decl_stmt("")?,
             TokenKind::Hash => {
                 // #[...] annotation syntax (Rust-style)
-                // Check if next token is [
-                if self.peek().kind == TokenKind::LSquare {
+                // Check if next token is [ by looking ahead
+                let saved_cur = self.cur.clone();
+                self.next(); // consume # to check next token
+                let is_annotation = self.is_kind(TokenKind::LSquare);
+                // Restore
+                self.lexer.push_token(self.cur.clone());
+                self.cur = saved_cur;
+
+                if is_annotation {
                     // This is a #[...] annotation
                     self.next(); // skip #
                     self.next(); // skip [
@@ -1709,6 +1755,34 @@ impl<'a> Parser<'a> {
 
                     // Skip empty lines after annotation
                     self.skip_empty_lines();
+
+                    // Check if this annotation is compatible with current compile destination
+                    let should_skip = match self.compile_dest {
+                        CompileDest::TransC if has_vm && !has_c => true,   // Skip #[vm] in C transpiler
+                        CompileDest::TransRust if has_vm && !has_c => true, // Skip #[vm] in Rust transpiler
+                        CompileDest::Interp if has_c && !has_vm => true,    // Skip #[c] in interpreter
+                        _ => false,
+                    };
+
+                    if should_skip {
+                        // Skip the entire function/type declaration by parsing it normally but discarding the result
+                        if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
+                            // Skip function declaration
+                            let is_static = self.is_kind(TokenKind::Static);
+                            if is_static {
+                                self.next(); // skip static keyword
+                            }
+                            // Parse with the actual annotation flags to correctly handle the function syntax
+                            // For #[vm] functions, parse as VM function to allow newline termination
+                            // For #[c] functions, parse as C function to allow semicolon termination
+                            let _ = self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static);
+                            return Ok(Stmt::Expr(Expr::Nil));
+                        } else if self.is_kind(TokenKind::Type) {
+                            // Skip type declaration
+                            let _ = self.type_decl_stmt();
+                            return Ok(Stmt::Expr(Expr::Nil));
+                        }
+                    }
 
                     // Check what comes next
                     if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
@@ -2166,7 +2240,15 @@ impl<'a> Parser<'a> {
         // Parse the merged content as a single file
         let mut new_parser = Parser::new(&merged_content, self.scope.clone());
         new_parser.set_dest(self.compile_dest.clone());
-        let ast = new_parser.parse()?;
+        let ast = new_parser.parse().map_err(|e| {
+            eprintln!("===== PARSER ERROR IN IMPORT =====");
+            eprintln!("Module: {}", scope_name);
+            eprintln!("Files loaded: {:?}", loaded_files);
+            eprintln!("Error: {:?}", e);
+            eprintln!("Error display: {}", e);
+            eprintln!("==================================");
+            e
+        })?;
 
         // Extract spec declarations
         let spec_decls: Vec<_> = ast
@@ -2638,9 +2720,12 @@ impl<'a> Parser<'a> {
         let name_pos = self.prev.pos;
 
         // special case: c decl
-        if name == "c" {
+        if name == "." {
+            self.next();
             name = self.parse_name()?;
-            store_kind = StoreKind::CVar;
+            if name == "c" {
+                store_kind = StoreKind::CVar;
+            } 
         }
 
         // type (optional)
@@ -2981,9 +3066,12 @@ impl<'a> Parser<'a> {
         let body = if !is_vm && !is_c {
             self.body()?
         } else {
-            // For VM and C functions, check if there's a semicolon
+            // For VM and C functions, check if there's a semicolon or function body
             if self.is_kind(TokenKind::Semi) {
                 self.next(); // skip semicolon
+            } else if self.is_kind(TokenKind::LBrace) {
+                // Skip the function body for C/VM functions
+                self.skip_block()?;
             }
             Body::new()
         };
@@ -3119,9 +3207,12 @@ impl<'a> Parser<'a> {
         let body = if !is_vm && !is_c {
             self.body()?
         } else {
-            // For VM and C functions, check if there's a semicolon
+            // For VM and C functions, check if there's a semicolon or function body
             if self.is_kind(TokenKind::Semi) {
                 self.next(); // skip semicolon
+            } else if self.is_kind(TokenKind::LBrace) {
+                // Skip the function body for C/VM functions
+                self.skip_block()?;
             }
             Body::new()
         };
@@ -3487,14 +3578,87 @@ impl<'a> Parser<'a> {
         let mut methods = Vec::new();
         let mut delegations = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            // Check for annotations [c], [vm], [c,vm] before function declarations
+            // Check for annotations [c], [vm], [c,vm] or #[c], #[vm], #[c,vm] before function declarations
             let (has_c, has_vm) = if self.is_kind(TokenKind::LSquare) {
                 self.parse_fn_annotations()?
+            } else if self.is_kind(TokenKind::Hash) {
+                // Check for #[...] annotation syntax
+                let saved_cur = self.cur.clone();
+                self.next(); // consume # to check next token
+                let is_annotation = self.is_kind(TokenKind::LSquare);
+                // Restore
+                self.lexer.push_token(self.cur.clone());
+                self.cur = saved_cur;
+
+                if is_annotation {
+                    // This is a #[...] annotation
+                    self.next(); // skip #
+                    self.next(); // skip [
+
+                    // Parse annotation content (c, vm, or c, vm)
+                    let mut has_c = false;
+                    let mut has_vm = false;
+
+                    while self.is_kind(TokenKind::Ident) {
+                        let annot = self.cur.text.clone();
+                        match annot.as_str() {
+                            "c" => has_c = true,
+                            "vm" => has_vm = true,
+                            _ => {
+                                return Err(SyntaxError::Generic {
+                                    message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[c, vm]", annot),
+                                    span: pos_to_span(self.cur.pos),
+                                }.into());
+                            }
+                        }
+                        self.next(); // skip annotation identifier
+
+                        if self.is_kind(TokenKind::Comma) {
+                            self.next(); // skip ,
+                            continue;
+                        }
+
+                        if self.is_kind(TokenKind::RSquare) {
+                            self.next(); // skip ]
+                            break;
+                        } else {
+                            return Err(SyntaxError::Generic {
+                                message: format!("Expected ',', ']', or annotation, found {:?}", self.kind()),
+                                span: pos_to_span(self.cur.pos),
+                            }.into());
+                        }
+                    }
+                    (has_c, has_vm)
+                } else {
+                    (false, false)
+                }
             } else {
                 (false, false)
             };
 
             self.skip_empty_lines(); // Skip newlines after annotations
+
+            // Check if this annotation should be skipped for current compile destination
+            let should_skip = match self.compile_dest {
+                CompileDest::TransC if has_vm && !has_c => true,   // Skip #[vm] in C transpiler
+                CompileDest::TransRust if has_vm && !has_c => true, // Skip #[vm] in Rust transpiler
+                CompileDest::Interp if has_c && !has_vm => true,    // Skip #[c] in interpreter
+                _ => false,
+            };
+
+            if should_skip {
+                // Skip the entire function declaration
+                if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Fn) {
+                    let is_static = self.is_kind(TokenKind::Static);
+                    if is_static {
+                        self.next(); // skip static
+                    }
+                    // Parse with actual flags to correctly handle the function syntax
+                    let _ = self.fn_decl_stmt_with_annotations(&name, has_c, has_vm, is_static);
+                }
+                self.expect_eos(false)?;
+                continue;
+            }
 
             // Check for static fn or fn
             if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Fn) {
@@ -4429,9 +4593,10 @@ impl<'a> Parser<'a> {
         } else {
             // no brace, might be a function call, constructor call or simple expression
             if has_paren {
-                let expr = self.call(ident, args)?;
-                // }
-                Ok(expr)
+                // Use the call result as the left side of a binary expression
+                // and continue with Pratt parser to handle operators like +, -, etc.
+                let call_expr = self.call(ident, args)?;
+                self.expr_pratt_with_left(call_expr, 0)
             } else {
                 // Something else with a starting Ident
                 if primary_prop.is_some() {

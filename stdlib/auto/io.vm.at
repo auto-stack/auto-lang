@@ -1,22 +1,38 @@
 // Spec declarations for polymorphic I/O
-spec Reader {
-    fn read_line() str
-    fn is_eof() bool
+// spec Reader {
+//     fn read_line() str
+//     fn is_eof() bool
+// }
+
+// spec Writer {
+//     fn write_line(s str)
+//     fn flush()
+// }
+
+// spec Seekable {
+//     fn seek(offset int, origin int) int
+//     fn tell() int
+//     fn rewind()
+// }
+
+// enum SeekOrigin {
+//     Set = 0
+//     Cur = 1
+//     End = 2
+// }
+
+ext File {
+    #[vm]
+    static fn open(path str) File
+
+    #[vm]
+    fn read_text() str
+
+    #[vm]
+    fn close()
 }
 
-spec Writer {
-    fn write_line(s str)
-    fn flush()
-}
 
-spec Seekable {
-    fn seek(offset int, origin int) int
-    fn tell() int
-    fn rewind()
-}
-
-enum SeekOrigin {
-    Set = 0
-    Cur = 1
-    End = 2
+fn say(msg str) {
+    print(msg)
 }

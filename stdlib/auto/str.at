@@ -10,23 +10,28 @@ ext str {
 
     /// Get the length of the string
     /// Example: "hello".len()  // returns 5
-    fn.vm len() int
+    #[vm]
+    fn len() int
 
     /// Append another string to this string
     /// Example: "hello".append(" world")  // returns "hello world"
-    fn.vm append(other str) str
+    #[vm]
+    fn append(other str) str
 
     /// Convert string to uppercase
     /// Example: "hello".upper()  // returns "HELLO"
-    fn.vm upper() str
+    #[vm]
+    fn upper() str
 
     /// Convert string to lowercase
     /// Example: "HELLO".lower()  // returns "hello"
-    fn.vm lower() str
+    #[vm]
+    fn lower() str
 
     /// Get a substring from start to end (exclusive)
     /// Example: "hello".sub(1, 4)  // returns "ell"
-    fn.vm sub(start int, end int) str
+    #[vm]
+    fn sub(start int, end int) str
 
     // ============================================================================
     // Search Methods
@@ -34,19 +39,23 @@ ext str {
 
     /// Check if string contains a pattern
     /// Example: "hello world".contains("world")  // returns true
-    fn.vm contains(pattern str) bool
+    #[vm]
+    fn contains(pattern str) bool
 
     /// Check if string starts with a prefix
     /// Example: "hello".starts_with("he")  // returns true
-    fn.vm starts_with(prefix str) bool
+    #[vm]
+    fn starts_with(prefix str) bool
 
     /// Check if string ends with a suffix
     /// Example: "hello".ends_with("lo")  // returns true
-    fn.vm ends_with(suffix str) bool
+    #[vm]
+    fn ends_with(suffix str) bool
 
     /// Find the index of a pattern (returns -1 if not found)
     /// Example: "hello world".find("world")  // returns 6
-    fn.vm find(pattern str) int
+    #[vm]
+    fn find(pattern str) int
 
     // ============================================================================
     // Transform Methods
@@ -54,19 +63,23 @@ ext str {
 
     /// Trim whitespace from both ends
     /// Example: "  hello  ".trim()  // returns "hello"
-    fn.vm trim() str
+    #[vm]
+    fn trim() str
 
     /// Trim whitespace from the left side
     /// Example: "  hello  ".trim_left()  // returns "hello  "
-    fn.vm trim_left() str
+    #[vm]
+    fn trim_left() str
 
     /// Trim whitespace from the right side
     /// Example: "  hello  ".trim_right()  // returns "  hello"
-    fn.vm trim_right() str
+    #[vm]
+    fn trim_right() str
 
     /// Replace all occurrences of a pattern
     /// Example: "hello world".replace("world", "rust")  // returns "hello rust"
-    fn.vm replace(from str, to str) str
+    #[vm]
+    fn replace(from str, to str) str
 
     // ============================================================================
     // Compare Methods
@@ -74,11 +87,13 @@ ext str {
 
     /// Compare two strings (returns 0 if equal, < 0 if self < other, > 0 if self > other)
     /// Example: "apple".compare("banana")  // returns negative number
-    fn.vm compare(other str) int
+    #[vm]
+    fn compare(other str) int
 
     /// Check if two strings are equal (case-insensitive)
     /// Example: "HELLO".eq_ignore_case("hello")  // returns true
-    fn.vm eq_ignore_case(other str) bool
+    #[vm]
+    fn eq_ignore_case(other str) bool
 
     // ============================================================================
     // Utility Methods
@@ -86,11 +101,13 @@ ext str {
 
     /// Repeat the string n times
     /// Example: "ha".repeat(3)  // returns "hahaha"
-    fn.vm repeat(n int) str
+    #[vm]
+    fn repeat(n int) str
 
     /// Get the character at a specific index
     /// Example: "hello".char_at(1)  // returns "e"
-    fn.vm char_at(index int) str
+    #[vm]
+    fn char_at(index int) str
 
     // ============================================================================
     // C FFI Methods (for interoperability with C code)
@@ -98,7 +115,8 @@ ext str {
 
     /// Convert to C-compatible null-terminated string
     /// Example: "hello".to_cstr()  // returns cstr value
-    fn.vm to_cstr() cstr
+    #[vm]
+    fn to_cstr() cstr
 
     // ============================================================================
     // Auto-Implemented Methods (Phase 4 - Plan 036)
@@ -114,13 +132,16 @@ ext str {
 
     /// Split string by delimiter into array of strings
     /// Example: "hello world".split(" ")  // returns ["hello", "world"]
-    fn.vm split(delimiter str) []str
+    #[vm]
+    fn split(delimiter str) []str
 
     /// Split string into lines (split by newline)
     /// Example: "hello\nworld".lines()  // returns ["hello", "world"]
-    fn.vm lines() []str
+    #[vm]
+    fn lines() []str
 
     /// Split string into words (split by whitespace)
     /// Example: "hello world".words()  // returns ["hello", "world"]
-    fn.vm words() []str
+    #[vm]
+    fn words() []str
 }

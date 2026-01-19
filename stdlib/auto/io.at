@@ -1,152 +1,125 @@
-use c.stdio: printf, fopen, fclose, fputs, fgets, fgetc, fputc, ungetc, fread, fwrite, fseek, ftell, rewind, feof, ferror, clearerr, fflush, FILE
-use c.stdlib: exit
-
-fn say(msg str) {
-# C {
-    printf(c"%s\n", msg)
-# }
-# VM {
-    print(msg)
-# }
-}
-
 type File {
     path str
-    file *FILE
 
-    fn read_text() str {
-        let buf cstr = c"                                        "
-        fgets(buf, 40, .file)
-        buf
-    }
-
-    fn read_line() str {
-        let buf cstr = c"                                                                                "
-        fgets(buf, 80, .file)
-        buf
-    }
-
-    fn write_line(s str) {
-        fputs(s, .file)
-        fputs(c"\n", .file)
-    }
-
-    fn close() {
-        fclose(.file)
-    }
-
-    fn flush() {
-        fflush(.file)
-    }
-
-    fn getc() int {
-        fgetc(.file)
-    }
-
-    fn putc(c int) {
-        fputc(c, .file)
-    }
-
-    fn ungetc(c int) {
-        ungetc(c, .file)
-    }
-
-    fn read(buf []byte, size int, count int) int {
-        fread(buf, size, count, .file)
-    }
-
-    fn write(buf []byte, size int, count int) int {
-        fwrite(buf, size, count, .file)
-    }
-
-    fn gets(buf []byte) str {
-        fgets(buf, 80, .file)
-        buf
-    }
-
-    fn puts(s str) {
-        fputs(s, .file)
-    }
-
-    fn seek(offset int, origin int) int {
-        fseek(.file, offset, origin)
-    }
-
-    fn tell() int {
-        ftell(.file)
-    }
-
-    fn rewind() {
-        rewind(.file)
-    }
-
-    fn is_eof() bool {
-        let result = feof(.file)
-        if result == 0 {
-            false
-        } else {
-            true
-        }
-    }
-
-    fn has_error() bool {
-        let result = ferror(.file)
-        if result == 0 {
-            false
-        } else {
-            true
-        }
-    }
-
-    fn clear_error() {
-        clearerr(.file)
-    }
-
-    // ============================================================================
-    // Auto-Implemented Methods (Phase 4 - Plan 036)
-    // ============================================================================
-
-    /// Read entire file content into a string
-    /// Example: file.read_all()  // returns all content
-    #[vm]
-    fn read_all() str
-
-    /// Write multiple lines to file
-    /// Example: file.write_lines(["hello", "world"])
-    #[vm]
-    fn write_lines(lines []str)
+    fn read_text() str
+    static fn open(path str) File
+    fn close()
 }
 
-fn open(path str) File {
-    open_read(path)
-}
 
-fn open_read(path str) File {
-    let f *FILE = fopen(path, c"r")
-    if f == nil {
-        printf(c"Failed to open file")
-        exit(1)
-    }
-    let file = File(path, f)
-    file
-}
+//     fn read_line() str {
+//         let buf cstr = c"                                                                                "
+//         fgets(buf, 80, .file)
+//         buf
+//     }
 
-fn open_write(path str) File {
-    let f *FILE = fopen(path, c"w")
-    if f == nil {
-        printf(c"Failed to open file")
-        exit(1)
-    }
-    let file = File(path, f)
-    file
-}
+//     fn write_line(s str) {
+//         fputs(s, .file)
+//         fputs(c"\n", .file)
+//     }
 
-fn open_append(path str) File {
-    let f *FILE = fopen(path, c"a")
-    if f == nil {
-        printf(c"Failed to open file")
-        exit(1)
-    }
-    let file = File(path, f)
-    file
-}
+//     fn flush() {
+//         fflush(.file)
+//     }
+
+//     fn getc() int {
+//         fgetc(.file)
+//     }
+
+//     fn putc(c int) {
+//         fputc(c, .file)
+//     }
+
+//     fn ungetc(c int) {
+//         ungetc(c, .file)
+//     }
+
+//     fn read(buf []byte, size int, count int) int {
+//         fread(buf, size, count, .file)
+//     }
+
+//     fn write(buf []byte, size int, count int) int {
+//         fwrite(buf, size, count, .file)
+//     }
+
+//     fn gets(buf []byte) str {
+//         fgets(buf, 80, .file)
+//         buf
+//     }
+
+//     fn puts(s str) {
+//         fputs(s, .file)
+//     }
+
+//     fn seek(offset int, origin int) int {
+//         fseek(.file, offset, origin)
+//     }
+
+//     fn tell() int {
+//         ftell(.file)
+//     }
+
+//     fn rewind() {
+//         rewind(.file)
+//     }
+
+//     fn is_eof() bool {
+//         let result = feof(.file)
+//         if result == 0 {
+//             false
+//         } else {
+//             true
+//         }
+//     }
+
+//     fn has_error() bool {
+//         let result = ferror(.file)
+//         if result == 0 {
+//             false
+//         } else {
+//             true
+//         }
+//     }
+
+//     fn clear_error() {
+//         clearerr(.file)
+//     }
+
+//     // ============================================================================
+//     // Auto-Implemented Methods (Phase 4 - Plan 036)
+//     // ============================================================================
+
+//     /// Read entire file content into a string
+//     /// Example: file.read_all()  // returns all content
+//     #[vm]
+//     fn read_all() str
+
+//     /// Write multiple lines to file
+//     /// Example: file.write_lines(["hello", "world"])
+//     #[vm]
+//     fn write_lines(lines []str)
+// }
+
+// fn open(path str) File {
+//     open_read(path)
+// }
+
+// fn open_write(path str) File {
+//     let f *FILE = fopen(path, c"w")
+//     if f == nil {
+//         printf(c"Failed to open file")
+//         exit(1)
+//     }
+//     let file = File(path, f)
+//     file
+// }
+
+// fn open_append(path str) File {
+//     let f *FILE = fopen(path, c"a")
+//     if f == nil {
+//         printf(c"Failed to open file")
+//         exit(1)
+//     }
+//     let file = File(path, f)
+//     file
+// }

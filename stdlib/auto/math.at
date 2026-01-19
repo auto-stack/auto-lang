@@ -2,3 +2,6 @@ fn square(x int) int {
     x * x
 }
 
+fn cube(x int) int {
+    x * x * x
+}

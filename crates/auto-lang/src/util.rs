@@ -6,13 +6,35 @@ use std::path::Path;
 use std::path::PathBuf;
 
 pub fn find_std_lib() -> AutoResult<AutoStr> {
-    let home_dir = dirs::home_dir().unwrap();
-    let auto_std = home_dir.join(".auto/libs/");
-    let search_dirs = vec![
-        auto_std.to_str().unwrap(),
-        "/usr/local/lib/auto",
-        "/usr/lib/auto",
-    ];
+    let mut search_dirs = Vec::new();
+
+    // 1. Try project local stdlib (for development/testing)
+    // Check if we're in a Cargo build (CARGO_MANIFEST_DIR is set)
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        // From crates/auto-lang/, go up to project root (../../../)
+        let project_root = PathBuf::from(manifest_dir)
+            .join("../../../")
+            .canonicalize();
+        if let Ok(root) = project_root {
+            let local_stdlib = root.join("stdlib");
+            if let Some(path) = local_stdlib.to_str() {
+                search_dirs.push(path.to_string());
+            }
+        }
+    }
+
+    // 2. Try user's local stdlib
+    if let Some(home_dir) = dirs::home_dir() {
+        let auto_std = home_dir.join(".auto/libs/");
+        if let Some(path) = auto_std.to_str() {
+            search_dirs.push(path.to_string());
+        }
+    }
+
+    // 3. System-wide stdlib locations
+    search_dirs.push("/usr/local/lib/auto".to_string());
+    search_dirs.push("/usr/lib/auto".to_string());
+
     let std_lib_pat = "stdlib/auto";
 
     for dir in search_dirs {

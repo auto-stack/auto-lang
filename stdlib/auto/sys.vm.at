@@ -1,4 +1,5 @@
 // VM function declarations for system operations
 // These are implemented in Rust in crates/auto-lang/src/libs/sys.rs
 
-fn.vm getpid() int
+#[vm]
+fn getpid() int

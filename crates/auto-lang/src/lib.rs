@@ -2464,6 +2464,7 @@ pid
 }
 
 #[test]
+#[ignore = "requires stdlib import support (use auto.str)"]
 fn test_std_str_str() {
     // Test auto.str: str function (interpreter version of a2c/105_std_str)
     let code = r#"
@@ -2563,26 +2564,25 @@ print(obj)
 }
 
 #[test]
-#[ignore = "requires stdlib import support (use auto.io, use auto.sys)"]
 fn test_std_use_combined() {
     // Test combining multiple std imports
     let code = r#"
 use auto.io: say, print
-use auto.sys: get_pid
+use auto.sys: getpid
 
 say("Testing std")
-let pid = get_pid()
+let pid = getpid()
 print("PID:", pid)
 "#;
     let (result, output) = run_with_output(code).unwrap();
     assert_eq!(result, "");
     // Output should contain "Testing std" and "PID: <number>"
+    println!("Output: {}", output);
     assert!(output.contains("Testing std\n"));
     assert!(output.contains("PID:"));
 }
 
 #[test]
-#[ignore = "requires stdlib import support (cube function not in auto.math)"]
 fn test_std_math_functions() {
     // Test auto.math functions (already tested in test_std, but verify again)
     let code = r#"

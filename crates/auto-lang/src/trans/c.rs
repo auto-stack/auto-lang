@@ -3099,7 +3099,6 @@ int add(int x, int y);
     // The transpiler can't find auto/io.h when processing use statements
     // This needs to be fixed separately from the enum refactoring
     #[test]
-    #[ignore]
     fn test_100_std_hello() {
         test_a2c("100_std_hello").unwrap();
     }
@@ -3110,13 +3109,11 @@ int add(int x, int y);
     }
 
     #[test]
-    #[ignore]
     fn test_102_std_getline() {
         test_a2c("102_std_getline").unwrap();
     }
 
     #[test]
-    #[ignore]
     fn test_103_std_file() {
         test_a2c("103_std_file").unwrap();
     }
@@ -3136,6 +3133,11 @@ int add(int x, int y);
     #[ignore]
     fn test_106_file_operations() {
         test_a2c("106_file_operations").unwrap();
+    }
+
+    #[test]
+    fn test_113_std_test() {
+        test_a2c("113_std_test").unwrap();
     }
 
     // ===================== Phase 5: Unified Section tests =======================
