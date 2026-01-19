@@ -2431,7 +2431,6 @@ say("hello!")
 }
 
 #[test]
-#[ignore = "requires stdlib import support (use auto.io)"]
 fn test_std_io_say_multiple() {
     // Test multiple say calls
     let code = r#"
@@ -2606,5 +2605,198 @@ upper(s) == "HELLO" && lower(s) == "hello"
 "#;
     let result = run(code).unwrap();
     assert_eq!(result, "1");
+}
+
+#[test]
+fn test_std_test() {
+    let code = r#"use auto.test: test
+    test()"#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "42");
+}
+
+#[test]
+fn test_std_file() {
+    let code = r#"use auto.io: File
+let f File = File.open("Cargo.toml")
+let s = f.read_text()
+f.close()
+s
+    "#;
+    let result = run(code).unwrap();
+    println!("Result: {}", result);
+
+}
+
+#[test]
+fn test_vm_annotation_in_ext() {
+    let code = r#"
+type File {
+    path str
+
+    static fn open(path str) File;
+
+    fn read_text() str;
+
+    fn close();
+}
+
+ext File {
+    _handle uint64
+
+    #[pub, vm]
+    static fn open(path str) File
+
+    #[pub, vm]
+    fn read_text() str
+
+    #[pub, vm]
+    fn close()
+}
+"#;
+
+    let mut parser = crate::Parser::from(code);
+    let result = parser.parse();
+
+    assert!(result.is_ok(), "Parsing should succeed: {:?}", result.err());
+
+    let ast = result.unwrap();
+
+    // Find the TypeDecl for File
+    let file_type_decl = ast.stmts.iter().find_map(|stmt| {
+        if let ast::Stmt::TypeDecl(decl) = stmt {
+            if decl.name == "File" {
+                Some(decl)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    });
+
+    assert!(file_type_decl.is_some(), "File TypeDecl should exist");
+
+    let file_decl = file_type_decl.unwrap();
+
+    // Check that methods were merged from ext block
+    assert_eq!(file_decl.methods.len(), 3, "Should have 3 methods");
+
+    // Check that methods are VmFunction (from ext block)
+    let open_method = &file_decl.methods[0];
+    assert_eq!(open_method.name, "open");
+    assert!(matches!(open_method.kind, crate::ast::FnKind::VmFunction),
+               "open method should be VmFunction from ext block");
+
+    let read_text_method = &file_decl.methods[1];
+    assert_eq!(read_text_method.name, "read_text");
+    assert!(matches!(read_text_method.kind, crate::ast::FnKind::VmFunction),
+               "read_text method should be VmFunction from ext block");
+
+    let close_method = &file_decl.methods[2];
+    assert_eq!(close_method.name, "close");
+    assert!(matches!(close_method.kind, crate::ast::FnKind::VmFunction),
+               "close method should be VmFunction from ext block");
+}
+
+#[test]
+fn test_function_body_parsing() {
+    let code = r#"
+fn test() int {
+    42
+}
+"#;
+
+    let mut parser = crate::Parser::from(code);
+    let result = parser.parse();
+
+    assert!(result.is_ok(), "Parsing should succeed: {:?}", result.err());
+
+    let ast = result.unwrap();
+
+    // Find the function
+    let fn_decl = ast.stmts.iter().find_map(|stmt| {
+        if let ast::Stmt::Fn(fn_decl) = stmt {
+            if fn_decl.name == "test" {
+                Some(fn_decl)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    });
+
+    assert!(fn_decl.is_some(), "test function should exist");
+
+    let test_fn = fn_decl.unwrap();
+
+    // Check that the function is marked as Function (not VmFunction)
+    assert!(matches!(test_fn.kind, crate::ast::FnKind::Function),
+            "Function should be FnKind::Function, got {:?}", test_fn.kind);
+
+    // Check that the function body has statements
+    assert_eq!(test_fn.body.stmts.len(), 1, "Function body should have 1 statement");
+
+    // The statement should be an expression statement containing Int(42)
+    if let ast::Stmt::Expr(expr) = &test_fn.body.stmts[0] {
+        if let ast::Expr::Int(val) = expr {
+            assert_eq!(*val, 42);
+        } else {
+            panic!("Expected Expr::Int(42), got {:?}", expr);
+        }
+    } else {
+        panic!("Expected Stmt::Expr, got {:?}", &test_fn.body.stmts[0]);
+    }
+}
+
+#[test]
+fn test_simple_function_execution() {
+    // Directly test function execution without module import
+    let code = r#"fn test() int {
+    42
+}
+
+test()
+"#;
+
+    let result = run(code).unwrap();
+    assert_eq!(result, "42");
+}
+
+#[test]
+fn test_forward_declaration() {
+    // Test forward declaration followed by implementation
+    let code = r#"fn test() int;
+
+fn test() int {
+    42
+}
+
+test()
+"#;
+
+    let result = run(code).unwrap();
+    assert_eq!(result, "42");
+}
+
+#[test]
+fn test_module_simulation() {
+    // Simulate test.at (forward declaration) + test.vm.at (implementation)
+    let code = r#"// Simulating test.at
+fn test() int;
+
+// Simulating test.vm.at
+#[pub]
+fn test() int {
+    42
+}
+
+// Call the function
+test()
+"#;
+
+    let result = run(code).unwrap();
+    assert_eq!(result, "42");
 }
 

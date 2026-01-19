@@ -130,35 +130,43 @@ Located in `crates/auto-lang/test/a2r/`:
 
 ### Function Annotations
 
-AutoLang supports function annotations to specify implementation targets:
+⚠️ **IMPORTANT**: AutoLang uses Rust-style `#[...]` annotation syntax. The old `[...]` syntax is **DEPRECATED** and should not be used.
 
-**Annotation Syntax**:
+**Annotation Syntax** (Rust-style):
 ```auto
-[vm]
+#[vm]
 fn my_function(x int) void;
 
-[c]
+#[c]
 fn c_function(s str) int;
 
-[c, vm]
+#[c, vm]
 fn hybrid_function(data []byte) void;
+
+#[pub]
+fn public_function() int;
 ```
 
-**Annotation Placement**:
+**Annotation Rules**:
+- ✅ **REQUIRED**: All annotations MUST start with `#[]` (Rust-style)
+- ❌ **DEPRECATED**: Old `[...]` syntax (without `#`) is deprecated and will be removed
 - Annotations come **before** the `fn` keyword
+- Supported annotations: `#[c]`, `#[vm]`, `#[pub]`, `#[c, vm]`, `#[pub, c]`, etc.
+- Multiple annotations can be combined: `#[pub, vm]` or `#[pub] #[vm]`
+
+**Annotation Placement**:
 - Annotations should be on their own line (with newlines between annotation and function declaration)
-- Supported annotations: `[c]`, `[vm]`, `[c, vm]`
 
 **In Type Definitions**:
 ```auto
 type MyType {
-    [vm]
+    #[vm]
     static fn new() MyType;
 
-    [vm]
+    #[vm]
     fn instance_method(x int) void;
 
-    [c, vm]
+    #[c, vm]
     fn hybrid_method(s str) void;
 }
 ```
@@ -167,17 +175,17 @@ type MyType {
 - `static fn` - Type-level methods (called on the type, e.g., `MyType.new()`)
 - Regular `fn` - Instance methods (called on instances, e.g., `instance.method()`)
 
+**VM vs C Functions**:
+- **VM functions** (`#[vm]`): Implemented in Rust via VM registry, executed at runtime
+- **C functions** (`#[c]`): Transpiled to C, compiled with C compiler
+- **Hybrid** (`#[c, vm]`): Both implementations available (for flexibility)
+
 **Backwards Compatibility**:
 The old syntax `fn.c` and `fn.vm` (dot notation after `fn`) is still supported for backwards compatibility:
 ```auto
 fn.c old_c_function(s str) int
 fn.vm old_vm_function(x int) void
 ```
-
-**VM vs C Functions**:
-- **VM functions** (`[vm]`): Implemented in Rust via VM registry, executed at runtime
-- **C functions** (`[c]`): Transpiled to C, compiled with C compiler
-- **Hybrid** (`[c, vm]`): Both implementations available (for flexibility)
 
 ## Implementation Strategy
 
