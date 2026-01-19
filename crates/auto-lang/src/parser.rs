@@ -668,7 +668,48 @@ impl<'a> Parser<'a> {
         }
 
         stmts = self.convert_last_block(stmts)?;
+
+        // Post-processing: Merge ext blocks into their target TypeDecl
+        stmts = self.merge_ext_blocks(stmts)?;
+
         Ok(Code { stmts })
+    }
+
+    /// Merge ext blocks into their target TypeDecl
+    /// This processes all Stmt::Ext statements and merges their fields/methods
+    /// into the corresponding Stmt::TypeDecl
+    fn merge_ext_blocks(&self, mut stmts: Vec<Stmt>) -> AutoResult<Vec<Stmt>> {
+        use crate::ast::Stmt;
+
+        // Collect all TypeDecls and Exts in separate passes
+        let mut type_decl_indices: std::collections::HashMap<Name, usize> = std::collections::HashMap::new();
+        let mut ext_statements: Vec<(usize, crate::ast::Ext)> = Vec::new();
+
+        for (i, stmt) in stmts.iter().enumerate() {
+            if let Stmt::TypeDecl(ref decl) = stmt {
+                type_decl_indices.insert(decl.name.clone(), i);
+            } else if let Stmt::Ext(ref ext) = stmt {
+                ext_statements.push((i, ext.clone()));
+            }
+        }
+
+        // Process each Ext statement and merge into target TypeDecl
+        for (ext_idx, ext) in ext_statements {
+            // Find the target TypeDecl
+            if let Some(&decl_idx) = type_decl_indices.get(&ext.target) {
+                // Clone the TypeDecl, merge ext into it, then replace
+                if let Stmt::TypeDecl(ref decl) = &stmts[decl_idx] {
+                    let mut merged_decl = decl.clone();
+                    merged_decl.merge_ext(&ext);
+                    stmts[decl_idx] = Stmt::TypeDecl(merged_decl);
+                }
+            }
+        }
+
+        // Remove all Ext statements after merging
+        stmts.retain(|stmt| !matches!(stmt, Stmt::Ext(_)));
+
+        Ok(stmts)
     }
 
     fn skip_line(&mut self) -> AutoResult<()> {
@@ -1719,7 +1760,7 @@ impl<'a> Parser<'a> {
                     self.next(); // skip #
                     self.next(); // skip [
 
-                    // Parse annotation content (c, vm, or c, vm)
+                    // Parse annotation content (c, vm, pub, or combinations)
                     let mut has_c = false;
                     let mut has_vm = false;
 
@@ -1728,9 +1769,13 @@ impl<'a> Parser<'a> {
                         match annot.as_str() {
                             "c" => has_c = true,
                             "vm" => has_vm = true,
+                            "pub" => {
+                                // Ignore #[pub] annotation for now
+                                // This allows #[pub] in type blocks without errors
+                            }
                             _ => {
                                 return Err(SyntaxError::Generic {
-                                    message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[c, vm]", annot),
+                                    message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[pub], #[c, vm]", annot),
                                     span: pos_to_span(self.cur.pos),
                                 }.into());
                             }
@@ -1874,8 +1919,9 @@ impl<'a> Parser<'a> {
 
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations [c], [vm], [c,vm] or #[c], #[vm], #[c,vm] before function declarations
-            let (has_c, has_vm) = if self.is_kind(TokenKind::LSquare) {
-                self.parse_fn_annotations()?
+            let (has_c, has_vm, has_pub) = if self.is_kind(TokenKind::LSquare) {
+                let (c, vm) = self.parse_fn_annotations()?;
+                (c, vm, false)
             } else if self.is_kind(TokenKind::Hash) {
                 // Check for #[...] annotation syntax
                 let saved_cur = self.cur.clone();
@@ -1890,18 +1936,20 @@ impl<'a> Parser<'a> {
                     self.next(); // skip #
                     self.next(); // skip [
 
-                    // Parse annotation content (c, vm, or c, vm)
+                    // Parse annotation content (c, vm, pub, or combinations)
                     let mut has_c = false;
                     let mut has_vm = false;
+                    let mut has_pub = false;
 
                     while self.is_kind(TokenKind::Ident) {
                         let annot = self.cur.text.clone();
                         match annot.as_str() {
                             "c" => has_c = true,
                             "vm" => has_vm = true,
+                            "pub" => has_pub = true,
                             _ => {
                                 return Err(SyntaxError::Generic {
-                                    message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[c, vm]", annot),
+                                    message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[pub], #[c, vm], #[pub, c], #[pub, vm]", annot),
                                     span: pos_to_span(self.cur.pos),
                                 }.into());
                             }
@@ -1923,12 +1971,12 @@ impl<'a> Parser<'a> {
                             }.into());
                         }
                     }
-                    (has_c, has_vm)
+                    (has_c, has_vm, has_pub)
                 } else {
-                    (false, false)
+                    (false, false, false)
                 }
             } else {
-                (false, false)
+                (false, false, false)
             };
 
             self.skip_empty_lines(); // Skip newlines after annotations
@@ -2015,7 +2063,11 @@ impl<'a> Parser<'a> {
                     }
                     methods.push(fn_expr);
                 }
-                self.expect_eos(false)?;
+                // For VM/C methods, they can end with newline (interface contract)
+                // For regular methods, expect EOS (semicolon or newline after statement)
+                if !has_vm && !has_c {
+                    self.expect_eos(false)?;
+                }
                 self.skip_empty_lines();
             } else {
                 return Err(SyntaxError::Generic {
@@ -2230,9 +2282,9 @@ impl<'a> Parser<'a> {
     /// Plan 036: Returns extensions in load order (bottom layer first, then top layer)
     fn get_file_extensions(&self) -> Vec<&'static str> {
         match self.compile_dest {
-            CompileDest::Interp => vec![".vm.at", ".at"],     // Interpreter: VM (bottom) → Auto (top)
-            CompileDest::TransC => vec![".c.at", ".at"],      // Transpiler: C (bottom) → Auto (top)
-            CompileDest::TransRust => vec![".rust.at", ".at"], // Rust transpiler
+            CompileDest::Interp => vec![".at", ".vm.at"],     // Interpreter: Interface (first) → VM implementation (second)
+            CompileDest::TransC => vec![".at", ".c.at"],      // Transpiler: Interface (first) → C implementation (second)
+            CompileDest::TransRust => vec![".at", ".rust.at"], // Rust transpiler
         }
     }
 
@@ -3051,8 +3103,9 @@ impl<'a> Parser<'a> {
         Ok(fn_stmt)
     }
 
-    /// Parse function annotations: [c], [vm], [c,vm]
+    /// Parse function annotations: [c], [vm], [c,vm], [pub]
     ///
+    /// Note: [pub] annotation is accepted but ignored (not processed)
     /// Returns (has_c, has_vm) tuple
     fn parse_fn_annotations(&mut self) -> AutoResult<(bool, bool)> {
         let mut has_c = false;
@@ -3066,14 +3119,18 @@ impl<'a> Parser<'a> {
                 match annot.as_str() {
                     "c" => has_c = true,
                     "vm" => has_vm = true,
+                    "pub" => {
+                        // Ignore [pub] annotation for now
+                        // This allows #[pub] in type blocks without errors
+                    }
                     _ => {
                         return Err(SyntaxError::Generic {
-                            message: format!("Unknown annotation '{}'. Valid: [c], [vm], [c,vm]", annot),
+                            message: format!("Unknown annotation '{}'. Valid: [c], [vm], [pub], [c,vm]", annot),
                             span: pos_to_span(self.cur.pos),
                         }.into());
                     }
                 }
-                self.next(); // skip the annotation identifier (c or vm)
+                self.next(); // skip the annotation identifier (c, vm, or pub)
 
                 if self.is_kind(TokenKind::Comma) {
                     self.next(); // skip ,
@@ -3157,7 +3214,10 @@ impl<'a> Parser<'a> {
                 self.skip_empty_lines();
             }
             // For C or VM functions, after return type we accept semicolon, newline, or nothing
-            if !(is_c || is_vm) && !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Semi) {
+            // For regular functions, we also accept semicolon for forward declarations
+            // For methods in type blocks (parent_name is not empty), we also accept newline
+            let allow_newline = is_c || is_vm || !parent_name.is_empty();
+            if !allow_newline && !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Semi) && !self.is_kind(TokenKind::EOF) {
                 return Err(SyntaxError::Generic {
                     message: format!("Expected '{{' or ';', found {:?}", self.kind()),
                     span: pos_to_span(self.cur.pos),
@@ -3165,8 +3225,8 @@ impl<'a> Parser<'a> {
             }
         } else if self.is_kind(TokenKind::LBrace) {
             ret_type = Type::Void;
-        } else if (is_c || is_vm) && self.is_kind(TokenKind::Semi) {
-            // For C or VM functions without a return type, default to void
+        } else if self.is_kind(TokenKind::Semi) {
+            // For functions without a return type and ending with semicolon (forward declaration)
             ret_type = Type::Void;
         } else if is_c || is_vm {
             // For C or VM functions without return type and no semicolon (newline-terminated)
@@ -3191,7 +3251,13 @@ impl<'a> Parser<'a> {
 
         // parse function body
         let body = if !is_vm && !is_c {
-            self.body()?
+            // For regular functions, check if this is a forward declaration (semicolon)
+            if self.is_kind(TokenKind::Semi) {
+                self.next(); // skip semicolon
+                Body::new()
+            } else {
+                self.body()?
+            }
         } else {
             // For VM and C functions, check if there's a semicolon or function body
             if self.is_kind(TokenKind::Semi) {
@@ -3298,7 +3364,10 @@ impl<'a> Parser<'a> {
                 self.skip_empty_lines();
             }
             // For C or VM functions, after return type we accept semicolon, newline, or nothing
-            if !(is_c || is_vm) && !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Semi) {
+            // For regular functions, we also accept semicolon for forward declarations
+            // For methods in type blocks (parent_name is not empty), we also accept newline
+            let allow_newline = is_c || is_vm || !parent_name.is_empty();
+            if !allow_newline && !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Semi) && !self.is_kind(TokenKind::EOF) {
                 return Err(SyntaxError::Generic {
                     message: format!("Expected '{{' or ';', found {:?}", self.kind()),
                     span: pos_to_span(self.cur.pos),
@@ -3306,8 +3375,8 @@ impl<'a> Parser<'a> {
             }
         } else if self.is_kind(TokenKind::LBrace) {
             ret_type = Type::Void;
-        } else if (is_c || is_vm) && self.is_kind(TokenKind::Semi) {
-            // For C or VM functions without a return type, default to void
+        } else if self.is_kind(TokenKind::Semi) {
+            // For functions without a return type and ending with semicolon (forward declaration)
             ret_type = Type::Void;
         } else if is_c || is_vm {
             // For C or VM functions without return type and no semicolon (newline-terminated)
@@ -3332,7 +3401,13 @@ impl<'a> Parser<'a> {
 
         // parse function body
         let body = if !is_vm && !is_c {
-            self.body()?
+            // For regular functions, check if this is a forward declaration (semicolon)
+            if self.is_kind(TokenKind::Semi) {
+                self.next(); // skip semicolon
+                Body::new()
+            } else {
+                self.body()?
+            }
         } else {
             // For VM and C functions, check if there's a semicolon or function body
             if self.is_kind(TokenKind::Semi) {
@@ -3578,6 +3653,7 @@ impl<'a> Parser<'a> {
                     has: Vec::new(),
                     specs: Vec::new(),
                     members: Vec::new(),
+                    private_members: Vec::new(),
                     delegations: Vec::new(),
                     methods: Vec::new(),
                 };
@@ -3616,6 +3692,7 @@ impl<'a> Parser<'a> {
             specs: Vec::new(),
             has: Vec::new(),
             members: Vec::new(),
+            private_members: Vec::new(),
             delegations: Vec::new(),
             methods: Vec::new(),
         };
@@ -3722,7 +3799,7 @@ impl<'a> Parser<'a> {
                     self.next(); // skip #
                     self.next(); // skip [
 
-                    // Parse annotation content (c, vm, or c, vm)
+                    // Parse annotation content (c, vm, pub, or combinations)
                     let mut has_c = false;
                     let mut has_vm = false;
 
@@ -3731,9 +3808,13 @@ impl<'a> Parser<'a> {
                         match annot.as_str() {
                             "c" => has_c = true,
                             "vm" => has_vm = true,
+                            "pub" => {
+                                // Ignore #[pub] annotation for now
+                                // This allows #[pub] in type blocks without errors
+                            }
                             _ => {
                                 return Err(SyntaxError::Generic {
-                                    message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[c, vm]", annot),
+                                    message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[pub], #[c, vm]", annot),
                                     span: pos_to_span(self.cur.pos),
                                 }.into());
                             }

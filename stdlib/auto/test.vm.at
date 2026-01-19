@@ -1,0 +1,4 @@
+#[pub]
+fn test() int {
+    42
+}
