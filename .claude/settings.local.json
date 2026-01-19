@@ -86,12 +86,7 @@
       "Bash(rustdoc --open --no-deps -p reedline:*)",
       "Bash(find:*)",
       "Bash(where:*)",
-      "Bash(echo:*)",
-      "Bash(python:*)",
-      "Bash(powershell -Command \"Compress-Archive -Path:*)",
-      "Bash(powershell:*)",
-      "Bash(git init:*)",
-      "Bash(git rm:*)"
+      "Bash(echo:*)"
     ]
   }
 }

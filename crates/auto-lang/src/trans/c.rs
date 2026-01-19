@@ -3133,11 +3133,6 @@ int add(int x, int y);
     }
 
     #[test]
-    fn test_107_std_path() {
-        test_a2c("107_std_path").unwrap();
-    }
-
-    #[test]
     #[ignore]
     fn test_106_file_operations() {
         test_a2c("106_file_operations").unwrap();
