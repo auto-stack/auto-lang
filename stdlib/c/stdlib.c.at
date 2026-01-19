@@ -1,47 +1,47 @@
 #[c]
-fn malloc(size int) *void
+fn malloc(size int) *void;
 
 #[c]
-fn calloc(n int, size int) *void
+fn calloc(n int, size int) *void;
 
 #[c]
-fn realloc(ptr *void, size int) *void
+fn realloc(ptr *void, size int) *void;
 
 #[c]
-fn free(ptr *void)
+fn free(ptr *void);
 
 #[c]
-fn abort()
+fn abort();
 
 #[c]
-fn exit(status int)
+fn exit(status int);
 
 #[c]
-fn system(command str) int
+fn system(command str) int;
 
 #[c]
-fn getenv(name str) str
+fn getenv(name str) str;
 
 #[c]
-fn abs(x int) int
+fn abs(x int) int;
 
 #[c]
-fn labs(x int) int
+fn labs(x int) int;
 
 #[c]
-fn atoi(str str) int
+fn atoi(str str) int;
 
 #[c]
-fn atof(str str) float
+fn atof(str str) float;
 
 #[c]
-fn rand() int
+fn rand() int;
 
 #[c]
-fn srand(seed int)
+fn srand(seed int);
 
 #[c]
-type div_t
+type div_t;
 
 #[c]
-type ldiv_t
+type ldiv_t;
