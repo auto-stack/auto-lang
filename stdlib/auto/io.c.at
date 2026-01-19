@@ -1,32 +1,36 @@
-use.c <stdlib.h>
-fn.c exit(status int) void
+use c.stdio: FILE, fopen, fclose, fgets
 
-use.c <stdio.h>
+ext File {
+    file *FILE
 
-fn.c printf(fmt cstr, arg cstr)
-type.c FILE
-fn.c getline(lineptr *cstr, n *int, stream *FILE) int
-let c stdin *FILE
-let c stdout *FILE
-let c stderr *FILE
+    #[pub]
+    static fn open(path str) File {
+        let f *FILE = fopen(path, c"r")
+        File {
+            path: path
+            file: f
+        }
+    }
 
-fn.c fopen(filename cstr, mode cstr) *FILE
-fn.c fclose(stream *FILE)
-fn.c fgets(buf cstr, n int, stream *FILE) cstr
-fn.c fputs(s cstr, stream *FILE) int
-fn.c fflush(stream *FILE) int
+    #[pub]
+    fn read_text() str {
+        if .file == nil {
+            return ""
+        }
 
-fn.c fgetc(stream *FILE) int
-fn.c fputc(c int, stream *FILE) int
-fn.c ungetc(c int, stream *FILE) int
+        let buf str = c"                                                                                "
+        let result = fgets(buf, 80, .file)
+        if result == nil {
+            return ""
+        }
+        result
+    }
 
-fn.c fread(ptr *void, size int, count int, stream *FILE) int
-fn.c fwrite(ptr *void, size int, count int, stream *FILE) int
+    #[pub]
+    fn close() {
+        if .file != nil {
+            fclose(.file)
+        }
+    }
 
-fn.c fseek(stream *FILE, offset int, origin int) int
-fn.c ftell(stream *FILE) int
-fn.c rewind(stream *FILE)
-
-fn.c feof(stream *FILE) int
-fn.c ferror(stream *FILE) int
-fn.c clearerr(stream *FILE)
+}

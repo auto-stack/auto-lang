@@ -1,143 +1,143 @@
-[c]
+#[c]
 type FILE
 
-[c]
+#[c]
 fn printf(format str, ...) int
 
-[c]
+#[c]
 fn fprintf(stream *FILE, format str, ...) int
 
-[c]
+#[c]
 fn sprintf(buf str, format str, ...) int
 
-[c]
+#[c]
 fn snprintf(buf str, size int, format str, ...) int
 
-[c]
+#[c]
 fn vprintf(format str, args va_list) int
 
-[c]
+#[c]
 fn vfprintf(stream *FILE, format str, args va_list) int
 
-[c]
+#[c]
 fn vsprintf(buf str, format str, args va_list) int
 
-[c]
+#[c]
 fn vsnprintf(buf str, size int, format str, args va_list) int
 
-[c]
+#[c]
 fn scanf(format str, ...) int
 
-[c]
+#[c]
 fn fscanf(stream *FILE, format str, ...) int
 
-[c]
+#[c]
 fn sscanf(buf str, format str, ...) int
 
-[c]
+#[c]
 fn vscanf(format str, args va_list) int
 
-[c]
+#[c]
 fn vfscanf(stream *FILE, format str, args va_list) int
 
-[c]
+#[c]
 fn vsscanf(buf str, format str, args va_list) int
 
-[c]
+#[c]
 fn fopen(filename str, mode str) *FILE
 
-[c]
+#[c]
 fn fclose(stream *FILE) int
 
-[c]
+#[c]
 fn freopen(filename str, mode str, stream *FILE) *FILE
 
-[c]
+#[c]
 fn fflush(stream *FILE) int
 
-[c]
+#[c]
 fn setbuf(stream *FILE, buf str) void
 
-[c]
+#[c]
 fn setvbuf(stream *FILE, buf str, mode int, size int) void
 
-[c]
+#[c]
 fn fseek(stream *FILE, offset int, origin int) int
 
-[c]
+#[c]
 fn ftell(stream *FILE) int
 
-[c]
+#[c]
 fn rewind(stream *FILE) void
 
-[c]
+#[c]
 fn fgetpos(stream *FILE, pos *fpos_t) int
 
-[c]
+#[c]
 fn fsetpos(stream *FILE, pos *fpos_t) int
 
-[c]
+#[c]
 fn clearerr(stream *FILE) void
 
-[c]
+#[c]
 fn feof(stream *FILE) int
 
-[c]
+#[c]
 fn ferror(stream *FILE) int
 
-[c]
+#[c]
 fn perror(s str) void
 
-[c]
+#[c]
 fn fgetc(stream *FILE) int
 
-[c]
+#[c]
 fn fgets(buf str, n int, stream *FILE) str
 
-[c]
+#[c]
 fn fputc(c int, stream *FILE) int
 
-[c]
+#[c]
 fn fputs(s str, stream *FILE) int
 
-[c]
+#[c]
 fn getc(stream *FILE) int
 
-[c]
+#[c]
 fn getchar() int
 
-[c]
+#[c]
 fn puts(s str) int
 
-[c]
+#[c]
 fn putchar(c int) int
 
-[c]
+#[c]
 fn ungetc(c int, stream *FILE) int
 
-[c]
+#[c]
 fn fread(ptr str, size int, count int, stream *FILE) int
 
-[c]
+#[c]
 fn fwrite(ptr str, size int, count int, stream *FILE) int
 
-[c]
+#[c]
 fn remove(filename str) int
 
-[c]
+#[c]
 fn rename(oldname str, newname str) int
 
-[c]
+#[c]
 fn tmpfile() *FILE
 
-[c]
+#[c]
 fn tmpnam(s str) str
 
-[c]
+#[c]
 type va_list
 
-[c]
+#[c]
 type fpos_t
 
-[c]
+#[c]
 type size_t

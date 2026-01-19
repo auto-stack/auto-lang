@@ -1,8 +1,14 @@
 type File {
+    #[pub]
     path str
 
-    fn read_text() str
+    #[pub]
     static fn open(path str) File
+
+    #[pub]
+    fn read_text() str
+
+    #[pub]
     fn close()
 }
 
@@ -123,3 +129,6 @@ type File {
 //     let file = File(path, f)
 //     file
 // }
+
+#[pub]
+fn say(msg str);

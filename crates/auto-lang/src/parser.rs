@@ -700,7 +700,9 @@ impl<'a> Parser<'a> {
                 // Clone the TypeDecl, merge ext into it, then replace
                 if let Stmt::TypeDecl(ref decl) = &stmts[decl_idx] {
                     let mut merged_decl = decl.clone();
-                    merged_decl.merge_ext(&ext);
+                    // Merge ext fields and methods into the TypeDecl
+                    merged_decl.members.extend(ext.fields.clone());
+                    merged_decl.methods.extend(ext.methods.clone());
                     stmts[decl_idx] = Stmt::TypeDecl(merged_decl);
                 }
             }
@@ -1747,109 +1749,101 @@ impl<'a> Parser<'a> {
             TokenKind::Fn => self.fn_decl_stmt("")?,
             TokenKind::Hash => {
                 // #[...] annotation syntax (Rust-style)
-                // Check if next token is [ by looking ahead
-                let saved_cur = self.cur.clone();
-                self.next(); // consume # to check next token
-                let is_annotation = self.is_kind(TokenKind::LSquare);
-                // Restore
-                self.lexer.push_token(self.cur.clone());
-                self.cur = saved_cur;
+                // Use centralized parse_fn_annotations() function
+                let (has_c, has_vm, has_pub) = self.parse_fn_annotations()?;
 
-                if is_annotation {
-                    // This is a #[...] annotation
-                    self.next(); // skip #
-                    self.next(); // skip [
+                // Skip empty lines after annotation
+                self.skip_empty_lines();
 
-                    // Parse annotation content (c, vm, pub, or combinations)
-                    let mut has_c = false;
-                    let mut has_vm = false;
+                // Check if this annotation is compatible with current compile destination
+                let should_skip = match self.compile_dest {
+                    CompileDest::TransC if has_vm && !has_c => true,   // Skip #[vm] in C transpiler
+                    CompileDest::TransRust if has_vm && !has_c => true, // Skip #[vm] in Rust transpiler
+                    CompileDest::Interp if has_c && !has_vm => true,    // Skip #[c] in interpreter
+                    _ => false,
+                };
 
-                    while self.is_kind(TokenKind::Ident) {
-                        let annot = self.cur.text.clone();
-                        match annot.as_str() {
-                            "c" => has_c = true,
-                            "vm" => has_vm = true,
-                            "pub" => {
-                                // Ignore #[pub] annotation for now
-                                // This allows #[pub] in type blocks without errors
-                            }
-                            _ => {
-                                return Err(SyntaxError::Generic {
-                                    message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[pub], #[c, vm]", annot),
-                                    span: pos_to_span(self.cur.pos),
-                                }.into());
-                            }
-                        }
-                        self.next(); // skip annotation identifier
-
-                        if self.is_kind(TokenKind::Comma) {
-                            self.next(); // skip ,
-                            continue;
-                        }
-
-                        if self.is_kind(TokenKind::RSquare) {
-                            self.next(); // skip ]
-                            break;
-                        } else {
-                            return Err(SyntaxError::Generic {
-                                message: format!("Expected ',', ']', or annotation, found {:?}", self.kind()),
-                                span: pos_to_span(self.cur.pos),
-                            }.into());
-                        }
-                    }
-
-                    // Skip empty lines after annotation
-                    self.skip_empty_lines();
-
-                    // Check if this annotation is compatible with current compile destination
-                    let should_skip = match self.compile_dest {
-                        CompileDest::TransC if has_vm && !has_c => true,   // Skip #[vm] in C transpiler
-                        CompileDest::TransRust if has_vm && !has_c => true, // Skip #[vm] in Rust transpiler
-                        CompileDest::Interp if has_c && !has_vm => true,    // Skip #[c] in interpreter
-                        _ => false,
-                    };
-
-                    if should_skip {
-                        // Skip the entire function/type declaration by parsing it normally but discarding the result
-                        if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
-                            // Skip function declaration
-                            let is_static = self.is_kind(TokenKind::Static);
-                            if is_static {
-                                self.next(); // skip static keyword
-                            }
-                            // Parse with the actual annotation flags to correctly handle the function syntax
-                            // For #[vm] functions, parse as VM function to allow newline termination
-                            // For #[c] functions, parse as C function to allow semicolon termination
-                            let _ = self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static);
-                            return Ok(Stmt::Expr(Expr::Nil));
-                        } else if self.is_kind(TokenKind::Type) {
-                            // Skip type declaration
-                            let _ = self.type_decl_stmt();
-                            return Ok(Stmt::Expr(Expr::Nil));
-                        }
-                    }
-
-                    // Check what comes next
+                if should_skip {
+                    // Skip the entire function/type declaration by parsing it normally but discarding the result
                     if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
-                        // Function declaration
+                        // Skip function declaration
                         let is_static = self.is_kind(TokenKind::Static);
                         if is_static {
                             self.next(); // skip static keyword
                         }
-                        self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static)?
+                        // Parse with the actual annotation flags to correctly handle the function syntax
+                        // For #[vm] functions, parse as VM function to allow newline termination
+                        // For #[c] functions, parse as C function to allow semicolon termination
+                        let _ = self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static);
+                        return Ok(Stmt::Expr(Expr::Nil));
                     } else if self.is_kind(TokenKind::Type) {
-                        // Type declaration
-                        self.type_decl_stmt_with_annotation(has_c)?
-                    } else {
-                        return Err(SyntaxError::Generic {
-                            message: "Expected 'fn' or 'type' after annotation".to_string(),
-                            span: pos_to_span(self.cur.pos),
-                        }.into());
+                        // Skip type declaration
+                        let _ = self.type_decl_stmt();
+                        return Ok(Stmt::Expr(Expr::Nil));
                     }
+                }
+
+                // Check what comes next
+                if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
+                    // Function declaration
+                    let is_static = self.is_kind(TokenKind::Static);
+                    if is_static {
+                        self.next(); // skip static keyword
+                    }
+                    self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static)?
+                } else if self.is_kind(TokenKind::Type) {
+                    // Type declaration
+                    self.type_decl_stmt_with_annotation(has_c)?
+                } else if self.is_kind(TokenKind::Use) {
+                    // Use statement with annotation
+                    // Check if this is a C/Rust import (use.c or use.rust style with angle brackets)
+                    self.next(); // skip use to check next token
+                    let is_c_import = self.is_kind(TokenKind::Lt) || self.is_kind(TokenKind::Str);
+                    // Put the use token back
+                    self.lexer.push_token(self.cur.clone());
+                    self.cur = self.prev.clone(); // Go back to use token
+
+                    if has_c && is_c_import {
+                        // C import: #[c] use <stdio.h>
+                        self.next(); // skip use
+                        // Call use_c directly since we know it's a C import
+                        let mut paths = Vec::new();
+                        if self.is_kind(TokenKind::Lt) {
+                            self.next(); // skip <
+                            let mut name = "<".to_string();
+                            while !self.is_kind(TokenKind::Gt) {
+                                name.push_str(self.cur.text.as_str());
+                                self.next();
+                            }
+                            name.push_str(">");
+                            self.expect(TokenKind::Gt)?;
+                            paths.push(name.into());
+                        } else if self.is_kind(TokenKind::Str) {
+                            let name = self.cur.text.clone();
+                            self.next();
+                            paths.push(format!("\"{}\"", name).into());
+                        }
+
+                        let items = self.parse_use_items()?;
+                        let uses = Use {
+                            kind: UseKind::C,
+                            paths,
+                            items,
+                        };
+                        self.import(&uses)?;
+                        Stmt::Use(uses)
+                    } else {
+                        // Regular Auto use statement
+                        self.use_stmt()?
+                    }
+                } else if self.is_kind(TokenKind::Let) {
+                    // Let statement with annotation
+                    self.parse_store_stmt()?
                 } else {
-                    // Just # without [ could be other syntax
-                    // Try to parse as expression
-                    self.expr_stmt()?
+                    return Err(SyntaxError::Generic {
+                        message: "Expected 'fn', 'type', 'use', or 'let' after annotation".to_string(),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
                 }
             },
             TokenKind::Type => self.type_decl_stmt()?,
@@ -1918,66 +1912,8 @@ impl<'a> Parser<'a> {
         let mut methods = Vec::new();
 
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            // Check for annotations [c], [vm], [c,vm] or #[c], #[vm], #[c,vm] before function declarations
-            let (has_c, has_vm, has_pub) = if self.is_kind(TokenKind::LSquare) {
-                let (c, vm) = self.parse_fn_annotations()?;
-                (c, vm, false)
-            } else if self.is_kind(TokenKind::Hash) {
-                // Check for #[...] annotation syntax
-                let saved_cur = self.cur.clone();
-                self.next(); // consume # to check next token
-                let is_annotation = self.is_kind(TokenKind::LSquare);
-                // Restore
-                self.lexer.push_token(self.cur.clone());
-                self.cur = saved_cur;
-
-                if is_annotation {
-                    // This is a #[...] annotation
-                    self.next(); // skip #
-                    self.next(); // skip [
-
-                    // Parse annotation content (c, vm, pub, or combinations)
-                    let mut has_c = false;
-                    let mut has_vm = false;
-                    let mut has_pub = false;
-
-                    while self.is_kind(TokenKind::Ident) {
-                        let annot = self.cur.text.clone();
-                        match annot.as_str() {
-                            "c" => has_c = true,
-                            "vm" => has_vm = true,
-                            "pub" => has_pub = true,
-                            _ => {
-                                return Err(SyntaxError::Generic {
-                                    message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[pub], #[c, vm], #[pub, c], #[pub, vm]", annot),
-                                    span: pos_to_span(self.cur.pos),
-                                }.into());
-                            }
-                        }
-                        self.next(); // skip annotation identifier
-
-                        if self.is_kind(TokenKind::Comma) {
-                            self.next(); // skip ,
-                            continue;
-                        }
-
-                        if self.is_kind(TokenKind::RSquare) {
-                            self.next(); // skip ]
-                            break;
-                        } else {
-                            return Err(SyntaxError::Generic {
-                                message: format!("Expected ',', ']', or annotation, found {:?}", self.kind()),
-                                span: pos_to_span(self.cur.pos),
-                            }.into());
-                        }
-                    }
-                    (has_c, has_vm, has_pub)
-                } else {
-                    (false, false, false)
-                }
-            } else {
-                (false, false, false)
-            };
+            // Check for annotations: #[c], #[vm], #[pub], #[c,vm] before function declarations
+            let (has_c, has_vm, has_pub) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
@@ -3105,60 +3041,69 @@ impl<'a> Parser<'a> {
 
     /// Parse function annotations: [c], [vm], [c,vm], [pub]
     ///
-    /// Note: [pub] annotation is accepted but ignored (not processed)
-    /// Returns (has_c, has_vm) tuple
-    fn parse_fn_annotations(&mut self) -> AutoResult<(bool, bool)> {
+    /// Parse function annotations: #[c], #[vm], #[pub], #[c,vm], etc.
+    /// Annotations must start with # prefix (Rust-style).
+    /// Returns (has_c, has_vm, has_pub) tuple
+    fn parse_fn_annotations(&mut self) -> AutoResult<(bool, bool, bool)> {
         let mut has_c = false;
         let mut has_vm = false;
+        let mut has_pub = false;
 
-        if self.is_kind(TokenKind::LSquare) {
-            self.next(); // skip [
+        // Require # prefix
+        if self.is_kind(TokenKind::Hash) {
+            self.next(); // skip #
 
-            while self.is_kind(TokenKind::Ident) {
-                let annot = self.cur.text.clone();
-                match annot.as_str() {
-                    "c" => has_c = true,
-                    "vm" => has_vm = true,
-                    "pub" => {
-                        // Ignore [pub] annotation for now
-                        // This allows #[pub] in type blocks without errors
+            if self.is_kind(TokenKind::LSquare) {
+                self.next(); // skip [
+
+                while self.is_kind(TokenKind::Ident) {
+                    let annot = self.cur.text.clone();
+                    match annot.as_str() {
+                        "c" => has_c = true,
+                        "vm" => has_vm = true,
+                        "pub" => has_pub = true,
+                        _ => {
+                            return Err(SyntaxError::Generic {
+                                message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[pub], #[c,vm]", annot),
+                                span: pos_to_span(self.cur.pos),
+                            }.into());
+                        }
                     }
-                    _ => {
+                    self.next(); // skip the annotation identifier (c, vm, or pub)
+
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next(); // skip ,
+                        continue;
+                    }
+
+                    if self.is_kind(TokenKind::RSquare) {
+                        self.next(); // skip ]
+                        break;
+                    } else {
                         return Err(SyntaxError::Generic {
-                            message: format!("Unknown annotation '{}'. Valid: [c], [vm], [pub], [c,vm]", annot),
+                            message: format!("Expected ',', ']', or annotation, found {:?}", self.kind()),
                             span: pos_to_span(self.cur.pos),
                         }.into());
                     }
                 }
-                self.next(); // skip the annotation identifier (c, vm, or pub)
-
-                if self.is_kind(TokenKind::Comma) {
-                    self.next(); // skip ,
-                    continue;
-                }
-
-                if self.is_kind(TokenKind::RSquare) {
-                    self.next(); // skip ]
-                    break;
-                } else {
-                    return Err(SyntaxError::Generic {
-                        message: format!("Expected ',', ']', or annotation, found {:?}", self.kind()),
-                        span: pos_to_span(self.cur.pos),
-                    }.into());
-                }
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected '[' after '#', found {:?}", self.kind()),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
             }
         }
 
-        Ok((has_c, has_vm))
+        Ok((has_c, has_vm, has_pub))
     }
 
     // Function Declaration
     pub fn fn_decl_stmt(&mut self, parent_name: &str) -> AutoResult<Stmt> {
-        // Check for annotations: [c], [vm], [c,vm] BEFORE fn keyword
-        let (has_c, has_vm) = if self.is_kind(TokenKind::LSquare) {
+        // Check for annotations: #[c], #[vm], #[c,vm] BEFORE fn keyword
+        let (has_c, has_vm, _has_pub) = if self.is_kind(TokenKind::Hash) {
             self.parse_fn_annotations()?
         } else {
-            (false, false)
+            (false, false, false)
         };
 
         // Skip empty lines after annotations
@@ -3217,7 +3162,7 @@ impl<'a> Parser<'a> {
             // For regular functions, we also accept semicolon for forward declarations
             // For methods in type blocks (parent_name is not empty), we also accept newline
             let allow_newline = is_c || is_vm || !parent_name.is_empty();
-            if !allow_newline && !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Semi) && !self.is_kind(TokenKind::EOF) {
+            if !allow_newline && !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Semi) && !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::Hash) {
                 return Err(SyntaxError::Generic {
                     message: format!("Expected '{{' or ';', found {:?}", self.kind()),
                     span: pos_to_span(self.cur.pos),
@@ -3367,7 +3312,7 @@ impl<'a> Parser<'a> {
             // For regular functions, we also accept semicolon for forward declarations
             // For methods in type blocks (parent_name is not empty), we also accept newline
             let allow_newline = is_c || is_vm || !parent_name.is_empty();
-            if !allow_newline && !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Semi) && !self.is_kind(TokenKind::EOF) {
+            if !allow_newline && !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Semi) && !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::Hash) {
                 return Err(SyntaxError::Generic {
                     message: format!("Expected '{{' or ';', found {:?}", self.kind()),
                     span: pos_to_span(self.cur.pos),
@@ -3627,8 +3572,8 @@ impl<'a> Parser<'a> {
         // TODO: deal with scope
         self.next(); // skip `type` keyword
 
-        // Check for [c] annotation before the type name (if not already provided)
-        let has_c_annotation = if !has_c_annotation && self.is_kind(TokenKind::LSquare) {
+        // Check for #[c] annotation before the type name (if not already provided)
+        let has_c_annotation = if !has_c_annotation && self.is_kind(TokenKind::Hash) {
             self.parse_fn_annotations()?.0
         } else {
             has_c_annotation
@@ -3653,7 +3598,6 @@ impl<'a> Parser<'a> {
                     has: Vec::new(),
                     specs: Vec::new(),
                     members: Vec::new(),
-                    private_members: Vec::new(),
                     delegations: Vec::new(),
                     methods: Vec::new(),
                 };
@@ -3692,7 +3636,6 @@ impl<'a> Parser<'a> {
             specs: Vec::new(),
             has: Vec::new(),
             members: Vec::new(),
-            private_members: Vec::new(),
             delegations: Vec::new(),
             methods: Vec::new(),
         };
@@ -3782,67 +3725,8 @@ impl<'a> Parser<'a> {
         let mut methods = Vec::new();
         let mut delegations = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            // Check for annotations [c], [vm], [c,vm] or #[c], #[vm], #[c,vm] before function declarations
-            let (has_c, has_vm) = if self.is_kind(TokenKind::LSquare) {
-                self.parse_fn_annotations()?
-            } else if self.is_kind(TokenKind::Hash) {
-                // Check for #[...] annotation syntax
-                let saved_cur = self.cur.clone();
-                self.next(); // consume # to check next token
-                let is_annotation = self.is_kind(TokenKind::LSquare);
-                // Restore
-                self.lexer.push_token(self.cur.clone());
-                self.cur = saved_cur;
-
-                if is_annotation {
-                    // This is a #[...] annotation
-                    self.next(); // skip #
-                    self.next(); // skip [
-
-                    // Parse annotation content (c, vm, pub, or combinations)
-                    let mut has_c = false;
-                    let mut has_vm = false;
-
-                    while self.is_kind(TokenKind::Ident) {
-                        let annot = self.cur.text.clone();
-                        match annot.as_str() {
-                            "c" => has_c = true,
-                            "vm" => has_vm = true,
-                            "pub" => {
-                                // Ignore #[pub] annotation for now
-                                // This allows #[pub] in type blocks without errors
-                            }
-                            _ => {
-                                return Err(SyntaxError::Generic {
-                                    message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[pub], #[c, vm]", annot),
-                                    span: pos_to_span(self.cur.pos),
-                                }.into());
-                            }
-                        }
-                        self.next(); // skip annotation identifier
-
-                        if self.is_kind(TokenKind::Comma) {
-                            self.next(); // skip ,
-                            continue;
-                        }
-
-                        if self.is_kind(TokenKind::RSquare) {
-                            self.next(); // skip ]
-                            break;
-                        } else {
-                            return Err(SyntaxError::Generic {
-                                message: format!("Expected ',', ']', or annotation, found {:?}", self.kind()),
-                                span: pos_to_span(self.cur.pos),
-                            }.into());
-                        }
-                    }
-                    (has_c, has_vm)
-                } else {
-                    (false, false)
-                }
-            } else {
-                (false, false)
-            };
+            // Check for annotations: #[c], #[vm], #[pub], #[c,vm] before function declarations
+            let (has_c, has_vm, _has_pub) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
