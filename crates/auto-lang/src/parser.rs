@@ -1665,57 +1665,72 @@ impl<'a> Parser<'a> {
             TokenKind::Let => self.parse_store_stmt()?,
             TokenKind::Mut => self.parse_store_stmt()?,
             TokenKind::Fn => self.fn_decl_stmt("")?,
-            TokenKind::LSquare => {
-                // This could be:
-                // 1. An annotation like [c] or [vm] followed by fn or type
-                // 2. An array literal or index expression
-                // Try to parse annotations first
-                let annot_result = self.parse_fn_annotations();
+            TokenKind::Hash => {
+                // #[...] annotation syntax (Rust-style)
+                // Check if next token is [
+                if self.peek().kind == TokenKind::LSquare {
+                    // This is a #[...] annotation
+                    self.next(); // skip #
+                    self.next(); // skip [
 
-                if let Ok((has_c, has_vm)) = annot_result {
-                    // Successfully parsed annotations, now skip empty lines
+                    // Parse annotation content (c, vm, or c, vm)
+                    let mut has_c = false;
+                    let mut has_vm = false;
+
+                    while self.is_kind(TokenKind::Ident) {
+                        let annot = self.cur.text.clone();
+                        match annot.as_str() {
+                            "c" => has_c = true,
+                            "vm" => has_vm = true,
+                            _ => {
+                                return Err(SyntaxError::Generic {
+                                    message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[c, vm]", annot),
+                                    span: pos_to_span(self.cur.pos),
+                                }.into());
+                            }
+                        }
+                        self.next(); // skip annotation identifier
+
+                        if self.is_kind(TokenKind::Comma) {
+                            self.next(); // skip ,
+                            continue;
+                        }
+
+                        if self.is_kind(TokenKind::RSquare) {
+                            self.next(); // skip ]
+                            break;
+                        } else {
+                            return Err(SyntaxError::Generic {
+                                message: format!("Expected ',', ']', or annotation, found {:?}", self.kind()),
+                                span: pos_to_span(self.cur.pos),
+                            }.into());
+                        }
+                    }
+
+                    // Skip empty lines after annotation
                     self.skip_empty_lines();
 
                     // Check what comes next
                     if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
-                        // Function declaration - annotations already parsed above
+                        // Function declaration
                         let is_static = self.is_kind(TokenKind::Static);
                         if is_static {
                             self.next(); // skip static keyword
                         }
                         self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static)?
                     } else if self.is_kind(TokenKind::Type) {
-                        // Type declaration - pass annotation info
+                        // Type declaration
                         self.type_decl_stmt_with_annotation(has_c)?
                     } else {
-                        // Not a declaration, fall back to expression parsing
                         return Err(SyntaxError::Generic {
                             message: "Expected 'fn' or 'type' after annotation".to_string(),
                             span: pos_to_span(self.cur.pos),
                         }.into());
                     }
                 } else {
-                    // Failed to parse annotations, treat as array literal
-                    // Try fn_decl_stmt first (might have backwards compatible .c/.vm syntax)
-                    match self.fn_decl_stmt("") {
-                        Ok(stmt) => stmt,
-                        Err(e) => {
-                            // If fn_decl failed, try type_decl
-                            match self.type_decl_stmt() {
-                                Ok(stmt) => stmt,
-                                Err(e2) => {
-                                    // If both failed, check if first error was UnexpectedToken
-                                    // If so, fall back to expr_stmt (might be array literal)
-                                    match &e {
-                                        AutoError::Syntax(SyntaxError::UnexpectedToken { .. }) => {
-                                            self.expr_stmt()?
-                                        },
-                                        _ => return Err(e2),
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // Just # without [ could be other syntax
+                    // Try to parse as expression
+                    self.expr_stmt()?
                 }
             },
             TokenKind::Type => self.type_decl_stmt()?,

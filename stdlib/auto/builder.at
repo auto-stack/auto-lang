@@ -24,12 +24,12 @@ type StringBuilder {
 
     /// Create a new StringBuilder with initial capacity
     /// Example: StringBuilder.new(1024)
-    [c, vm]
+    #[c, vm]
     static fn new(capacity int) StringBuilder
 
     /// Create a new StringBuilder with default capacity
     /// Example: StringBuilder.new_with_default()
-    [c, vm]
+    #[c, vm]
     static fn new_with_default() StringBuilder
 
     // ========================================================================
