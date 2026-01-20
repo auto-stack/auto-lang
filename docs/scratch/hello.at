@@ -1,0 +1,18 @@
+use auto.ui: View, widget, app, center, text
+
+type Hello is Widget {
+    // data fields
+    msg str
+
+    // view
+    fn view() View {
+        text(msg) {}
+    }
+}
+
+// Create an App
+app CounterExample {
+    center {
+        Hello("Hello, World!")
+    }
+}
