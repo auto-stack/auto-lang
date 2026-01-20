@@ -3481,7 +3481,7 @@ int add(int x, int y);
     }
 
     #[test]
-    fn test_104_std_readline() {
-        test_a2c("104_std_readline").unwrap();
+    fn test_114_std_readline() {
+        test_a2c("114_std_readline").unwrap();
     }
 }

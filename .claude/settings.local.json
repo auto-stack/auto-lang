@@ -86,7 +86,9 @@
       "Bash(rustdoc --open --no-deps -p reedline:*)",
       "Bash(find:*)",
       "Bash(where:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(test:*)",
+      "Bash(git rm:*)"
     ]
   }
 }
