@@ -1,4 +1,4 @@
-use c.stdio: FILE, fopen, fclose, fgets
+use c.stdio: FILE, fopen, fclose, fgets, fputs
 
 ext File {
     file *FILE
@@ -35,6 +35,12 @@ ext File {
             return ""
         }
         result
+    }
+
+    #[pub]
+    fn write_line(s str) {
+        fputs(s, .file)
+        fputs(c"\n", .file)
     }
 
     #[pub]

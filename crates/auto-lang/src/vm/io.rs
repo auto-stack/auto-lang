@@ -142,3 +142,41 @@ pub fn close_method(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Valu
 pub fn read_line_method(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
     read_line(uni, instance)
 }
+
+pub fn write_line(uni: Shared<Universe>, file: &mut Value, line: &str) -> Value {
+    if let Value::Instance(inst) = file {
+        if let Type::User(decl) = &inst.ty {
+            if decl == "File" {
+                let id = inst.fields.get("id");
+                if let Some(Value::USize(id)) = id {
+                    let uni = uni.borrow();
+                    let b = uni.get_vmref_ref(id);
+                    if let Some(b) = b {
+                        let mut ref_box = b.borrow_mut();
+                        if let crate::universe::VmRefData::File(f) = &mut *ref_box {
+                            use std::io::Write;
+                            if let Err(e) = writeln!(f.get_mut(), "{}", line) {
+                                return Value::Error(format!("Write error: {}", e).into());
+                            }
+                            return Value::Nil;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Value::Nil
+}
+
+pub fn write_line_method(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+    let line = if let Some(val) = args.get(0) {
+        match val {
+             Value::Str(s) => s.as_str(),
+             Value::OwnedStr(s) => s.as_str(),
+             _ => return Value::Error("Argument must be a string".into()),
+        }
+    } else {
+        return Value::Error("Missing argument".into());
+    };
+    write_line(uni, instance, line)
+}

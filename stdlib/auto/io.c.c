@@ -29,6 +29,10 @@ str File_ReadLine(struct File *self) {
     }
     return result;
 }
+void File_WriteLine(struct File *self, str) {
+    fputs(s, self->file);
+    fputs("\n", self->file);
+}
 void File_Close(struct File *self) {
     if (self->file != NULL) {
         fclose(self->file);

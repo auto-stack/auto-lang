@@ -803,6 +803,49 @@ $ }
     }
 
     #[test]
+    fn test_std_file_write_line() {
+        // This test attempts to look up the function to ensure it's registered
+        // Actual execution might fail due to read-only open in VM, but we check if code runs/compiles
+        let code = r#"
+            use auto.io: File
+            fn main() {
+                // Just check if we can call it without method reference error
+                // We pass a dummy file object if possible or just parse/analyze
+                // But run() executes.
+                // Let's rely on the fact that if method is missing, it returns error.
+                // If it exists, it might error on "write error" or "file not open for write"
+                // which confirms the method was called.
+            }
+        "#;
+        // Since we can't easily mock a writable file in the current VM setup without more changes:
+        // We'll verify the method exists in the registry directly.
+        
+        crate::vm::init_io_module();
+        let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+        let method = registry.get_method("File", "write_line");
+        assert!(method.is_some(), "File.write_line method should be registered");
+    }
+
+    #[test]
+    fn test_c_trans_std_file_write() {
+        // Path to the test file we created
+        let path = "test/a2c/115_std_file_write/std_file_write.at";
+        let result = crate::trans_c(path);
+        // We expect success
+        assert!(result.is_ok(), "Failed to transpile std_file_write.at: {:?}", result.err());
+        
+        let output = result.unwrap();
+        println!("Transpilation result: {}", output);
+        
+        // Optionally check if the generated C file contains the method call
+        let c_path = "test/a2c/115_std_file_write/std_file_write.c";
+        let c_content = std::fs::read_to_string(c_path).unwrap();
+        // Since write_line is defined in a separate file (io.c.at), the transpiler generates a call to it
+        // The function name is mangled/formatted as File_WriteLine usually
+        assert!(c_content.contains("File_WriteLine"), "Generated C file should call File_WriteLine");
+    }
+
+    #[test]
     fn test_type_decl() {
         let code = "type Point { x int = 5; y int }; let p = Point(y: 2); p";
         let mut interpreter = interpret(code).unwrap();

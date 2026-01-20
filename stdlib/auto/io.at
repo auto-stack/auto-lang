@@ -12,15 +12,11 @@ type File {
     fn read_line() str;
 
     #[pub]
+    fn write_line(s str);
+
+    #[pub]
     fn close();
 }
-
-
-//     fn read_line() str {
-//         let buf cstr = c"                                                                                "
-//         fgets(buf, 80, .file)
-//         buf
-//     }
 
 //     fn write_line(s str) {
 //         fputs(s, .file)
