@@ -1,0 +1,8 @@
+use auto.io: File
+
+fn main() {
+    let file = File.open(c"test_lines.txt")
+    let line1 = file.read_line()
+    let line2 = file.read_line()
+    file.close()
+}

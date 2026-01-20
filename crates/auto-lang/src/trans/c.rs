@@ -3479,4 +3479,9 @@ int add(int x, int y);
     fn test_033_borrow_conflicts() {
         test_a2c("033_borrow_conflicts").unwrap();
     }
+
+    #[test]
+    fn test_104_std_readline() {
+        test_a2c("104_std_readline").unwrap();
+    }
 }

@@ -2629,6 +2629,20 @@ s
 }
 
 #[test]
+fn test_std_file_readline() {
+    let code = r#"use auto.io: File
+let f File = File.open("../../test_lines.txt")
+let line1 = f.read_line()
+let line2 = f.read_line()
+f.close()
+line1
+    "#;
+    let result = run(code).unwrap();
+    println!("Result: {}", result);
+    assert_eq!(result, "First line");
+}
+
+#[test]
 fn test_vm_annotation_in_ext() {
     let code = r#"
 type File {
