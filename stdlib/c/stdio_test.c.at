@@ -1,5 +1,5 @@
-[c]
-type FILE
+#[c]
+type FILE;
 
-[c]
+#[c]
 fn printf(format str, ...) int;

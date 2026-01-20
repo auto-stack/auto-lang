@@ -8,7 +8,7 @@ type HashSet {
 
     /// Create a new empty HashSet
     /// Example: HashSet.new()
-    [c, vm]
+    #[c, vm, pub]
     static fn new() HashSet
 
     // ========================================================================
@@ -17,8 +17,8 @@ type HashSet {
 
     /// Insert a value (duplicates are ignored)
     /// Example: set.insert("apple")
-    [c, vm]
-    fn insert(value cstr) void
+    #[c, vm, pub]
+    fn insert(value *char) void
 
     // ========================================================================
     // Instance Methods - Query
@@ -26,8 +26,8 @@ type HashSet {
 
     /// Check if value exists in set
     /// Example: set.contains("apple")  // returns 1 (true)
-    [c, vm]
-    fn contains(value cstr) int
+    #[c, vm, pub]
+    fn contains(value *char) int
 
     // ========================================================================
     // Instance Methods - Management
@@ -35,17 +35,17 @@ type HashSet {
 
     /// Remove a value from the set
     /// Example: set.remove("apple")
-    [c, vm]
-    fn remove(value cstr) void
+    #[c, vm, pub]
+    fn remove(value *char) void
 
     /// Get the number of values
     /// Example: set.size()  // returns 3
-    [c, vm]
-    fn size() size_t
+    #[c, vm, pub]
+    fn size() int
 
     /// Remove all values
     /// Example: set.clear()
-    [c, vm]
+    #[c, vm, pub]
     fn clear() void
 
     // ========================================================================
@@ -54,6 +54,6 @@ type HashSet {
 
     /// Free the HashSet's resources
     /// Example: set.drop()
-    [c, vm]
+    #[c, vm]
     fn drop()
 }

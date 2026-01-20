@@ -13,7 +13,7 @@ type HashMap {
 
     /// Create a new empty HashMap
     /// Example: HashMap.new()
-    [c, vm]
+    #[c, vm, pub]
     static fn new() HashMap
 
     // ========================================================================
@@ -22,13 +22,13 @@ type HashMap {
 
     /// Insert a string key-value pair
     /// Example: map.insert_str("name", "Alice")
-    [c, vm]
-    fn insert_str(key cstr, value cstr) void
+    #[c, vm, pub]
+    fn insert_str(key *char, value *char) void
 
     /// Insert a string key with integer value
     /// Example: map.insert_int("count", 42)
-    [c, vm]
-    fn insert_int(key cstr, value int) void
+    #[c, vm, pub]
+    fn insert_int(key *char, value int) void
 
     // ========================================================================
     // Instance Methods - Retrieval
@@ -36,18 +36,18 @@ type HashMap {
 
     /// Get string value by key
     /// Example: map.get_str("name")  // returns "Alice"
-    [c, vm]
-    fn get_str(key cstr) cstr
+    #[c, vm, pub]
+    fn get_str(key *char) *char
 
     /// Get integer value by key
     /// Example: map.get_int("count")  // returns 42
-    [c, vm]
-    fn get_int(key cstr) int
+    #[c, vm, pub]
+    fn get_int(key *char) int
 
     /// Check if key exists in map
     /// Example: map.contains("name")  // returns 1 (true)
-    [c, vm]
-    fn contains(key cstr) int
+    #[c, vm, pub]
+    fn contains(key *char) int
 
     // ========================================================================
     // Instance Methods - Management
@@ -55,17 +55,17 @@ type HashMap {
 
     /// Remove a key-value pair
     /// Example: map.remove("temp")
-    [c, vm]
-    fn remove(key cstr) void
+    #[c, vm, pub]
+    fn remove(key *char) void
 
     /// Get the number of entries
     /// Example: map.size()  // returns 3
-    [c, vm]
-    fn size() size_t
+    #[c, vm, pub]
+    fn size() int
 
     /// Remove all entries
     /// Example: map.clear()
-    [c, vm]
+    #[c, vm, pub]
     fn clear() void
 
     // ========================================================================
@@ -74,6 +74,6 @@ type HashMap {
 
     /// Free the HashMap's resources
     /// Example: map.drop()
-    [c, vm]
+    #[c, vm]
     fn drop()
 }

@@ -1,0 +1,81 @@
+/// Dynamic list (Vec-like) for storing elements
+/// Temporary workaround: Specialized for 'byte' as generics on 'type' are not fully supported yet.
+type List {
+    // Internal VM and C implementations handle the actual data storage
+
+    // ========================================================================
+    // Static Methods - Creation
+    // ========================================================================
+
+    /// Create a new empty List
+    /// Example: List.new()
+    #[c, vm, pub]
+    static fn new() List
+
+    // ========================================================================
+    // Instance Methods - Access
+    // ========================================================================
+
+    /// Get the number of elements
+    /// Example: list.len()
+    #[c, vm, pub]
+    fn len() int
+
+    /// Check if list is empty
+    /// Example: list.is_empty()
+    #[c, vm, pub]
+    fn is_empty() bool
+
+    /// Get element at index
+    /// Example: list.get(0)
+    #[c, vm, pub]
+    fn get(index int) char
+
+    // ========================================================================
+    // Instance Methods - Modification
+    // ========================================================================
+
+    /// Push element to the end
+    /// Example: list.push(item)
+    #[c, vm, pub]
+    fn push(elem char)
+
+    /// Pop element from the end
+    /// Example: list.pop()
+    #[c, vm, pub]
+    fn pop() char
+
+    /// Set element at index
+    /// Example: list.set(0, item)
+    #[c, vm, pub]
+    fn set(index int, elem char) int
+
+    /// Insert element at index
+    /// Example: list.insert(0, item)
+    #[c, vm, pub]
+    fn insert(index int, elem char)
+
+    /// Remove element at index
+    /// Example: list.remove(0)
+    #[c, vm, pub]
+    fn remove(index int) char
+
+    /// Remove all elements
+    /// Example: list.clear()
+    #[c, vm, pub]
+    fn clear()
+
+    /// Reserve capacity
+    /// Example: list.reserve(100)
+    #[c, vm, pub]
+    fn reserve(capacity int)
+
+    // ========================================================================
+    // Instance Methods - Lifecycle
+    // ========================================================================
+
+    /// Free the List's resources
+    /// Example: list.drop()
+    #[c, vm, pub]
+    fn drop()
+}

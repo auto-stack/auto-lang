@@ -1,23 +1,17 @@
 #pragma once
 
-#include <stddef.h>
-
-typedef struct {
+struct StringBuilder {
     char* buffer;
-    size_t len;
-    size_t capacity;
-} StringBuilder;
+    int len;
+    int capacity;
+};
 
-// API - Creation
-struct May* StringBuilder_new(size_t initial_capacity);
-void StringBuilder_drop(struct StringBuilder* sb);
-
-// API - Building
-struct May* StringBuilder_append(struct StringBuilder* sb, const char* str);
-struct May* StringBuilder_append_char(struct StringBuilder* sb, char c);
-struct May* StringBuilder_append_int(struct StringBuilder* sb, int value);
-
-// API - Finalization
-char* StringBuilder_build(struct StringBuilder* sb);
-void StringBuilder_clear(struct StringBuilder* sb);
-size_t StringBuilder_len(struct StringBuilder* sb);
+StringBuilder StringBuilder_New(struct StringBuilder *self, int);
+StringBuilder StringBuilder_NewWithDefault(struct StringBuilder *self);
+void StringBuilder_Append(struct StringBuilder *self, str);
+void StringBuilder_AppendChar(struct StringBuilder *self, char);
+void StringBuilder_AppendInt(struct StringBuilder *self, int);
+str StringBuilder_Build(struct StringBuilder *self);
+void StringBuilder_Clear(struct StringBuilder *self);
+int StringBuilder_Len(struct StringBuilder *self);
+void StringBuilder_Drop(struct StringBuilder *self);

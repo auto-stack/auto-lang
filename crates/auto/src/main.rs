@@ -4,6 +4,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use miette::{Diagnostic, MietteHandlerOpts, Result};
 use serde_json::{json, Value};
 
+mod cmd_a2c_stdlib;
+
 // Helper to convert AutoError to miette Report - this preserves all diagnostic info
 fn to_miette_err(err: AutoError) -> miette::Report {
     miette::Report::new(err)
@@ -112,6 +114,8 @@ enum Commands {
     Python { path: String },
     #[command(about = "Transpile Auto to JavaScript")]
     JavaScript { path: String },
+    #[command(about = "Transpile stdlib to C")]
+    A2cStdlib,
 }
 
 fn main() -> Result<()> {
@@ -231,6 +235,9 @@ fn main() -> Result<()> {
                 to_miette_err(e)
             })?;
             println!("{}", js);
+        }
+        Some(Commands::A2cStdlib) => {
+            cmd_a2c_stdlib::run()?;
         }
         None => {
             repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
