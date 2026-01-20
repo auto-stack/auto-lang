@@ -1,4 +1,0 @@
-type File {
-    #[pub]
-    path str
-}

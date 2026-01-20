@@ -1,6 +1,0 @@
-use c.stdlib: malloc, free
-
-fn main() {
-    let p *void = malloc(100)
-    free(p)
-}

@@ -2180,7 +2180,7 @@ fn test_std_file() {
 #[test]
 fn test_std_file_readline() {
     let code = r#"use auto.io: File
-    let f File = File.open("../../test_lines.txt")
+    let f File = File.open("../../../test/txt/test_lines.txt")
     let line1 = f.read_line()
     let line2 = f.read_line()
     f.close()
@@ -2194,7 +2194,7 @@ fn test_std_file_readline() {
 #[test]
 fn test_std_file_readchar() {
     let code = r#"use auto.io: File
-    let f File = File.open("../../test_lines.txt")
+    let f File = File.open("../../../test/txt/test_lines.txt")
     let ch = f.read_char()
     f.close()
     ch

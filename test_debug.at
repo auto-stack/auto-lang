@@ -1,4 +1,0 @@
-type Test {
-    #[pub]
-    x int
-}
