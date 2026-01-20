@@ -1,9 +1,7 @@
 pub mod ast;
 pub mod atom;
 pub mod atom_error;
-pub mod atom_tests;
 pub mod config;
-pub mod dstr_tests;
 pub mod error;
 pub mod eval;
 pub mod infer;

@@ -145,16 +145,11 @@ pub fn run_atom_tests_from_file(path: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_atom_basics() {
-        let test_file = PathBuf::from("test/atom/atom_basics.md");
-        match run_atom_tests_from_file(&test_file) {
-            Ok(()) => println!("All atom_basics tests passed!"),
-            Err(e) => panic!("Atom basics tests failed:\n{}", e),
-        }
+#[test]
+fn test_atom_basics() {
+    let test_file = PathBuf::from("test/atom/atom_basics.md");
+    match run_atom_tests_from_file(&test_file) {
+        Ok(()) => println!("All atom_basics tests passed!"),
+        Err(e) => panic!("Atom basics tests failed:\n{}", e),
     }
 }
