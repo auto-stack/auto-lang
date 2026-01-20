@@ -827,6 +827,11 @@ impl Evaler {
 
                             let len = list_elems.len();
                             for (idx, item) in list_elems.iter().enumerate() {
+                                if max_loop <= 0 {
+                                    self.universe.borrow_mut().exit_scope();
+                                    return Ok(Value::error("Max loop reached"));
+                                }
+
                                 if idx == len - 1 {
                                     is_mid = false;
                                 }
