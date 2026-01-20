@@ -301,7 +301,7 @@ fn main() {
     /// Test lifetime region overlap detection
     #[test]
     fn test_lifetime_region_overlap() {
-        use crate::ownership::{LifetimeContext, LifetimeRegion};
+        use crate::ownership::LifetimeContext;
 
         let mut ctx = LifetimeContext::new();
         let lt1 = ctx.fresh_lifetime();

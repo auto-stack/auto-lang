@@ -217,8 +217,6 @@ mod tests {
 
     #[test]
     fn test_ext_with_fields() {
-        use crate::ast::Name;
-
         let field = Member::new("_fp".into(), Type::Unknown, None);
         let ext = Ext::with_fields(
             "File".into(),
@@ -237,8 +235,6 @@ mod tests {
 
     #[test]
     fn test_ext_display_with_fields() {
-        use crate::ast::Name;
-
         let field = Member::new("_fp".into(), Type::Unknown, None);
         let ext = Ext::with_fields(
             "File".into(),
@@ -256,8 +252,6 @@ mod tests {
 
     #[test]
     fn test_ext_to_node_with_fields() {
-        use crate::ast::Name;
-
         let field = Member::new("_fp".into(), Type::Unknown, None);
         let ext = Ext::with_fields(
             "File".into(),

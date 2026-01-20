@@ -603,7 +603,7 @@ mod tests {
         assert!(result1.is_ok());
 
         // Try mut borrow (should conflict if same target)
-        let result2 = checker.check_borrow(&expr, BorrowKind::Mut, Lifetime::new(2));
+        let _result2 = checker.check_borrow(&expr, BorrowKind::Mut, Lifetime::new(2));
         // Note: Due to simplified same_target check, this might not conflict yet
         // In a full implementation, this would be an error
     }
