@@ -88,7 +88,8 @@
       "Bash(where:*)",
       "Bash(echo:*)",
       "Bash(test:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(tee:*)"
     ]
   }
 }
