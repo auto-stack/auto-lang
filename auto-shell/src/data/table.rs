@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn test_table_render() {
-        let mut table = Table::new()
+        let table = Table::new()
             .add_column(Column::new("Name").width(8))
             .add_column(Column::new("Size").width(6))
             .add_row(vec!["file.txt".to_string(), "1.2K".to_string()])

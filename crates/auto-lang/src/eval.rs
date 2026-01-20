@@ -245,7 +245,6 @@ impl Evaler {
                             }
                         }
                         Value::Array(arr) => {
-                            eprintln!("DEBUG: Processing Array with {} items", arr.len());
                             use std::collections::HashMap;
                             use auto_val::Array;
 
@@ -255,16 +254,6 @@ impl Evaler {
 
                             // First pass: separate nodes from other items
                             for item in arr.values.into_iter() {
-                                eprintln!("DEBUG: Array item type = {}, value = {}",
-                                    match &item {
-                                        Value::Node(_) => "Node",
-                                        Value::Pair(_, _) => "Pair",
-                                        Value::Obj(_) => "Obj",
-                                        Value::Instance(_) => "Instance",
-                                        _ => "Other"
-                                    },
-                                    item.repr()
-                                );
                                 match item {
                                     Value::Node(n) => {
                                         nodes_by_name.entry(n.name.clone()).or_default().push(n);

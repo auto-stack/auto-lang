@@ -32,7 +32,6 @@ pub fn execute_auto_function(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_auto_expression_basic() {
