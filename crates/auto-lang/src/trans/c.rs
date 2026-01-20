@@ -3202,7 +3202,7 @@ int add(int x, int y);
         test_a2c("037_array_return").unwrap();
     }
 
-    // TODO: Test 038 - string methods with array returns
+    // TODO: Test 038 - string methods with arraGy returns
     // Currently str.split() signature is added but full implementation
     // requires more expression support (loop conditions, string manipulation)
 
@@ -3483,5 +3483,10 @@ int add(int x, int y);
     #[test]
     fn test_114_std_readline() {
         test_a2c("114_std_readline").unwrap();
+    }
+
+    #[test]
+    fn test_116_std_file_flush() {
+        test_a2c("116_std_file_flush").unwrap();
     }
 }

@@ -846,6 +846,22 @@ $ }
     }
 
     #[test]
+    fn test_std_file_flush() {
+        // We generally can't verify side-effects easily on read-only files, 
+        // but we can verify that the method is callable and doesn't panic.
+        // File.open currently opens in read-only mode.
+        // Flush on a read-only file buffer (BufReader) might be a no-op or valid.
+        let code = r#"use auto.io: File
+        let f = File.open("Cargo.toml")
+        f.flush()
+        f.close()
+        "OK"
+        "#;
+        let result = run(code).unwrap();
+        assert_eq!(result, "OK");
+    }
+
+    #[test]
     fn test_type_decl() {
         let code = "type Point { x int = 5; y int }; let p = Point(y: 2); p";
         let mut interpreter = interpret(code).unwrap();

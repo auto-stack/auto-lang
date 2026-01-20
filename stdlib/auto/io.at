@@ -15,6 +15,9 @@ type File {
     fn write_line(s str);
 
     #[pub]
+    fn flush();
+
+    #[pub]
     fn close();
 }
 

@@ -1,0 +1,9 @@
+// std_file_flush.at
+use auto.io: File
+
+fn main() {
+    let file = File.open(c"output.txt")
+    file.write_line("Hello")
+    file.flush()
+    file.close()
+}

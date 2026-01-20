@@ -1,4 +1,4 @@
-use c.stdio: FILE, fopen, fclose, fgets, fputs
+use c.stdio: FILE, fopen, fclose, fgets, fputs, fflush
 
 ext File {
     file *FILE
@@ -41,6 +41,13 @@ ext File {
     fn write_line(s str) {
         fputs(s, .file)
         fputs(c"\n", .file)
+    }
+
+    #[pub]
+    fn flush() {
+        if .file != nil {
+            fflush(.file)
+        }
     }
 
     #[pub]

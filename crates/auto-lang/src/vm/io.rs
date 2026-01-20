@@ -180,3 +180,32 @@ pub fn write_line_method(uni: Shared<Universe>, instance: &mut Value, args: Vec<
     };
     write_line(uni, instance, line)
 }
+
+pub fn flush(uni: Shared<Universe>, file: &mut Value) -> Value {
+    if let Value::Instance(inst) = file {
+        if let Type::User(decl) = &inst.ty {
+            if decl == "File" {
+                let id = inst.fields.get("id");
+                if let Some(Value::USize(id)) = id {
+                    let uni = uni.borrow();
+                    let b = uni.get_vmref_ref(id);
+                    if let Some(b) = b {
+                        let mut ref_box = b.borrow_mut();
+                        if let crate::universe::VmRefData::File(f) = &mut *ref_box {
+                            use std::io::Write;
+                            if let Err(e) = f.get_mut().flush() {
+                                return Value::Error(format!("Flush error: {}", e).into());
+                            }
+                            return Value::Nil;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Value::Nil
+}
+
+pub fn flush_method(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+    flush(uni, instance)
+}

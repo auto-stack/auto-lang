@@ -35,6 +35,9 @@ ext File {
     fn write_line(s str)
 
     #[vm]
+    fn flush()
+
+    #[vm]
     fn close()
 }
 

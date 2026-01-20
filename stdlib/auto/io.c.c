@@ -33,6 +33,11 @@ void File_WriteLine(struct File *self, str) {
     fputs(s, self->file);
     fputs("\n", self->file);
 }
+void File_Flush(struct File *self) {
+    if (self->file != NULL) {
+        fflush(self->file);
+    }
+}
 void File_Close(struct File *self) {
     if (self->file != NULL) {
         fclose(self->file);

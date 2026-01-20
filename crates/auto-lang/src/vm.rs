@@ -127,6 +127,9 @@ pub fn init_io_module() {
     file_type
         .methods
         .insert("write_line".into(), io::write_line_method as VmMethod);
+    file_type
+        .methods
+        .insert("flush".into(), io::flush_method as VmMethod);
 
     io_module.types.insert("File".into(), file_type);
 
