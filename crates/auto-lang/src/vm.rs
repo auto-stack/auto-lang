@@ -2,9 +2,9 @@ use auto_val::{AutoStr, Shared};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-pub mod io;
-pub mod collections;
 pub mod builder;
+pub mod collections;
+pub mod io;
 pub mod list;
 
 /// VM function signature: takes universe and single value argument
@@ -130,6 +130,12 @@ pub fn init_io_module() {
     file_type
         .methods
         .insert("flush".into(), io::flush_method as VmMethod);
+    file_type
+        .methods
+        .insert("read_char".into(), io::read_char_method as VmMethod);
+    file_type
+        .methods
+        .insert("read_buf".into(), io::read_buf_method as VmMethod);
 
     io_module.types.insert("File".into(), file_type);
 
@@ -161,21 +167,24 @@ pub fn init_collections_module() {
         methods: HashMap::new(),
     };
 
-    hashmap_type
-        .methods
-        .insert("insert_str".into(), collections::hash_map_insert_str as VmMethod);
-    hashmap_type
-        .methods
-        .insert("insert_int".into(), collections::hash_map_insert_int as VmMethod);
+    hashmap_type.methods.insert(
+        "insert_str".into(),
+        collections::hash_map_insert_str as VmMethod,
+    );
+    hashmap_type.methods.insert(
+        "insert_int".into(),
+        collections::hash_map_insert_int as VmMethod,
+    );
     hashmap_type
         .methods
         .insert("get_str".into(), collections::hash_map_get_str as VmMethod);
     hashmap_type
         .methods
         .insert("get_int".into(), collections::hash_map_get_int as VmMethod);
-    hashmap_type
-        .methods
-        .insert("contains".into(), collections::hash_map_contains as VmMethod);
+    hashmap_type.methods.insert(
+        "contains".into(),
+        collections::hash_map_contains as VmMethod,
+    );
     hashmap_type
         .methods
         .insert("remove".into(), collections::hash_map_remove as VmMethod);
@@ -199,7 +208,9 @@ pub fn init_collections_module() {
         },
     );
 
-    collections_module.types.insert("HashMap".into(), hashmap_type);
+    collections_module
+        .types
+        .insert("HashMap".into(), hashmap_type);
 
     // Register HashSet type with methods
     let mut hashset_type = VmTypeEntry {
@@ -210,9 +221,10 @@ pub fn init_collections_module() {
     hashset_type
         .methods
         .insert("insert".into(), collections::hash_set_insert as VmMethod);
-    hashset_type
-        .methods
-        .insert("contains".into(), collections::hash_set_contains as VmMethod);
+    hashset_type.methods.insert(
+        "contains".into(),
+        collections::hash_set_contains as VmMethod,
+    );
     hashset_type
         .methods
         .insert("remove".into(), collections::hash_set_remove as VmMethod);
@@ -236,7 +248,9 @@ pub fn init_collections_module() {
         },
     );
 
-    collections_module.types.insert("HashSet".into(), hashset_type);
+    collections_module
+        .types
+        .insert("HashSet".into(), hashset_type);
 
     // Register List type with methods
     let mut list_type = VmTypeEntry {
@@ -291,7 +305,10 @@ pub fn init_collections_module() {
     collections_module.types.insert("List".into(), list_type);
 
     // Register the module
-    VM_REGISTRY.lock().unwrap().register_module(collections_module);
+    VM_REGISTRY
+        .lock()
+        .unwrap()
+        .register_module(collections_module);
 }
 
 /// Initialize and register the builder module with the VM registry
@@ -321,12 +338,14 @@ pub fn init_builder_module() {
     stringbuilder_type
         .methods
         .insert("append".into(), builder::string_builder_append as VmMethod);
-    stringbuilder_type
-        .methods
-        .insert("append_char".into(), builder::string_builder_append_char as VmMethod);
-    stringbuilder_type
-        .methods
-        .insert("append_int".into(), builder::string_builder_append_int as VmMethod);
+    stringbuilder_type.methods.insert(
+        "append_char".into(),
+        builder::string_builder_append_char as VmMethod,
+    );
+    stringbuilder_type.methods.insert(
+        "append_int".into(),
+        builder::string_builder_append_int as VmMethod,
+    );
     stringbuilder_type
         .methods
         .insert("build".into(), builder::string_builder_build as VmMethod);
@@ -360,7 +379,9 @@ pub fn init_builder_module() {
         },
     );
 
-    builder_module.types.insert("StringBuilder".into(), stringbuilder_type);
+    builder_module
+        .types
+        .insert("StringBuilder".into(), stringbuilder_type);
 
     // Register the module
     VM_REGISTRY.lock().unwrap().register_module(builder_module);

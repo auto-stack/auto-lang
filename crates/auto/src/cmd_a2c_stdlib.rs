@@ -62,7 +62,13 @@ pub fn run() -> Result<()> {
 
         let scope = Rc::new(RefCell::new(Universe::new()));
         let mut parser = Parser::new(&code, scope.clone());
-        let ast = parser.parse().map_err(|e| miette::miette!("{}", e))?;
+        let ast = match parser.parse() {
+            Ok(ast) => ast,
+            Err(e) => {
+                println!("Error parsing {}: {:?}", path_str, e);
+                return Err(miette::miette!("{}", e));
+            }
+        };
 
         let mut sink = Sink::new(fname);
         let mut trans = CTrans::new(c_path_str.clone().into());

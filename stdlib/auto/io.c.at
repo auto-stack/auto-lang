@@ -1,4 +1,4 @@
-use c.stdio: FILE, fopen, fclose, fgets, fputs, fflush
+use c.stdio: FILE, fopen, fclose, fgets, fputs, fflush, fgetc, fread
 
 ext File {
     file *FILE
@@ -35,6 +35,22 @@ ext File {
             return ""
         }
         result
+    }
+
+    #[pub]
+    fn read_char() int {
+        if .file == nil {
+            return -1
+        }
+        fgetc(.file)
+    }
+
+    #[pub]
+    fn read_buf(buf str, size int) int {
+        if .file == nil {
+            return 0
+        }
+        fread(buf, 1, size, .file)
     }
 
     #[pub]

@@ -1,0 +1,7 @@
+# Task: Fix- [x] Fix compilation errors in `builder.at` (May type issues)
+- [x] Fix compilation errors in `data/list.at` (byte type issues)
+- [x] Fix compilation errors in `dstr.at` (List type imports)
+- [x] Fix compilation errors in `io.at` (Split into interface/impl)
+- [x] Fix `hashmap.at` syntax/type errors (Added #[pub])
+- [x] Fix `hashset.at` syntax/type errors (Added #[pub])
+- [x] Verify `a2c-stdlib` runs successfully (Passed)

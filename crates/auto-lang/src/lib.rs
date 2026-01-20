@@ -40,7 +40,7 @@ mod string_tests;
 
 use crate::scope::Meta;
 use crate::trans::c::CTrans;
-pub use crate::universe::{Universe, SymbolLocation};
+pub use crate::universe::{SymbolLocation, Universe};
 use crate::{eval::EvalMode, trans::Sink, trans::Trans};
 use auto_val::{AutoPath, Obj};
 use std::cell::RefCell;
@@ -72,7 +72,6 @@ pub fn run(code: &str) -> AutoResult<String> {
     // Try to interpret, and attach source code if we get a syntax error
     interpreter.interpret(code)?;
     Ok(interpreter.result.repr().to_string())
-    
 }
 
 /// Run code and collect all errors during parsing
@@ -86,7 +85,6 @@ pub fn run_with_errors(code: &str) -> AutoResult<String> {
     interpreter.interpret(code)?;
     Ok(interpreter.result.repr().to_string())
 }
-
 
 pub fn run_with_scope(code: &str, scope: Universe) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::with_scope(scope);
@@ -819,11 +817,14 @@ $ }
         "#;
         // Since we can't easily mock a writable file in the current VM setup without more changes:
         // We'll verify the method exists in the registry directly.
-        
+
         crate::vm::init_io_module();
         let registry = crate::vm::VM_REGISTRY.lock().unwrap();
         let method = registry.get_method("File", "write_line");
-        assert!(method.is_some(), "File.write_line method should be registered");
+        assert!(
+            method.is_some(),
+            "File.write_line method should be registered"
+        );
     }
 
     #[test]
@@ -832,22 +833,29 @@ $ }
         let path = "test/a2c/115_std_file_write/std_file_write.at";
         let result = crate::trans_c(path);
         // We expect success
-        assert!(result.is_ok(), "Failed to transpile std_file_write.at: {:?}", result.err());
-        
+        assert!(
+            result.is_ok(),
+            "Failed to transpile std_file_write.at: {:?}",
+            result.err()
+        );
+
         let output = result.unwrap();
         println!("Transpilation result: {}", output);
-        
+
         // Optionally check if the generated C file contains the method call
         let c_path = "test/a2c/115_std_file_write/std_file_write.c";
         let c_content = std::fs::read_to_string(c_path).unwrap();
         // Since write_line is defined in a separate file (io.c.at), the transpiler generates a call to it
         // The function name is mangled/formatted as File_WriteLine usually
-        assert!(c_content.contains("File_WriteLine"), "Generated C file should call File_WriteLine");
+        assert!(
+            c_content.contains("File_WriteLine"),
+            "Generated C file should call File_WriteLine"
+        );
     }
 
     #[test]
     fn test_std_file_flush() {
-        // We generally can't verify side-effects easily on read-only files, 
+        // We generally can't verify side-effects easily on read-only files,
         // but we can verify that the method is callable and doesn't panic.
         // File.open currently opens in read-only mode.
         // Flush on a read-only file buffer (BufReader) might be a no-op or valid.
@@ -2458,7 +2466,7 @@ fn test_list_oop_for_empty() {
 /// Helper function to run code and capture stdout output
 #[cfg(test)]
 fn run_with_output(code: &str) -> AutoResult<(String, String)> {
-    use crate::libs::builtin::{enable_test_capture, disable_test_capture, get_captured_output};
+    use crate::libs::builtin::{disable_test_capture, enable_test_capture, get_captured_output};
 
     // Enable test capture
     let buffer = enable_test_capture();
@@ -2684,7 +2692,6 @@ s
     "#;
     let result = run(code).unwrap();
     println!("Result: {}", result);
-
 }
 
 #[test]
@@ -2699,6 +2706,19 @@ line1
     let result = run(code).unwrap();
     println!("Result: {}", result);
     assert_eq!(result, "First line");
+}
+
+#[test]
+fn test_std_file_readchar() {
+    let code = r#"use auto.io: File
+let f File = File.open("../../test_lines.txt")
+let ch = f.read_char()
+f.close()
+ch
+    "#;
+    let result = run(code).unwrap();
+    println!("Result: {}", result);
+    assert_eq!(result, "70");
 }
 
 #[test]
@@ -2758,18 +2778,24 @@ ext File {
     // Check that methods are VmFunction (from ext block)
     let open_method = &file_decl.methods[0];
     assert_eq!(open_method.name, "open");
-    assert!(matches!(open_method.kind, crate::ast::FnKind::VmFunction),
-               "open method should be VmFunction from ext block");
+    assert!(
+        matches!(open_method.kind, crate::ast::FnKind::VmFunction),
+        "open method should be VmFunction from ext block"
+    );
 
     let read_text_method = &file_decl.methods[1];
     assert_eq!(read_text_method.name, "read_text");
-    assert!(matches!(read_text_method.kind, crate::ast::FnKind::VmFunction),
-               "read_text method should be VmFunction from ext block");
+    assert!(
+        matches!(read_text_method.kind, crate::ast::FnKind::VmFunction),
+        "read_text method should be VmFunction from ext block"
+    );
 
     let close_method = &file_decl.methods[2];
     assert_eq!(close_method.name, "close");
-    assert!(matches!(close_method.kind, crate::ast::FnKind::VmFunction),
-               "close method should be VmFunction from ext block");
+    assert!(
+        matches!(close_method.kind, crate::ast::FnKind::VmFunction),
+        "close method should be VmFunction from ext block"
+    );
 }
 
 #[test]
@@ -2805,11 +2831,18 @@ fn test() int {
     let test_fn = fn_decl.unwrap();
 
     // Check that the function is marked as Function (not VmFunction)
-    assert!(matches!(test_fn.kind, crate::ast::FnKind::Function),
-            "Function should be FnKind::Function, got {:?}", test_fn.kind);
+    assert!(
+        matches!(test_fn.kind, crate::ast::FnKind::Function),
+        "Function should be FnKind::Function, got {:?}",
+        test_fn.kind
+    );
 
     // Check that the function body has statements
-    assert_eq!(test_fn.body.stmts.len(), 1, "Function body should have 1 statement");
+    assert_eq!(
+        test_fn.body.stmts.len(),
+        1,
+        "Function body should have 1 statement"
+    );
 
     // The statement should be an expression statement containing Int(42)
     if let ast::Stmt::Expr(expr) = &test_fn.body.stmts[0] {
@@ -2872,4 +2905,3 @@ test()
     let result = run(code).unwrap();
     assert_eq!(result, "42");
 }
-

@@ -29,6 +29,18 @@ str File_ReadLine(struct File *self) {
     }
     return result;
 }
+int File_ReadChar(struct File *self) {
+    if (self->file == NULL) {
+        return - 1;
+    }
+    return fgetc(self->file);
+}
+int File_ReadBuf(struct File *self, str, int) {
+    if (self->file == NULL) {
+        
+    }
+    return fread(buf, 1, size, self->file);
+}
 void File_WriteLine(struct File *self, str) {
     fputs(s, self->file);
     fputs("\n", self->file);

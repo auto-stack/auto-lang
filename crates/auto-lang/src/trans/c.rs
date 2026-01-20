@@ -1,6 +1,6 @@
 use super::{Sink, ToStrError, Trans};
-use crate::ast::{ArrayType, Type};
 use crate::ast::*;
+use crate::ast::{ArrayType, Type};
 use crate::parser::Parser;
 use crate::scope::Meta;
 use crate::universe::Universe;
@@ -230,7 +230,10 @@ impl CTrans {
 
         // Collect method info to avoid double borrow issues
         let methods: Vec<_> = tag.methods.iter().cloned().collect();
-        eprintln!("DEBUG: Generating {} tag method implementations", methods.len());
+        eprintln!(
+            "DEBUG: Generating {} tag method implementations",
+            methods.len()
+        );
         for (i, method) in methods.iter().enumerate() {
             eprintln!("DEBUG: Generating method {} {}", i, method.name);
             self.tag_method_impl(tag, &method, sink)?;
@@ -659,17 +662,21 @@ impl CTrans {
         }
 
         // Generate vtable instances for each spec this type implements
-        let spec_decls: Vec<_> = type_decl.specs.iter().filter_map(|spec_name| {
-            if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
-                if let Meta::Spec(spec_decl) = meta.as_ref() {
-                    Some(spec_decl.clone())
+        let spec_decls: Vec<_> = type_decl
+            .specs
+            .iter()
+            .filter_map(|spec_name| {
+                if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+                    if let Meta::Spec(spec_decl) = meta.as_ref() {
+                        Some(spec_decl.clone())
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
-            } else {
-                None
-            }
-        }).collect();
+            })
+            .collect();
 
         for spec_decl in spec_decls {
             self.type_vtable_instance(type_decl, &spec_decl, sink)?;
@@ -1064,9 +1071,13 @@ impl CTrans {
             for arg in &node.args.args {
                 if let Arg::Pair(key, value_expr) = arg {
                     // Find the field declaration
-                    let field = type_decl.members.iter()
+                    let field = type_decl
+                        .members
+                        .iter()
                         .find(|m| &m.name == key)
-                        .ok_or_else(|| format!("Field '{}' not found in type '{}'", key, type_decl.name))?;
+                        .ok_or_else(|| {
+                            format!("Field '{}' not found in type '{}'", key, type_decl.name)
+                        })?;
 
                     // Get the expected type from the field declaration
                     let expected_type = &field.ty;
@@ -1090,9 +1101,16 @@ impl CTrans {
                     if let Expr::Pair(pair) = expr {
                         let field_name = pair.key.to_astr();
                         // Find the field declaration
-                        let field = type_decl.members.iter()
+                        let field = type_decl
+                            .members
+                            .iter()
                             .find(|m| &m.name == &field_name)
-                            .ok_or_else(|| format!("Field '{}' not found in type '{}'", field_name, type_decl.name))?;
+                            .ok_or_else(|| {
+                                format!(
+                                    "Field '{}' not found in type '{}'",
+                                    field_name, type_decl.name
+                                )
+                            })?;
 
                         // Get the expected type from the field declaration
                         let expected_type = &field.ty;
@@ -1194,11 +1212,7 @@ impl CTrans {
                 // Convert type name to Type enum
                 let self_type = self.name_to_type(&ext.target);
 
-                let self_param: Param = Param::new(
-                    "self".into(),
-                    self_type,
-                    None,
-                );
+                let self_param: Param = Param::new("self".into(), self_type, None);
                 c_method.params.insert(0, self_param);
             }
 
@@ -1219,7 +1233,7 @@ impl CTrans {
             "double" => Type::Double,
             "bool" => Type::Bool,
             "char" => Type::Char,
-            "str" => Type::Str(0),  // Size unknown at compile time
+            "str" => Type::Str(0), // Size unknown at compile time
             "cstr" => Type::CStr,
             // For user-defined types, we'd need to lookup TypeDecl
             // For now, use Unknown as fallback
@@ -1378,15 +1392,24 @@ impl CTrans {
                                     Type::Array(array_type) => {
                                         let elem_type = self.c_type_name(&array_type.elem);
                                         // Use actual array length if type says 0, otherwise use type's length
-                                        let len = if array_type.len == 0 { arr.len() } else { array_type.len };
+                                        let len = if array_type.len == 0 {
+                                            arr.len()
+                                        } else {
+                                            array_type.len
+                                        };
                                         let temp_name = format!("_static_{}", fn_name);
 
                                         // Declare static array
                                         self.print_indent(&mut sink.body)?;
-                                        sink.body.write(format!(
-                                            "static {} {}[] = {{",
-                                            elem_type, temp_name
-                                        ).as_bytes()).to()?;
+                                        sink.body
+                                            .write(
+                                                format!(
+                                                    "static {} {}[] = {{",
+                                                    elem_type, temp_name
+                                                )
+                                                .as_bytes(),
+                                            )
+                                            .to()?;
 
                                         // Write array elements
                                         for (j, elem) in arr.iter().enumerate() {
@@ -1399,9 +1422,13 @@ impl CTrans {
 
                                         // Set out_size and return pointer
                                         self.print_indent(&mut sink.body)?;
-                                        sink.body.write(format!("*out_size = {};\n", len).as_bytes()).to()?;
+                                        sink.body
+                                            .write(format!("*out_size = {};\n", len).as_bytes())
+                                            .to()?;
                                         self.print_indent(&mut sink.body)?;
-                                        sink.body.write(format!("return {};\n", temp_name).as_bytes()).to()?;
+                                        sink.body
+                                            .write(format!("return {};\n", temp_name).as_bytes())
+                                            .to()?;
                                     }
                                     Type::Slice(slice_type) => {
                                         let elem_type = self.c_type_name(&slice_type.elem);
@@ -1410,10 +1437,15 @@ impl CTrans {
 
                                         // Declare static array
                                         self.print_indent(&mut sink.body)?;
-                                        sink.body.write(format!(
-                                            "static {} {}[] = {{",
-                                            elem_type, temp_name
-                                        ).as_bytes()).to()?;
+                                        sink.body
+                                            .write(
+                                                format!(
+                                                    "static {} {}[] = {{",
+                                                    elem_type, temp_name
+                                                )
+                                                .as_bytes(),
+                                            )
+                                            .to()?;
 
                                         // Write array elements
                                         for (j, elem) in arr.iter().enumerate() {
@@ -1426,9 +1458,13 @@ impl CTrans {
 
                                         // Set out_size and return pointer
                                         self.print_indent(&mut sink.body)?;
-                                        sink.body.write(format!("*out_size = {};\n", len).as_bytes()).to()?;
+                                        sink.body
+                                            .write(format!("*out_size = {};\n", len).as_bytes())
+                                            .to()?;
                                         self.print_indent(&mut sink.body)?;
-                                        sink.body.write(format!("return {};\n", temp_name).as_bytes()).to()?;
+                                        sink.body
+                                            .write(format!("return {};\n", temp_name).as_bytes())
+                                            .to()?;
                                     }
                                     _ => {
                                         sink.body.write(b"return ")?;
@@ -1577,7 +1613,7 @@ impl CTrans {
                                 Type::Array(arr) => Some(arr.clone()),
                                 Type::Slice(slice) => Some(ArrayType {
                                     elem: slice.elem.clone(),
-                                    len: 0,  // Slices don't have a fixed length known at compile time
+                                    len: 0, // Slices don't have a fixed length known at compile time
                                 }),
                                 _ => None,
                             }
@@ -1599,14 +1635,17 @@ impl CTrans {
                 let size_var = format!("_size_{}", store.name);
 
                 // Declare size variable first (before the variable declaration)
-                out.write(format!("int {};\n    ", size_var).as_bytes()).to()?;
+                out.write(format!("int {};\n    ", size_var).as_bytes())
+                    .to()?;
 
                 // Declare pointer variable
-                out.write(format!("{}* {} = ", elem_type, store.name).as_bytes()).to()?;
+                out.write(format!("{}* {} = ", elem_type, store.name).as_bytes())
+                    .to()?;
             } else {
                 // Fallback: couldn't get array type, use store type
                 let type_name = self.c_type_name(&store.ty);
-                out.write(format!("{} {} = ", type_name, store.name).as_bytes()).to()?;
+                out.write(format!("{} {} = ", type_name, store.name).as_bytes())
+                    .to()?;
             }
         } else if matches!(store.ty, Type::Unknown) {
             if let Some(inferred_type) = self.infer_expr_type(&store.expr) {
@@ -1647,7 +1686,7 @@ impl CTrans {
                     let len = if let Expr::Array(arr) = &store.expr {
                         arr.len()
                     } else {
-                        0  // Unknown size, will be determined at runtime
+                        0 // Unknown size, will be determined at runtime
                     };
 
                     out.write(format!("{} {}[{}] = ", elem_type_name, store.name, len).as_bytes())
@@ -1794,7 +1833,9 @@ impl CTrans {
         // Collect all non-panic, non-Unknown types and use the first one found
         for branch in &is_stmt.branches {
             match branch {
-                IsBranch::EqBranch(_, body) | IsBranch::IfBranch(_, body) | IsBranch::ElseBranch(body) => {
+                IsBranch::EqBranch(_, body)
+                | IsBranch::IfBranch(_, body)
+                | IsBranch::ElseBranch(body) => {
                     if body.stmts.len() == 1 {
                         if let Stmt::Expr(expr) = &body.stmts[0] {
                             // Skip panic calls - they don't determine the return type
@@ -1852,7 +1893,12 @@ impl CTrans {
                 if let Expr::Bina(lhs, Op::Dot, rhs) = call.name.as_ref() {
                     if let Expr::Ident(obj_name) = lhs.as_ref() {
                         if let Expr::Ident(method_name) = rhs.as_ref() {
-                            eprintln!("DEBUG: Checking method call {}.{}, type={:?}", obj_name, method_name, self.get_expr_type(lhs));
+                            eprintln!(
+                                "DEBUG: Checking method call {}.{}, type={:?}",
+                                obj_name,
+                                method_name,
+                                self.get_expr_type(lhs)
+                            );
                             // Check if this is a tag type method call (tag construction)
                             if let Some(meta) = self.lookup_meta(obj_name) {
                                 eprintln!("DEBUG: Found meta for {}", obj_name);
@@ -1878,11 +1924,17 @@ impl CTrans {
                                             let tag_ref = tag.borrow();
                                             for method in &tag_ref.methods {
                                                 if method.name == *method_name {
-                                                    eprintln!("DEBUG: Found tag method {} returning {:?}", method.name, method.ret);
+                                                    eprintln!(
+                                                        "DEBUG: Found tag method {} returning {:?}",
+                                                        method.name, method.ret
+                                                    );
                                                     return Some(method.ret.clone());
                                                 }
                                             }
-                                            eprintln!("DEBUG: Tag has {} methods", tag_ref.methods.len());
+                                            eprintln!(
+                                                "DEBUG: Tag has {} methods",
+                                                tag_ref.methods.len()
+                                            );
                                         }
                                     }
                                     _ => {}
@@ -1934,8 +1986,10 @@ impl CTrans {
                                     let elem_type = &*arr.elem;
                                     let elem_size = arr.len;
                                     let elem_type_name = self.c_type_name(elem_type);
-                                    iter_var =
-                                        format!("{} {} = {}[{}];\n", elem_type_name, n, range_name, "i");
+                                    iter_var = format!(
+                                        "{} {} = {}[{}];\n",
+                                        elem_type_name, n, range_name, "i"
+                                    );
                                     self.range(
                                         "i",
                                         &Expr::Int(0),
@@ -1968,8 +2022,10 @@ impl CTrans {
                                         0
                                     };
 
-                                    iter_var =
-                                        format!("{} {} = {}[{}];\n", elem_type_name, n, range_name, "i");
+                                    iter_var = format!(
+                                        "{} {} = {}[{}];\n",
+                                        elem_type_name, n, range_name, "i"
+                                    );
                                     self.range(
                                         "i",
                                         &Expr::Int(0),
@@ -2355,7 +2411,10 @@ impl CTrans {
                 if let Meta::Spec(spec_decl) = meta.as_ref() {
                     for spec_method in spec_decl.methods.iter() {
                         if spec_method.name == *method_name {
-                            delegation_impl = Some((delegation.member_name.clone(), delegation.member_type.unique_name()));
+                            delegation_impl = Some((
+                                delegation.member_name.clone(),
+                                delegation.member_type.unique_name(),
+                            ));
                             break;
                         }
                     }
@@ -2409,8 +2468,15 @@ impl CTrans {
 
             // Check if it's a built-in type (ext method) or user-defined type
             match &lhs_type {
-                Type::Int | Type::Uint | Type::Byte | Type::Float | Type::Double |
-                Type::Bool | Type::Char | Type::Str(_) | Type::CStr => {
+                Type::Int
+                | Type::Uint
+                | Type::Byte
+                | Type::Float
+                | Type::Double
+                | Type::Bool
+                | Type::Char
+                | Type::Str(_)
+                | Type::CStr => {
                     // Built-in type: ext method, pass by value
                     let type_name = self.type_to_name(&lhs_type);
                     let c_function_name = format!("{}_{}", type_name, method_name);
@@ -2545,9 +2611,13 @@ impl CTrans {
         for arg in &args.args {
             if let Arg::Pair(key, value_expr) = arg {
                 // Find the field declaration
-                let field = type_decl.members.iter()
+                let field = type_decl
+                    .members
+                    .iter()
                     .find(|m| &m.name == key)
-                    .ok_or_else(|| format!("Field '{}' not found in type '{}'", key, type_decl.name))?;
+                    .ok_or_else(|| {
+                        format!("Field '{}' not found in type '{}'", key, type_decl.name)
+                    })?;
 
                 // Get the expected type from the field declaration
                 let expected_type = &field.ty;
@@ -2580,10 +2650,16 @@ impl CTrans {
             Expr::CStr(_) => Type::CStr,
             Expr::Array(elems) => {
                 if elems.is_empty() {
-                    Type::Array(ArrayType { elem: Box::new(Type::Unknown), len: 0 })
+                    Type::Array(ArrayType {
+                        elem: Box::new(Type::Unknown),
+                        len: 0,
+                    })
                 } else {
                     let elem_type = self.infer_literal_type(&elems[0]);
-                    Type::Array(ArrayType { elem: Box::new(elem_type), len: elems.len() })
+                    Type::Array(ArrayType {
+                        elem: Box::new(elem_type),
+                        len: elems.len(),
+                    })
                 }
             }
             Expr::Ident(name) => self.lookup_type(name),
@@ -3025,16 +3101,18 @@ int add(int x, int y);
                     let error_msg = format!("{}", e);
                     // Check if the error message contains the expected error
                     if !error_msg.contains("Type mismatch") {
-                        return Err(format!(
-                            "Expected type mismatch error, got: {}",
-                            error_msg
-                        ).into());
+                        return Err(
+                            format!("Expected type mismatch error, got: {}", error_msg).into()
+                        );
                     }
                     // Basic check passed - the transpiler correctly detected the type error
                     Ok(())
                 }
                 Ok(_) => {
-                    return Err(format!("Expected transpilation to fail with type error, but it succeeded").into());
+                    return Err(format!(
+                        "Expected transpilation to fail with type error, but it succeeded"
+                    )
+                    .into());
                 }
             }
         } else {
@@ -3234,7 +3312,7 @@ int add(int x, int y);
     #[test]
     fn test_103_std_file() {
         match test_a2c("103_std_file") {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 // Print full error using Miette for better diagnostics
                 eprintln!("\n=== Transpilation Error ===\n");
@@ -3316,122 +3394,214 @@ int add(int x, int y);
     }
 
     #[test]
-    fn test_046_binary() { test_a2c("046_binary").unwrap(); }
+    fn test_046_binary() {
+        test_a2c("046_binary").unwrap();
+    }
     #[test]
-    fn test_047_tristate() { test_a2c("047_tristate").unwrap(); }
+    fn test_047_tristate() {
+        test_a2c("047_tristate").unwrap();
+    }
     #[test]
-    fn test_048_direction() { test_a2c("048_direction").unwrap(); }
+    fn test_048_direction() {
+        test_a2c("048_direction").unwrap();
+    }
     #[test]
-    fn test_049_status() { test_a2c("049_status").unwrap(); }
+    fn test_049_status() {
+        test_a2c("049_status").unwrap();
+    }
     #[test]
-    fn test_050_mode() { test_a2c("050_mode").unwrap(); }
+    fn test_050_mode() {
+        test_a2c("050_mode").unwrap();
+    }
     #[test]
-    fn test_051_result() { test_a2c("051_result").unwrap(); }
+    fn test_051_result() {
+        test_a2c("051_result").unwrap();
+    }
     #[test]
-    fn test_052_phase() { test_a2c("052_phase").unwrap(); }
+    fn test_052_phase() {
+        test_a2c("052_phase").unwrap();
+    }
     #[test]
-    fn test_053_level() { test_a2c("053_level").unwrap(); }
+    fn test_053_level() {
+        test_a2c("053_level").unwrap();
+    }
     #[test]
-    fn test_054_state() { test_a2c("054_state").unwrap(); }
+    fn test_054_state() {
+        test_a2c("054_state").unwrap();
+    }
     #[test]
-    fn test_055_type() { test_a2c("055_type").unwrap(); }
+    fn test_055_type() {
+        test_a2c("055_type").unwrap();
+    }
     #[test]
-    fn test_056_side() { test_a2c("056_side").unwrap(); }
+    fn test_056_side() {
+        test_a2c("056_side").unwrap();
+    }
     #[test]
-    fn test_057_flow() { test_a2c("057_flow").unwrap(); }
+    fn test_057_flow() {
+        test_a2c("057_flow").unwrap();
+    }
     #[test]
-    fn test_058_gate() { test_a2c("058_gate").unwrap(); }
+    fn test_058_gate() {
+        test_a2c("058_gate").unwrap();
+    }
     #[test]
-    fn test_059_path() { test_a2c("059_path").unwrap(); }
+    fn test_059_path() {
+        test_a2c("059_path").unwrap();
+    }
     #[test]
-    fn test_060_color() { test_a2c("060_color").unwrap(); }
+    fn test_060_color() {
+        test_a2c("060_color").unwrap();
+    }
     #[test]
-    fn test_061_size() { test_a2c("061_size").unwrap(); }
+    fn test_061_size() {
+        test_a2c("061_size").unwrap();
+    }
     #[test]
-    fn test_062_speed() { test_a2c("062_speed").unwrap(); }
+    fn test_062_speed() {
+        test_a2c("062_speed").unwrap();
+    }
     #[test]
-    fn test_063_power() { test_a2c("063_power").unwrap(); }
+    fn test_063_power() {
+        test_a2c("063_power").unwrap();
+    }
     #[test]
-    fn test_064_signal() { test_a2c("064_signal").unwrap(); }
+    fn test_064_signal() {
+        test_a2c("064_signal").unwrap();
+    }
     #[test]
-    fn test_065_zone() { test_a2c("065_zone").unwrap(); }
+    fn test_065_zone() {
+        test_a2c("065_zone").unwrap();
+    }
     #[test]
-    fn test_066_mode2() { test_a2c("066_mode2").unwrap(); }
+    fn test_066_mode2() {
+        test_a2c("066_mode2").unwrap();
+    }
     #[test]
-    fn test_067_link() { test_a2c("067_link").unwrap(); }
+    fn test_067_link() {
+        test_a2c("067_link").unwrap();
+    }
     #[test]
-    fn test_068_source() { test_a2c("068_source").unwrap(); }
+    fn test_068_source() {
+        test_a2c("068_source").unwrap();
+    }
     #[test]
-    fn test_069_target() { test_a2c("069_target").unwrap(); }
+    fn test_069_target() {
+        test_a2c("069_target").unwrap();
+    }
     #[test]
-    fn test_070_format() { test_a2c("070_format").unwrap(); }
+    fn test_070_format() {
+        test_a2c("070_format").unwrap();
+    }
 
     #[test]
-    fn test_071_question_syntax() { test_a2c("071_question_syntax").unwrap(); }
+    fn test_071_question_syntax() {
+        test_a2c("071_question_syntax").unwrap();
+    }
 
     #[test]
-    fn test_072_question_uint() { test_a2c("072_question_uint").unwrap(); }
+    fn test_072_question_uint() {
+        test_a2c("072_question_uint").unwrap();
+    }
 
     #[test]
-    fn test_073_question_float() { test_a2c("073_question_float").unwrap(); }
+    fn test_073_question_float() {
+        test_a2c("073_question_float").unwrap();
+    }
 
     #[test]
-    fn test_074_question_double() { test_a2c("074_question_double").unwrap(); }
+    fn test_074_question_double() {
+        test_a2c("074_question_double").unwrap();
+    }
 
     #[test]
-    fn test_075_question_char() { test_a2c("075_question_char").unwrap(); }
+    fn test_075_question_char() {
+        test_a2c("075_question_char").unwrap();
+    }
 
     // Skip test_076_question_void - ?void doesn't make semantic sense
 
     #[test]
-    fn test_079_question_return_int() { test_a2c("079_question_return_int").unwrap(); }
+    fn test_079_question_return_int() {
+        test_a2c("079_question_return_int").unwrap();
+    }
 
     #[test]
-    fn test_080_question_return_str() { test_a2c("080_question_return_str").unwrap(); }
+    fn test_080_question_return_str() {
+        test_a2c("080_question_return_str").unwrap();
+    }
 
     #[test]
-    fn test_081_question_return_bool() { test_a2c("081_question_return_bool").unwrap(); }
+    fn test_081_question_return_bool() {
+        test_a2c("081_question_return_bool").unwrap();
+    }
 
     #[test]
-    fn test_082_question_return_uint() { test_a2c("082_question_return_uint").unwrap(); }
+    fn test_082_question_return_uint() {
+        test_a2c("082_question_return_uint").unwrap();
+    }
 
     #[test]
-    fn test_083_question_return_float() { test_a2c("083_question_return_float").unwrap(); }
+    fn test_083_question_return_float() {
+        test_a2c("083_question_return_float").unwrap();
+    }
 
     #[test]
-    fn test_084_question_return_double() { test_a2c("084_question_return_double").unwrap(); }
+    fn test_084_question_return_double() {
+        test_a2c("084_question_return_double").unwrap();
+    }
 
     #[test]
-    fn test_085_question_return_char() { test_a2c("085_question_return_char").unwrap(); }
+    fn test_085_question_return_char() {
+        test_a2c("085_question_return_char").unwrap();
+    }
 
     #[test]
-    fn test_087_question_nested_call() { test_a2c("087_question_nested_call").unwrap(); }
+    fn test_087_question_nested_call() {
+        test_a2c("087_question_nested_call").unwrap();
+    }
 
     #[test]
-    fn test_088_question_arithmetic() { test_a2c("088_question_arithmetic").unwrap(); }
+    fn test_088_question_arithmetic() {
+        test_a2c("088_question_arithmetic").unwrap();
+    }
 
     #[test]
-    fn test_089_question_comparison() { test_a2c("089_question_comparison").unwrap(); }
+    fn test_089_question_comparison() {
+        test_a2c("089_question_comparison").unwrap();
+    }
 
     // Skip test_090_question_logical - && operator has parsing issues
 
     #[test]
-    fn test_091_question_negation() { test_a2c("091_question_negation").unwrap(); }
+    fn test_091_question_negation() {
+        test_a2c("091_question_negation").unwrap();
+    }
 
     #[test]
-    fn test_092_question_literal() { test_a2c("092_question_literal").unwrap(); }
+    fn test_092_question_literal() {
+        test_a2c("092_question_literal").unwrap();
+    }
 
     #[test]
-    fn test_093_question_zero() { test_a2c("093_question_zero").unwrap(); }
+    fn test_093_question_zero() {
+        test_a2c("093_question_zero").unwrap();
+    }
 
     #[test]
-    fn test_094_question_negative() { test_a2c("094_question_negative").unwrap(); }
+    fn test_094_question_negative() {
+        test_a2c("094_question_negative").unwrap();
+    }
 
     #[test]
-    fn test_095_null_coalesce() { test_a2c("095_null_coalesce").unwrap(); }
+    fn test_095_null_coalesce() {
+        test_a2c("095_null_coalesce").unwrap();
+    }
 
     #[test]
-    fn test_096_error_propagate() { test_a2c("096_error_propagate").unwrap(); }
+    fn test_096_error_propagate() {
+        test_a2c("096_error_propagate").unwrap();
+    }
 
     #[test]
     fn test_110_bool() {
@@ -3452,11 +3622,15 @@ int add(int x, int y);
     // 3. Create proper expected output files
     #[test]
     #[ignore]
-    fn test_097_hashmap() { test_a2c("097_hashmap").unwrap(); }
+    fn test_097_hashmap() {
+        test_a2c("097_hashmap").unwrap();
+    }
 
     #[test]
     #[ignore]
-    fn test_098_hashset() { test_a2c("098_hashset").unwrap(); }
+    fn test_098_hashset() {
+        test_a2c("098_hashset").unwrap();
+    }
 
     // ===================== Phase 3: Borrow Checker tests =======================
 
@@ -3488,5 +3662,10 @@ int add(int x, int y);
     #[test]
     fn test_116_std_file_flush() {
         test_a2c("116_std_file_flush").unwrap();
+    }
+
+    #[test]
+    fn test_117_std_file_read() {
+        test_a2c("117_std_file_read").unwrap();
     }
 }

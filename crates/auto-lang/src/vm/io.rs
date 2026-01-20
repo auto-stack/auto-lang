@@ -1,5 +1,8 @@
 use auto_val::{Instance, Obj, Shared, Type, Value};
-use std::{fs::File, io::{BufRead, Read}};
+use std::{
+    fs::File,
+    io::{BufRead, Read},
+};
 
 use crate::{ast, Universe};
 
@@ -13,7 +16,9 @@ pub fn open(uni: Shared<Universe>, path: Value) -> Value {
                     match &ty {
                         ast::Type::User(_) => {
                             let reader = std::io::BufReader::new(file);
-                            let id = uni.borrow_mut().add_vmref(crate::universe::VmRefData::File(reader));
+                            let id = uni
+                                .borrow_mut()
+                                .add_vmref(crate::universe::VmRefData::File(reader));
                             let mut fields = Obj::new();
                             fields.set("id", Value::USize(id));
                             Value::Instance(Instance {
@@ -35,7 +40,9 @@ pub fn open(uni: Shared<Universe>, path: Value) -> Value {
                     match &ty {
                         ast::Type::User(_) => {
                             let reader = std::io::BufReader::new(file);
-                            let id = uni.borrow_mut().add_vmref(crate::universe::VmRefData::File(reader));
+                            let id = uni
+                                .borrow_mut()
+                                .add_vmref(crate::universe::VmRefData::File(reader));
                             let mut fields = Obj::new();
                             fields.set("id", Value::USize(id));
                             Value::Instance(Instance {
@@ -138,9 +145,48 @@ pub fn close_method(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Valu
     close(uni, instance)
 }
 
-/// Wrapper for read_line to match VmMethod signature
 pub fn read_line_method(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
     read_line(uni, instance)
+}
+
+pub fn read_char(uni: Shared<Universe>, file: &mut Value) -> Value {
+    if let Value::Instance(inst) = file {
+        if let Type::User(decl) = &inst.ty {
+            if decl == "File" {
+                let id = inst.fields.get("id");
+                if let Some(Value::USize(id)) = id {
+                    let uni = uni.borrow();
+                    let b = uni.get_vmref_ref(id);
+                    if let Some(b) = b {
+                        let mut ref_box = b.borrow_mut();
+                        if let crate::universe::VmRefData::File(f) = &mut *ref_box {
+                            let mut buf = [0u8; 1];
+                            return match f.read(&mut buf) {
+                                Ok(0) => Value::Int(-1), // EOF
+                                Ok(_) => Value::Int(buf[0] as i32),
+                                Err(_) => Value::Int(-1),
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Value::Int(-1)
+}
+
+pub fn read_char_method(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+    read_char(uni, instance)
+}
+
+pub fn read_buf(_uni: Shared<Universe>, _file: &mut Value, _buf: &mut Value, _size: i64) -> Value {
+    // VM does not support read_buf with mutable string buffer yet for immutable str
+    Value::Int(0)
+}
+
+pub fn read_buf_method(_uni: Shared<Universe>, _instance: &mut Value, _args: Vec<Value>) -> Value {
+    // Stub implementation
+    Value::Int(0)
 }
 
 pub fn write_line(uni: Shared<Universe>, file: &mut Value, line: &str) -> Value {
@@ -171,9 +217,9 @@ pub fn write_line(uni: Shared<Universe>, file: &mut Value, line: &str) -> Value 
 pub fn write_line_method(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
     let line = if let Some(val) = args.get(0) {
         match val {
-             Value::Str(s) => s.as_str(),
-             Value::OwnedStr(s) => s.as_str(),
-             _ => return Value::Error("Argument must be a string".into()),
+            Value::Str(s) => s.as_str(),
+            Value::OwnedStr(s) => s.as_str(),
+            _ => return Value::Error("Argument must be a string".into()),
         }
     } else {
         return Value::Error("Missing argument".into());
