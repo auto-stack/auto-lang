@@ -1,0 +1,5 @@
+use auto.test: test
+
+fn main() {
+    print(test())
+}
