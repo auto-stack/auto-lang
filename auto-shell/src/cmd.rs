@@ -13,9 +13,11 @@ pub mod external;
 pub mod fs;
 pub mod parser;
 pub mod pipeline;
+pub mod pipeline_data;
 pub mod registry;
 
 pub use pipeline::execute_pipeline;
+pub use pipeline_data::PipelineData;
 pub use registry::CommandRegistry;
 
 use crate::shell::Shell;
@@ -101,12 +103,15 @@ pub trait Command {
     fn signature(&self) -> Signature;
 
     /// Execute the command
+    ///
+    /// Commands now receive PipelineData (structured Value or text) and return PipelineData.
+    /// This enables zero-copy structured data pipelines between commands.
     fn run(
         &self,
         args: &crate::cmd::parser::ParsedArgs,
-        input: Option<&str>,
+        input: PipelineData,
         shell: &mut Shell,
-    ) -> Result<Option<String>>;
+    ) -> Result<PipelineData>;
 }
 
 /// Execute a command (built-in or external)

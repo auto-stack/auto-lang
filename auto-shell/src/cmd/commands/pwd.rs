@@ -1,4 +1,4 @@
-use crate::cmd::{Command, Signature};
+use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
 use miette::Result;
 
@@ -16,9 +16,9 @@ impl Command for PwdCommand {
     fn run(
         &self,
         _args: &crate::cmd::parser::ParsedArgs,
-        _input: Option<&str>,
+        _input: PipelineData,
         shell: &mut Shell,
-    ) -> Result<Option<String>> {
+    ) -> Result<PipelineData> {
         let path = shell.pwd();
         let mut path_str = path.display().to_string();
 
@@ -30,6 +30,6 @@ impl Command for PwdCommand {
         // 2. Unify separators to forward slash
         path_str = path_str.replace('\\', "/");
 
-        Ok(Some(path_str))
+        Ok(PipelineData::from_text(path_str))
     }
 }

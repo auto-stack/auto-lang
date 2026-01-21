@@ -11,7 +11,7 @@ use auto_val::Value;
 pub mod vars;
 
 use crate::bookmarks::BookmarkManager;
-use crate::cmd::{commands, CommandRegistry};
+use crate::cmd::{commands, CommandRegistry, PipelineData};
 use vars::ShellVars;
 
 /// Shell state and context
@@ -110,7 +110,11 @@ impl Shell {
         if let Some(cmd) = self.registry.get(cmd_name) {
             let signature = cmd.signature();
             match crate::cmd::parser::parse_args(&signature, args) {
-                Ok(parsed_args) => return cmd.run(&parsed_args, None, self),
+                Ok(parsed_args) => {
+                    let pipeline_data = cmd.run(&parsed_args, PipelineData::empty(), self)?;
+                    // Convert PipelineData to String for display
+                    return Ok(Some(pipeline_data.into_text()));
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -166,10 +170,16 @@ impl Shell {
             // Execute the command
             let output = if let Some(cmd) = self.registry.get(cmd_name) {
                 let signature = cmd.signature();
-                // TODO: Handle pipeline input in Command::run input arg
-                // Currently passing None as input, need to pass input_str
+                // Convert input_str to PipelineData
+                let input_pipeline = input_str.as_ref()
+                    .map(|s| PipelineData::from_text(s.clone()))
+                    .unwrap_or_else(PipelineData::empty);
+
                 match crate::cmd::parser::parse_args(&signature, args) {
-                    Ok(parsed_args) => cmd.run(&parsed_args, input_str.as_deref(), self)?,
+                    Ok(parsed_args) => {
+                        let pipeline_data = cmd.run(&parsed_args, input_pipeline, self)?;
+                        Some(pipeline_data.into_text())
+                    }
                     Err(e) => return Err(e),
                 }
             } else if let Some(input) = &input_str {

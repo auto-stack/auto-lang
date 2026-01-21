@@ -1,4 +1,4 @@
-use crate::cmd::{Argument, Command, Signature};
+use crate::cmd::{Argument, Command, PipelineData, Signature};
 use crate::shell::Shell;
 use miette::Result;
 
@@ -17,9 +17,9 @@ impl Command for HelpCommand {
     fn run(
         &self,
         args: &crate::cmd::parser::ParsedArgs,
-        _input: Option<&str>,
+        _input: PipelineData,
         shell: &mut Shell,
-    ) -> Result<Option<String>> {
+    ) -> Result<PipelineData> {
         let registry = shell.registry();
 
         if let Some(cmd_name) = args.positionals.get(0) {
@@ -37,9 +37,9 @@ impl Command for HelpCommand {
                         ));
                     }
                 }
-                return Ok(Some(help));
+                return Ok(PipelineData::from_text(help));
             } else {
-                return Ok(Some(format!("Command '{}' not found.", cmd_name)));
+                return Ok(PipelineData::from_text(format!("Command '{}' not found.", cmd_name)));
             }
         }
 
@@ -52,6 +52,6 @@ impl Command for HelpCommand {
             output.push_str(&format!("  {:<10} {}\n", sig.name, sig.description));
         }
 
-        Ok(Some(output))
+        Ok(PipelineData::from_text(output))
     }
 }

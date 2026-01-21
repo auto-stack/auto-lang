@@ -1,4 +1,4 @@
-use crate::cmd::{Command, Signature};
+use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
 use miette::Result;
 
@@ -16,9 +16,9 @@ impl Command for EchoCommand {
     fn run(
         &self,
         args: &crate::cmd::parser::ParsedArgs,
-        _input: Option<&str>,
+        _input: PipelineData,
         _shell: &mut Shell,
-    ) -> Result<Option<String>> {
-        Ok(Some(args.positionals.join(" ")))
+    ) -> Result<PipelineData> {
+        Ok(PipelineData::from_text(args.positionals.join(" ")))
     }
 }

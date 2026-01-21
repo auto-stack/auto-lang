@@ -1,4 +1,4 @@
-use crate::cmd::{Command, Signature};
+use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
 use miette::Result;
 
@@ -16,10 +16,10 @@ impl Command for CdCommand {
     fn run(
         &self,
         args: &crate::cmd::parser::ParsedArgs,
-        _input: Option<&str>,
+        _input: PipelineData,
         shell: &mut Shell,
-    ) -> Result<Option<String>> {
+    ) -> Result<PipelineData> {
         let path = args.positionals.get(0).map(|s| s.as_str()).unwrap_or("~");
-        shell.cd(path).map(|_| None)
+        shell.cd(path).map(|_| PipelineData::empty())
     }
 }
