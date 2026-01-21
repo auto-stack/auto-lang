@@ -1,7 +1,7 @@
 //! Macro system for AutoLang
 //!
 //! This module implements text-level macro expansion for AutoLang syntax sugar.
-//! Currently supports UI-specific macros like `widget`.
+//! Currently supports UI-specific macros like `widget` and `app`.
 
 pub mod ui;
 
@@ -14,6 +14,7 @@ pub mod ui;
 /// # Supported Macros
 ///
 /// - `widget Name { ... }` → `type Name is Widget { ... }`
+/// - `app Name { ... }` → `type Name is App { ... }`
 ///
 /// # Example
 ///
@@ -22,11 +23,22 @@ pub mod ui;
 ///     widget Hello {
 ///         msg str
 ///     }
+///
+///     app MyApp {
+///         title str
+///     }
 /// "#;
 ///
 /// let processed = preprocess(code);
 /// assert!(processed.contains("type Hello is Widget"));
+/// assert!(processed.contains("type MyApp is App"));
 /// ```
 pub fn preprocess(code: &str) -> String {
-    ui::expand_widget_macro(code)
+    let mut result = code.to_string();
+
+    // Apply all macro expansions in order
+    result = ui::expand_widget_macro(&result);
+    result = ui::expand_app_macro(&result);
+
+    result
 }

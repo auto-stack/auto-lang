@@ -33,21 +33,20 @@ impl Command for LsCommand {
         // Extract flags
         let all = args.has_flag("all");
         let long = args.has_flag("long");
-        let human = args.has_flag("human-readable");
         let time = args.has_flag("time");
         let reverse = args.has_flag("reverse");
         let recursive = args.has_flag("recursive");
 
-        let output = fs::ls_command(
+        // Always use structured data - the display layer handles formatting
+        let value = fs::ls_command_value(
             path,
             &shell.pwd(),
             all,
             long,
-            human,
             time,
             reverse,
             recursive,
         )?;
-        Ok(PipelineData::from_text(output))
+        Ok(PipelineData::from_value(value))
     }
 }

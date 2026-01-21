@@ -39,6 +39,9 @@ impl Shell {
             reg.register(Box::new(commands::pwd::PwdCommand));
             reg.register(Box::new(commands::echo::EchoCommand));
             reg.register(Box::new(commands::help::HelpCommand));
+            reg.register(Box::new(commands::get::GetCommand));
+            reg.register(Box::new(commands::r#where::WhereCommand));
+            reg.register(Box::new(commands::select::SelectCommand));
             reg
         };
 
@@ -135,7 +138,7 @@ impl Shell {
 
     /// Execute a pipeline with Auto function support
     fn execute_pipeline_with_auto(&mut self, commands: &[String]) -> Result<Option<String>> {
-        use crate::cmd::{auto, builtin, external};
+        use crate::cmd::{auto, builtin, external, PipelineData};
         use crate::data::ShellValue;
         use crate::parser::quote::parse_args;
 
@@ -143,8 +146,8 @@ impl Shell {
             return Ok(None);
         }
 
-        // Start with no input
-        let mut input_data: Option<ShellValue> = None;
+        // Start with empty PipelineData
+        let mut input_pipeline: Option<PipelineData> = None;
 
         for (i, cmd) in commands.iter().enumerate() {
             let is_last = i == commands.len() - 1;
@@ -158,68 +161,58 @@ impl Shell {
             let cmd_name = &parts[0];
             let args = &parts[1..];
 
-            // Extract input as string if available
-            let input_str = input_data.as_ref().map(|v| {
-                if let ShellValue::String(s) = v {
-                    s.clone()
-                } else {
-                    v.to_string()
-                }
-            });
-
             // Execute the command
-            let output = if let Some(cmd) = self.registry.get(cmd_name) {
-                let signature = cmd.signature();
-                // Convert input_str to PipelineData
-                let input_pipeline = input_str.as_ref()
-                    .map(|s| PipelineData::from_text(s.clone()))
-                    .unwrap_or_else(PipelineData::empty);
+            let output_pipeline = if let Some(registered_cmd) = self.registry.get(cmd_name) {
+                // Registered command (uses PipelineData)
+                let signature = registered_cmd.signature();
+                let input = input_pipeline.take().unwrap_or_else(PipelineData::empty);
 
                 match crate::cmd::parser::parse_args(&signature, args) {
                     Ok(parsed_args) => {
-                        let pipeline_data = cmd.run(&parsed_args, input_pipeline, self)?;
-                        Some(pipeline_data.into_text())
+                        Some(registered_cmd.run(&parsed_args, input, self)?)
                     }
                     Err(e) => return Err(e),
                 }
-            } else if let Some(input) = &input_str {
-                // With pipeline input
-                // Check built-in commands first
-                if let Some(output) =
-                    builtin::execute_builtin_with_input(cmd, &self.current_dir, Some(input))?
-                {
-                    Some(output)
-                }
-                // Check if it's an Auto function
-                else if self.has_auto_function(cmd_name) {
-                    auto::execute_auto_function(self, cmd_name, args, Some(input))?
-                }
-                // Otherwise, external command (TODO: pipe to stdin)
-                else {
-                    external::execute_external(cmd, &self.current_dir)?
-                }
             } else {
-                // No pipeline input
-                // Check built-in commands first
-                if let Some(output) = builtin::execute_builtin(cmd, &self.current_dir)? {
-                    Some(output)
-                }
-                // Check if it's an Auto function
-                else if self.has_auto_function(cmd_name) {
-                    auto::execute_auto_function(self, cmd_name, args, None)?
-                }
-                // Otherwise, external command
-                else {
-                    external::execute_external(cmd, &self.current_dir)?
+                // Non-registered command (builtins, auto functions, external)
+                // Convert PipelineData to text for legacy commands
+                let input_str = input_pipeline.take().and_then(|p| {
+                    if p.is_empty() { None } else { Some(p.into_text()) }
+                });
+
+                if let Some(input) = &input_str {
+                    // With pipeline input
+                    if let Some(output) =
+                        builtin::execute_builtin_with_input(cmd, &self.current_dir, Some(input))?
+                    {
+                        Some(PipelineData::from_text(output))
+                    } else if self.has_auto_function(cmd_name) {
+                        let output = auto::execute_auto_function(self, cmd_name, args, Some(input))?;
+                        output.map(|s| PipelineData::from_text(s))
+                    } else {
+                        let output = external::execute_external(cmd, &self.current_dir)?;
+                        output.map(|s| PipelineData::from_text(s))
+                    }
+                } else {
+                    // No pipeline input
+                    if let Some(output) = builtin::execute_builtin(cmd, &self.current_dir)? {
+                        Some(PipelineData::from_text(output))
+                    } else if self.has_auto_function(cmd_name) {
+                        let output = auto::execute_auto_function(self, cmd_name, args, None)?;
+                        output.map(|s| PipelineData::from_text(s))
+                    } else {
+                        let output = external::execute_external(cmd, &self.current_dir)?;
+                        output.map(|s| PipelineData::from_text(s))
+                    }
                 }
             };
 
-            // Convert output to ShellValue for next command
-            input_data = output.map(|s| ShellValue::String(s));
+            // Store PipelineData for next command
+            input_pipeline = output_pipeline;
 
-            // If this is the last command, return the final output
+            // If this is the last command, return the final output as text
             if is_last {
-                return Ok(input_data.map(|v| v.to_string()));
+                return Ok(input_pipeline.map(|p| p.into_text()));
             }
         }
 

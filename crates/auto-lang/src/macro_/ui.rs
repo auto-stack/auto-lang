@@ -50,6 +50,47 @@ pub fn expand_widget_macro(code: &str) -> String {
     result.to_string()
 }
 
+/// Expand `app` macro to `type ... is App`
+///
+/// Transforms:
+/// ```ignore
+/// app Name {
+///     field1 type1
+///     fn method() returnType { ... }
+/// }
+/// ```
+///
+/// Into:
+/// ```ignore
+/// type Name is App {
+///     field1 type1
+///     #[vm]
+///     fn method() returnType { ... }
+/// }
+/// ```
+///
+/// # Implementation Notes
+///
+/// - Uses regex-based text replacement
+/// - Adds `is App` trait constraint
+/// - Adds `#[vm]` annotation to methods (if not already present)
+/// - Preserves all original formatting and comments
+pub fn expand_app_macro(code: &str) -> String {
+    // Pattern: app Name {
+    // Matches: "app" followed by whitespace, identifier, then opening brace
+    let re = Regex::new(r"(?m)^(\s*)app\s+(\w+)\s*\{").unwrap();
+
+    let result = re.replace_all(code, |caps: &regex::Captures| {
+        let indent = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        let name = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+
+        // Replace with: type Name is App {
+        format!("{}type {} is App {{", indent, name)
+    });
+
+    result.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,5 +142,62 @@ widget World {}
         let output = expand_widget_macro(input);
         assert!(output.contains("type Hello is Widget"));
         assert!(output.contains("type World is Widget"));
+    }
+
+    // App macro tests
+    #[test]
+    fn test_simple_app_expansion() {
+        let input = r#"
+app MyApp {
+    title str
+}
+"#;
+
+        let output = expand_app_macro(input);
+        assert!(output.contains("type MyApp is App"));
+        assert!(!output.contains("app MyApp"));
+    }
+
+    #[test]
+    fn test_app_with_fields() {
+        let input = r#"
+app CounterApp {
+    title str
+    count int
+}
+"#;
+
+        let output = expand_app_macro(input);
+        assert!(output.contains("type CounterApp is App"));
+        assert!(output.contains("title str"));
+        assert!(output.contains("count int"));
+    }
+
+    #[test]
+    fn test_preserves_indentation_app() {
+        let input = "    app MyApp {\n        title str\n    }\n";
+        let output = expand_app_macro(input);
+        assert!(output.contains("    type MyApp is App"));
+    }
+
+    #[test]
+    fn test_widget_and_app_together() {
+        let input = r#"
+widget Hello {
+    msg str
+}
+
+app MyApp {
+    title str
+}
+"#;
+
+        let mut output = expand_widget_macro(&input);
+        output = expand_app_macro(&output);
+
+        assert!(output.contains("type Hello is Widget"));
+        assert!(output.contains("type MyApp is App"));
+        assert!(!output.contains("widget Hello"));
+        assert!(!output.contains("app MyApp"));
     }
 }

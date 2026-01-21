@@ -4,6 +4,7 @@
 //! either structured Auto values (zero-copy) or plain text (for external commands).
 
 use auto_val::Value;
+use crate::cmd::value_helpers::format_value_for_display;
 
 /// Pipeline data can be structured (Value) or text (for external commands)
 ///
@@ -44,9 +45,12 @@ impl PipelineData {
     }
 
     /// Convert to text (for display or external commands)
+    ///
+    /// For Value mode, uses format_value_for_display to format arrays as tables
+    /// and objects as records. For Text mode, returns the string directly.
     pub fn into_text(self) -> String {
         match self {
-            PipelineData::Value(v) => v.to_string(),
+            PipelineData::Value(v) => format_value_for_display(&v),
             PipelineData::Text(s) => s,
         }
     }
@@ -54,7 +58,7 @@ impl PipelineData {
     /// Get as text without consuming
     pub fn as_text(&self) -> String {
         match self {
-            PipelineData::Value(v) => v.to_string(),
+            PipelineData::Value(v) => format_value_for_display(v),
             PipelineData::Text(s) => s.clone(),
         }
     }

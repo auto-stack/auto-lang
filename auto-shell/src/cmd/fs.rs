@@ -2,6 +2,7 @@
 //!
 //! Implements core file system operations: ls, cd, mkdir, rm, mv, cp
 
+use auto_val::{Value, Obj, Array, AutoStr};
 use miette::{IntoDiagnostic, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -175,6 +176,239 @@ pub fn ls_command(
     // Calculate widths and render
     table.calculate_widths();
     Ok(table.render())
+}
+
+/// List directory contents as structured Value (array of file objects)
+///
+/// This is the structured data version of ls_command for use in pipelines.
+/// Returns an Array of Obj values, where each Obj represents a file entry.
+pub fn ls_command_value(
+    path: &Path,
+    current_dir: &Path,
+    all: bool,
+    long: bool,
+    time_sort: bool,
+    reverse: bool,
+    recursive: bool,
+) -> Result<Value> {
+    let target = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        current_dir.join(path)
+    };
+
+    if !target.exists() {
+        miette::bail!("ls: {}: No such file or directory", target.display());
+    }
+
+    // Handle recursive listing
+    if recursive {
+        return list_recursive_value(&target, current_dir, all, long, time_sort, reverse);
+    }
+
+    // If it's a file, return single-element array with file info
+    if target.is_file() {
+        let metadata = fs::metadata(&target).into_diagnostic()?;
+        let name = target.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("?")
+            .to_string();
+
+        let mut obj = build_file_entry_obj(&name, false, &metadata, long);
+        let mut arr = Array::new();
+        arr.push(Value::Obj(obj));
+        return Ok(Value::Array(arr));
+    }
+
+    // List directory contents
+    let entries = fs::read_dir(&target).into_diagnostic()?;
+
+    let mut files = Vec::new();
+    for entry in entries {
+        let entry = entry.into_diagnostic()?;
+        let metadata = entry.metadata().into_diagnostic()?;
+
+        let name = entry.file_name()
+            .into_string()
+            .unwrap_or_else(|_| "?".to_string());
+
+        // Skip hidden files unless -a flag is set
+        if !all && name.starts_with('.') {
+            continue;
+        }
+
+        let is_dir = entry.path().is_dir();
+
+        // Build file entry object
+        let obj = build_file_entry_obj(&name, is_dir, &metadata, long);
+        files.push((name.clone(), is_dir, metadata.modified().ok(), obj));
+    }
+
+    // Sort files
+    files.sort_by(|a, b| {
+        let cmp = if time_sort {
+            // Sort by modification time (newest first)
+            match (&a.2, &b.2) {
+                (Some(a_time), Some(b_time)) => b_time.cmp(a_time),
+                _ => a.0.cmp(&b.0),
+            }
+        } else {
+            // Sort alphabetically
+            a.0.cmp(&b.0)
+        };
+
+        // Directories first
+        if a.1 != b.1 {
+            b.1.cmp(&a.1)
+        } else {
+            cmp
+        }
+    });
+
+    if reverse {
+        files.reverse();
+    }
+
+    // Build array
+    let mut arr = Array::new();
+    for (_, _, _, obj) in files {
+        arr.push(Value::Obj(obj));
+    }
+
+    Ok(Value::Array(arr))
+}
+
+/// Build a file entry object from metadata
+fn build_file_entry_obj(name: &str, is_dir: bool, metadata: &fs::Metadata, long: bool) -> Obj {
+    let mut obj = Obj::new();
+    obj.set("name", Value::str(name));
+    obj.set("type", Value::str(if is_dir { "dir" } else { "file" }));
+
+    if !is_dir {
+        obj.set("size", Value::Int(metadata.len() as i32));
+    }
+
+    if let Ok(modified) = metadata.modified() {
+        if let Some(modified_str) = format_modified_time(&modified) {
+            obj.set("modified", Value::str(modified_str));
+        }
+    }
+
+    if long {
+        // Add permissions and owner for long format
+        let perms = format_permissions(metadata, is_dir);
+        obj.set("permissions", Value::str(perms));
+
+        let owner = get_owner(metadata);
+        obj.set("owner", Value::str(owner));
+    }
+
+    obj
+}
+
+/// Recursive directory listing helper (structured data version)
+fn list_recursive_value(
+    path: &Path,
+    current_dir: &Path,
+    all: bool,
+    long: bool,
+    time_sort: bool,
+    reverse: bool,
+) -> Result<Value> {
+    let mut all_entries = Array::new();
+
+    // List current directory
+    if let Value::Array(entries) = ls_command_value(path, current_dir, all, long, time_sort, reverse, false)? {
+        for entry in entries.iter() {
+            all_entries.push(entry.clone());
+        }
+    }
+
+    // Find subdirectories and recurse
+    let entries = fs::read_dir(path).into_diagnostic()?;
+    for entry in entries {
+        let entry = entry.into_diagnostic()?;
+        if entry.path().is_dir() {
+            let name = entry.file_name().into_string().unwrap_or_default();
+            // Skip hidden directories unless -a flag is set
+            if !all && name.starts_with('.') {
+                continue;
+            }
+            // Skip . and ..
+            if name == "." || name == ".." {
+                continue;
+            }
+
+            // Recurse
+            if let Value::Array(sub_entries) = list_recursive_value(&entry.path(), current_dir, all, long, time_sort, reverse)? {
+                for sub_entry in sub_entries.iter() {
+                    all_entries.push(sub_entry.clone());
+                }
+            }
+        }
+    }
+
+    Ok(Value::Array(all_entries))
+}
+
+/// Format system time as "YYYY-MM-DD HH:MM" string
+fn format_modified_time(modified: &std::time::SystemTime) -> Option<String> {
+    use std::time::UNIX_EPOCH;
+    let secs = modified.duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
+    let datetime = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, 0)?;
+    Some(datetime.format("%Y-%m-%d %H:%M").to_string())
+}
+
+/// Format file permissions (Unix-style rwxrwxrwx)
+#[cfg(unix)]
+fn format_permissions(metadata: &fs::Metadata, is_dir: bool) -> String {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = metadata.permissions().mode();
+    let file_type = if is_dir {
+        'd'
+    } else {
+        '-'
+    };
+
+    let user = format_mode_bits(mode & 0o700);
+    let group = format_mode_bits(mode & 0o070);
+    let other = format_mode_bits(mode & 0o007);
+
+    format!("{}{}{}{}", file_type, user, group, other)
+}
+
+/// Format permission bits (e.g., "rwx")
+#[cfg(unix)]
+fn format_mode_bits(bits: u32) -> String {
+    format!(
+        "{}{}{}",
+        if bits & 0o400 != 0 { 'r' } else { '-' },
+        if bits & 0o200 != 0 { 'w' } else { '-' },
+        if bits & 0o100 != 0 { 'x' } else { '-' }
+    )
+}
+
+/// Get owner name from metadata
+#[cfg(unix)]
+fn get_owner(metadata: &fs::Metadata) -> String {
+    use std::os::unix::fs::MetadataExt;
+    metadata.uid().to_string()
+}
+
+/// Format file permissions (Windows - simplified)
+#[cfg(windows)]
+fn format_permissions(_metadata: &fs::Metadata, is_dir: bool) -> String {
+    if is_dir {
+        "drwxr-xr-x".to_string()
+    } else {
+        "-rw-r--r--".to_string()
+    }
+}
+
+/// Get owner name (Windows - no owner info)
+#[cfg(windows)]
+fn get_owner(_metadata: &fs::Metadata) -> String {
+    "-".to_string()
 }
 
 /// Recursive directory listing helper

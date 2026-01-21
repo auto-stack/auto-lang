@@ -15,6 +15,7 @@ pub mod parser;
 pub mod pipeline;
 pub mod pipeline_data;
 pub mod registry;
+pub mod value_helpers;
 
 pub use pipeline::execute_pipeline;
 pub use pipeline_data::PipelineData;
