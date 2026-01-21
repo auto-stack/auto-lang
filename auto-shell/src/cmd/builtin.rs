@@ -22,7 +22,16 @@ pub fn execute_builtin(input: &str, current_dir: &Path) -> Result<Option<String>
         "clear" => Ok(Some(clear_command())),
 
         // File system commands
-        "ls" | "l" => fs::ls_command(parse_path_arg(&parts, 1), current_dir).map(Some),
+        "ls" | "l" => fs::ls_command(
+            parse_path_arg(&parts, 1),
+            current_dir,
+            false,  // all
+            false,  // long
+            false,  // human
+            false,  // time_sort
+            false,  // reverse
+            false,  // recursive
+        ).map(Some),
         // Note: cd is handled by Shell::execute to update state
         "mkdir" => {
             let parents = parts.iter().any(|p| p == "-p" || p == "--parents");

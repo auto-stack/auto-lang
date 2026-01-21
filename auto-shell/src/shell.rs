@@ -32,6 +32,16 @@ impl Shell {
         let universe = Rc::new(RefCell::new(Universe::new()));
         let interpreter = Interpreter::with_univ(universe);
 
+        let registry = {
+            let mut reg = CommandRegistry::new();
+            reg.register(Box::new(commands::ls::LsCommand));
+            reg.register(Box::new(commands::cd::CdCommand));
+            reg.register(Box::new(commands::pwd::PwdCommand));
+            reg.register(Box::new(commands::echo::EchoCommand));
+            reg.register(Box::new(commands::help::HelpCommand));
+            reg
+        };
+
         Self {
             current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
             vars: ShellVars::new(),
@@ -39,15 +49,7 @@ impl Shell {
             bookmarks: BookmarkManager::new(),
 
             previous_dir: None,
-            registry: {
-                let mut neg = CommandRegistry::new();
-                neg.register(Box::new(commands::ls::LsCommand));
-                neg.register(Box::new(commands::cd::CdCommand));
-                neg.register(Box::new(commands::pwd::PwdCommand));
-                neg.register(Box::new(commands::echo::EchoCommand));
-                neg.register(Box::new(commands::help::HelpCommand));
-                neg
-            },
+            registry,
         }
     }
 

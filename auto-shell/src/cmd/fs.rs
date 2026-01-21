@@ -9,7 +9,16 @@ use std::path::{Path, PathBuf};
 use crate::data::{Table, Column, Align, FileEntry};
 
 /// List directory contents with table formatting
-pub fn ls_command(path: &Path, current_dir: &Path) -> Result<String> {
+pub fn ls_command(
+    path: &Path,
+    current_dir: &Path,
+    all: bool,
+    long: bool,
+    human: bool,
+    time_sort: bool,
+    reverse: bool,
+    recursive: bool,
+) -> Result<String> {
     let target = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -18,6 +27,11 @@ pub fn ls_command(path: &Path, current_dir: &Path) -> Result<String> {
 
     if !target.exists() {
         miette::bail!("ls: {}: No such file or directory", target.display());
+    }
+
+    // Handle recursive listing
+    if recursive {
+        return list_recursive(&target, all, long, human, time_sort, reverse);
     }
 
     // If it's a file, just return its name
@@ -39,6 +53,11 @@ pub fn ls_command(path: &Path, current_dir: &Path) -> Result<String> {
         let name = entry.file_name()
             .into_string()
             .unwrap_or_else(|_| "?".to_string());
+
+        // Skip hidden files unless -a flag is set
+        if !all && name.starts_with('.') {
+            continue;
+        }
 
         let is_dir = entry.path().is_dir();
 
@@ -67,40 +86,152 @@ pub fn ls_command(path: &Path, current_dir: &Path) -> Result<String> {
         });
     }
 
-    // Sort by name
+    // Sort files
     files.sort_by(|a, b| {
+        let cmp = if time_sort {
+            // Sort by modification time (newest first)
+            b.modified.as_ref().unwrap_or(&String::new())
+                .cmp(a.modified.as_ref().unwrap_or(&String::new()))
+        } else {
+            // Sort alphabetically
+            a.name.cmp(&b.name)
+        };
+
         // Directories first
         if a.is_dir != b.is_dir {
             b.is_dir.cmp(&a.is_dir)
         } else {
-            a.name.cmp(&b.name)
+            cmp
         }
     });
 
-    // Create table
-    let mut table = Table::new()
-        .add_column(Column::new("Name").align(Align::Left))
-        .add_column(Column::new("Size").align(Align::Right))
-        .add_column(Column::new("Modified").align(Align::Left));
+    if reverse {
+        files.reverse();
+    }
+
+    // Create table with conditional columns based on -l flag
+    let mut table = if long {
+        Table::new()
+            .add_column(Column::new("Permissions").align(Align::Left))
+            .add_column(Column::new("Owner").align(Align::Left))
+            .add_column(Column::new("Size").align(Align::Right))
+            .add_column(Column::new("Modified").align(Align::Left))
+            .add_column(Column::new("Name").align(Align::Left))
+    } else {
+        Table::new()
+            .add_column(Column::new("Name").align(Align::Left))
+            .add_column(Column::new("Size").align(Align::Right))
+            .add_column(Column::new("Modified").align(Align::Left))
+    };
 
     // Add rows
     for file in &files {
-        let name_with_indicator = if file.is_dir {
-            format!("{}/", file.name)
-        } else {
-            file.name.clone()
-        };
+        if long {
+            // Long format: permissions, owner, size, modified, name
+            // For now, use placeholder values for permissions/owner
+            // TODO: Implement platform-specific permission formatting
+            let perms = if file.is_dir { "drwxr-xr-x" } else { "-rw-r--r--" }.to_string();
+            let owner = "-".to_string();
+            let size_str = if human {
+                file.format_size()
+            } else {
+                file.size.map(|s| s.to_string()).unwrap_or_else(|| "-".to_string())
+            };
+            let name_with_indicator = if file.is_dir {
+                format!("{}/", file.name)
+            } else {
+                file.name.clone()
+            };
 
-        table = table.add_row(vec![
-            name_with_indicator,
-            file.format_size(),
-            file.modified.clone().unwrap_or_else(|| "-".to_string()),
-        ]);
+            table = table.add_row(vec![
+                perms,
+                owner,
+                size_str,
+                file.modified.clone().unwrap_or_else(|| "-".to_string()),
+                name_with_indicator,
+            ]);
+        } else {
+            // Default format: name, size, modified
+            let name_with_indicator = if file.is_dir {
+                format!("{}/", file.name)
+            } else {
+                file.name.clone()
+            };
+
+            let size_str = if human {
+                file.format_size()
+            } else {
+                file.format_size()
+            };
+
+            table = table.add_row(vec![
+                name_with_indicator,
+                size_str,
+                file.modified.clone().unwrap_or_else(|| "-".to_string()),
+            ]);
+        }
     }
 
     // Calculate widths and render
     table.calculate_widths();
     Ok(table.render())
+}
+
+/// Recursive directory listing helper
+fn list_recursive(
+    path: &Path,
+    all: bool,
+    long: bool,
+    human: bool,
+    time_sort: bool,
+    reverse: bool,
+) -> Result<String> {
+    let mut output = String::new();
+
+    // If path is relative, make it relative to current dir for display
+    let display_path = if path.is_absolute() {
+        path.display().to_string()
+    } else {
+        format!("./{}", path.display())
+    };
+
+    output.push_str(&format!("{}:\n", display_path));
+
+    // List current directory (non-recursive call)
+    // For recursive, we pass false to avoid infinite recursion
+    let current_listing = ls_command(path, path, all, long, human, time_sort, reverse, false)?;
+    output.push_str(&current_listing);
+
+    // Find subdirectories and recurse
+    let entries = fs::read_dir(path).into_diagnostic()?;
+    let mut subdirs: Vec<PathBuf> = Vec::new();
+
+    for entry in entries {
+        let entry = entry.into_diagnostic()?;
+        if entry.path().is_dir() {
+            let name = entry.file_name().into_string().unwrap_or_default();
+            // Skip hidden directories unless -a flag is set
+            if !all && name.starts_with('.') {
+                continue;
+            }
+            // Skip . and ..
+            if name == "." || name == ".." {
+                continue;
+            }
+            subdirs.push(entry.path());
+        }
+    }
+
+    // Sort subdirs
+    subdirs.sort();
+
+    // Recurse into subdirectories
+    for subdir in subdirs {
+        output.push_str("\n");
+        output.push_str(&list_recursive(&subdir, all, long, human, time_sort, reverse)?);
+    }
+
+    Ok(output)
 }
 
 /// Change directory (returns new path if successful)
@@ -251,7 +382,7 @@ mod tests {
     fn test_ls_nonexistent() {
         let path = Path::new("/nonexistent/path/that/does/not/exist");
         let current = Path::new("/");
-        assert!(ls_command(path, current).is_err());
+        assert!(ls_command(path, current, false, false, false, false, false, false).is_err());
     }
 
     #[test]

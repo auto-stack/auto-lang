@@ -1,0 +1,12 @@
+// Test file for widget macro expansion
+use auto.ui: View, widget, app, center, text
+
+widget Hello {
+    // data fields
+    msg str
+
+    // view
+    fn view() View {
+        text(msg) {}
+    }
+}

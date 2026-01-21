@@ -37,10 +37,15 @@ pub fn parse_args(signature: &Signature, raw_args: &[String]) -> Result<ParsedAr
     // Map of valid flags for quick lookup
     // Key: flag name, Value: Argument definition
     let mut valid_flags: HashMap<String, &Argument> = HashMap::new();
+    // Map of short aliases to flag names
+    let mut short_aliases: HashMap<char, String> = HashMap::new();
 
     for arg in &signature.arguments {
         if arg.is_flag {
             valid_flags.insert(arg.name.clone(), arg);
+            if let Some(short) = arg.short {
+                short_aliases.insert(short, arg.name.clone());
+            }
         }
     }
 
@@ -55,18 +60,31 @@ pub fn parse_args(signature: &Signature, raw_args: &[String]) -> Result<ParsedAr
                 return Err(miette::miette!("Unknown flag: --{}", flag_name));
             }
         } else if arg_str.starts_with('-') && arg_str.len() > 1 {
-            // Short flag (currently treat same as long for simplicity or need aliasing?)
-            // For now, let's assume we match against name directly or we need short alias support in Signature.
-            // Nushell style often uses full names. Let's support -f if name is "f" or "force".
-            // Implementation Plan didn't specify short aliases, so implementing basic exact match.
-            // If name is "force", --force works.
-            // If we want -f, we need short names in Signature.
-            // For this iteration, let's treat -name same as --name for simplicity unless we add short alias field.
-            let flag_name = arg_str.trim_start_matches('-');
-            if valid_flags.contains_key(flag_name) {
-                parsed.flags.insert(flag_name.to_string(), true);
+            // Short flag(s)
+            let flag_short = arg_str.trim_start_matches('-');
+
+            // Handle combined short flags like -al, -ltr
+            if flag_short.len() > 1 {
+                // Split into individual flags
+                let chars: Vec<char> = flag_short.chars().collect();
+                for ch in chars {
+                    // Look up each character in short_aliases
+                    if let Some(name) = short_aliases.get(&ch) {
+                        parsed.flags.insert(name.clone(), true);
+                    } else {
+                        return Err(miette::miette!("Unknown flag: -{}", ch));
+                    }
+                }
             } else {
-                return Err(miette::miette!("Unknown flag: -{}", flag_name));
+                // Single character flag
+                let ch = flag_short.chars().next().unwrap();
+                let flag_name = short_aliases.get(&ch).cloned();
+
+                if let Some(name) = flag_name {
+                    parsed.flags.insert(name, true);
+                } else {
+                    return Err(miette::miette!("Unknown flag: -{}", ch));
+                }
             }
         } else {
             // Positional

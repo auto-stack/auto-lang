@@ -27,6 +27,7 @@ pub struct Argument {
     pub description: String,
     pub required: bool,
     pub is_flag: bool,
+    pub short: Option<char>,  // Short flag alias (e.g., 'a' for 'all')
 }
 
 /// Command signature for help generation and validation
@@ -52,6 +53,7 @@ impl Signature {
             description: description.to_string(),
             required: true,
             is_flag: false,
+            short: None,
         });
         self
     }
@@ -62,6 +64,7 @@ impl Signature {
             description: description.to_string(),
             required: false,
             is_flag: false,
+            short: None,
         });
         self
     }
@@ -72,6 +75,18 @@ impl Signature {
             description: description.to_string(),
             required: false,
             is_flag: true,
+            short: None,  // Can use flag_with_short() instead
+        });
+        self
+    }
+
+    pub fn flag_with_short(mut self, name: &str, short: char, description: &str) -> Self {
+        self.arguments.push(Argument {
+            name: name.to_string(),
+            description: description.to_string(),
+            required: false,
+            is_flag: true,
+            short: Some(short),
         });
         self
     }
