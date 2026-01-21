@@ -1,0 +1,18 @@
+// Widget trait - base trait for all UI components
+//
+// This trait defines the interface that all UI widgets must implement.
+// It follows the ELM-style architecture with view() for rendering and
+// on() for message handling.
+
+type Widget {
+    // Render the widget's UI
+    #[vm]
+    fn view() View
+
+    // Handle incoming messages
+    // Default implementation: no-op
+    #[vm]
+    fn on(ev Msg) {
+        // Default: do nothing
+    }
+}

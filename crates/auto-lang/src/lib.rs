@@ -8,6 +8,7 @@ pub mod infer;
 pub mod interp;
 mod lexer;
 pub mod libs;
+pub mod macro_;
 pub mod maker;
 pub mod ownership;
 pub mod parser;
@@ -144,19 +145,23 @@ pub fn eval_config_with_scope(
     args: &Obj,
     mut scope: Universe,
 ) -> AutoResult<interp::Interpreter> {
+    // Preprocess macros (e.g., widget → type ... is Widget)
+    let code = crate::macro_::preprocess(code);
     scope.define_global("root", Rc::new(Meta::Node(ast::Node::new("root"))));
     scope.set_args(args);
     let mut interpreter = interp::Interpreter::with_scope(scope).with_eval_mode(EvalMode::CONFIG);
-    interpreter.interpret(code)?;
+    interpreter.interpret(&code)?;
     Ok(interpreter)
 }
 
 pub fn eval_config(code: &str, args: &Obj) -> AutoResult<interp::Interpreter> {
+    // Preprocess macros (e.g., widget → type ... is Widget)
+    let code = crate::macro_::preprocess(code);
     let mut scope = Universe::new();
     scope.define_global("root", Rc::new(Meta::Node(ast::Node::new("root"))));
     scope.set_args(args);
     let mut interpreter = interp::Interpreter::with_scope(scope).with_eval_mode(EvalMode::CONFIG);
-    interpreter.interpret(code)?;
+    interpreter.interpret(&code)?;
     Ok(interpreter)
 }
 

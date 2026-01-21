@@ -1,0 +1,17 @@
+// App type - application entry point
+//
+// Apps are top-level widgets that represent entire applications.
+// They extend Widget with additional application-level metadata.
+
+type App is Widget {
+    // Application title (for window title, etc.)
+    title str
+
+    // Entry point for running the application
+    #[vm]
+    fn run() {
+        // Default implementation: render the view
+        // This will be overridden by concrete app implementations
+        view()
+    }
+}
