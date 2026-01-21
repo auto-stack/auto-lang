@@ -1,0 +1,12 @@
+- [x] Refactor Command System
+    - [x] Design Plugin/Command Architecture <!-- id: 0 -->
+    - [x] Implement `Command` trait and `Signature` <!-- id: 1 -->
+    - [x] Implement `CommandRegistry` to manage/lookup commands
+    - [x] Refactor Built-in Commands <!-- id: 2 -->
+        - [x] Refactor `ls`
+        - [x] Refactor `cd`
+        - [x] Refactor `pwd`
+        - [x] Refactor `echo`
+        - [x] Refactor `help` to auto-generate from Signatures
+    - [x] Integrate with Shell (Replaced `execute_builtin` logic) <!-- id: 3 -->
+    - [x] Verify (Compilation passed) <!-- id: 4 -->

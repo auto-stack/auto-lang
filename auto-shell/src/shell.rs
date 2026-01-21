@@ -11,6 +11,7 @@ use auto_val::Value;
 pub mod vars;
 
 use crate::bookmarks::BookmarkManager;
+use crate::cmd::{commands, CommandRegistry};
 use vars::ShellVars;
 
 /// Shell state and context
@@ -19,7 +20,9 @@ pub struct Shell {
     vars: ShellVars,
     interpreter: Interpreter, // Persistent AutoLang interpreter
     bookmarks: BookmarkManager,
+
     previous_dir: Option<PathBuf>,
+    registry: CommandRegistry,
 }
 
 impl Shell {
@@ -34,7 +37,17 @@ impl Shell {
             vars: ShellVars::new(),
             interpreter,
             bookmarks: BookmarkManager::new(),
+
             previous_dir: None,
+            registry: {
+                let mut neg = CommandRegistry::new();
+                neg.register(Box::new(commands::ls::LsCommand));
+                neg.register(Box::new(commands::cd::CdCommand));
+                neg.register(Box::new(commands::pwd::PwdCommand));
+                neg.register(Box::new(commands::echo::EchoCommand));
+                neg.register(Box::new(commands::help::HelpCommand));
+                neg
+            },
         }
     }
 
@@ -54,17 +67,10 @@ impl Shell {
             return self.execute_pipeline_with_auto(&commands);
         }
 
-        // Handle cd specially to update shell state
+        // Create cmd parts
         let parts: Vec<&str> = expanded.split_whitespace().collect();
-        if !parts.is_empty() && parts[0] == "cd" {
-            let path = parts.get(1).unwrap_or(&"~");
-            match self.cd(path) {
-                Ok(()) => Ok(None), // cd produces no output
-                Err(e) => Err(e),
-            }
-        } else if !parts.is_empty()
-            && (parts[0] == "set" || parts[0] == "export" || parts[0] == "unset")
-        {
+
+        if !parts.is_empty() && (parts[0] == "set" || parts[0] == "export" || parts[0] == "unset") {
             // Handle variable management commands
             self.execute_var_command(&parts)
         } else if !parts.is_empty() && parts[0] == "use" {
@@ -97,6 +103,11 @@ impl Shell {
 
         let cmd_name = &parts[0];
         let args = &parts[1..];
+
+        // Check registry first
+        if let Some(cmd) = self.registry.get(cmd_name) {
+            return cmd.run(args, None, self);
+        }
 
         // Check for built-in commands first
         if let Some(output) = builtin::execute_builtin(input, &self.current_dir)? {
@@ -228,6 +239,11 @@ impl Shell {
         } else {
             miette::bail!("cd: {}: Not a directory", path);
         }
+    }
+
+    /// Get the command registry
+    pub fn registry(&self) -> &CommandRegistry {
+        &self.registry
     }
 
     /// Check if input looks like an AutoLang expression
