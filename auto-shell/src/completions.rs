@@ -2,10 +2,12 @@
 //!
 //! Provides command, file, and shell variable completion.
 
+pub mod auto;
 pub mod command;
 pub mod file;
-pub mod auto;
 pub mod reedline;
+
+use crate::bookmarks::BookmarkManager;
 
 /// Completion suggestion
 #[derive(Debug, Clone, PartialEq)]
@@ -56,6 +58,58 @@ pub fn get_completions(input: &str) -> Vec<Completion> {
 
     // If input ends with space or has multiple words, do file completion
     if ends_with_space || parts.len() > 1 {
+        // Special handling for 'b' command
+        if parts[0] == "b" {
+            let is_arg1 =
+                (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space);
+            let is_del_arg = parts.len() >= 2
+                && parts[1] == "del"
+                && ((parts.len() == 2 && ends_with_space)
+                    || (parts.len() == 3 && !ends_with_space));
+
+            if is_arg1 {
+                let prefix = if parts.len() == 2 { parts[1] } else { "" };
+                let mut comps = Vec::new();
+
+                // Subcommands
+                for sub in ["add", "del", "list"] {
+                    if sub.starts_with(prefix) {
+                        comps.push(Completion {
+                            display: sub.to_string(),
+                            replacement: sub.to_string(),
+                        });
+                    }
+                }
+
+                // Bookmarks
+                let manager = BookmarkManager::new();
+                for (name, _) in manager.list() {
+                    if name.starts_with(prefix) {
+                        comps.push(Completion {
+                            display: name.clone(),
+                            replacement: name.clone(),
+                        });
+                    }
+                }
+                return comps;
+            }
+
+            if is_del_arg {
+                let prefix = if parts.len() == 3 { parts[2] } else { "" };
+                let manager = BookmarkManager::new();
+                let mut comps = Vec::new();
+                for (name, _) in manager.list() {
+                    if name.starts_with(prefix) {
+                        comps.push(Completion {
+                            display: name.clone(),
+                            replacement: name.clone(),
+                        });
+                    }
+                }
+                return comps;
+            }
+        }
+
         // Multiple words: check if last word starts with -
         if let Some(last) = parts.last() {
             if last.starts_with('-') {

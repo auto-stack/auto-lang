@@ -22,32 +22,35 @@ pub fn execute_builtin(input: &str, current_dir: &Path) -> Result<Option<String>
         "clear" => Ok(Some(clear_command())),
 
         // File system commands
-        "ls" => fs::ls_command(parse_path_arg(&parts, 1), current_dir)
-            .map(Some),
+        "ls" | "l" => fs::ls_command(parse_path_arg(&parts, 1), current_dir).map(Some),
         // Note: cd is handled by Shell::execute to update state
         "mkdir" => {
             let parents = parts.iter().any(|p| p == "-p" || p == "--parents");
-            fs::mkdir_command(parse_path_arg(&parts, 1), current_dir, parents)
-                .map(Some)
+            fs::mkdir_command(parse_path_arg(&parts, 1), current_dir, parents).map(Some)
         }
         "rm" => {
-            let recursive = parts.iter().any(|p| p == "-r" || p == "-R" || p == "--recursive");
-            fs::rm_command(parse_path_arg(&parts, 1), current_dir, recursive)
-                .map(Some)
+            let recursive = parts
+                .iter()
+                .any(|p| p == "-r" || p == "-R" || p == "--recursive");
+            fs::rm_command(parse_path_arg(&parts, 1), current_dir, recursive).map(Some)
         }
         "mv" => fs::mv_command(
             parse_path_arg(&parts, 1),
             parse_path_arg(&parts, 2),
             current_dir,
-        ).map(Some),
+        )
+        .map(Some),
         "cp" => {
-            let recursive = parts.iter().any(|p| p == "-r" || p == "-R" || p == "--recursive");
+            let recursive = parts
+                .iter()
+                .any(|p| p == "-r" || p == "-R" || p == "--recursive");
             fs::cp_command(
                 parse_path_arg(&parts, 1),
                 parse_path_arg(&parts, 2),
                 current_dir,
                 recursive,
-            ).map(Some)
+            )
+            .map(Some)
         }
 
         // Data manipulation commands
@@ -158,10 +161,7 @@ pub fn execute_builtin_with_input(
 
 /// Parse a path argument from parts, handling empty/missing cases
 fn parse_path_arg(parts: &[String], index: usize) -> &Path {
-    parts.get(index)
-        .map(|s| s.as_str())
-        .unwrap_or(".")
-        .as_ref()
+    parts.get(index).map(|s| s.as_str()).unwrap_or(".").as_ref()
 }
 
 /// Parse a number argument (e.g., -n 10)
@@ -182,7 +182,15 @@ fn parse_number_arg(parts: &[String], flag: &str) -> Option<usize> {
 
 /// Print working directory
 fn pwd_command(current_dir: &Path) -> String {
-    current_dir.display().to_string()
+    let mut path_str = current_dir.display().to_string();
+
+    // 1. Remove UNC prefix on Windows
+    if path_str.starts_with(r"\\?\") {
+        path_str = path_str[4..].to_string();
+    }
+
+    // 2. Unify separators to forward slash
+    path_str.replace('\\', "/")
 }
 
 /// Echo arguments
@@ -257,7 +265,8 @@ AutoLang expressions:
   1 + 2           Evaluate arithmetic
   let x = 1       Define variables
   fn f() {}       Define functions
-"#.to_string()
+"#
+    .to_string()
 }
 
 /// Generate test lines (for pipeline testing)
@@ -334,9 +343,9 @@ mod tests {
         // Just check that it's recognized as a built-in (returns Some)
         // but may return an error
         match execute_builtin("ls", path) {
-            Ok(Some(_)) => {}, // Good - it executed
+            Ok(Some(_)) => {} // Good - it executed
             Ok(None) => panic!("ls should be recognized as built-in"),
-            Err(_) => {}, // Also ok - failed to execute but was recognized
+            Err(_) => {} // Also ok - failed to execute but was recognized
         }
 
         // Non-built-in commands should return None

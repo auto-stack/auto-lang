@@ -1,7 +1,7 @@
 use miette::{IntoDiagnostic, Result};
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 use crate::parser::pipeline::parse_pipeline;
 use auto_lang::interp::Interpreter;
@@ -10,13 +10,16 @@ use auto_val::Value;
 
 pub mod vars;
 
+use crate::bookmarks::BookmarkManager;
 use vars::ShellVars;
 
 /// Shell state and context
 pub struct Shell {
     current_dir: PathBuf,
     vars: ShellVars,
-    interpreter: Interpreter,  // Persistent AutoLang interpreter
+    interpreter: Interpreter, // Persistent AutoLang interpreter
+    bookmarks: BookmarkManager,
+    previous_dir: Option<PathBuf>,
 }
 
 impl Shell {
@@ -30,6 +33,8 @@ impl Shell {
             current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
             vars: ShellVars::new(),
             interpreter,
+            bookmarks: BookmarkManager::new(),
+            previous_dir: None,
         }
     }
 
@@ -57,7 +62,9 @@ impl Shell {
                 Ok(()) => Ok(None), // cd produces no output
                 Err(e) => Err(e),
             }
-        } else if !parts.is_empty() && (parts[0] == "set" || parts[0] == "export" || parts[0] == "unset") {
+        } else if !parts.is_empty()
+            && (parts[0] == "set" || parts[0] == "export" || parts[0] == "unset")
+        {
             // Handle variable management commands
             self.execute_var_command(&parts)
         } else if !parts.is_empty() && parts[0] == "use" {
@@ -66,6 +73,12 @@ impl Shell {
                 miette::bail!("use: missing module name");
             }
             self.import_module(parts[1])
+        } else if !parts.is_empty() && (parts[0] == "up" || parts[0] == "u") {
+            // Handle up (u) command
+            self.execute_up_command(&parts)
+        } else if !parts.is_empty() && parts[0] == "b" {
+            // Handle b (bookmark) command
+            self.execute_bookmark_command(&parts)
         } else {
             // Otherwise, execute as single shell command
             self.execute_single_command(&expanded)
@@ -74,7 +87,7 @@ impl Shell {
 
     /// Execute a single command (built-in, Auto function, or external)
     fn execute_single_command(&mut self, input: &str) -> Result<Option<String>> {
-        use crate::cmd::{builtin, external, auto};
+        use crate::cmd::{auto, builtin, external};
         use crate::parser::quote::parse_args;
 
         let parts = parse_args(input);
@@ -101,7 +114,7 @@ impl Shell {
 
     /// Execute a pipeline with Auto function support
     fn execute_pipeline_with_auto(&mut self, commands: &[String]) -> Result<Option<String>> {
-        use crate::cmd::{builtin, external, auto};
+        use crate::cmd::{auto, builtin, external};
         use crate::data::ShellValue;
         use crate::parser::quote::parse_args;
 
@@ -137,7 +150,9 @@ impl Shell {
             let output = if let Some(input) = &input_str {
                 // With pipeline input
                 // Check built-in commands first
-                if let Some(output) = builtin::execute_builtin_with_input(cmd, &self.current_dir, Some(input))? {
+                if let Some(output) =
+                    builtin::execute_builtin_with_input(cmd, &self.current_dir, Some(input))?
+                {
                     Some(output)
                 }
                 // Check if it's an Auto function
@@ -183,7 +198,15 @@ impl Shell {
 
     /// Change the current directory
     pub fn cd(&mut self, path: &str) -> Result<()> {
-        let new_dir = if path.starts_with('/') {
+        let new_dir = if path == "-" {
+            // Handle cd - (swap to previous dir)
+            if let Some(prev) = &self.previous_dir {
+                println!("{}", prev.display());
+                prev.clone()
+            } else {
+                miette::bail!("cd: oldpwd not set");
+            }
+        } else if path.starts_with('/') {
             PathBuf::from(path)
         } else if path.starts_with('~') {
             // Expand ~ to home directory
@@ -193,12 +216,14 @@ impl Shell {
         };
 
         // Try to canonicalize the path
-        let canonical = new_dir
-            .canonicalize()
-            .into_diagnostic()?;
+        let canonical = new_dir.canonicalize().into_diagnostic()?;
 
         if canonical.is_dir() {
-            self.current_dir = canonical;
+            // Update internal state
+            self.previous_dir = Some(self.current_dir.clone());
+            self.current_dir = canonical.clone();
+            // Update OS state (so Prompt and child processes see it)
+            std::env::set_current_dir(&canonical).into_diagnostic()?;
             Ok(())
         } else {
             miette::bail!("cd: {}: Not a directory", path);
@@ -227,7 +252,8 @@ impl Shell {
             || first_char == '['
             || first_char == '{'
             || first_char.is_ascii_digit()
-            || first_char == '-' || first_char == '+'
+            || first_char == '-'
+            || first_char == '+'
             || first_char == '('
             || self.is_function_call(trimmed)
     }
@@ -339,15 +365,16 @@ impl Shell {
 
     /// Check if a name is a registered Auto function
     pub fn has_auto_function(&self, name: &str) -> bool {
-        self.interpreter.scope.borrow()
+        self.interpreter
+            .scope
+            .borrow()
             .lookup_val_id(name)
             .is_some()
     }
 
     /// Get Auto function by name
     pub fn get_auto_function(&self, name: &str) -> Option<Value> {
-        self.interpreter.scope.borrow()
-            .lookup_val(name)
+        self.interpreter.scope.borrow().lookup_val(name)
     }
 
     /// Execute Auto function with arguments
@@ -446,6 +473,91 @@ impl Shell {
             _ => Ok(None),
         }
     }
+
+    /// Execute 'u' (up) command
+    fn execute_up_command(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        let n = if parts.len() > 1 {
+            parts[1].parse::<usize>().unwrap_or(1)
+        } else {
+            1
+        };
+
+        let mut target = String::new();
+        for i in 0..n {
+            if i > 0 {
+                target.push('/');
+            }
+            target.push_str("..");
+        }
+
+        match self.cd(&target) {
+            Ok(()) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Execute 'b' (bookmark) command
+    fn execute_bookmark_command(&mut self, parts: &[&str]) -> Result<Option<String>> {
+        use miette::IntoDiagnostic;
+
+        if parts.len() < 2 {
+            // List bookmarks
+            return self.list_bookmarks();
+        }
+
+        match parts[1] {
+            "add" => {
+                let name = if parts.len() >= 3 {
+                    parts[2].to_string()
+                } else {
+                    // Default to current dir name if no name provided? User said "b add <name>"
+                    miette::bail!("b add: missing bookmark name");
+                };
+
+                let path = self.pwd();
+                self.bookmarks.add(name, path).into_diagnostic()?;
+                Ok(None)
+            }
+            "del" => {
+                if parts.len() < 3 {
+                    miette::bail!("b del: missing bookmark name");
+                }
+                let name = parts[2];
+                if self.bookmarks.del(name).into_diagnostic()? {
+                    Ok(Some(format!("Deleted bookmark '{}'", name)))
+                } else {
+                    miette::bail!("Bookmark '{}' not found", name);
+                }
+            }
+            "list" => self.list_bookmarks(),
+            name => {
+                // Jump to bookmark
+                if let Some(path) = self.bookmarks.get(name) {
+                    let path_str = path.to_string_lossy().to_string();
+                    match self.cd(&path_str) {
+                        Ok(()) => Ok(None),
+                        Err(e) => Err(e),
+                    }
+                } else {
+                    miette::bail!("Bookmark '{}' not found", name);
+                }
+            }
+        }
+    }
+
+    fn list_bookmarks(&self) -> Result<Option<String>> {
+        let bookmarks = self.bookmarks.list();
+        if bookmarks.is_empty() {
+            return Ok(Some("No bookmarks found.".to_string()));
+        }
+
+        let mut output = String::new();
+        output.push_str("Bookmarks:\n");
+        for (name, path) in bookmarks {
+            output.push_str(&format!("  {:<15} {}\n", name, path.display()));
+        }
+        Ok(Some(output))
+    }
 }
 
 #[cfg(test)]
@@ -479,7 +591,9 @@ mod tests {
     #[test]
     fn test_variable_expansion_simple() {
         let mut shell = Shell::new();
-        shell.vars.set_local("name".to_string(), "world".to_string());
+        shell
+            .vars
+            .set_local("name".to_string(), "world".to_string());
 
         let expanded = shell.expand_variables("echo $name");
         assert_eq!(expanded, "echo world");
@@ -488,7 +602,9 @@ mod tests {
     #[test]
     fn test_variable_expansion_braced() {
         let mut shell = Shell::new();
-        shell.vars.set_local("name".to_string(), "world".to_string());
+        shell
+            .vars
+            .set_local("name".to_string(), "world".to_string());
 
         let expanded = shell.expand_variables("echo ${name}");
         assert_eq!(expanded, "echo world");
@@ -507,7 +623,9 @@ mod tests {
     #[test]
     fn test_variable_expansion_in_middle() {
         let mut shell = Shell::new();
-        shell.vars.set_local("name".to_string(), "world".to_string());
+        shell
+            .vars
+            .set_local("name".to_string(), "world".to_string());
 
         let expanded = shell.expand_variables("hello $name!");
         assert_eq!(expanded, "hello world!");
@@ -548,7 +666,9 @@ mod tests {
     #[test]
     fn test_unset_local() {
         let mut shell = Shell::new();
-        shell.vars.set_local("name".to_string(), "value".to_string());
+        shell
+            .vars
+            .set_local("name".to_string(), "value".to_string());
         assert!(shell.vars.get_local("name").is_some());
 
         shell.execute("unset name").unwrap();
@@ -558,7 +678,9 @@ mod tests {
     #[test]
     fn test_variable_expansion_with_pipeline() {
         let mut shell = Shell::new();
-        shell.vars.set_local("pattern".to_string(), "hello".to_string());
+        shell
+            .vars
+            .set_local("pattern".to_string(), "hello".to_string());
 
         let input = "genlines hello world | grep $pattern";
         let expanded = shell.expand_variables(input);

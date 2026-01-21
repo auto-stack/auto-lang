@@ -1,7 +1,8 @@
 use miette::Result;
 use reedline::{
-    default_emacs_keybindings, ColumnarMenu, MenuBuilder, DefaultPrompt,
-    Emacs, FileBackedHistory, KeyCode, KeyModifiers, Reedline, ReedlineEvent, ReedlineMenu, Signal,
+    default_emacs_keybindings, ColumnarMenu, DefaultPrompt, EditCommand, Emacs, FileBackedHistory,
+    KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal,
+    TraversalDirection,
 };
 use std::path::PathBuf;
 
@@ -11,6 +12,48 @@ use crate::{completions::reedline::ShellCompleter, shell::Shell};
 pub struct Repl {
     shell: Shell,
     line_editor: Reedline,
+}
+
+/// Custom prompt to handle consistent path formatting
+pub struct ShellPrompt;
+
+impl reedline::Prompt for ShellPrompt {
+    fn render_prompt_left(&self) -> std::borrow::Cow<str> {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let mut path_str = cwd.display().to_string();
+
+        // 1. Remove UNC prefix on Windows
+        if path_str.starts_with(r"\\?\") {
+            path_str = path_str[4..].to_string();
+        }
+
+        // 2. Unify separators to forward slash
+        path_str = path_str.replace('\\', "/");
+
+        std::borrow::Cow::Owned(format!("{}〉", path_str))
+    }
+
+    fn render_prompt_right(&self) -> std::borrow::Cow<str> {
+        std::borrow::Cow::Borrowed("")
+    }
+
+    fn render_prompt_indicator(
+        &self,
+        _prompt_mode: reedline::PromptEditMode,
+    ) -> std::borrow::Cow<str> {
+        std::borrow::Cow::Borrowed("")
+    }
+
+    fn render_prompt_multiline_indicator(&self) -> std::borrow::Cow<str> {
+        std::borrow::Cow::Borrowed("..> ")
+    }
+
+    fn render_prompt_history_search_indicator(
+        &self,
+        history_search: reedline::PromptHistorySearch,
+    ) -> std::borrow::Cow<str> {
+        std::borrow::Cow::Owned(format!("({}): ", history_search.term))
+    }
 }
 
 impl Repl {
@@ -27,25 +70,28 @@ impl Repl {
 
         // Create completer for Tab completion
         let completer = Box::new(ShellCompleter::new());
-        // // Test with DefaultCompleter
-        // let commands = vec![
-        //     "test".into(),
-        //     "hello world".into(),
-        //     "hello world reedline".into(),
-        //     "this is the reedline crate".into(),
-        // ];
-        // let completer = Box::new(DefaultCompleter::new_with_wordlen(commands.clone(), 2));
 
         // Use the interactive menu to select options from the completer
-        let completion_menu = Box::new(ColumnarMenu::default().with_name("completion_menu"));
+        let completion_menu = Box::new(
+            ColumnarMenu::default()
+                .with_name("completion_menu")
+                .with_columns(4)
+                .with_column_width(None)
+                .with_column_padding(2)
+                .with_traversal_direction(TraversalDirection::Vertical),
+        );
         // Set up the required keybindings
         let mut keybindings = default_emacs_keybindings();
         keybindings.add_binding(
             KeyModifiers::NONE,
             KeyCode::Tab,
-            ReedlineEvent::UntilFound(vec![
-                ReedlineEvent::Menu("completion_menu".to_string()),
-                ReedlineEvent::MenuNext,
+            ReedlineEvent::Multiple(vec![
+                ReedlineEvent::UntilFound(vec![
+                    ReedlineEvent::Menu("completion_menu".to_string()),
+                    ReedlineEvent::MenuNext,
+                    ReedlineEvent::Edit(vec![EditCommand::Complete]),
+                ]),
+                ReedlineEvent::Repaint,
             ]),
         );
 
@@ -55,6 +101,7 @@ impl Repl {
             .with_history(history)
             .with_completer(completer)
             .with_menu(ReedlineMenu::EngineCompleter(completion_menu))
+            .with_partial_completions(true)
             .with_edit_mode(edit_mode);
 
         Ok(Self { shell, line_editor })
@@ -86,29 +133,7 @@ impl Repl {
 
     /// Run the REPL loop
     pub fn run(&mut self) -> Result<()> {
-        // let prompt = DefaultPrompt::new(DefaultPromptSegment::Empty, DefaultPromptSegment::Empty);
-
-        // // Use the interactive menu to select options from the completer
-        // let completion_menu = Box::new(ColumnarMenu::default().with_name("completion_menu"));
-        // // Set up the required keybindings
-        // let mut keybindings = default_emacs_keybindings();
-        // keybindings.add_binding(
-        //     KeyModifiers::NONE,
-        //     KeyCode::Tab,
-        //     ReedlineEvent::UntilFound(vec![
-        //         ReedlineEvent::Menu("completion_menu".to_string()),
-        //         ReedlineEvent::MenuNext,
-        //     ]),
-        // );
-
-        // let edit_mode = Box::new(Emacs::new(keybindings));
-
-        // let mut line_editor = Reedline::create()
-        //     .with_completer(completer)
-        //     .with_menu(ReedlineMenu::EngineCompleter(completion_menu))
-        //     .with_edit_mode(edit_mode);
-
-        let prompt = DefaultPrompt::default();
+        let prompt = ShellPrompt;
 
         loop {
             // Read input
@@ -139,7 +164,7 @@ impl Repl {
                     }
 
                     // Handle exit command
-                    if line == "exit" || line == "quit" {
+                    if line == "exit" || line == "quit" || line == "q" {
                         println!("Goodbye!");
                         break;
                     }

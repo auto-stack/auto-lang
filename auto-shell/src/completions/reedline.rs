@@ -2,8 +2,8 @@
 //!
 //! Provides integration between auto-shell's completion system and reedline's Tab completion.
 
-use reedline::{Completer, Suggestion};
 use crate::completions::Completion;
+use reedline::{Completer, Suggestion};
 
 /// Reedline completer for auto-shell
 pub struct ShellCompleter;
@@ -15,9 +15,19 @@ impl ShellCompleter {
 
     /// Convert our Completion to reedline Suggestion
     fn completion_to_suggestion(completion: Completion) -> Suggestion {
+        let value = completion.replacement.clone();
+        let description = completion.display.clone();
+
+        // Only show description if it differs from the value
+        let description = if value == description {
+            None
+        } else {
+            Some(description)
+        };
+
         Suggestion {
-            value: completion.replacement.clone(),
-            description: Some(completion.display.clone()),
+            value,
+            description,
             extra: None,
             span: reedline::Span {
                 start: 0,
