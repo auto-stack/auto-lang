@@ -6,3 +6,4 @@ pub mod ls;
 pub mod pwd;
 pub mod r#where;
 pub mod select;
+pub mod wc;

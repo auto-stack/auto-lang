@@ -42,6 +42,7 @@ impl Shell {
             reg.register(Box::new(commands::get::GetCommand));
             reg.register(Box::new(commands::r#where::WhereCommand));
             reg.register(Box::new(commands::select::SelectCommand));
+            reg.register(Box::new(commands::wc::WcCommand));
             reg
         };
 
