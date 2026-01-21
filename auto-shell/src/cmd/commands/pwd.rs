@@ -15,7 +15,7 @@ impl Command for PwdCommand {
 
     fn run(
         &self,
-        _args: &[String],
+        _args: &crate::cmd::parser::ParsedArgs,
         _input: Option<&str>,
         shell: &mut Shell,
     ) -> Result<Option<String>> {

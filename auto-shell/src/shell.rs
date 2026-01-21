@@ -106,7 +106,11 @@ impl Shell {
 
         // Check registry first
         if let Some(cmd) = self.registry.get(cmd_name) {
-            return cmd.run(args, None, self);
+            let signature = cmd.signature();
+            match crate::cmd::parser::parse_args(&signature, args) {
+                Ok(parsed_args) => return cmd.run(&parsed_args, None, self),
+                Err(e) => return Err(e),
+            }
         }
 
         // Check for built-in commands first
@@ -158,7 +162,15 @@ impl Shell {
             });
 
             // Execute the command
-            let output = if let Some(input) = &input_str {
+            let output = if let Some(cmd) = self.registry.get(cmd_name) {
+                let signature = cmd.signature();
+                // TODO: Handle pipeline input in Command::run input arg
+                // Currently passing None as input, need to pass input_str
+                match crate::cmd::parser::parse_args(&signature, args) {
+                    Ok(parsed_args) => cmd.run(&parsed_args, input_str.as_deref(), self)?,
+                    Err(e) => return Err(e),
+                }
+            } else if let Some(input) = &input_str {
                 // With pipeline input
                 // Check built-in commands first
                 if let Some(output) =

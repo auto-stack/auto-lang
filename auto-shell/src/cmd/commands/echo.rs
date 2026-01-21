@@ -15,10 +15,10 @@ impl Command for EchoCommand {
 
     fn run(
         &self,
-        args: &[String],
+        args: &crate::cmd::parser::ParsedArgs,
         _input: Option<&str>,
         _shell: &mut Shell,
     ) -> Result<Option<String>> {
-        Ok(Some(args.join(" ")))
+        Ok(Some(args.positionals.join(" ")))
     }
 }

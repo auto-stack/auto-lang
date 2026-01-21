@@ -15,12 +15,11 @@ impl Command for CdCommand {
 
     fn run(
         &self,
-        args: &[String],
+        args: &crate::cmd::parser::ParsedArgs,
         _input: Option<&str>,
         shell: &mut Shell,
     ) -> Result<Option<String>> {
-        let path = args.get(0).map(|s| s.as_str()).unwrap_or("~");
-        shell.cd(path)?;
-        Ok(None)
+        let path = args.positionals.get(0).map(|s| s.as_str()).unwrap_or("~");
+        shell.cd(path).map(|_| None)
     }
 }

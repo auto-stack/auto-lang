@@ -16,13 +16,13 @@ impl Command for HelpCommand {
 
     fn run(
         &self,
-        args: &[String],
+        args: &crate::cmd::parser::ParsedArgs,
         _input: Option<&str>,
         shell: &mut Shell,
     ) -> Result<Option<String>> {
         let registry = shell.registry();
 
-        if let Some(cmd_name) = args.get(0) {
+        if let Some(cmd_name) = args.positionals.get(0) {
             // Show help for specific command
             if let Some(cmd) = registry.get(cmd_name) {
                 let sig = cmd.signature();

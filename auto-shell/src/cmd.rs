@@ -11,6 +11,7 @@ pub mod commands;
 pub mod data;
 pub mod external;
 pub mod fs;
+pub mod parser;
 pub mod pipeline;
 pub mod registry;
 
@@ -87,7 +88,7 @@ pub trait Command {
     /// Execute the command
     fn run(
         &self,
-        args: &[String],
+        args: &crate::cmd::parser::ParsedArgs,
         input: Option<&str>,
         shell: &mut Shell,
     ) -> Result<Option<String>>;

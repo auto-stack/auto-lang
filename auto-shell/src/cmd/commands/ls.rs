@@ -16,11 +16,11 @@ impl Command for LsCommand {
 
     fn run(
         &self,
-        args: &[String],
+        args: &crate::cmd::parser::ParsedArgs,
         _input: Option<&str>,
         shell: &mut Shell,
     ) -> Result<Option<String>> {
-        let path_arg = args.get(0).map(|s| s.as_str()).unwrap_or(".");
+        let path_arg = args.positionals.get(0).map(|s| s.as_str()).unwrap_or(".");
         let path = Path::new(path_arg);
 
         let output = fs::ls_command(path, &shell.pwd())?;
