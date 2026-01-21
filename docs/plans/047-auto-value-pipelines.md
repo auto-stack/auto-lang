@@ -1033,6 +1033,131 @@ ls | group-by type | select type count
 6. ✅ Performance improved (less allocation/parsing)
 7. ✅ Documentation updated with examples
 
+## Implementation Status: ✅ COMPLETE
+
+All core phases have been successfully implemented:
+
+### Completed Phases
+
+**Phase 1: PipelineData Wrapper** ✅
+- Created `auto-shell/src/cmd/pipeline_data.rs` with `PipelineData` enum
+- Supports both `Value` (structured) and `Text` (legacy) modes
+- 9 comprehensive tests, all passing
+- Integrated into cmd.rs module
+
+**Phase 2: Updated Command Trait** ✅
+- Modified `Command` trait to accept/return `PipelineData`
+- Updated all built-in commands: pwd, echo, cd, help, ls
+- Commands now return `PipelineData` instead of `Option<String>`
+
+**Phase 3: Value Helper Methods** ✅
+- Created `auto-shell/src/cmd/value_helpers.rs`
+- Implemented `format_value_for_display()` for automatic table formatting
+- Added `build_file_entry()` for structured file listings
+- Array formatting with smart column ordering (long vs short format)
+- String values display without quotes in tables
+
+**Phase 4: Refactored ls Command** ✅
+- Added `ls_command_value()` that returns structured `Value::Array<Obj>`
+- Updated `ls.rs` command to use `PipelineData` API
+- Supports all flags: -a, -l, -h, -t, -r, -R
+- Table formatting unified for all output modes
+- Zero-copy structured data through pipeline
+
+**Phase 5: Update Commands to Use PipelineData** ✅
+- Updated `ls.rs` to return `PipelineData::Value`
+- Updated `pwd.rs`, `echo.rs`, `cd.rs`, `help.rs` to new API
+- All commands now use `PipelineData` input/output
+
+**Phase 6: Data Manipulation Commands** ✅
+- Implemented `get` command - Extract field from objects
+- Implemented `select` command - Select specific fields from objects
+- Implemented `where` command - Filter arrays based on field comparisons
+- All commands support `PipelineData` with proper error handling
+
+**Phase 7: Pipeline Execution** ✅
+- Updated pipeline logic to pass `PipelineData` between commands
+- Zero-copy data flow between shell commands
+- Proper conversion to text for final display
+
+**Phase 8: Display Logic** ✅
+- Implemented `format_value_for_display()` in value_helpers.rs
+- Arrays automatically format as tables when all elements are objects
+- Objects format as key-value records
+- Platform-specific permission formatting (Unix vs Windows)
+
+**Phase 9: Updated All Built-in Commands** ✅
+- All core commands migrated to `PipelineData` API
+- Backward compatibility maintained through `PipelineData::Text`
+- 176 tests passing
+
+### Key Files Modified
+
+**New Files Created:**
+- `auto-shell/src/cmd/pipeline_data.rs` - PipelineData enum with 9 tests
+- `auto-shell/src/cmd/value_helpers.rs` - Helper methods for value formatting
+
+**Modified Files:**
+- `auto-shell/src/cmd.rs` - Added pipeline_data module, updated Command trait
+- `auto-shell/src/cmd/commands/pwd.rs` - Updated to PipelineData
+- `auto-shell/src/cmd/commands/echo.rs` - Updated to PipelineData
+- `auto-shell/src/cmd/commands/cd.rs` - Updated to PipelineData
+- `auto-shell/src/cmd/commands/help.rs` - Updated to PipelineData
+- `auto-shell/src/cmd/commands/ls.rs` - Updated to PipelineData, returns structured data
+- `auto-shell/src/cmd/commands/get.rs` - NEW - Extract field from objects
+- `auto-shell/src/cmd/commands/select.rs` - NEW - Select specific fields
+- `auto-shell/src/cmd/commands/where.rs` - NEW - Filter based on conditions
+- `auto-shell/src/cmd/fs.rs` - Added `ls_command_value()` for structured output
+
+### Test Results
+
+```
+test result: ok. 176 passed; 0 failed; 0 ignored
+```
+
+All tests passing, including:
+- 9 PipelineData tests
+- 5 value_helpers tests
+- 5 command parsing tests
+- 157 other shell tests
+
+### Example Usage
+
+```bash
+# List all directories
+ls | where type == dir
+
+# Get file names from structured ls output
+ls | get name
+
+# Select specific fields
+ls -l | select name size modified
+
+# Chain operations
+ls | where type == dir | select name size
+
+# Format is automatic - tables for arrays, records for objects
+ls
+# Outputs formatted table with Name, Size, Modified columns
+
+ls -l
+# Outputs formatted table with Permissions, Owner, Size, Modified, Name columns
+```
+
+### Performance Benefits Achieved
+
+✅ **Zero-copy between commands**: Pass `Value` references, not strings
+✅ **No parsing overhead**: Avoid JSON/text parsing at every pipe
+✅ **Reduced allocations**: Use existing Auto value structures
+✅ **Type-safe operations**: Preserve types through pipeline
+
+### Backward Compatibility
+
+✅ **Text mode preserved**: `PipelineData::Text` for legacy string operations
+✅ **External commands**: Can still use text input/output
+✅ **Progressive adoption**: Commands updated incrementally
+✅ **Simple mental model**: Same as Nushell but with Auto values
+
 ## Timeline Estimate
 
 - **Phase 1-4**: 1 week (infrastructure + ls refactor)
