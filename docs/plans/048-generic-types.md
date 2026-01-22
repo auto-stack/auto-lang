@@ -1,8 +1,9 @@
 # Plan: Implement Generic Type Definitions
 
-**Status:** 📋 Planned
+**Status:** 🚧 In Progress - Phase 4 Complete (Type Substitution), Testing Issues Remain
 **Created:** 2025-01-22
 **Priority:** HIGH - Core language feature for user-defined generic types
+**Last Updated:** 2025-01-22
 
 ## Overview
 
@@ -473,34 +474,41 @@ mv *.wrong.* *.expected.*
 
 ## Implementation Steps Summary
 
-### Step 1: AST Extensions
-- [ ] Add `TypeParam` struct
-- [ ] Add `GenericInstance` struct
-- [ ] Extend `TypeDecl` with `type_params`
-- [ ] Extend `Tag` with `type_params`
-- [ ] Extend `Type` enum with `GenericInstance`
+### Step 1: AST Extensions ✅ COMPLETE
+- [x] Add `TypeParam` struct (line 109 in types.rs)
+- [x] Add `GenericInstance` struct (line 127 in types.rs)
+- [x] Extend `TypeDecl` with `type_params` (line 286 in types.rs)
+- [x] Extend `Tag` with `type_params` (line 9 in tag.rs)
+- [x] Extend `Type` enum with `GenericInstance` (line 30 in types.rs)
 
-### Step 2: Parser Implementation
-- [ ] Add `parse_type_param()`
-- [ ] Add `parse_generic_instance()`
-- [ ] Modify `parse_type()` to call `parse_ident_or_generic_type()`
-- [ ] Add `parse_ident_or_generic_type()`
-- [ ] Modify `parse_tag()` to parse type parameters
-- [ ] Modify `type_decl_stmt_with_annotation()` to parse type parameters
+### Step 2: Parser Implementation ✅ COMPLETE
+- [x] Add `parse_type_param()` (line 4285 in parser.rs)
+- [x] Add `parse_generic_instance()` (line 4362 in parser.rs)
+- [x] Modify `parse_type()` to call `parse_ident_or_generic_type()` (line 4424)
+- [x] Add `parse_ident_or_generic_type()` (line 4304)
+- [x] Modify `parse_tag()` to parse type parameters (line 4023)
+- [x] Modify `type_decl_stmt_with_annotation()` to parse type parameters
 
-### Step 3: Transpiler Updates
-- [ ] C transpiler: Update `c_type_name()` for generic instances
-- [ ] Rust transpiler: Update `rust_type_name()` for generic instances
-- [ ] Python transpiler: Update `python_type_name()` for generic instances
+### Step 3: Transpiler Updates ✅ COMPLETE
+- [x] C transpiler: Update `c_type_name()` for generic instances (line 1565 in c.rs)
+- [x] Rust transpiler: Update `rust_type_name()` for generic instances (line 104 in rust.rs)
+- [ ] Python transpiler: Update `python_type_name()` for generic instances (NOT DONE)
 
-### Step 4: Type System
-- [ ] Implement `Type::substitute()` method
+### Step 4: Type System ✅ COMPLETE
+- [x] Implement `Type::substitute()` method (line 105 in types.rs)
+- [x] Modify `parse_generic_instance()` to perform substitution (line 4382-4418 in parser.rs)
+- [x] Create substituted Tag instances when generic tags are used
 
-### Step 5: Testing
-- [ ] Create generic Tag test cases
-- [ ] Create generic instance usage tests
-- [ ] Create nested generic tests (`List<List<int>>`)
-- [ ] Create multi-parameter generic tests (`Map<K, V>`)
+### Step 5: Testing ⚠️ IN PROGRESS - ISSUES REMAIN
+- [x] Create generic Tag test cases (060_generic_tag, 062_generic_list)
+- [ ] Create generic instance usage tests (PARSING ERRORS)
+- [ ] Create nested generic tests (`List<List<int>>`) (NOT DONE)
+- [ ] Create multi-parameter generic tests (`Map<K, V>`) (NOT DONE)
+
+**Current Issue**: Generic tag definitions cause parsing errors. The type substitution logic is implemented, but tag definitions with type parameters fail to parse correctly. Need to debug:
+1. Why `tag MyMay<T> { none void, some T }` causes parsing errors
+2. Whether `Nil` should be a predefined type or use `void`
+3. Error reporting in trans_c() - errors are swallowed by to_string() conversion
 
 ---
 
