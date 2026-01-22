@@ -1533,21 +1533,6 @@ impl CTrans {
             Type::Tag(t) => {
                 format!("struct {}", t.borrow().name)
             }
-            Type::May(inner) => {
-                // May<T> transpiles to May{InnerType} struct in C
-                // For now, use a simple naming scheme: May + InnerType
-                let inner_name = match inner.as_ref() {
-                    Type::Int => "Int",
-                    Type::Uint => "Uint",
-                    Type::Float => "Float",
-                    Type::Double => "Double",
-                    Type::Bool => "Bool",
-                    Type::Str(_) => "Str",
-                    Type::Char => "Char",
-                    _ => "Unknown",
-                };
-                format!("struct May{}", inner_name)
-            }
             Type::Spec(_spec_decl) => {
                 // Spec 类型在 C 中使用 void* 表示（多态）
                 "void*".to_string()

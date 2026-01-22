@@ -88,10 +88,6 @@ impl RustTrans {
             Type::Spec(spec) => format!("dyn {}", spec.borrow().name),  // Spec 作为 trait object
             Type::Union(u) => u.name.to_string(),
             Type::Tag(t) => t.borrow().name.to_string(),
-            Type::May(inner) => {
-                // May<T> transpiles to Option<T> in Rust
-                format!("Option<{}>", self.rust_type_name(inner))
-            }
             Type::Variadic => "...".to_string(),  // C variadic, not used in Rust
             Type::Void => "()".to_string(),
             Type::Unknown => "/* unknown */".to_string(),

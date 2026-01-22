@@ -3863,7 +3863,6 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Spec(decl) => auto_val::Type::User(decl.borrow().name.clone()),
         ast::Type::Union(u) => auto_val::Type::Union(u.name.clone()),
         ast::Type::Tag(tag) => auto_val::Type::Tag(tag.borrow().name.clone()),
-        ast::Type::May(inner) => to_value_type(inner),  // May<T> transpiles to inner type
         ast::Type::Linear(inner) => to_value_type(inner),  // Linear wraps inner type
         ast::Type::Variadic => auto_val::Type::Any,  // Variadic maps to Any
         ast::Type::Void => auto_val::Type::Void,

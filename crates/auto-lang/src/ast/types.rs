@@ -26,7 +26,7 @@ pub enum Type {
     Tag(Shared<Tag>),
     Enum(Shared<EnumDecl>),
     Spec(Shared<SpecDecl>),  // Spec 类型（多态接口）
-    May(Box<Type>),  // May<T> type (optional/error handling)
+    // May(Box<Type>) removed - use generic tag May<T> from stdlib instead
     GenericInstance(GenericInstance),  // User-defined generic instance (e.g., MyType<int>)
     Void,
     Unknown,
@@ -57,7 +57,6 @@ impl Type {
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             Type::Spec(spec_decl) => spec_decl.borrow().name.clone(),
-            Type::May(inner) => format!("May<{}>", inner.unique_name()).into(),
             Type::GenericInstance(inst) => {
                 let args: Vec<String> = inst.args.iter()
                     .map(|t| t.unique_name().to_string())
@@ -92,7 +91,6 @@ impl Type {
             Type::User(_) => "{}".into(),
             Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
             Type::Spec(_) => "{}".into(),  // Spec 默认值为空对象
-            Type::May(_) => "May.nil()".into(),  // May<T> defaults to nil
             Type::GenericInstance(_) => "{}".into(),  // Generic instances default to empty object
             Type::Linear(inner) => inner.default_value(),  // Linear type wraps inner type
             Type::Variadic => "...".into(),  // Variadic has no default value
@@ -136,9 +134,6 @@ impl Type {
             // Compound types: recursive substitution
             Type::List(elem) => {
                 Type::List(Box::new(elem.substitute(params, args)))
-            }
-            Type::May(inner) => {
-                Type::May(Box::new(inner.substitute(params, args)))
             }
             Type::Array(array_type) => {
                 Type::Array(ArrayType {
@@ -275,7 +270,6 @@ impl fmt::Display for Type {
             Type::Spec(spec_decl) => write!(f, "spec {}", spec_decl.borrow().name),
             Type::Union(u) => write!(f, "{}", u),
             Type::Tag(t) => write!(f, "{}", t.borrow()),
-            Type::May(inner) => write!(f, "?{}", inner),
             Type::GenericInstance(inst) => write!(f, "{}", inst),
             Type::Linear(inner) => write!(f, "linear<{}>", inner),
             Type::Variadic => write!(f, "..."),
@@ -309,7 +303,6 @@ impl From<Type> for auto_val::Type {
             Type::Spec(decl) => auto_val::Type::User(decl.borrow().name.clone()),
             Type::Union(u) => auto_val::Type::Union(u.name),
             Type::Tag(t) => auto_val::Type::Tag(t.borrow().name.clone()),
-            Type::May(inner) => (*inner).into(),  // May<T> transpiles to inner type
             Type::Linear(inner) => (*inner).into(),  // Linear wraps inner type
             Type::Variadic => auto_val::Type::Void,  // Variadic transpiles to void for now
             Type::Void => auto_val::Type::Void,
@@ -582,9 +575,6 @@ impl AtomWriter for Type {
             Type::Spec(spec_decl) => write!(f, "spec {}", spec_decl.borrow().name)?,
             Type::Union(u) => write!(f, "{}", u.name)?,
             Type::Tag(t) => write!(f, "{}", t.borrow().name)?,
-            Type::May(inner) => {
-                write!(f, "may({})", inner.to_atom_str())?;
-            }
             Type::Linear(inner) => {
                 write!(f, "linear({})", inner.to_atom_str())?;
             }

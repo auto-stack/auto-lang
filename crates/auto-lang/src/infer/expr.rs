@@ -266,9 +266,15 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
             let left_ty = infer_expr(ctx, left);
             let right_ty = infer_expr(ctx, right);
 
-            // If left is May<T>, unwrap it
+            // If left is May<T> (generic tag), extract T from val field
             match left_ty {
-                Type::May(inner) => (*inner).clone(),
+                Type::Tag(tag) if tag.borrow().name.as_ref().starts_with("May_") => {
+                    // Extract type from val field
+                    tag.borrow().fields.iter()
+                        .find(|f| f.name.as_ref() == "val")
+                        .map(|f| f.ty.clone())
+                        .unwrap_or(Type::Unknown)
+                }
                 _ => {
                     // Otherwise, unify the two types (clone left_ty to avoid move)
                     ctx.unify(left_ty.clone(), right_ty).unwrap_or(left_ty)
@@ -281,7 +287,13 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
             // Otherwise, result is the expression type
             let expr_ty = infer_expr(ctx, expr);
             match expr_ty {
-                Type::May(inner) => (*inner).clone(),
+                Type::Tag(tag) if tag.borrow().name.as_ref().starts_with("May_") => {
+                    // Extract type from val field
+                    tag.borrow().fields.iter()
+                        .find(|f| f.name.as_ref() == "val")
+                        .map(|f| f.ty.clone())
+                        .unwrap_or(Type::Unknown)
+                }
                 _ => expr_ty,
             }
         }

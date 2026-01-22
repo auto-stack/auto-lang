@@ -148,9 +148,6 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
             occurs_in(var_name, &inner_ty)
         }
 
-        // May 类型：递归检查内部类型
-        Type::May(inner) => occurs_in(var_name, inner),
-
         // Linear 类型：递归检查内部类型
         Type::Linear(inner) => occurs_in(var_name, inner),
 
