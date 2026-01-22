@@ -747,3 +747,46 @@ fn test_060_generic_tag() {
         }
     }
 }
+
+// ===================== Array Capability Tests (Plan 051) =====================
+// Note: These tests use the format test_a2c("080_name") where files are in test/a2c/080_name/
+
+#[test]
+fn test_080_array_declaration() {
+    test_a2c("080_array_declaration").unwrap();
+}
+
+#[test]
+fn test_080_array_mutation() {
+    test_a2c("080_array_mutation").unwrap();
+}
+
+#[test]
+fn test_080_array_index_read() {
+    test_a2c("080_array_index_read").unwrap();
+}
+
+#[test]
+fn test_080_array_copy() {
+    test_a2c("080_array_copy").unwrap();
+}
+
+#[test]
+fn test_080_array_slice() {
+    test_a2c("080_array_slice").unwrap();
+}
+
+#[test]
+fn test_080_array_zero_size() {
+    test_a2c("080_array_zero_size").unwrap();
+}
+
+#[test]
+fn test_080_array_nested() {
+    test_a2c("080_array_nested").unwrap();
+}
+
+#[test]
+fn test_080_array_loop() {
+    test_a2c("080_array_loop").unwrap();
+}
