@@ -58,6 +58,16 @@ impl Interpreter {
             let _ = interpreter.interpret(&list_node_code);
         }
 
+        // Load prelude.at to import May, List, say, and other ubiquitous symbols
+        // This is automatically loaded for every program (Plan 050: Auto Prelude System)
+        let prelude_code = std::fs::read_to_string("../../stdlib/auto/prelude.at").unwrap_or_else(|_| {
+            // Try alternate path
+            std::fs::read_to_string("stdlib/auto/prelude.at").unwrap_or(String::new())
+        });
+        if !prelude_code.is_empty() {
+            let _ = interpreter.interpret(&prelude_code);
+        }
+
         interpreter
     }
 
