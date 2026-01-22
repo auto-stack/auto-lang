@@ -11,34 +11,16 @@
 // ============================================================================
 
 // ============================================================================
-// Error Handling (Most Critical)
+// AutoLang Prelude
 // ============================================================================
-// Rationale: Error handling with May<T> is ubiquitous in AutoLang.
-// The ?T syntax sugar (Plan 049) makes May<T> the primary error handling
-// mechanism, so it should be available without explicit imports.
-
-use auto.may: May, nil, val, err
-
+// This file is automatically imported into every module.
+// It defines symbols that are available without explicit imports.
+//
+// Design Principles:
+// - Minimal: Only includes truly ubiquitous symbols
+// - Explicit: Re-exports from other modules (no new definitions here)
+// - Documented: Each symbol has a rationale for inclusion
 // ============================================================================
-// Core Types
-// ============================================================================
-// Rationale: These types are fundamental building blocks used in almost
-// every program. Making them available in the prelude reduces boilerplate.
-
-// NOTE: Primitive types (int, uint, float, double, bool, char, str)
-// are built-in keywords and don't need to be imported. They're listed
-// here for documentation purposes only.
-
-// Type constructors (when implemented)
-// use auto.types: Int, Uint, Float, Double, Bool, Char, Str
-
-// ============================================================================
-// Collections
-// ============================================================================
-// Rationale: Dynamic lists are the most common collection type.
-// Arrays ([N]T) use built-in syntax and don't need imports.
-
-use auto.list: List
 
 // ============================================================================
 // I/O Operations
@@ -48,6 +30,23 @@ use auto.list: List
 // the most commonly used I/O operation.
 
 use auto.io: say
+
+// ============================================================================
+// Collections (when List VM functions are implemented)
+// ============================================================================
+// NOTE: List is currently disabled because static method calls (List.new())
+// are not yet fully supported in the evaluator.
+//
+// use auto.list: List
+
+// ============================================================================
+// Error Handling with May<T>
+// ============================================================================
+// NOTE: The ?T syntax sugar (?int, ?str, etc.) is built into the parser
+// (Plan 049). It creates May<T> types automatically without needing imports.
+// When tag generic syntax and pattern matching are implemented, we can add:
+//
+// use auto.may: May
 
 // ============================================================================
 // Future Additions (when trait system exists)
