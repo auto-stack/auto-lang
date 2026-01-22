@@ -12,11 +12,11 @@ fn get_value() ?int {
 
 fn main() int {
     let result = get_value()
-    0
+    result.?
 }
 "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "0");
+    assert_eq!(result, "42");
 }
 
 #[test]

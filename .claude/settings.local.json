@@ -92,7 +92,9 @@
       "Bash(tee:*)",
       "Bash(pwd d:/autostack/auto-lang)",
       "Bash(./auto.exe:*)",
-      "Bash(./target/debug/auto-lang.exe.exe:*)"
+      "Bash(./target/debug/auto-lang.exe.exe:*)",
+      "Bash(1 <<'EOF'\nuse auto.io: say\n\nfn main\\(\\) {\n    say\\(\"Testing if May is available from prelude\"\\)\n    // May should be available without use statement if prelude works\n}\nEOF)",
+      "Bash(git restore:*)"
     ]
   }
 }

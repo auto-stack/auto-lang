@@ -1,0 +1,19 @@
+// Test that prelude symbols are available without explicit imports
+
+// May should be available from prelude
+fn test_may_available() ?int {
+    May.val(42)
+}
+
+// List should be available from prelude
+fn test_list_available() {
+    let list = List.new()
+    list.push(1)
+}
+
+// say should be available from prelude
+fn main() {
+    say("Prelude loaded!")
+    let may_value = test_may_available()
+    test_list_available()
+}
