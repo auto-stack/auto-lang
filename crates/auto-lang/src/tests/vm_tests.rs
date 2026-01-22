@@ -373,8 +373,8 @@ fn test_let_asn() {
 }
 
 #[test]
-fn test_mut() {
-    let code = "let x = 41; mut x = 10; x";
+fn test_var_reassignment() {
+    let code = "let x = 41; var x = 10; x";
     let result = run(code).unwrap();
     assert_eq!(result, "10");
 }

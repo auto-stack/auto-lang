@@ -1570,13 +1570,11 @@ impl CTrans {
     }
 
     fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
-        if matches!(store.kind, StoreKind::Var) {
-            return Err(format!("C Transpiler: unsupported store kind: {:?}", store.kind).into());
-        }
         if matches!(store.kind, StoreKind::CVar) {
             // skip C variables declaration
             return Ok(());
         }
+        // StoreKind::Var is now supported (treated as mutable variable)
 
         // Check if the expression is a function call that returns an array or slice
         let expr_is_array_call = if let Expr::Call(call) = &store.expr {

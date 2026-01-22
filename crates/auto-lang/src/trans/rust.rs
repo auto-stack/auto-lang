@@ -897,12 +897,8 @@ impl RustTrans {
                 StoreKind::Let => {
                     write!(out, "let {} = ", store.name)?;
                 }
-                StoreKind::Mut => {
-                    write!(out, "let mut {} = ", store.name)?;
-                }
                 StoreKind::Var => {
-                    // Var is for dynamic/script mode, treat as let
-                    write!(out, "let {} = ", store.name)?;
+                    write!(out, "let mut {} = ", store.name)?;
                 }
                 _ => {
                     write!(out, "let {} = ", store.name)?;
@@ -919,7 +915,7 @@ impl RustTrans {
                         self.rust_type_name(&store.ty)
                     )?;
                 }
-                StoreKind::Mut => {
+                StoreKind::Var => {
                     write!(
                         out,
                         "let mut {}: {} = ",
@@ -927,21 +923,8 @@ impl RustTrans {
                         self.rust_type_name(&store.ty)
                     )?;
                 }
-                StoreKind::Var => {
-                    write!(
-                        out,
-                        "let {}: {} = ",
-                        store.name,
-                        self.rust_type_name(&store.ty)
-                    )?;
-                }
                 _ => {
-                    write!(
-                        out,
-                        "let {}: {} = ",
-                        store.name,
-                        self.rust_type_name(&store.ty)
-                    )?;
+                    write!(out, "let {}: {} = ", store.name, &store.ty)?;  // Use type reference
                 }
             }
         }

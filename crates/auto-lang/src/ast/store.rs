@@ -5,7 +5,6 @@ use std::{fmt, io as stdio};
 #[derive(Debug, Clone)]
 pub enum StoreKind {
     Let,
-    Mut,
     Var,
     CVar,  // C variable declaration
     Field, // field of struct
@@ -28,7 +27,6 @@ impl fmt::Display for Store {
         };
         match self.kind {
             StoreKind::Let => write!(f, "(let (name {}){}{})", self.name, ty_str, self.expr),
-            StoreKind::Mut => write!(f, "(mut (name {}){}{})", self.name, ty_str, self.expr),
             StoreKind::Var => write!(f, "(var (name {}) {})", self.name, self.expr),
             StoreKind::Field => write!(f, "(field (name {}) {})", self.name, self.expr),
             StoreKind::CVar => write!(f, "(cvar (name {}))", self.name),
@@ -40,7 +38,6 @@ impl fmt::Display for StoreKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             StoreKind::Let => write!(f, "let"),
-            StoreKind::Mut => write!(f, "mut"),
             StoreKind::Var => write!(f, "var"),
             StoreKind::Field => write!(f, "field"),
             StoreKind::CVar => write!(f, "cvar"),
@@ -58,7 +55,6 @@ impl AtomWriter for Store {
         // Output format: kind(name, type, expr) or kind(name, expr) for var
         let kind_name = match self.kind {
             StoreKind::Let => "let",
-            StoreKind::Mut => "mut",
             StoreKind::Var => "var",
             StoreKind::Field => "field",
             StoreKind::CVar => "cvar",
@@ -79,7 +75,6 @@ impl ToNode for Store {
     fn to_node(&self) -> AutoNode {
         let node_name = match &self.kind {
             StoreKind::Let => "let",
-            StoreKind::Mut => "mut",
             StoreKind::Var => "var",
             StoreKind::CVar => "cvar",
             StoreKind::Field => "field",

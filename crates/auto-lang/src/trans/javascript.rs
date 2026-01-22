@@ -96,10 +96,10 @@ impl JavaScriptTrans {
 
             // Store (variable assignment)
             Stmt::Store(store) => {
-                // AutoLang: let (immutable) → const, mut → let, var → let
+                // AutoLang: let (immutable) → const, var → let
                 match store.kind {
                     StoreKind::Let => out.write(b"const ").to()?,
-                    StoreKind::Mut | StoreKind::Var => out.write(b"let ").to()?,
+                    StoreKind::Var => out.write(b"let ").to()?,
                     _ => {} // Field and CVar don't need declaration
                 };
                 out.write_all(store.name.as_bytes())?;

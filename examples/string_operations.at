@@ -131,8 +131,8 @@ fn str_from_int(n int) str {
     if n == 0 { return "0" }
     if n < 0 { return "-" + str_from_int(-n) }
 
-    let mut result = str_new("")
-    let mut n = n
+    var result = str_new("")
+    var n = n
 
     while n > 0 {
         let digit = n % 10

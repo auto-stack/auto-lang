@@ -370,7 +370,6 @@ fn get_user_defined_docs(content: &str, name: &str) -> Option<String> {
                         let ty_str = store.ty.unique_name().to_string();
                         let kind_str = match store.kind {
                             auto_lang::ast::StoreKind::Let => "let",
-                            auto_lang::ast::StoreKind::Mut => "mut",
                             auto_lang::ast::StoreKind::Var => "var",
                             _ => "variable",
                         };
@@ -389,7 +388,6 @@ fn get_user_defined_docs(content: &str, name: &str) -> Option<String> {
                                 let ty_str = store.ty.unique_name().to_string();
                                 let kind_str = match store.kind {
                                     auto_lang::ast::StoreKind::Let => "let",
-                                    auto_lang::ast::StoreKind::Mut => "mut",
                                     auto_lang::ast::StoreKind::Var => "var",
                                     _ => "variable",
                                 };

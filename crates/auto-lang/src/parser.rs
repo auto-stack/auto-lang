@@ -2856,7 +2856,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_store_stmt(&mut self) -> AutoResult<Stmt> {
-        // store kind: var/let/mut
+        // store kind: var/let (mut keyword is now aliased to var)
         let mut store_kind = self.store_kind()?;
         self.next(); // skip var/let/mut
 
@@ -3006,7 +3006,7 @@ impl<'a> Parser<'a> {
         match self.kind() {
             TokenKind::Var => Ok(StoreKind::Var),
             TokenKind::Let => Ok(StoreKind::Let),
-            TokenKind::Mut => Ok(StoreKind::Mut),
+            TokenKind::Mut => Ok(StoreKind::Var), // mut is now an alias for var in store statements
             _ => {
                 let message = format!("Expected store kind, got {:?}", self.kind());
                 let span = pos_to_span(self.cur.pos);

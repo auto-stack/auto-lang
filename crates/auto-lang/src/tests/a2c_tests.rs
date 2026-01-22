@@ -62,8 +62,8 @@ fn test_c_array() {
 }
 
 #[test]
-fn test_c_mut_assign() {
-    let code = "mut x = 41; x = 42";
+fn test_c_var_assign() {
+    let code = "var x = 41; x = 42";
     let out = transpile_part(code).unwrap();
     let expected = "int x = 41;\nx = 42;\n";
     assert_eq!(out, expected);

@@ -2756,10 +2756,10 @@ impl Evaler {
                 // Create a new scope for the hold block
                 self.enter_scope();
 
-                // Create a Store AST node for the binding (similar to let/mut)
+                // Create a Store AST node for the binding (similar to let/var)
                 use crate::ast::{Store, StoreKind};
                 let store = Store {
-                    kind: StoreKind::Mut,  // Hold creates a mutable binding
+                    kind: StoreKind::Var,  // Hold creates a mutable binding
                     name: hold.name.clone(),
                     ty: crate::ast::Type::Unknown,
                     expr: *hold.path.clone(),
