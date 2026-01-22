@@ -1,0 +1,9 @@
+tag May {
+    nil Nil
+    val int
+}
+
+fn main() {
+    let x = May.val(42)
+    print(x)
+}

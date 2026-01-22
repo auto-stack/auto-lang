@@ -376,6 +376,7 @@ impl Evaler {
                 parent: None,
                 has: vec![],
                 specs: vec![],
+                type_params: vec![],
                 members: vec![],
                 delegations: vec![],
                 methods: vec![],
@@ -3868,6 +3869,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Void => auto_val::Type::Void,
         ast::Type::Unknown => auto_val::Type::Any,
         ast::Type::CStruct(_) => auto_val::Type::Void,
+        ast::Type::GenericInstance(_) => auto_val::Type::Any,  // TODO: Handle generic instances properly
     }
 }
 

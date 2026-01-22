@@ -1516,7 +1516,7 @@ impl CTrans {
                 format!("{}[{}]", self.c_type_name(elem_type), len)
             }
             Type::List(elem) => {
-                // [~]T transpiles to list_T* (wrapper around dynamic array)
+                // List<T> transpiles to list_T* (wrapper around dynamic array)
                 let elem_type = self.c_type_name(elem);
                 format!("list_{}*", elem_type)
             }
@@ -1562,6 +1562,16 @@ impl CTrans {
             Type::CStruct(decl) => format!("{}", decl.name),
             Type::Char => "char".to_string(),
             Type::Void => "void".to_string(),
+            Type::GenericInstance(inst) => {
+                // Generic instances: MyType<int> -> my_type_int
+                let args: Vec<String> = inst.args.iter()
+                    .map(|t| self.c_type_name(t))
+                    .collect();
+                format!("{}_{}",
+                    inst.base_name.to_lowercase(),
+                    args.join("_")
+                )
+            }
             _ => {
                 println!("Unsupported type for C transpiler: {}", ty);
                 panic!("Unsupported type for C transpiler: {}", ty);

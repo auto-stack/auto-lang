@@ -18,7 +18,7 @@ pub enum Type {
     CStr,
     StrSlice,  // Borrowed string slice (Phase 3)
     Array(ArrayType),         // [N]T - static array
-    List(Box<Type>),          // [~]T - dynamic list
+    List(Box<Type>),          // List<T> - dynamic list
     Slice(SliceType),         // []T - slice type
     Ptr(PtrType),
     User(TypeDecl),
@@ -27,6 +27,7 @@ pub enum Type {
     Enum(Shared<EnumDecl>),
     Spec(Shared<SpecDecl>),  // Spec 类型（多态接口）
     May(Box<Type>),  // May<T> type (optional/error handling)
+    GenericInstance(GenericInstance),  // User-defined generic instance (e.g., MyType<int>)
     Void,
     Unknown,
     CStruct(TypeDecl),
@@ -50,13 +51,19 @@ impl Type {
             Type::Array(array_type) => {
                 format!("[{}]{}", array_type.elem.unique_name(), array_type.len).into()
             }
-            Type::List(elem) => format!("[~]{}", elem.unique_name()).into(),
+            Type::List(elem) => format!("List<{}>", elem.unique_name()).into(),
             Type::Slice(slice_type) => format!("[]{}", slice_type.elem.unique_name()).into(),
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().unique_name()).into(),
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             Type::Spec(spec_decl) => spec_decl.borrow().name.clone(),
             Type::May(inner) => format!("May<{}>", inner.unique_name()).into(),
+            Type::GenericInstance(inst) => {
+                let args: Vec<String> = inst.args.iter()
+                    .map(|t| t.unique_name().to_string())
+                    .collect();
+                format!("{}<{}>", inst.base_name, args.join(", ")).into()
+            }
             Type::CStruct(type_decl) => format!("struct {}", type_decl.name).into(),
             Type::Linear(inner) => format!("linear<{}>", inner.unique_name()).into(),
             Type::Variadic => "...".into(),
@@ -79,19 +86,63 @@ impl Type {
             Type::CStr => "\"\"".into(),
             Type::StrSlice => "\"\"".into(),  // Default empty slice
             Type::Array(_) => "[]".into(),
-            Type::List(_) => "[~]".into(),  // Empty list literal
+            Type::List(_) => "List.new()".into(),  // Empty list constructor
             Type::Slice(_) => "[]".into(),  // Empty slice literal
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
             Type::User(_) => "{}".into(),
             Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
             Type::Spec(_) => "{}".into(),  // Spec 默认值为空对象
             Type::May(_) => "May.nil()".into(),  // May<T> defaults to nil
+            Type::GenericInstance(_) => "{}".into(),  // Generic instances default to empty object
             Type::Linear(inner) => inner.default_value(),  // Linear type wraps inner type
             Type::Variadic => "...".into(),  // Variadic has no default value
             Type::CStruct(_) => "{}".into(),
             Type::Unknown => "<unknown>".into(),
             _ => "<unknown_type>".into(),
         }
+    }
+}
+
+/// Type parameter (single) - for generic type definitions
+/// Example: In `tag List<T>`, T is a TypeParam
+#[derive(Debug, Clone)]
+pub struct TypeParam {
+    pub name: Name,                      // Parameter name (e.g., "T", "K", "V")
+    pub constraint: Option<Box<Type>>,  // Type constraint (future extension)
+}
+
+impl fmt::Display for TypeParam {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if let Some(ref constraint) = self.constraint {
+            write!(f, ": {}", constraint)?;
+        }
+        Ok(())
+    }
+}
+
+/// Generic type instance - represents instantiation of a generic type
+/// Example: `List<int>`, `May<string>`, `Map<str, int>`
+#[derive(Debug, Clone)]
+pub struct GenericInstance {
+    pub base_name: Name,       // Base type name (e.g., "List", "May", "Map")
+    pub args: Vec<Type>,        // Type arguments (e.g., [int], [str, int])
+}
+
+impl fmt::Display for GenericInstance {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.base_name)?;
+        if !self.args.is_empty() {
+            write!(f, "<")?;
+            for (i, arg) in self.args.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", arg.unique_name())?;
+            }
+            write!(f, ">")?;
+        }
+        Ok(())
     }
 }
 
@@ -144,7 +195,7 @@ impl fmt::Display for Type {
             Type::CStr => write!(f, "cstr"),
             Type::StrSlice => write!(f, "str_slice"),
             Type::Array(array_type) => write!(f, "{}", array_type),
-            Type::List(elem) => write!(f, "[~]{}", elem),
+            Type::List(elem) => write!(f, "List<{}>", elem),
             Type::Slice(slice_type) => write!(f, "{}", slice_type),
             Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
             Type::User(type_decl) => write!(f, "{}", type_decl),
@@ -153,6 +204,7 @@ impl fmt::Display for Type {
             Type::Union(u) => write!(f, "{}", u),
             Type::Tag(t) => write!(f, "{}", t.borrow()),
             Type::May(inner) => write!(f, "?{}", inner),
+            Type::GenericInstance(inst) => write!(f, "{}", inst),
             Type::Linear(inner) => write!(f, "linear<{}>", inner),
             Type::Variadic => write!(f, "..."),
             Type::Void => write!(f, "void"),
@@ -191,6 +243,7 @@ impl From<Type> for auto_val::Type {
             Type::Void => auto_val::Type::Void,
             Type::Unknown => auto_val::Type::Void, // TODO: is this correct?
             Type::CStruct(_) => auto_val::Type::Void,
+            Type::GenericInstance(_) => auto_val::Type::Void,  // TODO: Handle generic instances properly
         }
     }
 }
@@ -230,6 +283,7 @@ pub struct TypeDecl {
     pub parent: Option<Box<Type>>,  // 单继承：父类型（使用 Box 避免递归类型）
     pub has: Vec<Type>,            // 组合：多个组合类型
     pub specs: Vec<Spec>,          // Spec 声明：实现的 specs
+    pub type_params: Vec<TypeParam>,  // Type parameters (for generic types)
     pub members: Vec<Member>,
     pub delegations: Vec<Delegation>,  // 新增：委托成员
     pub methods: Vec<Fn>,
@@ -247,7 +301,18 @@ impl TypeDecl {
 
 impl fmt::Display for TypeDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(type-decl (name {})", self.name)?;
+        write!(f, "(type-decl (name {}", self.name)?;
+        if !self.type_params.is_empty() {
+            write!(f, "<")?;
+            for (i, param) in self.type_params.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", param)?;
+            }
+            write!(f, ">")?;
+        }
+        write!(f, ")")?;
         if let Some(ref parent) = self.parent {
             write!(f, " (is {})", parent.unique_name())?;
         }
@@ -455,6 +520,19 @@ impl AtomWriter for Type {
             Type::Void => write!(f, "void")?,
             Type::Unknown => write!(f, "unknown")?,
             Type::CStruct(type_decl) => write!(f, "struct {}", type_decl.name)?,
+            Type::GenericInstance(inst) => {
+                write!(f, "{}", inst.base_name)?;
+                if !inst.args.is_empty() {
+                    write!(f, "<")?;
+                    for (i, arg) in inst.args.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", arg.to_atom_str())?;
+                    }
+                    write!(f, ">")?;
+                }
+            }
         }
         Ok(())
     }

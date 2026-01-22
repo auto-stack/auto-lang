@@ -69,7 +69,7 @@ impl RustTrans {
                 format!("[{}; {}]", self.rust_type_name(&arr.elem), arr.len)
             }
             Type::List(elem) => {
-                // [~]T transpiles to Vec<T> in Rust
+                // List<T> transpiles to Vec<T> in Rust
                 format!("Vec<{}>", self.rust_type_name(elem))
             }
             Type::Slice(slice) => {
@@ -100,6 +100,13 @@ impl RustTrans {
                 // Linear types unwrap to their inner type for transpilation
                 // The move semantics are enforced by AutoLang's ownership system
                 self.rust_type_name(inner)
+            }
+            Type::GenericInstance(inst) => {
+                // Generic instances: MyType<int> -> MyType<int>
+                let args: Vec<String> = inst.args.iter()
+                    .map(|t| self.rust_type_name(t))
+                    .collect();
+                format!("{}<{}>", inst.base_name, args.join(", "))
             }
         }
     }

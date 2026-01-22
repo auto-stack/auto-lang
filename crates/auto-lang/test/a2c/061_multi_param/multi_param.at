@@ -1,0 +1,14 @@
+# Test multi-parameter generic types
+
+tag Pair<K, V> {
+    first K
+    second V
+}
+
+fn main() {
+    // Multi-parameter generic
+    let p Pair<int, str>
+    p.first = 42
+    p.second = "hello"
+    p
+}

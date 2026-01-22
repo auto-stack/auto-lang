@@ -73,6 +73,7 @@ impl Interpreter {
             parent: None,
             has: Vec::new(),
             specs: Vec::new(),
+            type_params: Vec::new(),
             members: Vec::new(),
             delegations: Vec::new(),
             methods: Vec::new(),  // Methods are registered separately via VM registry
@@ -89,6 +90,7 @@ impl Interpreter {
             parent: None,
             has: Vec::new(),
             specs: Vec::new(),
+            type_params: Vec::new(),
             members: Vec::new(),
             delegations: Vec::new(),
             methods: Vec::new(),
@@ -105,6 +107,7 @@ impl Interpreter {
             parent: None,
             has: Vec::new(),
             specs: Vec::new(),
+            type_params: Vec::new(),
             members: Vec::new(),
             delegations: Vec::new(),
             methods: Vec::new(),
@@ -121,6 +124,7 @@ impl Interpreter {
             parent: None,
             has: Vec::new(),
             specs: Vec::new(),
+            type_params: Vec::new(),
             members: Vec::new(),
             delegations: Vec::new(),
             methods: Vec::new(),  // Methods are registered separately via VM registry
@@ -137,6 +141,7 @@ impl Interpreter {
             parent: None,
             has: Vec::new(),
             specs: Vec::new(),
+            type_params: Vec::new(),
             members: Vec::new(),
             delegations: Vec::new(),
             methods: Vec::new(),  // Methods are registered separately via VM registry

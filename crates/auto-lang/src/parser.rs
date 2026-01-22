@@ -149,6 +149,8 @@ pub struct Parser<'a> {
     pub errors: Vec<AutoError>,
     /// Maximum number of errors to collect before aborting
     pub error_limit: usize,
+    /// Current type parameters being parsed (for generic type definitions)
+    current_type_params: Vec<Name>,
 }
 
 impl<'a> Parser<'a> {
@@ -178,6 +180,7 @@ impl<'a> Parser<'a> {
             skip_check: false,
             errors: Vec::new(),
             error_limit: crate::get_error_limit(), // Use global error limit
+            current_type_params: Vec::new(),
         };
         parser.skip_comments();
         parser
@@ -214,6 +217,7 @@ impl<'a> Parser<'a> {
             skip_check: false,
             errors: Vec::new(),
             error_limit: crate::get_error_limit(), // Use global error limit
+            current_type_params: Vec::new(),
         };
         parser.skip_comments();
         parser
@@ -246,6 +250,7 @@ impl<'a> Parser<'a> {
             skip_check: false,
             errors: Vec::new(),
             error_limit: crate::get_error_limit(), // Use global error limit
+            current_type_params: Vec::new(),
         };
         parser.skip_comments();
         parser
@@ -1649,11 +1654,16 @@ impl<'a> Parser<'a> {
     }
 
     pub fn is_branch_cond_expr(&mut self) -> AutoResult<Expr> {
-        if self.is_kind(TokenKind::Ident) {
-            self.lhs_expr()
+        // Parse the left-hand side expression (identifier or tag)
+        let lhs = if self.is_kind(TokenKind::Ident) {
+            self.lhs_expr()?
         } else {
-            self.atom()
-        }
+            self.atom()?
+        };
+
+        // Continue parsing to handle member access (e.g., Msg.Inc)
+        // This allows expressions like "Msg.Inc" in is branches
+        self.expr_pratt_with_left(lhs, 0)
     }
 
     pub fn lhs_expr(&mut self) -> AutoResult<Expr> {
@@ -3629,6 +3639,7 @@ impl<'a> Parser<'a> {
                     parent: None,
                     has: Vec::new(),
                     specs: Vec::new(),
+                    type_params: Vec::new(),
                     members: Vec::new(),
                     delegations: Vec::new(),
                     methods: Vec::new(),
@@ -3657,6 +3668,21 @@ impl<'a> Parser<'a> {
 
         let name = self.parse_name()?;
 
+        // Parse type parameters (optional) - e.g., type List<T> { ... }
+        let mut type_params = Vec::new();
+        if self.cur.kind == TokenKind::Lt {
+            self.next(); // Consume '<'
+
+            type_params.push(self.parse_type_param()?);
+
+            while self.cur.kind == TokenKind::Comma {
+                self.next(); // Consume ','
+                type_params.push(self.parse_type_param()?);
+            }
+
+            self.expect(TokenKind::Gt)?; // Consume '>'
+        }
+
         // Capture the position of the type name for LSP
         // self.prev now points to the name token after parse_name()
         let name_pos = self.prev.pos;
@@ -3667,6 +3693,7 @@ impl<'a> Parser<'a> {
             parent: None,
             specs: Vec::new(),
             has: Vec::new(),
+            type_params,
             members: Vec::new(),
             delegations: Vec::new(),
             methods: Vec::new(),
@@ -3995,6 +4022,26 @@ impl<'a> Parser<'a> {
     pub fn tag_stmt(&mut self) -> AutoResult<Stmt> {
         self.expect(TokenKind::Tag)?;
         let name = self.parse_name()?;
+
+        // Parse type parameters (optional) - e.g., tag May<T> { ... }
+        let mut type_params = Vec::new();
+        if self.cur.kind == TokenKind::Lt {
+            self.next(); // Consume '<'
+
+            type_params.push(self.parse_type_param()?);
+
+            while self.cur.kind == TokenKind::Comma {
+                self.next(); // Consume ','
+                type_params.push(self.parse_type_param()?);
+            }
+
+            self.expect(TokenKind::Gt)?; // Consume '>'
+        }
+
+        // Set current type parameters for field parsing
+        let prev_type_params = std::mem::replace(&mut self.current_type_params,
+            type_params.iter().map(|tp| tp.name.clone()).collect());
+
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
 
@@ -4016,18 +4063,23 @@ impl<'a> Parser<'a> {
         }
         self.expect(TokenKind::RBrace)?;
 
+        // Restore previous type parameters
+        self.current_type_params = prev_type_params;
+
         // Register tag type with fields and methods
         self.define(
             name.as_str(),
-            Meta::Type(Type::Tag(shared(Tag::with_methods(
-                name.clone(),
-                fields.clone(),
-                methods.clone(),
-            )))),
+            Meta::Type(Type::Tag(shared(Tag {
+                name: name.clone(),
+                type_params: type_params.clone(),
+                fields: fields.clone(),
+                methods: methods.clone(),
+            }))),
         );
 
         Ok(Stmt::Tag(Tag {
             name,
+            type_params,
             fields,
             methods,
         }))
@@ -4092,7 +4144,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_array_type(&mut self) -> AutoResult<Type> {
-        // parse array type name, e.g. `[10]int`, `[~]int`, or `[]int` (slice)
+        // parse array type name, e.g. `[10]int` or `[]int` (slice)
+        // Note: `[~]T` syntax for dynamic lists has been removed - use `List` type instead
         self.next(); // skip `[`
 
         // Check for slice type: []T (empty brackets)
@@ -4130,52 +4183,6 @@ impl<'a> Parser<'a> {
                                 .borrow_mut()
                                 .define_type(slice_ty_name, Rc::new(Meta::Type(slice_ty.clone())));
                             return Ok(slice_ty);
-                        }
-                    }
-                }
-                _ => {
-                    return Err(SyntaxError::Generic {
-                        message: format!("Expected type identifier, got {:?}", type_name),
-                        span: pos_to_span(self.cur.pos),
-                    }
-                    .into());
-                }
-            }
-        }
-
-        // Check for dynamic list: [~]T
-        if self.is_kind(TokenKind::Tilde) {
-            self.next(); // consume `~`
-            self.expect(TokenKind::RSquare)?; // skip `]`
-
-            // Parse element type
-            let type_name = self.parse_ident()?;
-            match type_name {
-                Expr::Ident(name) => {
-                    let elem_ty = self.lookup_type(&name).borrow().clone();
-                    let list_ty_name = format!("[~]{}", name);
-
-                    // Check if list type already exists
-                    let list_meta = self.lookup_meta(&list_ty_name);
-                    match list_meta {
-                        Some(meta) => {
-                            if let Meta::Type(list_ty) = meta.as_ref() {
-                                return Ok(list_ty.clone());
-                            } else {
-                                return Err(SyntaxError::Generic {
-                                    message: format!("Expected list type, got {:?}", meta),
-                                    span: pos_to_span(self.cur.pos),
-                                }
-                                .into());
-                            }
-                        }
-                        None => {
-                            // Create new list type
-                            let list_ty = Type::List(Box::new(elem_ty.clone()));
-                            self.scope
-                                .borrow_mut()
-                                .define_type(list_ty_name, Rc::new(Meta::Type(list_ty.clone())));
-                            return Ok(list_ty);
                         }
                     }
                 }
@@ -4274,6 +4281,118 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse a single type parameter (e.g., T, K, V)
+    fn parse_type_param(&mut self) -> AutoResult<crate::ast::TypeParam> {
+        use crate::ast::TypeParam;
+
+        match self.cur.kind {
+            TokenKind::Ident => {
+                let name = self.parse_name()?;
+                Ok(TypeParam {
+                    name,
+                    constraint: None,
+                })
+            }
+            _ => Err(SyntaxError::Generic {
+                message: format!("Expected type parameter, got {}", self.cur.text),
+                span: pos_to_span(self.cur.pos),
+            }.into()),
+        }
+    }
+
+    /// Parse identifier type or generic instance (e.g., List, List<int>)
+    fn parse_ident_or_generic_type(&mut self) -> AutoResult<Type> {
+        use crate::ast::{GenericInstance, Type};
+
+        let ident = self.parse_ident()?;
+
+        match ident {
+            Expr::Ident(name) => {
+                // Check if this is a generic instance (e.g., List<int>, May<string>)
+                if self.cur.kind == TokenKind::Lt {
+                    // Context check: make sure < is followed by a type
+                    // We need to look ahead to see if this looks like a generic instance
+                    if self.next_token_is_type() {
+                        return self.parse_generic_instance(name);
+                    }
+                }
+
+                // Check if this identifier is a type parameter in the current scope
+                if self.current_type_params.contains(&name) {
+                    // This is a type parameter - return it as a user type for now
+                    // The type system will handle substitution later
+                    return Ok(Type::User(TypeDecl {
+                        name: name.clone(),
+                        kind: TypeDeclKind::UserType,
+                        parent: None,
+                        has: Vec::new(),
+                        specs: Vec::new(),
+                        type_params: Vec::new(),
+                        members: Vec::new(),
+                        delegations: Vec::new(),
+                        methods: Vec::new(),
+                    }));
+                }
+
+                // Regular type name - look it up in the type registry
+                Ok(self.lookup_type(&name).borrow().clone())
+            }
+            _ => Err(SyntaxError::Generic {
+                message: format!("Expected type, got ident {:?}", ident),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into()),
+        }
+    }
+
+    /// Check if the next token is likely the start of a type
+    fn next_token_is_type(&mut self) -> bool {
+        // Peek at the next token
+        let next = self.peek();
+        matches!(next.kind,
+            TokenKind::Ident |      // Type name (int, List, etc.)
+            TokenKind::Question |   // May type (?T)
+            TokenKind::LSquare |    // Array type ([N]T)
+            TokenKind::Star |       // Pointer type (*T)
+            TokenKind::Lt           // Nested generic (List<List<int>>)
+        )
+    }
+
+    /// Parse generic instance (e.g., List<int>, Map<str, int>, MyType<T, U>)
+    fn parse_generic_instance(&mut self, base_name: Name) -> AutoResult<Type> {
+        use crate::ast::{GenericInstance, Type};
+
+        self.expect(TokenKind::Lt)?;
+
+        let mut args = Vec::new();
+        args.push(self.parse_type()?);
+
+        while self.cur.kind == TokenKind::Comma {
+            self.next(); // Consume ','
+            args.push(self.parse_type()?);
+        }
+
+        self.expect(TokenKind::Gt)?;
+
+        // Special handling for built-in generic types
+        // List<T> and May<T> have dedicated Type variants
+        match base_name.as_str() {
+            "List" if args.len() == 1 => {
+                Ok(Type::List(Box::new(args.into_iter().next().unwrap())))
+            }
+            "May" if args.len() == 1 => {
+                Ok(Type::May(Box::new(args.into_iter().next().unwrap())))
+            }
+            _ => {
+                // User-defined generic instance
+                Ok(Type::GenericInstance(GenericInstance {
+                    base_name,
+                    args,
+                }))
+            }
+        }
+    }
+
     fn parse_ident_type(&mut self) -> AutoResult<Type> {
         let ident = self.parse_ident()?;
         match ident {
@@ -4302,7 +4421,7 @@ impl<'a> Parser<'a> {
                 let inner_type = self.parse_type()?;
                 Ok(Type::May(Box::new(inner_type)))
             }
-            TokenKind::Ident => self.parse_ident_type(),
+            TokenKind::Ident => self.parse_ident_or_generic_type(),
             TokenKind::Star => self.parse_ptr_type(),
             TokenKind::LSquare => self.parse_array_type(),
             _ => {

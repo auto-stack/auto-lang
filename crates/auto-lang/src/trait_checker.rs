@@ -178,6 +178,7 @@ mod tests {
             parent: None,
             has: Vec::new(),
             specs,
+            type_params: Vec::new(),
             members: Vec::new(),
             delegations: Vec::new(),
             methods,

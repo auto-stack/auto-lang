@@ -121,7 +121,7 @@ Located in `crates/auto-lang/test/a2r/`:
 - **Arrays**: `[1, 2, 3]` with indexing `arr[0]`
   - Static arrays: `[N]T` where N is compile-time size (e.g., `[10]int`)
   - Slices: `[]T` for borrowed slice of array
-  - **Dynamic lists**: `[~]T` for growable lists (e.g., `[~]int`)
+  - **Dynamic lists**: `List` type for growable lists
     - Creates via `List.new()`: `let list = List.new()`
     - Methods: `push()`, `pop()`, `len()`, `is_empty()`, `clear()`, `get()`, `set()`, `insert()`, `remove()`, `reserve()`
 - **Objects**: `{key: value, ...}` with field access `obj.key`
@@ -277,7 +277,7 @@ pub struct ListData {
 }
 ```
 
-**Syntax**: `[~]T` transpiles to backend-specific types:
+**Syntax**: `List` type transpiles to backend-specific types:
 - C: `list_T*` (wrapper around dynamic array)
 - Python: `list`
 - Rust: `Vec<T>`

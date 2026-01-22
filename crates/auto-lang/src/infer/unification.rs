@@ -44,7 +44,7 @@
 //! assert!(matches!(unify(&arr1, &arr2, span), Ok(Type::Array(..))));
 //! ```
 
-use crate::ast::{ArrayType, PtrType, Type};
+use crate::ast::{ArrayType, GenericInstance, PtrType, Type};
 use crate::error::{TypeError, Warning};
 use miette::SourceSpan;
 use std::fmt;
@@ -163,6 +163,11 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         // Spec 类型：暂时假设不包含类型变量
         Type::Spec(_) => false,
 
+        // GenericInstance：递归检查类型参数
+        Type::GenericInstance(inst) => {
+            inst.args.iter().any(|arg| occurs_in(var_name, arg))
+        }
+
         // 其他类型
         Type::Union(_) | Type::Tag(_) | Type::Enum(_) => false,
     }
@@ -256,7 +261,26 @@ pub fn unify(ty1: &Type, ty2: &Type, span: SourceSpan) -> Result<Type, Unificati
             }
         }
 
-        // 10. 其他类型不匹配
+        // 10. GenericInstance：必须基础名称和所有类型参数都匹配
+        (Type::GenericInstance(inst1), Type::GenericInstance(inst2)) => {
+            if inst1.base_name != inst2.base_name || inst1.args.len() != inst2.args.len() {
+                return Err(UnificationError::Mismatch {
+                    expected: ty1.clone(),
+                    found: ty2.clone(),
+                });
+            }
+            // 递归统一所有类型参数
+            let mut unified_args = Vec::new();
+            for (arg1, arg2) in inst1.args.iter().zip(inst2.args.iter()) {
+                unified_args.push(unify(arg1, arg2, span)?);
+            }
+            Ok(Type::GenericInstance(GenericInstance {
+                base_name: inst1.base_name.clone(),
+                args: unified_args,
+            }))
+        }
+
+        // 11. 其他类型不匹配
         (ty1, ty2) => Err(UnificationError::Mismatch {
             expected: ty1.clone(),
             found: ty2.clone(),

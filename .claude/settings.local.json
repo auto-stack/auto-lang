@@ -89,7 +89,8 @@
       "Bash(echo:*)",
       "Bash(test:*)",
       "Bash(git rm:*)",
-      "Bash(tee:*)"
+      "Bash(tee:*)",
+      "Bash(pwd d:/autostack/auto-lang)"
     ]
   }
 }

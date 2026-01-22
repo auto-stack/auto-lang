@@ -707,3 +707,43 @@ fn test_116_std_file_flush() {
 fn test_117_std_file_read() {
     test_a2c("117_std_file_read").unwrap();
 }
+
+// ===================== Generic Type Tests =====================
+
+#[test]
+fn test_060_generic_tag() {
+    match test_a2c("060_generic_tag") {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("\n=== Transpilation Error ===\n");
+
+            // Check for MultipleErrors to show all collected errors
+            let err_str = e.to_string();
+            if err_str.contains("aborting due to") {
+                eprintln!("Multiple errors detected:\n");
+                match &e {
+                    crate::error::AutoError::MultipleErrors { errors, .. } => {
+                        for (i, err) in errors.iter().enumerate() {
+                            eprintln!("Error {}:\n{}\n", i + 1, err);
+                        }
+                    }
+                    _ => {
+                        eprintln!("{}\n", e);
+                    }
+                }
+            } else {
+                match &e {
+                    crate::error::AutoError::SyntaxWithSource(err) => {
+                        eprintln!("{}\n", err);
+                    }
+                    _ => {
+                        eprintln!("{}\n", e);
+                    }
+                }
+            }
+
+            eprintln!("Debug info:\n{:?}\n", e);
+            panic!("Transpilation failed");
+        }
+    }
+}

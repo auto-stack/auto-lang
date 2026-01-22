@@ -1,0 +1,13 @@
+# Test generic List type with user-defined generic
+
+type List<T> {
+    // Placeholder for List implementation
+}
+
+fn main() {
+    // Use the generic List type with different type arguments
+    let int_list List<int>
+    let str_list List<string>
+
+    int_list
+}
