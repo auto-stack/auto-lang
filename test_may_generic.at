@@ -1,0 +1,8 @@
+use auto.may: May
+
+fn main() {
+    mut x May<int> = May.val(42)
+    let is_val = x.is_some()
+    let v = x.unwrap()
+    x
+}

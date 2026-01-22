@@ -1,0 +1,9 @@
+use auto.list: List
+
+fn main() {
+    mut list List<int> = List.new()
+    list.push(42)
+    list.push(100)
+    let len = list.len()
+    list
+}
