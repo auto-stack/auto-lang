@@ -68,6 +68,11 @@ impl RustTrans {
             Type::Array(arr) => {
                 format!("[{}; {}]", self.rust_type_name(&arr.elem), arr.len)
             }
+            Type::RuntimeArray(rta) => {
+                // Plan 052: Runtime arrays transpile to Vec<T> in Rust
+                // The size expression is evaluated at runtime
+                format!("Vec<{}>", self.rust_type_name(&rta.elem))
+            }
             Type::List(elem) => {
                 // List<T> transpiles to Vec<T> in Rust
                 format!("Vec<{}>", self.rust_type_name(elem))

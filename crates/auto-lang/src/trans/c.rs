@@ -1515,6 +1515,13 @@ impl CTrans {
                 let len = array_type.len;
                 format!("{}[{}]", self.c_type_name(elem_type), len)
             }
+            Type::RuntimeArray(rta) => {
+                // Plan 052: Runtime arrays transpile to pointers in C
+                // Since size is determined at runtime, we use pointer syntax
+                // E.g., [size]int -> int* (allocated at runtime)
+                let elem_type = self.c_type_name(&rta.elem);
+                format!("{}*", elem_type)
+            }
             Type::List(elem) => {
                 // List<T> transpiles to list_T* (wrapper around dynamic array)
                 let elem_type = self.c_type_name(elem);
@@ -1659,6 +1666,31 @@ impl CTrans {
                     let elem_type_name = self.c_type_name(elem_type);
                     out.write(format!("{} {}[{}] = ", elem_type_name, store.name, len).as_bytes())
                         .to()?;
+                }
+                Type::RuntimeArray(rta) => {
+                    // Plan 052: Runtime array allocation (using heap allocation for simplicity)
+                    let elem_type = self.c_type_name(&rta.elem);
+
+                    // Always use heap allocation (malloc) for runtime arrays
+                    // This avoids scope issues with VLAs and ensures the array is accessible after declaration
+                    out.write(format!("{}* {} = malloc(sizeof({}) * ", elem_type, store.name, elem_type).as_bytes()).to()?;
+                    self.expr(&rta.size_expr, out)?;
+                    out.write(b")").to()?;  // Close the malloc call
+
+                    // Initialize array if expression provided
+                    if !matches!(store.expr, Expr::Nil) {
+                        out.write(b";\n    ").to()?;  // End malloc statement
+                        // For now, just zero-initialize
+                        // TODO: Add proper initialization based on store.expr
+                        out.write(format!("memset({}, 0, sizeof({}) * ", store.name, elem_type).as_bytes()).to()?;
+                        self.expr(&rta.size_expr, out)?;
+                        out.write(b")").to()?;  // Close memset call
+                        // Note: eos() will add the final semicolon
+                    } else {
+                        // No initialization, eos() will add semicolon
+                    }
+
+                    return Ok(());  // Early return since we've handled everything
                 }
                 Type::Slice(slice_type) => {
                     // For slices, we need to determine the size from the initializer expression

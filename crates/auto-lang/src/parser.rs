@@ -2901,10 +2901,13 @@ impl<'a> Parser<'a> {
             ty = self.parse_type()?;
         }
 
-        // `=`, a store stmt must have an assignment unless it's a C variable decl
+        // `=`, a store stmt must have an assignment unless:
+        // 1. It's a C variable decl (StoreKind::CVar)
+        // 2. It has an explicit type annotation (Plan 052: allow uninitialized typed variables)
+        let has_explicit_type = !matches!(ty, Type::Unknown);
         let expr = if matches!(store_kind, StoreKind::CVar) {
             Expr::Nil
-        } else {
+        } else if self.is_kind(TokenKind::Asn) {
             self.expect(TokenKind::Asn)?;
             // inital value: expression
             let expr = self.rhs_expr()?;
@@ -2913,6 +2916,14 @@ impl<'a> Parser<'a> {
                 ty = self.infer_type_expr(&expr);
             }
             expr
+        } else if has_explicit_type {
+            // Plan 052: Allow uninitialized variables with explicit type annotation
+            Expr::Nil
+        } else {
+            return Err(SyntaxError::Generic {
+                message: format!("Variable '{}' must have either a type annotation or an initial value", name),
+                span: pos_to_span(self.cur.pos),
+            }.into());
         };
 
         let store = Store {
@@ -4206,7 +4217,45 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Parse static array: [N]T
+        // Parse array size: [N]T or [expr]T (Plan 052: Runtime arrays)
+        // Strategy: Check if next token is literal int (constant array) or something else (runtime array)
+        let is_constant_size = self.is_kind(TokenKind::Int)
+            || self.is_kind(TokenKind::Uint)
+            || self.is_kind(TokenKind::I8)
+            || self.is_kind(TokenKind::U8)
+            || self.is_kind(TokenKind::RSquare);
+
+        if !is_constant_size {
+            // Plan 052: Parse as RuntimeArray (runtime-sized array)
+            // Parse size expression (can be any expression: variable, function call, etc.)
+            let size_expr = self.parse_expr()?;
+
+            self.expect(TokenKind::RSquare)?; // skip `]`
+
+            // Parse element type
+            let type_name = self.parse_ident()?;
+            match type_name {
+                Expr::Ident(name) => {
+                    let elem_ty = self.lookup_type(&name).borrow().clone();
+
+                    // Create RuntimeArrayType
+                    use crate::ast::RuntimeArrayType;
+                    return Ok(Type::RuntimeArray(RuntimeArrayType {
+                        elem: Box::new(elem_ty),
+                        size_expr: Box::new(size_expr),
+                    }));
+                }
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected type identifier, got {:?}", type_name),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            }
+        }
+
+        // Parse static array: [N]T (constant size)
         let array_size = if self.is_kind(TokenKind::Int)
             || self.is_kind(TokenKind::Uint)
             || self.is_kind(TokenKind::I8)

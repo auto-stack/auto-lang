@@ -401,6 +401,7 @@ fn infer_index_type(ctx: &mut InferenceContext, array_expr: &Expr, index_expr: &
     // 提取元素类型
     match container_ty {
         Type::Array(arr) => *arr.elem,
+        Type::RuntimeArray(rta) => *rta.elem,  // Plan 052
         Type::Str(_) | Type::CStr => Type::Char,
         Type::Ptr(ptr) => {
             let inner_ty = ptr.of.borrow();

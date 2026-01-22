@@ -891,10 +891,73 @@ impl Evaler {
     }
 
     fn eval_store(&mut self, store: &Store) -> Value {
-        let mut value = match &store.expr {
-            Expr::Ref(target) => Value::Ref(target.clone().into()),
-            _ => self.eval_expr(&store.expr),
+        // Plan 052: Handle runtime array allocation and uninitialized arrays
+        let value = if matches!(store.ty, ast::Type::RuntimeArray(_)) {
+            // For runtime arrays, evaluate the size expression and allocate
+            if let ast::Type::RuntimeArray(rta) = &store.ty {
+                // Evaluate size expression
+                let size_value = self.eval_expr(&rta.size_expr);
+                let size = match size_value {
+                    Value::Int(n) => n as usize,
+                    Value::Uint(n) => n as usize,
+                    Value::U8(n) => n as usize,
+                    Value::I8(n) => n as usize,
+                    _ => {
+                        eprintln!("Runtime array size must be an integer, got: {:?}", size_value);
+                        return Value::Error(format!("Runtime array size must be an integer").into());
+                    }
+                };
+
+                // Determine element type for proper initialization
+                let default_val = match &*rta.elem {
+                    ast::Type::Int => Value::Int(0),
+                    ast::Type::Uint => Value::Uint(0),
+                    ast::Type::Float => Value::Float(0.0),
+                    ast::Type::Double => Value::Double(0.0),
+                    ast::Type::Bool => Value::Bool(false),
+                    ast::Type::Byte => Value::Byte(0),
+                    _ => Value::Int(0),  // Default to Int(0) for unknown types
+                };
+
+                // Create array with specified size, initialized to default value
+                let mut elems = Vec::with_capacity(size);
+                elems.resize(size, default_val);
+                Value::array(elems)
+            } else {
+                unreachable!()
+            }
+        } else if matches!(store.ty, ast::Type::Array(_)) && matches!(store.expr, Expr::Nil) {
+            // For uninitialized regular arrays (e.g., `mut arr [3]int` without `=`),
+            // create an array initialized to zeros
+            if let ast::Type::Array(array_type) = &store.ty {
+                // Determine element type for proper initialization
+                let default_val = match &*array_type.elem {
+                    ast::Type::Int => Value::Int(0),
+                    ast::Type::Uint => Value::Uint(0),
+                    ast::Type::Float => Value::Float(0.0),
+                    ast::Type::Double => Value::Double(0.0),
+                    ast::Type::Bool => Value::Bool(false),
+                    ast::Type::Byte => Value::Byte(0),
+                    _ => Value::Int(0),  // Default to Int(0) for unknown types
+                };
+
+                // Create array with specified size, initialized to default value
+                let mut elems = Vec::with_capacity(array_type.len);
+                elems.resize(array_type.len, default_val);
+                Value::array(elems)
+            } else {
+                unreachable!()
+            }
+        } else {
+            // Normal value evaluation
+            match &store.expr {
+                Expr::Ref(target) => Value::Ref(target.clone().into()),
+                _ => self.eval_expr(&store.expr),
+            }
         };
+
+        let mut value = value;
+
         // TODO: add general type coercion in assignment
         // int -> byte
         if matches!(store.ty, ast::Type::Byte) && matches!(value, Value::Int(_)) {
@@ -3905,6 +3968,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::CStr => auto_val::Type::CStr,
         ast::Type::StrSlice => auto_val::Type::StrSlice,  // Borrowed string slice (Phase 3)
         ast::Type::Array(_) => auto_val::Type::Array,
+        ast::Type::RuntimeArray(_) => auto_val::Type::Array,  // Plan 052: Runtime arrays
         ast::Type::List(_) => auto_val::Type::Array,  // TODO: Add List to auto_val::Type
         ast::Type::Slice(_) => auto_val::Type::Array,  // TODO: Add Slice to auto_val::Type
         ast::Type::Ptr(_) => auto_val::Type::Ptr,

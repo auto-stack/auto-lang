@@ -17,7 +17,8 @@ pub enum Type {
     Str(usize),
     CStr,
     StrSlice,  // Borrowed string slice (Phase 3)
-    Array(ArrayType),         // [N]T - static array
+    Array(ArrayType),         // [N]T - static array (compile-time size)
+    RuntimeArray(RuntimeArrayType),  // [expr]T - runtime-sized array (Plan 052)
     List(Box<Type>),          // List<T> - dynamic list
     Slice(SliceType),         // []T - slice type
     Ptr(PtrType),
@@ -51,6 +52,9 @@ impl Type {
             Type::StrSlice => "str_slice".into(),
             Type::Array(array_type) => {
                 format!("[{}]{}", array_type.elem.unique_name(), array_type.len).into()
+            }
+            Type::RuntimeArray(rta) => {
+                format!("[runtime:{}]{}", rta.elem.unique_name(), rta.size_expr.repr()).into()
             }
             Type::List(elem) => format!("List<{}>", elem.unique_name()).into(),
             Type::Slice(slice_type) => format!("[]{}", slice_type.elem.unique_name()).into(),
@@ -86,6 +90,7 @@ impl Type {
             Type::CStr => "\"\"".into(),
             Type::StrSlice => "\"\"".into(),  // Default empty slice
             Type::Array(_) => "[]".into(),
+            Type::RuntimeArray(_) => "[runtime]".into(),  // Runtime array placeholder
             Type::List(_) => "List.new()".into(),  // Empty list constructor
             Type::Slice(_) => "[]".into(),  // Empty slice literal
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
@@ -140,6 +145,13 @@ impl Type {
                 Type::Array(ArrayType {
                     elem: Box::new(array_type.elem.substitute(params, args)),
                     len: array_type.len,
+                })
+            }
+            Type::RuntimeArray(rta) => {
+                // Runtime arrays keep their size expression as-is (no substitution in expressions)
+                Type::RuntimeArray(RuntimeArrayType {
+                    elem: Box::new(rta.elem.substitute(params, args)),
+                    size_expr: rta.size_expr.clone(),
                 })
             }
             Type::Slice(slice_type) => {
@@ -242,6 +254,21 @@ pub struct SliceType {
     pub elem: Box<Type>,
 }
 
+/// Runtime-sized array type (Plan 052)
+/// Represents arrays where the size is determined at runtime
+/// Example: [size]int where size is a variable or function call
+#[derive(Debug, Clone)]
+pub struct RuntimeArrayType {
+    pub elem: Box<Type>,
+    pub size_expr: Box<Expr>,  // Size expression evaluated at runtime (boxed to avoid recursive type)
+}
+
+impl fmt::Display for RuntimeArrayType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(runtime-array-type (elem {}) (size-expr {}))", &self.elem, &self.size_expr)
+    }
+}
+
 impl fmt::Display for SliceType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(slice-type (elem {}))", &self.elem)
@@ -263,6 +290,7 @@ impl fmt::Display for Type {
             Type::CStr => write!(f, "cstr"),
             Type::StrSlice => write!(f, "str_slice"),
             Type::Array(array_type) => write!(f, "{}", array_type),
+            Type::RuntimeArray(rta) => write!(f, "{}", rta),
             Type::List(elem) => write!(f, "List<{}>", elem),
             Type::Slice(slice_type) => write!(f, "{}", slice_type),
             Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
@@ -296,6 +324,7 @@ impl From<Type> for auto_val::Type {
             Type::CStr => auto_val::Type::CStr,
             Type::StrSlice => auto_val::Type::StrSlice,
             Type::Array(_) => auto_val::Type::Array,
+            Type::RuntimeArray(_) => auto_val::Type::Array,  // Runtime arrays transpile to Array type
             Type::List(_) => auto_val::Type::Array,  // TODO: Add List to auto_val::Type
             Type::Slice(_) => auto_val::Type::Array,  // TODO: Add Slice to auto_val::Type
             Type::Ptr(_) => auto_val::Type::Ptr,
@@ -560,6 +589,14 @@ impl AtomWriter for Type {
                     "array({}, {})",
                     array_type.elem.to_atom_str(),
                     array_type.len
+                )?;
+            }
+            Type::RuntimeArray(rta) => {
+                write!(
+                    f,
+                    "runtime_array({}, {})",
+                    rta.elem.to_atom_str(),
+                    rta.size_expr.to_atom_str()
                 )?;
             }
             Type::List(elem) => {

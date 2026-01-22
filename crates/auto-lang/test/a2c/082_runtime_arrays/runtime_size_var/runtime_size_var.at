@@ -1,0 +1,9 @@
+fn get_size() int {
+    10
+}
+
+fn main() int {
+    mut arr [get_size()]int
+    arr[0] = 42
+    arr[0]
+}
