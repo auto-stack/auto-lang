@@ -1,29 +1,42 @@
 # Plan: Implement Generic Type Definitions
 
-**Status:** ✅ **COMPLETE** - Minimum Viable Version Achieved!
+**Status:** ✅ **COMPLETE** - Stdlib Converted to Generics!
 **Created:** 2025-01-22
 **Priority:** HIGH - Core language feature for user-defined generic types
 **Last Updated:** 2025-01-22
 
 ## Summary
 
-✅ **Generic type definitions are now working in AutoLang!**
+✅ **Generic type definitions are now working and integrated into AutoLang stdlib!**
 
-User-defined generic types can be defined and used with full type substitution:
+AutoLang now has fully functional generic types with type substitution:
 
+**Generic Types in Stdlib:**
+- `tag May<T>` - Optional/error handling type (stdlib/auto/may.at)
+- `type List<T>` - Dynamic list/vec type (stdlib/auto/list.at)
+
+Both now support full type substitution and work with any concrete type.
+
+**Example Usage:**
 ```auto
-tag May<T> {
-    nil Nil
-    val T
-}
+use auto.list: List
 
 fn main() {
-    mut x May<int> = May.val(42)
-    x
+    mut list List<int> = List.new()
+    list.push(42)
+    list.push(100)
+    let len = list.len()
+    list
 }
 ```
 
-This successfully transpiles to C with proper type substitution where `T` is replaced with `int`.
+Transpiles to C with proper type substitution:
+```c
+list_int list = List.new();
+list.push(42);
+list.push(100);
+unknown len = list.len();
+```
 
 **What Works:**
 - ✅ Generic tag definitions: `tag MyType<T> { ... }`
@@ -32,12 +45,58 @@ This successfully transpiles to C with proper type substitution where `T` is rep
 - ✅ Instantiation: `MyType<int>`, `MyType<string>`, etc.
 - ✅ C transpilation with substituted types
 - ✅ Rust transpilation support
+- ✅ **Stdlib integration**: May<T> and List<T> are fully generic
 
 **Known Limitations:**
 - Two-step variable declaration syntax needs parser fixes
 - Nested generics (`List<List<int>>`) not yet tested
 - Multi-parameter generics (`Map<K, V>`) not yet tested
 - Python transpiler not yet updated
+
+---
+
+## Stdlib Conversion to Generics
+
+As part of this implementation, the stdlib has been updated to use generic types:
+
+### May<T> (stdlib/auto/may.at)
+- **Status**: ✅ Already generic, now fully functional
+- **Purpose**: Optional/error handling with three states: nil, val(T), err(int)
+- **Usage**:
+  ```auto
+  use auto.may: May
+
+  fn main() {
+      mut result May<int> = May.val(42)
+      if result.is_some() {
+          let value = result.unwrap()
+      }
+  }
+  ```
+
+### List<T> (stdlib/auto/list.at)
+- **Status**: ✅ Converted from specialized to generic
+- **Previous**: `type List` (specialized for char only)
+- **Current**: `type List<T>` (works with any type)
+- **Location**: Moved from `auto.data` to `auto` module
+- **Usage**:
+  ```auto
+  use auto.list: List
+
+  fn main() {
+      mut numbers List<int> = List.new()
+      numbers.push(1)
+      numbers.push(2)
+      let count = numbers.len()
+      numbers
+  }
+  ```
+
+### Benefits
+- **Type Safety**: Compile-time type checking for all operations
+- **Code Reuse**: Single implementation works for all types
+- **Consistency**: Same pattern as May<T> and other generic types
+- **Flexibility**: Easy to create lists of any type (int, string, custom types)
 
 ## Overview
 
