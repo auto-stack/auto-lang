@@ -101,6 +101,78 @@ impl Type {
             _ => "<unknown_type>".into(),
         }
     }
+
+    /// Substitute type parameters with concrete types
+    ///
+    /// # Examples
+    /// - `T` replace with `int` → `int`
+    /// - `List<T>` replace `T` with `int` → `List<int>`
+    /// - `May<T>` replace `T` with `string` → `May<string>`
+    ///
+    /// # Arguments
+    /// * `params` - Slice of type parameter names to replace (e.g., ["T", "K"])
+    /// * `args` - Slice of concrete types to substitute (e.g., [int, str])
+    ///
+    /// # Returns
+    /// A new Type with all type parameters replaced
+    pub fn substitute(&self, params: &[Name], args: &[Type]) -> Type {
+        match self {
+            // Basic types: return directly (no substitution needed)
+            Type::Byte | Type::Int | Type::Uint | Type::USize | Type::Float | Type::Double |
+            Type::Bool | Type::Char | Type::Void | Type::CStr | Type::StrSlice |
+            Type::Unknown | Type::Variadic => self.clone(),
+
+            Type::Str(_) => Type::Str(0), // Str with size 0 is generic
+
+            // Type parameters: lookup and replace
+            Type::User(type_decl) => {
+                if let Some(idx) = params.iter().position(|p| p == &type_decl.name) {
+                    args[idx].clone()
+                } else {
+                    self.clone()
+                }
+            }
+
+            // Compound types: recursive substitution
+            Type::List(elem) => {
+                Type::List(Box::new(elem.substitute(params, args)))
+            }
+            Type::May(inner) => {
+                Type::May(Box::new(inner.substitute(params, args)))
+            }
+            Type::Array(array_type) => {
+                Type::Array(ArrayType {
+                    elem: Box::new(array_type.elem.substitute(params, args)),
+                    len: array_type.len,
+                })
+            }
+            Type::Slice(slice_type) => {
+                Type::Slice(SliceType {
+                    elem: Box::new(slice_type.elem.substitute(params, args)),
+                })
+            }
+            Type::Ptr(ptr_type) => {
+                Type::Ptr(PtrType {
+                    of: auto_val::shared(Type::from(ptr_type.of.borrow().clone()).substitute(params, args)),
+                })
+            }
+            Type::Linear(inner) => {
+                Type::Linear(Box::new(inner.substitute(params, args)))
+            }
+
+            // Generic instances: recursive substitution
+            Type::GenericInstance(inst) => {
+                Type::GenericInstance(GenericInstance {
+                    base_name: inst.base_name.clone(),
+                    args: inst.args.iter().map(|t| t.substitute(params, args)).collect(),
+                })
+            }
+
+            // Complex types: clone as-is (no substitution in metadata)
+            Type::Enum(_) | Type::Spec(_) | Type::Tag(_) | Type::Union(_) |
+            Type::CStruct(_) => self.clone(),
+        }
+    }
 }
 
 /// Type parameter (single) - for generic type definitions

@@ -1,0 +1,9 @@
+tag MyMay<T> {
+    none Nil
+    some T
+}
+
+fn main() {
+    let x MyMay<int>
+    x
+}

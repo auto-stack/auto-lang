@@ -4374,6 +4374,65 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::Gt)?;
 
+        // Check if base_name refers to a user-defined generic Tag or TypeDecl
+        let base_type = self.lookup_type(&base_name);
+        let base_type_ref = base_type.borrow();
+
+        match &*base_type_ref {
+            Type::Tag(tag_shared) if !tag_shared.borrow().type_params.is_empty() => {
+                // User-defined generic Tag with type parameters
+                // Perform substitution and create new Tag instance
+                let tag = tag_shared.borrow().clone();
+                drop(base_type_ref); // Drop borrow before registering
+
+                // Collect type parameter names
+                let param_names: Vec<_> = tag.type_params.iter()
+                    .map(|tp| tp.name.clone())
+                    .collect();
+
+                // Substitute type parameters in tag fields
+                let substituted_fields: Vec<_> = tag.fields.iter()
+                    .map(|field| TagField {
+                        name: field.name.clone(),
+                        ty: field.ty.substitute(&param_names, &args),
+                    })
+                    .collect();
+
+                // Create new substituted tag
+                let substituted_tag = Tag {
+                    name: format!("{}_{}", base_name,
+                        args.iter().map(|t| t.unique_name().to_string()).collect::<Vec<_>>().join("_")
+                    ).into(),
+                    type_params: Vec::new(), // No type parameters in instantiated tag
+                    fields: substituted_fields,
+                    methods: tag.methods.clone(),
+                };
+
+                // Register the substituted tag
+                let subst_name = substituted_tag.name.clone();
+                self.define(
+                    subst_name.as_str(),
+                    Meta::Type(Type::Tag(shared(substituted_tag.clone())))
+                );
+
+                return Ok(Type::Tag(shared(substituted_tag)));
+            }
+            Type::User(type_decl) if !type_decl.type_params.is_empty() => {
+                // User-defined generic TypeDecl with type parameters
+                // TODO: Implement TypeDecl substitution (similar to Tag substitution)
+                // For now, return GenericInstance
+                drop(base_type_ref);
+                return Ok(Type::GenericInstance(GenericInstance {
+                    base_name,
+                    args,
+                }));
+            }
+            _ => {
+                // Either built-in type or non-generic user-defined type
+                drop(base_type_ref);
+            }
+        }
+
         // Special handling for built-in generic types
         // List<T> and May<T> have dedicated Type variants
         match base_name.as_str() {
