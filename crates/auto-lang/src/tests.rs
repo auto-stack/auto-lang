@@ -4,6 +4,7 @@ mod atom_tests;
 mod config_tests;
 mod dstr_tests;
 mod error_tests;
+mod may_tests;
 mod ownership_tests;
 mod stdlib_tests;
 mod string_tests;
