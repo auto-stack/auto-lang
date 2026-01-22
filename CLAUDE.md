@@ -332,10 +332,12 @@ Test expectations define the correct behavior. If tests fail, the implementation
 
 ### Creating Plans for Complex Tasks
 
+⚠️ **CRITICAL**: ALL plan files with sequential numbers MUST be created in `docs/plans/` folder.
+
 When working on complex features or refactoring tasks that require planning:
 
 1. **Create a plan file** in `docs/plans/` with:
-   - Consecutive numbering (e.g., `006-my-plan.md`)
+   - Consecutive numbering (e.g., `006-my-plan.md`, `049-may-operators-generic-types.md`)
    - Descriptive name (kebab-case)
    - Comprehensive but concise content
 
@@ -350,8 +352,9 @@ When working on complex features or refactoring tasks that require planning:
 3. **Example plan names**:
    - `006-to-atom-comprehensive-tests.md`
    - `007-refactor-parser-memory.md`
+   - `049-may-operators-generic-types.md`
 
-**Why**: Plans provide context, enable review, and create a historical record of design decisions.
+**Why**: Plans provide context, enable review, and create a historical record of design decisions. Keeping them in `docs/plans/` ensures they're version-controlled with the codebase and easily discoverable.
 
 ### ⚠️ CRITICAL: Never Edit Generated C Files
 
