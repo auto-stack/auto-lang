@@ -770,8 +770,12 @@ impl<'a> Lexer<'a> {
             let end = Token::new(TokenKind::CommentEnd, self.pos(2), "*/".into());
             self.buffer.push_back(end);
             tok
+        } else if self.peek('=') {
+            // /=
+            self.chars.next(); // skip =
+            Token::new(TokenKind::DivEq, self.pos(2), "/=".into())
         } else {
-            self.with_equal(TokenKind::Div, TokenKind::DivEq, '/')
+            Token::new(TokenKind::Div, self.pos(1), "/".into())
         }
     }
 }

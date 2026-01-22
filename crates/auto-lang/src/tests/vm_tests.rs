@@ -2071,3 +2071,73 @@ fn test_module_simulation() {
     let result = run(code).unwrap();
     assert_eq!(result, "42");
 }
+
+#[test]
+fn test_compound_assignment_add_eq() {
+    let code = r#"
+var a = 1
+a += 1
+a
+    "#;
+
+    let result = run(code).unwrap();
+    assert_eq!(result, "2");
+}
+
+#[test]
+fn test_compound_assignment_sub_eq() {
+    let code = r#"
+var a = 10
+a -= 3
+a
+    "#;
+
+    let result = run(code).unwrap();
+    assert_eq!(result, "7");
+}
+
+#[test]
+fn test_compound_assignment_mul_eq() {
+    let code = r#"
+var a = 5
+a *= 3
+a
+    "#;
+
+    let result = run(code).unwrap();
+    assert_eq!(result, "15");
+}
+
+#[test]
+fn test_compound_assignment_div_eq() {
+    let code = r#"
+var a = 20
+a /= 4
+a
+    "#;
+
+    let result = run(code).unwrap();
+    assert_eq!(result, "5");
+}
+
+#[test]
+fn test_compound_assignment_chained() {
+    let code = r#"
+var a = 1
+a += 1
+a += 2
+a += 3
+a
+    "#;
+
+    let result = run(code).unwrap();
+    assert_eq!(result, "7");
+}
+
+#[test]
+fn test_compound_assignment_div_eq_oneline() {
+    let code = "var a = 20; a /= 4; a";
+    let result = run(code).unwrap();
+    println!("Result: {} (expected: 5)", result);
+    assert_eq!(result, "5");
+}

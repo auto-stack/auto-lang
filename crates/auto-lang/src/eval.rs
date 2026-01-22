@@ -932,43 +932,68 @@ impl Evaler {
     }
 
     fn eval_bina(&mut self, left: &Expr, op: &Op, right: &Expr) -> Value {
-        let left_value = self.eval_expr(left);
-        let right_value = self.eval_expr(right);
-
-        // Resolve ValueRef for arithmetic operations
-        let left_resolved = self.resolve_or_clone(&left_value);
-        let right_resolved = self.resolve_or_clone(&right_value);
-
+        // Handle compound assignment operators (+=, -=, *=, /=)
         match op {
-            Op::Add => {
-                // Convert resolved ValueData back to Value for add()
-                add(
-                    Value::from_data(left_resolved.clone()),
-                    Value::from_data(right_resolved.clone()),
-                )
+            Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq => {
+                // Get current value of left side
+                let current_value = self.eval_expr(left);
+
+                // Get right side value
+                let right_value = self.eval_expr(right);
+
+                // Perform the arithmetic operation
+                let result = match op {
+                    Op::AddEq => add(current_value.clone(), right_value.clone()),
+                    Op::SubEq => sub(current_value.clone(), right_value.clone()),
+                    Op::MulEq => mul(current_value.clone(), right_value.clone()),
+                    Op::DivEq => div(current_value.clone(), right_value.clone()),
+                    _ => Value::Nil,
+                };
+
+                // Assign the result back to the left side
+                self.eval_asn(left, result)
             }
-            Op::Sub => sub(
-                Value::from_data(left_resolved.clone()),
-                Value::from_data(right_resolved.clone()),
-            ),
-            Op::Mul => mul(
-                Value::from_data(left_resolved.clone()),
-                Value::from_data(right_resolved.clone()),
-            ),
-            Op::Div => div(
-                Value::from_data(left_resolved.clone()),
-                Value::from_data(right_resolved.clone()),
-            ),
-            Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => comp(
-                &Value::from_data(left_resolved),
-                &op,
-                &Value::from_data(right_resolved),
-            ),
-            Op::Asn => self.eval_asn(left, right_value),
-            Op::Range => self.range(left, right),
-            Op::RangeEq => self.range_eq(left, right),
-            Op::Dot => self.dot(left, right),
-            _ => Value::Nil,
+            _ => {
+                // Handle regular binary operators
+                let left_value = self.eval_expr(left);
+                let right_value = self.eval_expr(right);
+
+                // Resolve ValueRef for arithmetic operations
+                let left_resolved = self.resolve_or_clone(&left_value);
+                let right_resolved = self.resolve_or_clone(&right_value);
+
+                match op {
+                    Op::Add => {
+                        // Convert resolved ValueData back to Value for add()
+                        add(
+                            Value::from_data(left_resolved.clone()),
+                            Value::from_data(right_resolved.clone()),
+                        )
+                    }
+                    Op::Sub => sub(
+                        Value::from_data(left_resolved.clone()),
+                        Value::from_data(right_resolved.clone()),
+                    ),
+                    Op::Mul => mul(
+                        Value::from_data(left_resolved.clone()),
+                        Value::from_data(right_resolved.clone()),
+                    ),
+                    Op::Div => div(
+                        Value::from_data(left_resolved.clone()),
+                        Value::from_data(right_resolved.clone()),
+                    ),
+                    Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => comp(
+                        &Value::from_data(left_resolved),
+                        &op,
+                        &Value::from_data(right_resolved),
+                    ),
+                    Op::Asn => self.eval_asn(left, right_value),
+                    Op::Range => self.range(left, right),
+                    Op::RangeEq => self.range_eq(left, right),
+                    Op::Dot => self.dot(left, right),
+                    _ => Value::Nil,
+                }
+            }
         }
     }
 
