@@ -2462,7 +2462,14 @@ impl Evaler {
             FnKind::Function | FnKind::Lambda => {
                 let result = self.eval_body(&fn_decl.body)?;
                 self.exit_scope();
-                Ok(result)
+
+                // Plan 050 Step 4: Auto-wrap return value if function has ?T return type
+                let ret_type = &fn_decl.ret;
+                if is_may_type(ret_type) {
+                    Ok(auto_wrap_may(result, ret_type))
+                } else {
+                    Ok(result)
+                }
             }
             FnKind::VmFunction => {
                 let result = self.eval_vm_fn_call(fn_decl, &arg_vals);
@@ -3839,6 +3846,49 @@ fn to_value_sig(fn_decl: &Fn) -> Sig {
         params,
         ret,
     }
+}
+
+// Plan 050 Step 4: Check if a Type is a May<T> type
+fn is_may_type(ty: &crate::ast::Type) -> bool {
+    use crate::ast::Type;
+    match ty {
+        Type::Tag(tag) => {
+            let tag_ref = tag.borrow();
+            let tag_name = tag_ref.name.as_str();
+            // Check if this is a May type (either May_int from stdlib or MayInt from fallback)
+            tag_name.starts_with("May_") || tag_name.starts_with("MayInt") ||
+            tag_name.starts_with("MayStr") || tag_name.starts_with("MayUint") ||
+            tag_name.starts_with("MayFloat") || tag_name.starts_with("MayDouble") ||
+            tag_name.starts_with("MayChar") || tag_name.starts_with("MayBool")
+        }
+        _ => false,
+    }
+}
+
+// Plan 050 Step 4: Auto-wrap a value in May.val() if it's not already wrapped
+fn auto_wrap_may(value: Value, _may_type: &crate::ast::Type) -> Value {
+    // If value is already a Node with is_some property, assume it's already a May value
+    if let Value::Node(node) = &value {
+        if node.has_prop("is_some") {
+            // Already wrapped, return as-is
+            return value;
+        }
+    }
+
+    // Otherwise, wrap in May.val()
+    use auto_val::Node;
+
+    let mut may_node = Node::new("May");
+    may_node.set_prop("variant", auto_val::Value::str("val"));
+    may_node.set_prop("is_some", auto_val::Value::Bool(true));
+    may_node.set_prop("is_nil", auto_val::Value::Bool(false));
+    may_node.set_prop("is_err", auto_val::Value::Bool(false));
+
+    // Store the actual value in both "value" and "val" properties
+    may_node.set_prop("value", value.clone());
+    may_node.set_prop("val", value.clone());
+
+    Value::Node(may_node)
 }
 
 fn to_value_type(ty: &ast::Type) -> auto_val::Type {
