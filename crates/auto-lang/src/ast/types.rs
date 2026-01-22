@@ -42,6 +42,7 @@ impl Type {
             Type::Uint => "uint".into(),
             Type::USize => "usize".into(),
             Type::Float => "float".into(),
+            Type::Double => "double".into(),
             Type::Bool => "bool".into(),
             Type::Byte => "byte".into(),
             Type::Char => "char".into(),

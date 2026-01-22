@@ -97,6 +97,16 @@ fn postfix_power(op: Op) -> AutoResult<Option<PostfixPrec>> {
     }
 }
 
+/// Helper function to capitalize first letter for backwards compatibility
+/// Converts "int" -> "Int", "string" -> "String", etc.
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
 fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
     match op {
         Op::Add | Op::Sub => Ok(PREC_ADD),
@@ -4478,42 +4488,48 @@ impl<'a> Parser<'a> {
 
                 // Look up generic May tag definition from stdlib
                 let may_tag_ref = self.lookup_type(&Name::from("May"));
-                let may_tag = match &*may_tag_ref.borrow() {
+                let (subst_name, substituted_fields, methods) = match &*may_tag_ref.borrow() {
                     Type::Tag(t) if !t.borrow().type_params.is_empty() => {
-                        t.borrow().clone()
+                        // Use stdlib May<T> tag with substitution
+                        let tag = t.borrow().clone();
+                        let param_names: Vec<_> = tag.type_params.iter()
+                            .map(|tp| tp.name.clone())
+                            .collect();
+                        let type_args = vec![inner_type.clone()];
+
+                        let fields: Vec<_> = tag.fields.iter()
+                            .map(|field| TagField {
+                                name: field.name.clone(),
+                                ty: field.ty.substitute(&param_names, &type_args),
+                            })
+                            .collect();
+
+                        // Use underscore naming for stdlib tags (May_int, May_string)
+                        let inner_name = type_args[0].unique_name().to_string();
+                        (format!("May_{}", inner_name), fields, tag.methods)
                     }
                     _ => {
-                        let message = "May type not found or not generic".to_string();
-                        let span = pos_to_span(self.cur.pos);
-                        return Err(SyntaxError::Generic { message, span }.into());
+                        // Fallback: Create builtin May<T> directly (no substitution needed)
+                        // For C transpilation tests that don't load stdlib
+                        let inner_name = inner_type.unique_name().to_string();
+                        let subst_name = format!("May{}", capitalize_first(&inner_name));
+
+                        let fields = vec![
+                            TagField { name: Name::from("nil"), ty: Type::Unknown },
+                            TagField { name: Name::from("val"), ty: inner_type.clone() },
+                            TagField { name: Name::from("err"), ty: Type::Int },
+                        ];
+
+                        (subst_name, fields, Vec::new())
                     }
                 };
-
-                // Collect type parameter names (should be ["T"])
-                let param_names: Vec<_> = may_tag.type_params.iter()
-                    .map(|tp| tp.name.clone())
-                    .collect();
-
-                // Create type arguments vector
-                let type_args = vec![inner_type];
-
-                // Substitute type parameters in tag fields
-                let substituted_fields: Vec<_> = may_tag.fields.iter()
-                    .map(|field| TagField {
-                        name: field.name.clone(),
-                        ty: field.ty.substitute(&param_names, &type_args),
-                    })
-                    .collect();
-
-                // Create substituted tag name (e.g., "May_int", "May_string")
-                let subst_name = format!("May_{}", type_args[0].unique_name());
 
                 // Create new substituted tag
                 let substituted_tag = Tag {
                     name: subst_name.clone().into(),
                     type_params: Vec::new(), // No type params in instantiated tag
                     fields: substituted_fields,
-                    methods: may_tag.methods,
+                    methods,
                 };
 
                 // Register the substituted tag in scope

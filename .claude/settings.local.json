@@ -91,7 +91,8 @@
       "Bash(git rm:*)",
       "Bash(tee:*)",
       "Bash(pwd d:/autostack/auto-lang)",
-      "Bash(./auto.exe:*)"
+      "Bash(./auto.exe:*)",
+      "Bash(./target/debug/auto-lang.exe.exe:*)"
     ]
   }
 }
