@@ -1,1 +1,189 @@
-D:/autostack/auto-ui/stdlib/auto/ui.at
+// ============================================================================
+// auto.ui Module - Unified UI Framework for Auto Language
+// ============================================================================
+// This file defines all UI types and components for AutoUI integration.
+// Note: AutoLang doesn't support folder-based modules yet, so all definitions
+// are in this single file. Future versions may split this into multiple files.
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Core Types
+// ----------------------------------------------------------------------------
+
+// Widget trait - base trait for all UI components
+// All custom widgets (Hello, Counter, etc.) must implement this
+type Widget {
+    // Style string for Plan 005 integration
+    // Example: "p-4 bg-blue-500 text-white"
+    style str = ""
+
+    // View method - returns the UI structure
+    fn view() View;
+
+    // Event handler - processes messages
+    // Default implementation: no-op
+    fn on(ev Msg) {
+        // Default: do nothing
+    }
+}
+
+// App type - application entry point
+// Apps are top-level containers that hold widgets
+type App is Widget {
+    // Window title
+    title str = "AutoUI App"
+
+    // Theme name (for future theming support)
+    theme str = "default"
+
+    // App inherits view() and on() from Widget
+}
+
+// View type - represents UI element tree
+// This is a type marker for the transpiler
+// Actual implementation is in Rust (auto_ui::view::View)
+type View {
+    // Opaque type - represents View<M> in Rust
+    // The transpiler converts this to auto_ui::View<Msg>
+}
+
+// ----------------------------------------------------------------------------
+// Layout Components
+// ----------------------------------------------------------------------------
+
+// Center layout - centers content both horizontally and vertically
+type Center is Widget {
+    child Widget
+
+    fn view() View {
+        // Implemented by transpiler - converts to View::container with center_x/center_y
+    }
+}
+
+// Column layout - arranges kids vertically
+type Col is Widget {
+    spacing u16 = 0
+    padding u16 = 0
+
+    fn view() View {
+        // Implemented by transpiler - converts to View::col()
+    }
+}
+
+// Row layout - arranges kids horizontally
+type Row is Widget {
+    spacing u16 = 0
+    padding u16 = 0
+
+    fn view() View {
+        // Implemented by transpiler - converts to View::row()
+    }
+}
+
+// Container layout - generic container with sizing
+type Container is Widget {
+    padding u16 = 0
+    width u16
+    height u16
+    child Widget
+
+    fn view() View {
+        // Converts to View::container
+    }
+}
+
+// Scrollable layout - container with scrollbars
+type Scrollable is Widget {
+    width u16
+    height u16
+    child Widget
+
+    fn view() View {
+        // Converts to View::scrollable
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Element Components
+// ----------------------------------------------------------------------------
+
+// Text element - displays text
+type Text is Widget {
+    content str
+
+    fn view() View {
+        // Converts to View::text(content)
+    }
+}
+
+// Button element - clickable with message
+type Button is Widget {
+    label str
+    onclick Msg
+
+    fn view() View {
+        // Converts to View::button(label, onclick)
+    }
+}
+
+// Input element - text input field
+type Input is Widget {
+    placeholder str
+    value str
+    on_change Msg
+
+    fn view() View {
+        // Converts to View::input(...)
+    }
+}
+
+// Checkbox element
+type Checkbox is Widget {
+    is_checked bool
+    label str
+    on_toggle Msg
+
+    fn view() View {
+        // Converts to View::checkbox(...)
+    }
+}
+
+// Radio button element
+type Radio is Widget {
+    label str
+    is_selected bool
+    on_select Msg
+
+    fn view() View {
+        // Converts to View::radio(...)
+    }
+}
+
+// Select dropdown element
+type Select is Widget {
+    selected_index u16
+    on_select Msg
+
+    fn view() View {
+        // Converts to View::select(...)
+    }
+}
+
+// List element
+type List is Widget {
+    spacing u16 = 0
+
+    fn view() View {
+        // Converts to View::list(...)
+    }
+}
+
+// Table element
+type Table is Widget {
+    spacing u16 = 0
+    col_spacing u16 = 0
+
+    fn view() View {
+        // Converts to View::table(...)
+    }
+}
