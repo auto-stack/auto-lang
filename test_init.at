@@ -1,0 +1,8 @@
+tag MyMay<T> {
+    none void
+    some T
+}
+
+fn main() {
+    let x = MyMay.some(42)
+}

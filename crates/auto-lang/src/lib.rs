@@ -177,7 +177,7 @@ pub fn trans_c(path: &str) -> AutoResult<String> {
 
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code.as_str(), scope);
-    let ast = parser.parse().map_err(|e| e.to_string())?;
+    let ast = parser.parse()?;
     let mut sink = Sink::new(fname);
     let mut trans = CTrans::new(cname.clone().into());
     trans.set_scope(parser.scope.clone());

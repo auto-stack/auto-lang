@@ -1,0 +1,8 @@
+tag MyMay<T> {
+    none void
+    some T
+}
+
+fn main() {
+    mut x MyMay<int> = MyMay.some(42)
+}

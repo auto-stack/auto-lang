@@ -2825,6 +2825,26 @@ impl Trans for CTrans {
             }
         }
 
+        // Transpile substituted generic tags from scope
+        // These are tags created during parsing when generic instances are used (e.g., May<int> → May_int)
+        let scope = self.scope.clone();
+        let scope_borrowed = scope.borrow();
+        // Iterate through all scopes to find substituted tags
+        for (_sid, scope_data) in scope_borrowed.scopes.iter() {
+            for (name, meta) in scope_data.symbols.iter() {
+                if let Meta::Type(Type::Tag(tag)) = &**meta {
+                    // Check if this is a substituted tag (contains underscore and has no type params)
+                    let tag_borrowed = tag.borrow();
+                    if tag_borrowed.type_params.is_empty() && name.contains('_') {
+                        // This is likely a substituted tag - transpile it
+                        drop(tag_borrowed);
+                        self.tag(&tag.borrow(), sink)?;
+                    }
+                }
+            }
+        }
+        drop(scope_borrowed);
+
         // Main
         // TODO: check wether auto code already has a main function
         if !main.is_empty() {

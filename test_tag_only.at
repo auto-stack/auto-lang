@@ -1,0 +1,4 @@
+tag MyMay<T> {
+    none void
+    some T
+}
