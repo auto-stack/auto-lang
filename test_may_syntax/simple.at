@@ -1,0 +1,17 @@
+// Test ?T syntax sugar with generic May<T>
+
+// Define a simple May tag without methods for testing
+tag May<T> {
+    nil Nil
+    val T
+    err int
+}
+
+fn test_question_syntax() ?int {
+    let x ?int = May.nil()
+    x
+}
+
+fn main() int {
+    42
+}

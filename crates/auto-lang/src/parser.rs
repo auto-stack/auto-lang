@@ -4434,16 +4434,13 @@ impl<'a> Parser<'a> {
         }
 
         // Special handling for built-in generic types
-        // List<T> and May<T> have dedicated Type variants
+        // List<T> has dedicated Type variant (May<T> is now a generic tag)
         match base_name.as_str() {
             "List" if args.len() == 1 => {
                 Ok(Type::List(Box::new(args.into_iter().next().unwrap())))
             }
-            "May" if args.len() == 1 => {
-                Ok(Type::May(Box::new(args.into_iter().next().unwrap())))
-            }
             _ => {
-                // User-defined generic instance
+                // User-defined generic instance (including May<T> from stdlib)
                 Ok(Type::GenericInstance(GenericInstance {
                     base_name,
                     args,
@@ -4475,10 +4472,57 @@ impl<'a> Parser<'a> {
     pub fn parse_type(&mut self) -> AutoResult<Type> {
         match self.cur.kind {
             TokenKind::Question => {
-                // Parse ?T as May<T>
+                // Parse ?T as syntax sugar for May<T> generic tag
                 self.next(); // Consume '?'
                 let inner_type = self.parse_type()?;
-                Ok(Type::May(Box::new(inner_type)))
+
+                // Look up generic May tag definition from stdlib
+                let may_tag_ref = self.lookup_type(&Name::from("May"));
+                let may_tag = match &*may_tag_ref.borrow() {
+                    Type::Tag(t) if !t.borrow().type_params.is_empty() => {
+                        t.borrow().clone()
+                    }
+                    _ => {
+                        let message = "May type not found or not generic".to_string();
+                        let span = pos_to_span(self.cur.pos);
+                        return Err(SyntaxError::Generic { message, span }.into());
+                    }
+                };
+
+                // Collect type parameter names (should be ["T"])
+                let param_names: Vec<_> = may_tag.type_params.iter()
+                    .map(|tp| tp.name.clone())
+                    .collect();
+
+                // Create type arguments vector
+                let type_args = vec![inner_type];
+
+                // Substitute type parameters in tag fields
+                let substituted_fields: Vec<_> = may_tag.fields.iter()
+                    .map(|field| TagField {
+                        name: field.name.clone(),
+                        ty: field.ty.substitute(&param_names, &type_args),
+                    })
+                    .collect();
+
+                // Create substituted tag name (e.g., "May_int", "May_string")
+                let subst_name = format!("May_{}", type_args[0].unique_name());
+
+                // Create new substituted tag
+                let substituted_tag = Tag {
+                    name: subst_name.clone().into(),
+                    type_params: Vec::new(), // No type params in instantiated tag
+                    fields: substituted_fields,
+                    methods: may_tag.methods,
+                };
+
+                // Register the substituted tag in scope
+                self.define(
+                    subst_name.as_str(),
+                    Meta::Type(Type::Tag(shared(substituted_tag.clone())))
+                );
+
+                Ok(Type::Tag(shared(substituted_tag)))
             }
             TokenKind::Ident => self.parse_ident_or_generic_type(),
             TokenKind::Star => self.parse_ptr_type(),

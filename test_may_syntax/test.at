@@ -1,0 +1,17 @@
+# Test ?T syntax sugar with generic May<T>
+
+use auto.may: May
+
+fn test_question_syntax() ?int {
+    let x ?int = May.val(42)
+    x
+}
+
+fn main() int {
+    let result = test_question_syntax()
+    // Check if result is val
+    is result {
+        val(v) => v
+        _ => 0
+    }
+}

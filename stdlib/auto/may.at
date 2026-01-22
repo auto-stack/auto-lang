@@ -1,4 +1,3 @@
-# C
 // May<T> is implemented using AutoLang's tag type system
 // No external C code needed - all functionality is in AutoLang
 
