@@ -6,6 +6,7 @@ pub mod builder;
 pub mod collections;
 pub mod io;
 pub mod list;
+pub mod memory;
 
 /// VM function signature: takes universe and single value argument
 pub type VmFunction = fn(Shared<crate::Universe>, auto_val::Value) -> auto_val::Value;
@@ -306,6 +307,35 @@ pub fn init_collections_module() {
     );
 
     collections_module.types.insert("List".into(), list_type);
+
+    // Register memory management functions (Plan 052 Phase 2)
+    // These functions enable self-hosted List<T> with manual reallocation
+    collections_module.functions.insert(
+        "alloc_array".into(),
+        VmFunctionEntry {
+            name: "alloc_array".into(),
+            func: memory::alloc_array,
+            is_method: false,
+        },
+    );
+
+    collections_module.functions.insert(
+        "free_array".into(),
+        VmFunctionEntry {
+            name: "free_array".into(),
+            func: memory::free_array,
+            is_method: false,
+        },
+    );
+
+    collections_module.functions.insert(
+        "realloc_array".into(),
+        VmFunctionEntry {
+            name: "realloc_array".into(),
+            func: memory::realloc_array_wrapped,  // Wrapper that accepts [array, new_size]
+            is_method: false,
+        },
+    );
 
     // Register the module
     VM_REGISTRY

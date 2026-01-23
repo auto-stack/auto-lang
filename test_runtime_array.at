@@ -1,0 +1,16 @@
+// Test runtime array allocation (Plan 052)
+
+fn main() {
+    let size = 10
+    let arr [size]int
+    
+    arr[0] = 42
+    arr[1] = 100
+    
+    let first = arr[0]
+    let second = arr[1]
+    
+    print("First:", first)
+    print("Second:", second)
+    print("Array size:", size)
+}
