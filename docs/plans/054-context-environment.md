@@ -215,10 +215,117 @@ const MainStorage = Heap   // 默认 List 使用堆
 
 ## 5. 总结
 
-将 **List 泛型策略** 与 **Prelude** 及 **Startup** 结合后，Auto 语言获得了一种 **“生物般的适应性”**：
+将 **List 泛型策略** 与 **Prelude** 及 **Startup** 结合后，Auto 语言获得了一种 **"生物般的适应性"**：
 
 * 它根据环境（Env）调整自己的器官（List/String）。
 * 它根据基因（Config）调整自己的生长方式（Startup）。
 * 它给细胞（用户代码）提供了一个看似不变但实则高度适配的生存环境（Prelude）。
 
 这就实现了你想要的：**一套代码，一种接口，涵盖从 8-bit MCU 到 64-bit Server 的全场景。**
+
+---
+
+## 6. 实施状态 (Implementation Status)
+
+**文档类型**: 架构设计愿景
+
+**相关实现**: [Plan 055 - Storage 环境注入实现](./055-storage-injection.md)
+
+### ✅ 已实现 (2025-01-23)
+
+以下功能已在 Plan 055 中实现：
+
+**核心基础设施**:
+- ✅ **Storage 类型系统**: Fixed（静态）和 Dynamic（堆）存储策略标记类型
+- ✅ **目标检测系统**: Target 枚举（Mcu/Pc）和自动检测逻辑
+- ✅ **环境注入机制**: 编译器启动时注入 `TARGET`、`DEFAULT_STORAGE`、`HAS_HEAP` 环境变量
+- ✅ **List.capacity() 方法**: 返回目标依赖的容量信息（MCU: 64, PC: INT_MAX）
+- ✅ **CLI --target 标志**: 允许用户覆盖编译目标（mcu/pc/auto）
+- ✅ **Prelude 集成**: 更新 `std/prelude.at` 文档以反映 List 可用性
+
+**测试覆盖**:
+- ✅ 23 个单元测试（类型系统、目标检测、环境注入）
+- ✅ 3 个集成测试（端到端环境注入流程）
+- ✅ a2c 转译测试（Storage 类型 C 代码生成）
+
+**实现文件**:
+- `src/target.rs` - 目标检测系统
+- `src/universe.rs` - 环境注入 API
+- `src/interp.rs` - 启动时环境注入
+- `src/ast/types.rs` - Storage 类型支持
+- `src/vm/list.rs` - List.capacity() 实现
+- `stdlib/auto/storage.at` - Storage 文档模块
+- `stdlib/auto/list.at` - List 接口定义
+- `stdlib/auto/prelude.at` - Prelude 更新
+
+### 📋 待实现
+
+以下功能为本架构设计的未来方向：
+
+**阶段 1: Prelude 架构** (Plan 054 阶段 1)
+- ⏸️ 编译期 `if/else` 逻辑（用于 Prelude 中条件导出类型）
+- ⏸️ `String` 类型适配（FixedString vs HeapString）
+- ⏸️ `print` 函数路由（UART vs Stdout）
+
+**阶段 2: 根配置系统** (Plan 054 阶段 2)
+- ⏸️ `[config]` 块语法和解析
+- ⏸️ Root Config 常量提取器
+- ⏸️ 用户级堆大小配置（`const HeapSize = 4096`）
+- ⏸️ 用户级存储策略选择（`const MainStorage = Heap`）
+
+**阶段 3: Startup 代码生成** (Plan 054 阶段 3)
+- ⏸️ A2C 不再直接生成 `main()`，而是生成 `_start` 或引导程序
+- ⏸️ `entry_pc.c.tpl` 和 `entry_mcu.c.tpl` 模板
+- ⏸️ MCU 堆初始化代码（`__heap_space` 数组 + `std_allocator_init`）
+- ⏸️ 链接器集成（条件包含 tiny_alloc）
+
+**高级功能**:
+- ⏸️ 编译期特征检测（`# if std.env.TARGET_OS == "none"`）
+- ⏸️ RTTI 开关（`# disable_feature(RTTI)`）
+- ⏸️ 嵌套泛型（`List<T, Storage<E>>`）
+- ⏸️ 自定义 Fixed 容量（用户显式 `List<int, Fixed<128>>`）
+- ⏸️ 混合存储（Fixed 超过容量时切换到 Dynamic）
+
+### 📊 实现进度
+
+| 组件 | 状态 | 完成度 |
+|------|------|--------|
+| Storage 类型系统 | ✅ 完成 | 100% |
+| 目标检测系统 | ✅ 完成 | 100% |
+| 环境注入机制 | ✅ 完成 | 100% |
+| List.capacity() | ✅ 完成 | 100% |
+| CLI 集成 | ✅ 完成 | 100% |
+| Prelude 架构 | 🔄 部分完成 | 30% |
+| 根配置系统 | ❌ 未开始 | 0% |
+| Startup 代码生成 | ❌ 未开始 | 0% |
+
+**总体完成度**: ~40% (核心基础设施完成，高级特性待实现)
+
+### 🔗 相关文档
+
+- **实现细节**: [Plan 055 - Storage 环境注入实现](./055-storage-injection.md)
+- **测试报告**: `src/tests/storage_tests.rs`, `src/tests/storage_integration_tests.rs`
+- **标准库**: `stdlib/auto/storage.at`, `stdlib/auto/list.at`, `stdlib/auto/prelude.at`
+
+### 🎯 下一步建议
+
+1. **短期** (1-2 周):
+   - 实现 C transpiler 目标特定代码生成（MCU 静态数组 vs PC 动态分配）
+   - 添加 List.capacity() 单元测试（验证返回值准确性）
+   - 优化环境变量访问性能（缓存机制）
+
+2. **中期** (1-2 月):
+   - 设计并实现 `[config]` 块语法
+   - 实现编译期 `if/else` 逻辑
+   - 创建 Startup 代码生成器
+
+3. **长期** (3-6 月):
+   - String 类型适配（FixedString vs HeapString）
+   - RTTI 特性开关系统
+   - 嵌套泛型支持
+
+---
+
+**最后更新**: 2025-01-23
+**更新者**: Claude Code
+**状态**: 核心功能完成，高级特性规划中
