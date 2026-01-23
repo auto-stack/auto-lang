@@ -3982,6 +3982,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Void => auto_val::Type::Void,
         ast::Type::Unknown => auto_val::Type::Any,
         ast::Type::CStruct(_) => auto_val::Type::Void,
+        ast::Type::Storage(_) => auto_val::Type::Any,  // Storage maps to Any for now
         ast::Type::GenericInstance(_) => auto_val::Type::Any,  // TODO: Handle generic instances properly
     }
 }

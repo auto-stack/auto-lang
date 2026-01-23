@@ -44,7 +44,7 @@
 //! assert!(matches!(unify(&arr1, &arr2, span), Ok(Type::Array(..))));
 //! ```
 
-use crate::ast::{ArrayType, GenericInstance, PtrType, Type};
+use crate::ast::{ArrayType, GenericInstance, PtrType, StorageKind, StorageType, Type};
 use crate::error::{TypeError, Warning};
 use miette::SourceSpan;
 use std::fmt;
@@ -168,7 +168,7 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         }
 
         // 其他类型
-        Type::Union(_) | Type::Tag(_) | Type::Enum(_) => false,
+        Type::Union(_) | Type::Tag(_) | Type::Enum(_) | Type::Storage(_) => false,
     }
 }
 
@@ -279,7 +279,28 @@ pub fn unify(ty1: &Type, ty2: &Type, span: SourceSpan) -> Result<Type, Unificati
             }))
         }
 
-        // 11. 其他类型不匹配
+        // 11. Storage types: 统一仅当类型匹配
+        (Type::Storage(storage1), Type::Storage(storage2)) => {
+            match (&storage1.kind, &storage2.kind) {
+                (StorageKind::Fixed { capacity: cap1 }, StorageKind::Fixed { capacity: cap2 }) => {
+                    if cap1 == cap2 {
+                        Ok(Type::Storage(storage1.clone()))
+                    } else {
+                        Err(UnificationError::Mismatch {
+                            expected: ty1.clone(),
+                            found: ty2.clone(),
+                        })
+                    }
+                }
+                (StorageKind::Dynamic, StorageKind::Dynamic) => Ok(Type::Storage(storage1.clone())),
+                _ => Err(UnificationError::Mismatch {
+                    expected: ty1.clone(),
+                    found: ty2.clone(),
+                }),
+            }
+        }
+
+        // 12. 其他类型不匹配
         (ty1, ty2) => Err(UnificationError::Mismatch {
             expected: ty1.clone(),
             found: ty2.clone(),
@@ -499,5 +520,87 @@ mod tests {
             len: 3,
         });
         assert!(!occurs_in("T", &arr));
+    }
+
+    #[test]
+    fn test_unify_storage_fixed_same_capacity() {
+        let span = SourceSpan::new(0.into(), 10);
+        let storage1 = Type::Storage(StorageType {
+            kind: StorageKind::Fixed { capacity: 64 },
+        });
+        let storage2 = Type::Storage(StorageType {
+            kind: StorageKind::Fixed { capacity: 64 },
+        });
+
+        assert!(matches!(
+            unify(&storage1, &storage2, span),
+            Ok(Type::Storage(..))
+        ));
+    }
+
+    #[test]
+    fn test_unify_storage_fixed_different_capacity_fails() {
+        let span = SourceSpan::new(0.into(), 10);
+        let storage1 = Type::Storage(StorageType {
+            kind: StorageKind::Fixed { capacity: 64 },
+        });
+        let storage2 = Type::Storage(StorageType {
+            kind: StorageKind::Fixed { capacity: 128 },
+        });
+
+        assert!(matches!(
+            unify(&storage1, &storage2, span),
+            Err(UnificationError::Mismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn test_unify_storage_dynamic() {
+        let span = SourceSpan::new(0.into(), 10);
+        let storage1 = Type::Storage(StorageType {
+            kind: StorageKind::Dynamic,
+        });
+        let storage2 = Type::Storage(StorageType {
+            kind: StorageKind::Dynamic,
+        });
+
+        assert!(matches!(
+            unify(&storage1, &storage2, span),
+            Ok(Type::Storage(..))
+        ));
+    }
+
+    #[test]
+    fn test_unify_storage_fixed_vs_dynamic_fails() {
+        let span = SourceSpan::new(0.into(), 10);
+        let storage_fixed = Type::Storage(StorageType {
+            kind: StorageKind::Fixed { capacity: 64 },
+        });
+        let storage_dynamic = Type::Storage(StorageType {
+            kind: StorageKind::Dynamic,
+        });
+
+        assert!(matches!(
+            unify(&storage_fixed, &storage_dynamic, span),
+            Err(UnificationError::Mismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn test_unify_storage_with_unknown() {
+        let span = SourceSpan::new(0.into(), 10);
+        let storage = Type::Storage(StorageType {
+            kind: StorageKind::Dynamic,
+        });
+
+        // Unknown 应该与任何类型统一
+        assert!(matches!(
+            unify(&Type::Unknown, &storage, span),
+            Ok(Type::Storage(..))
+        ));
+        assert!(matches!(
+            unify(&storage, &Type::Unknown, span),
+            Ok(Type::Storage(..))
+        ));
     }
 }

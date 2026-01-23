@@ -32,6 +32,11 @@ impl Interpreter {
             enable_error_recovery: false,
         };
 
+        // Inject environment variables based on target platform (Plan 055)
+        // This must happen BEFORE loading Prelude so that Prelude can access env vars
+        let target = crate::target::Target::detect();
+        interpreter.scope.borrow_mut().inject_environment(target);
+
         // Initialize VM modules
         crate::vm::init_io_module();
         crate::vm::init_collections_module();
@@ -56,6 +61,16 @@ impl Interpreter {
         });
         if !list_node_code.is_empty() {
             let _ = interpreter.interpret(&list_node_code);
+        }
+
+        // Load storage.at to register Storage types (Plan 055)
+        // This must be loaded BEFORE prelude.at so that prelude can re-export Storage types
+        let storage_code = std::fs::read_to_string("../../stdlib/auto/storage.at").unwrap_or_else(|_| {
+            // Try alternate path
+            std::fs::read_to_string("stdlib/auto/storage.at").unwrap_or(String::new())
+        });
+        if !storage_code.is_empty() {
+            let _ = interpreter.interpret(&storage_code);
         }
 
         // Load prelude.at to import say and other ubiquitous symbols

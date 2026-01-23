@@ -4367,6 +4367,13 @@ impl<'a> Parser<'a> {
 
         match ident {
             Expr::Ident(name) => {
+                // Special case: Dynamic storage type (Plan 055)
+                if name.as_str() == "Dynamic" {
+                    return Ok(Type::Storage(crate::ast::StorageType {
+                        kind: crate::ast::StorageKind::Dynamic,
+                    }));
+                }
+
                 // Check if this is a generic instance (e.g., List<int>, May<string>)
                 if self.cur.kind == TokenKind::Lt {
                     // Context check: make sure < is followed by a type
@@ -4494,9 +4501,36 @@ impl<'a> Parser<'a> {
 
         // Special handling for built-in generic types
         // List<T> has dedicated Type variant (May<T> is now a generic tag)
+        // Fixed<N> is a Storage type (Plan 055)
         match base_name.as_str() {
             "List" if args.len() == 1 => {
                 Ok(Type::List(Box::new(args.into_iter().next().unwrap())))
+            }
+            "Fixed" if args.len() == 1 => {
+                // Fixed<N> storage type - parse capacity from first argument
+                // The capacity should be a constant expression (int literal or const)
+                let capacity = match &args[0] {
+                    Type::Int => {
+                        // For now, Fixed<int> will use default capacity
+                        // TODO: Parse actual integer value from expression
+                        64
+                    }
+                    Type::Uint => {
+                        // For now, Fixed<uint> will use default capacity
+                        // TODO: Parse actual integer value from expression
+                        64
+                    }
+                    _ => {
+                        return Err(SyntaxError::Generic {
+                            message: format!("Fixed storage requires integer capacity, got {}", args[0]),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                };
+
+                Ok(Type::Storage(crate::ast::StorageType {
+                    kind: crate::ast::StorageKind::Fixed { capacity },
+                }))
             }
             _ => {
                 // User-defined generic instance (including May<T> from stdlib)

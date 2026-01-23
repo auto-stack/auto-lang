@@ -1564,6 +1564,16 @@ impl CTrans {
                     args.join("_")
                 )
             }
+            Type::Storage(storage) => {
+                // Storage types are marker types, transpile to void (Plan 055)
+                // They don't have runtime representation
+                match &storage.kind {
+                    crate::ast::StorageKind::Dynamic => "/* Dynamic storage */ void".to_string(),
+                    crate::ast::StorageKind::Fixed { capacity } => {
+                        format!("/* Fixed storage capacity: {} */ void", capacity)
+                    }
+                }
+            }
             _ => {
                 println!("Unsupported type for C transpiler: {}", ty);
                 panic!("Unsupported type for C transpiler: {}", ty);

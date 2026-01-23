@@ -107,7 +107,11 @@ enum Commands {
     #[command(about = "Treat File as AutoConfig")]
     Config { path: String },
     #[command(about = "Transpile Auto to C")]
-    C { path: String },
+    C {
+        path: String,
+        #[arg(short, long, help = "Compilation target (mcu, pc, or auto)", global = false)]
+        target: Option<String>,
+    },
     #[command(about = "Transpile Auto to Rust")]
     Rust { path: String },
     #[command(about = "Transpile Auto to Python")]
@@ -196,7 +200,12 @@ fn main() -> Result<()> {
             })?;
             println!("{}", c.result.repr());
         }
-        Some(Commands::C { path }) => {
+        Some(Commands::C { path, target }) => {
+            // Set target environment variable if specified
+            if let Some(target_val) = target {
+                std::env::set_var("AUTO_TARGET", target_val);
+            }
+
             let c = auto_lang::trans_c(path.as_str()).map_err(|e| {
                 if matches!(format, OutputFormat::Json) {
                     eprintln!("{}", format_error_json(&e));

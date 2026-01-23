@@ -15,6 +15,7 @@ pub mod parser;
 pub use parser::Parser;
 pub mod repl;
 pub mod scope;
+pub mod target;
 pub mod token;
 pub mod trait_checker;
 pub mod trans;

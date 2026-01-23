@@ -109,6 +109,10 @@ impl RustTrans {
                     .collect();
                 format!("{}<{}>", inst.base_name, args.join(", "))
             }
+            Type::Storage(storage) => {
+                // Storage types are marker types, just use the name
+                format!("{}", storage)
+            }
         }
     }
 

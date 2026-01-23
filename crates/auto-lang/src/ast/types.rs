@@ -29,6 +29,7 @@ pub enum Type {
     Spec(Shared<SpecDecl>),  // Spec 类型（多态接口）
     // May(Box<Type>) removed - use generic tag May<T> from stdlib instead
     GenericInstance(GenericInstance),  // User-defined generic instance (e.g., MyType<int>)
+    Storage(StorageType),  // Storage strategy type (Plan 055)
     Void,
     Unknown,
     CStruct(TypeDecl),
@@ -58,6 +59,7 @@ impl Type {
             }
             Type::List(elem) => format!("List<{}>", elem.unique_name()).into(),
             Type::Slice(slice_type) => format!("[]{}", slice_type.elem.unique_name()).into(),
+            Type::Storage(storage) => storage.to_string().into(),
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().unique_name()).into(),
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
@@ -98,6 +100,7 @@ impl Type {
             Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
             Type::Spec(_) => "{}".into(),  // Spec 默认值为空对象
             Type::GenericInstance(_) => "{}".into(),  // Generic instances default to empty object
+            Type::Storage(_) => "Storage".into(),  // Storage type default
             Type::Linear(inner) => inner.default_value(),  // Linear type wraps inner type
             Type::Variadic => "...".into(),  // Variadic has no default value
             Type::CStruct(_) => "{}".into(),
@@ -178,7 +181,7 @@ impl Type {
 
             // Complex types: clone as-is (no substitution in metadata)
             Type::Enum(_) | Type::Spec(_) | Type::Tag(_) | Type::Union(_) |
-            Type::CStruct(_) => self.clone(),
+            Type::CStruct(_) | Type::Storage(_) => self.clone(),  // Storage types are not generic
         }
     }
 }
@@ -269,6 +272,33 @@ impl fmt::Display for RuntimeArrayType {
     }
 }
 
+/// Storage strategy type (Plan 055: Environment-based Storage Injection)
+/// Represents storage strategies for collections like List<T>
+#[derive(Debug, Clone)]
+pub struct StorageType {
+    pub kind: StorageKind,
+}
+
+/// Storage strategy kind
+#[derive(Debug, Clone, PartialEq)]
+pub enum StorageKind {
+    /// Fixed-capacity storage (stack/static allocation)
+    /// Used for MCU environments - no heap allocation required
+    Fixed { capacity: usize },
+    /// Dynamic-capacity storage (heap allocation)
+    /// Used for PC environments - grows as needed
+    Dynamic,
+}
+
+impl fmt::Display for StorageType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.kind {
+            StorageKind::Fixed { capacity } => write!(f, "Fixed<{}>", capacity),
+            StorageKind::Dynamic => write!(f, "Dynamic"),
+        }
+    }
+}
+
 impl fmt::Display for SliceType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(slice-type (elem {}))", &self.elem)
@@ -305,6 +335,7 @@ impl fmt::Display for Type {
             Type::Void => write!(f, "void"),
             Type::Unknown => write!(f, "unknown"),
             Type::CStruct(type_decl) => write!(f, "struct {}", type_decl.name),
+            Type::Storage(storage) => write!(f, "{}", storage),
         }
     }
 }
@@ -339,6 +370,7 @@ impl From<Type> for auto_val::Type {
             Type::Unknown => auto_val::Type::Void, // TODO: is this correct?
             Type::CStruct(_) => auto_val::Type::Void,
             Type::GenericInstance(_) => auto_val::Type::Void,  // TODO: Handle generic instances properly
+            Type::Storage(_) => auto_val::Type::Void,  // Storage types are marker types
         }
     }
 }
@@ -620,6 +652,14 @@ impl AtomWriter for Type {
             Type::Void => write!(f, "void")?,
             Type::Unknown => write!(f, "unknown")?,
             Type::CStruct(type_decl) => write!(f, "struct {}", type_decl.name)?,
+            Type::Storage(storage) => {
+                match &storage.kind {
+                    StorageKind::Fixed { capacity } => {
+                        write!(f, "Fixed<{}>", capacity)?;
+                    }
+                    StorageKind::Dynamic => write!(f, "Dynamic")?,
+                }
+            }
             Type::GenericInstance(inst) => {
                 write!(f, "{}", inst.base_name)?;
                 if !inst.args.is_empty() {

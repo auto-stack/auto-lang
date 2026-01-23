@@ -1,0 +1,12 @@
+// Test Storage type parsing (Plan 055)
+
+fn main() {
+    // Dynamic storage type (built-in parser support)
+    let storage Dynamic
+
+    // Fixed storage type (built-in parser support)
+    let fixed Fixed<int>
+
+    // Test that Storage types work correctly
+    print("Storage types work:", storage, fixed)
+}

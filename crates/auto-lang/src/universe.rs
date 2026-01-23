@@ -1499,6 +1499,89 @@ impl Universe {
         }
         None
     }
+
+    // ============================================================================
+    // Environment Injection (Plan 055: Storage-based Environment Injection)
+    // ============================================================================
+
+    /// 注入环境变量到 Universe
+    ///
+    /// 此方法根据目标平台（MCU/PC）注入相应的环境变量，
+    /// 用于支持基于 Storage 的环境注入机制。
+    ///
+    /// # 参数
+    ///
+    /// * `target` - 编译目标（Mcu 或 Pc）
+    ///
+    /// # 注入的环境变量
+    ///
+    /// - `TARGET`: "mcu" 或 "pc"
+    /// - `DEFAULT_STORAGE`: "Fixed<64>" (MCU) 或 "Dynamic" (PC)
+    /// - `HAS_HEAP`: "1" (PC) 或 "0" (MCU)
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use auto_lang::Universe;
+    /// use auto_lang::target::Target;
+    ///
+    /// let mut uni = Universe::new();
+    /// uni.inject_environment(Target::Pc);
+    ///
+    /// assert_eq!(uni.get_env_val("TARGET"), Some("pc".into()));
+    /// assert_eq!(uni.get_env_val("DEFAULT_STORAGE"), Some("Dynamic".into()));
+    /// ```
+    pub fn inject_environment(&mut self, target: crate::target::Target) {
+        self.set_env_val("TARGET", target.to_string());
+        self.set_env_val("DEFAULT_STORAGE", target.default_storage_str().to_string());
+        self.set_env_val("HAS_HEAP", if target.has_heap() { "1".to_string() } else { "0".to_string() });
+    }
+
+    /// 设置环境变量
+    ///
+    /// # 参数
+    ///
+    /// * `name` - 环境变量名称
+    /// * `value` - 环境变量值
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use auto_lang::Universe;
+    ///
+    /// let mut uni = Universe::new();
+    /// uni.set_env_val("MY_VAR", "my_value");
+    /// ```
+    pub fn set_env_val(&mut self, name: &str, value: String) {
+        self.env_vals.insert(name.into(), Box::new(value));
+    }
+
+    /// 获取环境变量
+    ///
+    /// # 参数
+    ///
+    /// * `name` - 环境变量名称
+    ///
+    /// # 返回
+    ///
+    /// 如果环境变量存在，返回 Some(value)，否则返回 None
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use auto_lang::Universe;
+    ///
+    /// let mut uni = Universe::new();
+    /// uni.set_env_val("MY_VAR", "my_value".to_string());
+    ///
+    /// assert_eq!(uni.get_env_val("MY_VAR"), Some("my_value".into()));
+    /// assert_eq!(uni.get_env_val("NONEXISTENT"), None);
+    /// ```
+    pub fn get_env_val(&self, name: &str) -> Option<AutoStr> {
+        self.env_vals.get(name).and_then(|boxed| {
+            boxed.downcast_ref::<String>().map(|s| s.as_str().into())
+        })
+    }
 }
 
 #[cfg(test)]
@@ -1516,5 +1599,54 @@ mod tests {
 
         let typ = uni.borrow().lookup_type("int");
         assert!(matches!(typ, ast::Type::Int));
+    }
+
+    // ============================================================================
+    // Environment Injection Tests (Plan 055)
+    // ============================================================================
+
+    #[test]
+    fn test_set_and_get_env_val() {
+        let mut uni = Universe::new();
+
+        // 测试设置和获取环境变量
+        uni.set_env_val("TEST_VAR", "test_value".to_string());
+        assert_eq!(uni.get_env_val("TEST_VAR"), Some("test_value".into()));
+
+        // 测试不存在的环境变量
+        assert_eq!(uni.get_env_val("NONEXISTENT"), None);
+    }
+
+    #[test]
+    fn test_inject_environment_mcu() {
+        let mut uni = Universe::new();
+        uni.inject_environment(crate::target::Target::Mcu);
+
+        assert_eq!(uni.get_env_val("TARGET"), Some("mcu".into()));
+        assert_eq!(uni.get_env_val("DEFAULT_STORAGE"), Some("Fixed<64>".into()));
+        assert_eq!(uni.get_env_val("HAS_HEAP"), Some("0".into()));
+    }
+
+    #[test]
+    fn test_inject_environment_pc() {
+        let mut uni = Universe::new();
+        uni.inject_environment(crate::target::Target::Pc);
+
+        assert_eq!(uni.get_env_val("TARGET"), Some("pc".into()));
+        assert_eq!(uni.get_env_val("DEFAULT_STORAGE"), Some("Dynamic".into()));
+        assert_eq!(uni.get_env_val("HAS_HEAP"), Some("1".into()));
+    }
+
+    #[test]
+    fn test_env_val_overwrite() {
+        let mut uni = Universe::new();
+
+        // 设置初始值
+        uni.set_env_val("VAR", "value1".to_string());
+        assert_eq!(uni.get_env_val("VAR"), Some("value1".into()));
+
+        // 覆盖值
+        uni.set_env_val("VAR", "value2".to_string());
+        assert_eq!(uni.get_env_val("VAR"), Some("value2".into()));
     }
 }
