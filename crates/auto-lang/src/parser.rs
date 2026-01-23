@@ -937,7 +937,8 @@ impl<'a> Parser<'a> {
                 self.next(); // skip .
                 let field_name = self.cur.text.clone();
                 self.expect(TokenKind::Ident)?;
-                lhs = Expr::Bina(Box::new(lhs), Op::Dot, Box::new(Expr::Ident(field_name)));
+                // Use Expr::Dot for semantic clarity
+                lhs = Expr::Dot(Box::new(lhs), field_name);
             } else {
                 break;
             }
@@ -950,11 +951,8 @@ impl<'a> Parser<'a> {
         self.next(); // skip dot
         let name = self.cur.text.clone();
         self.next(); // skip name
-        Ok(Expr::Bina(
-            Box::new(Expr::Ident("self".into())),
-            Op::Dot,
-            Box::new(Expr::Ident(name)),
-        ))
+        // Use Expr::Dot for semantic clarity (.field is shorthand for self.field)
+        Ok(Expr::Dot(Box::new(Expr::Ident("self".into())), name))
     }
 
     fn expr_pratt_with_left(&mut self, mut lhs: Expr, min_power: u8) -> AutoResult<Expr> {
@@ -1103,6 +1101,20 @@ impl<'a> Parser<'a> {
                                 end: Box::new(rhs),
                                 eq: true,
                             });
+                        }
+                        Op::Dot => {
+                            // Dot expression: extract field name from identifier
+                            if let Expr::Ident(field_name) = rhs {
+                                lhs = Expr::Dot(Box::new(lhs), field_name);
+                            } else {
+                                // Error: right-hand side of dot must be an identifier
+                                let message = format!(
+                                    "Invalid field name after dot: {}",
+                                    rhs
+                                );
+                                let span = pos_to_span(self.cur.pos);
+                                return Err(SyntaxError::Generic { message, span }.into());
+                            }
                         }
                         Op::QuestionQuestion => {
                             // Null-coalescing operator: left ?? right

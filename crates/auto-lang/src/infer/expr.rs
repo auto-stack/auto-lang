@@ -297,6 +297,15 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
                 _ => expr_ty,
             }
         }
+
+        // ========== Dot expression (Plan 056: Phase 1) ==========
+        Expr::Dot(object, _field) => {
+            // Dot expression: object.field or Type.method
+            // For now, return the type of the object expression
+            // TODO: Phase 2 - Add field lookup and type resolution
+            // TODO: Phase 3 - Distinguish between field access and method calls
+            infer_expr(ctx, object)
+        }
     }
 }
 

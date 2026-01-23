@@ -1,0 +1,19 @@
+let list = List.new()
+say("Created")
+let cap1 = list.capacity()
+say(cap1)
+
+list.push(1)
+list.push(2)
+list.push(3)
+list.push(4)
+say("After 4 pushes")
+
+let cap2 = list.capacity()
+say(cap2)
+
+list.push(5)
+say("After 5th push")
+
+let cap3 = list.capacity()
+say(cap3)

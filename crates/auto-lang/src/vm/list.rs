@@ -29,7 +29,7 @@ pub fn list_new(uni: Shared<Universe>, initial: Value) -> Value {
     match &ty {
         ast::Type::User(_) => {
             // Parse initial elements from the argument
-            let mut elems = Vec::new();
+            let mut elems = Vec::with_capacity(4);  // Pre-allocate initial capacity of 4
 
             // Check if initial is an array (multiple arguments passed)
             if let Value::Array(array) = &initial {
@@ -145,24 +145,27 @@ pub fn list_is_empty(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Val
     Value::Int(1)
 }
 
-/// Get the capacity of the list (Plan 055)
-/// For Dynamic storage: returns i32::MAX (unlimited)
-/// For Fixed storage: returns the fixed capacity from environment
+/// Get the actual capacity of the list's underlying Vec
+/// Returns the allocated capacity (may be greater than len())
 pub fn list_capacity(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
-    // Get the default storage from environment
-    let storage = uni.borrow()
-        .get_env_val("DEFAULT_STORAGE")
-        .unwrap_or_else(|| "Dynamic".into());
-
-    if storage.to_string().contains("Fixed") {
-        // MCU target: extract capacity from "Fixed<64>"
-        // For now, return the default MCU capacity (64)
-        // TODO: Parse the capacity value from the storage string
-        Value::Int(64)
-    } else {
-        // PC target: Dynamic storage (unlimited)
-        Value::Int(i32::MAX)
+    if let Value::Instance(inst) = instance {
+        if let Type::User(ref_name) = &inst.ty {
+            if ref_name == "List" {
+                let id = inst.fields.get("id");
+                if let Some(Value::USize(id)) = id {
+                    let uni = uni.borrow();
+                    let b = uni.get_vmref_ref(id);
+                    if let Some(b) = b {
+                        let ref_box = b.borrow();
+                        if let VmRefData::List(list) = &*ref_box {
+                            return Value::Int(list.elems.capacity() as i32);
+                        }
+                    }
+                }
+            }
+        }
     }
+    Value::Int(0)
 }
 
 /// Clear all elements

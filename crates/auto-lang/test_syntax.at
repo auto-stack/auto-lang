@@ -1,0 +1,8 @@
+type TestType {
+    data []int
+    len int
+    
+    fn test() int {
+        .len
+    }
+}

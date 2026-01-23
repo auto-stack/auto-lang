@@ -1,0 +1,25 @@
+// Test self-hosted List implementation (Plan 052 Phase 2)
+
+fn main() {
+    // Test basic list creation and push
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+
+    let len = list.len()
+    say("Length: " + len)
+
+    // Test get
+    let first = list.get(0)
+    say("First element: " + first)
+
+    // Test capacity growth
+    let cap = list.capacity()
+    say("Capacity: " + cap)
+
+    // Test pop
+    let last = list.pop()
+    say("Popped: " + last)
+    say("New length: " + list.len())
+}

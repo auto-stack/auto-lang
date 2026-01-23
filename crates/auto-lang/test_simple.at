@@ -1,0 +1,8 @@
+// Simple test
+
+fn main() {
+    say("Hello from auto")
+
+    let list = List.new()
+    say("List created")
+}

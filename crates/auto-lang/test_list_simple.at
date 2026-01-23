@@ -1,0 +1,13 @@
+say("Creating list")
+let list = List.new()
+say("List created")
+
+say("Pushing 1, 2, 3")
+list.push(1)
+list.push(2)
+list.push(3)
+say("Done pushing")
+
+say("Getting length")
+let len = list.len()
+say(len)

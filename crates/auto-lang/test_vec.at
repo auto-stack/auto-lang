@@ -1,0 +1,49 @@
+// Test pure AutoLang Vec<T> implementation
+
+type Vec<T> {
+    data []T
+    len int
+    cap int
+
+    #[vm]
+    static fn new() Vec<T> {
+        let vec Vec<T>
+        vec.data = alloc_array(4)
+        vec.len = 0
+        vec.cap = 4
+        vec
+    }
+
+    #[vm]
+    fn push(elem T) {
+        if .len >= .cap {
+            .realloc(.cap * 2)
+        }
+        .data[.len] = elem
+        .len = .len + 1
+    }
+
+    #[vm]
+    fn realloc(new_cap int) {
+        let new_data = realloc_array([.data, new_cap])
+
+        // Copy old data to new array
+        let i = 0
+        while i < .len {
+            new_data[i] = .data[i]
+            i = i + 1
+        }
+
+        // Free old array
+        free_array(.data)
+
+        // Update fields
+        .data = new_data
+        .cap = new_cap
+    }
+
+    #[vm]
+    fn get(index int) T {
+        .data[index]
+    }
+}

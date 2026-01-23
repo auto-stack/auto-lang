@@ -1,0 +1,6 @@
+let list = List.new()
+say("Created")
+list.push(5)
+say("Pushed")
+let len = list.len()
+len

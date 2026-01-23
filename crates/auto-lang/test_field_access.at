@@ -1,0 +1,17 @@
+type TestType {
+    value int
+
+    #[vm]
+    fn get_value() int {
+        .value
+    }
+
+    #[vm]
+    fn set_value(v int) {
+        .value = v
+    }
+}
+
+let t = TestType.value(42)
+let v = t.get_value()
+v

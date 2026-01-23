@@ -23,13 +23,10 @@ use auto.io: say
 // Collections
 // ============================================================================
 // Rationale: Lists are fundamental data structures used in most programs.
-// The List type provides dynamic array functionality with capacity() method
-// that returns target-dependent storage limits (Plan 055).
-//
-// Note: List type and methods are automatically available via VM registry.
-// List.new() static method works in the interpreter and C transpiler.
+// The List type provides dynamic array functionality with manual memory
+// management via alloc_array/realloc_array/free_array (Plan 052).
 
-// List is available without explicit import (registered at interpreter startup)
+use auto.list: List
 
 // ============================================================================
 // Error Handling with May<T>

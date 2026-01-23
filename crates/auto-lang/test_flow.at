@@ -1,0 +1,4 @@
+say("before")
+let x = 42
+say(x)
+say("after")

@@ -1,0 +1,4 @@
+let list = List.new()
+say("Created")
+let cap = list.capacity()
+cap

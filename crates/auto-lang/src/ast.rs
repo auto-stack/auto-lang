@@ -257,6 +257,13 @@ pub enum Expr {
     Hold(Hold),         // Hold path binding (temporary borrow with syntax sugar)
     Unary(Op, Box<Expr>),
     Bina(Box<Expr>, Op, Box<Expr>),
+    /// Dot expression: object.field or Type.method
+    /// Used for both field access and method calls
+    /// Examples:
+    ///   - Field access: obj.field
+    ///   - Static method: List.new()
+    ///   - Instance method: list.push(1)
+    Dot(Box<Expr>, Name),
     Range(Range),
     Array(Vec<Expr>),
     Pair(Pair),
@@ -327,6 +334,7 @@ impl fmt::Display for Expr {
             Expr::Take(e) => write!(f, "({}.take)", e),
             Expr::Hold(hold) => write!(f, "{}", hold),
             Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
+            Expr::Dot(object, field) => write!(f, "(dot {}.{})", object, field),
             Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
             Expr::Array(elems) => fmt_array(f, elems),
             Expr::Pair(pair) => write!(f, "{}", pair),
@@ -759,6 +767,12 @@ impl ToNode for Expr {
             Expr::ErrorPropagate(e) => {
                 let mut node = AutoNode::new("?.");
                 node.add_kid(e.to_node());
+                node
+            }
+            Expr::Dot(object, field) => {
+                let mut node = AutoNode::new("dot");
+                node.add_kid(object.to_node());
+                node.add_arg(auto_val::Arg::Pos(Value::str(field.as_str())));
                 node
             }
         }

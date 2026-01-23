@@ -1,0 +1,7 @@
+type Point {
+    x int
+    y int
+}
+
+let p = Point.new()
+p.x

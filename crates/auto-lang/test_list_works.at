@@ -1,0 +1,29 @@
+say("Test List.new()")
+let list = List.new()
+say("List created")
+
+say("Test push")
+list.push(1)
+list.push(2)
+list.push(3)
+say("Pushed 3 elements")
+
+say("Test len")
+let len = list.len()
+say(len)
+
+say("Test get")
+let first = list.get(0)
+say(first)
+
+say("Test pop")
+let last = list.pop()
+say(last)
+
+say("Test pop again")
+let last2 = list.pop()
+say(last2)
+
+say("Final length")
+let final_len = list.len()
+say(final_len)

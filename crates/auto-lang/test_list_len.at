@@ -1,0 +1,6 @@
+let list = List.new()
+list.push(1)
+list.push(2)
+let len = list.len()
+say(999)
+say(len)

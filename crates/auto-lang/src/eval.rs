@@ -86,17 +86,18 @@ impl Evaler {
                         // Process the array using the same logic as multi-statement case
                         match first_val {
                             Value::Array(arr) => {
-                                use std::collections::HashMap;
                                 use auto_val::Array;
+                                use std::collections::HashMap;
 
                                 // First, check if array contains any config items (nodes, pairs, objs, instances)
                                 // If not, return the array as-is (pure value array)
                                 let has_config_items = arr.values.iter().any(|item| {
-                                    matches!(item,
-                                        Value::Node(_) |
-                                        Value::Pair(_, _) |
-                                        Value::Obj(_) |
-                                        Value::Instance(_)
+                                    matches!(
+                                        item,
+                                        Value::Node(_)
+                                            | Value::Pair(_, _)
+                                            | Value::Obj(_)
+                                            | Value::Instance(_)
                                     )
                                 });
 
@@ -105,14 +106,18 @@ impl Evaler {
                                 }
 
                                 // Has config items, need to consolidate
-                                let mut nodes_by_name: HashMap<AutoStr, Vec<auto_val::Node>> = HashMap::new();
+                                let mut nodes_by_name: HashMap<AutoStr, Vec<auto_val::Node>> =
+                                    HashMap::new();
                                 let mut other_items: Vec<Value> = Vec::new();
 
                                 // First pass: separate nodes from other items
                                 for item in arr.values.into_iter() {
                                     match item {
                                         Value::Node(n) => {
-                                            nodes_by_name.entry(n.name.clone()).or_default().push(n);
+                                            nodes_by_name
+                                                .entry(n.name.clone())
+                                                .or_default()
+                                                .push(n);
                                         }
                                         Value::Pair(key, value) => {
                                             let mut node = auto_val::Node::new("root");
@@ -131,7 +136,10 @@ impl Evaler {
                                             for (k, v) in inst.fields.iter() {
                                                 kid_node.set_prop(k.clone(), v.clone());
                                             }
-                                            nodes_by_name.entry(kid_node.name.clone()).or_default().push(kid_node);
+                                            nodes_by_name
+                                                .entry(kid_node.name.clone())
+                                                .or_default()
+                                                .push(kid_node);
                                         }
                                         _ => {
                                             if !item.is_void() {
@@ -152,8 +160,12 @@ impl Evaler {
                                     } else {
                                         // Multiple nodes with same name: create plural form property
                                         let plural_name = format!("{}s", name); // dir -> dirs
-                                        let node_values: Vec<Value> = nodes.into_iter().map(|n| Value::Node(n)).collect();
-                                        node.set_prop(plural_name, Value::Array(Array::from_vec(node_values)));
+                                        let node_values: Vec<Value> =
+                                            nodes.into_iter().map(|n| Value::Node(n)).collect();
+                                        node.set_prop(
+                                            plural_name,
+                                            Value::Array(Array::from_vec(node_values)),
+                                        );
                                     }
                                 }
 
@@ -239,17 +251,17 @@ impl Evaler {
                                         }
                                         node.add_kid(kid_node);
                                     }
-                                    _ => {
-                                    }
+                                    _ => {}
                                 }
                             }
                         }
                         Value::Array(arr) => {
-                            use std::collections::HashMap;
                             use auto_val::Array;
+                            use std::collections::HashMap;
 
                             // Group nodes by name for consolidation
-                            let mut nodes_by_name: HashMap<AutoStr, Vec<auto_val::Node>> = HashMap::new();
+                            let mut nodes_by_name: HashMap<AutoStr, Vec<auto_val::Node>> =
+                                HashMap::new();
                             let mut other_items: Vec<Value> = Vec::new();
 
                             // First pass: separate nodes from other items
@@ -271,7 +283,10 @@ impl Evaler {
                                         for (k, v) in inst.fields.iter() {
                                             kid_node.set_prop(k.clone(), v.clone());
                                         }
-                                        nodes_by_name.entry(kid_node.name.clone()).or_default().push(kid_node);
+                                        nodes_by_name
+                                            .entry(kid_node.name.clone())
+                                            .or_default()
+                                            .push(kid_node);
                                     }
                                     _ => {
                                         if !item.is_void() {
@@ -289,8 +304,12 @@ impl Evaler {
                                 } else {
                                     // Multiple nodes with same name: create plural form property
                                     let plural_name = format!("{}s", name); // dir -> dirs
-                                    let node_values: Vec<Value> = nodes.into_iter().map(|n| Value::Node(n)).collect();
-                                    node.set_prop(plural_name, Value::Array(Array::from_vec(node_values)));
+                                    let node_values: Vec<Value> =
+                                        nodes.into_iter().map(|n| Value::Node(n)).collect();
+                                    node.set_prop(
+                                        plural_name,
+                                        Value::Array(Array::from_vec(node_values)),
+                                    );
                                 }
                             }
 
@@ -504,7 +523,9 @@ impl Evaler {
                                 let target_val = self.eval_expr(t);
                                 if let Value::Node(node) = target_val {
                                     let payload = node.get_prop("payload");
-                                    self.universe.borrow_mut().set_local_val(tag_cover.elem.as_str(), payload);
+                                    self.universe
+                                        .borrow_mut()
+                                        .set_local_val(tag_cover.elem.as_str(), payload);
                                 }
                             }
                             return self.eval_body(&body);
@@ -861,7 +882,10 @@ impl Evaler {
                         }
                     }
                 }
-                return Ok(Value::error(format!("Cannot iterate over instance of type {:?}", instance.ty)));
+                return Ok(Value::error(format!(
+                    "Cannot iterate over instance of type {:?}",
+                    instance.ty
+                )));
             }
             _ => {
                 return Ok(Value::error(format!("Invalid range {}", range_final)));
@@ -903,8 +927,13 @@ impl Evaler {
                     Value::U8(n) => n as usize,
                     Value::I8(n) => n as usize,
                     _ => {
-                        eprintln!("Runtime array size must be an integer, got: {:?}", size_value);
-                        return Value::Error(format!("Runtime array size must be an integer").into());
+                        eprintln!(
+                            "Runtime array size must be an integer, got: {:?}",
+                            size_value
+                        );
+                        return Value::Error(
+                            format!("Runtime array size must be an integer").into(),
+                        );
                     }
                 };
 
@@ -916,7 +945,7 @@ impl Evaler {
                     ast::Type::Double => Value::Double(0.0),
                     ast::Type::Bool => Value::Bool(false),
                     ast::Type::Byte => Value::Byte(0),
-                    _ => Value::Int(0),  // Default to Int(0) for unknown types
+                    _ => Value::Int(0), // Default to Int(0) for unknown types
                 };
 
                 // Create array with specified size, initialized to default value
@@ -938,7 +967,7 @@ impl Evaler {
                     ast::Type::Double => Value::Double(0.0),
                     ast::Type::Bool => Value::Bool(false),
                     ast::Type::Byte => Value::Byte(0),
-                    _ => Value::Int(0),  // Default to Int(0) for unknown types
+                    _ => Value::Int(0), // Default to Int(0) for unknown types
                 };
 
                 // Create array with specified size, initialized to default value
@@ -947,6 +976,19 @@ impl Evaler {
                 Value::array(elems)
             } else {
                 unreachable!()
+            }
+        } else if matches!(store.ty, ast::Type::User(_)) {
+            // For user-defined types (e.g., `let p Point`), initialize with default values
+            // if no expression is provided (store.expr is Nil)
+            if matches!(store.expr, Expr::Nil) {
+                if let ast::Type::User(type_decl) = &store.ty {
+                    self.create_default_instance(&type_decl.name)
+                } else {
+                    unreachable!()
+                }
+            } else {
+                // Normal assignment: let p Point = other_p
+                self.eval_expr(&store.expr)
             }
         } else {
             // Normal value evaluation
@@ -1113,7 +1155,34 @@ impl Evaler {
                 Value::Void
             }
 
-            // Case 2: Nested access: obj.field = value or obj.inner.field = value or obj.arr[0] = value
+            // Case 2: Dot expression: obj.field = value (Plan 056: Phase 2)
+            Expr::Dot(object, field) => {
+                // Handle simple case: obj.field = value where obj is an identifier
+                if let Expr::Ident(obj_name) = object.as_ref() {
+                    if let Some(obj_vid) = self.lookup_vid(obj_name) {
+                        let field_name = field.clone();
+                        let path = auto_val::AccessPath::Field(field_name);
+                        let right_data = val.into_data();
+                        let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+
+                        match self
+                            .universe
+                            .borrow_mut()
+                            .update_nested(obj_vid, &path, right_vid)
+                        {
+                            Ok(()) => Value::Void,
+                            Err(e) => Value::error(format!("Failed to assign to field: {:?}", e)),
+                        }
+                    } else {
+                        Value::error(format!("Variable not found: {}", obj_name))
+                    }
+                } else {
+                    // Complex case: nested dot expression (not yet implemented)
+                    Value::error("Complex field assignment not yet implemented")
+                }
+            }
+
+            // Case 3: Nested access: obj.field = value or obj.inner.field = value or obj.arr[0] = value
             Expr::Bina(left_obj, op, right_field) if *op == Op::Dot => {
                 // Convert right-hand side to ValueData and allocate (only for nested assignment)
                 let right_data = val.into_data();
@@ -1718,7 +1787,8 @@ impl Evaler {
                 // Mark the array as moved, unless it's a VM reference type (List, HashMap, etc.)
                 // VM reference types use VmRef which is like a shared pointer, so indexing doesn't move them
                 let base_value = self.eval_expr(base);
-                if !matches!(base_value, Value::Instance(inst) if matches!(&inst.ty, auto_val::Type::User(name) if matches!(name.as_str(), "List" | "HashMap" | "HashSet" | "StringBuilder"))) {
+                if !matches!(base_value, Value::Instance(inst) if matches!(&inst.ty, auto_val::Type::User(name) if matches!(name.as_str(), "List" | "HashMap" | "HashSet" | "StringBuilder")))
+                {
                     self.mark_expr_as_moved(base);
                 }
             }
@@ -1776,7 +1846,7 @@ impl Evaler {
             Value::Double(_) => "double".to_string(),
             Value::Bool(_) => "bool".to_string(),
             Value::Str(_) => "str".to_string(),
-            Value::OwnedStr(_) => "str".to_string(),  // OwnedStr is also a string type
+            Value::OwnedStr(_) => "str".to_string(), // OwnedStr is also a string type
             Value::CStr(_) => "cstr".to_string(),
             Value::Char(_) => "char".to_string(),
             Value::Array(_) => "array".to_string(),
@@ -1791,7 +1861,7 @@ impl Evaler {
                 } else {
                     "unknown".to_string()
                 }
-            },
+            }
             _ => "unknown".to_string(),
         }
     }
@@ -1800,6 +1870,134 @@ impl Evaler {
     fn eval_call(&mut self, call: &Call) -> AutoResult<Value> {
         // Check if this is a method call like `file.close()` or `x.triple()`
         // OR a tag construction like `Atom.Int(5)`
+        if let Expr::Dot(object, method) = &*call.name {
+            // First, check if this is tag construction: `Tag.Variant(args)`
+            if let Expr::Ident(tag_name) = &**object {
+                // Check if tag_name is a tag type
+                let tag_type = self.universe.borrow().lookup_type(tag_name);
+                if matches!(tag_type, ast::Type::Tag(_)) {
+                    // This is tag construction!
+                    return self.eval_tag_construction(tag_name, method, &call.args);
+                }
+            }
+
+            // This is a dot expression - check if it's a method call
+            // Evaluate the left side to get the instance
+            let instance = self.eval_expr(object);
+
+            // Resolve ValueRef if needed
+            let instance_resolved = match &instance {
+                Value::ValueRef(_vid) => {
+                    if let Some(data) = self.resolve_value(&instance) {
+                        let borrowed_data = data.borrow();
+                        let data_clone = borrowed_data.clone();
+                        drop(borrowed_data);
+                        Some(Value::from_data(data_clone))
+                    } else {
+                        None
+                    }
+                }
+                _ => Some(instance.clone()),
+            };
+
+            if let Some(inst) = instance_resolved {
+                // Get the type name of the instance
+                let type_name = self.get_type_name(&inst);
+                let method_name = method;
+
+                // First, check if it's a VM method (for instances)
+                if let Value::Instance(ref inst_data) = &inst {
+                    let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+                    let method = registry
+                        .get_method(&inst_data.ty.name(), method_name.as_str())
+                        .cloned();
+                    drop(registry);
+
+                    if let Some(method) = method {
+                        // Evaluate arguments (Arg::Pos contains Expr, not Value)
+                        let mut arg_vals = Vec::new();
+                        for arg in call.args.args.iter() {
+                            match arg {
+                                ast::Arg::Pos(expr) => {
+                                    arg_vals.push(self.eval_expr(expr));
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        // Call the VM method with the instance
+                        let uni = self.universe.clone();
+                        return Ok(method(uni, &mut inst.clone(), arg_vals));
+                    }
+                }
+
+                // Next, check if it's an ext method (Plan 035) or type method
+                // Look for "TypeName::method_name" in universe (using double colon)
+                let qualified_method_name: AutoStr =
+                    format!("{}::{}", type_name, method_name).into();
+                let fn_decl_opt = {
+                    let universe = self.universe.borrow();
+                    universe
+                        .lookup_meta(&qualified_method_name)
+                        .map(|meta| {
+                            if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
+                                Some(fn_decl.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .flatten()
+                };
+
+                if let Some(fn_decl) = fn_decl_opt {
+                    // Plan 035 Phase 4.3: Only bind self for instance methods
+                    // Static methods (is_static == true) don't have self
+                    if !fn_decl.is_static {
+                        // Bind self to the instance value before calling the method
+                        // This allows the method body to access the instance via 'self'
+                        self.universe
+                            .borrow_mut()
+                            .set_local_val("self", inst.clone());
+                    }
+
+                    // Call the method
+                    return self.eval_fn_call(&fn_decl, &call.args);
+                }
+
+                // Plan 038: Try to find VM function (e.g., str_split for str.split())
+                // VM function naming convention: {type}_{method}
+                let vm_function_name: AutoStr = format!("{}_{}", type_name, method_name).into();
+                let vm_fn = {
+                    let universe = self.universe.borrow();
+                    universe.lookup_val(&vm_function_name)
+                };
+
+                if let Some(Value::ExtFn(ext_fn)) = vm_fn {
+                    // Call VM function with self as first argument
+                    // Build args: prepend self (the instance) to the provided arguments
+                    let mut evaluated_args = Vec::new();
+                    evaluated_args.push(auto_val::Arg::Pos(inst.clone()));
+
+                    // Evaluate the provided arguments
+                    for arg in &call.args.args {
+                        match arg {
+                            ast::Arg::Pos(expr) => {
+                                let val = self.eval_expr(expr);
+                                evaluated_args.push(auto_val::Arg::Pos(val));
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    let args = auto_val::Args {
+                        args: evaluated_args,
+                    };
+                    let result = (ext_fn.fun)(&args);
+                    return Ok(result);
+                }
+            }
+        }
+
         if let Expr::Bina(left, op, right) = &*call.name {
             if *op == Op::Dot {
                 // First, check if this is tag construction: `Tag.Variant(args)`
@@ -1867,16 +2065,20 @@ impl Evaler {
 
                         // Next, check if it's an ext method (Plan 035) or type method
                         // Look for "TypeName::method_name" in universe (using double colon)
-                        let qualified_method_name: AutoStr = format!("{}::{}", type_name, method_name).into();
+                        let qualified_method_name: AutoStr =
+                            format!("{}::{}", type_name, method_name).into();
                         let fn_decl_opt = {
                             let universe = self.universe.borrow();
-                            universe.lookup_meta(&qualified_method_name).map(|meta| {
-                                if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
-                                    Some(fn_decl.clone())
-                                } else {
-                                    None
-                                }
-                            }).flatten()
+                            universe
+                                .lookup_meta(&qualified_method_name)
+                                .map(|meta| {
+                                    if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
+                                        Some(fn_decl.clone())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .flatten()
                         };
 
                         if let Some(fn_decl) = fn_decl_opt {
@@ -1885,7 +2087,9 @@ impl Evaler {
                             if !fn_decl.is_static {
                                 // Bind self to the instance value before calling the method
                                 // This allows the method body to access the instance via 'self'
-                                self.universe.borrow_mut().set_local_val("self", inst.clone());
+                                self.universe
+                                    .borrow_mut()
+                                    .set_local_val("self", inst.clone());
                             }
 
                             // Call the method
@@ -1894,7 +2098,8 @@ impl Evaler {
 
                         // Plan 038: Try to find VM function (e.g., str_split for str.split())
                         // VM function naming convention: {type}_{method}
-                        let vm_function_name: AutoStr = format!("{}_{}", type_name, method_name).into();
+                        let vm_function_name: AutoStr =
+                            format!("{}_{}", type_name, method_name).into();
                         let vm_fn = {
                             let universe = self.universe.borrow();
                             universe.lookup_val(&vm_function_name)
@@ -1917,7 +2122,9 @@ impl Evaler {
                                 }
                             }
 
-                            let args = auto_val::Args { args: evaluated_args };
+                            let args = auto_val::Args {
+                                args: evaluated_args,
+                            };
                             let result = (ext_fn.fun)(&args);
                             return Ok(result);
                         }
@@ -1927,21 +2134,17 @@ impl Evaler {
         }
 
         // Regular function call (non-method)
-        // First, try to lookup the function name directly
-        let func_name_text = call.get_name_text();
-
-        // Try to find global VM function in VM registry (Plan 052 Phase 2)
+        // First, try to lookup the function name directly (only for simple identifiers)
         // This enables functions like alloc_array() that are registered globally
-        if func_name_text.contains('.') {
-            // Skip qualified names (e.g., module.func) - handle via normal path
-        } else {
+        if let Expr::Ident(func_name) = call.name.as_ref() {
+            // Try to find global VM function in VM registry (Plan 052 Phase 2)
             // Search for this function in all VM modules
             let registry = crate::vm::VM_REGISTRY.lock().unwrap();
             let mut found_vm_func = None;
 
             // Search all modules for this function
             for (_module_name, module) in registry.modules().iter() {
-                if let Some(func_entry) = module.functions.get(func_name_text.as_str()) {
+                if let Some(func_entry) = module.functions.get(func_name.as_str()) {
                     found_vm_func = Some(func_entry.clone());
                     break;
                 }
@@ -1967,9 +2170,7 @@ impl Evaler {
                     (func_entry.func)(self.universe.clone(), arg_vals[0].clone())
                 } else {
                     // Multiple arguments - wrap in Array
-                    let args_array = Value::Array(auto_val::Array {
-                        values: arg_vals,
-                    });
+                    let args_array = Value::Array(auto_val::Array { values: arg_vals });
                     (func_entry.func)(self.universe.clone(), args_array)
                 };
 
@@ -1977,7 +2178,7 @@ impl Evaler {
             }
         }
 
-        // Fall back to normal function lookup
+        // Fall back to normal function lookup (handles dot expressions like List.new())
         let name = self.eval_expr(&call.name);
         if name == Value::Nil {
             return Ok(Value::error(format!(
@@ -2229,7 +2430,9 @@ impl Evaler {
                 if let Some(meta) = ext_method {
                     if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
                         // Bind self and call the ext method
-                        self.universe.borrow_mut().set_local_val("self", target.as_ref().clone());
+                        self.universe
+                            .borrow_mut()
+                            .set_local_val("self", target.as_ref().clone());
                         return self.eval_fn_call(fn_decl, args);
                     }
                 }
@@ -2249,7 +2452,9 @@ impl Evaler {
                 let ext_method = self.universe.borrow().lookup_meta(name);
                 if let Some(meta) = ext_method {
                     if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
-                        self.universe.borrow_mut().set_local_val("self", target.as_ref().clone());
+                        self.universe
+                            .borrow_mut()
+                            .set_local_val("self", target.as_ref().clone());
                         return self.eval_fn_call(fn_decl, args);
                     }
                 }
@@ -2292,16 +2497,26 @@ impl Evaler {
                                     // Check if this delegation handles the method
                                     let spec_name = delegation.spec_name.clone();
                                     let member_name = delegation.member_name.clone();
-                                    if let Some(spec_meta) = self.universe.borrow().lookup_meta(&spec_name) {
+                                    if let Some(spec_meta) =
+                                        self.universe.borrow().lookup_meta(&spec_name)
+                                    {
                                         if let Meta::Spec(spec_decl) = spec_meta.as_ref() {
                                             // Check if the spec has this method
-                                            if spec_decl.methods.iter().any(|m| m.name == method.name) {
+                                            if spec_decl
+                                                .methods
+                                                .iter()
+                                                .any(|m| m.name == method.name)
+                                            {
                                                 // Found delegation! Get the delegated member value
-                                                if let Some(member_value) = inst.fields.lookup(&member_name) {
+                                                if let Some(member_value) =
+                                                    inst.fields.lookup(&member_name)
+                                                {
                                                     // Resolve ValueRef if needed
                                                     let resolved_member = match member_value {
                                                         Value::ValueRef(_vid) => {
-                                                            if let Some(data) = self.resolve_value(&member_value) {
+                                                            if let Some(data) =
+                                                                self.resolve_value(&member_value)
+                                                            {
                                                                 let borrowed = data.borrow();
                                                                 let cloned = borrowed.clone();
                                                                 drop(borrowed);
@@ -2315,7 +2530,8 @@ impl Evaler {
 
                                                     if resolved_member.is_some() {
                                                         delegation_target = resolved_member;
-                                                        delegated_method_name = Some(method.name.clone());
+                                                        delegated_method_name =
+                                                            Some(method.name.clone());
                                                         break;
                                                     }
                                                 }
@@ -2330,7 +2546,9 @@ impl Evaler {
                 }
 
                 // If we found a delegation, call the method on the delegated member
-                if let (Some(target), Some(method_name)) = (delegation_target, delegated_method_name) {
+                if let (Some(target), Some(method_name)) =
+                    (delegation_target, delegated_method_name)
+                {
                     let delegated_method = Method {
                         target: Box::new(target),
                         name: method_name,
@@ -2357,12 +2575,15 @@ impl Evaler {
 
     fn eval_fn_call_with_sig(&mut self, sig: &Sig, args: &Args) -> AutoResult<Value> {
         // Try to lookup in universe first
-        let fn_decl_opt = self.universe.borrow().lookup_sig(sig).map(|meta| {
-            match meta.as_ref() {
+        let fn_decl_opt = self
+            .universe
+            .borrow()
+            .lookup_sig(sig)
+            .map(|meta| match meta.as_ref() {
                 scope::Meta::Fn(fn_decl) => Some(fn_decl.clone()),
                 _ => None,
-            }
-        }).flatten();
+            })
+            .flatten();
 
         if let Some(fn_decl) = fn_decl_opt {
             return self.eval_fn_call(&fn_decl, args);
@@ -2380,12 +2601,14 @@ impl Evaler {
         if let Some(func_entry) = func_entry {
             // This is a VM static function - call it directly
             let uni = self.universe.clone();
-            let arg_vals: Vec<Value> = args.args.iter().filter_map(|arg| {
-                match arg {
+            let arg_vals: Vec<Value> = args
+                .args
+                .iter()
+                .filter_map(|arg| match arg {
                     ast::Arg::Pos(expr) => Some(self.eval_expr(expr)),
                     _ => None,
-                }
-            }).collect();
+                })
+                .collect();
 
             // VM static functions take (universe, Value)
             // For varargs support (e.g., List.new(1, 2, 3)), pack multiple args into an Array
@@ -2519,9 +2742,15 @@ impl Evaler {
                                 };
 
                                 final_args.push(auto_val::Arg::Pos(resolved_val));
-                            },
+                            }
                             None => {
-                                return Value::Error(format!("Method '{}' requires 'self' but it's not bound", fn_decl.name).into());
+                                return Value::Error(
+                                    format!(
+                                        "Method '{}' requires 'self' but it's not bound",
+                                        fn_decl.name
+                                    )
+                                    .into(),
+                                );
                             }
                         }
                     }
@@ -2531,13 +2760,17 @@ impl Evaler {
                         final_args.push(auto_val::Arg::Pos(arg.clone()));
                     }
 
-                    let args_struct = auto_val::Args {
-                        args: final_args,
-                    };
+                    let args_struct = auto_val::Args { args: final_args };
 
                     (extfn.fun)(&args_struct)
                 } else {
-                    Value::Error(format!("VM function '{}' not found in registry or builtins", fn_decl.name).into())
+                    Value::Error(
+                        format!(
+                            "VM function '{}' not found in registry or builtins",
+                            fn_decl.name
+                        )
+                        .into(),
+                    )
                 }
             }
         }
@@ -2666,7 +2899,10 @@ impl Evaler {
                         }
                         "HashMap" | "HashSet" | "StringBuilder" => {
                             // These types don't support index operations
-                            Value::error(format!("Type {} does not support index operations", ref_name))
+                            Value::error(format!(
+                                "Type {} does not support index operations",
+                                ref_name
+                            ))
                         }
                         _ => Value::error(format!("Unknown type {}", ref_name)),
                     }
@@ -2710,7 +2946,12 @@ impl Evaler {
             Value::Str(s) => {
                 let bytes = s.as_bytes();
                 if start > bytes.len() || end > bytes.len() || start > end {
-                    return Value::error(format!("Slice out of bounds: [{}..{}], len={}", start, end, bytes.len()));
+                    return Value::error(format!(
+                        "Slice out of bounds: [{}..{}], len={}",
+                        start,
+                        end,
+                        bytes.len()
+                    ));
                 }
                 let slice_str = &s[start..end];
                 Value::Str(slice_str.into())
@@ -2718,14 +2959,24 @@ impl Evaler {
             Value::OwnedStr(s) => {
                 let s_str = s.as_str();
                 if start > s_str.len() || end > s_str.len() || start > end {
-                    return Value::error(format!("Slice out of bounds: [{}..{}], len={}", start, end, s_str.len()));
+                    return Value::error(format!(
+                        "Slice out of bounds: [{}..{}], len={}",
+                        start,
+                        end,
+                        s_str.len()
+                    ));
                 }
                 let slice_str = &s_str[start..end];
                 Value::OwnedStr(auto_val::Str::from_str(slice_str))
             }
             Value::Array(values) => {
                 if start > values.len() || end > values.len() || start > end {
-                    return Value::error(format!("Slice out of bounds: [{}..{}], len={}", start, end, values.len()));
+                    return Value::error(format!(
+                        "Slice out of bounds: [{}..{}], len={}",
+                        start,
+                        end,
+                        values.len()
+                    ));
                 }
                 let sliced_values: Vec<Value> = values.values[start..end].to_vec();
                 Value::Array(auto_val::Array::from_vec(sliced_values))
@@ -2772,6 +3023,28 @@ impl Evaler {
             Expr::Byte(value) => Value::Byte(*value),
             Expr::Uint(value) => Value::Uint(*value),
             Expr::Int(value) => Value::Int(*value),
+            Expr::Dot(object, field) => {
+                let obj_val = self.eval_expr(object);
+                let obj_resolved = Value::from_data(self.resolve_or_clone(&obj_val));
+
+                match obj_resolved {
+                    Value::Instance(inst) => {
+                        if let Some(val) = inst.fields.get(field.as_str()) {
+                            val.clone()
+                        } else {
+                            Value::error(format!(
+                                "Field '{}' not found in instance of {}",
+                                field,
+                                inst.ty.name()
+                            ))
+                        }
+                    }
+                    _ => Value::error(format!(
+                        "Cannot access field '{}' on non-instance value: {}",
+                        field, obj_val
+                    )),
+                }
+            }
             Expr::I8(value) => Value::I8(*value),
             Expr::U8(value) => Value::U8(*value),
             Expr::I64(value) => Value::I64(*value),
@@ -2881,7 +3154,7 @@ impl Evaler {
                 // Create a Store AST node for the binding (similar to let/var)
                 use crate::ast::{Store, StoreKind};
                 let store = Store {
-                    kind: StoreKind::Var,  // Hold creates a mutable binding
+                    kind: StoreKind::Var, // Hold creates a mutable binding
                     name: hold.name.clone(),
                     ty: crate::ast::Type::Unknown,
                     expr: *hold.path.clone(),
@@ -2892,7 +3165,9 @@ impl Evaler {
                     hold.name.clone(),
                     std::rc::Rc::new(crate::scope::Meta::Store(store)),
                 );
-                self.universe.borrow_mut().set_local_val(&hold.name, path_value);
+                self.universe
+                    .borrow_mut()
+                    .set_local_val(&hold.name, path_value);
 
                 // Evaluate the body
                 let result = match self.eval_body(&hold.body) {
@@ -2971,6 +3246,42 @@ impl Evaler {
                     _ => expr_val,
                 }
             }
+            Expr::Dot(object, field) => {
+                // Dot expression: object.field or Type.method
+                // Evaluate the object expression first
+                let obj_val = self.eval_expr(object);
+
+                match obj_val {
+                    Value::Instance(inst) => {
+                        // Instance field access: obj.field
+                        let field_name = field.to_string();
+
+                        // Get field value from instance's fields
+                        if let Some(field_value) = inst.fields.get(field_name.as_str()) {
+                            field_value.clone()
+                        } else {
+                            Value::error(format!(
+                                "Field '{}' not found in instance of type '{}'",
+                                field_name,
+                                inst.ty.name()
+                            ))
+                        }
+                    }
+                    Value::Type(type_name) => {
+                        // Type method access: Type.method
+                        // Return type metadata for method call processing
+                        // This will be handled by eval_call when the dot is followed by a call
+                        Value::Type(type_name)
+                    }
+                    _ => {
+                        // Invalid field access on non-instance, non-type value
+                        Value::error(format!(
+                            "Cannot access field '{}' on non-instance value: {:?}",
+                            field, obj_val
+                        ))
+                    }
+                }
+            }
         }
     }
 
@@ -3027,7 +3338,9 @@ impl Evaler {
     fn type_decl(&mut self, type_decl: &TypeDecl) -> Value {
         // Register the type itself
         let type_meta = scope::Meta::Type(ast::Type::User(type_decl.clone()));
-        self.universe.borrow_mut().define(type_decl.name.clone(), std::rc::Rc::new(type_meta));
+        self.universe
+            .borrow_mut()
+            .define(type_decl.name.clone(), std::rc::Rc::new(type_meta));
 
         // Mix in methods from composed types (has relationships)
         for has_type in &type_decl.has {
@@ -3035,17 +3348,17 @@ impl Evaler {
                 // Register each method from the composed type
                 for method in &has_decl.methods {
                     // Create fully qualified method name: TypeName::method_name
-                    let method_name: AutoStr = format!("{}::{}", type_decl.name, method.name).into();
+                    let method_name: AutoStr =
+                        format!("{}::{}", type_decl.name, method.name).into();
 
                     // Clone the method and update its name to reflect the new owner
                     let mut mixed_method = method.clone();
                     mixed_method.name = type_decl.name.clone();
 
                     // Register in universe with qualified name
-                    self.universe.borrow_mut().define(
-                        method_name,
-                        std::rc::Rc::new(scope::Meta::Fn(mixed_method))
-                    );
+                    self.universe
+                        .borrow_mut()
+                        .define(method_name, std::rc::Rc::new(scope::Meta::Fn(mixed_method)));
                 }
             }
         }
@@ -3055,7 +3368,7 @@ impl Evaler {
             let method_name: AutoStr = format!("{}::{}", type_decl.name, method.name).into();
             self.universe.borrow_mut().define(
                 method_name,
-                std::rc::Rc::new(scope::Meta::Fn(method.clone()))
+                std::rc::Rc::new(scope::Meta::Fn(method.clone())),
             );
         }
 
@@ -3102,12 +3415,12 @@ impl Evaler {
             // Clone method and ensure parent and name are set correctly
             let mut registered_method = method.clone();
             registered_method.parent = Some(ext.target.clone());
-            registered_method.name = method_name.clone();  // Update name to qualified name (e.g., "str::contains")
+            registered_method.name = method_name.clone(); // Update name to qualified name (e.g., "str::contains")
 
             // Register in universe with qualified name
             self.universe.borrow_mut().define(
                 method_name,
-                std::rc::Rc::new(scope::Meta::Fn(registered_method))
+                std::rc::Rc::new(scope::Meta::Fn(registered_method)),
             );
         }
 
@@ -3135,12 +3448,12 @@ impl Evaler {
             // Clone method and ensure parent and name are set correctly
             let mut registered_method = method.clone();
             registered_method.parent = Some(tag.name.clone());
-            registered_method.name = method_name.clone();  // Update name to qualified name
+            registered_method.name = method_name.clone(); // Update name to qualified name
 
             // Register in universe with qualified name
             self.universe.borrow_mut().define(
                 method_name,
-                std::rc::Rc::new(scope::Meta::Fn(registered_method))
+                std::rc::Rc::new(scope::Meta::Fn(registered_method)),
             );
         }
 
@@ -3214,7 +3527,7 @@ impl Evaler {
         &mut self,
         tag_name: &AutoStr,
         variant_name: &AutoStr,
-        args: &ast::Args
+        args: &ast::Args,
     ) -> AutoResult<Value> {
         // Get the tag type definition
         let tag_type = self.universe.borrow().lookup_type(tag_name);
@@ -3222,7 +3535,9 @@ impl Evaler {
             ast::Type::Tag(tag) => {
                 let tag = tag.borrow();
                 // Find the variant in the tag definition
-                let _field = tag.fields.iter()
+                let _field = tag
+                    .fields
+                    .iter()
                     .find(|f| f.name == *variant_name)
                     .ok_or_else(|| format!("Undefined variant: {}.{}", tag_name, variant_name))?;
 
@@ -3274,7 +3589,8 @@ impl Evaler {
                         // Handle static method calls on User types (e.g., HashMap.new(), List.new())
                         // Build the fully qualified function name (e.g., "HashMap.new", "List.new")
                         if let Expr::Ident(method_name) = right {
-                            let qualified_name: AutoStr = format!("{}.{}", type_name.as_str(), method_name).into();
+                            let qualified_name: AutoStr =
+                                format!("{}.{}", type_name.as_str(), method_name).into();
 
                             // Look up the function in the VM registry
                             let registry = crate::vm::VM_REGISTRY.lock().unwrap();
@@ -3317,7 +3633,8 @@ impl Evaler {
                     MetaID::Type(type_name) => {
                         // Handle static method calls on Type meta (e.g., HashMap.new(), List.new())
                         if let Expr::Ident(method_name) = right {
-                            let qualified_name: AutoStr = format!("{}.{}", type_name, method_name).into();
+                            let qualified_name: AutoStr =
+                                format!("{}.{}", type_name, method_name).into();
 
                             // Look up the function in the VM registry
                             let registry = crate::vm::VM_REGISTRY.lock().unwrap();
@@ -3476,7 +3793,8 @@ impl Evaler {
                             // Plan 025 String Migration: Check for ext methods in universe
                             // Build qualified name like "str::contains"
                             let type_name = self.get_type_name(&left_value);
-                            let qualified_method_name: AutoStr = format!("{}::{}", type_name, name).into();
+                            let qualified_method_name: AutoStr =
+                                format!("{}::{}", type_name, name).into();
 
                             // Check if this method exists in universe (registered by ext statement)
                             let method_exists = self
@@ -3487,7 +3805,10 @@ impl Evaler {
 
                             if method_exists {
                                 // Return Method with qualified name
-                                Some(Value::Method(Method::new(left_value.clone(), qualified_method_name)))
+                                Some(Value::Method(Method::new(
+                                    left_value.clone(),
+                                    qualified_method_name,
+                                )))
                             } else {
                                 None
                             }
@@ -3934,6 +4255,47 @@ impl Evaler {
         }
         Value::Grid(auto_val::Grid { head, data })
     }
+
+    fn create_default_instance(&mut self, type_name: &str) -> Value {
+        // Look up the type declaration
+        let type_decl_opt = {
+            let universe = self.universe.borrow();
+            universe.lookup_type(type_name).clone()
+        };
+
+        if let ast::Type::User(decl) = type_decl_opt {
+            let mut fields = auto_val::Obj::new();
+
+            // Initialize fields with default values
+            for member in &decl.members {
+                let val = if let Some(default_expr) = &member.value {
+                    self.eval_expr(default_expr)
+                } else {
+                    // Use type-based default
+                    match member.ty {
+                        ast::Type::Int => Value::Int(0),
+                        ast::Type::Uint => Value::Uint(0),
+                        ast::Type::Float => Value::Float(0.0),
+                        ast::Type::Double => Value::Double(0.0),
+                        ast::Type::Bool => Value::Bool(false),
+                        ast::Type::Byte => Value::Byte(0),
+                        ast::Type::Str(_) => Value::empty_str(),
+                        _ => Value::Nil,
+                    }
+                };
+
+                // Allocate value in universe if needed
+                fields.set(member.name.clone(), val);
+            }
+
+            Value::Instance(auto_val::Instance {
+                ty: auto_val::Type::User(type_name.into()),
+                fields,
+            })
+        } else {
+            Value::error(format!("Type {} not found or invalid", type_name))
+        }
+    }
 }
 
 fn to_meta_id(meta: &Rc<scope::Meta>) -> MetaID {
@@ -3970,10 +4332,14 @@ fn is_may_type(ty: &crate::ast::Type) -> bool {
             let tag_ref = tag.borrow();
             let tag_name = tag_ref.name.as_str();
             // Check if this is a May type (either May_int from stdlib or MayInt from fallback)
-            tag_name.starts_with("May_") || tag_name.starts_with("MayInt") ||
-            tag_name.starts_with("MayStr") || tag_name.starts_with("MayUint") ||
-            tag_name.starts_with("MayFloat") || tag_name.starts_with("MayDouble") ||
-            tag_name.starts_with("MayChar") || tag_name.starts_with("MayBool")
+            tag_name.starts_with("May_")
+                || tag_name.starts_with("MayInt")
+                || tag_name.starts_with("MayStr")
+                || tag_name.starts_with("MayUint")
+                || tag_name.starts_with("MayFloat")
+                || tag_name.starts_with("MayDouble")
+                || tag_name.starts_with("MayChar")
+                || tag_name.starts_with("MayBool")
         }
         _ => false,
     }
@@ -4017,24 +4383,24 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Char => auto_val::Type::Char,
         ast::Type::Str(_) => auto_val::Type::Str,
         ast::Type::CStr => auto_val::Type::CStr,
-        ast::Type::StrSlice => auto_val::Type::StrSlice,  // Borrowed string slice (Phase 3)
+        ast::Type::StrSlice => auto_val::Type::StrSlice, // Borrowed string slice (Phase 3)
         ast::Type::Array(_) => auto_val::Type::Array,
-        ast::Type::RuntimeArray(_) => auto_val::Type::Array,  // Plan 052: Runtime arrays
-        ast::Type::List(_) => auto_val::Type::Array,  // TODO: Add List to auto_val::Type
-        ast::Type::Slice(_) => auto_val::Type::Array,  // TODO: Add Slice to auto_val::Type
+        ast::Type::RuntimeArray(_) => auto_val::Type::Array, // Plan 052: Runtime arrays
+        ast::Type::List(_) => auto_val::Type::Array,         // TODO: Add List to auto_val::Type
+        ast::Type::Slice(_) => auto_val::Type::Array,        // TODO: Add Slice to auto_val::Type
         ast::Type::Ptr(_) => auto_val::Type::Ptr,
         ast::Type::User(type_decl) => auto_val::Type::User(type_decl.name.clone()),
         ast::Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
         ast::Type::Spec(decl) => auto_val::Type::User(decl.borrow().name.clone()),
         ast::Type::Union(u) => auto_val::Type::Union(u.name.clone()),
         ast::Type::Tag(tag) => auto_val::Type::Tag(tag.borrow().name.clone()),
-        ast::Type::Linear(inner) => to_value_type(inner),  // Linear wraps inner type
-        ast::Type::Variadic => auto_val::Type::Any,  // Variadic maps to Any
+        ast::Type::Linear(inner) => to_value_type(inner), // Linear wraps inner type
+        ast::Type::Variadic => auto_val::Type::Any,       // Variadic maps to Any
         ast::Type::Void => auto_val::Type::Void,
         ast::Type::Unknown => auto_val::Type::Any,
         ast::Type::CStruct(_) => auto_val::Type::Void,
-        ast::Type::Storage(_) => auto_val::Type::Any,  // Storage maps to Any for now
-        ast::Type::GenericInstance(_) => auto_val::Type::Any,  // TODO: Handle generic instances properly
+        ast::Type::Storage(_) => auto_val::Type::Any, // Storage maps to Any for now
+        ast::Type::GenericInstance(_) => auto_val::Type::Any, // TODO: Handle generic instances properly
     }
 }
 
