@@ -272,6 +272,9 @@ pub fn init_collections_module() {
         .insert("is_empty".into(), list::list_is_empty as VmMethod);
     list_type
         .methods
+        .insert("capacity".into(), list::list_capacity as VmMethod);
+    list_type
+        .methods
         .insert("clear".into(), list::list_clear as VmMethod);
     list_type
         .methods

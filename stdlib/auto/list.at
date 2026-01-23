@@ -27,6 +27,13 @@ type List<T> {
     #[c, vm, pub]
     fn is_empty() bool
 
+    /// Get the capacity of the list (Plan 055)
+    /// For Dynamic storage: returns INT_MAX (unlimited)
+    /// For Fixed storage: returns the fixed capacity
+    /// Example: list.capacity()
+    #[c, vm, pub]
+    fn capacity() int
+
     /// Get element at index
     /// Example: list.get(0)
     #[c, vm, pub]

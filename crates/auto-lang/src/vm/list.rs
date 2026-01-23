@@ -145,6 +145,26 @@ pub fn list_is_empty(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Val
     Value::Int(1)
 }
 
+/// Get the capacity of the list (Plan 055)
+/// For Dynamic storage: returns i32::MAX (unlimited)
+/// For Fixed storage: returns the fixed capacity from environment
+pub fn list_capacity(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+    // Get the default storage from environment
+    let storage = uni.borrow()
+        .get_env_val("DEFAULT_STORAGE")
+        .unwrap_or_else(|| "Dynamic".into());
+
+    if storage.to_string().contains("Fixed") {
+        // MCU target: extract capacity from "Fixed<64>"
+        // For now, return the default MCU capacity (64)
+        // TODO: Parse the capacity value from the storage string
+        Value::Int(64)
+    } else {
+        // PC target: Dynamic storage (unlimited)
+        Value::Int(i32::MAX)
+    }
+}
+
 /// Clear all elements
 pub fn list_clear(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {

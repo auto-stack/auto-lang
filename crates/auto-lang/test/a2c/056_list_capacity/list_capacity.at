@@ -1,0 +1,20 @@
+// Test List.capacity() method (Plan 055 Phase 5)
+
+fn main() {
+    // Create a new list
+    let list = List.new()
+
+    // Add some elements
+    list.push(1)
+    list.push(2)
+    list.push(3)
+
+    // Check capacity
+    let cap = list.capacity()
+
+    // Check length
+    let len = list.len()
+
+    print("List capacity:", cap)
+    print("List length:", len)
+}
