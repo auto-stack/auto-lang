@@ -1927,6 +1927,57 @@ impl Evaler {
         }
 
         // Regular function call (non-method)
+        // First, try to lookup the function name directly
+        let func_name_text = call.get_name_text();
+
+        // Try to find global VM function in VM registry (Plan 052 Phase 2)
+        // This enables functions like alloc_array() that are registered globally
+        if func_name_text.contains('.') {
+            // Skip qualified names (e.g., module.func) - handle via normal path
+        } else {
+            // Search for this function in all VM modules
+            let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+            let mut found_vm_func = None;
+
+            // Search all modules for this function
+            for (_module_name, module) in registry.modules().iter() {
+                if let Some(func_entry) = module.functions.get(func_name_text.as_str()) {
+                    found_vm_func = Some(func_entry.clone());
+                    break;
+                }
+            }
+            drop(registry);
+
+            // If found in VM registry, call it
+            if let Some(func_entry) = found_vm_func {
+                // Evaluate arguments
+                let mut arg_vals = Vec::new();
+                for arg in call.args.args.iter() {
+                    match arg {
+                        ast::Arg::Pos(expr) => {
+                            arg_vals.push(self.eval_expr(expr));
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Call the VM function (single parameter - the last argument)
+                // For multi-arg functions, they should be wrapped in Array
+                let result = if arg_vals.len() == 1 {
+                    (func_entry.func)(self.universe.clone(), arg_vals[0].clone())
+                } else {
+                    // Multiple arguments - wrap in Array
+                    let args_array = Value::Array(auto_val::Array {
+                        values: arg_vals,
+                    });
+                    (func_entry.func)(self.universe.clone(), args_array)
+                };
+
+                return Ok(result);
+            }
+        }
+
+        // Fall back to normal function lookup
         let name = self.eval_expr(&call.name);
         if name == Value::Nil {
             return Ok(Value::error(format!(
