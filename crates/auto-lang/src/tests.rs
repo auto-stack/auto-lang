@@ -15,5 +15,6 @@ mod test_generic_simple;
 mod test_generic_full;
 mod test_let_generic;
 mod storage_tests;
+mod storage_integration_tests;
 mod vm_functions_tests;
 mod vm_tests;

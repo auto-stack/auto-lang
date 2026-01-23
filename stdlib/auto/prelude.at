@@ -11,18 +11,6 @@
 // ============================================================================
 
 // ============================================================================
-// AutoLang Prelude
-// ============================================================================
-// This file is automatically imported into every module.
-// It defines symbols that are available without explicit imports.
-//
-// Design Principles:
-// - Minimal: Only includes truly ubiquitous symbols
-// - Explicit: Re-exports from other modules (no new definitions here)
-// - Documented: Each symbol has a rationale for inclusion
-// ============================================================================
-
-// ============================================================================
 // I/O Operations
 // ============================================================================
 // Rationale: Printing/output is needed in almost every program for
@@ -32,12 +20,16 @@
 use auto.io: say
 
 // ============================================================================
-// Collections (when List VM functions are implemented)
+// Collections
 // ============================================================================
-// NOTE: List is currently disabled because static method calls (List.new())
-// are not yet fully supported in the evaluator.
+// Rationale: Lists are fundamental data structures used in most programs.
+// The List type provides dynamic array functionality with capacity() method
+// that returns target-dependent storage limits (Plan 055).
 //
-// use auto.list: List
+// Note: List type and methods are automatically available via VM registry.
+// List.new() static method works in the interpreter and C transpiler.
+
+// List is available without explicit import (registered at interpreter startup)
 
 // ============================================================================
 // Error Handling with May<T>
