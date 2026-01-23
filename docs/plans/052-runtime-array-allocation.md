@@ -436,10 +436,12 @@ Once basic runtime allocation works:
 
 ## Next Steps After This Plan
 
-1. ✅ Update Plan 051 List to use dynamic capacity
-2. ✅ Implement proper reallocation in List.push()
-3. ✅ Add generic `List<T>` support
-4. ✅ Add iteration support (Plan 053)
+1. ✅ Update Plan 051 List to use dynamic capacity (DEPRECATED - see Plan 055)
+2. ⏸️ Implement proper reallocation in List.push()
+3. ⏸️ Add generic `List<T>` support
+4. ⏸️ Add iteration support (Plan 053)
+5. ✅ **Enable Plan 054 Phase 2**: Root config with user-specified heap sizes
+6. ✅ **Enable Plan 055 Phase 7**: True target-specific C code generation
 
 ## Current Status
 
@@ -453,8 +455,40 @@ Once basic runtime allocation works:
 
 **Blocked**: None - ready to start
 
+**Priority**: HIGH - Required for Plan 054/055 advanced features
+
+**Relationship to Other Plans**:
+
+### Plan 054 (Context Environment)
+- **Dependency**: Plan 054 Phase 2 (Root Config) requires runtime allocation
+  - User can specify `const HeapSize = 4096` in config
+  - This heap needs runtime allocation support
+- **Enables**: Full MCU vs PC environment customization
+  - MCU: User-defined static heap arrays
+  - PC: Dynamic heap allocation with malloc
+
+### Plan 055 (Storage Injection)
+- **Current State**: Plan 055 implements basic Storage infrastructure
+  - ✅ Storage type markers (Fixed/Dynamic) work
+  - ✅ Target detection works
+  - ✅ Environment injection works
+  - ⏸️ But actual dynamic List growth still requires runtime allocation
+- **Enhancement**: Plan 052 enables Plan 055 Phase 7 (C Transpiler Enhancements)
+  - Generate static arrays for MCU Fixed storage
+  - Generate heap-allocated structures for PC Dynamic storage
+  - Support user-specified heap sizes from root config
+
+### Plan 051 (Fixed-Capacity List)
+- **Status**: DEPRECATED - superseded by Plan 055
+- **Legacy**: Plan 051's array testing findings inform Plan 052 design
+
+### Plan 050 (Prelude System)
+- **No Direct Dependency**: Prelude system doesn't require runtime arrays
+- **Future**: Could enable dynamic prelude configuration
+
 **Notes**:
 - This is a major language feature
 - Requires careful testing for memory safety
 - Backwards compatibility is critical
 - Hybrid approach balances complexity and performance
+- **Important**: Plan 054/055 can proceed without Plan 052, but advanced features require it

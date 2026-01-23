@@ -285,21 +285,60 @@ Once **Plan 053** (Mutable Variables in Loops) is complete:
 
 ## Current Status
 
-**Phase**: Ready to implement
+**Status**: 🚫 DEPRECATED - Superseded by Plan 055
 
-**Completed**:
+**Reason for Deprecation**:
+Plan 055 (Storage 环境注入实现) has implemented a more comprehensive solution that makes this interim approach unnecessary:
+
+1. **✅ List<T> Already Implemented**: `List<T>` is fully functional via VM registry (`src/vm/list.rs`)
+   - All core methods work: push, pop, get, set, len, is_empty, clear, insert, remove
+   - No need for pure AutoLang `ListInt` workaround
+
+2. **✅ capacity() Method Added**: Plan 055 Phase 5 implemented `List.capacity()`
+   - Returns target-dependent capacity (MCU: 64, PC: INT_MAX)
+   - Storage strategy based on compile-time target detection
+
+3. **✅ Storage Type System**: Plan 055 implemented Fixed/Dynamic storage strategies
+   - `Fixed<N>` marker types for static allocation
+   - `Dynamic` marker types for heap allocation
+   - Environment injection sets `DEFAULT_STORAGE` based on target
+
+4. **✅ Better Architecture**: VM-based approach is cleaner than pure AutoLang workaround
+   - No language limitations (no 100-element hardcoded limit)
+   - Works across all platforms (MCU and PC)
+   - Properly integrated with type system and transpilers
+
+**What This Plan Proposed**:
+- Pure AutoLang `ListInt` type with `[100]int` fixed array
+- Manual implementation of all List methods
+- 100-element capacity limitation
+- Workaround for lack of runtime allocation
+
+**What Plan 055 Delivered Instead**:
+- VM-registered `List<T>` with dynamic growth (PC) or fixed capacity (MCU)
+- Target-dependent storage strategy selection
+- No arbitrary limits (capacity determined by platform)
+- Foundation for future enhancements (Plan 052 for runtime allocation)
+
+**Historical Value**:
+This plan served an important role:
+- ✅ Explored AutoLang's array capabilities (Phase 1 testing)
+- ✅ Validated array mutation works
+- ✅ Identified language limitations
+- ✅ Informed design of better solutions (Plan 052, 055)
+
+**Completed** (Historical):
 - ✅ Phase 1: Array capability testing (3/8 passing)
 - ✅ Design document created
 - ✅ Implementation strategy defined
+- ✅ Helped identify need for Plan 052 (Runtime Array Allocation)
 
-**Next Steps**:
-1. ⏸️ Implement `ListInt` in `stdlib/auto/list.at`
-2. ⏸️ Create comprehensive tests
-3. ⏸️ Update prelude if tests pass
-4. ⏸️ Document limitations clearly
+**Next Steps** (Refer to):
+1. **Plan 055** ✅ COMPLETE: Basic Storage-based List system
+2. **Plan 052** ⏸️ PENDING: Runtime Array Allocation (for true dynamic growth)
+3. **Plan 054** 🔄 IN PROGRESS: Full context environment system
 
 **Notes**:
-- This is an interim solution, not the final List<T>
-- Fixed capacity is acceptable for initial implementation
-- Clear documentation of limitations is critical
-- Upgrade path to Plans 052/053 must be planned
+- This plan's legacy lives on in Plan 052 (runtime allocation)
+- Array testing findings remain valuable for language development
+- The interim solution approach was validated, but ultimately superseded
