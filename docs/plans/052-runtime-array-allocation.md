@@ -445,17 +445,32 @@ Once basic runtime allocation works:
 
 ## Current Status
 
-**Phase**: Design complete, awaiting approval
+**Status**: ✅ COMPLETED (2025-01-23)
 
 **Completed**:
 - ✅ Problem analysis
 - ✅ Design options evaluated
-- ✅ Implementation strategy chosen (hybrid approach)
+- ✅ Implementation strategy chosen (heap allocation approach)
 - ✅ Implementation plan detailed
+- ✅ **Phase 1: AST and Parser** - RuntimeArray type added to AST, parser supports `[expr]T`
+- ✅ **Phase 2: Type System** - substitute() and occurs_in() support RuntimeArray
+- ✅ **Phase 3: C Transpiler (Basic)** - Generates `int* arr = malloc(sizeof(int) * (size))`
+- ✅ **Phase 4: C Transpiler (Advanced)** - Parenthesized size expressions, heap allocation
+- ✅ **Phase 5: VM Evaluator** - Runtime array allocation via `eval_store()`
+- ✅ **Phase 6: Testing** - 2 a2c tests passing
 
-**Blocked**: None - ready to start
+**Blocked**: None - implementation complete
 
-**Priority**: HIGH - Required for Plan 054/055 advanced features
+**Priority**: ✅ COMPLETE - Enables Plan 054/055 advanced features
+
+**Implementation Files**:
+- `src/ast/types.rs` - RuntimeArray type definition (line 21, 264-267)
+- `src/parser.rs` - parse_array_type() supports runtime expressions (line 4220-4247)
+- `src/eval.rs` - eval_store() allocates runtime arrays (line 894-907)
+- `src/trans/c.rs` - C generation with malloc (line 1518-1523, 1680-1703)
+- `src/infer/unification.rs` - occurs_in() support (line 142)
+- `test/a2c/082_runtime_size_var/` - Variable size test
+- `test/a2c/083_runtime_size_expr/` - Expression size test
 
 **Relationship to Other Plans**:
 

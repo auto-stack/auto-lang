@@ -1683,9 +1683,9 @@ impl CTrans {
 
                     // Always use heap allocation (malloc) for runtime arrays
                     // This avoids scope issues with VLAs and ensures the array is accessible after declaration
-                    out.write(format!("{}* {} = malloc(sizeof({}) * ", elem_type, store.name, elem_type).as_bytes()).to()?;
+                    out.write(format!("{}* {} = malloc(sizeof({}) * (", elem_type, store.name, elem_type).as_bytes()).to()?;
                     self.expr(&rta.size_expr, out)?;
-                    out.write(b")").to()?;  // Close the malloc call
+                    out.write(b"))").to()?;  // Close the malloc call with parenthesized size expression
 
                     // Initialize array if expression provided
                     if !matches!(store.expr, Expr::Nil) {

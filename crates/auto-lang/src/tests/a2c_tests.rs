@@ -790,3 +790,17 @@ fn test_080_array_nested() {
 fn test_080_array_loop() {
     test_a2c("080_array_loop").unwrap();
 }
+
+// ============================================================================
+// Plan 052: Runtime Array Allocation Tests
+// ============================================================================
+
+#[test]
+fn test_082_runtime_size_var() {
+    test_a2c("082_runtime_size_var").unwrap();
+}
+
+#[test]
+fn test_083_runtime_size_expr() {
+    test_a2c("083_runtime_size_expr").unwrap();
+}

@@ -1,0 +1,18 @@
+// Test runtime-sized array with expression (Plan 052)
+// Array size is computed from expression
+
+fn main() {
+    let x = 5
+    let y = 3
+    let arr [x + y]int
+
+    arr[0] = 1
+    arr[1] = 2
+    arr[2] = 3
+
+    let len = arr.len()  // Should work if len() is supported
+    let elem = arr[0]
+
+    print("Length:", len)
+    print("First element:", elem)
+}
