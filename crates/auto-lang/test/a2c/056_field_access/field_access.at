@@ -1,0 +1,44 @@
+/// Plan 056: Field Access Tests
+/// Tests dot expression field access syntax
+
+type Point {
+    x int
+    y int
+}
+
+type Data {
+    name str
+    value int
+    active bool
+}
+
+fn main() {
+    // Test 1: Basic field access with named args
+    let p1 = Point { x: 10, y: 20 }
+    print("p1.x: ", p1.x)
+    print("p1.y: ", p1.y)
+
+    // Test 2: Field access with positional args
+    let p2 = Point(1, 2)
+    print("p2.x: ", p2.x)
+    print("p2.y: ", p2.y)
+
+    // Test 3: Field assignment
+    let p3 = Point { x: 0, y: 0 }
+    p3.x = 100
+    p3.y = 200
+    print("p3.x: ", p3.x)
+    print("p3.y: ", p3.y)
+
+    // Test 4: Multiple field accesses from same object
+    let d = Data { name: "test", value: 42, active: true }
+    print("d.name: ", d.name)
+    print("d.value: ", d.value)
+    print("d.active: ", d.active)
+
+    // Test 5: Access field multiple times (should not move)
+    let p4 = Point { x: 5, y: 10 }
+    print("p4.x (first): ", p4.x)
+    print("p4.x (second): ", p4.x)
+    print("p4.y: ", p4.y)
+}

@@ -4,6 +4,7 @@ mod atom_tests;
 mod config_tests;
 mod dstr_tests;
 mod error_tests;
+mod field_access_tests;  // Plan 056: Field access tests
 mod may_tests;
 mod mem_tests;
 mod memory_quick_test;

@@ -10,6 +10,8 @@ Auto 是一门面向自动化开发的多场景编程语言，致力于成为"�
 
 > **One Lang to Rule Them All**
 
+![star](https://gitcode.com/auto-stack/auto-lang/star/badge.svg)
+
 ---
 
 ## 目录

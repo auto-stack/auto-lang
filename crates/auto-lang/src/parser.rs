@@ -1105,6 +1105,7 @@ impl<'a> Parser<'a> {
                         Op::Dot => {
                             // Dot expression: extract field name from identifier
                             if let Expr::Ident(field_name) = rhs {
+                                eprintln!("DEBUG PARSER: Creating Expr::Dot for field '{}'", field_name);
                                 lhs = Expr::Dot(Box::new(lhs), field_name);
                             } else {
                                 // Error: right-hand side of dot must be an identifier
@@ -4974,10 +4975,19 @@ impl<'a> Parser<'a> {
         let mut ident = self.ident()?;
         self.next();
 
+        // Plan 056: Use Expr::Dot for semantic clarity
         while self.is_kind(TokenKind::Dot) {
             self.next(); // skip dot
             let next_ident = self.parse_ident()?;
-            ident = Expr::Bina(Box::new(ident), Op::Dot, Box::new(next_ident));
+            // Extract Name from Expr::Ident
+            let field_name = match next_ident {
+                Expr::Ident(name) => name,
+                _ => return Err(SyntaxError::Generic {
+                    message: format!("Expected identifier after dot, got {:?}", next_ident),
+                    span: pos_to_span(self.cur.pos),
+                }.into()),
+            };
+            ident = Expr::Dot(Box::new(ident), field_name);
         }
 
         let is_constructor = match &ident {

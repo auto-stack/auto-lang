@@ -1762,18 +1762,22 @@ impl Evaler {
     /// Mark a variable as moved if the expression is a variable reference
     /// This is used to enforce move semantics when values are passed to functions
     fn mark_expr_as_moved(&mut self, expr: &Expr) {
+        eprintln!("DEBUG mark_expr_as_moved: expr = {:?}", expr);
         match expr {
             // Direct variable reference: `x`
             Expr::Ident(name) => {
+                eprintln!("DEBUG: Marking '{}' as moved", name);
                 self.universe.borrow_mut().mark_moved(name.as_str());
             }
             // Variable reference through `ref`: `ref x`
             Expr::Ref(name) => {
+                eprintln!("DEBUG: Marking ref '{}' as moved", name);
                 self.universe.borrow_mut().mark_moved(name.as_str());
             }
             // For expressions, we need to check if the base is a variable
             // e.g., `x.field` or `x[index` - x is moved
             Expr::Bina(left, op, right) => {
+                eprintln!("DEBUG: Bina expression, op={:?}", op);
                 if *op == Op::Dot || *op == Op::LSquare {
                     // Mark the base object as moved
                     self.mark_expr_as_moved(left);
@@ -1782,6 +1786,13 @@ impl Evaler {
                     self.mark_expr_as_moved(left);
                     self.mark_expr_as_moved(right);
                 }
+            }
+            // Plan 056: Dot expression - field access should NOT move the object
+            // `say(p.x)` should read the field without moving p
+            Expr::Dot(object, field) => {
+                eprintln!("DEBUG: Dot expression object={:?} field={:?}", object, field);
+                // Do NOT mark the object as moved for field access
+                // Field access is a read operation, not a move
             }
             Expr::Index(base, _index) => {
                 // Mark the array as moved, unless it's a VM reference type (List, HashMap, etc.)
@@ -1797,7 +1808,9 @@ impl Evaler {
                 self.mark_expr_as_moved(inner_expr);
             }
             // Other expressions don't involve variable moves
-            _ => {}
+            _ => {
+                eprintln!("DEBUG: Other expression, not marking as moved");
+            }
         }
     }
 
@@ -1868,6 +1881,7 @@ impl Evaler {
 
     // TODO: 需要整理一下，逻辑比较乱
     fn eval_call(&mut self, call: &Call) -> AutoResult<Value> {
+        eprintln!("DEBUG eval_call: call.name = {:?}", call.name);
         // Check if this is a method call like `file.close()` or `x.triple()`
         // OR a tag construction like `Atom.Int(5)`
         if let Expr::Dot(object, method) = &*call.name {
@@ -2304,6 +2318,8 @@ impl Evaler {
 
     fn eval_fields(&mut self, type_decl: &TypeDecl, args: &auto_val::Args) -> Obj {
         let members = &type_decl.members;
+        eprintln!("DEBUG eval_fields: type_decl.name = {}, members = {:?}", type_decl.name, members);
+        eprintln!("DEBUG eval_fields: args = {:?}", args);
         // TODO: remove unnecessary clone
         let mut fields = Obj::new();
 
@@ -2331,6 +2347,7 @@ impl Evaler {
 
         // Then, add fields from direct arguments
         for (j, arg) in args.args.iter().enumerate() {
+            eprintln!("DEBUG eval_fields: Processing arg {}: {:?}", j, arg);
             // let val_arg = self.eval_arg(arg);
             match arg {
                 auto_val::Arg::Pair(key, val) => {
@@ -2777,14 +2794,17 @@ impl Evaler {
     }
 
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> AutoResult<Value> {
+        eprintln!("DEBUG eval_fn_call: fn_decl.name = {}, args = {:?}", fn_decl.name, args);
         // IMPORTANT: Mark arguments as moved in caller's scope BEFORE entering function scope
         // This ensures move semantics are tracked in the correct scope
         for arg in args.args.iter() {
             match arg {
                 Arg::Pair(_name, expr) => {
+                    eprintln!("DEBUG: Marking pair expr = {:?}", expr);
                     self.mark_expr_as_moved(expr);
                 }
                 Arg::Pos(expr) => {
+                    eprintln!("DEBUG: Marking pos expr = {:?}", expr);
                     self.mark_expr_as_moved(expr);
                 }
                 Arg::Name(_name) => {
@@ -3027,11 +3047,16 @@ impl Evaler {
                 let obj_val = self.eval_expr(object);
                 let obj_resolved = Value::from_data(self.resolve_or_clone(&obj_val));
 
+                eprintln!("DEBUG Expr::Dot: field='{}', obj_resolved={:?}", field, obj_resolved);
+
                 match obj_resolved {
                     Value::Instance(inst) => {
+                        eprintln!("DEBUG Expr::Dot: inst.fields = {:?}", inst.fields);
                         if let Some(val) = inst.fields.get(field.as_str()) {
+                            eprintln!("DEBUG Expr::Dot: Found field '{}', value = {:?}", field, val);
                             val.clone()
                         } else {
+                            eprintln!("DEBUG Expr::Dot: Field '{}' NOT FOUND in instance of {}", field, inst.ty.name());
                             Value::error(format!(
                                 "Field '{}' not found in instance of {}",
                                 field,
@@ -3244,42 +3269,6 @@ impl Evaler {
                         }
                     }
                     _ => expr_val,
-                }
-            }
-            Expr::Dot(object, field) => {
-                // Dot expression: object.field or Type.method
-                // Evaluate the object expression first
-                let obj_val = self.eval_expr(object);
-
-                match obj_val {
-                    Value::Instance(inst) => {
-                        // Instance field access: obj.field
-                        let field_name = field.to_string();
-
-                        // Get field value from instance's fields
-                        if let Some(field_value) = inst.fields.get(field_name.as_str()) {
-                            field_value.clone()
-                        } else {
-                            Value::error(format!(
-                                "Field '{}' not found in instance of type '{}'",
-                                field_name,
-                                inst.ty.name()
-                            ))
-                        }
-                    }
-                    Value::Type(type_name) => {
-                        // Type method access: Type.method
-                        // Return type metadata for method call processing
-                        // This will be handled by eval_call when the dot is followed by a call
-                        Value::Type(type_name)
-                    }
-                    _ => {
-                        // Invalid field access on non-instance, non-type value
-                        Value::error(format!(
-                            "Cannot access field '{}' on non-instance value: {:?}",
-                            field, obj_val
-                        ))
-                    }
                 }
             }
         }
@@ -3954,7 +3943,27 @@ impl Evaler {
         let name = node.name.clone();
         let expr = Expr::Ident(name);
         let name_expr = self.eval_expr(&expr);
-        let args = self.eval_args(&node.args);
+        let mut args = self.eval_args(&node.args);
+
+        // Plan 056: Extract Pair properties from node.body and add them to args
+        // This handles cases like `Point { x: 1, y: 2 }` where the properties are defined in body
+        for stmt in node.body.stmts.iter() {
+            if let Stmt::Expr(Expr::Pair(pair)) = stmt {
+                // Convert AST Pair to auto_val Arg::Pair
+                // pair.key is Key (NamedKey, IntKey, BoolKey, StrKey)
+                // pair.value is Box<Expr> (needs to be evaluated)
+                let key_name: AutoStr = match &pair.key {
+                    ast::Key::NamedKey(name) => name.clone(),
+                    ast::Key::StrKey(s) => s.clone(),
+                    ast::Key::IntKey(i) => i.to_string().into(),
+                    ast::Key::BoolKey(b) => b.to_string().into(),
+                };
+                let value_val = self.eval_expr(&pair.value);
+                // Convert AutoStr to ValueKey using .into()
+                args.args.push(auto_val::Arg::Pair(key_name.into(), value_val));
+            }
+        }
+
         if let Value::Type(Type::User(type_decl)) = name_expr {
             // println!("EVAL TYPE _NEWNWNWN"); // LSP: disabled
             return Ok(self.eval_type_new(&type_decl, &args));

@@ -922,6 +922,14 @@ impl CTrans {
                 // For now, just emit the expression (TODO: implement proper early return)
                 self.expr(expr, out)
             }
+            // Plan 056: Dot expression for field access
+            Expr::Dot(object, field) => {
+                // Field access: object.field
+                self.expr(object, out)?;
+                out.write_all(b".")?;
+                out.write_all(field.as_bytes())?;
+                Ok(())
+            }
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
         }
     }

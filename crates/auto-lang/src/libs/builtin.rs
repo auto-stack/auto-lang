@@ -236,6 +236,7 @@ pub fn builtins() -> HashMap<AutoStr, Value> {
 
 // TODO: fix for named args
 pub fn print(args: &Args) -> Value {
+    eprintln!("DEBUG print: Called with args = {:?}", args);
     // Check if we're in test mode
     let test_capture = TEST_OUTPUT_CAPTURE.with(|capture| capture.borrow().clone());
 

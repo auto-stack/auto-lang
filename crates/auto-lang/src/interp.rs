@@ -90,7 +90,9 @@ impl Interpreter {
             std::fs::read_to_string("stdlib/auto/prelude.at").unwrap_or(String::new())
         });
         if !prelude_code.is_empty() {
-            let _ = interpreter.interpret(&prelude_code);
+            eprintln!("DEBUG: Loading prelude...");
+            let result = interpreter.interpret(&prelude_code);
+            eprintln!("DEBUG: Prelude loaded, result = {:?}", result);
         }
 
         interpreter
@@ -238,6 +240,7 @@ impl Interpreter {
     }
 
     pub fn interpret(&mut self, code: &str) -> AutoResult<()> {
+        eprintln!("DEBUG interpret: Starting...");
         // Create a lexer first to check for errors before creating parser
         let mut lexer = crate::lexer::Lexer::new(code);
         lexer.set_fstr_note(self.fstr_note);
@@ -258,14 +261,18 @@ impl Interpreter {
         if self.skip_check {
             parser = parser.skip_check();
         }
+        eprintln!("DEBUG interpret: Parsing...");
         let ast = parser.parse()?;
+        eprintln!("DEBUG interpret: Parsed, evaluating...");
         let result = self.evaler.eval(&ast)?;
+        eprintln!("DEBUG interpret: Evaluated, result = {:?}", result);
         // Check if result is an error and return it as a Result error
         if result.is_error() {
             return Err(format!("Evaluation error: {}", result).into());
         }
         let derefed = self.scope.borrow().deref_val(result);
         self.result = derefed;
+        eprintln!("DEBUG interpret: Done, result = {:?}", self.result);
         Ok(())
     }
 

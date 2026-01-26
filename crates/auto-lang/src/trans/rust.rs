@@ -669,6 +669,14 @@ impl RustTrans {
                 Ok(())
             }
 
+            // Plan 056: Dot expression for field access
+            Expr::Dot(object, field) => {
+                // Field access: object.field
+                self.expr(object, out)?;
+                write!(out, ".{}", field)?;
+                Ok(())
+            }
+
             _ => Err(format!("Rust Transpiler: unsupported expression: {}", expr).into()),
         }
     }
