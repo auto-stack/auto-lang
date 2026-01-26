@@ -4,13 +4,13 @@
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
+![Gitcode star](https://gitcode.com/auto-stack/auto-lang/star/badge.svg)
 [![Gitee stars](https://gitee.com/auto-stack/auto-lang/badge/star.svg)](https://gitee.com/auto-stack/auto-lang)
 
 Auto 是一门面向自动化开发的多场景编程语言，致力于成为"万物自动化"的统一解决方案。
 
 > **One Lang to Rule Them All**
 
-![star](https://gitcode.com/auto-stack/auto-lang/star/badge.svg)
 
 ---
 
