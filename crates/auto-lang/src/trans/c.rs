@@ -1,6 +1,7 @@
 use super::{Sink, ToStrError, Trans};
 use crate::ast::*;
 use crate::ast::{ArrayType, Type};
+use crate::error::attach_source;
 use crate::parser::Parser;
 use crate::scope::Meta;
 use crate::universe::Universe;
@@ -3171,7 +3172,10 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Sh
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code, scope);
     parser.set_dest(crate::parser::CompileDest::TransC);
-    let ast = parser.parse().map_err(|e| e.to_string())?;
+    let ast = parser.parse().map_err(|e| {
+        // Attach source code to errors for beautiful miette display
+        attach_source(e, name.to_string(), code.to_string())
+    })?;
     let mut out = Sink::new(name.clone());
     let mut transpiler = CTrans::new(name);
     transpiler.scope = parser.scope.clone();

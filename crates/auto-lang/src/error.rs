@@ -336,7 +336,10 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.labels(),
             AutoError::Name(e) => e.labels(),
             AutoError::Runtime(e) => e.labels(),
-            AutoError::MultipleErrors { .. } => None,
+            AutoError::MultipleErrors { errors, .. } => {
+                // Return labels from the first error
+                errors.first()?.labels()
+            }
             AutoError::Warning(e) => e.labels(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,
@@ -361,7 +364,10 @@ impl Diagnostic for AutoError {
             AutoError::Type(e) => e.source_code(),
             AutoError::Name(e) => e.source_code(),
             AutoError::Runtime(e) => e.source_code(),
-            AutoError::MultipleErrors { .. } => None,
+            AutoError::MultipleErrors { errors, .. } => {
+                // Return source code from the first error
+                errors.first()?.source_code()
+            }
             AutoError::Warning(e) => e.source_code(),
             AutoError::Io(_) => None,
             AutoError::Msg(_) => None,

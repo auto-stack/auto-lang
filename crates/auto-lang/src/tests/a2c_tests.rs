@@ -715,10 +715,17 @@ fn test_060_generic_tag() {
     match test_a2c("060_generic_tag") {
         Ok(_) => {}
         Err(e) => {
-            // Use miette::Report to format errors beautifully with colors and source snippets
-            eprintln!("\n=== Transpilation Error ===\n");
-            let report = miette::Report::new(e);
-            eprintln!("{}\n", report);
+            // Check if this is MultipleErrors and print each one
+            if let crate::error::AutoError::MultipleErrors { errors, .. } = &e {
+                eprintln!("\n=== Transpilation Errors ({}) ===\n", errors.len());
+                for (i, err) in errors.iter().enumerate() {
+                    eprintln!("--- Error {} ---\n", i + 1);
+                    eprintln!("{}\n", err);
+                }
+            } else {
+                eprintln!("\n=== Transpilation Error ===\n");
+                eprintln!("{}\n", e);
+            }
             panic!("Transpilation failed - generics not yet implemented");
         }
     }
