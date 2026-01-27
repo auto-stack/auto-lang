@@ -1,8 +1,13 @@
 let arr [4]int = [1, 2, 3, 4]
-mut sum = 0
-mut i = 0
-while i < 4 {
-    sum = sum + arr[i]
-    i = i + 1
+fn main() {
+    mut sum = 0
+    mut i = 0
+    for {
+        if i >= 4 {
+            break
+        }
+        sum = sum + arr[i]
+        i = i + 1
+    }
+    sum
 }
-sum
