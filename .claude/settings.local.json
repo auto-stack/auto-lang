@@ -96,7 +96,8 @@
       "Bash(1 <<'EOF'\nuse auto.io: say\n\nfn main\\(\\) {\n    say\\(\"Testing if May is available from prelude\"\\)\n    // May should be available without use statement if prelude works\n}\nEOF)",
       "Bash(git restore:*)",
       "Bash(../../target/debug/auto.exe run:*)",
-      "Bash(../../target/release/auto.exe run ../../test_prelude.at)"
+      "Bash(../../target/release/auto.exe run ../../test_prelude.at)",
+      "Bash(./test_pointer_transpile.exe:*)"
     ]
   }
 }

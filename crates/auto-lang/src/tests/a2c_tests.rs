@@ -787,3 +787,12 @@ fn test_082_runtime_size_var() {
 fn test_083_runtime_size_expr() {
     test_a2c("083_runtime_size_expr").unwrap();
 }
+
+// ============================================================================
+// Plan 052: Pointer Type Tests
+// ============================================================================
+
+#[test]
+fn test_090_pointer_types() {
+    test_a2c("090_pointer_types").unwrap();
+}

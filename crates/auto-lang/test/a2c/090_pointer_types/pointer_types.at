@@ -1,0 +1,8 @@
+// Test pointer types - Plan 052
+fn test_ptr_param(p *int) int {
+    return 0
+}
+
+fn main() {
+    return 0
+}
