@@ -1,8 +1,0 @@
-let products = [
-    { name: "A", price: 10 },
-    { name: "B", price: 20 }
-]
-
-$ for p in products {
-$p.name: $p.price
-$ }

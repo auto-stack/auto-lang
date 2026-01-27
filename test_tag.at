@@ -1,4 +1,0 @@
-tag May<T> {
-    nil Nil
-    val T
-}

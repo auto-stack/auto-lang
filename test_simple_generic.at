@@ -1,9 +1,0 @@
-tag May<T> {
-    nil Nil
-    val T
-}
-
-fn main() {
-    let x May<int>
-    x
-}
