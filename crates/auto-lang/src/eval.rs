@@ -409,12 +409,15 @@ impl Evaler {
 
         // Register each imported item in current scope
         for item_name in &use_stmt.items {
-            // Check if it's a function
-            if let Some(_func_entry) = crate::vm::VM_REGISTRY
-                .lock()
-                .unwrap()
-                .get_function(&module_path, item_name)
-            {
+            // Check if it's a function or type
+            // IMPORTANT: Extract data with short-lived lock to avoid deadlock
+            // The lock must be released BEFORE calling universe.borrow_mut().define()
+            let is_function = {
+                let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+                registry.get_function(&module_path, item_name).is_some()
+            };
+
+            if is_function {
                 // Create a VmFunction metadata entry
                 let fn_decl = ast::Fn::new(
                     ast::FnKind::VmFunction,
@@ -430,6 +433,35 @@ impl Evaler {
                     item_name.clone(),
                     std::rc::Rc::new(crate::scope::Meta::Fn(fn_decl)),
                 );
+            } else {
+                // Check if it's a type (with short-lived lock)
+                let has_type = {
+                    let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+                    registry
+                        .get_module(&module_path)
+                        .and_then(|module| module.types.contains_key(item_name).then_some(true))
+                        .unwrap_or(false)
+                };
+
+                if has_type {
+                    // Import the type as Value::Type
+                    let type_decl = ast::TypeDecl {
+                        name: item_name.clone(),
+                        kind: ast::TypeDeclKind::UserType,
+                        parent: None,
+                        has: vec![],
+                        specs: vec![],
+                        generic_params: vec![],
+                        members: vec![],
+                        delegations: vec![],
+                        methods: vec![],
+                    };
+
+                    self.universe.borrow_mut().define(
+                        item_name.clone(),
+                        std::rc::Rc::new(crate::scope::Meta::Type(ast::Type::User(type_decl))),
+                    );
+                }
             }
         }
 
