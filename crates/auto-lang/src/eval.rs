@@ -3049,23 +3049,46 @@ impl Evaler {
             Expr::Uint(value) => Value::Uint(*value),
             Expr::Int(value) => Value::Int(*value),
             Expr::Dot(object, field) => {
+                // First, evaluate the object expression
                 let obj_val = self.eval_expr(object);
-                let obj_resolved = Value::from_data(self.resolve_or_clone(&obj_val));
 
-                eprintln!("DEBUG Expr::Dot: field='{}', obj_resolved={:?}", field, obj_resolved);
+                // Resolve ValueRef if needed (for variables)
+                let obj_resolved = match &obj_val {
+                    Value::ValueRef(_vid) => {
+                        if let Some(data) = self.resolve_value(&obj_val) {
+                            let borrowed_data = data.borrow();
+                            let data_clone = borrowed_data.clone();
+                            drop(borrowed_data);
+                            Value::from_data(data_clone)
+                        } else {
+                            obj_val.clone()
+                        }
+                    }
+                    _ => obj_val.clone(),
+                };
 
                 match obj_resolved {
                     Value::Instance(inst) => {
-                        eprintln!("DEBUG Expr::Dot: inst.fields = {:?}", inst.fields);
                         if let Some(val) = inst.fields.get(field.as_str()) {
-                            eprintln!("DEBUG Expr::Dot: Found field '{}', value = {:?}", field, val);
                             val.clone()
                         } else {
-                            eprintln!("DEBUG Expr::Dot: Field '{}' NOT FOUND in instance of {}", field, inst.ty.name());
                             Value::error(format!(
                                 "Field '{}' not found in instance of {}",
                                 field,
                                 inst.ty.name()
+                            ))
+                        }
+                    }
+                    Value::Obj(obj) => {
+                        // Support field access on plain objects (not type instances)
+                        let key = ValueKey::Str(field.as_str().into());
+                        if let Some(val) = obj.get(key.clone()) {
+                            // Resolve ValueRef using universe.deref_val(), same as eval_ident
+                            self.universe.borrow().deref_val(val.clone())
+                        } else {
+                            Value::error(format!(
+                                "Field '{}' not found in object",
+                                field
                             ))
                         }
                     }

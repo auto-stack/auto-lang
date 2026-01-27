@@ -1,0 +1,14 @@
+type Point {
+    x int
+    y int
+}
+
+fn say(msg int) {
+    print(msg)
+}
+
+fn main() {
+    let p = Point { x: 1, y: 2 }
+    say(p.x)
+    say(p.y)
+}

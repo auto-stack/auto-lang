@@ -1,0 +1,33 @@
+type Point {
+    x int
+    y int
+
+    fn new(x int, y int) Point {
+        let p Point
+        p.x = x
+        p.y = y
+        p
+    }
+
+    fn sum() int {
+        .x + .y
+    }
+}
+
+fn main() {
+    let p = Point.new(10, 20)
+    if p.x != 10 {
+        println("p.x = " + p.x)
+        panic("p.x should be 10")
+    }
+    if p.y != 20 {
+        println("p.y = " + p.y)
+        panic("p.y should be 20")
+    }
+    let s = p.sum()
+    if s != 30 {
+        println("p.sum() = " + s)
+        panic("p.sum() should be 30")
+    }
+    println("Dot expression works!")
+}

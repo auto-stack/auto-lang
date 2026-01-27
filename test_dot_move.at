@@ -1,0 +1,10 @@
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    let p = Point { x: 1, y: 2 }
+    say(p.x)
+    say(p.y)  // 如果修复成功，这行应该不会报错 "Use after move"
+}
