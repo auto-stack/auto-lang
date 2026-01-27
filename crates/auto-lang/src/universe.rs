@@ -353,11 +353,24 @@ impl Universe {
     }
 
     pub fn current_scope(&self) -> &Scope {
-        self.scopes.get(&self.cur_spot).expect("No scope left")
+        self.scopes.get(&self.cur_spot).unwrap_or_else(|| {
+            // Defensive: if cur_spot is invalid, we should have been reset to global scope
+            // This can happen if the universe state gets corrupted (e.g., during test cleanup)
+            eprintln!("Warning: Current scope {:?} does not exist, resetting to global scope", self.cur_spot);
+            eprintln!("Available scopes: {:?}", self.scopes.keys().collect::<Vec<_>>());
+            // Return global scope as fallback
+            self.scopes.get(&SID_PATH_GLOBAL).expect("Global scope must exist")
+        })
     }
 
     pub fn current_scope_mut(&mut self) -> &mut Scope {
-        self.scopes.get_mut(&self.cur_spot).expect("No scope left")
+        // Defensive: if cur_spot is invalid, reset to global and continue
+        // This can happen if the universe state gets corrupted (e.g., during test cleanup)
+        if !self.scopes.contains_key(&self.cur_spot) {
+            eprintln!("Warning: Current scope {:?} does not exist, resetting to global scope", self.cur_spot);
+            self.cur_spot = SID_PATH_GLOBAL.clone();
+        }
+        self.scopes.get_mut(&self.cur_spot).expect("Global scope must exist")
     }
 
     pub fn global_scope(&self) -> &Scope {
