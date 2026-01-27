@@ -29,3 +29,12 @@ history.txt
 build/
 
 *.o
+
+# Temporary test files
+tmp/
+test*.at
+test*.c
+test*.h
+test*.rs
+test*.sh
+test*.pdb

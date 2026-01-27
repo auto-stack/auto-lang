@@ -389,6 +389,41 @@ and infer return types from method calls like File.read_text()
 
 **Why:** Shorter commit messages are easier to read in git logs and PR histories. Focus on what changed and why, not implementation details.
 
+### Working with Temporary Test Files
+
+**⚠️ IMPORTANT: Use the `tmp/` directory for temporary test files.**
+
+When developing and testing features, you may create temporary test files (e.g., `test_feature.at`, `test_temp.c`). These files should **always** be placed in the `tmp/` directory to keep the project root clean.
+
+**Correct Usage:**
+```bash
+# ✅ Create temporary test files in tmp/
+tmp/test_my_feature.at
+tmp/test_temp.c
+tmp/test_debug.sh
+```
+
+**Incorrect Usage:**
+```bash
+# ❌ Do NOT create test files in project root
+test_my_feature.at
+test_temp.c
+```
+
+**Why:**
+- The `tmp/` directory is in `.gitignore`, so temporary files won't be accidentally committed
+- Keeps the project root clean and organized
+- Makes it easy to clean up temporary files (`rm -rf tmp/*`)
+
+**Patterns ignored by git:**
+- `tmp/` - Entire tmp directory
+- `test*.at` - Any .at file starting with "test"
+- `test*.c` - Any .c file starting with "test"
+- `test*.h` - Any .h file starting with "test"
+- `test*.rs` - Any .rs file starting with "test"
+- `test*.sh` - Any .sh file starting with "test"
+- `test*.pdb` - Any .pdb file starting with "test"
+
 ### Adding a New Test
 ```bash
 # Add test case to tests/lexer_tests.md or tests/parser_tests.md
