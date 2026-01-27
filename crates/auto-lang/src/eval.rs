@@ -1041,7 +1041,9 @@ impl Evaler {
         // Move semantics: Mark the right-hand side as moved if it's a variable reference
         // This enforces ownership transfer: `let y = x` moves x to y
         // TODO: Only move linear types when they are implemented (Phase 2)
-        self.mark_expr_as_moved(&store.expr);
+        // NOTE: Disabled for now - AutoLang copies primitive types by default
+        // Only move when explicit linear types are implemented
+        // self.mark_expr_as_moved(&store.expr);
 
         // Move semantics: Check if this is a reassignment
         // If so, the old value is dropped here (its last use)
@@ -1132,6 +1134,40 @@ impl Evaler {
                     _ => Value::Nil,
                 }
             }
+        }
+    }
+
+    /// Build an AccessPath from a nested dot expression
+    /// For example: obj.level1.level2.value -> Nested(Nested(Field("level1"), Field("level2")), Field("value"))
+    /// Returns (root_identifier, access_path)
+    fn build_dot_path(&self, expr: &Expr) -> Option<(AutoStr, auto_val::AccessPath)> {
+        let mut fields = Vec::new();
+        let mut current = expr;
+
+        // Traverse the dot chain to collect all field names
+        while let Expr::Dot(inner_obj, field) = current {
+            fields.push(field.clone());
+            current = inner_obj;
+        }
+
+        // The root should be an identifier
+        if let Expr::Ident(root_name) = current {
+            // Reverse the fields since we collected them right-to-left
+            fields.reverse();
+
+            // Build nested access path
+            let mut path = None;
+            for field in fields {
+                let field_path = auto_val::AccessPath::Field(field);
+                path = Some(match path {
+                    None => field_path,
+                    Some(inner) => auto_val::AccessPath::Nested(Box::new(inner), Box::new(field_path)),
+                });
+            }
+
+            path.map(|p| (root_name.clone(), p))
+        } else {
+            None
         }
     }
 
@@ -1314,7 +1350,31 @@ impl Evaler {
                             Value::error("Nested field assignment with non-identifier array not supported")
                         }
                     } else {
-                        Value::error("Nested field assignment with complex inner expression not supported")
+                        // Handle arbitrary nesting of dot expressions: obj.level1.level2.value = value
+                        // Build the full path including the outermost field
+                        let full_dot = Expr::Dot(object.clone(), field.clone());
+                        if let Some((root_name, path)) = self.build_dot_path(&full_dot) {
+                            if let Some(root_vid) = self.lookup_vid(&root_name) {
+                                let right_data = val.into_data();
+                                let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+
+                                match self
+                                    .universe
+                                    .borrow_mut()
+                                    .update_nested(root_vid, &path, right_vid)
+                                {
+                                    Ok(()) => Value::Void,
+                                    Err(e) => Value::error(format!(
+                                        "Failed to assign to deeply nested field: {:?}",
+                                        e
+                                    )),
+                                }
+                            } else {
+                                Value::error(format!("Variable not found: {}", root_name))
+                            }
+                        } else {
+                            Value::error("Nested field assignment with complex inner expression not supported")
+                        }
                     }
                 } else {
                     Value::error("Complex field assignment not yet implemented")
@@ -2235,15 +2295,15 @@ impl Evaler {
                         let result = (vm_func.func)(uni, Value::Nil);
                         return Ok(result);
                     } else {
-                        // For multi-argument functions (not yet supported)
-                        return Ok(Value::Error(
-                            format!(
-                                "VM static function '{}' with {} arguments not yet supported",
-                                vm_function_name,
-                                arg_vals.len()
-                            )
-                            .into(),
-                        ));
+                        // For multi-argument functions, wrap them in an Array
+                        // This allows functions like List.new(1, 2, 3) to receive
+                        // all arguments as a single Value::Array parameter
+                        use auto_val::{Array, AutoStr};
+                        let array_value = Value::Array(Array {
+                            values: arg_vals,
+                        });
+                        let result = (vm_func.func)(uni, array_value);
+                        return Ok(result);
                     }
                 }
 
@@ -2414,15 +2474,13 @@ impl Evaler {
                                 let result = (vm_func.func)(uni, Value::Nil);
                                 return Ok(result);
                             } else {
-                                // For multi-argument functions (not yet supported)
-                                return Ok(Value::Error(
-                                    format!(
-                                        "VM static function '{}' with {} arguments not yet supported",
-                                        vm_function_name,
-                                        arg_vals.len()
-                                    )
-                                    .into(),
-                                ));
+                                // For multi-argument functions, wrap them in an Array
+                                use auto_val::{Array, AutoStr};
+                                let array_value = Value::Array(Array {
+                                    values: arg_vals,
+                                });
+                                let result = (vm_func.func)(uni, array_value);
+                                return Ok(result);
                             }
                         }
 
@@ -3109,6 +3167,10 @@ impl Evaler {
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> AutoResult<Value> {
         // IMPORTANT: Mark arguments as moved in caller's scope BEFORE entering function scope
         // This ensures move semantics are tracked in the correct scope
+        // NOTE: Only mark expressions as moved if they are non-copy types
+        // For now, we don't mark anything as moved since AutoLang doesn't have true move semantics yet
+        // This is a placeholder for when linear types are implemented (Phase 2)
+        /*
         for arg in args.args.iter() {
             match arg {
                 Arg::Pair(_name, expr) => {
@@ -3122,6 +3184,7 @@ impl Evaler {
                 }
             }
         }
+        */
 
         self.universe.borrow_mut().enter_fn(&fn_decl.name);
         // println!("scope after enter: {}", self.universe.borrow().cur_spot); // LSP: disabled
