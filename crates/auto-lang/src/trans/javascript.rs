@@ -499,10 +499,22 @@ impl JavaScriptTrans {
 
     fn expr_with_this(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
         match expr {
-            // Convert .x (Unary Dot) to this.x
-            Expr::Unary(Op::Dot, inner) => {
-                out.write(b"this.")?;
-                self.expr_with_this(inner, out)
+            // Convert .x (which is parsed as self.x) to this.x
+            Expr::Dot(object, field) => {
+                // Check if this is a unary dot (self.field from .field syntax)
+                if let Expr::Ident(name) = object.as_ref() {
+                    if name == "self" {
+                        // Convert self.field to this.field
+                        out.write(b"this.")?;
+                        out.write_all(field.as_bytes())?;
+                        return Ok(());
+                    }
+                }
+                // For other dot expressions, recurse normally
+                self.expr_with_this(object, out)?;
+                out.write(b".")?;
+                out.write_all(field.as_bytes())?;
+                Ok(())
             }
             // Convert self to this
             Expr::Ident(name) if name == "self" => {
@@ -520,6 +532,11 @@ impl JavaScriptTrans {
                 self.expr_with_this(lhs, out)?;
                 out.write(format!(" {} ", op.op()).as_bytes()).to()?;
                 self.expr_with_this(rhs, out)
+            }
+            // For unary operations (like negation), recurse on the inner expression
+            Expr::Unary(op, inner) => {
+                out.write(format!("{}", op.op()).as_bytes()).to()?;
+                self.expr_with_this(inner, out)
             }
             _ => self.expr(expr, out),
         }
