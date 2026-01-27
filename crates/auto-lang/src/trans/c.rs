@@ -1732,9 +1732,18 @@ impl CTrans {
 
                     // Always use heap allocation (malloc) for runtime arrays
                     // This avoids scope issues with VLAs and ensures the array is accessible after declaration
-                    out.write(format!("{}* {} = malloc(sizeof({}) * (", elem_type, store.name, elem_type).as_bytes()).to()?;
-                    self.expr(&rta.size_expr, out)?;
-                    out.write(b"))").to()?;  // Close the malloc call with parenthesized size expression
+                    out.write(format!("{}* {} = malloc(sizeof({}) * ", elem_type, store.name, elem_type).as_bytes()).to()?;
+
+                    // Add parentheses around binary operations to ensure correct precedence
+                    if matches!(rta.size_expr.as_ref(), Expr::Bina(_, _, _)) {
+                        out.write(b"(").to()?;
+                        self.expr(&rta.size_expr, out)?;
+                        out.write(b")").to()?;
+                    } else {
+                        self.expr(&rta.size_expr, out)?;
+                    }
+
+                    out.write(b")").to()?;  // Close the malloc call
 
                     // Initialize array if expression provided
                     if !matches!(store.expr, Expr::Nil) {
@@ -1742,7 +1751,16 @@ impl CTrans {
                         // For now, just zero-initialize
                         // TODO: Add proper initialization based on store.expr
                         out.write(format!("memset({}, 0, sizeof({}) * ", store.name, elem_type).as_bytes()).to()?;
-                        self.expr(&rta.size_expr, out)?;
+
+                        // Add parentheses around binary operations for memset too
+                        if matches!(rta.size_expr.as_ref(), Expr::Bina(_, _, _)) {
+                            out.write(b"(").to()?;
+                            self.expr(&rta.size_expr, out)?;
+                            out.write(b")").to()?;
+                        } else {
+                            self.expr(&rta.size_expr, out)?;
+                        }
+
                         out.write(b")").to()?;  // Close memset call
                         // Note: eos() will add the final semicolon
                     } else {
@@ -1966,44 +1984,72 @@ impl CTrans {
                 }
 
                 // Then check if it's a method call (obj.method())
-                if let Expr::Bina(lhs, Op::Dot, rhs) = call.name.as_ref() {
-                    if let Expr::Ident(obj_name) = lhs.as_ref() {
-                        if let Expr::Ident(method_name) = rhs.as_ref() {
-                            // Check if this is a tag type method call (tag construction)
-                            if let Some(meta) = self.lookup_meta(obj_name) {
-                                match meta.as_ref() {
-                                    Meta::Type(Type::Tag(tag)) => {
-                                        // This is tag construction: Tag.Variant(args)
-                                        // Return the tag type (clone the Shared<Tag>)
-                                        return Some(Type::Tag(tag.clone()));
-                                    }
-                                    Meta::Store(store) => {
-                                        // This is a regular method call on an instance
-                                        if let Type::User(decl) = &store.ty {
-                                            // Find the method and return its return type
-                                            for method in &decl.methods {
-                                                if method.name == *method_name {
-                                                    return Some(method.ret.clone());
-                                                }
-                                            }
-                                        }
-                                        // Also check if it's a tag type
-                                        if let Type::Tag(tag) = &store.ty {
-                                            // Find the method in the tag
-                                            let tag_ref = tag.borrow();
-                                            for method in &tag_ref.methods {
-                                                if method.name == *method_name {
-                                                    return Some(method.ret.clone());
-                                                }
+                if let Expr::Dot(object, method_name) = call.name.as_ref() {
+                    if let Expr::Ident(obj_name) = object.as_ref() {
+                        // Check if this is a tag type method call (tag construction)
+                        if let Some(meta) = self.lookup_meta(obj_name) {
+                            match meta.as_ref() {
+                                Meta::Type(Type::Tag(tag)) => {
+                                    // This is tag construction: Tag.Variant(args)
+                                    // Return the tag type (clone the Shared<Tag>)
+                                    return Some(Type::Tag(tag.clone()));
+                                }
+                                Meta::Store(store) => {
+                                    // This is a regular method call on an instance
+                                    if let Type::User(decl) = &store.ty {
+                                        // Find the method and return its return type
+                                        for method in &decl.methods {
+                                            if method.name == *method_name {
+                                                return Some(method.ret.clone());
                                             }
                                         }
                                     }
-                                    _ => {}
+                                    // Also check if it's a tag type
+                                    if let Type::Tag(tag) = &store.ty {
+                                        // Find the method in the tag
+                                        let tag_ref = tag.borrow();
+                                        for method in &tag_ref.methods {
+                                            if method.name == *method_name {
+                                                return Some(method.ret.clone());
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                // Handle type constructor calls like File.open(...)
+                // Check if it's a type method call (e.g., File.open(...))
+                if let Expr::Dot(type_expr, method_ident) = &call.name.as_ref() {
+                    if let Expr::Ident(type_name) = type_expr.as_ref() {
+                        if let Some(meta) = self.lookup_meta(type_name) {
+                            if let Meta::Type(Type::User(decl)) = meta.as_ref() {
+                                // Find the method and return its return type
+                                for method in &decl.methods {
+                                    if method.name == *method_ident {
+                                        // If the return type is a bare User type (e.g., just "File"),
+                                        // look up the complete type with methods from meta
+                                        if let Type::User(ret_decl) = &method.ret {
+                                            if ret_decl.methods.is_empty() && !ret_decl.name.is_empty() {
+                                                // This is a bare type reference, look up the complete type
+                                                if let Some(meta) = self.lookup_meta(&ret_decl.name) {
+                                                    if let Meta::Type(Type::User(complete_decl)) = meta.as_ref() {
+                                                        return Some(Type::User(complete_decl.clone()));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        return Some(method.ret.clone());
+                                    }
                                 }
                             }
                         }
                     }
                 }
+
                 None
             }
             // For direct identifier lookups
@@ -2565,9 +2611,48 @@ impl CTrans {
                     out.write(b")").to()?;
                     return Ok(true);
                 }
-                Type::User(_decl) => {
+                Type::User(decl) => {
                     // User-defined type: regular method, pass by pointer
-                    // Fall through to original logic below
+                    // Generate: TypeName_MethodName(&instance, args...)
+                    // OR for delegation wrappers: TypeName_methodName(&instance, args...)
+                    let Expr::Ident(method_name) = rhs.as_ref() else {
+                        return Ok(false);
+                    };
+
+                    // Check if this is a delegation wrapper method
+                    // Delegation wrappers should use lowercase method names
+                    let is_delegation = decl.delegations.iter().any(|delegation| {
+                        if let Some(meta) = self.scope.borrow().lookup_meta(delegation.spec_name.as_str()) {
+                            if let Meta::Spec(spec_decl) = meta.as_ref() {
+                                spec_decl.methods.iter().any(|m| m.name == *method_name)
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    });
+
+                    if is_delegation {
+                        // Delegation wrapper: use lowercase method name
+                        out.write(format!("{}_{}", decl.name, method_name).as_bytes())?;
+                    } else {
+                        // Direct method: use capitalized method name
+                        self.method_name(&decl.name, method_name, out)?;
+                    }
+
+                    out.write(b"(")?;
+                    out.write(b"&")?;
+                    self.expr(lhs, out)?;
+
+                    // Write remaining arguments
+                    for (_i, arg) in call.args.args.iter().enumerate() {
+                        out.write(b", ").to()?;
+                        self.arg(arg, out)?;
+                    }
+
+                    out.write(b")").to()?;
+                    return Ok(true);
                 }
                 _ => {
                     // Other types: try original logic
@@ -2651,6 +2736,24 @@ impl CTrans {
                 } else {
                     // Check if it's a built-in type name
                     self.name_to_type(name)
+                }
+            }
+            Expr::Call(call) => {
+                // Check if this is a type constructor call (e.g., File.open(...))
+                if let Expr::Ident(type_name) = &call.name.as_ref() {
+                    if let Some(meta) = self.lookup_meta(type_name) {
+                        match meta.as_ref() {
+                            Meta::Type(Type::User(decl)) => {
+                                // Return the type of the constructor call
+                                Type::User(decl.clone())
+                            }
+                            _ => Type::Unknown,
+                        }
+                    } else {
+                        Type::Unknown
+                    }
+                } else {
+                    Type::Unknown
                 }
             }
             _ => Type::Unknown,
@@ -2870,6 +2973,48 @@ fn cmp_include_name(a: &AutoStr, b: &AutoStr) -> Ordering {
     }
 }
 
+impl CTrans {
+    /// Check if an expression is a constant expression (can be used for global initialization)
+    fn is_const_expr(&self, expr: &Expr) -> bool {
+        match expr {
+            // Literals are constant
+            Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_) | Expr::I64(_) |
+            Expr::Byte(_) | Expr::Float(_, _) | Expr::Double(_, _) |
+            Expr::Bool(_) | Expr::Char(_) | Expr::Str(_) | Expr::CStr(_) => true,
+
+            // Array literals are constant if all elements are constant
+            Expr::Array(elems) => elems.iter().all(|e| self.is_const_expr(e)),
+
+            // Index expressions (arr[i]) are NOT constant in C
+            Expr::Index(_, _) => false,
+
+            // Call expressions are NOT constant (even if they might be pure)
+            Expr::Call(_) => false,
+
+            // Identifiers might be constants, but we can't easily check here
+            // For safety, treat them as non-constant
+            Expr::Ident(_) => false,
+
+            // Binary ops: only some are constant if both operands are constant
+            Expr::Bina(lhs, op, rhs) => {
+                // Arithmetic operations on constants are constant
+                matches!(op, Op::Add | Op::Sub | Op::Mul | Op::Div)
+                    && self.is_const_expr(lhs)
+                    && self.is_const_expr(rhs)
+            }
+
+            // Unary ops: only some are constant if operand is constant
+            Expr::Unary(op, expr) => {
+                matches!(op, Op::Sub | Op::Not)
+                    && self.is_const_expr(expr)
+            }
+
+            // Everything else is treated as non-constant for safety
+            _ => false,
+        }
+    }
+}
+
 impl Trans for CTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
         // Split stmts into decls and main
@@ -2880,6 +3025,15 @@ impl Trans for CTrans {
         // preprocess
         for stmt in ast.stmts.into_iter() {
             if stmt.is_decl() {
+                // Check if this is a Store statement with a non-constant initializer
+                // If so, it should go to main() instead of global scope
+                if let Stmt::Store(store) = &stmt {
+                    if !self.is_const_expr(&store.expr) {
+                        // Non-constant initializer, must be in main()
+                        main.push(stmt);
+                        continue;
+                    }
+                }
                 decls.push(stmt);
             } else {
                 match stmt {
