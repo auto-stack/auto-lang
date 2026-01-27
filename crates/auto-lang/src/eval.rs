@@ -395,6 +395,7 @@ impl Evaler {
                 parent: None,
                 has: vec![],
                 specs: vec![],
+                spec_impls: vec![], // Plan 057
                 generic_params: vec![],
                 members: vec![],
                 delegations: vec![],
@@ -451,6 +452,7 @@ impl Evaler {
                         parent: None,
                         has: vec![],
                         specs: vec![],
+                        spec_impls: vec![], // Plan 057
                         generic_params: vec![],
                         members: vec![],
                         delegations: vec![],

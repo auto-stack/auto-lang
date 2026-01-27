@@ -1,27 +1,22 @@
-// ============================================================================
-// Storage Strategies for Collections (Plan 055)
-// ============================================================================
-// This module documents storage strategy types for collections like List<T>.
-//
-// Storage strategies determine how collections allocate memory:
-// - Fixed: Stack/static allocation with compile-time capacity (MCU)
-// - Dynamic: Heap allocation with runtime growth (PC)
-//
-// The default storage strategy is determined at compile time based on the
-// target platform (MCU vs PC), and can be overridden via the --target flag.
-//
-// Usage:
-//   let x Dynamic           // Dynamic storage marker
-//   let x Fixed<int>       // Fixed storage marker (placeholder syntax)
-//   let list List<int>      // Uses target-dependent default storage
-//
-// # Environment Variables
-// The compiler injects these environment variables based on target:
-// - DEFAULT_STORAGE: "Fixed<64>" (MCU) or "Dynamic" (PC)
-// - HAS_HEAP: "0" (MCU) or "1" (PC)
-// - TARGET: "mcu" or "pc"
-//
-// # Implementation Notes
-// - Storage types are currently compiler-builtin (recognized in parser.rs)
-// - Future: Will use trait system when available (Storage as trait)
-// ============================================================================
+
+type Heap<T> {
+    ptr *T
+    cap u32
+}
+
+ext Heap<T> {
+    #[c, vm, pub]
+    static fn new() Heap<T>
+
+    #[c, pub]
+    fn data() *T
+
+    #[c, pub]
+    fn capacity() u32
+
+    #[c, vm, pub]
+    fn try_grow(min_cap u32) bool
+
+    #[c, vm, pub]
+    fn drop()
+}

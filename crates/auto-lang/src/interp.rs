@@ -108,6 +108,7 @@ impl Interpreter {
             parent: None,
             has: Vec::new(),
             specs: Vec::new(),
+            spec_impls: Vec::new(), // Plan 057
             generic_params: Vec::new(),
             members: Vec::new(),
             delegations: Vec::new(),
@@ -125,6 +126,7 @@ impl Interpreter {
             parent: None,
             has: Vec::new(),
             specs: Vec::new(),
+            spec_impls: Vec::new(), // Plan 057
             generic_params: Vec::new(),
             members: Vec::new(),
             delegations: Vec::new(),
@@ -142,6 +144,7 @@ impl Interpreter {
             parent: None,
             has: Vec::new(),
             specs: Vec::new(),
+            spec_impls: Vec::new(), // Plan 057
             generic_params: Vec::new(),
             members: Vec::new(),
             delegations: Vec::new(),
@@ -159,6 +162,7 @@ impl Interpreter {
             parent: None,
             has: Vec::new(),
             specs: Vec::new(),
+            spec_impls: Vec::new(), // Plan 057
             generic_params: Vec::new(),
             members: Vec::new(),
             delegations: Vec::new(),
@@ -176,6 +180,7 @@ impl Interpreter {
             parent: None,
             has: Vec::new(),
             specs: Vec::new(),
+            spec_impls: Vec::new(), // Plan 057
             generic_params: Vec::new(),
             members: Vec::new(),
             delegations: Vec::new(),

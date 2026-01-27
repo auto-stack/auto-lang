@@ -9,6 +9,7 @@ mod may_tests;
 mod pointer_tests;  // Plan 052: Pointer type tests
 mod const_generic_tests;  // Plan 052: Const generic parameter tests
 mod const_generic_integration_tests;  // Plan 052: Const generic integration tests
+mod generic_spec_tests;  // Plan 057: Generic spec tests
 mod mem_tests;
 mod memory_quick_test;
 mod memory_tests;

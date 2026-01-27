@@ -1,0 +1,8 @@
+// Test const generic parameters in function definitions - Plan 052
+fn test_fn_with_const_param<T, N uint>(capacity N) int {
+    return 0
+}
+
+fn main() {
+    return 0
+}

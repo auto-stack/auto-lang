@@ -449,7 +449,8 @@ pub struct TypeDecl {
     pub kind: TypeDeclKind,
     pub parent: Option<Box<Type>>,  // 单继承：父类型（使用 Box 避免递归类型）
     pub has: Vec<Type>,            // 组合：多个组合类型
-    pub specs: Vec<Spec>,          // Spec 声明：实现的 specs
+    pub specs: Vec<Spec>,          // Spec 声明：实现的 specs (names only for compatibility)
+    pub spec_impls: Vec<super::spec::SpecImpl>,  // Plan 057: Generic spec implementations with type arguments
     pub generic_params: Vec<GenericParam>,  // Generic parameters (Plan 052: type + const)
     pub members: Vec<Member>,
     pub delegations: Vec<Delegation>,  // 新增：委托成员
