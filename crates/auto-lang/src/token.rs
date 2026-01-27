@@ -18,6 +18,8 @@ pub enum TokenKind {
     Uint,
     U8,
     I8,
+    Bool,  // ADDED: bool literal
+    Byte,  // ADDED: byte literal
     Float,
     Double,
     Str,  // "hello"
@@ -88,6 +90,7 @@ pub enum TokenKind {
     Tag,
     Let,
     Mut,
+    Const, // ADDED: const keyword for const generics (Plan 052)
     View,  // ADDED: view keyword for immutable borrow (Phase 3)
     Take,  // ADDED: take keyword for move semantics (Phase 3)
     Hold,  // ADDED: hold keyword for temporary path binding (Phase 3)

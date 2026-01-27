@@ -3673,7 +3673,7 @@ impl<'a> Parser<'a> {
                     parent: None,
                     has: Vec::new(),
                     specs: Vec::new(),
-                    type_params: Vec::new(),
+                    generic_params: Vec::new(),
                     members: Vec::new(),
                     delegations: Vec::new(),
                     methods: Vec::new(),
@@ -3702,16 +3702,16 @@ impl<'a> Parser<'a> {
 
         let name = self.parse_name()?;
 
-        // Parse type parameters (optional) - e.g., type List<T> { ... }
-        let mut type_params = Vec::new();
+        // Parse generic parameters (optional) - e.g., type List<T> { ... }, type Inline<T, const N u32> { ... }
+        let mut generic_params = Vec::new();
         if self.cur.kind == TokenKind::Lt {
             self.next(); // Consume '<'
 
-            type_params.push(self.parse_type_param()?);
+            generic_params.push(self.parse_generic_param()?);
 
             while self.cur.kind == TokenKind::Comma {
                 self.next(); // Consume ','
-                type_params.push(self.parse_type_param()?);
+                generic_params.push(self.parse_generic_param()?);
             }
 
             self.expect(TokenKind::Gt)?; // Consume '>'
@@ -3727,7 +3727,7 @@ impl<'a> Parser<'a> {
             parent: None,
             specs: Vec::new(),
             has: Vec::new(),
-            type_params,
+            generic_params,
             members: Vec::new(),
             delegations: Vec::new(),
             methods: Vec::new(),
@@ -4057,24 +4057,29 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Tag)?;
         let name = self.parse_name()?;
 
-        // Parse type parameters (optional) - e.g., tag May<T> { ... }
-        let mut type_params = Vec::new();
+        // Parse generic parameters (optional) - e.g., tag May<T> { ... }, tag Inline<T, const N u32> { ... }
+        let mut generic_params = Vec::new();
         if self.cur.kind == TokenKind::Lt {
             self.next(); // Consume '<'
 
-            type_params.push(self.parse_type_param()?);
+            generic_params.push(self.parse_generic_param()?);
 
             while self.cur.kind == TokenKind::Comma {
                 self.next(); // Consume ','
-                type_params.push(self.parse_type_param()?);
+                generic_params.push(self.parse_generic_param()?);
             }
 
             self.expect(TokenKind::Gt)?; // Consume '>'
         }
 
-        // Set current type parameters for field parsing
+        // Set current type parameters for field parsing (extract names from generic_params)
         let prev_type_params = std::mem::replace(&mut self.current_type_params,
-            type_params.iter().map(|tp| tp.name.clone()).collect());
+            generic_params.iter()
+                .map(|gp| match gp {
+                    crate::ast::GenericParam::Type(tp) => tp.name.clone(),
+                    crate::ast::GenericParam::Const(cp) => cp.name.clone(),
+                })
+                .collect());
 
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
@@ -4105,7 +4110,7 @@ impl<'a> Parser<'a> {
             name.as_str(),
             Meta::Type(Type::Tag(shared(Tag {
                 name: name.clone(),
-                type_params: type_params.clone(),
+                generic_params: generic_params.clone(),
                 fields: fields.clone(),
                 methods: methods.clone(),
             }))),
@@ -4113,7 +4118,7 @@ impl<'a> Parser<'a> {
 
         Ok(Stmt::Tag(Tag {
             name,
-            type_params,
+            generic_params,
             fields,
             methods,
         }))
@@ -4372,6 +4377,43 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse a generic parameter (Plan 052)
+    /// Can be either:
+    /// - Type parameter: `T` (no type annotation)
+    /// - Const parameter: `N u32` (with type annotation)
+    fn parse_generic_param(&mut self) -> AutoResult<crate::ast::GenericParam> {
+        use crate::ast::{GenericParam, TypeParam, ConstParam};
+
+        // First, parse the parameter name
+        if self.cur.kind != TokenKind::Ident {
+            return Err(SyntaxError::Generic {
+                message: format!("Expected generic parameter name, got {}", self.cur.text),
+                span: pos_to_span(self.cur.pos),
+            }.into());
+        }
+
+        let name = self.parse_name()?;
+
+        // Check if next token looks like a type
+        // If next token is a type keyword or identifier, it's a const parameter
+        if self.next_token_is_type() {
+            // Const parameter: `N u32`
+            let typ = self.parse_type()?;
+
+            Ok(GenericParam::Const(ConstParam {
+                name,
+                typ,
+                default: None,  // TODO: Support default values
+            }))
+        } else {
+            // Type parameter: just `T`
+            Ok(GenericParam::Type(TypeParam {
+                name,
+                constraint: None,
+            }))
+        }
+    }
+
     /// Parse identifier type or generic instance (e.g., List, List<int>)
     fn parse_ident_or_generic_type(&mut self) -> AutoResult<Type> {
         use crate::ast::{GenericInstance, Type};
@@ -4406,7 +4448,7 @@ impl<'a> Parser<'a> {
                         parent: None,
                         has: Vec::new(),
                         specs: Vec::new(),
-                        type_params: Vec::new(),
+                        generic_params: Vec::new(),
                         members: Vec::new(),
                         delegations: Vec::new(),
                         methods: Vec::new(),
@@ -4458,15 +4500,18 @@ impl<'a> Parser<'a> {
         let base_type_ref = base_type.borrow();
 
         match &*base_type_ref {
-            Type::Tag(tag_shared) if !tag_shared.borrow().type_params.is_empty() => {
+            Type::Tag(tag_shared) if !tag_shared.borrow().generic_params.is_empty() => {
                 // User-defined generic Tag with type parameters
                 // Perform substitution and create new Tag instance
                 let tag = tag_shared.borrow().clone();
                 drop(base_type_ref); // Drop borrow before registering
 
-                // Collect type parameter names
-                let param_names: Vec<_> = tag.type_params.iter()
-                    .map(|tp| tp.name.clone())
+                // Collect generic parameter names
+                let param_names: Vec<_> = tag.generic_params.iter()
+                    .map(|gp| match gp {
+                        crate::ast::GenericParam::Type(tp) => tp.name.clone(),
+                        crate::ast::GenericParam::Const(cp) => cp.name.clone(),
+                    })
                     .collect();
 
                 // Substitute type parameters in tag fields
@@ -4482,7 +4527,7 @@ impl<'a> Parser<'a> {
                     name: format!("{}_{}", base_name,
                         args.iter().map(|t| t.unique_name().to_string()).collect::<Vec<_>>().join("_")
                     ).into(),
-                    type_params: Vec::new(), // No type parameters in instantiated tag
+                    generic_params: Vec::new(), // No type parameters in instantiated tag
                     fields: substituted_fields,
                     methods: tag.methods.clone(),
                 };
@@ -4496,7 +4541,7 @@ impl<'a> Parser<'a> {
 
                 return Ok(Type::Tag(shared(substituted_tag)));
             }
-            Type::User(type_decl) if !type_decl.type_params.is_empty() => {
+            Type::User(type_decl) if !type_decl.generic_params.is_empty() => {
                 // User-defined generic TypeDecl with type parameters
                 // TODO: Implement TypeDecl substitution (similar to Tag substitution)
                 // For now, return GenericInstance
@@ -4585,11 +4630,14 @@ impl<'a> Parser<'a> {
                 // Look up generic May tag definition from stdlib
                 let may_tag_ref = self.lookup_type(&Name::from("May"));
                 let (subst_name, substituted_fields, methods) = match &*may_tag_ref.borrow() {
-                    Type::Tag(t) if !t.borrow().type_params.is_empty() => {
+                    Type::Tag(t) if !t.borrow().generic_params.is_empty() => {
                         // Use stdlib May<T> tag with substitution
                         let tag = t.borrow().clone();
-                        let param_names: Vec<_> = tag.type_params.iter()
-                            .map(|tp| tp.name.clone())
+                        let param_names: Vec<_> = tag.generic_params.iter()
+                            .map(|gp| match gp {
+                                crate::ast::GenericParam::Type(tp) => tp.name.clone(),
+                                crate::ast::GenericParam::Const(cp) => cp.name.clone(),
+                            })
                             .collect();
                         let type_args = vec![inner_type.clone()];
 
@@ -4623,7 +4671,7 @@ impl<'a> Parser<'a> {
                 // Create new substituted tag
                 let substituted_tag = Tag {
                     name: subst_name.clone().into(),
-                    type_params: Vec::new(), // No type params in instantiated tag
+                    generic_params: Vec::new(), // No type params in instantiated tag
                     fields: substituted_fields,
                     methods,
                 };

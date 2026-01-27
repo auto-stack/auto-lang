@@ -21,7 +21,8 @@ pub enum Type {
     RuntimeArray(RuntimeArrayType),  // [expr]T - runtime-sized array (Plan 052)
     List(Box<Type>),          // List<T> - dynamic list
     Slice(SliceType),         // []T - slice type
-    Ptr(PtrType),
+    Ptr(PtrType),             // *T - raw pointer (Plan 052)
+    Reference(Box<Type>),     // &T - reference (Plan 052, for Rust transpiler)
     User(TypeDecl),
     Union(Union),
     Tag(Shared<Tag>),
@@ -61,6 +62,7 @@ impl Type {
             Type::Slice(slice_type) => format!("[]{}", slice_type.elem.unique_name()).into(),
             Type::Storage(storage) => storage.to_string().into(),
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().unique_name()).into(),
+            Type::Reference(inner) => format!("&{}", inner.unique_name()).into(),  // Plan 052
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             Type::Spec(spec_decl) => spec_decl.borrow().name.clone(),
@@ -96,6 +98,7 @@ impl Type {
             Type::List(_) => "List.new()".into(),  // Empty list constructor
             Type::Slice(_) => "[]".into(),  // Empty slice literal
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
+            Type::Reference(inner) => format!("&{}", inner.default_value()).into(),  // Plan 052
             Type::User(_) => "{}".into(),
             Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
             Type::Spec(_) => "{}".into(),  // Spec 默认值为空对象
@@ -167,6 +170,9 @@ impl Type {
                     of: auto_val::shared(Type::from(ptr_type.of.borrow().clone()).substitute(params, args)),
                 })
             }
+            Type::Reference(inner) => {  // Plan 052
+                Type::Reference(Box::new(inner.substitute(params, args)))
+            }
             Type::Linear(inner) => {
                 Type::Linear(Box::new(inner.substitute(params, args)))
             }
@@ -186,12 +192,38 @@ impl Type {
     }
 }
 
-/// Type parameter (single) - for generic type definitions
-/// Example: In `tag List<T>`, T is a TypeParam
+/// Generic parameter - can be either a type parameter or const parameter (Plan 052)
+/// Examples:
+/// - Type parameter: `T` in `List<T>` (no type annotation)
+/// - Const parameter: `N u32` in `Inline<T, N u32>` (with type annotation)
+#[derive(Debug, Clone)]
+pub enum GenericParam {
+    Type(TypeParam),
+    Const(ConstParam),
+}
+
+/// Type parameter (e.g., `T` in `List<T>`)
 #[derive(Debug, Clone)]
 pub struct TypeParam {
-    pub name: Name,                      // Parameter name (e.g., "T", "K", "V")
-    pub constraint: Option<Box<Type>>,  // Type constraint (future extension)
+    pub name: Name,
+    pub constraint: Option<Box<Type>>,
+}
+
+/// Const parameter (e.g., `N u32` in `Inline<T, N u32>`)
+#[derive(Debug, Clone)]
+pub struct ConstParam {
+    pub name: Name,           // Parameter name (e.g., "N", "CAPACITY")
+    pub typ: Type,            // Parameter type (e.g., u32, usize)
+    pub default: Option<Expr>, // Default value (optional, future extension)
+}
+
+impl fmt::Display for GenericParam {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            GenericParam::Type(tp) => write!(f, "{}", tp),
+            GenericParam::Const(cp) => write!(f, "{} {}", cp.name, cp.typ),
+        }
+    }
 }
 
 impl fmt::Display for TypeParam {
@@ -201,6 +233,12 @@ impl fmt::Display for TypeParam {
             write!(f, ": {}", constraint)?;
         }
         Ok(())
+    }
+}
+
+impl fmt::Display for ConstParam {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {}", self.name, self.typ)
     }
 }
 
@@ -324,6 +362,7 @@ impl fmt::Display for Type {
             Type::List(elem) => write!(f, "List<{}>", elem),
             Type::Slice(slice_type) => write!(f, "{}", slice_type),
             Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
+            Type::Reference(inner) => write!(f, "&{}", inner),  // Plan 052
             Type::User(type_decl) => write!(f, "{}", type_decl),
             Type::Enum(enum_decl) => write!(f, "{}", enum_decl.borrow()),
             Type::Spec(spec_decl) => write!(f, "spec {}", spec_decl.borrow().name),
@@ -359,6 +398,7 @@ impl From<Type> for auto_val::Type {
             Type::List(_) => auto_val::Type::Array,  // TODO: Add List to auto_val::Type
             Type::Slice(_) => auto_val::Type::Array,  // TODO: Add Slice to auto_val::Type
             Type::Ptr(_) => auto_val::Type::Ptr,
+            Type::Reference(_) => auto_val::Type::Ptr,  // Plan 052: Reference transpiles to Ptr in auto_val
             Type::User(decl) => auto_val::Type::User(decl.name),
             Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
             Type::Spec(decl) => auto_val::Type::User(decl.borrow().name.clone()),
@@ -410,7 +450,7 @@ pub struct TypeDecl {
     pub parent: Option<Box<Type>>,  // 单继承：父类型（使用 Box 避免递归类型）
     pub has: Vec<Type>,            // 组合：多个组合类型
     pub specs: Vec<Spec>,          // Spec 声明：实现的 specs
-    pub type_params: Vec<TypeParam>,  // Type parameters (for generic types)
+    pub generic_params: Vec<GenericParam>,  // Generic parameters (Plan 052: type + const)
     pub members: Vec<Member>,
     pub delegations: Vec<Delegation>,  // 新增：委托成员
     pub methods: Vec<Fn>,
@@ -429,9 +469,9 @@ impl TypeDecl {
 impl fmt::Display for TypeDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(type-decl (name {}", self.name)?;
-        if !self.type_params.is_empty() {
+        if !self.generic_params.is_empty() {
             write!(f, "<")?;
-            for (i, param) in self.type_params.iter().enumerate() {
+            for (i, param) in self.generic_params.iter().enumerate() {
                 if i > 0 {
                     write!(f, ", ")?;
                 }
@@ -639,6 +679,9 @@ impl AtomWriter for Type {
             }
             Type::Ptr(ptr_type) => {
                 write!(f, "ptr({})", ptr_type.of.borrow().to_atom_str())?;
+            }
+            Type::Reference(inner) => {  // Plan 052
+                write!(f, "ref({})", inner.to_atom_str())?;
             }
             Type::User(type_decl) => write!(f, "{}", type_decl.name)?,
             Type::Enum(enum_decl) => write!(f, "{}", enum_decl.borrow().name)?,

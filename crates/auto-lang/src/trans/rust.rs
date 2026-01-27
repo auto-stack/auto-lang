@@ -88,6 +88,9 @@ impl RustTrans {
                     _ => format!("&{}", self.rust_type_name(&*ptr.of.borrow())),
                 }
             }
+            Type::Reference(inner) => {  // Plan 052: Reference transpiles to &T in Rust
+                format!("&{}", self.rust_type_name(inner))
+            }
             Type::User(usr) => usr.name.to_string(),
             Type::Enum(en) => en.borrow().name.to_string(),
             Type::Spec(spec) => format!("dyn {}", spec.borrow().name),  // Spec 作为 trait object
@@ -205,7 +208,13 @@ impl RustTrans {
             }
 
             Expr::Unary(op, expr) => {
-                write!(out, "{}", op.op())?;
+                // Plan 052: Unary operators - handle address-of and dereference
+                let op_str = match op {
+                    Op::Add => "&",  // Unary & for address-of
+                    Op::Mul => "*",  // Unary * for dereference
+                    _ => op.op(),
+                };
+                write!(out, "{}", op_str)?;
                 self.expr(expr, out)?;
                 Ok(())
             }

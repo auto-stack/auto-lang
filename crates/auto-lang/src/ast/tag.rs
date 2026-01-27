@@ -1,4 +1,5 @@
-use super::{Name, Type, TypeParam};
+use super::{Name, Type};
+use crate::ast::GenericParam;
 use crate::ast::{AtomWriter, ToAtomStr};
 use auto_val::AutoStr;
 use std::{fmt, io as stdio};
@@ -6,7 +7,7 @@ use std::{fmt, io as stdio};
 #[derive(Debug, Clone)]
 pub struct Tag {
     pub name: Name,
-    pub type_params: Vec<TypeParam>,  // Type parameters (for generic tags)
+    pub generic_params: Vec<GenericParam>,  // Generic parameters (Plan 052: type + const)
     pub fields: Vec<TagField>,
     pub methods: Vec<super::Fn>,
 }
@@ -21,7 +22,7 @@ impl Tag {
     pub fn new(name: Name, fields: Vec<TagField>) -> Self {
         Self {
             name,
-            type_params: Vec::new(),
+            generic_params: Vec::new(),
             fields,
             methods: Vec::new(),
         }
@@ -30,7 +31,7 @@ impl Tag {
     pub fn with_methods(name: Name, fields: Vec<TagField>, methods: Vec<super::Fn>) -> Self {
         Self {
             name,
-            type_params: Vec::new(),
+            generic_params: Vec::new(),
             fields,
             methods,
         }
@@ -56,9 +57,9 @@ impl Tag {
 impl fmt::Display for Tag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "tag {}", self.name)?;
-        if !self.type_params.is_empty() {
+        if !self.generic_params.is_empty() {
             write!(f, "<")?;
-            for (i, param) in self.type_params.iter().enumerate() {
+            for (i, param) in self.generic_params.iter().enumerate() {
                 if i > 0 {
                     write!(f, ", ")?;
                 }
@@ -90,12 +91,12 @@ impl ToNode for Tag {
         let mut node = AutoNode::new("tag");
         node.set_prop("name", Value::str(self.name.as_str()));
 
-        // Add type parameters if present
-        if !self.type_params.is_empty() {
-            let params: Vec<String> = self.type_params.iter()
-                .map(|p| p.name.as_str().to_string())
+        // Add generic parameters if present
+        if !self.generic_params.is_empty() {
+            let params: Vec<String> = self.generic_params.iter()
+                .map(|p| format!("{}", p))
                 .collect();
-            node.set_prop("type_params", Value::str(params.join(", ").as_str()));
+            node.set_prop("generic_params", Value::str(params.join(", ").as_str()));
         }
 
         for field in &self.fields {
@@ -113,13 +114,13 @@ impl ToNode for Tag {
 impl AtomWriter for Tag {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         write!(f, "tag(name(\"{}\")", self.name)?;
-        if !self.type_params.is_empty() {
+        if !self.generic_params.is_empty() {
             write!(f, "<")?;
-            for (i, param) in self.type_params.iter().enumerate() {
+            for (i, param) in self.generic_params.iter().enumerate() {
                 if i > 0 {
                     write!(f, ", ")?;
                 }
-                write!(f, "{}", param.name)?;
+                write!(f, "{}", param)?;
             }
             write!(f, ">")?;
         }

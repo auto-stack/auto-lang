@@ -150,6 +150,8 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
             occurs_in(var_name, &inner_ty)
         }
 
+        Type::Reference(inner) => occurs_in(var_name, inner),  // Plan 052
+
         // Linear 类型：递归检查内部类型
         Type::Linear(inner) => occurs_in(var_name, inner),
 

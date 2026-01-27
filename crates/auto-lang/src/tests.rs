@@ -6,6 +6,9 @@ mod dstr_tests;
 mod error_tests;
 mod field_access_tests;  // Plan 056: Field access tests
 mod may_tests;
+mod pointer_tests;  // Plan 052: Pointer type tests
+mod const_generic_tests;  // Plan 052: Const generic parameter tests
+mod const_generic_integration_tests;  // Plan 052: Const generic integration tests
 mod mem_tests;
 mod memory_quick_test;
 mod memory_tests;

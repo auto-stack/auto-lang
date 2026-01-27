@@ -859,7 +859,13 @@ impl CTrans {
                 Ok(())
             }
             Expr::Unary(op, expr) => {
-                out.write(format!("{}", op.op()).as_bytes()).to()?;
+                // Plan 052: Unary operators - handle address-of and dereference
+                let op_str = match op {
+                    Op::Add => "&",  // Unary & for address-of
+                    Op::Mul => "*",  // Unary * for dereference
+                    _ => op.op(),
+                };
+                out.write(format!("{}", op_str).as_bytes()).to()?;
                 self.expr(expr, out)?;
                 Ok(())
             }
@@ -2870,7 +2876,7 @@ impl Trans for CTrans {
                 if let Meta::Type(Type::Tag(tag)) = &**meta {
                     // Check if this is a substituted tag (contains underscore and has no type params)
                     let tag_borrowed = tag.borrow();
-                    if tag_borrowed.type_params.is_empty() && name.contains('_') {
+                    if tag_borrowed.generic_params.is_empty() && name.contains('_') {
                         // This is likely a substituted tag - transpile it
                         drop(tag_borrowed);
                         self.tag(&tag.borrow(), sink)?;

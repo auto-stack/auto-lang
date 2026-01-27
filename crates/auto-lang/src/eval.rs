@@ -395,7 +395,7 @@ impl Evaler {
                 parent: None,
                 has: vec![],
                 specs: vec![],
-                type_params: vec![],
+                generic_params: vec![],
                 members: vec![],
                 delegations: vec![],
                 methods: vec![],
@@ -1718,9 +1718,14 @@ impl Evaler {
     fn eval_una(&mut self, op: &Op, e: &Expr) -> Value {
         let value = self.eval_expr(e);
         match op {
-            Op::Add => value,
+            Op::Add => value,  // Unary & (address-of) - just return value for VM
             Op::Sub => value.neg(),
             Op::Not => value.not(),
+            Op::Mul => {
+                // Plan 052: Unary * (dereference) - not fully supported in VM
+                // For C transpiler compatibility only
+                Value::error("Pointer dereference (*) not supported in VM evaluator. Use C transpiler instead.")
+            }
             _ => Value::Nil,
         }
     }
@@ -4398,6 +4403,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::List(_) => auto_val::Type::Array,         // TODO: Add List to auto_val::Type
         ast::Type::Slice(_) => auto_val::Type::Array,        // TODO: Add Slice to auto_val::Type
         ast::Type::Ptr(_) => auto_val::Type::Ptr,
+        ast::Type::Reference(_) => auto_val::Type::Ptr,  // Plan 052: Reference transpiles to Ptr
         ast::Type::User(type_decl) => auto_val::Type::User(type_decl.name.clone()),
         ast::Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
         ast::Type::Spec(decl) => auto_val::Type::User(decl.borrow().name.clone()),
