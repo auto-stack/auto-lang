@@ -514,8 +514,14 @@ impl CTrans {
             out.write(b"\n")?;
         }
         for method in type_decl.methods.iter() {
-            out.write(method.ret.unique_name().as_bytes())?;
-            out.write(b" ")?;
+            // Use c_type_name for return type instead of unique_name (Plan 052)
+            let ret_type_str = if !matches!(method.ret, Type::Unknown) {
+                format!("{} ", self.c_type_name(&method.ret))
+            } else {
+                "void ".to_string()
+            };
+            out.write(ret_type_str.as_bytes())?;
+
             // Note add prefix to method name
             self.method_name(&type_decl.name, &method.name, &mut out)?;
             // out.write(method.name.as_bytes())?;
@@ -527,11 +533,12 @@ impl CTrans {
             if !method.params.is_empty() {
                 out.write(b", ")?;
             }
+            // Use c_type_name for parameter types instead of unique_name (Plan 052)
             out.write(
                 method
                     .params
                     .iter()
-                    .map(|p| p.ty.unique_name())
+                    .map(|p| self.c_type_name(&p.ty))
                     .collect::<Vec<_>>()
                     .join(", ")
                     .as_bytes(),
@@ -575,8 +582,14 @@ impl CTrans {
 
         for method in type_decl.methods.iter() {
             let out = &mut sink.body;
-            out.write(method.ret.unique_name().as_bytes())?;
-            out.write(b" ")?;
+            // Use c_type_name for return type instead of unique_name (Plan 052)
+            let ret_type_str = if !matches!(method.ret, Type::Unknown) {
+                format!("{} ", self.c_type_name(&method.ret))
+            } else {
+                "void ".to_string()
+            };
+            out.write(ret_type_str.as_bytes())?;
+
             self.method_name(&type_decl.name, &method.name, out)?;
             // out.write(method.name.as_bytes())?;
             out.write(b"(")?;
@@ -587,11 +600,12 @@ impl CTrans {
             if !method.params.is_empty() {
                 out.write(b", ")?;
             }
+            // Use c_type_name for parameter types instead of unique_name (Plan 052)
             out.write(
                 method
                     .params
                     .iter()
-                    .map(|p| p.ty.unique_name())
+                    .map(|p| self.c_type_name(&p.ty))
                     .collect::<Vec<_>>()
                     .join(", ")
                     .as_bytes(),
@@ -679,6 +693,37 @@ impl CTrans {
             self.type_vtable_instance(type_decl, &spec_decl, sink)?;
         }
 
+        // Plan 057: Generate vtable instances for generic spec implementations
+        // Note: For now, we ignore type arguments and just use the spec declaration
+        // Full monomorphization with type substitution will be implemented later
+        let spec_impls_to_process: Vec<_> = type_decl.spec_impls
+            .iter()
+            .filter_map(|spec_impl| {
+                if let Some(meta) = self.scope.borrow().lookup_meta(spec_impl.spec_name.as_str()) {
+                    if let Meta::Spec(spec_decl) = meta.as_ref() {
+                        Some((spec_decl.clone(), spec_impl.type_args.clone()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for (spec_decl, type_args) in spec_impls_to_process {
+            // Plan 057: Generate monomorphized vtable type for this concrete instantiation
+            self.spec_decl_monomorphized(&spec_decl, &type_args, sink)?;
+
+            // Plan 057: Generate vtable instance with type substitution
+            self.type_vtable_instance_with_args(
+                type_decl,
+                &spec_decl,
+                &type_args,
+                sink,
+            )?;
+        }
+
         if type_decl.members.len() > 0 || !type_decl.delegations.is_empty() {
             self.last_out = OutKind::Both;
         } else {
@@ -727,6 +772,96 @@ impl CTrans {
         Ok(())
     }
 
+    /// Plan 057: Generate monomorphized vtable type for a concrete spec instantiation
+    ///
+    /// This method generates a specialized vtable type definition where generic type
+    /// parameters are replaced with concrete types.
+    ///
+    /// Example: If `spec_decl` is `Storage<T>` and `type_args` is `[int]`,
+    /// this generates:
+    /// ```c
+    /// typedef struct Storage_int_vtable {
+    ///     int (*get)(void *self);
+    /// } Storage_int_vtable;
+    /// ```
+    fn spec_decl_monomorphized(
+        &mut self,
+        spec_decl: &SpecDecl,
+        type_args: &[Type],
+        _sink: &mut Sink,
+    ) -> AutoResult<()> {
+        // Use self.header to accumulate with other header content
+        let mut header = std::mem::take(&mut self.header);
+
+        // Build specialized vtable name: SpecName_Type1_Type2_..._vtable
+        header.write(b"typedef struct ")?;
+        header.write(spec_decl.name.as_bytes())?;
+
+        // Append type arguments to vtable name for uniqueness
+        for type_arg in type_args {
+            header.write(b"_")?;
+            let type_name = self.c_type_name(type_arg);
+            // Replace spaces and special chars with underscores for C identifier
+            for c in type_name.chars() {
+                if c.is_alphanumeric() || c == '_' {
+                    header.write(c.to_string().as_bytes())?;
+                } else {
+                    header.write(b"_")?;
+                }
+            }
+        }
+
+        header.write(b"_vtable {\n")?;
+        self.indent();
+
+        for method in &spec_decl.methods {
+            self.print_indent(&mut header)?;
+
+            // Substitute type parameters in return type
+            let ret_type = self.substitute_type_params(&method.ret, spec_decl, type_args);
+            header.write(self.c_type_name(&ret_type).as_bytes())?;
+            header.write(b" (*")?;
+            header.write(method.name.as_bytes())?;
+            header.write(b")(")?;
+
+            // First parameter is always self pointer
+            header.write(b"void *self")?;
+
+            // Add remaining parameters with type substitution
+            for param in method.params.iter() {
+                header.write(b", ")?;
+                let param_type = self.substitute_type_params(&param.ty, spec_decl, type_args);
+                header.write(self.c_type_name(&param_type).as_bytes())?;
+                header.write(b" ")?;
+                header.write(param.name.as_bytes())?;
+            }
+
+            header.write(b");\n")?;
+        }
+
+        self.dedent();
+        header.write(b"} ")?;
+
+        // Vtable type name
+        header.write(spec_decl.name.as_bytes())?;
+        for type_arg in type_args {
+            header.write(b"_")?;
+            let type_name = self.c_type_name(type_arg);
+            for c in type_name.chars() {
+                if c.is_alphanumeric() || c == '_' {
+                    header.write(c.to_string().as_bytes())?;
+                } else {
+                    header.write(b"_")?;
+                }
+            }
+        }
+        header.write(b"_vtable;\n\n")?;
+
+        self.header = header;
+        self.last_out = OutKind::Header;
+        Ok(())
+    }
+
     fn type_vtable_instance(
         &mut self,
         type_decl: &TypeDecl,
@@ -756,6 +891,76 @@ impl CTrans {
             // Add comma if not the last method
             // Note: we can't easily check if we're at the last item in a for loop
             // without collecting into a Vec first, so we'll always add a newline
+            out.write(b"\n")?;
+        }
+
+        self.dedent();
+        out.write(b"};\n\n")?;
+        Ok(())
+    }
+
+    /// Plan 057: Generate vtable instance with type substitution for generic specs
+    ///
+    /// This method substitutes generic type parameters with concrete types
+    /// when generating vtable instances for generic spec implementations.
+    ///
+    /// Example: If `spec_decl` is `Storage<T>` and `type_args` is `[int]`,
+    /// then method `fn get() T` becomes `int get(void *self)`.
+    fn type_vtable_instance_with_args(
+        &mut self,
+        type_decl: &TypeDecl,
+        spec_decl: &SpecDecl,
+        type_args: &[Type],
+        sink: &mut Sink,
+    ) -> AutoResult<()> {
+        // Generate vtable instance using monomorphized type
+        let out = &mut sink.body;
+
+        // Build monomorphized vtable type name: SpecName_Type1_Type2_..._vtable
+        out.write(spec_decl.name.as_bytes())?;
+        for type_arg in type_args {
+            out.write(b"_")?;
+            let type_name = self.c_type_name(type_arg);
+            for c in type_name.chars() {
+                if c.is_alphanumeric() || c == '_' {
+                    out.write(c.to_string().as_bytes())?;
+                } else {
+                    out.write(b"_")?;
+                }
+            }
+        }
+        out.write(b"_vtable ")?;
+
+        out.write(type_decl.name.as_bytes())?;
+        out.write(b"_")?;
+        out.write(spec_decl.name.as_bytes())?;
+
+        // Append type arguments for uniqueness
+        for type_arg in type_args {
+            out.write(b"_")?;
+            let type_name = self.c_type_name(type_arg);
+            for c in type_name.chars() {
+                if c.is_alphanumeric() || c == '_' {
+                    out.write(c.to_string().as_bytes())?;
+                } else {
+                    out.write(b"_")?;
+                }
+            }
+        }
+
+        out.write(b"_vtable = {\n")?;
+        self.indent();
+
+        for method in spec_decl.methods.iter() {
+            self.print_indent(out)?;
+            out.write(b".")?;
+            out.write(method.name.as_bytes())?;
+            out.write(b" = ")?;
+
+            // Function pointer to the type's method implementation
+            // Use method_name() helper for consistent camelCase naming
+            self.method_name(&type_decl.name, &method.name, out)?;
+
             out.write(b"\n")?;
         }
 
@@ -1577,7 +1782,25 @@ impl CTrans {
                 let elem_type = self.c_type_name(elem);
                 format!("list_{}*", elem_type)
             }
-            Type::User(usr_type) => format!("struct {}", usr_type.name),
+            Type::User(usr_type) => {
+                // Plan 052: Check if this is a type parameter
+                // Type parameters have no members, methods, delegations, has, or specs
+                // They're just placeholders for concrete types
+                let is_type_param = usr_type.members.is_empty()
+                    && usr_type.methods.is_empty()
+                    && usr_type.delegations.is_empty()
+                    && usr_type.has.is_empty()
+                    && usr_type.specs.is_empty()
+                    && usr_type.parent.is_none();
+
+                if is_type_param {
+                    // Type parameter - use void* in C
+                    "void*".to_string()
+                } else {
+                    // Regular user-defined type
+                    format!("struct {}", usr_type.name)
+                }
+            }
             Type::Ptr(ptr) => {
                 format!("{}*", self.c_type_name(&ptr.of.borrow()))
             }
@@ -1628,6 +1851,86 @@ impl CTrans {
                 println!("Unsupported type for C transpiler: {}", ty);
                 panic!("Unsupported type for C transpiler: {}", ty);
             }
+        }
+    }
+
+    /// Plan 057: Substitute type parameters with concrete types
+    ///
+    /// Given a type and a list of type arguments, substitutes type parameters
+    /// (Type::User with no members) with their corresponding concrete types.
+    ///
+    /// # Arguments
+    /// * `ty` - The type to substitute (may contain type parameters)
+    /// * `spec_decl` - The spec declaration with generic parameters
+    /// * `type_args` - The concrete type arguments to substitute
+    ///
+    /// # Returns
+    /// The substituted type
+    fn substitute_type_params(&self, ty: &Type, spec_decl: &SpecDecl, type_args: &[Type]) -> Type {
+        // Create a mapping of parameter names to concrete types
+        let mut param_map = std::collections::HashMap::new();
+
+        for (i, param) in spec_decl.generic_params.iter().enumerate() {
+            if let GenericParam::Type(type_param) = param {
+                if let Some(concrete_type) = type_args.get(i) {
+                    param_map.insert(type_param.name.clone(), concrete_type.clone());
+                }
+            }
+        }
+
+        // Recursively substitute type parameters
+        self.substitute_type_params_recursive(ty, &param_map)
+    }
+
+    /// Helper function to recursively substitute type parameters in a type
+    fn substitute_type_params_recursive(&self, ty: &Type, param_map: &std::collections::HashMap<Name, Type>) -> Type {
+        match ty {
+            // Type::User with no members is a type parameter - substitute it
+            Type::User(usr_type) if usr_type.members.is_empty()
+                && usr_type.methods.is_empty()
+                && usr_type.delegations.is_empty()
+                && usr_type.has.is_empty()
+                && usr_type.specs.is_empty()
+                && usr_type.parent.is_none() =>
+            {
+                if let Some(concrete_type) = param_map.get(&usr_type.name) {
+                    concrete_type.clone()
+                } else {
+                    ty.clone()
+                }
+            }
+
+            // Recursively substitute in composite types
+            Type::Array(array_type) => {
+                Type::Array(crate::ast::ArrayType {
+                    elem: Box::new(self.substitute_type_params_recursive(&array_type.elem, param_map)),
+                    len: array_type.len,
+                })
+            }
+
+            // Plan 057: For pointer types, use a simpler approach - just clone for now
+            // Full type substitution in pointers will require more complex handling
+            Type::Ptr(_) => ty.clone(),
+
+            Type::List(elem) => {
+                Type::List(Box::new(self.substitute_type_params_recursive(elem, param_map)))
+            }
+
+            Type::RuntimeArray(rta) => {
+                Type::RuntimeArray(crate::ast::RuntimeArrayType {
+                    size_expr: rta.size_expr.clone(),
+                    elem: Box::new(self.substitute_type_params_recursive(&rta.elem, param_map)),
+                })
+            }
+
+            Type::Slice(slice) => {
+                Type::Slice(crate::ast::SliceType {
+                    elem: Box::new(self.substitute_type_params_recursive(&slice.elem, param_map)),
+                })
+            }
+
+            // Other types remain unchanged
+            _ => ty.clone(),
         }
     }
 

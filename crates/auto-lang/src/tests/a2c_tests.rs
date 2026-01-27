@@ -796,3 +796,26 @@ fn test_083_runtime_size_expr() {
 fn test_090_pointer_types() {
     test_a2c("090_pointer_types").unwrap();
 }
+
+#[test]
+fn test_092_const_generics() {
+    test_a2c("092_const_generics").unwrap();
+}
+
+// ============================================================================
+// Plan 057: Generic Spec Tests
+// ============================================================================
+
+#[test]
+fn test_093_generic_specs() {
+    test_a2c("093_generic_specs").unwrap();
+}
+
+// ============================================================================
+// Plan 057: Generic Spec with Ext Blocks
+// ============================================================================
+
+#[test]
+fn test_094_generic_spec_ext() {
+    test_a2c("094_generic_spec_ext").unwrap();
+}

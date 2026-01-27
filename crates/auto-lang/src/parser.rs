@@ -161,6 +161,9 @@ pub struct Parser<'a> {
     pub error_limit: usize,
     /// Current type parameters being parsed (for generic type definitions)
     current_type_params: Vec<Name>,
+    /// Current const generic parameters being parsed (Plan 052)
+    /// Maps const parameter name to its type (e.g., N -> u32)
+    current_const_params: HashMap<Name, Type>,
 }
 
 impl<'a> Parser<'a> {
@@ -191,6 +194,7 @@ impl<'a> Parser<'a> {
             errors: Vec::new(),
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
+            current_const_params: HashMap::new(),
         };
         parser.skip_comments();
         parser
@@ -228,6 +232,7 @@ impl<'a> Parser<'a> {
             errors: Vec::new(),
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
+            current_const_params: HashMap::new(),
         };
         parser.skip_comments();
         parser
@@ -261,6 +266,7 @@ impl<'a> Parser<'a> {
             errors: Vec::new(),
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
+            current_const_params: HashMap::new(),
         };
         parser.skip_comments();
         parser
@@ -3209,6 +3215,9 @@ impl<'a> Parser<'a> {
         // self.prev now points to the name token after parse_name()
         let name_pos = self.prev.pos;
 
+        // Plan 052: Parse generic parameters if present: fn foo<T, N u32>(...)
+        let generic_params = self.parse_generic_params()?;
+
         // enter function scope
         self.scope.borrow_mut().enter_fn(name.clone());
 
@@ -3358,6 +3367,9 @@ impl<'a> Parser<'a> {
         // Capture the position of the function name for LSP
         // self.prev now points to the name token after parse_name()
         let name_pos = self.prev.pos;
+
+        // Plan 052: Parse generic parameters if present: fn foo<T, N u32>(...)
+        let generic_params = self.parse_generic_params()?;
 
         // enter function scope
         self.scope.borrow_mut().enter_fn(name.clone());
@@ -3584,6 +3596,18 @@ impl<'a> Parser<'a> {
 
         let name = self.parse_name()?;
 
+        // Plan 057: Parse generic parameters - e.g., spec Storage<T>, spec Storage<T, N u32>
+        let generic_params = self.parse_generic_params()?;
+
+        // Plan 057: Populate type parameter scope for use in method signatures
+        for param in &generic_params {
+            if let GenericParam::Type(tp) = param {
+                self.current_type_params.push(tp.name.clone());
+            } else if let GenericParam::Const(cp) = param {
+                self.current_const_params.insert(cp.name.clone(), cp.typ.clone());
+            }
+        }
+
         // Parse spec body
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
@@ -3606,9 +3630,20 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::RBrace)?;
 
-        let spec_decl = SpecDecl {
-            name,
-            methods,
+        // Plan 057: Clear type parameters after parsing spec body
+        for param in &generic_params {
+            if let GenericParam::Type(tp) = param {
+                self.current_type_params.pop();
+            } else if let GenericParam::Const(cp) = param {
+                self.current_const_params.remove(&cp.name);
+            }
+        }
+
+        // Plan 057: Use SpecDecl::with_generic_params if we have generic params
+        let spec_decl = if generic_params.is_empty() {
+            SpecDecl::new(name, methods)
+        } else {
+            SpecDecl::with_generic_params(name, generic_params, methods)
         };
 
         // Register spec in scope
@@ -3672,6 +3707,7 @@ impl<'a> Parser<'a> {
                     parent: None,
                     has: Vec::new(),
                     specs: Vec::new(),
+                    spec_impls: Vec::new(), // Plan 057
                     generic_params: Vec::new(),
                     members: Vec::new(),
                     delegations: Vec::new(),
@@ -3716,6 +3752,17 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::Gt)?; // Consume '>'
         }
 
+        // Plan 052: Populate current_const_params map with const generic parameters
+        // and current_type_params with type generic parameters
+        // This allows parameters to be used in method signatures within the type body
+        for param in &generic_params {
+            if let crate::ast::GenericParam::Type(tp) = param {
+                self.current_type_params.push(tp.name.clone());
+            } else if let crate::ast::GenericParam::Const(cp) = param {
+                self.current_const_params.insert(cp.name.clone(), cp.typ.clone());
+            }
+        }
+
         // Capture the position of the type name for LSP
         // self.prev now points to the name token after parse_name()
         let name_pos = self.prev.pos;
@@ -3725,6 +3772,7 @@ impl<'a> Parser<'a> {
             name: name.clone(),
             parent: None,
             specs: Vec::new(),
+            spec_impls: Vec::new(), // Plan 057
             has: Vec::new(),
             generic_params,
             members: Vec::new(),
@@ -3780,20 +3828,59 @@ impl<'a> Parser<'a> {
         }
         decl.parent = parent;
 
-        // deal with `as` keyword
-        let mut specs = Vec::new();
+        // Plan 057: deal with `as` keyword - parse spec implementations with optional type arguments
+        let mut specs = Vec::new();      // Backwards compatibility: names only
+        let mut spec_impls = Vec::new(); // Plan 057: Generic spec implementations
         if self.is_kind(TokenKind::As) {
             self.next(); // skip `as` keyword
-            // Parse one or more spec names
+            // Parse one or more spec names with optional type arguments
             while !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Has) {
                 if !specs.is_empty() {
                     self.expect(TokenKind::Comma)?;
                 }
                 let spec_name = self.parse_name()?;
-                specs.push(spec_name);
+
+                // Plan 057: Check for type arguments: as Storage<T>
+                let type_args = if self.is_kind(TokenKind::Lt) {
+                    self.next(); // skip `<`
+                    let mut args = Vec::new();
+                    loop {
+                        self.skip_empty_lines();
+                        args.push(self.parse_type()?);
+                        self.skip_empty_lines();
+
+                        if self.is_kind(TokenKind::Gt) {
+                            self.next(); // skip `>`
+                            break;
+                        } else if self.is_kind(TokenKind::Comma) {
+                            self.next(); // skip `,`
+                            continue;
+                        } else {
+                            return Err(SyntaxError::Generic {
+                                message: format!("Expected '>' or ',' in type argument list, got {}", self.cur.text),
+                                span: pos_to_span(self.cur.pos),
+                            }.into());
+                        }
+                    }
+                    args
+                } else {
+                    Vec::new() // No type arguments
+                };
+
+                // Add to backwards-compatible specs list
+                specs.push(spec_name.clone());
+
+                // Plan 057: Add to spec_impls if we have type arguments
+                if !type_args.is_empty() {
+                    spec_impls.push(crate::ast::SpecImpl {
+                        spec_name,
+                        type_args,
+                    });
+                }
             }
         }
         decl.specs = specs;
+        decl.spec_impls = spec_impls; // Plan 057
 
         // deal with `has` keyword
         let mut has = Vec::new();
@@ -3926,8 +4013,9 @@ impl<'a> Parser<'a> {
         decl.methods = methods;
         decl.delegations = delegations;
 
-        // Check trait conformance if type declares specs
-        if !decl.specs.is_empty() {
+        // Check trait conformance if type declares specs (Plan 057: defer check for ext blocks)
+        // Note: If methods are empty, skip conformance check as methods may be added later via ext blocks
+        if !decl.specs.is_empty() && !decl.methods.is_empty() {
             for spec_name in &decl.specs {
                 if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
                     if let Meta::Spec(spec_decl) = meta.as_ref() {
@@ -3949,6 +4037,55 @@ impl<'a> Parser<'a> {
                             message: format!(
                                 "Type '{}' declares spec '{}' but spec is not defined",
                                 name, spec_name
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into(),
+                    );
+                }
+            }
+        }
+
+        // Plan 057: Check generic spec implementations (spec_impls)
+        // Same logic: skip check if methods are empty (ext block case)
+        if !decl.spec_impls.is_empty() && !decl.methods.is_empty() {
+            for spec_impl in &decl.spec_impls {
+                if let Some(meta) = self.lookup_meta(spec_impl.spec_name.as_str()) {
+                    if let Meta::Spec(spec_decl) = meta.as_ref() {
+                        // Validate type argument count
+                        if spec_impl.type_args.len() != spec_decl.generic_params.len() {
+                            self.add_error(
+                                SyntaxError::Generic {
+                                    message: format!(
+                                        "Type '{}' implements spec '{}' with {} type argument(s) but spec expects {}",
+                                        name,
+                                        spec_impl.spec_name,
+                                        spec_impl.type_args.len(),
+                                        spec_decl.generic_params.len()
+                                    ),
+                                    span: pos_to_span(self.cur.pos),
+                                }
+                                .into(),
+                            );
+                        } else {
+                            // Use TraitChecker to verify conformance
+                            if let Err(errors) = crate::trait_checker::TraitChecker::check_conformance(
+                                &decl,
+                                spec_decl,
+                            ) {
+                                for error in errors {
+                                    self.add_error(error);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Spec not found - this is an error
+                    self.add_error(
+                        SyntaxError::Generic {
+                            message: format!(
+                                "Type '{}' declares generic spec '{}' but spec is not defined",
+                                name, spec_impl.spec_name
                             ),
                             span: pos_to_span(self.cur.pos),
                         }
@@ -4413,6 +4550,49 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse generic parameter list: <T, N u32>
+    /// Returns Vec<GenericParam> and adds type parameters to current_type_params
+    fn parse_generic_params(&mut self) -> AutoResult<Vec<crate::ast::GenericParam>> {
+        if !self.is_kind(TokenKind::Lt) {
+            return Ok(Vec::new());
+        }
+
+        self.next(); // skip `<`
+        let mut params = Vec::new();
+
+        // Parse comma-separated generic parameters
+        loop {
+            self.skip_empty_lines();
+            params.push(self.parse_generic_param()?);
+            self.skip_empty_lines();
+
+            if self.is_kind(TokenKind::Gt) {
+                self.next(); // skip `>`
+                break;
+            } else if self.is_kind(TokenKind::Comma) {
+                self.next(); // skip `,`
+                continue;
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected '>' or ',' in generic parameter list, got {}", self.cur.text),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
+        }
+
+        // Add type parameters to scope for use in function body
+        for param in &params {
+            if let crate::ast::GenericParam::Type(tp) = param {
+                self.current_type_params.push(tp.name.clone());
+            } else if let crate::ast::GenericParam::Const(cp) = param {
+                // Store const parameter with its actual type for type resolution
+                self.current_const_params.insert(cp.name.clone(), cp.typ.clone());
+            }
+        }
+
+        Ok(params)
+    }
+
     /// Parse identifier type or generic instance (e.g., List, List<int>)
     fn parse_ident_or_generic_type(&mut self) -> AutoResult<Type> {
         use crate::ast::{GenericInstance, Type};
@@ -4437,6 +4617,12 @@ impl<'a> Parser<'a> {
                     }
                 }
 
+                // Plan 052: Check if this identifier is a const generic parameter
+                if let Some(const_ty) = self.current_const_params.get(&name) {
+                    // This is a const parameter - return its actual type (e.g., uint)
+                    return Ok(const_ty.clone());
+                }
+
                 // Check if this identifier is a type parameter in the current scope
                 if self.current_type_params.contains(&name) {
                     // This is a type parameter - return it as a user type for now
@@ -4447,6 +4633,7 @@ impl<'a> Parser<'a> {
                         parent: None,
                         has: Vec::new(),
                         specs: Vec::new(),
+                        spec_impls: Vec::new(), // Plan 057
                         generic_params: Vec::new(),
                         members: Vec::new(),
                         delegations: Vec::new(),
