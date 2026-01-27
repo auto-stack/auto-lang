@@ -1208,8 +1208,115 @@ impl Evaler {
                     } else {
                         Value::error(format!("Variable not found: {}", obj_name))
                     }
+                } else if let Expr::Index(array, index_expr) = object.as_ref() {
+                    // Handle arr[0].field = value case
+                    if let Expr::Ident(arr_name) = array.as_ref() {
+                        if let Some(arr_vid) = self.lookup_vid(arr_name) {
+                            let idx_val = self.eval_expr(index_expr);
+                            if let Value::Int(i) = idx_val {
+                                let field_name = field.clone();
+                                let right_data = val.into_data();
+                                let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+
+                                let path = auto_val::AccessPath::Nested(
+                                    Box::new(auto_val::AccessPath::Index(i as usize)),
+                                    Box::new(auto_val::AccessPath::Field(field_name)),
+                                );
+
+                                match self
+                                    .universe
+                                    .borrow_mut()
+                                    .update_nested(arr_vid, &path, right_vid)
+                                {
+                                    Ok(()) => Value::Void,
+                                    Err(e) => Value::error(format!(
+                                        "Failed to assign to array element field: {:?}",
+                                        e
+                                    )),
+                                }
+                            } else {
+                                Value::error("Array index must be integer")
+                            }
+                        } else {
+                            Value::error(format!("Array not found: {}", arr_name))
+                        }
+                    } else {
+                        Value::error("Complex field assignment with non-identifier array not supported")
+                    }
+                } else if let Expr::Dot(inner_obj, inner_field) = object.as_ref() {
+                    // Handle nested dot case: obj.inner.x = value or data[0].info.age = value
+                    // First, check if inner_obj is an identifier: obj.inner.x = value
+                    if let Expr::Ident(root_name) = inner_obj.as_ref() {
+                        if let Some(root_vid) = self.lookup_vid(root_name) {
+                            // Build nested path: obj.inner.x -> Nested(Field("inner"), Field("x"))
+                            let inner_path = auto_val::AccessPath::Field(inner_field.clone());
+                            let outer_path = auto_val::AccessPath::Field(field.clone());
+                            let path = auto_val::AccessPath::Nested(
+                                Box::new(inner_path),
+                                Box::new(outer_path),
+                            );
+
+                            let right_data = val.into_data();
+                            let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+
+                            match self
+                                .universe
+                                .borrow_mut()
+                                .update_nested(root_vid, &path, right_vid)
+                            {
+                                Ok(()) => Value::Void,
+                                Err(e) => Value::error(format!(
+                                    "Failed to assign to nested field: {:?}",
+                                    e
+                                )),
+                            }
+                        } else {
+                            Value::error(format!("Variable not found: {}", root_name))
+                        }
+                    } else if let Expr::Index(array, index_expr) = inner_obj.as_ref() {
+                        // Handle data[0].info.age = value case
+                        if let Expr::Ident(arr_name) = array.as_ref() {
+                            if let Some(arr_vid) = self.lookup_vid(arr_name) {
+                                let idx_val = self.eval_expr(index_expr);
+                                if let Value::Int(i) = idx_val {
+                                    // Build path: data[0].info.age -> Nested(Nested(Index(0), Field("info")), Field("age"))
+                                    let index_path = auto_val::AccessPath::Index(i as usize);
+                                    let info_path = auto_val::AccessPath::Nested(
+                                        Box::new(index_path),
+                                        Box::new(auto_val::AccessPath::Field(inner_field.clone())),
+                                    );
+                                    let age_path = auto_val::AccessPath::Nested(
+                                        Box::new(info_path),
+                                        Box::new(auto_val::AccessPath::Field(field.clone())),
+                                    );
+
+                                    let right_data = val.into_data();
+                                    let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+
+                                    match self
+                                        .universe
+                                        .borrow_mut()
+                                        .update_nested(arr_vid, &age_path, right_vid)
+                                    {
+                                        Ok(()) => Value::Void,
+                                        Err(e) => Value::error(format!(
+                                            "Failed to assign to deeply nested field: {:?}",
+                                            e
+                                        )),
+                                    }
+                                } else {
+                                    Value::error("Array index must be integer")
+                                }
+                            } else {
+                                Value::error(format!("Array not found: {}", arr_name))
+                            }
+                        } else {
+                            Value::error("Nested field assignment with non-identifier array not supported")
+                        }
+                    } else {
+                        Value::error("Nested field assignment with complex inner expression not supported")
+                    }
                 } else {
-                    // Complex case: nested dot expression (not yet implemented)
                     Value::error("Complex field assignment not yet implemented")
                 }
             }
@@ -1436,7 +1543,91 @@ impl Evaler {
                             Value::error(format!("Invalid assignment target"))
                         }
                     }
-                    // Case: obj.items[0] = value or obj.inner.arr[0] = value
+                    // Case: obj.items[0] = value (Plan 056: Dot expression)
+                    Expr::Dot(left_obj, right_field) => {
+                        // Handle obj.items[0] where left_obj is an identifier and right_field is the field
+                        if let Expr::Ident(obj_name) = left_obj.as_ref() {
+                            if let Some(obj_vid) = self.lookup_vid(obj_name) {
+                                let field_name = right_field.clone();
+                                let idx_val = self.eval_expr(index);
+                                if let Value::Int(i) = idx_val {
+                                    let path = auto_val::AccessPath::Nested(
+                                        Box::new(auto_val::AccessPath::Field(field_name)),
+                                        Box::new(auto_val::AccessPath::Index(i as usize)),
+                                    );
+                                    match self
+                                        .universe
+                                        .borrow_mut()
+                                        .update_nested(obj_vid, &path, right_vid)
+                                    {
+                                        Ok(()) => Value::Void,
+                                        Err(e) => Value::error(format!(
+                                            "Failed to assign to nested array element: {:?}",
+                                            e
+                                        )),
+                                    }
+                                } else {
+                                    Value::error("Array index must be integer")
+                                }
+                            } else {
+                                Value::error(format!("Object not found: {}", obj_name))
+                            }
+                        } else {
+                            // Nested case: obj.inner.items[0] = value
+                            let top_level = self.extract_top_level_identifier(array);
+                            if let Some(obj_name) = top_level {
+                                if let Some(obj_vid) = self.lookup_vid(&obj_name) {
+                                    // Build the full path: inner.items[0]
+
+                                    // Build path for the left_obj part (e.g., inner)
+                                    let left_path = match self.build_access_path(left_obj) {
+                                        Ok(path) => path,
+                                        Err(e) => {
+                                            return Value::error(format!(
+                                                "Invalid access path: {}",
+                                                e
+                                            ))
+                                        }
+                                    };
+
+                                    // Build path for right_field + index
+                                    let field_name = right_field.clone();
+                                    let idx_val = self.eval_expr(index);
+                                    if let Value::Int(i) = idx_val {
+                                        let field_idx_path = auto_val::AccessPath::Nested(
+                                            Box::new(auto_val::AccessPath::Field(field_name)),
+                                            Box::new(auto_val::AccessPath::Index(i as usize)),
+                                        );
+
+                                        // Combine left_path + field_idx_path
+                                        let full_path = auto_val::AccessPath::Nested(
+                                            Box::new(left_path),
+                                            Box::new(field_idx_path),
+                                        );
+
+                                        match self
+                                            .universe
+                                            .borrow_mut()
+                                            .update_nested(obj_vid, &full_path, right_vid)
+                                        {
+                                            Ok(()) => Value::Void,
+                                            Err(e) => Value::error(format!(
+                                                "Failed to assign to deeply nested element: {:?}",
+                                                e
+                                            )),
+                                        }
+                                    } else {
+                                        Value::error("Array index must be integer")
+                                    }
+                                } else {
+                                    Value::error(format!("Object not found: {}", obj_name))
+                                }
+                            } else {
+                                Value::error("Cannot extract top-level identifier")
+                            }
+                        }
+                    }
+                    // Case: obj.items[0] = value or obj.inner.arr[0] = value (legacy syntax)
                     Expr::Bina(left_obj, op, right_field) if *op == Op::Dot => {
                         // We need to handle obj.items[0] where:
                         // - left_obj could be an identifier or another Bina expression
@@ -1799,22 +1990,18 @@ impl Evaler {
     /// Mark a variable as moved if the expression is a variable reference
     /// This is used to enforce move semantics when values are passed to functions
     fn mark_expr_as_moved(&mut self, expr: &Expr) {
-        eprintln!("DEBUG mark_expr_as_moved: expr = {:?}", expr);
         match expr {
             // Direct variable reference: `x`
             Expr::Ident(name) => {
-                eprintln!("DEBUG: Marking '{}' as moved", name);
                 self.universe.borrow_mut().mark_moved(name.as_str());
             }
             // Variable reference through `ref`: `ref x`
             Expr::Ref(name) => {
-                eprintln!("DEBUG: Marking ref '{}' as moved", name);
                 self.universe.borrow_mut().mark_moved(name.as_str());
             }
             // For expressions, we need to check if the base is a variable
             // e.g., `x.field` or `x[index` - x is moved
             Expr::Bina(left, op, right) => {
-                eprintln!("DEBUG: Bina expression, op={:?}", op);
                 if *op == Op::Dot || *op == Op::LSquare {
                     // Mark the base object as moved
                     self.mark_expr_as_moved(left);
@@ -1827,7 +2014,6 @@ impl Evaler {
             // Plan 056: Dot expression - field access should NOT move the object
             // `say(p.x)` should read the field without moving p
             Expr::Dot(object, field) => {
-                eprintln!("DEBUG: Dot expression object={:?} field={:?}", object, field);
                 // Do NOT mark the object as moved for field access
                 // Field access is a read operation, not a move
             }
@@ -1846,7 +2032,7 @@ impl Evaler {
             }
             // Other expressions don't involve variable moves
             _ => {
-                eprintln!("DEBUG: Other expression, not marking as moved");
+                // Do nothing
             }
         }
     }
@@ -1918,7 +2104,6 @@ impl Evaler {
 
     // TODO: 需要整理一下，逻辑比较乱
     fn eval_call(&mut self, call: &Call) -> AutoResult<Value> {
-        eprintln!("DEBUG eval_call: call.name = {:?}", call.name);
         // Check if this is a method call like `file.close()` or `x.triple()`
         // OR a tag construction like `Atom.Int(5)`
         if let Expr::Dot(object, method) = &*call.name {
@@ -1983,9 +2168,9 @@ impl Evaler {
                 }
 
                 // Next, check if it's an ext method (Plan 035) or type method
-                // Look for "TypeName::method_name" in universe (using double colon)
+                // Look for "TypeName.method_name" in universe (using dot)
                 let qualified_method_name: AutoStr =
-                    format!("{}::{}", type_name, method_name).into();
+                    format!("{}.{}", type_name, method_name).into();
                 let fn_decl_opt = {
                     let universe = self.universe.borrow();
                     universe
@@ -2013,6 +2198,53 @@ impl Evaler {
 
                     // Call the method
                     return self.eval_fn_call(&fn_decl, &call.args);
+                }
+
+                // Plan 056: Try to find static function in VM registry
+                // For static methods like File.open, List.new, HashMap.new
+                // These are registered as "TypeName.method_name" in VM registry
+                let vm_function_name: AutoStr = format!("{}.{}", type_name, method_name).into();
+                let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+                let vm_func_entry = registry
+                    .modules()
+                    .values()
+                    .find_map(|module| module.functions.get(vm_function_name.as_str()))
+                    .cloned();
+                drop(registry);
+
+                if let Some(vm_func) = vm_func_entry {
+                    // This is a VM static function - call it directly
+                    let uni = self.universe.clone();
+                    let arg_vals: Vec<Value> = call
+                        .args
+                        .args
+                        .iter()
+                        .filter_map(|arg| match arg {
+                            ast::Arg::Pos(expr) => Some(self.eval_expr(expr)),
+                            _ => None,
+                        })
+                        .collect();
+
+                    // VM static functions take (universe, Value)
+                    // For functions with single argument
+                    if arg_vals.len() == 1 {
+                        let result = (vm_func.func)(uni, arg_vals[0].clone());
+                        return Ok(result);
+                    } else if arg_vals.is_empty() {
+                        // For no-argument functions, pass Nil
+                        let result = (vm_func.func)(uni, Value::Nil);
+                        return Ok(result);
+                    } else {
+                        // For multi-argument functions (not yet supported)
+                        return Ok(Value::Error(
+                            format!(
+                                "VM static function '{}' with {} arguments not yet supported",
+                                vm_function_name,
+                                arg_vals.len()
+                            )
+                            .into(),
+                        ));
+                    }
                 }
 
                 // Plan 038: Try to find VM function (e.g., str_split for str.split())
@@ -2117,7 +2349,7 @@ impl Evaler {
                         // Next, check if it's an ext method (Plan 035) or type method
                         // Look for "TypeName::method_name" in universe (using double colon)
                         let qualified_method_name: AutoStr =
-                            format!("{}::{}", type_name, method_name).into();
+                            format!("{}.{}", type_name, method_name).into();
                         let fn_decl_opt = {
                             let universe = self.universe.borrow();
                             universe
@@ -2145,6 +2377,53 @@ impl Evaler {
 
                             // Call the method
                             return self.eval_fn_call(&fn_decl, &call.args);
+                        }
+
+                        // Plan 056: Try to find static function in VM registry
+                        // For static methods like File.open, List.new, HashMap.new
+                        // These are registered as "TypeName.method_name" in VM registry
+                        let vm_function_name: AutoStr = format!("{}.{}", type_name, method_name).into();
+                        let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+                        let vm_func_entry = registry
+                            .modules()
+                            .values()
+                            .find_map(|module| module.functions.get(vm_function_name.as_str()))
+                            .cloned();
+                        drop(registry);
+
+                        if let Some(vm_func) = vm_func_entry {
+                            // This is a VM static function - call it directly
+                            let uni = self.universe.clone();
+                            let arg_vals: Vec<Value> = call
+                                .args
+                                .args
+                                .iter()
+                                .filter_map(|arg| match arg {
+                                    ast::Arg::Pos(expr) => Some(self.eval_expr(expr)),
+                                    _ => None,
+                                })
+                                .collect();
+
+                            // VM static functions take (universe, Value)
+                            // For functions with single argument
+                            if arg_vals.len() == 1 {
+                                let result = (vm_func.func)(uni, arg_vals[0].clone());
+                                return Ok(result);
+                            } else if arg_vals.is_empty() {
+                                // For no-argument functions, pass Nil
+                                let result = (vm_func.func)(uni, Value::Nil);
+                                return Ok(result);
+                            } else {
+                                // For multi-argument functions (not yet supported)
+                                return Ok(Value::Error(
+                                    format!(
+                                        "VM static function '{}' with {} arguments not yet supported",
+                                        vm_function_name,
+                                        arg_vals.len()
+                                    )
+                                    .into(),
+                                ));
+                            }
                         }
 
                         // Plan 038: Try to find VM function (e.g., str_split for str.split())
@@ -2355,8 +2634,6 @@ impl Evaler {
 
     fn eval_fields(&mut self, type_decl: &TypeDecl, args: &auto_val::Args) -> Obj {
         let members = &type_decl.members;
-        eprintln!("DEBUG eval_fields: type_decl.name = {}, members = {:?}", type_decl.name, members);
-        eprintln!("DEBUG eval_fields: args = {:?}", args);
         // TODO: remove unnecessary clone
         let mut fields = Obj::new();
 
@@ -2384,7 +2661,6 @@ impl Evaler {
 
         // Then, add fields from direct arguments
         for (j, arg) in args.args.iter().enumerate() {
-            eprintln!("DEBUG eval_fields: Processing arg {}: {:?}", j, arg);
             // let val_arg = self.eval_arg(arg);
             match arg {
                 auto_val::Arg::Pair(key, val) => {
@@ -2831,17 +3107,14 @@ impl Evaler {
     }
 
     pub fn eval_fn_call(&mut self, fn_decl: &Fn, args: &Args) -> AutoResult<Value> {
-        eprintln!("DEBUG eval_fn_call: fn_decl.name = {}, args = {:?}", fn_decl.name, args);
         // IMPORTANT: Mark arguments as moved in caller's scope BEFORE entering function scope
         // This ensures move semantics are tracked in the correct scope
         for arg in args.args.iter() {
             match arg {
                 Arg::Pair(_name, expr) => {
-                    eprintln!("DEBUG: Marking pair expr = {:?}", expr);
                     self.mark_expr_as_moved(expr);
                 }
                 Arg::Pos(expr) => {
-                    eprintln!("DEBUG: Marking pos expr = {:?}", expr);
                     self.mark_expr_as_moved(expr);
                 }
                 Arg::Name(_name) => {
@@ -3101,33 +3374,98 @@ impl Evaler {
 
                 match obj_resolved {
                     Value::Instance(inst) => {
+                        // First, try to get as a field
                         if let Some(val) = inst.fields.get(field.as_str()) {
                             val.clone()
                         } else {
-                            Value::error(format!(
-                                "Field '{}' not found in instance of {}",
-                                field,
-                                inst.ty.name()
-                            ))
+                            // Field not found - create a Method value for method call
+                            // This handles cases like f.read_text(), f.close(), etc.
+                            // The actual method lookup happens in eval_call when this Method is called
+                            Value::Method(Method::new(obj_val.clone(), field.clone()))
                         }
                     }
                     Value::Obj(obj) => {
                         // Support field access on plain objects (not type instances)
-                        let key = ValueKey::Str(field.as_str().into());
-                        if let Some(val) = obj.get(key.clone()) {
-                            // Resolve ValueRef using universe.deref_val(), same as eval_ident
+                        // Try different key types: Str, Int, Bool
+                        // First, try as string key
+                        let str_key = ValueKey::Str(field.as_str().into());
+                        if let Some(val) = obj.get(str_key) {
                             self.universe.borrow().deref_val(val.clone())
                         } else {
-                            Value::error(format!(
-                                "Field '{}' not found in object",
-                                field
-                            ))
+                            // Try as integer key (e.g., a.3 for {3: value})
+                            if let Ok(int_val) = field.as_str().parse::<i32>() {
+                                let int_key = ValueKey::Int(int_val);
+                                if let Some(val) = obj.get(int_key) {
+                                    self.universe.borrow().deref_val(val.clone())
+                                } else {
+                                    // Try as boolean key
+                                    match field.as_str().to_lowercase().as_str() {
+                                        "true" => {
+                                            let bool_key = ValueKey::Bool(true);
+                                            if let Some(val) = obj.get(bool_key) {
+                                                self.universe.borrow().deref_val(val.clone())
+                                            } else {
+                                                Value::error(format!(
+                                                    "Field '{}' not found in object",
+                                                    field
+                                                ))
+                                            }
+                                        }
+                                        "false" => {
+                                            let bool_key = ValueKey::Bool(false);
+                                            if let Some(val) = obj.get(bool_key) {
+                                                self.universe.borrow().deref_val(val.clone())
+                                            } else {
+                                                Value::error(format!(
+                                                    "Field '{}' not found in object",
+                                                    field
+                                                ))
+                                            }
+                                        }
+                                        _ => Value::error(format!(
+                                            "Field '{}' not found in object",
+                                            field
+                                        ))
+                                    }
+                                }
+                            } else {
+                                // Try as boolean key
+                                match field.as_str().to_lowercase().as_str() {
+                                    "true" => {
+                                        let bool_key = ValueKey::Bool(true);
+                                        if let Some(val) = obj.get(bool_key) {
+                                            self.universe.borrow().deref_val(val.clone())
+                                        } else {
+                                            Value::error(format!(
+                                                "Field '{}' not found in object",
+                                                field
+                                            ))
+                                        }
+                                    }
+                                    "false" => {
+                                        let bool_key = ValueKey::Bool(false);
+                                        if let Some(val) = obj.get(bool_key) {
+                                            self.universe.borrow().deref_val(val.clone())
+                                        } else {
+                                            Value::error(format!(
+                                                "Field '{}' not found in object",
+                                                field
+                                            ))
+                                        }
+                                    }
+                                    _ => Value::error(format!(
+                                        "Field '{}' not found in object",
+                                        field
+                                    ))
+                                }
+                            }
                         }
                     }
-                    _ => Value::error(format!(
-                        "Cannot access field '{}' on non-instance value: {}",
-                        field, obj_val
-                    )),
+                    _ => {
+                        // For non-instance values (int, str, etc.), try method lookup
+                        // This handles cases like 1.str(), "hello".upper(), etc.
+                        self.dot(object, &Expr::Ident(field.clone()))
+                    }
                 }
             }
             Expr::I8(value) => Value::I8(*value),
@@ -3398,7 +3736,7 @@ impl Evaler {
                 for method in &has_decl.methods {
                     // Create fully qualified method name: TypeName::method_name
                     let method_name: AutoStr =
-                        format!("{}::{}", type_decl.name, method.name).into();
+                        format!("{}.{}", type_decl.name, method.name).into();
 
                     // Clone the method and update its name to reflect the new owner
                     let mut mixed_method = method.clone();
@@ -3414,7 +3752,7 @@ impl Evaler {
 
         // Also register the type's own methods
         for method in &type_decl.methods {
-            let method_name: AutoStr = format!("{}::{}", type_decl.name, method.name).into();
+            let method_name: AutoStr = format!("{}.{}", type_decl.name, method.name).into();
             self.universe.borrow_mut().define(
                 method_name,
                 std::rc::Rc::new(scope::Meta::Fn(method.clone())),
@@ -3447,7 +3785,7 @@ impl Evaler {
         for method in &ext.methods {
             // Create fully qualified method name: TypeName::method_name
             // Use double colon (::) to match type_decl's convention
-            let method_name: AutoStr = format!("{}::{}", ext.target, method.name).into();
+            let method_name: AutoStr = format!("{}.{}", ext.target, method.name).into();
 
             // Plan 035 Phase 5: Check for duplicate method definitions
             if let Some(existing_meta) = self.universe.borrow().lookup_meta(&method_name) {
@@ -3481,7 +3819,7 @@ impl Evaler {
         for method in &tag.methods {
             // Create fully qualified method name: TagName::method_name
             // Use double colon (::) to match type_decl's convention
-            let method_name: AutoStr = format!("{}::{}", tag.name, method.name).into();
+            let method_name: AutoStr = format!("{}.{}", tag.name, method.name).into();
 
             // Check for duplicate method definitions
             if let Some(existing_meta) = self.universe.borrow().lookup_meta(&method_name) {
@@ -3623,6 +3961,7 @@ impl Evaler {
                 left_value = Value::from_data(data_clone);
             }
         }
+
 
         let res: Option<Value> = match &left_value {
             Value::Type(typ) => {
@@ -3804,7 +4143,7 @@ impl Evaler {
                         None => {
                             // not a field, try method
                             let typ = instance.ty.name();
-                            let combined_name: AutoStr = format!("{}::{}", typ, name).into();
+                            let combined_name: AutoStr = format!("{}.{}", typ, name).into();
                             // println!("Combined name: {}", combined_name); // LSP: disabled
                             let method = self.universe.borrow().lookup_meta(&combined_name);
                             if let Some(meta) = method {
@@ -3843,7 +4182,7 @@ impl Evaler {
                             // Build qualified name like "str::contains"
                             let type_name = self.get_type_name(&left_value);
                             let qualified_method_name: AutoStr =
-                                format!("{}::{}", type_name, name).into();
+                                format!("{}.{}", type_name, name).into();
 
                             // Check if this method exists in universe (registered by ext statement)
                             let method_exists = self
@@ -4005,6 +4344,9 @@ impl Evaler {
         let name_expr = self.eval_expr(&expr);
         let mut args = self.eval_args(&node.args);
 
+        // Remember original args count before adding body pairs
+        let original_args_count = args.args.len();
+
         // Plan 056: Extract Pair properties from node.body and add them to args
         // This handles cases like `Point { x: 1, y: 2 }` where the properties are defined in body
         for stmt in node.body.stmts.iter() {
@@ -4142,7 +4484,8 @@ impl Evaler {
         nd.args = args.clone(); // Keep for backward compatibility
 
         // NEW: Populate unified props with args
-        nd.num_args = args.args.len();
+        // Use original_args_count to distinguish between args and body props
+        nd.num_args = original_args_count;
         for arg in args.args.iter() {
             match arg {
                 auto_val::Arg::Pos(expr) => {

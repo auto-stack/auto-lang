@@ -5,7 +5,7 @@ class Point {
     }
 
     modulus() {
-        this.x * this.x + this.y * this.y;
+        return self.x * self.x + self.y * self.y;
     }
 }
 

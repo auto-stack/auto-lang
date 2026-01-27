@@ -1105,7 +1105,6 @@ impl<'a> Parser<'a> {
                         Op::Dot => {
                             // Dot expression: extract field name from identifier
                             if let Expr::Ident(field_name) = rhs {
-                                eprintln!("DEBUG PARSER: Creating Expr::Dot for field '{}'", field_name);
                                 lhs = Expr::Dot(Box::new(lhs), field_name);
                             } else {
                                 // Error: right-hand side of dot must be an identifier
@@ -5473,7 +5472,7 @@ mod tests {
         let code = "var a = { 1: 2, 3: 4 }; a.1";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(bina (name a) (op .) (name 1))");
+        assert_eq!(last.to_string(), "(dot (name a).1)");
     }
 
     #[test]
@@ -5525,7 +5524,7 @@ mod tests {
         let call = ast.stmts[1].clone();
         assert_eq!(
             call.to_string(),
-            "(call (bina (name Atom) (op .) (name Int)) (args (int 5)))"
+            "(call (dot (name Atom).Int) (args (int 5)))"
         );
     }
 
@@ -5543,7 +5542,7 @@ mod tests {
         let mid = ast.stmts[1].clone();
         let last = ast.stmts.last().unwrap();
         assert_eq!(mid.to_string(), "(var (name p) (node (name Point) (args (pair (name x) (int 1)) (pair (name y) (int 2)))))");
-        assert_eq!(last.to_string(), "(bina (name p) (op .) (name x))");
+        assert_eq!(last.to_string(), "(dot (name p).x)");
     }
 
     #[test]
@@ -5661,7 +5660,7 @@ mod tests {
         let last = ast.stmts.last().unwrap();
         assert_eq!(
             last.to_string(),
-            "(index (bina (name a) (op .) (name b)) (int 0))"
+            "(index (dot (name a).b) (int 0))"
         );
     }
 
@@ -5745,7 +5744,7 @@ mod tests {
         }"#;
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int))) (methods (fn (name absquare) (ret int) (body (bina (bina (bina (name self) (op .) (name x)) (op *) (bina (name self) (op .) (name x))) (op +) (bina (bina (name self) (op .) (name y)) (op *) (bina (name self) (op .) (name y))))))))");
+        assert_eq!(last.to_string(), "(type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int))) (methods (fn (name absquare) (ret int) (body (bina (bina (dot (name self).x) (op *) (dot (name self).x)) (op +) (bina (dot (name self).y) (op *) (dot (name self).y)))))))");
     }
 
     #[test]
@@ -5863,7 +5862,7 @@ exe hello {
         let ast = parse_once(code);
         assert_eq!(
             ast.to_string(),
-            "(code (enum (name Color) (item (name Red) (value 0)) (item (name Green) (value 1)) (item (name Blue) (value 2))) (bina (name Color) (op .) (name Red)))"
+            "(code (enum (name Color) (item (name Red) (value 0)) (item (name Green) (value 1)) (item (name Blue) (value 2))) (dot (name Color).Red))"
         );
     }
 
@@ -5930,10 +5929,7 @@ exe hello {
         let ptr_type = parse_once(code);
         assert_eq!(
             ptr_type.to_string(),
-            format!(
-                "{}",
-                "(code (let (name ptr) (type (ptr-type (of int))) (bina (int 10) (op .) (name ptr))))"
-            )
+            "(code (let (name ptr) (type (ptr-type (of int))) (dot (int 10).ptr)))"
         )
     }
 
@@ -5943,10 +5939,7 @@ exe hello {
         let ptr_type = parse_once(code);
         assert_eq!(
             ptr_type.to_string(),
-            format!(
-                "{}",
-                "(code (let (name p) (type (ptr-type (of int))) (bina (int 10) (op .) (name ptr))))"
-            )
+            "(code (let (name p) (type (ptr-type (of int))) (dot (int 10).ptr)))"
         )
     }
 
@@ -5956,7 +5949,7 @@ exe hello {
         let ptr_type = parse_once(code);
         assert_eq!(
             ptr_type.to_string(),
-            "(code (bina (bina (name p) (op .) (name tgt)) (op +=) (int 1)))"
+            "(code (bina (dot (name p).tgt) (op +=) (int 1)))"
         )
     }
 

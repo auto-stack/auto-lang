@@ -50,7 +50,7 @@ let p *int = 10.ptr
 
 ---
 
-let(p, ptr(int), bina(10, ptr))
+let(p, ptr(int), (dot (int 10).ptr))
 
 ## Type - Array
 

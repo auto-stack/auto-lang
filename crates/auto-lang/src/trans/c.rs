@@ -930,7 +930,42 @@ impl CTrans {
             }
             // Plan 056: Dot expression for field access
             Expr::Dot(object, field) => {
-                // Field access: object.field
+                // Check if this is an enum access: Enum.Value -> ENUM_VALUE
+                if let Expr::Ident(type_name) = object.as_ref() {
+                    // Check if type_name is an enum
+                    if self.is_enum_type(type_name) {
+                        // Generate C enum syntax: COLOR_BLUE instead of Color.BLUE
+                        let enum_constant = format!("{}_{}", type_name, field).to_uppercase();
+                        out.write_all(enum_constant.as_bytes())?;
+                        return Ok(());
+                    }
+
+                    // Special case for self: use self-> instead of self.
+                    if type_name == "self" {
+                        out.write_all(b"self->")?;
+                        out.write_all(field.as_bytes())?;
+                        return Ok(());
+                    }
+
+                    // Special cases for pointer operations: ptr and tgt
+                    match field.as_str() {
+                        "ptr" => {
+                            // x.ptr -> &x
+                            out.write_all(b"&")?;
+                            self.expr(object, out)?;
+                            return Ok(());
+                        }
+                        "tgt" => {
+                            // y.tgt -> *y
+                            out.write_all(b"*")?;
+                            self.expr(object, out)?;
+                            return Ok(());
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Regular field access: object.field
                 self.expr(object, out)?;
                 out.write_all(b".")?;
                 out.write_all(field.as_bytes())?;
@@ -1892,10 +1927,8 @@ impl CTrans {
                                 }
                             }
                             let ty = self.infer_expr_type(expr);
-                            eprintln!("DEBUG infer_is_return_type: expr={:?}, ty={:?}", expr, ty);
                             if let Some(t) = ty {
                                 if !matches!(t, Type::Unknown) {
-                                    eprintln!("DEBUG infer_is_return_type: returning {:?}", t);
                                     return t;
                                 }
                             }
@@ -1904,7 +1937,6 @@ impl CTrans {
                 }
             }
         }
-        eprintln!("DEBUG infer_is_return_type: returning Void");
         Type::Void
     }
 
@@ -2163,6 +2195,13 @@ impl CTrans {
 
     fn lookup_type(&self, ident: &AutoStr) -> Type {
         self.scope.borrow().lookup_type(ident)
+    }
+
+    fn is_enum_type(&self, type_name: &AutoStr) -> bool {
+        match self.lookup_type(type_name) {
+            Type::Enum(_) => true,
+            _ => false,
+        }
     }
 
     fn print_slice(&mut self, arr: &Expr, r: &Range, out: &mut impl Write) -> AutoResult<()> {
@@ -2714,11 +2753,18 @@ impl CTrans {
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         // method call
+        // Support both old syntax (Expr::Bina with Op::Dot) and new syntax (Expr::Dot)
         if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
             if matches!(op, Op::Dot) {
                 if self.method_call(lhs, rhs, call, out)? {
                     return Ok(());
                 }
+            }
+        } else if let Expr::Dot(object, method) = call.name.as_ref() {
+            // Plan 056: Method call using Expr::Dot(object, method)
+            // Convert object and method to boxed references for method_call
+            if self.method_call(&Box::new(object.as_ref().clone()), &Box::new(Expr::Ident(method.clone())), call, out)? {
+                return Ok(());
             }
         }
 

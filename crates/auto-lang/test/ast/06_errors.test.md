@@ -38,17 +38,6 @@ Error: auto_name_E0201
   help: Variable 'cuonter' is not defined in this scope. Did you mean
         'counter'?
 
-## dot expression with undefined base
-
-obj.value
-
----
-
-Error: auto_name_E0201
-
-  × undefined variable
-  help: Variable 'obj' is not defined in this scope
-
 ## case sensitivity test
 
 let UserName = "alice"

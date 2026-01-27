@@ -75,6 +75,15 @@ impl PythonTrans {
                 }
             }
 
+            // Plan 056: Dot expression for field access
+            Expr::Dot(object, field) => {
+                // Python uses . for all field access (including pointers)
+                self.expr(object, out)?;
+                out.write_all(b".")?;
+                out.write_all(field.as_bytes())?;
+                Ok(())
+            }
+
             // Unary operations
             Expr::Unary(op, expr) => {
                 out.write(format!("{}", op.op()).as_bytes()).to()?;

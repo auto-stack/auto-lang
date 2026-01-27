@@ -119,6 +119,13 @@ impl RustTrans {
         }
     }
 
+    fn is_enum_type(&self, type_name: &AutoStr) -> bool {
+        match self.scope.borrow().lookup_type(type_name) {
+            Type::Enum(_) => true,
+            _ => false,
+        }
+    }
+
     fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
         match expr {
             // Literals
@@ -680,7 +687,17 @@ impl RustTrans {
 
             // Plan 056: Dot expression for field access
             Expr::Dot(object, field) => {
-                // Field access: object.field
+                // Check if this is an enum access: Enum.Value -> Enum::Value (Rust syntax)
+                if let Expr::Ident(type_name) = object.as_ref() {
+                    // Check if type_name is an enum
+                    if self.is_enum_type(type_name) {
+                        // Generate Rust enum syntax: Color::BLUE instead of Color.BLUE
+                        write!(out, "{}::{}", type_name, field)?;
+                        return Ok(());
+                    }
+                }
+
+                // Regular field access: object.field
                 self.expr(object, out)?;
                 write!(out, ".{}", field)?;
                 Ok(())
