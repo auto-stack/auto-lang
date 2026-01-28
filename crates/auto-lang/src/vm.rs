@@ -472,6 +472,38 @@ pub fn init_storage_module() {
 
     storage_module.types.insert("Heap".into(), heap_type);
 
+    // Register InlineInt64 type with methods
+    let mut inline_int64_type = VmTypeEntry {
+        name: "InlineInt64".into(),
+        methods: HashMap::new(),
+    };
+
+    // Register InlineInt64.new() as a static function
+    storage_module.functions.insert(
+        "InlineInt64.new".into(),
+        VmFunctionEntry {
+            name: "InlineInt64.new".into(),
+            func: storage::inline_int64_new,
+            is_method: false,
+        },
+    );
+
+    // Register InlineInt64 instance methods
+    inline_int64_type
+        .methods
+        .insert("data".into(), storage::inline_int64_data as VmMethod);
+    inline_int64_type
+        .methods
+        .insert("capacity".into(), storage::inline_int64_capacity as VmMethod);
+    inline_int64_type
+        .methods
+        .insert("try_grow".into(), storage::inline_int64_try_grow as VmMethod);
+    inline_int64_type
+        .methods
+        .insert("drop".into(), storage::inline_int64_drop as VmMethod);
+
+    storage_module.types.insert("InlineInt64".into(), inline_int64_type);
+
     // Register the module
     VM_REGISTRY.lock().unwrap().register_module(storage_module);
 }
