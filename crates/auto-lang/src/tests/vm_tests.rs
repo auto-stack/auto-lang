@@ -754,7 +754,7 @@ fn test_type_field_mutation() {
                 x int
                 y int
             }
-            mut p = Point {x: 10, y: 20}
+            mut p = Point(x: 10, y: 20)
             p.x = 30
             p.x
         "#;

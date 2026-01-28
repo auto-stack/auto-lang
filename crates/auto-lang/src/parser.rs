@@ -903,6 +903,8 @@ impl<'a> Parser<'a> {
 
         // Prefix
         let lhs = match self.kind() {
+            // if expression
+            TokenKind::If => self.if_expr()?,
             // unary
             TokenKind::Add | TokenKind::Sub | TokenKind::Not => {
                 let op = self.op();
@@ -6102,7 +6104,7 @@ mod tests {
         let ast = parse_once(code);
         let mid = ast.stmts[1].clone();
         let last = ast.stmts.last().unwrap();
-        assert_eq!(mid.to_string(), "(var (name p) (node (name Point) (args (pair (name x) (int 1)) (pair (name y) (int 2)))))");
+        assert_eq!(mid.to_string(), "(var (name p) (call (name Point) (args (pair (name x) (int 1)) (pair (name y) (int 2)))))");
         assert_eq!(last.to_string(), "(dot (name p).x)");
     }
 

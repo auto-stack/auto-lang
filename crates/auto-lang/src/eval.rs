@@ -2546,6 +2546,34 @@ impl Evaler {
         // First, try to lookup the function name directly (only for simple identifiers)
         // This enables functions like alloc_array() that are registered globally
         if let Expr::Ident(func_name) = call.name.as_ref() {
+            // Check if this is a type instantiation (e.g., Point(x: 1, y: 2))
+            let type_lookup = self.universe.borrow().lookup_type(func_name);
+            if !matches!(type_lookup, ast::Type::Unknown) {
+                // This is a type instantiation!
+                // Convert AST args to auto_val::Args
+                let mut arg_vals = Vec::new();
+                for arg in call.args.args.iter() {
+                    match arg {
+                        ast::Arg::Pos(expr) => {
+                            let val = self.eval_expr(expr);
+                            arg_vals.push(auto_val::Arg::Pos(val));
+                        }
+                        ast::Arg::Pair(name, expr) => {
+                            let val = self.eval_expr(expr);
+                            arg_vals.push(auto_val::Arg::Pair(
+                                auto_val::ValueKey::Str(name.clone()),
+                                val,
+                            ));
+                        }
+                        ast::Arg::Name(name) => {
+                            arg_vals.push(auto_val::Arg::Name(name.clone()));
+                        }
+                    }
+                }
+                let args = auto_val::Args { args: arg_vals };
+                return Ok(self.eval_type_new(func_name, &args));
+            }
+
             // Try to find global VM function in VM registry (Plan 052 Phase 2)
             // Search for this function in all VM modules
             let registry = crate::vm::VM_REGISTRY.lock().unwrap();
