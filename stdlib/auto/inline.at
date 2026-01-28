@@ -1,0 +1,125 @@
+// Inline storage strategies for List<T>
+// Stack-allocated storage for embedded systems (MCU-friendly)
+// Zero heap allocation, deterministic memory usage
+
+// ============================================================================
+// Generic Storage Spec (from storage.at)
+// ============================================================================
+
+/// Generic storage specification for dynamic collections
+/// This defines the contract that all storage strategies must implement
+spec Storage<T> {
+    /// Get raw pointer to data
+    /// Returns pointer to the underlying data buffer
+    fn data() *T
+
+    /// Get physical capacity
+    /// Returns the number of elements that can be stored without growing
+    fn capacity() u32
+
+    /// Try to grow to minimum capacity
+    /// Attempts to grow the storage to accommodate at least min_cap elements
+    /// For Inline storage, this only succeeds if min_cap <= capacity
+    /// Returns true on success, false if out of memory or growth not possible
+    fn try_grow(min_cap u32) bool
+}
+
+// ============================================================================
+// Inline Storage (MCU Standard)
+// ============================================================================
+
+/// Stack-allocated fixed-size storage for embedded systems
+/// Example: 64-element inline storage for integers
+type InlineInt64 as Storage<int> {
+    buffer [64]int
+}
+
+// Example: 256-element inline storage for bytes
+type InlineU8_256 as Storage<u8> {
+    buffer [256]u8
+}
+
+// ============================================================================
+// C Implementation (Plan 052 Phase 4)
+// ============================================================================
+
+ext InlineInt64 {
+    #[c, pub]
+    static fn new() InlineInt64 {
+        return InlineInt64(buffer: [0])
+    }
+
+    #[c, pub]
+    fn data() *int {
+        return .buffer.ptr
+    }
+
+    #[c, pub]
+    fn capacity() u32 {
+        return 64
+    }
+
+    #[c, pub]
+    fn try_grow(min_cap u32) bool {
+        return min_cap <= 64
+    }
+
+    #[c, pub]
+    fn drop() {
+        // No-op for stack allocation
+    }
+}
+
+ext InlineU8_256 {
+    #[c, pub]
+    static fn new() InlineU8_256 {
+        return InlineU8_256(buffer: [0])
+    }
+
+    #[c, pub]
+    fn data() *u8 {
+        return .buffer.ptr
+    }
+
+    #[c, pub]
+    fn capacity() u32 {
+        return 256
+    }
+
+    #[c, pub]
+    fn try_grow(min_cap u32) bool {
+        return min_cap <= 256
+    }
+
+    #[c, pub]
+    fn drop() {
+        // No-op for stack allocation
+    }
+}
+
+// ============================================================================
+// Future Work (Plan 052 Extended)
+// ============================================================================
+//
+/// Once const generics in type declarations are fully supported:
+///
+/// type Inline<T, N uint> as Storage<T> {
+///     buffer [N]T
+/// }
+///
+/// ext Inline {
+///     #[c]
+///     fn data() *T {
+///         return .buffer.ptr
+///     }
+///
+///     #[c]
+///     fn capacity() u32 {
+///         return N
+///     }
+///
+///     #[c]
+///     fn try_grow(min_cap u32) bool {
+///         return min_cap <= N
+///     }
+/// }

@@ -1,14 +1,14 @@
 // VM implementation of Heap<T> storage
 
-ext Heap<T> {
+ext Heap {
     // Create empty heap storage
     // VM implementation returns Instance with nil ptr and 0 cap
     #[vm]
-    static fn new() Heap<T>;
+    static fn new() Heap;
 
     // Get raw data pointer (from instance field)
     #[vm]
-    fn data() *T;
+    fn data() *void;
 
     // Get physical capacity (from instance field)
     #[vm]

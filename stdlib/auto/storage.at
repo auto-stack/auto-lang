@@ -2,34 +2,35 @@
 // This module provides pluggable storage backends for dynamic collections
 
 // ============================================================================
+// Generic Storage Spec (Plan 052 + Plan 057)
+// ============================================================================
+
+/// Generic storage specification for dynamic collections
+/// This defines the contract that all storage strategies must implement
+spec Storage<T> {
+    /// Get raw pointer to data
+    /// Returns pointer to the underlying data buffer
+    fn data() *T
+
+    /// Get physical capacity
+    /// Returns the number of elements that can be stored without growing
+    fn capacity() u32
+
+    /// Try to grow to minimum capacity
+    /// Attempts to grow the storage to accommodate at least min_cap elements
+    /// Uses exponential growth strategy: max(min_cap, current_cap * 2)
+    /// Returns true on success, false if out of memory or growth not possible
+    fn try_grow(min_cap u32) bool
+}
+
+// ============================================================================
 // Heap Storage (PC Standard)
 // ============================================================================
 
 // Heap-allocated storage using malloc/realloc
 // Suitable for: PC, server, systems with heap
-type Heap<T> {
-    // Note: ptr and cap fields are defined in storage.c.at (C implementation)
-    // and managed by the VM/runtime
-
-    // Create empty heap storage
-    #[c, vm, pub]
-    static fn new() Heap<T>;
-
-    // Get raw data pointer
-    #[c, pub]
-    fn data() *T;
-
-    // Get physical capacity
-    #[c, pub]
-    fn capacity() u32;
-
-    // Try to grow to minimum capacity
-    // Uses exponential growth: max(min_cap, cap * 2)
-    // Returns true on success, false if out of memory
-    #[c, vm, pub]
-    fn try_grow(min_cap u32) bool;
-
-    // Free memory (called by List.drop())
-    #[c, vm, pub]
-    fn drop();
+// Methods implemented in storage.c.at and storage.vm.at
+type Heap<T> as Storage<T> {
+    ptr *T
+    cap u32
 }

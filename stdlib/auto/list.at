@@ -1,40 +1,49 @@
-/// Dynamic list (Vec-like) for storing elements
-/// Generic implementation that works with any type T
+/// Storage-agnostic dynamic list (Vec-like) for storing elements
+/// Uses pluggable storage strategies via the Storage<T> spec
+/// Plan 052: Storage-based list implementation
+///
+/// LIMITATIONS (to be addressed in future plans):
+/// - Trait bounds (S: Storage<T>) require Plan 058
+/// - Generic ext blocks require parser enhancement
+/// - For now, methods use VM/C implementations directly
 
-type List<T> {
-    // Internal VM and C implementations handle the actual data storage
+type List<T, S> {
+    // Number of elements currently in the list
+    len u32
+
+    // Storage backend (Heap<T>, Inline<T, N>, etc.)
+    // Must implement Storage<T> spec
+    store S
 
     // ========================================================================
     // Static Methods - Creation
     // ========================================================================
 
-    /// Create a new empty List
-    /// Example: List.new() or List<int>.new()
+    /// Create a new empty List with the given storage strategy
+    /// Example: List<int, Heap>.new()
     #[c, vm, pub]
-    static fn new() List<T>
+    static fn new() List<T, S>
 
     // ========================================================================
     // Instance Methods - Access
     // ========================================================================
 
-    /// Get the number of elements
+    /// Get the number of elements in the list
     /// Example: list.len()
     #[c, vm, pub]
     fn len() int
 
-    /// Check if list is empty
+    /// Check if the list is empty
     /// Example: list.is_empty()
     #[c, vm, pub]
     fn is_empty() bool
 
-    /// Get the capacity of the list (Plan 055)
-    /// For Dynamic storage: returns INT_MAX (unlimited)
-    /// For Fixed storage: returns the fixed capacity
+    /// Get the total capacity (from storage)
     /// Example: list.capacity()
     #[c, vm, pub]
     fn capacity() int
 
-    /// Get element at index
+    /// Get element at index (bounds checking required)
     /// Example: list.get(0)
     #[c, vm, pub]
     fn get(index int) T
@@ -43,7 +52,7 @@ type List<T> {
     // Instance Methods - Modification
     // ========================================================================
 
-    /// Push element to the end
+    /// Push element to the end (grows storage if needed)
     /// Example: list.push(item)
     #[c, vm, pub]
     fn push(elem T)
@@ -58,31 +67,16 @@ type List<T> {
     #[c, vm, pub]
     fn set(index int, elem T) int
 
-    /// Insert element at index
-    /// Example: list.insert(0, item)
-    #[c, vm, pub]
-    fn insert(index int, elem T)
-
-    /// Remove element at index and return it
-    /// Example: list.remove(0)
-    #[c, vm, pub]
-    fn remove(index int) T
-
-    /// Remove all elements
+    /// Remove all elements (keeps capacity)
     /// Example: list.clear()
     #[c, vm, pub]
     fn clear()
-
-    /// Reserve capacity for additional elements
-    /// Example: list.reserve(100)
-    #[c, vm, pub]
-    fn reserve(additional int)
 
     // ========================================================================
     // Instance Methods - Lifecycle
     // ========================================================================
 
-    /// Free the List's resources
+    /// Free the list's resources (drops storage)
     /// Example: list.drop()
     #[c, vm, pub]
     fn drop()

@@ -2,19 +2,16 @@
 
 use c.stdlib: malloc, realloc, free
 
-ext Heap<T> {
-    ptr: *T
-    cap: u32
-
+ext Heap {
     // Create empty heap storage (initializes to null pointer)
     #[pub]
-    static fn new() Heap<T> {
-        return Heap(ptr: 0 as *T, cap: 0)
+    static fn new() Heap {
+        return Heap(ptr: 0 as *void, cap: 0)
     }
 
     // Get raw data pointer
     #[pub]
-    fn data() *T {
+    fn data() *void {
         return .ptr
     }
 
@@ -39,7 +36,7 @@ ext Heap<T> {
             return false
         }
 
-        .ptr = new_ptr as *T
+        .ptr = new_ptr as *void
         .cap = new_cap
         return true
     }
