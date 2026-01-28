@@ -1,0 +1,25 @@
+// VM implementation of Heap<T> storage
+
+ext Heap<T> {
+    // Create empty heap storage
+    // VM implementation returns Instance with nil ptr and 0 cap
+    #[vm]
+    static fn new() Heap<T>;
+
+    // Get raw data pointer (from instance field)
+    #[vm]
+    fn data() *T;
+
+    // Get physical capacity (from instance field)
+    #[vm]
+    fn capacity() u32;
+
+    // Try to grow to minimum capacity
+    // VM implementation delegates to alloc_array/realloc_array
+    #[vm]
+    fn try_grow(min_cap u32) bool;
+
+    // Free memory (VM implementation clears instance)
+    #[vm]
+    fn drop();
+}

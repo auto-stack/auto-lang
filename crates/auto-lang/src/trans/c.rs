@@ -1153,16 +1153,16 @@ impl CTrans {
                         return Ok(());
                     }
 
-                    // Special cases for pointer operations: ptr and tgt
+                    // Special cases for pointer operations: @ and *
                     match field.as_str() {
-                        "ptr" => {
-                            // x.ptr -> &x
+                        "@" => {
+                            // x.@ -> &x (address-of operator)
                             out.write_all(b"&")?;
                             self.expr(object, out)?;
                             return Ok(());
                         }
-                        "tgt" => {
-                            // y.tgt -> *y
+                        "*" => {
+                            // y.* -> *y (dereference operator)
                             out.write_all(b"*")?;
                             self.expr(object, out)?;
                             return Ok(());

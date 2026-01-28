@@ -1,15 +1,15 @@
 fn inc(a *int) {
-    a.tgt += 1
+    a.* += 1
 }
 
 fn main() {
     var x = 5;
     print("x = ", x)
-    var y *int = x.ptr
-    print("y = ", y.tgt)
-    y.tgt += 1
+    var y *int = x.@
+    print("y = ", y.*)
+    y.* += 1
     print("now x is", x)
 
-    inc(x.ptr)
+    inc(x.@)
     print("now x is", x)
 }

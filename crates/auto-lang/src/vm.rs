@@ -7,6 +7,7 @@ pub mod collections;
 pub mod io;
 pub mod list;
 pub mod memory;
+pub mod storage;
 
 /// VM function signature: takes universe and single value argument
 pub type VmFunction = fn(Shared<crate::Universe>, auto_val::Value) -> auto_val::Value;
@@ -418,4 +419,59 @@ pub fn init_builder_module() {
 
     // Register the module
     VM_REGISTRY.lock().unwrap().register_module(builder_module);
+}
+
+/// Initialize and register the storage module with the VM registry
+/// This module provides Heap<T> and other storage strategies for Plan 052
+pub fn init_storage_module() {
+    use std::sync::Mutex;
+
+    static INIT: Mutex<bool> = Mutex::new(false);
+    let mut initialized = INIT.lock().unwrap();
+    if *initialized {
+        return;
+    }
+    *initialized = true;
+    drop(initialized);
+
+    let mut storage_module = VmModule {
+        name: "storage".into(),
+        functions: HashMap::new(),
+        types: HashMap::new(),
+    };
+
+    // Register Heap<T> type with methods
+    let mut heap_type = VmTypeEntry {
+        name: "Heap".into(),
+        methods: HashMap::new(),
+    };
+
+    // Register Heap.new() as a static function
+    storage_module.functions.insert(
+        "Heap.new".into(),
+        VmFunctionEntry {
+            name: "Heap.new".into(),
+            func: storage::heap_new,
+            is_method: false,
+        },
+    );
+
+    // Register Heap instance methods
+    heap_type
+        .methods
+        .insert("data".into(), storage::heap_data as VmMethod);
+    heap_type
+        .methods
+        .insert("capacity".into(), storage::heap_capacity as VmMethod);
+    heap_type
+        .methods
+        .insert("try_grow".into(), storage::heap_try_grow as VmMethod);
+    heap_type
+        .methods
+        .insert("drop".into(), storage::heap_drop as VmMethod);
+
+    storage_module.types.insert("Heap".into(), heap_type);
+
+    // Register the module
+    VM_REGISTRY.lock().unwrap().register_module(storage_module);
 }

@@ -9,7 +9,7 @@ fn main() {
     for {
         print(c"Enter a line of text: ") // TODO: print without newline
 
-        let rn = getline(lineptr.ptr, n.ptr, stdin)
+        let rn = getline(lineptr.@, n.@, stdin)
 
         if rn != -1 {
             if lineptr[0] == 'q' {

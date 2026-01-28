@@ -942,9 +942,16 @@ impl<'a> Parser<'a> {
             if self.is_kind(TokenKind::Dot) {
                 self.next(); // skip .
                 let field_name = self.cur.text.clone();
-                self.expect(TokenKind::Ident)?;
-                // Use Expr::Dot for semantic clarity
-                lhs = Expr::Dot(Box::new(lhs), field_name);
+                // Allow @ and * as special field names for pointer operations
+                if self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::At) || self.is_kind(TokenKind::Star) {
+                    self.next();
+                    // Use Expr::Dot for semantic clarity
+                    lhs = Expr::Dot(Box::new(lhs), field_name);
+                } else {
+                    let message = format!("Expected identifier, @, or * after dot, got {:?}", self.cur.kind);
+                    let span = pos_to_span(self.cur.pos);
+                    return Err(SyntaxError::Generic { message, span }.into());
+                }
             } else {
                 break;
             }
@@ -1582,6 +1589,9 @@ impl<'a> Parser<'a> {
             TokenKind::CStr => Expr::CStr(self.cur.text.clone()),
             TokenKind::Char => Expr::Char(self.cur.text.chars().nth(0).unwrap()),
             TokenKind::Ident => self.ident()?,
+            // Allow @ and * as special identifiers for pointer operations
+            TokenKind::At => Expr::Ident("@".into()),
+            TokenKind::Star => Expr::Ident("*".into()),
             TokenKind::Nil => Expr::Nil,
             TokenKind::Null => Expr::Null,
             _ => {
@@ -5206,20 +5216,55 @@ impl<'a> Parser<'a> {
     }
 
     pub fn node_or_call_expr(&mut self) -> AutoResult<Expr> {
-        let mut ident = self.ident()?;
-        self.next();
+        // Parse identifier or generic type instance (e.g., List or List<int>)
+        let name = self.cur.text.clone();
+        self.next(); // skip the identifier
+
+        // Check if this is a generic type instance (e.g., List<int>, Heap<T>)
+        let mut ident = if self.is_kind(TokenKind::Lt) && self.next_token_is_type() {
+            // Parse as generic instance and create GenName expression
+            self.expect(TokenKind::Lt)?;
+
+            let mut args = Vec::new();
+            args.push(self.parse_type()?);
+
+            while self.cur.kind == TokenKind::Comma {
+                self.next(); // Consume ','
+                args.push(self.parse_type()?);
+            }
+
+            self.expect(TokenKind::Gt)?;
+
+            // Generate descriptive name: "List<int>", "Heap<T>", etc.
+            let args_str = args.iter()
+                .map(|t| t.unique_name().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let generic_name = format!("{}<{}>", name, args_str);
+
+            Expr::GenName(generic_name.into())
+        } else {
+            // Regular identifier
+            Expr::Ident(name)
+        };
 
         // Plan 056: Use Expr::Dot for semantic clarity
         while self.is_kind(TokenKind::Dot) {
             self.next(); // skip dot
-            let next_ident = self.parse_ident()?;
-            // Extract Name from Expr::Ident
-            let field_name = match next_ident {
-                Expr::Ident(name) => name,
-                _ => return Err(SyntaxError::Generic {
-                    message: format!("Expected identifier after dot, got {:?}", next_ident),
+            // Allow @ and * as special field names for pointer operations
+            let field_name = if self.is_kind(TokenKind::Ident) {
+                let text = self.cur.text.clone();
+                self.next();
+                text
+            } else if self.is_kind(TokenKind::At) || self.is_kind(TokenKind::Star) {
+                let text = self.cur.text.clone();
+                self.next();
+                text
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected identifier, @, or * after dot, got {:?}", self.cur.kind),
                     span: pos_to_span(self.cur.pos),
-                }.into()),
+                }.into());
             };
             ident = Expr::Dot(Box::new(ident), field_name);
         }
@@ -5227,6 +5272,26 @@ impl<'a> Parser<'a> {
         let is_constructor = match &ident {
             Expr::Ident(n) => {
                 let meta = self.lookup_meta(n);
+                if let Some(m) = meta {
+                    match m.as_ref() {
+                        Meta::Type(_) => true,
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+            Expr::GenName(name) => {
+                // Generic instance like "List<int>" or "Heap<T>"
+                // Extract base type name (before the first '<')
+                let name_str = name.as_str();
+                let base_name = if let Some(pos) = name_str.find('<') {
+                    &name_str[..pos]
+                } else {
+                    name_str
+                };
+
+                let meta = self.lookup_meta(base_name);
                 if let Some(m) = meta {
                     match m.as_ref() {
                         Meta::Type(_) => true,
@@ -6112,31 +6177,31 @@ exe hello {
 
     #[test]
     fn test_ptr_type() {
-        let code = r#"let ptr *int = 10.ptr"#;
+        let code = r#"let ptr *int = 10.@"#;
         let ptr_type = parse_once(code);
         assert_eq!(
             ptr_type.to_string(),
-            "(code (let (name ptr) (type (ptr-type (of int))) (dot (int 10).ptr)))"
+            "(code (let (name ptr) (type (ptr-type (of int))) (dot (int 10).@)))"
         )
     }
 
     #[test]
     fn test_ptr_asn() {
-        let code = r#"let p *int = 10.ptr"#;
+        let code = r#"let p *int = 10.@"#;
         let ptr_type = parse_once(code);
         assert_eq!(
             ptr_type.to_string(),
-            "(code (let (name p) (type (ptr-type (of int))) (dot (int 10).ptr)))"
+            "(code (let (name p) (type (ptr-type (of int))) (dot (int 10).@)))"
         )
     }
 
     #[test]
     fn test_ptr_target() {
-        let code = r#"p.tgt += 1"#;
+        let code = r#"p.* += 1"#;
         let ptr_type = parse_once(code);
         assert_eq!(
             ptr_type.to_string(),
-            "(code (bina (dot (name p).tgt) (op +=) (int 1)))"
+            "(code (bina (dot (name p).*) (op +=) (int 1)))"
         )
     }
 

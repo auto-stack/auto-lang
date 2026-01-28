@@ -46,11 +46,11 @@ fn say () void { call print ("Hello, World!") }
 
 ## Type - Pointer
 
-let p *int = 10.ptr
+let p *int = 10.@
 
 ---
 
-let(p, ptr(int), (dot (int 10).ptr))
+let(p, ptr(int), (dot (int 10).@))
 
 ## Type - Array
 

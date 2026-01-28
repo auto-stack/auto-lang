@@ -1,0 +1,54 @@
+// C implementation of Heap<T> storage
+
+use c.stdlib: malloc, realloc, free
+
+ext Heap<T> {
+    ptr: *T
+    cap: u32
+
+    // Create empty heap storage (initializes to null pointer)
+    #[pub]
+    static fn new() Heap<T> {
+        return Heap(ptr: 0 as *T, cap: 0)
+    }
+
+    // Get raw data pointer
+    #[pub]
+    fn data() *T {
+        return .ptr
+    }
+
+    // Get physical capacity
+    #[pub]
+    fn capacity() u32 {
+        return .cap
+    }
+
+    // Try to grow to minimum capacity
+    // Uses exponential growth: max(min_cap, cap * 2)
+    // Returns true on success, false if out of memory
+    #[pub]
+    fn try_grow(min_cap u32) bool {
+        let new_cap = if .cap == 0 { 8 } else { .cap * 2 }
+        if new_cap < min_cap {
+            new_cap = min_cap
+        }
+
+        let new_ptr = realloc(.ptr, new_cap * 4)
+        if new_ptr == 0 {
+            return false
+        }
+
+        .ptr = new_ptr as *T
+        .cap = new_cap
+        return true
+    }
+
+    // Free memory
+    #[pub]
+    fn drop() {
+        if .ptr != 0 {
+            free(.ptr)
+        }
+    }
+}

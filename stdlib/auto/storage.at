@@ -1,22 +1,35 @@
+// Storage strategies for List<T>
+// This module provides pluggable storage backends for dynamic collections
 
+// ============================================================================
+// Heap Storage (PC Standard)
+// ============================================================================
+
+// Heap-allocated storage using malloc/realloc
+// Suitable for: PC, server, systems with heap
 type Heap<T> {
-    ptr *T
-    cap u32
-}
+    // Note: ptr and cap fields are defined in storage.c.at (C implementation)
+    // and managed by the VM/runtime
 
-ext Heap<T> {
+    // Create empty heap storage
     #[c, vm, pub]
-    static fn new() Heap<T>
+    static fn new() Heap<T>;
 
+    // Get raw data pointer
     #[c, pub]
-    fn data() *T
+    fn data() *T;
 
+    // Get physical capacity
     #[c, pub]
-    fn capacity() u32
+    fn capacity() u32;
 
+    // Try to grow to minimum capacity
+    // Uses exponential growth: max(min_cap, cap * 2)
+    // Returns true on success, false if out of memory
     #[c, vm, pub]
-    fn try_grow(min_cap u32) bool
+    fn try_grow(min_cap u32) bool;
 
+    // Free memory (called by List.drop())
     #[c, vm, pub]
-    fn drop()
+    fn drop();
 }

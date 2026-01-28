@@ -41,6 +41,7 @@ impl Interpreter {
         crate::vm::init_io_module();
         crate::vm::init_collections_module();
         crate::vm::init_builder_module();
+        crate::vm::init_storage_module();
 
         // Load standard type definitions to register HashMap, HashSet, StringBuilder, List types
         Self::load_stdlib_types(&interpreter.scope);
