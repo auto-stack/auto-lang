@@ -1,0 +1,4 @@
+// Debug test - simplest possible
+fn main() {
+    let x = 42
+}

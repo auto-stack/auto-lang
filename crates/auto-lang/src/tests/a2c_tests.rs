@@ -860,3 +860,8 @@ fn test_101_list_iter() {
     test_a2c("101_list_iter").unwrap();
 }
 
+#[test]
+fn test_102_generic_field() {
+    test_a2c("102_generic_field").unwrap();
+}
+
