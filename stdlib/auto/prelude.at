@@ -37,6 +37,10 @@ use auto.list: List
 
 use auto.iter.spec: Iter, Iterable
 
+// Iterator adapters (Plan 051 Phase 2)
+use auto.iter.adapters.map: MapIter
+use auto.iter.adapters.filter: FilterIter
+
 // ============================================================================
 // Error Handling with May<T>
 // ============================================================================

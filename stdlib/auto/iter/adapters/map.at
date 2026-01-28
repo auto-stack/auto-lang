@@ -1,20 +1,18 @@
 /// Map Adapter - Plan 051 Phase 2
 /// Transforms each element using a function
 
-/// Iterator that maps each element to a new value
+use auto.iter.spec: Iter
+
+/// Iterator that maps each element I -> T -> U
 type MapIter<I, T, U> {
-    iter I      // Underlying iterator
+    iter I  // Generic type field - now supported!
+    func fn(T)U  // Function to apply to each element
 }
 
-// MapIter for int -> int transformation
-type MapIntIter {
-    iter Iter<int>
-}
-
-impl Iter<int> for MapIntIter {
+impl Iter<int> for MapIter<Iter<int>, int, int> {
     #[c, vm]
     fn next() May<int> {
         let item = .iter.next()?
-        return item * 2  // Default: double the value
+        return .func(item)
     }
 }

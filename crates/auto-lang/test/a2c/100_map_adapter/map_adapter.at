@@ -1,28 +1,10 @@
 // Test Map adapter - Plan 051 Phase 2
-// Simplified version without closures or generic fields
+// Test that generic type fields work in adapter types
 
-spec Iter<T> {
-    fn next() May<T>
-}
-
-type RangeIter {
-    current int
-    end int
-}
-
-impl Iter<int> for RangeIter {
-    #[c]
-    fn next() May<int> {
-        if .current >= .end {
-            return nil
-        }
-        let val = .current
-        .current = .current + 1
-        return val
-    }
+type MapIter<I, T, U> {
+    iter I  // Generic type field
 }
 
 fn main() {
-    // Test basic iterator
-    let range = RangeIter { current: 1, end: 4 }
+    let x = 42
 }

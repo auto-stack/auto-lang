@@ -1,0 +1,23 @@
+/// Filter Adapter - Plan 051 Phase 2
+/// Filters elements using a predicate function
+
+use auto.iter.spec: Iter
+
+/// Iterator that filters elements I -> T
+type FilterIter<I, T> {
+    iter I  // Generic type field - now supported!
+    pred fn(T)bool  // Predicate function
+}
+
+impl Iter<int> for FilterIter<Iter<int>, int> {
+    #[c, vm]
+    fn next() May<int> {
+        loop {
+            let item = .iter.next()?
+            if .pred(item) {
+                return item
+            }
+            // Otherwise, continue to next element
+        }
+    }
+}
