@@ -1,0 +1,93 @@
+/// Default Storage Selection for List<T, S>
+///
+/// This module documents recommended storage strategies for different environments.
+/// Since AutoLang doesn't support type aliases with `=` syntax yet, use the
+/// full type notation shown below.
+///
+/// ## Quick Reference
+///
+/// ```auto
+/// // PC heap-allocated list (dynamic growth, unlimited capacity)
+/// let pc_list List<int, Heap> = List.new()
+/// pc_list.push(1)
+/// pc_list.push(2)
+///
+/// // MCU stack-allocated list (fixed 64-element capacity, zero heap)
+/// let mcu_list List<int, InlineInt64> = List.new()
+/// mcu_list.push(1)
+/// mcu_list.push(2)
+/// ```
+///
+/// ## Storage Strategies
+///
+/// ### PC/Server: List<T, Heap>
+///
+/// **Use when:**
+/// - Running on PC or server
+/// - Heap allocator is available
+/// - Need dynamic growth
+/// - Capacity is unknown at compile time
+///
+/// **Characteristics:**
+/// - Dynamic growth via malloc/realloc
+/// - Limited only by available memory
+/// - try_grow() may fail (returns false) if OOM
+///
+/// **Examples:**
+/// ```auto
+/// // Integer list (PC)
+/// let numbers List<int, Heap> = List.new()
+///
+/// // String list (PC - via pointers)
+/// let strings List<str, Heap> = List.new()
+///
+/// // Custom struct list (PC)
+/// let items List<MyItem, Heap> = List.new()
+/// ```
+///
+/// ### MCU/Embedded: List<T, InlineInt64>
+///
+/// **Use when:**
+/// - Running on microcontroller
+/// - No heap allocator available
+/// - Need deterministic memory usage
+/// - Capacity is small and known
+///
+/// **Characteristics:**
+/// - Fixed 64-element capacity (hard limit)
+/// - Zero heap usage (stack-allocated only)
+/// - try_grow() succeeds only if min_cap ≤ 64
+/// - Currently works with int type only
+///
+/// **Examples:**
+/// ```auto
+/// // Integer list (MCU)
+/// let sensor_readings List<int, InlineInt64> = List.new()
+/// sensor_readings.push(100)
+/// sensor_readings.push(200)
+/// ```
+///
+/// ## Why Not Type Aliases?
+///
+/// Ideally we'd write:
+/// ```auto
+/// type PCList<T> = List<T, Heap>
+/// type MCUList<T> = List<T, InlineInt64>
+/// ```
+///
+/// But AutoLang parser doesn't support `type X = Y` syntax yet.
+/// This requires adding type alias support to the parser (future work).
+///
+/// For now, use the full type notation: `List<T, StorageStrategy>`
+///
+/// ## Future Enhancements
+///
+/// Once type alias syntax is implemented:
+/// - Can create `type PCList<T> = List<T, Heap>`
+/// - Can create `type MCUList = List<int, InlineInt64>`
+/// - Can create custom aliases for specific use cases
+///
+/// ## See Also
+///
+/// - `auto.storage` - Storage strategy implementations
+/// - `auto.list` - List<T, S> type definition and methods
