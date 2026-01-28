@@ -834,3 +834,14 @@ fn test_096_storage_usage() {
 fn test_097_list_storage() {
     test_a2c("097_list_storage").unwrap();
 }
+
+#[test]
+fn test_090_type_alias() {
+    test_a2c("090_type_alias").unwrap();
+}
+
+#[test]
+fn test_092_plan055_auto_storage() {
+    test_a2c("092_plan055_auto_storage").unwrap();
+}
+

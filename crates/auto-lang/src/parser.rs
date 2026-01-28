@@ -468,6 +468,12 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Break)
     }
 
+    fn return_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip return keyword
+        let expr = self.parse_expr()?;
+        Ok(Stmt::Return(Box::new(expr)))
+    }
+
     /// Synchronize parser state after encountering an error
     ///
     /// This method skips tokens until we reach a statement boundary,
@@ -1116,17 +1122,44 @@ impl<'a> Parser<'a> {
                             });
                         }
                         Op::Dot => {
-                            // Dot expression: extract field name from identifier
-                            if let Expr::Ident(field_name) = rhs {
-                                lhs = Expr::Dot(Box::new(lhs), field_name);
-                            } else {
-                                // Error: right-hand side of dot must be an identifier
-                                let message = format!(
-                                    "Invalid field name after dot: {}",
-                                    rhs
-                                );
-                                let span = pos_to_span(self.cur.pos);
-                                return Err(SyntaxError::Generic { message, span }.into());
+                            // Dot expression: handle both field access and method calls
+                            // Field access: object.field
+                            // Method call: object.method(args)
+                            match rhs {
+                                Expr::Ident(field_name) => {
+                                    // Simple field access: object.field
+                                    lhs = Expr::Dot(Box::new(lhs), field_name);
+                                }
+                                Expr::Call(call) => {
+                                    // Method call: object.method(args)
+                                    // The RHS is a Call like: Call { name: Ident("push"), args: [...] }
+                                    // We need to transform this into: Call { name: Dot(object, "push"), args: [...] }
+                                    let method_name = match call.name.as_ref() {
+                                        Expr::Ident(name) => name.clone(),
+                                        _ => {
+                                            let message = format!(
+                                                "Method name must be an identifier, got {}",
+                                                call.name
+                                            );
+                                            let span = pos_to_span(self.cur.pos);
+                                            return Err(SyntaxError::Generic { message, span }.into());
+                                        }
+                                    };
+                                    lhs = Expr::Call(Call {
+                                        name: Box::new(Expr::Dot(Box::new(lhs), method_name)),
+                                        args: call.args,
+                                        ret: call.ret,
+                                    });
+                                }
+                                _ => {
+                                    // Error: right-hand side of dot must be an identifier or method call
+                                    let message = format!(
+                                        "Invalid field name after dot: {}",
+                                        rhs
+                                    );
+                                    let span = pos_to_span(self.cur.pos);
+                                    return Err(SyntaxError::Generic { message, span }.into());
+                                }
                             }
                         }
                         Op::QuestionQuestion => {
@@ -1807,6 +1840,7 @@ impl<'a> Parser<'a> {
     pub fn parse_stmt(&mut self) -> AutoResult<Stmt> {
         let stmt = match self.kind() {
             TokenKind::Break => self.break_stmt()?,
+            TokenKind::Return => self.return_stmt()?,
             TokenKind::Use => self.use_stmt()?,
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
@@ -3672,6 +3706,47 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parse a type alias statement: `type List<T> = List<T, DefaultStorage>;`
+    pub fn parse_type_alias(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `type` keyword
+
+        let name = self.parse_name()?;
+
+        // Parse generic parameters (optional) - e.g., type List<T> = ...
+        let mut params = Vec::new();
+        if self.cur.kind == TokenKind::Lt {
+            self.next(); // Consume '<'
+
+            // Parse type parameter names (not full GenericParam, just identifiers)
+            let param_name = self.parse_name()?;
+            params.push(param_name);
+
+            while self.cur.kind == TokenKind::Comma {
+                self.next(); // Consume ','
+                let param_name = self.parse_name()?;
+                params.push(param_name);
+            }
+
+            self.expect(TokenKind::Gt)?; // Consume '>'
+        }
+
+        self.expect(TokenKind::Eq)?;
+
+        let target = self.parse_type()?;
+
+        self.expect(TokenKind::Semi)?;
+
+        // Note: For now, we don't store type aliases in scope.
+        // They'll be resolved during compilation/transpilation.
+        // TODO: Add type alias storage to Universe for resolution
+
+        Ok(Stmt::TypeAlias(TypeAlias {
+            name,
+            params,
+            target,
+        }))
+    }
+
     pub fn type_decl_stmt(&mut self) -> AutoResult<Stmt> {
         self.type_decl_stmt_with_annotation(false)
     }
@@ -3748,6 +3823,37 @@ impl<'a> Parser<'a> {
             }
 
             self.expect(TokenKind::Gt)?; // Consume '>'
+        }
+
+        // Check if this is a type alias (has `=` after name and params)
+        if self.cur.kind == TokenKind::Asn {
+            // This is a type alias: type List<T> = List<T, DefaultStorage>;
+            self.next(); // Consume '='
+
+            let target = self.parse_type()?;
+            self.expect(TokenKind::Semi)?;
+
+            // Extract just the names from GenericParam for TypeAlias
+            let params: Vec<Name> = generic_params
+                .into_iter()
+                .filter_map(|p| match p {
+                    GenericParam::Type(tp) => Some(tp.name),
+                    GenericParam::Const(_) => None,  // Const params not supported in type aliases
+                })
+                .collect();
+
+            // Store type alias in universe for later resolution
+            self.scope.borrow_mut().define_type_alias(
+                name.clone(),
+                params.clone(),
+                target.clone(),
+            );
+
+            return Ok(Stmt::TypeAlias(TypeAlias {
+                name,
+                params,
+                target,
+            }));
         }
 
         // Plan 052: Populate current_const_params map with const generic parameters
@@ -4621,6 +4727,56 @@ impl<'a> Parser<'a> {
                     return Ok(const_ty.clone());
                 }
 
+                // Plan 058: Check if this is a type alias
+                let type_alias = self.scope.borrow().lookup_type_alias(name.as_str()).map(|(params, target)| (params.clone(), target.clone()));
+
+                if let Some((alias_params, alias_target)) = type_alias {
+                    // Check if there are type arguments (e.g., List<int>)
+                    if self.cur.kind == TokenKind::Lt && self.next_token_is_type() {
+                        // Parse type arguments
+                        self.next(); // Consume '<'
+                        let mut type_args = Vec::new();
+                        type_args.push(self.parse_type()?);
+
+                        while self.cur.kind == TokenKind::Comma {
+                            self.next(); // Consume ','
+                            type_args.push(self.parse_type()?);
+                        }
+
+                        self.expect(TokenKind::Gt)?; // Consume '>'
+
+                        // Check if the number of type arguments matches the alias parameters
+                        if type_args.len() != alias_params.len() {
+                            return Err(SyntaxError::Generic {
+                                message: format!(
+                                    "Type alias '{}' expects {} type parameter(s), but got {}",
+                                    name,
+                                    alias_params.len(),
+                                    type_args.len()
+                                ),
+                                span: pos_to_span(self.cur.pos),
+                            }.into());
+                        }
+
+                        // Substitute type arguments into the target type
+                        let substituted = alias_target.substitute(&alias_params, &type_args);
+                        return Ok(substituted);
+                    } else if !alias_params.is_empty() {
+                        // Type alias requires parameters but none were provided
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "Type alias '{}' requires {} type parameter(s), but none were provided",
+                                name,
+                                alias_params.len()
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    } else {
+                        // No type arguments needed - return the target type directly
+                        return Ok(alias_target);
+                    }
+                }
+
                 // Check if this identifier is a type parameter in the current scope
                 if self.current_type_params.contains(&name) {
                     // This is a type parameter - return it as a user type for now
@@ -4681,6 +4837,50 @@ impl<'a> Parser<'a> {
 
         // Check if base_name refers to a user-defined generic Tag or TypeDecl
         let base_type = self.lookup_type(&base_name);
+
+        // Plan 055: Check if we need to fill in default parameters from environment
+        // Clone needed data to avoid borrow issues
+        let needs_default_param = {
+            let base_type_ref = base_type.borrow();
+            match &*base_type_ref {
+                Type::User(type_decl) if !type_decl.generic_params.is_empty() => {
+                    // User-defined generic TypeDecl with type parameters
+                    // Check if user provided fewer parameters than expected
+                    if args.len() < type_decl.generic_params.len() {
+                        Some((base_name.clone(), type_decl.generic_params.len()))
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
+        };
+
+        let mut args = args;
+        if let Some((type_name, expected_params)) = needs_default_param {
+            // Fill in missing parameters from environment
+            // For now, only support List<T, S> pattern where S has a default
+            if type_name.as_str() == "List" && args.len() == 1 && expected_params == 2 {
+                // Get default storage from environment
+                let default_storage = self.scope.borrow().get_env_val("DEFAULT_STORAGE")
+                    .unwrap_or_else(|| "Heap".into()); // Fallback to Heap for PC
+
+                // Parse the storage type from environment string
+                let storage_type = self.parse_storage_from_env(&default_storage)?;
+                args.push(storage_type);
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Type '{}' expects {} parameter(s), but got {}",
+                        type_name,
+                        expected_params,
+                        args.len()
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
+        }
+
         let base_type_ref = base_type.borrow();
 
         match &*base_type_ref {
@@ -4745,8 +4945,25 @@ impl<'a> Parser<'a> {
         // List<T> has dedicated Type variant (May<T> is now a generic tag)
         // Fixed<N> is a Storage type (Plan 055)
         match base_name.as_str() {
-            "List" if args.len() == 1 => {
-                Ok(Type::List(Box::new(args.into_iter().next().unwrap())))
+            "List" => {
+                // Plan 055: Support both List<T> (1 param) and List<T, S> (2 params)
+                if args.len() == 1 {
+                    // List<int> → Type::List(Box::new(int))
+                    // Storage will be determined at runtime by VM
+                    Ok(Type::List(Box::new(args.into_iter().next().unwrap())))
+                } else if args.len() == 2 {
+                    // List<int, Heap> → Return GenericInstance for full type
+                    // This allows the transpiler to see both parameters
+                    Ok(Type::GenericInstance(GenericInstance {
+                        base_name,
+                        args,
+                    }))
+                } else {
+                    Err(SyntaxError::Generic {
+                        message: format!("List expects 1 or 2 type parameter(s), but got {}", args.len()),
+                        span: pos_to_span(self.cur.pos),
+                    }.into())
+                }
             }
             "Fixed" if args.len() == 1 => {
                 // Fixed<N> storage type - parse capacity from first argument
@@ -4779,6 +4996,35 @@ impl<'a> Parser<'a> {
                 Ok(Type::GenericInstance(GenericInstance {
                     base_name,
                     args,
+                }))
+            }
+        }
+    }
+
+    /// Parse a storage type name from environment variable string
+    /// For Plan 055: Convert "Heap" → Type::Storage(Dynamic), "InlineInt64" → proper type
+    fn parse_storage_from_env(&mut self, storage_name: &str) -> AutoResult<Type> {
+        match storage_name {
+            "Heap" | "Dynamic" => Ok(Type::Storage(crate::ast::StorageType {
+                kind: crate::ast::StorageKind::Dynamic,
+            })),
+            "InlineInt64" | "Fixed" => Ok(Type::Storage(crate::ast::StorageType {
+                kind: crate::ast::StorageKind::Fixed { capacity: 64 },
+            })),
+            _ => {
+                // Try to parse as Fixed<N> pattern
+                if storage_name.starts_with("Fixed<") && storage_name.ends_with(">") {
+                    let inner = &storage_name[6..storage_name.len()-1];
+                    if let Ok(capacity) = inner.parse::<usize>() {
+                        return Ok(Type::Storage(crate::ast::StorageType {
+                            kind: crate::ast::StorageKind::Fixed { capacity },
+                        }));
+                    }
+                }
+
+                // Fallback: treat as Dynamic
+                Ok(Type::Storage(crate::ast::StorageType {
+                    kind: crate::ast::StorageKind::Dynamic,
                 }))
             }
         }

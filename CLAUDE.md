@@ -317,6 +317,86 @@ fn main() {
 }
 ```
 
+---
+
+### Storage-Based Lists (Plan 052)
+
+AutoLang supports **storage-agnostic lists** with pluggable storage strategies via `List<T, S>`:
+
+**Syntax**: `List<T, StorageStrategy>` where:
+- `T` - Element type
+- `S` - Storage strategy (implements `Storage<T>` spec)
+
+**Available Storage Strategies**:
+
+#### 1. Heap Storage (`List<T, Heap>`) - PC/Server
+
+**Use Case**: Desktop applications, servers, any environment with heap allocator
+
+```auto
+let list List<int, Heap> = List.new()
+list.push(1)
+list.push(2)
+list.push(3)
+
+// Dynamic growth (unlimited capacity)
+for i in 0..1000 {
+    list.push(i)
+}
+
+let cap = list.capacity()  // Returns current capacity
+```
+
+**Characteristics**:
+- ✅ Dynamic growth via malloc/realloc
+- ✅ Limited only by available memory
+- ⚠️ try_grow() may fail (returns false) if OOM
+- ✅ Works with any type `T`
+
+#### 2. Inline Storage (`List<T, InlineInt64>`) - MCU/Embedded
+
+**Use Case**: Microcontrollers, embedded systems, no heap allocator
+
+```auto
+let list List<int, InlineInt64> = List.new()
+list.push(1)
+list.push(2)
+list.push(3)
+
+let cap = list.capacity()  // Returns 64 (fixed)
+```
+
+**Characteristics**:
+- ✅ Zero heap usage (all on stack)
+- ✅ Deterministic memory usage
+- ✅ Fixed 64-element capacity (hard limit)
+- ⚠️ Currently `int`-only (future: `Inline<T, N>`)
+
+**Storage Spec** (`Storage<T>`):
+
+```auto
+spec Storage<T> {
+    fn data() *T              // Get raw pointer to buffer
+    fn capacity() u32         // Get physical capacity
+    fn try_grow(min_cap u32) bool  // Try to grow
+}
+```
+
+**When to Use Which**:
+
+| Scenario | Storage Strategy | Reason |
+|----------|-----------------|--------|
+| Server application | `List<T, Heap>` | Dynamic growth, plenty of memory |
+| Desktop GUI | `List<T, Heap>` | User data, unknown size |
+| Game engine | `List<T, Heap>` | Entity lists, dynamic objects |
+| **Microcontroller** | `List<T, InlineInt64>` | No heap, limited RAM |
+| **Sensor readings** | `List<T, InlineInt64>` | Fixed buffer size, deterministic |
+| **Real-time system** | `List<T, InlineInt64>` | No allocation failures |
+
+**See Also**:
+- [Plan 052 Implementation Summary](plan-052-implementation-summary.md) - Complete technical details
+- [Storage Usage Guide](../stdlib/auto/default_storage.at) - Recommended patterns
+
 ## Common Development Tasks
 
 ### ⚠️ CRITICAL: Test Expectation Rules

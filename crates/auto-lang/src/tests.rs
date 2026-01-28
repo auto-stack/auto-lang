@@ -22,6 +22,7 @@ mod test_generic_simple;
 mod test_generic_full;
 mod test_let_generic;
 mod storage_tests;
+mod default_storage_tests;  // Plan 052: DefaultStorage type alias tests
 mod storage_integration_tests;
 mod list_growth_tests;
 mod vm_functions_tests;

@@ -38,6 +38,8 @@ mod spec;
 pub use spec::*;
 mod types;
 pub use types::*;
+mod type_alias;
+pub use type_alias::*;
 mod union;
 pub use union::*;
 mod use_;
@@ -168,8 +170,10 @@ pub enum Stmt {
     OnEvents(OnEvents),
     Comment(AutoStr),
     Alias(Alias),
+    TypeAlias(TypeAlias),  // Type alias: type List<T> = List<T, DefaultStorage>
     EmptyLine(usize),
     Break,
+    Return(Box<Expr>),  // Return statement with value
     Ext(Ext),  // Type extension (like Rust's impl)
 }
 
@@ -191,6 +195,7 @@ impl Stmt {
             | Stmt::Tag(_)
             | Stmt::SpecDecl(_)
             | Stmt::Alias(_)
+            | Stmt::TypeAlias(_)
             | Stmt::Ext(_) => true,  // Plan 035 Phase 5.2: Ext statement is a declaration
             _ => false,
         }
@@ -221,11 +226,13 @@ impl fmt::Display for Stmt {
             Stmt::OnEvents(on_events) => write!(f, "{}", on_events),
             Stmt::Comment(cmt) => write!(f, "{}", cmt),
             Stmt::Alias(alias) => write!(f, "{}", alias),
+            Stmt::TypeAlias(type_alias) => write!(f, "{}", type_alias),
             Stmt::EmptyLine(n) => write!(f, "(nl*{})", n),
             Stmt::Union(u) => write!(f, "{}", u),
             Stmt::Tag(tag) => write!(f, "{}", tag),
             Stmt::SpecDecl(spec_decl) => write!(f, "{}", spec_decl),
             Stmt::Break => write!(f, "(break)"),
+            Stmt::Return(expr) => write!(f, "(return {})", expr),
             Stmt::Ext(ext) => write!(f, "{}", ext),
         }
     }
@@ -803,12 +810,15 @@ impl ToNode for Stmt {
                 node
             }
             Stmt::Alias(alias) => alias.to_node(),
+            Stmt::TypeAlias(type_alias) => type_alias.to_node(),
             Stmt::EmptyLine(n) => {
                 let mut node = AutoNode::new("nl");
                 node.set_prop("count", Value::Int(*n as i32));
                 node
             }
             Stmt::Break => AutoNode::new("break"),
+            Stmt::Return(_) => AutoNode::new("return"),
+
             Stmt::Ext(ext) => ext.to_node(),
         }
     }
@@ -842,8 +852,10 @@ impl ToAtom for Stmt {
             Stmt::OnEvents(on_events) => on_events.to_atom(),
             Stmt::Comment(comment) => comment.clone(),
             Stmt::Alias(alias) => alias.to_atom(),
+            Stmt::TypeAlias(type_alias) => type_alias.to_atom(),
             Stmt::EmptyLine(n) => format!("(nl (count {}))", n).into(),
             Stmt::Break => "(break)".into(),
+            Stmt::Return(expr) => format!("(return {})", expr.to_atom()).into(),
             Stmt::Ext(ext) => ext.to_atom(),
         }
     }

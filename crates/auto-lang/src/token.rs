@@ -81,6 +81,7 @@ pub enum TokenKind {
     For,
     When,
     Break,
+    Return, // ADDED: return keyword for early returns
     Is,
     Var,
     In,
@@ -192,6 +193,7 @@ impl fmt::Display for Token {
             TokenKind::Char => write!(f, "<'{}'>", self.text),
             TokenKind::Is => write!(f, "<is>"),
             TokenKind::When => write!(f, "<when>"),
+            TokenKind::Return => write!(f, "<return>"),
             TokenKind::On => write!(f, "<on>"),
             TokenKind::Question => write!(f, "<?>"),
             TokenKind::QuestionQuestion => write!(f, "??"),
@@ -293,6 +295,7 @@ impl Token {
             "grid" => Some(TokenKind::Grid),
             "alias" => Some(TokenKind::Alias),
             "break" => Some(TokenKind::Break),
+            "return" => Some(TokenKind::Return),
             "ext" => Some(TokenKind::Ext),
             "static" => Some(TokenKind::Static),
             _ => None,

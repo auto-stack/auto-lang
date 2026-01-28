@@ -1,6 +1,6 @@
 use super::scope::*;
 use crate::ast::FnKind;
-use crate::ast::{self, Type};
+use crate::ast::{self, Type, TypeAlias};
 use crate::atom::Atom;
 use crate::libs;
 use crate::vm::collections::{HashMapData, HashSetData};
@@ -149,6 +149,10 @@ pub struct Universe {
     // NEW: Symbol location table for LSP support
     // Maps symbol name -> definition location
     pub symbol_locations: HashMap<AutoStr, SymbolLocation>,
+
+    // NEW: Type alias storage for Plan 058
+    // Maps alias name -> (params, target_type)
+    pub type_aliases: HashMap<AutoStr, (Vec<AutoStr>, Type)>,
 }
 
 impl Default for Universe {
@@ -185,6 +189,8 @@ impl Universe {
             weak_refs: HashMap::new(),
             // NEW: Initialize symbol location table
             symbol_locations: HashMap::new(),
+            // NEW: Initialize type alias storage
+            type_aliases: HashMap::new(),
         };
         uni.define_sys_types();
         uni.define_builtin_funcs();
@@ -1594,6 +1600,25 @@ impl Universe {
         self.env_vals.get(name).and_then(|boxed| {
             boxed.downcast_ref::<String>().map(|s| s.as_str().into())
         })
+    }
+
+    // ============================================================================
+    // Type Alias Management (Plan 058)
+    // ============================================================================
+
+    /// Define a type alias in the current scope
+    pub fn define_type_alias(&mut self, name: AutoStr, params: Vec<AutoStr>, target: Type) {
+        self.type_aliases.insert(name, (params, target));
+    }
+
+    /// Look up a type alias by name
+    pub fn lookup_type_alias(&self, name: &str) -> Option<&(Vec<AutoStr>, Type)> {
+        self.type_aliases.get(name)
+    }
+
+    /// Check if a name is a type alias
+    pub fn is_type_alias(&self, name: &str) -> bool {
+        self.type_aliases.contains_key(name)
     }
 }
 

@@ -186,6 +186,9 @@ impl CTrans {
             Stmt::Alias(alias) => {
                 self.alias(alias, out)?;
             }
+            Stmt::TypeAlias(type_alias) => {
+                self.type_alias(type_alias, out)?;
+            }
             Stmt::EmptyLine(n) => {
                 self.empty_line(n, out)?;
             }
@@ -444,6 +447,25 @@ impl CTrans {
         out.write(b" ")?;
         out.write(alias.target.as_bytes())?;
         out.write(b"\n")?;
+        Ok(())
+    }
+
+    /// Generate C typedef for type alias: `typedef target name;`
+    fn type_alias(&mut self, type_alias: &TypeAlias, out: &mut impl Write) -> AutoResult<()> {
+        // For now, we generate a simple typedef
+        // TODO: Handle generic type aliases (may need macro expansion)
+
+        // Generate: typedef target name;
+        // For example: typedef int IntAlias;
+        // Or: typedef list_int* List_int;  (for List<int>)
+
+        let alias_name = type_alias.name.as_bytes();
+
+        // Convert the target type to C type name
+        let target_c = self.c_type_name(&type_alias.target);
+
+        writeln!(out, "typedef {} {};", target_c, String::from_utf8_lossy(alias_name))?;
+
         Ok(())
     }
 

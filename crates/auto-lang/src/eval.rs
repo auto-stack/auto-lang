@@ -76,6 +76,17 @@ impl Evaler {
                     // Don't panic on errors - let them propagate as error values
                     // This allows tests to check for errors using Result::Err
                 }
+
+                // Automatically call main() if it's defined
+                // This allows test code to define fn main() {...} and have it execute
+                let main_fn = self.universe.borrow().lookup_meta("main");
+                if let Some(main_meta) = main_fn {
+                    if let scope::Meta::Fn(fn_decl) = main_meta.as_ref() {
+                        // Call main() with no arguments
+                        value = self.eval_fn_call(fn_decl, &ast::Args::new())?;
+                    }
+                }
+
                 Ok(value)
             }
             EvalMode::CONFIG => {
@@ -356,11 +367,13 @@ impl Evaler {
             Stmt::OnEvents(on) => Ok(self.eval_on_events(on)),
             Stmt::Comment(_) => Ok(Value::Nil),
             Stmt::Alias(_) => Ok(Value::Void),
+            Stmt::TypeAlias(_) => Ok(Value::Void),  // Type aliases are compile-time only
             Stmt::EmptyLine(_) => Ok(Value::Void),
             Stmt::Union(_) => Ok(Value::Void),
             Stmt::Tag(tag) => Ok(self.eval_tag_decl(tag)),
             Stmt::SpecDecl(spec_decl) => Ok(self.spec_decl(spec_decl)),
             Stmt::Break => Ok(Value::Void),
+            Stmt::Return(expr) => Ok(self.eval_expr(expr)),
             Stmt::Ext(ext) => Ok(self.eval_ext(ext)),
         }
     }
@@ -488,6 +501,12 @@ impl Evaler {
         self.enter_scope();
         let mut res = Vec::new();
         for stmt in body.stmts.iter() {
+            // Handle return statements - evaluate and immediately exit
+            if let Stmt::Return(expr) = stmt {
+                let value = self.eval_expr(expr);
+                self.exit_scope();
+                return Ok(value);
+            }
             res.push(self.eval_stmt(stmt)?);
         }
         let res = match self.mode {
