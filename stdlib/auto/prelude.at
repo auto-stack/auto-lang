@@ -29,6 +29,15 @@ use auto.io: say
 use auto.list: List
 
 // ============================================================================
+// Iteration & Functional Programming (Plan 051)
+// ============================================================================
+// Rationale: Iterator patterns are ubiquitous in data processing, enabling
+// zero-cost abstractions for chaining operations like map, filter, and reduce.
+// These specs provide the foundation for functional programming in AutoLang.
+
+use auto.iter.spec: Iter, Iterable
+
+// ============================================================================
 // Error Handling with May<T>
 // ============================================================================
 // NOTE: The ?T syntax sugar (?int, ?str, etc.) is built into the parser
@@ -44,6 +53,6 @@ use auto.list: List
 //
 // use auto.traits: From, Into, TryFrom, AsRef, AsMut
 // use auto.traits: FromStr, Display, Debug
-// use auto.traits: Iterator, Iterable, Collect
+// use auto.traits: Collect
 // use auto.traits: Add, Sub, Mul, Div, Rem
 // use auto.traits: PartialEq, Eq, PartialOrd, Ord

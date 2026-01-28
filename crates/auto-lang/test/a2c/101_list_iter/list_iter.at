@@ -1,0 +1,17 @@
+// Test List iterator - Plan 051 Phase 3
+
+fn main() {
+    let list = List<int, Heap>.new()
+    list.push(10)
+    list.push(20)
+    list.push(30)
+
+    // Get iterator
+    let iter = list.iter()
+
+    // Iterate through elements
+    let a = iter.next()
+    let b = iter.next()
+    let c = iter.next()
+    let d = iter.next()
+}

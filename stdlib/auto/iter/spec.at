@@ -1,0 +1,55 @@
+/// Auto Flow - Iterator and Functional Programming System (Plan 051)
+/// This module provides zero-cost iterator abstractions for AutoLang
+
+/// Core iterator spec - produces values of type T
+spec Iter<T> {
+    /// Try to get the next value
+    /// Returns nil when iteration is complete
+    fn next() May<T>
+
+    // --- Extension methods (lazy adapters) ---
+    /// Transform each element using function f
+    fn map<U>(f: fn(T)U) MapIter<Self, fn(T)->U, U>
+
+    /// Filter elements by predicate p
+    fn filter(p: fn(T)bool) FilterIter<Self, fn(T)->bool, T>
+
+    /// Take first n elements
+    fn take(n: u32) TakeIter<Self>
+
+    /// Skip first n elements
+    fn skip(n: u32) SkipIter<Self>
+
+    /// Enumerate elements with indices
+    fn enumerate() EnumerateIter<Self>
+
+    // --- Terminal operators ---
+    /// Fold/reduce: consume iterator, accumulating values
+    fn reduce<B>(init: B, f: fn(B, T)B) B
+
+    /// Count elements in iterator
+    fn count() u32
+
+    /// Call function f for each element
+    fn for_each(f: fn(T)void) void
+
+    /// Collect into environment-appropriate storage
+    fn collect() List<T, DefaultStorage>
+}
+
+/// Type that can be iterated over
+/// Provides auto-forwarding methods for ergonomic container API
+spec Iterable<T> {
+    /// Associated type: the iterator type for this collection
+    type IterT impl Iter<T>
+
+    /// Get an iterator for this collection
+    /// Borrows self (doesn't consume)
+    fn iter() .IterT
+}
+
+/// Type that can consume an iterator
+spec Collect<T> {
+    /// Consume an iterator and collect results
+    fn collect(iter Iter<T>) Self
+}

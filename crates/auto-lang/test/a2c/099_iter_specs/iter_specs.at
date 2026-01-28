@@ -1,0 +1,13 @@
+// Test iterator spec declarations - Plan 051 Phase 1
+
+spec Iter<T> {
+    fn next() May<T>
+}
+
+spec Iterable<T> {
+    fn iter() Iter<T>
+}
+
+fn main() {
+    let x = 42
+}

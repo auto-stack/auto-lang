@@ -845,3 +845,18 @@ fn test_092_plan055_auto_storage() {
     test_a2c("092_plan055_auto_storage").unwrap();
 }
 
+#[test]
+fn test_099_iter_specs() {
+    test_a2c("099_iter_specs").unwrap();
+}
+
+#[test]
+fn test_100_map_adapter() {
+    test_a2c("100_map_adapter").unwrap();
+}
+
+#[test]
+fn test_101_list_iter() {
+    test_a2c("101_list_iter").unwrap();
+}
+

@@ -1,0 +1,20 @@
+/// Map Adapter - Plan 051 Phase 2
+/// Transforms each element using a function
+
+/// Iterator that maps each element to a new value
+type MapIter<I, T, U> {
+    iter I      // Underlying iterator
+}
+
+// MapIter for int -> int transformation
+type MapIntIter {
+    iter Iter<int>
+}
+
+impl Iter<int> for MapIntIter {
+    #[c, vm]
+    fn next() May<int> {
+        let item = .iter.next()?
+        return item * 2  // Default: double the value
+    }
+}

@@ -80,4 +80,46 @@ type List<T, S> {
     /// Example: list.drop()
     #[c, vm, pub]
     fn drop()
+
+    // ========================================================================
+    // Iteration Support (Plan 051)
+    // ========================================================================
+
+    /// Get an iterator over list elements
+    /// Example: list.iter()
+    #[c, vm, pub]
+    fn iter() ListIter<T, S>
+}
+
+/// Iterator for List<T, S>
+/// Plan 051: Basic iterator implementation
+type ListIter<T, S> {
+    list *const List<T, S>
+    index u32
+}
+
+impl<T, S> ListIter<T, S> {
+    /// Create a new list iterator
+    /// Plan 051: Initialize with list starting at index 0
+    #[c, vm, pub]
+    fn new(list *const List<T, S>) ListIter<T, S> {
+        return ListIter {
+            list: list,
+            index: 0
+        }
+    }
+
+    /// Get the next element from the iterator
+    /// Returns nil when iteration is complete
+    /// Plan 051: Implements Iter<T> spec
+    #[c, vm, pub]
+    fn next() May<T> {
+        if .index >= .list.len() {
+            return nil
+        }
+
+        let item = .list.get(.index)
+        .index = .index + 1
+        return item
+    }
 }
