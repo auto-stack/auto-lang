@@ -1,0 +1,96 @@
+// Test Plan 052: List<T, S> with storage strategies
+
+spec Storage<T> {
+    fn data() *T
+    fn capacity() u32
+    fn try_grow(min_cap u32) bool
+}
+
+type Heap<T> as Storage<T> {
+    ptr *T
+    cap u32
+}
+
+type InlineInt64 as Storage<int> {
+    buffer [64]int
+}
+
+type List<T, S> {
+    len u32
+    store S
+}
+
+ext Heap {
+    #[c]
+    static fn new() Heap {
+        return Heap(ptr: 0 as *void, cap: 0)
+    }
+
+    #[c]
+    fn data() *void {
+        return .ptr
+    }
+
+    #[c]
+    fn capacity() u32 {
+        return .cap
+    }
+
+    #[c]
+    fn try_grow(min_cap u32) bool {
+        return .cap >= min_cap
+    }
+}
+
+ext InlineInt64 {
+    #[c]
+    static fn new() InlineInt64 {
+        return InlineInt64(buffer: [0])
+    }
+
+    #[c]
+    fn data() *int {
+        return .buffer.ptr
+    }
+
+    #[c]
+    fn capacity() u32 {
+        return 64
+    }
+
+    #[c]
+    fn try_grow(min_cap u32) bool {
+        return min_cap <= 64
+    }
+}
+
+ext List {
+    #[c]
+    static fn new() List {
+        return List(len: 0, store: S.new())
+    }
+
+    #[c]
+    fn len() u32 {
+        return .len
+    }
+
+    #[c]
+    fn capacity() u32 {
+        return .store.capacity()
+    }
+}
+
+fn main() {
+    // Heap-backed list for general use
+    let heap_list = List<int, Heap>.new()
+    let heap_len = heap_list.len()
+    let heap_cap = heap_list.capacity()
+
+    // Inline-backed list for embedded systems
+    let inline_list = List<int, InlineInt64>.new()
+    let inline_len = inline_list.len()
+    let inline_cap = inline_list.capacity()
+
+    return 0
+}

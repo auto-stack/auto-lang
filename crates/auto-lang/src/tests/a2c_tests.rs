@@ -819,3 +819,18 @@ fn test_093_generic_specs() {
 fn test_094_generic_spec_ext() {
     test_a2c("094_generic_spec_ext").unwrap();
 }
+
+#[test]
+fn test_095_storage_module() {
+    test_a2c("095_storage_module").unwrap();
+}
+
+#[test]
+fn test_096_storage_usage() {
+    test_a2c("096_storage_usage").unwrap();
+}
+
+#[test]
+fn test_097_list_storage() {
+    test_a2c("097_list_storage").unwrap();
+}
