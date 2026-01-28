@@ -865,3 +865,8 @@ fn test_102_generic_field() {
     test_a2c("102_generic_field").unwrap();
 }
 
+#[test]
+fn test_103_generic_ptr_field() {
+    test_a2c("103_generic_ptr_field").unwrap();
+}
+

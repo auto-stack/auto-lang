@@ -105,6 +105,7 @@ pub enum TokenKind {
     Node, // ADDED: node keyword for typed node definitions
     Ext,   // ADDED: ext keyword for type extensions (Plan 035)
     Static, // ADDED: static keyword for static methods (Plan 035)
+    Impl,   // ADDED: impl keyword for trait implementations (Plan 059)
 
     // Property Keywords (Phase 3: postfix property syntax)
     DotView,  // .view
@@ -298,6 +299,8 @@ impl Token {
             "return" => Some(TokenKind::Return),
             "ext" => Some(TokenKind::Ext),
             "static" => Some(TokenKind::Static),
+            "impl" => Some(TokenKind::Impl),
+            "const" => Some(TokenKind::Const),
             _ => None,
         }
     }

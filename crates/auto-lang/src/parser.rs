@@ -1963,6 +1963,8 @@ impl<'a> Parser<'a> {
             TokenKind::Alias => self.parse_alias_stmt()?,
             // Ext statement (Plan 035)
             TokenKind::Ext => self.parse_ext_stmt()?,
+            // Impl statement (Plan 059: synonym for ext, Rust-compatible syntax)
+            TokenKind::Impl => self.parse_ext_stmt()?,
             // Otherwise, try to parse as an expression
             _ => self.expr_stmt()?,
         };
@@ -2000,10 +2002,49 @@ impl<'a> Parser<'a> {
     /// }
     /// ```
     fn parse_ext_stmt(&mut self) -> AutoResult<Stmt> {
-        self.next(); // skip `ext` keyword
+        self.next(); // skip `ext` or `impl` keyword
 
-        // Parse target type name (e.g., "str", "Point")
+        // Plan 059: Parse optional generic parameters for impl blocks
+        // e.g., impl<T, S> ListIter<T, S> { ... }
+        let mut generic_params = Vec::new();
+        if self.is_kind(TokenKind::Lt) {
+            self.next(); // Consume '<'
+            generic_params.push(self.parse_generic_param()?);
+
+            while self.is_kind(TokenKind::Comma) {
+                self.next(); // Consume ','
+                generic_params.push(self.parse_generic_param()?);
+            }
+
+            self.expect(TokenKind::Gt)?; // Consume '>'
+        }
+
+        // Parse target type name (e.g., "str", "Point", "ListIter")
+        // Note: We only parse the base name, not generic instance like ListIter<T, S>
         let target = self.parse_name()?;
+
+        // Skip generic instance syntax if present (e.g., <T, S> after ListIter)
+        // For now, we just extract the base type name and skip the generic parameters
+        // This allows `impl<T, S> ListIter<T, S>` to work
+        if self.is_kind(TokenKind::Lt) {
+            // Generic instance syntax like ListIter<T, S>
+            self.next(); // skip '<'
+
+            // Parse type arguments
+            if self.next_token_is_type() {
+                let _ = self.parse_type()?;
+            }
+
+            // Parse additional type arguments separated by commas
+            while self.is_kind(TokenKind::Comma) {
+                self.next(); // skip ','
+                if self.next_token_is_type() {
+                    let _ = self.parse_type()?;
+                }
+            }
+
+            self.expect(TokenKind::Gt)?; // skip '>'
+        }
 
         // Expect opening brace
         self.expect(TokenKind::LBrace)?;
@@ -2127,8 +2168,15 @@ impl<'a> Parser<'a> {
         let module_path: AutoStr = "".into();
         let is_same_module = true;
 
-        // Create Ext with fields and methods
-        let ext = Ext::with_fields(target, fields, methods, module_path, is_same_module);
+        // Plan 059: Create Ext with generic params, fields, and methods
+        let ext = Ext {
+            target,
+            generic_params,
+            fields,
+            methods,
+            module_path,
+            is_same_module,
+        };
         Ok(Stmt::Ext(ext))
     }
 
@@ -4418,6 +4466,14 @@ impl<'a> Parser<'a> {
 
     fn parse_ptr_type(&mut self) -> AutoResult<Type> {
         self.next(); // skip `*`
+
+        // Handle optional `const`/`mut` qualifier (e.g., `*const T`, `*mut T`)
+        // Plan 059 Phase 1: Enable generic type fields in structs
+        // Note: `const` and `mut` are now keywords (TokenKind), not identifiers
+        if self.is_kind(TokenKind::Const) || self.is_kind(TokenKind::Mut) {
+            self.next(); // skip const/mut qualifier
+        }
+
         let typ = self.parse_type()?;
         Ok(Type::Ptr(PtrType { of: shared(typ) }))
     }

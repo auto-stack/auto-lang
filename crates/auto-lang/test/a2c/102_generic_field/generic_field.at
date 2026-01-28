@@ -1,4 +1,13 @@
-// Debug test - simplest possible
+// Test generic type fields in structs (Plan 059 Phase 1)
+
+type List<T> {
+    // Placeholder for List type
+}
+
+type Container {
+    data List<int>
+}
+
 fn main() {
-    let x = 42
+    let c = Container { data: nil }
 }

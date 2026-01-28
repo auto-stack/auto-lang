@@ -1,4 +1,4 @@
-use super::{Fn, Member, Name};
+use super::{Fn, GenericParam, Member, Name};
 use crate::ast::{AtomWriter, ToNode};
 use auto_val::AutoStr;
 use std::{fmt, io as stdio};
@@ -38,11 +38,20 @@ pub use auto_val::Node as AutoNode;
 ///         // Use ._fp here
 ///     }
 /// }
+///
+/// // Plan 059: Generic impl blocks
+/// impl<T, S> ListIter<T, S> {
+///     fn new(list *const List<T, S>) ListIter<T, S> { ... }
+/// }
 /// ```
 #[derive(Debug, Clone)]
 pub struct Ext {
-    /// Type being extended (e.g., "str", "Point", "File")
+    /// Type being extended (e.g., "str", "Point", "File", "ListIter<T, S>")
     pub target: Name,
+
+    /// Generic parameters for the impl block (Plan 059)
+    /// e.g., ["T", "S"] for `impl<T, S> ListIter<T, S>`
+    pub generic_params: Vec<GenericParam>,
 
     /// Private fields to add to the type (same-module only)
     pub fields: Vec<Member>,
@@ -62,6 +71,7 @@ impl Ext {
     pub fn new(target: Name, methods: Vec<Fn>) -> Self {
         Self {
             target,
+            generic_params: Vec::new(),
             fields: Vec::new(),
             methods,
             module_path: AutoStr::from(""),
@@ -79,10 +89,27 @@ impl Ext {
     ) -> Self {
         Self {
             target,
+            generic_params: Vec::new(),
             fields,
             methods,
             module_path,
             is_same_module,
+        }
+    }
+
+    /// Create a new type extension with generic parameters (Plan 059)
+    pub fn with_generic_params(
+        target: Name,
+        generic_params: Vec<GenericParam>,
+        methods: Vec<Fn>,
+    ) -> Self {
+        Self {
+            target,
+            generic_params,
+            fields: Vec::new(),
+            methods,
+            module_path: AutoStr::from(""),
+            is_same_module: false,
         }
     }
 }
@@ -90,6 +117,7 @@ impl Ext {
 impl PartialEq for Ext {
     fn eq(&self, other: &Self) -> bool {
         self.target == other.target
+            // Note: generic_params comparison omitted (GenericParam doesn't impl PartialEq)
             && self.fields.len() == other.fields.len()
             && self.methods == other.methods
             && self.module_path == other.module_path
@@ -99,7 +127,19 @@ impl PartialEq for Ext {
 
 impl fmt::Display for Ext {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(ext (target {})", self.target)?;
+        write!(f, "(ext (target {}", self.target)?;
+
+        // Add generic params if present (Plan 059)
+        if !self.generic_params.is_empty() {
+            write!(f, " (for<")?;
+            for (i, param) in self.generic_params.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", param)?;
+            }
+            write!(f, ">)")?;
+        }
 
         // Add fields if present
         if !self.fields.is_empty() {

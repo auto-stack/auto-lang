@@ -1,0 +1,9 @@
+// Test generic pointer fields in structs (Plan 059 Phase 1)
+
+type MyStruct<T> {
+    value *const T
+}
+
+fn main() {
+    let x = 42
+}
