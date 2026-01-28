@@ -1,0 +1,24 @@
+/// ForEach Terminal Operator - Plan 051 Phase 4
+/// Calls a function for each element, consuming the iterator
+///
+/// Example signature:
+///   fn for_each(f: fn(int)void)
+///
+/// Usage example (when closures are supported):
+///   list.iter().for_each(|x| say(x))
+///
+/// Note: Full implementation requires:
+/// - Function pointer types (fn(int)void)
+/// - Closure syntax (|x| say(x))
+/// - Match expressions for May<T> pattern matching
+
+use auto.iter.spec: Iter
+
+// Example: ForEach for RangeIter
+ext RangeIter {
+    #[c, vm]
+    fn for_each() {
+        // TODO: Implement when function pointers and match are supported
+        return
+    }
+}

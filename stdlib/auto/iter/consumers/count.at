@@ -1,0 +1,23 @@
+/// Count Terminal Operator - Plan 051 Phase 4
+/// Consumes iterator and returns number of elements
+///
+/// Example signature:
+///   fn count() u32
+///
+/// Usage example:
+///   let n = list.iter().count()
+///
+/// Note: Full implementation requires:
+/// - Match expressions for May<T> pattern matching
+/// - Mutable variables in loops (Plan 053)
+
+use auto.iter.spec: Iter
+
+// Example: Count for RangeIter
+ext RangeIter {
+    #[c, vm]
+    fn count() int {
+        // TODO: Implement when match is supported
+        return 0
+    }
+}

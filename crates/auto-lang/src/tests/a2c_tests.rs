@@ -870,3 +870,8 @@ fn test_103_generic_ptr_field() {
     test_a2c("103_generic_ptr_field").unwrap();
 }
 
+#[test]
+fn test_104_terminal_operators() {
+    test_a2c("104_terminal_operators").unwrap();
+}
+

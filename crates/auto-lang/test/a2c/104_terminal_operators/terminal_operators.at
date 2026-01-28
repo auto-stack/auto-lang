@@ -1,0 +1,30 @@
+// Test Terminal Operators - Plan 051 Phase 4
+// Test that reduce, count, and for_each methods can be declared
+
+type RangeIter {
+    current int
+    end int
+}
+
+ext RangeIter {
+    #[c]
+    fn reduce() int {
+        return 0
+    }
+
+    #[c]
+    fn count() int {
+        return 0
+    }
+
+    #[c]
+    fn for_each() {
+        return
+    }
+}
+
+fn main() {
+    let range = RangeIter(1, 4)
+    let sum = range.reduce()
+    let count = range.count()
+}
