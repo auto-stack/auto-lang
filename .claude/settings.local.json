@@ -97,7 +97,8 @@
       "Bash(git restore:*)",
       "Bash(../../target/debug/auto.exe run:*)",
       "Bash(../../target/release/auto.exe run ../../test_prelude.at)",
-      "Bash(./test_pointer_transpile.exe:*)"
+      "Bash(./test_pointer_transpile.exe:*)",
+      "Bash(cargo checkout:*)"
     ]
   }
 }

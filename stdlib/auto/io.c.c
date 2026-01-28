@@ -1,11 +1,11 @@
 #include "io.h"
 
-File File_Open(struct File *self, str) {
-    struct FILE* f = fopen(path, "r");
+struct File File_Open(struct File *self, char*) {
+    void** f = fopen(path, "r");
     
     return {};
 }
-str File_ReadText(struct File *self) {
+char* File_ReadText(struct File *self) {
     if (self->file == NULL) {
         
     }
@@ -17,7 +17,7 @@ str File_ReadText(struct File *self) {
     }
     return result;
 }
-str File_ReadLine(struct File *self) {
+char* File_ReadLine(struct File *self) {
     if (self->file == NULL) {
         
     }
@@ -35,13 +35,13 @@ int File_ReadChar(struct File *self) {
     }
     return fgetc(self->file);
 }
-int File_ReadBuf(struct File *self, str, int) {
+int File_ReadBuf(struct File *self, char*, int) {
     if (self->file == NULL) {
         
     }
     return fread(buf, 1, size, self->file);
 }
-void File_WriteLine(struct File *self, str) {
+void File_WriteLine(struct File *self, char*) {
     fputs(s, self->file);
     fputs("\n", self->file);
 }

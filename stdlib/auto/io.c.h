@@ -4,15 +4,15 @@
 
 struct File {
     char* path;
-    struct FILE* file;
+    void** file;
 };
 
-File File_Open(struct File *self, str);
-str File_ReadText(struct File *self);
-str File_ReadLine(struct File *self);
+struct File File_Open(struct File *self, char*);
+char* File_ReadText(struct File *self);
+char* File_ReadLine(struct File *self);
 int File_ReadChar(struct File *self);
-int File_ReadBuf(struct File *self, str, int);
-void File_WriteLine(struct File *self, str);
+int File_ReadBuf(struct File *self, char*, int);
+void File_WriteLine(struct File *self, char*);
 void File_Flush(struct File *self);
 void File_Close(struct File *self);
 void say(char* msg);
