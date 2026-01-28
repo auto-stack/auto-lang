@@ -948,13 +948,20 @@ impl<'a> Parser<'a> {
             if self.is_kind(TokenKind::Dot) {
                 self.next(); // skip .
                 let field_name = self.cur.text.clone();
-                // Allow @ and * as special field names for pointer operations
-                if self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::At) || self.is_kind(TokenKind::Star) {
+                // Allow @, * as special field names for pointer operations
+                // Allow numeric literals for integer-keyed objects: a.1, a.2
+                // Allow boolean keywords: a.true, a.false
+                if self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::At) || self.is_kind(TokenKind::Star) ||
+                   self.is_kind(TokenKind::Int) || self.is_kind(TokenKind::Uint) ||
+                   self.is_kind(TokenKind::I8) || self.is_kind(TokenKind::U8) ||
+                   self.is_kind(TokenKind::Float) || self.is_kind(TokenKind::Double) ||
+                   self.is_kind(TokenKind::True) || self.is_kind(TokenKind::False) ||
+                   self.is_kind(TokenKind::Nil) {
                     self.next();
                     // Use Expr::Dot for semantic clarity
                     lhs = Expr::Dot(Box::new(lhs), field_name);
                 } else {
-                    let message = format!("Expected identifier, @, or * after dot, got {:?}", self.cur.kind);
+                    let message = format!("Expected identifier, @, *, number, or boolean after dot, got {:?}", self.cur.kind);
                     let span = pos_to_span(self.cur.pos);
                     return Err(SyntaxError::Generic { message, span }.into());
                 }
@@ -5541,7 +5548,9 @@ impl<'a> Parser<'a> {
         // Plan 056: Use Expr::Dot for semantic clarity
         while self.is_kind(TokenKind::Dot) {
             self.next(); // skip dot
-            // Allow @ and * as special field names for pointer operations
+            // Allow @, * as special field names for pointer operations
+            // Allow numeric literals for integer-keyed objects: a.1, a.2
+            // Allow boolean keywords: a.true, a.false
             let field_name = if self.is_kind(TokenKind::Ident) {
                 let text = self.cur.text.clone();
                 self.next();
@@ -5550,9 +5559,17 @@ impl<'a> Parser<'a> {
                 let text = self.cur.text.clone();
                 self.next();
                 text
+            } else if self.is_kind(TokenKind::Int) || self.is_kind(TokenKind::Uint) ||
+                      self.is_kind(TokenKind::I8) || self.is_kind(TokenKind::U8) ||
+                      self.is_kind(TokenKind::Float) || self.is_kind(TokenKind::Double) ||
+                      self.is_kind(TokenKind::True) || self.is_kind(TokenKind::False) ||
+                      self.is_kind(TokenKind::Nil) {
+                let text = self.cur.text.clone();
+                self.next();
+                text
             } else {
                 return Err(SyntaxError::Generic {
-                    message: format!("Expected identifier, @, or * after dot, got {:?}", self.cur.kind),
+                    message: format!("Expected identifier, @, *, number, or boolean after dot, got {:?}", self.cur.kind),
                     span: pos_to_span(self.cur.pos),
                 }.into());
             };
@@ -6013,10 +6030,10 @@ mod tests {
             "(code (let (name o) (object (pair (name x) (int 1)) (pair (name y) (int 2)))))"
         );
 
-        let code = "var a = { 1: 2, 3: 4 }; a.1";
+        let code = "var a = { 1: 2, 3: 4 }; a.3";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(dot (name a).1)");
+        assert_eq!(last.to_string(), "(dot (name a).3)");
     }
 
     #[test]
