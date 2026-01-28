@@ -335,3 +335,163 @@ fn test_heap_growth_updates_capacity() {
     // Should parse and execute without error
     assert!(!result.contains("Error"));
 }
+
+// ============================================================================
+// List<T> VM Tests (Plan 052 Priority 3)
+// ============================================================================
+
+#[test]
+fn test_list_new_and_push() {
+    let code = r#"
+        fn main() {
+            let list = List.new()
+            list.push(1)
+            list.push(2)
+            list.push(3)
+            return list.len()
+        }
+    "#;
+
+    let result = run(code).unwrap();
+    // Should have 3 elements
+    assert_eq!(result, "3");
+}
+
+#[test]
+fn test_list_pop() {
+    let code = r#"
+        fn main() {
+            let list = List.new()
+            list.push(10)
+            list.push(20)
+            let elem = list.pop()
+            return elem
+        }
+    "#;
+
+    let result = run(code).unwrap();
+    // Should pop 20 (last element)
+    assert_eq!(result, "20");
+}
+
+#[test]
+fn test_list_get() {
+    let code = r#"
+        fn main() {
+            let list = List.new()
+            list.push(100)
+            list.push(200)
+            list.push(300)
+            return list.get(1)
+        }
+    "#;
+
+    let result = run(code).unwrap();
+    // Should get 200 (element at index 1)
+    assert_eq!(result, "200");
+}
+
+#[test]
+fn test_list_set() {
+    let code = r#"
+        fn main() {
+            let list = List.new()
+            list.push(1)
+            list.push(2)
+            list.set(0, 99)
+            return list.get(0)
+        }
+    "#;
+
+    let result = run(code).unwrap();
+    // Should get 99 (updated value)
+    assert_eq!(result, "99");
+}
+
+#[test]
+fn test_list_capacity() {
+    let code = r#"
+        fn main() {
+            let list = List.new()
+            list.push(1)
+            list.push(2)
+            let cap = list.capacity()
+            return cap
+        }
+    "#;
+
+    let result = run(code).unwrap();
+    // Should have capacity (at least 4 due to pre-allocation)
+    assert!(!result.contains("Error"));
+}
+
+#[test]
+fn test_list_is_empty() {
+    let code = r#"
+        fn main() {
+            let list = List.new()
+            let empty1 = list.is_empty()
+            list.push(1)
+            let empty2 = list.is_empty()
+            [empty1, empty2]
+        }
+    "#;
+
+    let result = run(code).unwrap();
+    // Should be [1, 0] (true, false)
+    assert!(result.contains("1"));
+    assert!(result.contains("0"));
+}
+
+#[test]
+fn test_list_clear() {
+    let code = r#"
+        fn main() {
+            let list = List.new()
+            list.push(1)
+            list.push(2)
+            list.push(3)
+            list.clear()
+            return list.len()
+        }
+    "#;
+
+    let result = run(code).unwrap();
+    // Should be 0 after clear
+    assert_eq!(result, "0");
+}
+
+#[test]
+fn test_list_insert() {
+    let code = r#"
+        fn main() {
+            let list = List.new()
+            list.push(1)
+            list.push(3)
+            list.insert(1, 2)
+            return list.get(1)
+        }
+    "#;
+
+    let result = run(code).unwrap();
+    // Should get 2 (inserted at index 1)
+    assert_eq!(result, "2");
+}
+
+#[test]
+fn test_list_remove() {
+    let code = r#"
+        fn main() {
+            let list = List.new()
+            list.push(1)
+            list.push(2)
+            list.push(3)
+            list.remove(1)
+            return list.get(1)
+        }
+    "#;
+
+    let result = run(code).unwrap();
+    // Should get 3 (element shifted after removal)
+    assert_eq!(result, "3");
+}
