@@ -1660,20 +1660,8 @@ impl<'a> Parser<'a> {
 
     // An Expression that can be assigned to a variable, e.g. right-hand side of an assignment
     pub fn rhs_expr(&mut self) -> AutoResult<Expr> {
-        if self.is_kind(TokenKind::If) {
-            self.if_expr()
-        } else if self.is_kind(TokenKind::Ident) {
-            self.node_or_call_expr()
-            // TODO: should have a node_or_call_expr()
-            // let stmt = self.parse_node_or_call_stmt()?;
-            // match stmt {
-            // Stmt::Expr(expr) => Ok(expr),
-            // Stmt::Node(node) => Ok(Expr::Node(node)),
-            // _ => error_pos!("Expected expression, got {:?}", stmt),
-            // }
-        } else {
-            self.parse_expr()
-        }
+        // Use parse_expr() for all cases - it handles if expressions, identifiers, calls, etc.
+        self.parse_expr()
     }
 
     fn tag_cover(&mut self, tag_name: &Name) -> AutoResult<Expr> {
@@ -5325,7 +5313,9 @@ impl<'a> Parser<'a> {
         }
 
         // If has brace, must be a node instance
-        if self.is_kind(TokenKind::LBrace) || primary_prop.is_some() || is_constructor {
+        // NOTE: If ident is a Dot expression (e.g., TypeName.method), treat as call even if is_constructor=true
+        let is_dot_call = matches!(ident, Expr::Dot(_, _));
+        if self.is_kind(TokenKind::LBrace) || primary_prop.is_some() || (is_constructor && !is_dot_call) {
             // node instance
             // with node instance, pair args also defines as properties
             for arg in &args.args {

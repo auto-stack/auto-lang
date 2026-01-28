@@ -9,18 +9,19 @@ use crate::universe::Universe;
 // ============================================================================
 
 /// Create a new empty Heap storage
-/// Returns an Instance with ptr=0 and cap=0
-pub fn heap_new(_uni: Shared<Universe>, _args: Value) -> Value {
-    // Create a Heap<T> instance with nil pointer and 0 capacity
-    // TODO: Need to track the generic type parameter T
-    // For now, create a simple Instance with ptr and cap fields
-    let mut fields = Obj::new();
-    fields.set("ptr", Value::Int(0));  // null pointer
-    fields.set("cap", Value::Int(0));  // zero capacity
+/// Returns an Instance with empty array and 0 capacity
+pub fn heap_new(uni: Shared<Universe>, _args: Value) -> Value {
+    use crate::vm::memory::alloc_array;
 
-    // TODO: Set proper type (should be Heap<T> but we don't have T yet)
+    // Start with empty array (no allocation yet)
+    let initial_array = Value::Array(auto_val::Array::new());
+
+    let mut fields = Obj::new();
+    fields.set("ptr", initial_array);  // Store actual array, not pointer
+    fields.set("cap", Value::Uint(0));  // zero capacity
+
     let instance = Instance {
-        ty: auto_val::Type::User("Heap".into()),  // Placeholder type
+        ty: auto_val::Type::User("Heap".into()),
         fields,
     };
 
@@ -28,12 +29,12 @@ pub fn heap_new(_uni: Shared<Universe>, _args: Value) -> Value {
 }
 
 /// Get the data pointer from Heap storage
-/// VmMethod signature: (uni, &mut self, args) -> Value
+/// Returns the underlying array
 pub fn heap_data(_uni: Shared<Universe>, self_instance: &mut Value, _args: Vec<Value>) -> Value {
-    // Extract .ptr field from the Heap instance
+    // Extract .ptr field from the Heap instance (now stores actual array)
     match self_instance {
         Value::Instance(instance) => {
-            instance.fields.get_or("ptr", Value::Int(0))
+            instance.fields.get_or("ptr", Value::Array(auto_val::Array::new()))
         }
         _ => Value::Error("heap_data: self is not an Instance".into()),
     }
@@ -52,7 +53,9 @@ pub fn heap_capacity(_uni: Shared<Universe>, self_instance: &mut Value, _args: V
 
 /// Try to grow the Heap storage to minimum capacity
 /// Uses alloc_array/realloc_array from VM memory module
-pub fn heap_try_grow(_uni: Shared<Universe>, self_instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn heap_try_grow(uni: Shared<Universe>, self_instance: &mut Value, args: Vec<Value>) -> Value {
+    use crate::vm::memory::{alloc_array, realloc_array};
+
     // Extract min_cap from args[0]
     if args.is_empty() {
         return Value::Error("heap_try_grow requires min_cap argument".into());
@@ -81,37 +84,68 @@ pub fn heap_try_grow(_uni: Shared<Universe>, self_instance: &mut Value, args: Ve
                 std::cmp::max(cap * 2, min_cap)
             };
 
-            // TODO: Actually allocate/reallocate memory using memory::realloc_array()
-            // For now, just update the capacity field
-            let mut instance_mut = instance.clone();
-            instance_mut.fields.set("cap", Value::Uint(new_cap));
+            // Get current array
+            let current_array = instance.fields.get_or("ptr", Value::Array(auto_val::Array::new()));
 
-            // Update self_instance (this is a simplified approach)
-            *self_instance = Value::Instance(instance_mut);
+            // Allocate or reallocate memory
+            let new_array = if cap == 0 {
+                // First allocation
+                alloc_array(uni.clone(), Value::Uint(new_cap))
+            } else {
+                // Reallocation: grow existing array
+                realloc_array(uni.clone(), current_array, Value::Uint(new_cap))
+            };
 
-            Value::Bool(true)
+            // Check if allocation succeeded
+            match new_array {
+                Value::Array(_) => {
+                    // Success: update instance with new array and capacity
+                    let mut instance_mut = instance.clone();
+                    instance_mut.fields.set("ptr", new_array);
+                    instance_mut.fields.set("cap", Value::Uint(new_cap));
+                    *self_instance = Value::Instance(instance_mut);
+                    Value::Bool(true)
+                }
+                Value::Error(msg) => {
+                    // Allocation failed
+                    Value::Error(format!("heap_try_grow: allocation failed: {}", msg).into())
+                }
+                _ => {
+                    Value::Error("heap_try_grow: unexpected result from allocation".into())
+                }
+            }
         }
         _ => Value::Error("heap_try_grow: self is not an Instance".into()),
     }
 }
 
 /// Free the Heap storage memory
-pub fn heap_drop(_uni: Shared<Universe>, self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn heap_drop(uni: Shared<Universe>, self_instance: &mut Value, _args: Vec<Value>) -> Value {
+    use crate::vm::memory::free_array;
+
     match self_instance {
         Value::Instance(instance) => {
-            // Get the pointer value
-            let ptr_value = instance.fields.get_or("ptr", Value::Int(0));
-            match ptr_value {
-                Value::Int(0) => {
-                    // Already null, nothing to free
+            // Get the array from .ptr field
+            let array_value = instance.fields.get_or("ptr", Value::Array(auto_val::Array::new()));
+
+            match array_value {
+                Value::Array(_) => {
+                    // Free the array (no-op in VM with GC, but good for completeness)
+                    free_array(uni, array_value);
+
+                    // Reset fields to empty state
+                    let mut instance_mut = instance.clone();
+                    instance_mut.fields.set("ptr", Value::Array(auto_val::Array::new()));
+                    instance_mut.fields.set("cap", Value::Uint(0));
+                    *self_instance = Value::Instance(instance_mut);
                     Value::Nil
                 }
                 _ => {
-                    // TODO: Call memory::free_array() on the pointer
-                    // For now, just set ptr to null
+                    // Unexpected state (non-Array in ptr field)
+                    // Just reset to empty
                     let mut instance_mut = instance.clone();
-                    instance_mut.fields.set("ptr", Value::Int(0));
-                    instance_mut.fields.set("cap", Value::Int(0));
+                    instance_mut.fields.set("ptr", Value::Array(auto_val::Array::new()));
+                    instance_mut.fields.set("cap", Value::Uint(0));
                     *self_instance = Value::Instance(instance_mut);
                     Value::Nil
                 }

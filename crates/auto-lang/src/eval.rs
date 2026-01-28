@@ -2945,6 +2945,38 @@ impl Evaler {
                     };
                     return self.eval_method(&delegated_method, args);
                 }
+
+                // Check VM_REGISTRY for instance methods (e.g., InlineInt64.capacity())
+                if let auto_val::Type::User(type_name) = &inst.ty {
+                    let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+                    let method_opt = registry
+                        .modules()
+                        .values()
+                        .find_map(|module| {
+                            module.types.get(type_name.as_str())
+                                .and_then(|type_entry| type_entry.methods.get(name.as_str()))
+                        })
+                        .cloned();
+                    drop(registry);
+
+                    if let Some(method_fn) = method_opt {
+                        // Call the VM instance method
+                        let uni = self.universe.clone();
+                        let mut target_clone = target.clone();
+
+                        // Convert Args to Vec<Value> by evaluating each Arg
+                        let arg_vals: Vec<Value> = args.args
+                            .iter()
+                            .map(|arg| match arg {
+                                ast::Arg::Pos(expr) => self.eval_expr(expr),
+                                ast::Arg::Pair(_, expr) => self.eval_expr(expr),
+                                ast::Arg::Name(_) => Value::Nil,
+                            })
+                            .collect();
+
+                        return Ok(method_fn(uni, &mut target_clone, arg_vals));
+                    }
+                }
             }
             _ => {
                 let method_fn = self
