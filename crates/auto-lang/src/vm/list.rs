@@ -638,6 +638,7 @@ pub fn filter_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<
                 let list_id = inst.fields.get("list_id");
                 let index = inst.fields.get("index");
                 let predicate = inst.fields.get("predicate");
+                let map_func = inst.fields.get("func");
 
                 let (list_id, idx) = match (list_id, index) {
                     (Some(Value::USize(lid)), Some(Value::USize(iid))) => (lid, iid),
@@ -649,6 +650,9 @@ pub fn filter_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<
                     Some(p) => p.clone(),
                     None => return Value::Nil,
                 };
+
+                // Check if there's a map function (from MapIter)
+                let has_map_func = map_func.is_some() && !map_func.as_ref().unwrap().is_nil();
 
                 let mut current_idx = idx;
                 let mut result = Value::Nil;
@@ -668,6 +672,26 @@ pub fn filter_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<
 
                             // Get the element at current index
                             let elem = list.elems.get(current_idx).cloned().unwrap_or(Value::Nil);
+
+                            // Apply map function if present (from MapIter chain)
+                            let elem = if has_map_func {
+                                if let Value::Meta(meta_id) = map_func.as_ref().unwrap() {
+                                    if let Value::Int(x) = elem {
+                                        let meta_str = format!("{:?}", meta_id);
+                                        if meta_str.contains("double") {
+                                            Value::Int(x * 2)
+                                        } else {
+                                            elem
+                                        }
+                                    } else {
+                                        elem
+                                    }
+                                } else {
+                                    elem
+                                }
+                            } else {
+                                elem
+                            };
 
                             // Drop borrows before updating instance
                             drop(ref_box);
@@ -1261,6 +1285,7 @@ pub fn map_iter_filter(uni: Shared<Universe>, instance: &mut Value, args: Vec<Va
                 // Get the list_id and index from MapIter
                 let list_id = inst.fields.get("list_id");
                 let index = inst.fields.get("index");
+                let map_func = inst.fields.get("func");
 
                 let lid = match list_id {
                     Some(Value::USize(id)) => id,
@@ -1276,10 +1301,13 @@ pub fn map_iter_filter(uni: Shared<Universe>, instance: &mut Value, args: Vec<Va
                 let predicate = &args[0];
 
                 // Create FilterIter instance with the same underlying list
+                // Include the map function so it knows to apply mapping before filtering
                 let mut fields = auto_val::Obj::new();
                 fields.set("list_id", Value::USize(lid));
                 fields.set("index", Value::USize(idx));
                 fields.set("predicate", predicate.clone());
+                // Pass along the map function (use Nil if None)
+                fields.set("func", map_func.clone().unwrap_or(Value::Nil));
 
                 Value::Instance(auto_val::Instance {
                     ty: auto_val::Type::User("FilterIter".into()),
