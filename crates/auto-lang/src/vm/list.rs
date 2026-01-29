@@ -542,7 +542,7 @@ pub fn map_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Val
                                     let meta_str = format!("{:?}", meta_id);
 
                                     if let Value::Int(x) = elem {
-                                        if meta_str.contains("double") {
+                                        if meta_str.contains("multiply_by_2") {
                                             return Value::Int(x * 2);
                                         }
                                     }
@@ -679,7 +679,7 @@ pub fn filter_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<
                                 if let Value::Meta(meta_id) = map_func.as_ref().unwrap() {
                                     if let Value::Int(x) = elem {
                                         let meta_str = format!("{:?}", meta_id);
-                                        if meta_str.contains("double") {
+                                        if meta_str.contains("multiply_by_2") {
                                             Value::Int(x * 2)
                                         } else {
                                             elem

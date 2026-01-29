@@ -186,12 +186,12 @@ fn test_list_map_double() {
         list.push(2)
         list.push(3)
 
-        fn double(x int) int {
+        fn multiply_by_2(x int) int {
             return x * 2
         }
 
         let iter = list.iter()
-        let mapped = iter.map(double)
+        let mapped = iter.map(multiply_by_2)
 
         let a = mapped.next()
         let b = mapped.next()
@@ -377,12 +377,12 @@ fn test_list_collect() {
         list.push(2)
         list.push(3)
 
-        fn double(x int) int {
+        fn multiply_by_2(x int) int {
             return x * 2
         }
 
         let iter = list.iter()
-        let mapped = iter.map(double)
+        let mapped = iter.map(multiply_by_2)
         let new_list = mapped.collect()
 
         new_list.len()
@@ -440,12 +440,12 @@ fn test_list_bang_operator_with_map() {
         list.push(2)
         list.push(3)
 
-        fn double(x int) int {
+        fn multiply_by_2(x int) int {
             return x * 2
         }
 
         // Bang operator with map: eagerly collect mapped values
-        let mapped = list.iter().map(double).!
+        let mapped = list.iter().map(multiply_by_2).!
 
         mapped.len()
     "#;
@@ -612,7 +612,7 @@ fn test_list_map_filter_reduce() {
         list.push(4)
         list.push(5)
 
-        fn double(x int) int {
+        fn multiply_by_2(x int) int {
             return x * 2
         }
 
@@ -625,7 +625,7 @@ fn test_list_map_filter_reduce() {
         }
 
         let iter = list.iter()
-        let mapped = iter.map(double)
+        let mapped = iter.map(multiply_by_2)
         let filtered = mapped.filter(is_even)
         let sum = filtered.reduce(0, add)
 
@@ -652,7 +652,7 @@ fn test_list_filter_map_count() {
             return x % 2 == 0
         }
 
-        fn double(x int) int {
+        fn multiply_by_2(x int) int {
             return x * 2
         }
 
@@ -702,12 +702,12 @@ fn test_list_single_element() {
 
         let elem = list.get(0)
 
-        fn double(x int) int {
+        fn multiply_by_2(x int) int {
             return x * 2
         }
 
         let iter = list.iter()
-        let mapped = iter.map(double)
+        let mapped = iter.map(multiply_by_2)
         let doubled = mapped.next()
         let done = mapped.next()
 
