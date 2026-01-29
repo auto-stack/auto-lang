@@ -1,7 +1,37 @@
 use crate::error::AutoError;
 use crate::interp;
+use crate::universe::{Universe, VmRefData};
+use auto_val::{Shared, Value};
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
+
+/// Format a value for display, with special handling for Lists
+fn format_value(value: &Value, uni: &Shared<Universe>) -> String {
+    // Check if this is a List instance
+    if let Value::Instance(inst) = value {
+        if let Type::User(ref_name) = &inst.ty {
+            if ref_name == "List" {
+                // Try to get the list contents from the VmRef
+                if let Some(Value::USize(id)) = inst.fields.get("id") {
+                    let uni_borrow = uni.borrow();
+                    if let Some(vmref) = uni_borrow.get_vmref_ref(id) {
+                        let ref_box = vmref.borrow();
+                        if let VmRefData::List(list) = &*ref_box {
+                            // Format as List[elem1, elem2, ...]
+                            let elems: Vec<String> = list.elems.iter()
+                                .map(|v| format!("{}", v))
+                                .collect();
+                            return format!("List[{}]", elems.join(", "));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Default formatting for non-List values
+    format!("{}", value)
+}
 
 enum CmdResult {
     Exit,
@@ -58,7 +88,8 @@ fn try_command(line: &str, interpreter: &mut interp::Interpreter) -> CmdResult {
         }
         _ => match interpreter.interpret(line) {
             Ok(_) => {
-                println!("{}", interpreter.result);
+                let formatted = format_value(&interpreter.result, &interpreter.scope);
+                println!("{}", formatted);
                 CmdResult::Continue
             }
             Err(error) => {

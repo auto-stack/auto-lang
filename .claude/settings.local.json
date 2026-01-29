@@ -102,7 +102,8 @@
       "Bash(dos2unix:*)",
       "Bash(for test in test_021_type_error test_060_generic_tag test_080_array_zero_size test_090_type_alias test_092_const_generics test_095_storage_module test_102_generic_field test_122_bang_operator:*)",
       "Bash(do echo \"=== $test ===\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(xargs:*)"
     ]
   }
 }
