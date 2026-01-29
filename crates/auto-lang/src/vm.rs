@@ -296,6 +296,9 @@ pub fn init_collections_module() {
     list_type
         .methods
         .insert("drop".into(), list::list_drop as VmMethod);
+    list_type
+        .methods
+        .insert("iter".into(), list::list_iter as VmMethod);
 
     // Register List.new() as a static function
     collections_module.functions.insert(
@@ -308,6 +311,20 @@ pub fn init_collections_module() {
     );
 
     collections_module.types.insert("List".into(), list_type);
+
+    // Register ListIter type with methods (Plan 051 Phase 2)
+    let mut listiter_type = VmTypeEntry {
+        name: "ListIter".into(),
+        methods: HashMap::new(),
+    };
+
+    listiter_type
+        .methods
+        .insert("next".into(), list::list_iter_next as VmMethod);
+
+    collections_module
+        .types
+        .insert("ListIter".into(), listiter_type);
 
     // Register memory management functions (Plan 052 Phase 2)
     // These functions enable self-hosted List<T> with manual reallocation

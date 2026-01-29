@@ -325,6 +325,40 @@ pub fn list_remove(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>
     Value::Nil
 }
 
+/// Create an iterator for the List
+/// Syntax: list.iter()
+/// Returns a ListIter instance
+pub fn list_iter(_uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+    if let Value::Instance(inst) = instance {
+        if let Type::User(ref_name) = &inst.ty {
+            if ref_name == "List" {
+                // Get the list ID
+                let id: usize = match inst.fields.get("id") {
+                    Some(Value::USize(id_val)) => id_val,
+                    None => 0,
+                    _ => 0,
+                };
+
+                // Create ListIter instance with list_id and initial index 0
+                let mut fields = Obj::new();
+                fields.set("list_id", Value::USize(id));
+                fields.set("index", Value::USize(0));
+
+                Value::Instance(Instance {
+                    ty: auto_val::Type::User("ListIter".into()),
+                    fields,
+                })
+            } else {
+                Value::Nil
+            }
+        } else {
+            Value::Nil
+        }
+    } else {
+        Value::Nil
+    }
+}
+
 /// Drop the List and free its resources
 pub fn list_drop(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
@@ -335,6 +369,52 @@ pub fn list_drop(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>)
                     let mut uni = uni.borrow_mut();
                     uni.drop_vmref(id);
                     return Value::Nil;
+                }
+            }
+        }
+    }
+    Value::Nil
+}
+
+// ============================================================================
+// ListIter Methods (Plan 051 Phase 2)
+// ============================================================================
+
+/// Get the next element from the iterator
+/// Syntax: iter.next()
+/// Returns the next element or nil when iteration is complete
+pub fn list_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+    if let Value::Instance(inst) = instance {
+        if let Type::User(ref_name) = &inst.ty {
+            if ref_name == "ListIter" {
+                let list_id = inst.fields.get("list_id");
+                let index = inst.fields.get("index");
+
+                let (list_id, idx): (usize, usize) = match (list_id, index) {
+                    (Some(Value::USize(lid)), Some(Value::USize(iid))) => (lid, iid),
+                    _ => (0, 0),
+                };
+
+                let uni = uni.borrow();
+                let b = uni.get_vmref_ref(list_id);
+                if let Some(b) = b {
+                    let mut ref_box = b.borrow_mut();
+                    if let VmRefData::List(list) = &mut *ref_box {
+                        if idx < list.elems.len() {
+                            // Get the element at current index
+                            let elem = list.elems.get(idx).cloned().unwrap_or(Value::Nil);
+
+                            // Increment index in the iterator
+                            drop(ref_box); // Drop borrow before modifying instance
+                            drop(uni);
+                            inst.fields.set("index", Value::USize(idx + 1));
+
+                            return elem;
+                        } else {
+                            // End of iteration
+                            return Value::Nil;
+                        }
+                    }
                 }
             }
         }
