@@ -321,10 +321,27 @@ pub fn init_collections_module() {
     listiter_type
         .methods
         .insert("next".into(), list::list_iter_next as VmMethod);
+    listiter_type
+        .methods
+        .insert("map".into(), list::list_iter_map as VmMethod);
 
     collections_module
         .types
         .insert("ListIter".into(), listiter_type);
+
+    // Register MapIter type with methods (Plan 051 Phase 3)
+    let mut mapiter_type = VmTypeEntry {
+        name: "MapIter".into(),
+        methods: HashMap::new(),
+    };
+
+    mapiter_type
+        .methods
+        .insert("next".into(), list::map_iter_next as VmMethod);
+
+    collections_module
+        .types
+        .insert("MapIter".into(), mapiter_type);
 
     // Register memory management functions (Plan 052 Phase 2)
     // These functions enable self-hosted List<T> with manual reallocation

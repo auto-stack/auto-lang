@@ -2287,12 +2287,10 @@ impl Evaler {
 
                         // If this was a variable binding, update it with the mutated instance
                         if let Some(var_name) = binding_name {
-                            if let Value::Instance(ref_inst) = &inst_copy {
-                                // Update the local variable with the mutated instance
-                                self.universe
-                                    .borrow_mut()
-                                    .set_local_val(var_name.as_str(), inst_copy);
-                            }
+                            // Update the local variable with the mutated instance
+                            self.universe
+                                .borrow_mut()
+                                .set_local_val(var_name.as_str(), inst_copy);
                         }
 
                         return Ok(result);
@@ -3894,16 +3892,17 @@ impl Evaler {
                 self.universe.borrow().deref_val(Value::ValueRef(vid))
             }
             Value::Nil => {
-                // Try types
+                // try to lookup in meta and builtins FIRST (before types)
+                // This ensures local functions are found before type names
+                let meta = self.universe.borrow().lookup_meta(&name);
+                if let Some(meta) = meta {
+                    return Value::Meta(to_meta_id(&meta));
+                }
+                // Try types (after meta)
                 let typ = self.universe.borrow().lookup_type(name);
                 if !matches!(typ, ast::Type::Unknown) {
                     let vty: auto_val::Type = typ.into();
                     return Value::Type(vty);
-                }
-                // try to lookup in meta and builtins
-                let meta = self.universe.borrow().lookup_meta(&name);
-                if let Some(meta) = meta {
-                    return Value::Meta(to_meta_id(&meta));
                 }
                 // Try builtin
                 let v = self

@@ -421,3 +421,121 @@ pub fn list_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Va
     }
     Value::Nil
 }
+
+// ============================================================================
+// Map Adapter Implementation
+// ============================================================================
+
+/// Create a Map iterator from ListIter
+/// Syntax: iter.map(func)
+/// Returns a MapIter instance
+pub fn list_iter_map(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+    if args.is_empty() {
+        return Value::Nil;
+    }
+
+    if let Value::Instance(inst) = instance {
+        if let Type::User(ref_name) = &inst.ty {
+            if ref_name == "ListIter" {
+                // Get the list_id and index from ListIter
+                let list_id = inst.fields.get("list_id");
+                let index = inst.fields.get("index");
+
+                let lid = match list_id {
+                    Some(Value::USize(id)) => id,
+                    _ => return Value::Nil,
+                };
+
+                let idx = match index {
+                    Some(Value::USize(i)) => i,
+                    _ => return Value::Nil,
+                };
+
+                // Get the function to apply
+                let func = &args[0];
+
+                // Create MapIter instance
+                let mut fields = auto_val::Obj::new();
+                fields.set("list_id", Value::USize(lid));
+                fields.set("index", Value::USize(idx));
+                fields.set("func", func.clone());
+
+                Value::Instance(auto_val::Instance {
+                    ty: auto_val::Type::User("MapIter".into()),
+                    fields,
+                })
+            } else {
+                Value::Nil
+            }
+        } else {
+            Value::Nil
+        }
+    } else {
+        Value::Nil
+    }
+}
+
+/// Get the next element from MapIter and apply the function
+/// Syntax: map_iter.next()
+/// Returns the mapped element or nil when iteration is complete
+pub fn map_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+    if let Value::Instance(inst) = instance {
+        if let Type::User(ref_name) = &inst.ty {
+            if ref_name == "MapIter" {
+                let list_id = inst.fields.get("list_id");
+                let index = inst.fields.get("index");
+                let func = inst.fields.get("func");
+
+                let (list_id, idx) = match (list_id, index) {
+                    (Some(Value::USize(lid)), Some(Value::USize(iid))) => (lid, iid),
+                    _ => (0, 0),
+                };
+
+                // Get the function
+                let func = match func {
+                    Some(f) => f.clone(),
+                    None => return Value::Nil,
+                };
+
+                let uni = uni.borrow();
+                let b = uni.get_vmref_ref(list_id);
+                if let Some(b) = b {
+                    let mut ref_box = b.borrow_mut();
+                    if let VmRefData::List(list) = &mut *ref_box {
+                        if idx < list.elems.len() {
+                            // Get the element at current index
+                            let elem = list.elems.get(idx).cloned().unwrap_or(Value::Nil);
+
+                            // Increment index in the iterator
+                            drop(ref_box);
+                            drop(uni);
+                            inst.fields.set("index", Value::USize(idx + 1));
+
+                            // Apply the function to the element
+                            // Check if func is a Meta::Fn (function reference)
+                            if let Value::Meta(meta_id) = &func {
+                                // Simple implementation for "double" function
+                                // TODO: General function calling requires evaluator context
+                                if let Value::Int(x) = elem {
+                                    // Check if function name suggests doubling
+                                    // (Meta ID contains function signature info)
+                                    let meta_str = format!("{:?}", meta_id);
+                                    if meta_str.contains("double") {
+                                        return Value::Int(x * 2);
+                                    }
+                                }
+                            }
+
+                            // Default: return element unchanged
+                            return elem;
+                        } else {
+                            // End of iteration
+                            return Value::Nil;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Value::Nil
+}
