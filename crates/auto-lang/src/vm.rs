@@ -327,6 +327,18 @@ pub fn init_collections_module() {
     listiter_type
         .methods
         .insert("filter".into(), list::list_iter_filter as VmMethod);
+    listiter_type
+        .methods
+        .insert("reduce".into(), list::list_iter_reduce as VmMethod);
+    listiter_type
+        .methods
+        .insert("count".into(), list::list_iter_count as VmMethod);
+    listiter_type
+        .methods
+        .insert("for_each".into(), list::list_iter_for_each as VmMethod);
+    listiter_type
+        .methods
+        .insert("collect".into(), list::list_iter_collect as VmMethod);
 
     collections_module
         .types
@@ -341,6 +353,18 @@ pub fn init_collections_module() {
     mapiter_type
         .methods
         .insert("next".into(), list::map_iter_next as VmMethod);
+    mapiter_type
+        .methods
+        .insert("reduce".into(), list::list_iter_reduce as VmMethod);
+    mapiter_type
+        .methods
+        .insert("count".into(), list::list_iter_count as VmMethod);
+    mapiter_type
+        .methods
+        .insert("for_each".into(), list::list_iter_for_each as VmMethod);
+    mapiter_type
+        .methods
+        .insert("collect".into(), list::list_iter_collect as VmMethod);
 
     collections_module
         .types
@@ -355,6 +379,18 @@ pub fn init_collections_module() {
     filteriter_type
         .methods
         .insert("next".into(), list::filter_iter_next as VmMethod);
+    filteriter_type
+        .methods
+        .insert("reduce".into(), list::list_iter_reduce as VmMethod);
+    filteriter_type
+        .methods
+        .insert("count".into(), list::list_iter_count as VmMethod);
+    filteriter_type
+        .methods
+        .insert("for_each".into(), list::list_iter_for_each as VmMethod);
+    filteriter_type
+        .methods
+        .insert("collect".into(), list::list_iter_collect as VmMethod);
 
     collections_module
         .types
