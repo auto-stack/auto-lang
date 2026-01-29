@@ -1,24 +1,46 @@
 /// ForEach Terminal Operator - Plan 051 Phase 4
 /// Calls a function for each element, consuming the iterator
 ///
-/// Example signature:
-///   fn for_each(f: fn(int)void)
+/// # Examples
 ///
-/// Usage example (when closures are supported):
-///   list.iter().for_each( x => say(x))
+/// ```auto
+/// // Print each element
+/// let list = List.new()
+/// list.push(1)
+/// list.push(2)
+/// list.push(3)
+/// list.iter().for_each( x => say(x))  // Prints: 1, 2, 3
 ///
-/// Note: Full implementation requires:
-/// - Function pointer types (fn(int)void)
-/// - Closure syntax ( x => say(x))
-/// - Match expressions for May<T> pattern matching
+/// // Call custom function
+/// fn print_item(x int) {
+///     say(x)
+/// }
+/// list.iter().for_each(print_item)
+/// ```
+///
+/// Note: Unlike map/filter, for_each is eager and consumes the iterator.
+/// The function return value is discarded.
+///
+/// Note: Full pattern matching with `is` expressions is planned (Plan 018).
+/// Current implementation uses nil checks.
 
 use auto.iter.spec: Iter
 
-// Example: ForEach for RangeIter
-ext RangeIter {
+// ForEach implementation for ListIter
+impl<T, S> ListIter<T, S> {
+    /// Call function f for each element
     #[c, vm]
-    fn for_each() {
-        // TODO: Implement when function pointers and match are supported
-        return
+    fn for_each(f: fn(T)void) {
+        loop {
+            let item = self.next()
+
+            // Check if iteration is complete
+            if item == nil {
+                return
+            }
+
+            // Call function with element (result discarded)
+            f(item)
+        }
     }
 }

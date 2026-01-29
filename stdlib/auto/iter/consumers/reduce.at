@@ -1,24 +1,50 @@
 /// Reduce Terminal Operator - Plan 051 Phase 4
 /// Consumes iterator and produces accumulated result
 ///
-/// Example signature:
-///   fn reduce(init: int, f: fn(int, int)int) int
+/// Reduces the iterator using a binary operation, starting with init value.
 ///
-/// Usage example (when closures are supported):
-///   let sum = list.iter().reduce(0, (a, b) => a + b)
+/// # Examples
 ///
-/// Note: Full implementation requires:
-/// - Function pointer types (fn(int, int)int)
-/// - Closure syntax ((a, b) => a + b)
-/// - Match expressions for May<T> pattern matching
+/// ```auto
+/// // Sum a list of integers
+/// let list = List.new()
+/// list.push(1)
+/// list.push(2)
+/// list.push(3)
+/// let sum = list.iter().reduce(0, (a, b) => a + b)  // Returns 6
+///
+/// // Find maximum
+/// let max = list.iter().reduce(0, (a, b) => {
+///     if a > b { a } else { b }
+/// })
+/// ```
+///
+/// Note: Full pattern matching with `is` expressions is planned (Plan 018).
+/// Current implementation uses nil checks.
 
 use auto.iter.spec: Iter
 
-// Example: Reduce for RangeIter
-ext RangeIter {
+// Reduce implementation for ListIter
+impl<T, S> ListIter<T, S> {
+    /// Fold/reduce: consume iterator, accumulating values
     #[c, vm]
-    fn reduce(init: int) int {
-        // TODO: Implement when function pointers and match are supported
-        return init
+    fn reduce(init: T, f: fn(T, T)T) T {
+        let mut accum = init
+
+        loop {
+            let item = self.next()
+
+            // Check if iteration is complete (nil == nil)
+            if item == nil {
+                return accum
+            }
+
+            // Accumulate the value
+            accum = f(accum, item)
+        }
     }
 }
+
+// Generic reduce function that works with any Iter<T>
+// Note: This requires impl spec support which is a future enhancement
+// For now, reduce is implemented directly on each iterator type

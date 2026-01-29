@@ -1,23 +1,44 @@
 /// Count Terminal Operator - Plan 051 Phase 4
 /// Consumes iterator and returns number of elements
 ///
-/// Example signature:
-///   fn count() u32
+/// # Examples
 ///
-/// Usage example:
-///   let n = list.iter().count()
+/// ```auto
+/// // Count elements in a list
+/// let list = List.new()
+/// list.push(1)
+/// list.push(2)
+/// list.push(3)
+/// let n = list.iter().count()  // Returns 3
 ///
-/// Note: Full implementation requires:
-/// - Match expressions for May<T> pattern matching
-/// - Mutable variables in loops (Plan 053)
+/// // Count after filtering
+/// let evens = list.iter()
+///     .filter( x => x % 2 == 0)
+///     .count()
+/// ```
+///
+/// Note: Full pattern matching with `is` expressions is planned (Plan 018).
+/// Current implementation uses nil checks.
 
 use auto.iter.spec: Iter
 
-// Example: Count for RangeIter
-ext RangeIter {
+// Count implementation for ListIter
+impl<T, S> ListIter<T, S> {
+    /// Count elements in iterator
     #[c, vm]
-    fn count() int {
-        // TODO: Implement when match is supported
-        return 0
+    fn count() u32 {
+        let mut count = 0
+
+        loop {
+            let item = self.next()
+
+            // Check if iteration is complete
+            if item == nil {
+                return count
+            }
+
+            // Increment counter
+            count = count + 1
+        }
     }
 }

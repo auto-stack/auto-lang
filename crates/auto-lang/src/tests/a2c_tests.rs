@@ -886,3 +886,9 @@ fn test_108_closure() {
     test_a2c("108_closure").unwrap();
 }
 
+// Plan 051 Phase 4: Terminal Operators tests
+#[test]
+fn test_121_terminal_operators() {
+    test_a2c("121_terminal_operators").unwrap();
+}
+
