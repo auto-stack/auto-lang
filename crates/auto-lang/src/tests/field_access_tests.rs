@@ -17,7 +17,7 @@ type Point {
     y int
 }
 
-let p = Point { x: 10, y: 20 }
+let p = Point(10, 20)
 p.x
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
@@ -33,7 +33,7 @@ type Point {
     y int
 }
 
-let p = Point { x: 1, y: 2 }
+let p = Point(1, 2)
 p.x
 p.y
 "#;
@@ -53,7 +53,7 @@ type Data {
     c int
 }
 
-let d = Data { a: 1, b: 2, c: 3 }
+let d = Data(1, 2, 3)
 d.a
 d.b
 d.c
@@ -73,7 +73,7 @@ type Point {
     y int
 }
 
-let p = Point { x: 1, y: 2 }
+let p = Point(1, 2)
 p.x = 10
 p.y = 20
 p.x  // Return x
@@ -94,7 +94,7 @@ type Outer {
     inner Inner
 }
 
-let outer = Outer { inner: Inner { value: 42 } }
+let outer = Outer(Inner(42))
 outer.inner.value
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
@@ -127,7 +127,7 @@ type Data {
     active bool
 }
 
-let d = Data { name: "test", count: 42, active: true }
+let d = Data("test", 42, true)
 d.name
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
@@ -142,7 +142,7 @@ type Data {
     value int
 }
 
-let d = Data { value: 42 }
+let d = Data(42)
 d.value
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
@@ -157,7 +157,7 @@ type Data {
     active bool
 }
 
-let d = Data { active: true }
+let d = Data(true)
 d.active
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));

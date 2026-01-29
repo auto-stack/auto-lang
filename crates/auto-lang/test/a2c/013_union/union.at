@@ -5,6 +5,6 @@ union MyUnion {
 }
 
 fn main() {
-    let my_union = MyUnion { i: 42 }
-    print("int value:", my_union.i);
+    let my_union = MyUnion(i: 42)
+    print("int value:", my_union.i)
 }

@@ -12,13 +12,13 @@ if { bina(>, x, 1) { call print ("greater than 1") }; else { call print ("less t
 
 ## for control
 
-for i in range(0, 10) {
+for i in 0..10 {
     print(i)
 }
 
 ---
 
-for in(i, range(0, 10)) { call print (i) }
+for in(i, range(start(0), end(10), eq(false))) { call print (i) }
 
 ## for control
 

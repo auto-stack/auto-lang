@@ -5,7 +5,7 @@ struct List {
     void* store;
 };
 
-list_void*_void* List_New(struct List *self);
+list_void* List_New(struct List *self);
 int List_Len(struct List *self);
 bool List_IsEmpty(struct List *self);
 int List_Capacity(struct List *self);
@@ -17,9 +17,9 @@ void List_Clear(struct List *self);
 void List_Drop(struct List *self);
 listiter_void*_void* List_Iter(struct List *self);
 struct ListIter {
-    list_void*_void** list;
+    list_void** list;
     unknown index;
 };
 
-listiter_void*_void* ListIter_New(struct ListIter *self, list_void*_void**);
+listiter_void*_void* ListIter_New(struct ListIter *self, list_void**);
 may_void* ListIter_Next(struct ListIter *self);

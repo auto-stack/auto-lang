@@ -8,7 +8,7 @@ type Point {
 }
 
 fn main() {
-    let p = Point {x:3, y:4}
+    let p = Point(3, 4)
     let m int = p.modulus()
     print("Modulus:", m)
 }

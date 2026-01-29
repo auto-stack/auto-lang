@@ -1,0 +1,14 @@
+type Heap<T> {
+    ptr *T
+}
+
+ext Heap {
+    #[c]
+    static fn new() Heap {
+        return Heap(ptr: 0 as *void)
+    }
+}
+
+fn main() {
+    let heap = Heap.new()
+}

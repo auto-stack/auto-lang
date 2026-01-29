@@ -45,17 +45,16 @@ Storage_int_vtable InlineInt64_Storage_int_vtable = {
 
 int main(void) {
 
-    unknown heap = Heap.new();
-    unknown heap_data = heap.data();
-    unknown heap_cap = heap.capacity();
-    unknown can_grow_heap = heap.try_grow(100);
+    struct Heap heap = Heap_New();
+    unknown heap_data = Heap_Data(&heap);
+    unknown heap_cap = Heap_Capacity(&heap);
+    unknown can_grow_heap = Heap_TryGrow(&heap, 100);
 
 
-    unknown inline = InlineInt64.new();
-    unknown inline_data = inline.data();
-    unknown inline_cap = inline.capacity();
-    unknown can_grow_inline = inline.try_grow(50);
+    struct InlineInt64 inline = InlineInt64_New();
+    unknown inline_data = InlineInt64_Data(&inline);
+    unknown inline_cap = InlineInt64_Capacity(&inline);
+    unknown can_grow_inline = InlineInt64_TryGrow(&inline, 50);
 
-    
     return 0;
 }

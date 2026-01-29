@@ -7,7 +7,7 @@ type Math {
 }
 
 fn main() {
-    let m = Math {value: 0}
+    let m = Math(0)
     let sq = m.square(5)
 
     if sq > 20 {

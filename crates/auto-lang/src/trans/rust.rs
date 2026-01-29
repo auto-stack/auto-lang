@@ -723,7 +723,17 @@ impl RustTrans {
             }
         }
 
-        // Normal call
+        // Check if this is a struct construction call: Type(args)
+        // If the callee name matches a type name, generate struct initialization syntax
+        if let Expr::Ident(type_name) = call.name.as_ref() {
+            let type_decl = self.scope.borrow().lookup_type(type_name);
+            if !matches!(type_decl, Type::Unknown) {
+                // This is a struct construction: Type { field1: value1, ... }
+                return self.struct_init(type_name, &call.args, out);
+            }
+        }
+
+        // Normal function call
         self.expr(&call.name, out)?;
         write!(out, "(")?;
         for (i, arg) in call.args.args.iter().enumerate() {
@@ -733,6 +743,52 @@ impl RustTrans {
             }
         }
         write!(out, ")").map_err(Into::into)
+    }
+
+    fn struct_init(&mut self, type_name: &AutoStr, args: &Args, out: &mut impl Write) -> AutoResult<()> {
+        // Generate struct initialization: Type { field1: value1, field2: value2 }
+        if args.args.is_empty() {
+            // Empty struct: Type {}
+            write!(out, "{} {{}}", type_name)?;
+            return Ok(());
+        }
+
+        write!(out, "{} {{ ", type_name)?;
+
+        // Try to get type declaration to map positional args to field names
+        let type_decl = self.scope.borrow().lookup_type(type_name);
+
+        for (i, arg) in args.args.iter().enumerate() {
+            match arg {
+                Arg::Pos(expr) => {
+                    // Positional arg - map to actual field name from type definition
+                    let field_name = if let Type::User(decl) = &type_decl {
+                        if i < decl.members.len() {
+                            decl.members[i].name.clone()
+                        } else {
+                            format!("field{}", i).into()
+                        }
+                    } else {
+                        format!("field{}", i).into()
+                    };
+                    write!(out, "{}: ", field_name)?;
+                    self.expr(expr, out)?;
+                }
+                Arg::Name(name) => {
+                    // Named arg without value
+                    write!(out, "{}: ", name)?;
+                }
+                Arg::Pair(key, expr) => {
+                    // Named argument: field: value
+                    write!(out, "{}: ", key)?;
+                    self.expr(expr, out)?;
+                }
+            }
+            if i < args.args.len() - 1 {
+                write!(out, ", ")?;
+            }
+        }
+        write!(out, " }}").map_err(Into::into)
     }
 
     fn arg(&mut self, arg: &Arg, out: &mut impl Write) -> AutoResult<()> {

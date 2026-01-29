@@ -1759,6 +1759,46 @@ impl<'a> Parser<'a> {
         if self.is_kind(TokenKind::LParen) {
             return self.group();
         }
+
+        // Handle generic type instances specially (e.g., List<int, Heap>)
+        // This must be checked before the match statement since we need to consume
+        // the identifier and potentially parse type parameters
+        if self.is_kind(TokenKind::Ident) {
+            let name = self.cur.text.clone();
+            self.next(); // consume the identifier
+
+            // Check if this is a generic type instance (followed by <)
+            // Only treat as generic type if the identifier is a known TYPE (not a variable)
+            // This prevents false positives like "x < 10" being treated as generic type
+            let is_type = self.scope.borrow().lookup_ident_type(&name).is_some();
+            if self.is_kind(TokenKind::Lt) && is_type {
+                // Parse as generic type instance: List<int, Heap>
+                self.expect(TokenKind::Lt)?;
+                let mut args = Vec::new();
+                args.push(self.parse_type()?);
+
+                while self.cur.kind == TokenKind::Comma {
+                    self.next(); // Consume ','
+                    args.push(self.parse_type()?);
+                }
+
+                self.expect(TokenKind::Gt)?;
+
+                // Generate descriptive name: "List<int, Heap>"
+                let args_str = args
+                    .iter()
+                    .map(|t| t.unique_name().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let generic_name = format!("{}<{}>", name, args_str);
+
+                return Ok(Expr::GenName(generic_name.into()));
+            } else {
+                // Not a generic type, just a regular identifier
+                return Ok(Expr::Ident(name));
+            }
+        }
+
         let expr = match self.kind() {
             TokenKind::Uint => self.parse_uint()?,
             TokenKind::Int => self.parse_int()?,
@@ -3367,7 +3407,21 @@ impl<'a> Parser<'a> {
                 }
             }
             Expr::Call(call) => {
-                typ = call.ret.clone();
+                // Check if this is a struct construction call: Type(args)
+                // If the callee name matches a type name, infer the type as the constructed type
+                if let Expr::Ident(type_name) = call.name.as_ref() {
+                    let type_decl = self.lookup_type(type_name);
+                    if !matches!(*type_decl.borrow(), Type::Unknown) {
+                        // This is a struct construction call - return the type being constructed
+                        typ = type_decl.borrow().clone();
+                    } else {
+                        // Regular function call - use the call's return type
+                        typ = call.ret.clone();
+                    }
+                } else {
+                    // Regular function call
+                    typ = call.ret.clone();
+                }
             }
             Expr::Index(arr, _idx) => {
                 let arr_typ = self.infer_type_expr(arr);
@@ -5862,6 +5916,51 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
+            // Plan 052/060: Handle Expr::Dot for generic type method calls
+            // e.g., List<int, Heap>.new() where lhs is GenName("List<int, Heap>")
+            Expr::Dot(lhs, rhs) => {
+                // Extract base type name from GenName or Ident
+                let base_name = match lhs.as_ref() {
+                    Expr::GenName(name) => {
+                        // Extract base name from "List<int, Heap>" -> "List"
+                        let name_str = name.as_str();
+                        if let Some(pos) = name_str.find('<') {
+                            &name_str[..pos]
+                        } else {
+                            name_str
+                        }
+                    }
+                    Expr::Ident(name) => name.as_str(),
+                    _ => {
+                        return Ok(Type::Unknown);
+                    }
+                };
+
+                // Lookup meta for the base type
+                let meta = self.lookup_meta(base_name);
+                let Some(meta) = meta else {
+                    return Ok(Type::Unknown);
+                };
+
+                match meta.as_ref() {
+                    Meta::Type(typ) => match typ {
+                        Type::User(decl) => {
+                            // Check for static methods (e.g., List.new not List::new)
+                            // rhs is AutoStr (field/method name)
+                            let combined_name = format!("{}.{}", base_name, rhs);
+                            if let Some(method_meta) = self.lookup_meta(&combined_name) {
+                                if let Meta::Fn(fn_decl) = method_meta.as_ref() {
+                                    return Ok(fn_decl.ret.clone());
+                                }
+                            }
+                            // Return the type itself if no method found
+                            return Ok(typ.clone());
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
             _ => {}
         }
         // TODO: should check all types or print error
@@ -6581,21 +6680,26 @@ mod tests {
     }
 
     #[test]
-    fn test_lambda() {
-        let code = "var x = || 1 + 2";
+    fn test_closure() {
+        // Plan 060: Test closure parsing (replaces deprecated lambda)
+        // Single parameter closure: n => n + 1 (note: space before param is required)
+        let code = "var x =  n => n + 1";
         let ast = parse_once(code);
+        // Actual format includes parentheses around parameter
         assert_eq!(
             ast.to_string(),
-            "(code (var (name x) (fn (name lambda_1) (body (bina (int 1) (op +) (int 2))))))"
+            "(code (var (name x) (closure (n) => (bina (name n) (op +) (int 1)))))"
         );
     }
 
     #[test]
-    fn test_lambda_with_params() {
-        let code = "|a int, b int| a + b";
+    fn test_closure_with_params() {
+        // Plan 060: Test closure with parameters and type annotations
+        // Note: Display format doesn't show type annotations in params list
+        let code = "(a int, b int) => a + b";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(fn (name lambda_1) (params (param (name a) (type int)) (param (name b) (type int))) (body (bina (name a) (op +) (name b))))");
+        assert_eq!(last.to_string(), "(closure (a, b) => (bina (name a) (op +) (name b)))");
     }
 
     // #[test]

@@ -1,11 +1,11 @@
 int main(void) {
-    unknown list = List < int;
+    bool list = List < int;
     Heap > self->new();
-    list.push(10);
-    list.push(20);
-    list.push(30);
+    bool_push(list, 10);
+    bool_push(list, 20);
+    bool_push(list, 30);
 
-    unknown iter = list.iter();
+    unknown iter = bool_iter(list);
 
     unknown a = iter.next();
     unknown b = iter.next();

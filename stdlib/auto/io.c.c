@@ -7,37 +7,37 @@ struct File File_Open(struct File *self, char*) {
 }
 char* File_ReadText(struct File *self) {
     if (self->file == NULL) {
-        
+        return "";
     }
 
     char* buf = "                                                                                ";
     char* result = fgets(buf, 80, self->file);
     if (result == NULL) {
-        
+        return "";
     }
     return result;
 }
 char* File_ReadLine(struct File *self) {
     if (self->file == NULL) {
-        
+        return "";
     }
 
     char* buf = "                                                                                ";
     char* result = fgets(buf, 80, self->file);
     if (result == NULL) {
-        
+        return "";
     }
     return result;
 }
 int File_ReadChar(struct File *self) {
     if (self->file == NULL) {
-        return - 1;
+        return -1;
     }
     return fgetc(self->file);
 }
 int File_ReadBuf(struct File *self, char*, int) {
     if (self->file == NULL) {
-        
+        return 0;
     }
     return fread(buf, 1, size, self->file);
 }

@@ -52,15 +52,14 @@ void List_Capacity(struct List *self) {
 
 int main(void) {
 
-    unknown heap_list = List<int, Heap>.new();
-    unknown heap_len = heap_list.len();
-    unknown heap_cap = heap_list.capacity();
+    struct List heap_list = List_New(List<int, Heap>);
+    unknown heap_len = List_Len(&heap_list);
+    unknown heap_cap = List_Capacity(&heap_list);
 
 
-    unknown inline_list = List<int, InlineInt64>.new();
-    unknown inline_len = inline_list.len();
-    unknown inline_cap = inline_list.capacity();
+    struct List inline_list = List_New(List<int, InlineInt64>);
+    unknown inline_len = List_Len(&inline_list);
+    unknown inline_cap = List_Capacity(&inline_list);
 
-    
     return 0;
 }

@@ -5,9 +5,6 @@ type target {
 
 
 fn main() {
-    let t = target {
-        name: "foo",
-        at: 42,
-    }
+    let t = target(name: "foo", at: 42)
     print(t.name)
 }

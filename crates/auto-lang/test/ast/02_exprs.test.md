@@ -57,10 +57,10 @@ array(1, 2, 3)
 
 obj { pair(name, "John"), pair(age, 30) }
 
-## lambda
+## closure
 
-|x, y| { x + y }
+(x, y) => x + y
 
 ---
 
-lambda(x, y) { bina(+, x, y) }
+|x y| bina(+, x, y)

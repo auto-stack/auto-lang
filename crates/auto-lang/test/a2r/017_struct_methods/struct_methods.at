@@ -11,7 +11,7 @@ type Calculator {
 }
 
 fn main() {
-    let calc = Calculator {value: 0}
+    let calc = Calculator(0)
     let sum = calc.add(5, 3)
     let product = calc.multiply(4, 7)
     print("Sum:", sum, "Product:", product)

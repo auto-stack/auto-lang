@@ -227,6 +227,11 @@ impl CTrans {
                 // Generate C functions for each method
                 self.ext_stmt(ext, sink)?;
             }
+            Stmt::Return(expr) => {
+                out.write(b"return ")?;
+                self.expr(expr, out)?;
+                out.write(b";")?;
+            }
             Stmt::Node(_node) => {
                 // CONFIG mode constructs - skip in C transpilation
                 // These are only used for config evaluation, not for C code generation
@@ -1781,7 +1786,8 @@ impl CTrans {
             } else {
                 // last stmt
                 if has_return {
-                    if self.is_returnable(stmt) {
+                    // Don't write 'return' prefix for explicit Return statements
+                    if !matches!(stmt, Stmt::Return(_)) && self.is_returnable(stmt) {
                         // Check if this is an array/slice literal return
                         if ret_is_array {
                             if let Stmt::Expr(Expr::Array(arr)) = stmt {
@@ -1975,14 +1981,22 @@ impl CTrans {
             Type::Char => "char".to_string(),
             Type::Void => "void".to_string(),
             Type::GenericInstance(inst) => {
-                // Generic instances: MyType<int> -> my_type_int
+                // Generic instances: MyType<int, Heap> -> my_type_int_heap
                 let args: Vec<String> = inst.args.iter()
                     .map(|t| self.c_type_name(t))
                     .collect();
-                format!("{}_{}",
-                    inst.base_name.to_lowercase(),
-                    args.join("_")
-                )
+
+                // Special case for List with storage type
+                // List<T, Storage> -> list_T (storage is not part of C type name)
+                if inst.base_name == "List" && args.len() == 2 {
+                    // Second argument is storage type, skip it for C type name
+                    format!("list_{}", args[0])
+                } else {
+                    format!("{}_{}",
+                        inst.base_name.to_lowercase(),
+                        args.join("_")
+                    )
+                }
             }
             Type::Storage(storage) => {
                 // Storage types are marker types, transpile to void (Plan 055)
@@ -2491,29 +2505,44 @@ impl CTrans {
                     }
                 }
 
-                // Handle type constructor calls like File.open(...)
+                // Handle type constructor calls like File.open(...) or List<int, Heap>.new()
                 // Check if it's a type method call (e.g., File.open(...))
                 if let Expr::Dot(type_expr, method_ident) = &call.name.as_ref() {
-                    if let Expr::Ident(type_name) = type_expr.as_ref() {
-                        if let Some(meta) = self.lookup_meta(type_name) {
-                            if let Meta::Type(Type::User(decl)) = meta.as_ref() {
-                                // Find the method and return its return type
-                                for method in &decl.methods {
-                                    if method.name == *method_ident {
-                                        // If the return type is a bare User type (e.g., just "File"),
-                                        // look up the complete type with methods from meta
-                                        if let Type::User(ret_decl) = &method.ret {
-                                            if ret_decl.methods.is_empty() && !ret_decl.name.is_empty() {
-                                                // This is a bare type reference, look up the complete type
-                                                if let Some(meta) = self.lookup_meta(&ret_decl.name) {
-                                                    if let Meta::Type(Type::User(complete_decl)) = meta.as_ref() {
-                                                        return Some(Type::User(complete_decl.clone()));
-                                                    }
+                    let type_name = match type_expr.as_ref() {
+                        // Plan 052/060: Handle generic type names like "List<int, Heap>"
+                        Expr::GenName(name) => {
+                            // Extract base type name from "List<int, Heap>" -> "List"
+                            let name_str = name.as_str();
+                            if let Some(pos) = name_str.find('<') {
+                                &name_str[..pos]
+                            } else {
+                                name_str
+                            }
+                        }
+                        Expr::Ident(name) => name.as_str(),
+                        _ => {
+                            return None;
+                        }
+                    };
+
+                    if let Some(meta) = self.lookup_meta(&AutoStr::from(type_name)) {
+                        if let Meta::Type(Type::User(decl)) = meta.as_ref() {
+                            // Find the method and return its return type
+                            for method in &decl.methods {
+                                if method.name == *method_ident {
+                                    // If the return type is a bare User type (e.g., just "File"),
+                                    // look up the complete type with methods from meta
+                                    if let Type::User(ret_decl) = &method.ret {
+                                        if ret_decl.methods.is_empty() && !ret_decl.name.is_empty() {
+                                            // This is a bare type reference, look up the complete type
+                                            if let Some(meta) = self.lookup_meta(&ret_decl.name) {
+                                                if let Meta::Type(Type::User(complete_decl)) = meta.as_ref() {
+                                                    return Some(Type::User(complete_decl.clone()));
                                                 }
                                             }
                                         }
-                                        return Some(method.ret.clone());
                                     }
+                                    return Some(method.ret.clone());
                                 }
                             }
                         }
@@ -3144,6 +3173,20 @@ impl CTrans {
                         return Ok(false);
                     };
 
+                    // Plan 052/061: Check if this is a static type method call
+                    // e.g., List<int, Heap>.new() or Heap.new() - calling new() on the type itself
+                    // Static calls use GenName (generic) or bare Ident matching type name (non-generic)
+                    let is_static_call = matches!(lhs.as_ref(), Expr::GenName(_)) ||
+                                         (matches!(lhs.as_ref(), Expr::Ident(_)) && {
+                                             // Check if this Ident matches the type name
+                                             // e.g., lhs is Ident("Heap") and decl.name is "Heap"
+                                             if let Expr::Ident(name) = lhs.as_ref() {
+                                                 name == &decl.name
+                                             } else {
+                                                 false
+                                             }
+                                         });
+
                     // Check if this is a delegation wrapper method
                     // Delegation wrappers should use lowercase method names
                     let is_delegation = decl.delegations.iter().any(|delegation| {
@@ -3167,12 +3210,35 @@ impl CTrans {
                     }
 
                     out.write(b"(")?;
-                    out.write(b"&")?;
-                    self.expr(lhs, out)?;
+
+                    // Plan 052/061: For static type calls, handle differently based on generic vs non-generic
+                    // For instance method calls, always pass &instance
+                    let has_self_arg = if is_static_call {
+                        // Static method call on a type
+                        // Generic types: List<int, Heap>_New(List<int, Heap>, ...)
+                        // Non-generic types: Heap_New()
+                        if matches!(lhs.as_ref(), Expr::GenName(_)) {
+                            // Generic type: pass type name as first argument
+                            self.expr(lhs, out)?;
+                            true
+                        } else {
+                            // Non-generic type: don't pass type as argument
+                            false
+                        }
+                    } else {
+                        // Instance method call: List_Len(&instance, ...)
+                        out.write(b"&")?;
+                        self.expr(lhs, out)?;
+                        true
+                    };
 
                     // Write remaining arguments
-                    for (_i, arg) in call.args.args.iter().enumerate() {
-                        out.write(b", ").to()?;
+                    for (i, arg) in call.args.args.iter().enumerate() {
+                        // Add comma before argument if there was a self parameter
+                        // or if this is not the first argument
+                        if has_self_arg || i > 0 {
+                            out.write(b", ").to()?;
+                        }
                         self.arg(arg, out)?;
                     }
 
@@ -3252,15 +3318,39 @@ impl CTrans {
     fn get_expr_type(&self, expr: &Expr) -> Type {
         match expr {
             Expr::Ident(name) => {
-                // Try to lookup variable type
+                // Try to lookup variable type or type definition
                 if let Some(meta) = self.lookup_meta(name) {
                     match meta.as_ref() {
                         Meta::Store(store) => store.ty.clone(),
+                        Meta::Type(ty) => ty.clone(),
                         _ => Type::Unknown,
                     }
                 } else {
                     // Check if it's a built-in type name
                     self.name_to_type(name)
+                }
+            }
+            Expr::GenName(name) => {
+                // Plan 052/060: Handle generic type names like "List<int, Heap>"
+                // Extract base type name and look it up
+                let name_str = name.as_str();
+                let base_name = if let Some(pos) = name_str.find('<') {
+                    &name_str[..pos]
+                } else {
+                    name_str
+                };
+
+                // Try to look up the base type
+                if let Some(meta) = self.lookup_meta(&AutoStr::from(base_name)) {
+                    if let Meta::Type(Type::User(decl)) = meta.as_ref() {
+                        // For now, just return the base user type
+                        // TODO: Parse type arguments and create GenericInstance
+                        Type::User(decl.clone())
+                    } else {
+                        Type::Unknown
+                    }
+                } else {
+                    Type::Unknown
                 }
             }
             Expr::Call(call) => {
@@ -3396,37 +3486,111 @@ impl CTrans {
             }
         }
 
-        // normal call
-        if let Expr::Ident(name) = &call.name.as_ref() {
-            if name == "print" {
-                return self.process_print(call, out);
-            } else {
-                // Check if this is a struct initialization (user-defined type)
-                if let Some(meta) = self.lookup_meta(name) {
-                    if let Meta::Type(Type::User(type_decl)) = meta.as_ref() {
-                        // Validate struct initialization arguments
-                        self.validate_struct_init(&type_decl, &call.args)?;
+        // Check if this is a struct/union initialization call: Type(args)
+        if let Expr::Ident(type_name) = &call.name.as_ref() {
+            if type_name != "print" {
+                // Check if this is a user-defined type (struct construction)
+                if let Some(meta) = self.lookup_meta(type_name) {
+                    match meta.as_ref() {
+                        Meta::Type(Type::User(type_decl)) => {
+                            // Generate C struct initialization syntax: {.field1 = value1, .field2 = value2}
+                            return self.struct_init_c(type_name, &type_decl, &call.args, out);
+                        }
+                        Meta::Type(Type::Union(union_decl)) => {
+                            // Generate C union initialization syntax: {.field = value}
+                            return self.union_init_c(type_name, &union_decl, &call.args, out);
+                        }
+                        _ => {}
                     }
                 }
-                self.expr(&call.name, out)?;
-                out.write(b"(").to()?;
             }
-        } else {
-            self.expr(&call.name, out)?;
-            out.write(b"(").to()?;
+
+            // normal function call
+            if type_name == "print" {
+                return self.process_print(call, out);
+            }
         }
+
+        // Regular function call
+        self.expr(&call.name, out)?;
+        out.write(b"(").to()?;
         for (i, arg) in call.args.args.iter().enumerate() {
             self.arg(arg, out)?;
             if i < call.args.args.len() - 1 {
                 out.write(b", ").to()?;
             }
         }
-        // TODO: support named args in C
-        // Find where a named arg is positioned, and insert default arg values in between
-        // // // for (name, expr) in &call.args.map {
-        // //     self.expr(expr, out)?;
-        // }
         out.write(b")").to()?;
+        Ok(())
+    }
+
+    fn union_init_c(&mut self, type_name: &AutoStr, union_decl: &Union, args: &Args, out: &mut impl Write) -> AutoResult<()> {
+        // Generate C union initialization: {.field = value}
+        // Note: Unions in C use designated initializer syntax: {.field = value}
+        out.write(b"{").to()?;
+
+        // Union should only have one argument (the field being set)
+        for (i, arg) in args.args.iter().enumerate() {
+            match arg {
+                Arg::Pair(key, expr) => {
+                    // Named argument: .field = value
+                    out.write(b".").to()?;
+                    out.write_all(key.as_bytes()).to()?;
+                    out.write(b" = ").to()?;
+                    self.expr(expr, out)?;
+                }
+                _ => {
+                    // Positional arg - error in test input
+                    return Err("Union initialization requires named arguments (field: value)".into());
+                }
+            }
+            if i < args.args.len() - 1 {
+                out.write(b", ").to()?;
+            }
+        }
+        out.write(b"}").to()?;
+        Ok(())
+    }
+
+    fn struct_init_c(&mut self, type_name: &AutoStr, type_decl: &TypeDecl, args: &Args, out: &mut impl Write) -> AutoResult<()> {
+        // Generate C struct initialization: {.field1 = value1, .field2 = value2}
+        // Note: In C, we don't include the type name in the initializer for variable declarations
+        // The type is specified separately: struct Point p = {.x = 1, .y = 2};
+        out.write(b"{").to()?;
+
+        for (i, arg) in args.args.iter().enumerate() {
+            match arg {
+                Arg::Pos(expr) => {
+                    // Positional arg - map to actual field name from type definition
+                    let field_name = if i < type_decl.members.len() {
+                        type_decl.members[i].name.clone()
+                    } else {
+                        format!("field{}", i).into()
+                    };
+                    out.write(b".").to()?;
+                    out.write_all(field_name.as_bytes()).to()?;
+                    out.write(b" = ").to()?;
+                    self.expr(expr, out)?;
+                }
+                Arg::Name(name) => {
+                    // Named arg without value (shouldn't happen in valid code)
+                    out.write(b".").to()?;
+                    out.write_all(name.as_bytes()).to()?;
+                    out.write(b" = ").to()?;
+                }
+                Arg::Pair(key, expr) => {
+                    // Named argument: .field = value
+                    out.write(b".").to()?;
+                    out.write_all(key.as_bytes()).to()?;
+                    out.write(b" = ").to()?;
+                    self.expr(expr, out)?;
+                }
+            }
+            if i < args.args.len() - 1 {
+                out.write(b", ").to()?;
+            }
+        }
+        out.write(b"}").to()?;
         Ok(())
     }
 
@@ -3459,6 +3623,7 @@ impl CTrans {
 
     fn is_returnable(&self, stmt: &Stmt) -> bool {
         match stmt {
+            Stmt::Return(_) => true,  // Explicit return statement is always returnable
             Stmt::Expr(expr) => match expr {
                 Expr::Call(call) => {
                     if let Expr::Ident(name) = &call.name.as_ref() {

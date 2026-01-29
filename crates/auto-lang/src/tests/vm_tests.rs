@@ -217,15 +217,17 @@ fn test_array_of_objects() {
 }
 
 #[test]
-fn test_lambda() {
-    let code = "var add = |a int, b int| a + b; add(1, 2)";
+fn test_closure() {
+    // Plan 060: Test closure syntax (replaces deprecated lambda)
+    let code = "var add = (a, b) => a + b; add(1, 2)";
     let result = run(code).unwrap();
     assert_eq!(result, "3");
 }
 
 #[test]
-fn test_lambda_with_named_params() {
-    let code = "let sub = |a, b| a - b; sub(b:5, a:12)";
+fn test_closure_with_type_annotations() {
+    // Plan 060: Test closure with type annotations (Auto syntax: no colon)
+    let code = "let sub = (a int, b int) => a - b; sub(12, 5)";
     let result = run(code).unwrap();
     assert_eq!(result, "7");
 }

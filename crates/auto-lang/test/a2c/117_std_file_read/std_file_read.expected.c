@@ -1,7 +1,7 @@
 #include "std_file_read.h"
 
 int main(void) {
-    struct File f = File.open("test.txt");
+    struct File f = File_Open("test.txt");
     int ch = File_ReadChar(&f);
     char* buf = "   ";
     int n = File_ReadBuf(&f, buf, 3);
