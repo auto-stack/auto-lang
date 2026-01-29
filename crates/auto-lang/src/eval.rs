@@ -3892,17 +3892,17 @@ impl Evaler {
                 self.universe.borrow().deref_val(Value::ValueRef(vid))
             }
             Value::Nil => {
-                // try to lookup in meta and builtins FIRST (before types)
-                // This ensures local functions are found before type names
-                let meta = self.universe.borrow().lookup_meta(&name);
-                if let Some(meta) = meta {
-                    return Value::Meta(to_meta_id(&meta));
-                }
-                // Try types (after meta)
+                // Try types FIRST (before meta)
+                // This ensures type names are found before local functions
                 let typ = self.universe.borrow().lookup_type(name);
                 if !matches!(typ, ast::Type::Unknown) {
                     let vty: auto_val::Type = typ.into();
                     return Value::Type(vty);
+                }
+                // Try meta (after types)
+                let meta = self.universe.borrow().lookup_meta(&name);
+                if let Some(meta) = meta {
+                    return Value::Meta(to_meta_id(&meta));
                 }
                 // Try builtin
                 let v = self
