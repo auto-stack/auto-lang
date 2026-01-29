@@ -364,6 +364,9 @@ pub fn init_collections_module() {
         .insert("next".into(), list::map_iter_next as VmMethod);
     mapiter_type
         .methods
+        .insert("filter".into(), list::map_iter_filter as VmMethod);
+    mapiter_type
+        .methods
         .insert("reduce".into(), list::list_iter_reduce as VmMethod);
     mapiter_type
         .methods
@@ -397,6 +400,9 @@ pub fn init_collections_module() {
     filteriter_type
         .methods
         .insert("next".into(), list::filter_iter_next as VmMethod);
+    filteriter_type
+        .methods
+        .insert("map".into(), list::filter_iter_map as VmMethod);
     filteriter_type
         .methods
         .insert("reduce".into(), list::list_iter_reduce as VmMethod);
