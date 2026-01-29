@@ -1,6 +1,10 @@
 # Plan 051: Auto Flow - Iterator & Functional Programming System
 
-**Status**: ✅ Plan 051 Complete (All 8 Phases)
+**Status**: ⏸️ Partially Implemented (Specs Complete, Runtime Incomplete)
+
+⚠️ **STATUS UPDATE (2025-01-30)**: Plan 051 was marked "Complete" but runtime testing reveals iterator operations don't work. See [051-status-reality-check.md](051-status-reality-check.md) for details.
+
+**Previous Claim**: ✅ Plan 051 Complete (All 8 Phases)
 **Priority**: P0 (Core Standard Library Feature)
 **Dependencies**: Plan 052 ✅, Plan 057 ✅, Plan 059 ✅, Plan 060 ✅, Plan 061 ✅
 **Timeline**: 41 hours completed, 12 hours remaining (buffer)
