@@ -324,6 +324,9 @@ pub fn init_collections_module() {
     listiter_type
         .methods
         .insert("map".into(), list::list_iter_map as VmMethod);
+    listiter_type
+        .methods
+        .insert("filter".into(), list::list_iter_filter as VmMethod);
 
     collections_module
         .types
@@ -342,6 +345,20 @@ pub fn init_collections_module() {
     collections_module
         .types
         .insert("MapIter".into(), mapiter_type);
+
+    // Register FilterIter type with methods (Plan 051 Phase 4)
+    let mut filteriter_type = VmTypeEntry {
+        name: "FilterIter".into(),
+        methods: HashMap::new(),
+    };
+
+    filteriter_type
+        .methods
+        .insert("next".into(), list::filter_iter_next as VmMethod);
+
+    collections_module
+        .types
+        .insert("FilterIter".into(), filteriter_type);
 
     // Register memory management functions (Plan 052 Phase 2)
     // These functions enable self-hosted List<T> with manual reallocation

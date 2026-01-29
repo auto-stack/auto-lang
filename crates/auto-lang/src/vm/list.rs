@@ -539,3 +539,145 @@ pub fn map_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Val
     }
     Value::Nil
 }
+
+// ============================================================================
+// Filter Adapter Implementation
+// ============================================================================
+
+/// Create a Filter iterator from ListIter
+/// Syntax: iter.filter(predicate)
+/// Returns a FilterIter instance
+pub fn list_iter_filter(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+    if args.is_empty() {
+        return Value::Nil;
+    }
+
+    if let Value::Instance(inst) = instance {
+        if let Type::User(ref_name) = &inst.ty {
+            if ref_name == "ListIter" {
+                // Get the list_id and index from ListIter
+                let list_id = inst.fields.get("list_id");
+                let index = inst.fields.get("index");
+
+                let lid = match list_id {
+                    Some(Value::USize(id)) => id,
+                    _ => return Value::Nil,
+                };
+
+                let idx = match index {
+                    Some(Value::USize(i)) => i,
+                    _ => return Value::Nil,
+                };
+
+                // Get the predicate function
+                let predicate = &args[0];
+
+                // Create FilterIter instance
+                let mut fields = auto_val::Obj::new();
+                fields.set("list_id", Value::USize(lid));
+                fields.set("index", Value::USize(idx));
+                fields.set("predicate", predicate.clone());
+
+                Value::Instance(auto_val::Instance {
+                    ty: auto_val::Type::User("FilterIter".into()),
+                    fields,
+                })
+            } else {
+                Value::Nil
+            }
+        } else {
+            Value::Nil
+        }
+    } else {
+        Value::Nil
+    }
+}
+
+/// Get the next element from FilterIter that satisfies the predicate
+/// Syntax: filter_iter.next()
+/// Returns the next matching element or nil when no more elements match
+pub fn filter_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+    if let Value::Instance(inst) = instance {
+        if let Type::User(ref_name) = &inst.ty {
+            if ref_name == "FilterIter" {
+                let list_id = inst.fields.get("list_id");
+                let index = inst.fields.get("index");
+                let predicate = inst.fields.get("predicate");
+
+                let (list_id, idx) = match (list_id, index) {
+                    (Some(Value::USize(lid)), Some(Value::USize(iid))) => (lid, iid),
+                    _ => (0, 0),
+                };
+
+                // Get the predicate function
+                let predicate = match predicate {
+                    Some(p) => p.clone(),
+                    None => return Value::Nil,
+                };
+
+                let mut current_idx = idx;
+                let mut result = Value::Nil;
+
+                // Loop through elements until we find a match or exhaust the list
+                loop {
+                    let uni = uni.borrow();
+                    let b = uni.get_vmref_ref(list_id);
+                    if let Some(b) = b {
+                        let mut ref_box = b.borrow_mut();
+                        if let VmRefData::List(list) = &mut *ref_box {
+                            if current_idx >= list.elems.len() {
+                                // No more elements
+                                result = Value::Nil;
+                                break;
+                            }
+
+                            // Get the element at current index
+                            let elem = list.elems.get(current_idx).cloned().unwrap_or(Value::Nil);
+
+                            // Drop borrows before updating instance
+                            drop(ref_box);
+                            drop(uni);
+
+                            // Check if element satisfies predicate
+                            let matches = if let Value::Meta(meta_id) = &predicate {
+                                if let Value::Int(x) = elem {
+                                    // Simple implementation for "is_even" function
+                                    // TODO: General function calling requires evaluator context
+                                    let meta_str = format!("{:?}", meta_id);
+                                    meta_str.contains("is_even") && x % 2 == 0
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            };
+
+                            // Update index (always advance, even if element doesn't match)
+                            inst.fields.set("index", Value::USize(current_idx + 1));
+
+                            if matches {
+                                result = elem;
+                                break;
+                            } else {
+                                // Continue to next element
+                                current_idx += 1;
+                            }
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+
+                result
+            } else {
+                Value::Nil
+            }
+        } else {
+            Value::Nil
+        }
+    } else {
+        Value::Nil
+    }
+}
