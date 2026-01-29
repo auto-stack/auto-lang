@@ -1397,6 +1397,94 @@ This plan leverages the excellent foundation from Plans 052, 057, 059, 060, and 
 2. ✅ ~~Implement Plan 061 (Generic Constraints)~~ - Complete
 3. ✅ ~~Complete Plan 051 Phase 7 (More Terminal Operators)~~ - Complete
 4. ✅ ~~Complete Plan 051 Phase 8 (Collect & To Operators)~~ - Complete
+
+---
+
+## Integration with Plan 062: Failing A2C Tests
+
+Plan 051 implementation is **complete** for transpilation to C, but the following related A2C tests still need work:
+
+### Related Plan 062 Tests
+
+| Test ID | Test Name | Status | Plan 051 Relevance |
+|---------|-----------|--------|-------------------|
+| 122 | bang_operator | Needs `.!` syntax | Bang operator for eager collection |
+| 123 | extended_adapters | No test file | Advanced adapters (flat_map, scan, etc.) |
+| 124 | predicates | No test file | Combinator predicates (and, or, not) |
+| 125 | collect | No test file | Iterator collection protocol |
+
+### Bang Operator (`.!` Syntax)
+
+**Current Issue**: Test 122 expects `.!` postfix operator for eager collection
+
+**Syntax**:
+```auto
+let collected = list.iter().!  // Eagerly collect iterator
+```
+
+**Desugaring**:
+```auto
+let collected = list.iter().collect()
+```
+
+**Implementation Required**:
+1. Add `TokenKind::Bang` to lexer
+2. Parse postfix `.!` operator in parser
+3. Transform to `.collect()` call during AST construction
+4. Transpile correctly to C
+
+**Estimated Effort**: 4-6 hours
+**Dependencies**: None (can be implemented independently)
+
+### Extended Adapters (Test 123)
+
+Future adapter types beyond the 8 implemented:
+- `flat_map()` - flatten nested iterators
+- `scan()` - running accumulation with state
+- `partition()` - split into two collections
+- `group_by()` - group elements by key
+- `window()` - sliding windows over elements
+
+**Estimated Effort**: 16-24 hours for all
+**Priority**: Low (nice-to-have features)
+
+### Predicates (Test 124)
+
+Combinator predicates for filtering logic:
+- `and(p1, p2)` - logical AND of predicates
+- `or(p1, p2)` - logical OR of predicates
+- `not(p)` - negate a predicate
+
+**Estimated Effort**: 8-12 hours
+**Priority**: Low (can compose manually)
+
+### Collect Protocol (Test 125)
+
+Standardized collection interface:
+- Polymorphic `.collect()` - infers target collection
+- Explicit `.to<List>()` - convert to specific type
+- Custom collection types via `Collect<T>` spec
+
+**Estimated Effort**: 12-16 hours
+**Priority**: Medium (improves API consistency)
+
+### Implementation Priority
+
+1. **High Priority**: Bang operator (`.!`) - 4-6 hours
+   - Frequently requested feature
+   - Improves ergonomics significantly
+   - Simple to implement
+
+2. **Medium Priority**: Collect protocol - 12-16 hours
+   - Unifies API across collection types
+   - Matches Rust/idiomatic patterns
+
+3. **Low Priority**: Extended adapters & predicates - 24-36 hours
+   - Advanced use cases
+   - Can compose existing operations
+   - Implement as needed
+
+**Total Estimated Effort**: 40-58 hours for all Plan 062-related work
 5. **Plan 051 is now complete!** ✅ All 8 phases implemented
 6. Future: Add to<C>() syntax when full spec polymorphism is available
 7. Future: Environment-aware storage selection (MCU vs PC)
