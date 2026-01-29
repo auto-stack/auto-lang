@@ -105,6 +105,14 @@ impl RustTrans {
                 // The move semantics are enforced by AutoLang's ownership system
                 self.rust_type_name(inner)
             }
+            Type::Fn(params, ret) => {
+                // Function type: fn(param1, param2) ret_type
+                // Transpile to Rust: fn(param1_type, param2_type) -> ret_type
+                let param_str: Vec<String> = params.iter()
+                    .map(|p| self.rust_type_name(p))
+                    .collect();
+                format!("fn({}) -> {}", param_str.join(", "), self.rust_type_name(ret))
+            }
             Type::GenericInstance(inst) => {
                 // Generic instances: MyType<int> -> MyType<int>
                 let args: Vec<String> = inst.args.iter()

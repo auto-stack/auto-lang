@@ -13,6 +13,17 @@ use std::io::Error;
 use std::io::ErrorKind;
 use std::rc::Rc;
 
+/// Closure data stored in evaluator (not in auto-val to avoid circular dependency)
+#[derive(Debug, Clone)]
+struct EvalClosure {
+    /// Parameter names with optional types
+    pub params: Vec<ast::ClosureParam>,
+    /// Function body
+    pub body: Box<ast::Expr>,
+    /// Captured environment (empty for Phase 3)
+    pub env: HashMap<String, Value>,
+}
+
 pub enum EvalTempo {
     IMMEDIATE,
     LAZY,
@@ -36,6 +47,9 @@ pub struct Evaler {
     borrow_checker: crate::ownership::borrow::BorrowChecker,
     // lifetime context for Phase 3 ownership system
     lifetime_ctx: crate::ownership::lifetime::LifetimeContext,
+    // Plan 060 Phase 3+: Closure storage
+    closures: HashMap<usize, EvalClosure>,
+    next_closure_id: usize,
 }
 
 impl Evaler {
@@ -47,6 +61,8 @@ impl Evaler {
             skip_check: false,
             borrow_checker: crate::ownership::borrow::BorrowChecker::new(),
             lifetime_ctx: crate::ownership::lifetime::LifetimeContext::new(),
+            closures: HashMap::new(),
+            next_closure_id: 0,
         }
     }
 
@@ -2691,6 +2707,10 @@ impl Evaler {
             Value::Method(method) => {
                 return self.eval_method(&method, &call.args);
             }
+            // Plan 060 Phase 3+: Closure calling
+            Value::Closure(closure) => {
+                return self.call_closure(&closure, &call.args);
+            }
             _ => {
                 return Ok(Value::error(format!("Invalid function call {}", name)));
             }
@@ -3773,6 +3793,10 @@ impl Evaler {
                 Err(e) => Value::Error(format!("Error in block: {:?}", e).into()),
             },
             Expr::Lambda(lambda) => Value::Lambda(lambda.name.clone().into()),
+            Expr::Closure(closure) => {
+                // Plan 060 Phase 3: Evaluate closure and capture environment
+                self.closure(closure)
+            }
             Expr::FStr(fstr) => self.fstr(fstr),
             Expr::Grid(grid) => self.grid(grid),
             Expr::Cover(cover) => self.cover(cover),
@@ -4708,6 +4732,82 @@ impl Evaler {
     //     self.universe.borrow_mut().exit_scope();
     // }
 
+    /// Evaluate closure expression and create closure value (Plan 060 Phase 3+)
+    fn closure(&mut self, closure: &Closure) -> Value {
+        use std::collections::HashMap;
+
+        // Generate unique closure ID
+        let closure_id = self.next_closure_id;
+        self.next_closure_id += 1;
+
+        // Store closure data in evaluator
+        let eval_closure = EvalClosure {
+            params: closure.params.clone(),
+            body: closure.body.clone(),
+            env: HashMap::new(), // Empty for now - no variable capture yet
+        };
+        self.closures.insert(closure_id, eval_closure);
+
+        // Create closure value with ID
+        let closure_val = auto_val::Closure {
+            id: closure_id,
+            params: closure.params.iter().map(|p| p.name.to_string()).collect(),
+            name: format!("<closure_{}>", closure_id),
+        };
+
+        Value::Closure(closure_val)
+    }
+
+    /// Call a closure value (Plan 060 Phase 3+)
+    fn call_closure(&mut self, closure: &auto_val::Closure, args: &ast::Args) -> AutoResult<Value> {
+        // Get closure data from evaluator (clone to avoid borrow checker issues)
+        let eval_closure = self.closures.get(&closure.id)
+            .ok_or_else(|| crate::error::AutoError::Msg(format!("Closure {} not found in evaluator", closure.id)))?
+            .clone();
+
+        // Check argument count
+        let arg_count = args.args.len();
+        let param_count = eval_closure.params.len();
+        if arg_count != param_count {
+            return Ok(Value::error(format!(
+                "Closure arity mismatch: expected {} arguments, got {}",
+                param_count, arg_count
+            )));
+        }
+
+        // Evaluate arguments
+        let mut arg_values = Vec::new();
+        for arg in args.args.iter() {
+            match arg {
+                ast::Arg::Pos(expr) => {
+                    arg_values.push(self.eval_expr(expr));
+                }
+                _ => {
+                    return Ok(Value::error("Unsupported argument type in closure call"));
+                }
+            }
+        }
+
+        // Push new scope for closure execution
+        self.universe.borrow_mut().enter_scope();
+
+        // Bind parameters to arguments
+        for (param, arg_value) in eval_closure.params.iter().zip(arg_values.iter()) {
+            let param_name = param.name.as_str();
+            // Store the argument value in the current scope
+            // This creates a ValueRef that can be resolved when the closure body references the parameter
+            self.universe.borrow_mut().set_local_val(param_name, arg_value.clone());
+        }
+
+        // Execute closure body
+        let result = self.eval_expr(&eval_closure.body);
+
+        // Pop scope
+        self.universe.borrow_mut().exit_scope();
+
+        Ok(result)
+    }
+
     fn fstr(&mut self, fstr: &FStr) -> Value {
         let parts: Vec<AutoStr> = fstr
             .parts
@@ -4957,6 +5057,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Unknown => auto_val::Type::Any,
         ast::Type::CStruct(_) => auto_val::Type::Void,
         ast::Type::Storage(_) => auto_val::Type::Any, // Storage maps to Any for now
+        ast::Type::Fn(_, _) => auto_val::Type::Any, // Function type maps to Any for now
         ast::Type::GenericInstance(_) => auto_val::Type::Any, // TODO: Handle generic instances properly
     }
 }

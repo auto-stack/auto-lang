@@ -279,7 +279,8 @@ pub enum Expr {
     Call(Call),
     Node(Node),
     Index(/*array*/ Box<Expr>, /*index*/ Box<Expr>),
-    Lambda(Fn),
+    Lambda(Fn),        // Named lambda function
+    Closure(Closure),  // Plan 060: Closure:  x => expr or (a, b) => expr
     FStr(FStr),
     Grid(Grid),
     Cover(Cover),
@@ -352,6 +353,7 @@ impl fmt::Display for Expr {
             Expr::Node(node) => write!(f, "{}", node),
             Expr::Index(array, index) => write!(f, "(index {} {})", array, index),
             Expr::Lambda(lambda) => write!(f, "{}", lambda),
+            Expr::Closure(closure) => write!(f, "{}", closure),
             Expr::FStr(fstr) => write!(f, "{}", fstr),
             Expr::Grid(grid) => write!(f, "{}", grid),
             Expr::Cover(cover) => write!(f, "{}", cover),
@@ -600,6 +602,7 @@ impl AtomWriter for Expr {
                 }
             }
             Expr::Lambda(lambda) => lambda.write_atom(f)?,
+            Expr::Closure(closure) => closure.write_atom(f)?,
             Expr::Call(call) => call.write_atom(f)?,
             Expr::Node(node) => node.write_atom(f)?,
             Expr::Block(body) => body.write_atom(f)?,
@@ -746,6 +749,7 @@ impl ToNode for Expr {
                 node
             }
             Expr::Lambda(lambda) => lambda.to_node(),
+            Expr::Closure(closure) => closure.to_node(),
             Expr::FStr(fstr) => fstr.to_node(),
             Expr::Grid(grid) => grid.to_node(),
             Expr::Cover(cover) => cover.to_node(),

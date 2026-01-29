@@ -38,6 +38,18 @@ pub struct CTrans {
     scope: Shared<Universe>,
     last_out: OutKind,
     style: CStyle,
+    // Plan 060: Closure support
+    closure_counter: usize,
+    closures: Vec<ClosureInfo>,
+}
+
+/// Information about a closure for code generation
+#[derive(Debug, Clone)]
+struct ClosureInfo {
+    name: String,
+    params: Vec<(String, Option<Type>)>,
+    return_type: Option<Type>,
+    body: Box<Expr>,
 }
 
 impl CTrans {
@@ -51,6 +63,8 @@ impl CTrans {
             scope: shared(Universe::default()),
             last_out: OutKind::None,
             style: CStyle::Modern,
+            closure_counter: 0,
+            closures: Vec::new(),
         }
     }
 
@@ -134,6 +148,10 @@ impl CTrans {
                 sink.body.write(b"\n")?;
             }
         }
+
+        // Plan 060: Generate closure function definitions after main code
+        self.generate_closure_definitions(sink)?;
+
         Ok(())
     }
 
@@ -1117,6 +1135,8 @@ impl CTrans {
             Expr::Cover(cover) => self.cover(cover, out),
             Expr::Null => self.null(out),
             Expr::Nil => self.nil(out),
+            // Plan 060: Closure expression
+            Expr::Closure(closure) => self.closure_expr(closure, out),
             // Borrow expressions (Phase 3)
             // C doesn't have borrow checking, so we generate pointer references
             Expr::View(e) => {
@@ -1200,6 +1220,111 @@ impl CTrans {
                 Ok(())
             }
             _ => Err(format!("C Transpiler: unsupported expression: {}", expr).into()),
+        }
+    }
+
+    /// Plan 060: Handle closure expression (transpile to function pointer)
+    fn closure_expr(&mut self, closure: &Closure, out: &mut impl Write) -> AutoResult<()> {
+        // Generate unique closure name
+        let closure_name = format!("closure_{}", self.closure_counter);
+        self.closure_counter += 1;
+
+        // Store closure info for later function definition generation
+        let params: Vec<(String, Option<Type>)> = closure.params.iter()
+            .map(|p| (p.name.to_string(), p.ty.clone()))
+            .collect();
+
+        let closure_info = ClosureInfo {
+            name: closure_name.clone(),
+            params,
+            return_type: closure.ret.clone(),
+            body: closure.body.clone(),
+        };
+        self.closures.push(closure_info);
+
+        // For now, just emit the closure name as a function pointer
+        // In C, this will be used as: closure_name
+        out.write_all(closure_name.as_bytes())?;
+        Ok(())
+    }
+
+    /// Plan 060: Generate C function definitions for all collected closures
+    fn generate_closure_definitions(&mut self, sink: &mut Sink) -> AutoResult<()> {
+        if self.closures.is_empty() {
+            return Ok(());
+        }
+
+        // Clone closures to avoid borrow checker issues
+        let closures = self.closures.clone();
+        let out = &mut sink.body;
+
+        // Generate each closure as a C function
+        for closure_info in &closures {
+            out.write(b"\n")?;
+
+            // Determine return type
+            let return_type_str = if let Some(ref ty) = closure_info.return_type {
+                self.type_to_c(ty)
+            } else {
+                "int".to_string()  // Default to int for now
+            };
+
+            // Write function signature
+            out.write_all(return_type_str.as_bytes())?;
+            out.write_all(b" ")?;
+            out.write_all(closure_info.name.as_bytes())?;
+            out.write_all(b"(")?;
+
+            // Write parameters
+            for (i, (param_name, param_ty)) in closure_info.params.iter().enumerate() {
+                if i > 0 {
+                    out.write_all(b", ")?;
+                }
+
+                let param_type_str = if let Some(ref ty) = param_ty {
+                    self.type_to_c(ty)
+                } else {
+                    "int".to_string()  // Default to int
+                };
+
+                out.write_all(param_type_str.as_bytes())?;
+                out.write_all(b" ")?;
+                out.write_all(param_name.as_bytes())?;
+            }
+
+            out.write_all(b") {\n")?;
+            self.indent();
+
+            // Write closure body with return
+            self.print_indent(out)?;
+            out.write_all(b"return ")?;
+            self.expr(&closure_info.body, out)?;
+            out.write_all(b";\n")?;
+
+            self.dedent();
+            out.write_all(b"}\n")?;
+        }
+
+        Ok(())
+    }
+
+    /// Helper: Convert AutoLang type to C type string
+    fn type_to_c(&self, ty: &Type) -> String {
+        match ty {
+            Type::Int => "int".to_string(),
+            Type::Uint => "unsigned int".to_string(),
+            Type::USize => "size_t".to_string(),
+            Type::Byte => "uint8_t".to_string(),
+            Type::Float => "float".to_string(),
+            Type::Double => "double".to_string(),
+            Type::Bool => "bool".to_string(),
+            Type::Str(_) => "const char*".to_string(),
+            Type::CStr => "const char*".to_string(),
+            Type::StrSlice => "const char*".to_string(),
+            Type::Char => "char".to_string(),
+            Type::Void => "void".to_string(),
+            Type::Unknown => "int".to_string(),
+            _ => "int".to_string(),  // Default fallback
         }
     }
 
@@ -1869,6 +1994,19 @@ impl CTrans {
                     }
                 }
             }
+            // Plan 060: Function types - transpile to C function pointers
+            Type::Fn(param_types, return_type) => {
+                // Convert parameter types to C type names
+                let param_strs: Vec<String> = param_types.iter()
+                    .map(|t| self.c_type_name(t))
+                    .collect();
+
+                // Convert return type to C type name
+                let return_type_str = self.c_type_name(return_type);
+
+                // Generate C function pointer type: returnType (*)(param1Type, param2Type, ...)
+                format!("{} (*)({})", return_type_str, param_strs.join(", "))
+            }
             _ => {
                 println!("Unsupported type for C transpiler: {}", ty);
                 panic!("Unsupported type for C transpiler: {}", ty);
@@ -2306,6 +2444,12 @@ impl CTrans {
                         if let Meta::Fn(fn_decl) = meta.as_ref() {
                             return Some(fn_decl.ret.clone());
                         }
+                        // Plan 060: Check if it's a closure/function pointer variable
+                        if let Meta::Store(store) = meta.as_ref() {
+                            if let Type::Fn(_, return_type) = &store.ty {
+                                return Some(*return_type.clone());
+                            }
+                        }
                     }
                 }
 
@@ -2390,6 +2534,61 @@ impl CTrans {
             Expr::Char(_) => Some(Type::Char),
             Expr::Str(_) => Some(Type::Str(0)),
             Expr::CStr(_) => Some(Type::CStr),
+            // Plan 060: Binary operations - infer type from operands
+            Expr::Bina(lhs, op, rhs) => {
+                // For arithmetic operations, try to infer type from operands
+                match op {
+                    Op::Add | Op::Sub | Op::Mul | Op::Div => {
+                        // For arithmetic, infer from left operand (simplified)
+                        self.infer_expr_type(lhs)
+                    }
+                    // For comparison operations, return bool
+                    Op::Eq | Op::Neq | Op::Lt | Op::Le | Op::Gt | Op::Ge => Some(Type::Bool),
+                    _ => None,
+                }
+            }
+            // Plan 060: Infer closure type
+            Expr::Closure(closure) => {
+                // Build function type: Fn(param_types, return_type)
+                let param_types: Vec<Type> = closure.params.iter()
+                    .map(|p| p.ty.clone().unwrap_or(Type::Unknown))
+                    .collect();
+
+                // Infer return type from body if not explicitly specified
+                let return_type = if let Some(ref ret) = closure.ret {
+                    ret.clone()
+                } else {
+                    // Try to infer return type from closure body
+                    self.infer_expr_type(&closure.body)
+                        // If inference from body fails, try to infer from parameter types
+                        .or_else(|| {
+                            // For operations on parameters, infer return type from parameter types
+                            if param_types.len() == 1 {
+                                // Single parameter: use that parameter's type if it's concrete
+                                match &param_types[0] {
+                                    Type::Int | Type::Double | Type::Float | Type::Uint => {
+                                        Some(param_types[0].clone())
+                                    }
+                                    _ => None,
+                                }
+                            } else if param_types.len() == 2 {
+                                // Two parameters with same type: use that type
+                                match (&param_types[0], &param_types[1]) {
+                                    (Type::Int, Type::Int) => Some(Type::Int),
+                                    (Type::Double, Type::Double) => Some(Type::Double),
+                                    (Type::Float, Type::Float) => Some(Type::Float),
+                                    (Type::Uint, Type::Uint) => Some(Type::Uint),
+                                    _ => None,
+                                }
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(Type::Unknown)
+                };
+
+                Some(Type::Fn(param_types, Box::new(return_type)))
+            }
             _ => None,
         }
     }
@@ -3470,6 +3669,9 @@ impl Trans for CTrans {
             // header guard end
             self.header_guard_end(&mut sink.header)?;
         }
+
+        // Plan 060: Generate closure function definitions
+        self.generate_closure_definitions(sink)?;
 
         Ok(())
     }

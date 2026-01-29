@@ -914,19 +914,94 @@ impl<'a> Parser<'a> {
                 let lhs = self.expr_pratt(power.r)?;
                 Expr::Unary(op, Box::new(lhs))
             }
-            // group
+            // group or multi-param closure
             TokenKind::LParen => {
+                // Plan 060: Check if this is a multi-param closure: (a, b) => expr
                 self.next(); // skip (
-                let lhs = self.expr_pratt(0)?;
-                self.expect(TokenKind::RParen)?; // skip )
-                lhs
+
+                // Quick check: if first token is identifier, might be a closure
+                let is_closure = if self.is_kind(TokenKind::Ident) {
+                    // Collect tokens for lookahead and rollback
+                    let mut tokens = Vec::new();
+                    let mut found_comma = false;
+                    let mut found_double_arrow = false;
+                    let mut depth = 1; // Track nesting for types like Array<T>
+
+                    // Scan ahead to detect closure pattern
+                    loop {
+                        let token = self.lexer.next()?;
+
+                        // Check for pattern before consuming token into buffer
+                        let is_closing_paren = depth == 1 && token.kind == TokenKind::RParen;
+
+                        tokens.push(token.clone());
+
+                        match token.kind {
+                            TokenKind::LParen | TokenKind::LSquare | TokenKind::LBrace => depth += 1,
+                            TokenKind::RParen | TokenKind::RSquare | TokenKind::RBrace => {
+                                depth -= 1;
+                            }
+                            TokenKind::Comma if depth == 1 => found_comma = true,
+                            TokenKind::EOF => break,
+                            _ => {}
+                        }
+
+                        // If we found the closing paren at depth 0, check for =>
+                        if is_closing_paren {
+                            // Peek at the next token without consuming it
+                            if let Ok(next_token) = self.lexer.next() {
+                                if next_token.kind == TokenKind::DoubleArrow {
+                                    found_double_arrow = true;
+                                }
+                                // Don't add the peeked token to our buffer
+                                // We need to push it back so it's available later
+                                self.lexer.push_token(next_token);
+                            }
+                            break;
+                        }
+                    }
+
+                    // Push tokens back to lexer buffer in reverse order
+                    for token in tokens.into_iter().rev() {
+                        self.lexer.push_token(token);
+                    }
+
+                    found_comma || found_double_arrow
+                } else {
+                    false
+                };
+
+                if is_closure {
+                    // Multi-param closure: (a, b) => expr
+                    // Need to restore state so parse_closure sees the ( token
+                    // Save current token (identifier)
+                    let ident_token = self.cur.clone();
+
+                    // Set current token back to (
+                    self.cur = Token {
+                        kind: TokenKind::LParen,
+                        text: AutoStr::from("("),
+                        pos: ident_token.pos, // Use identifier's position for better error messages
+                    };
+
+                    // Push the identifier back to lexer
+                    self.lexer.push_token(ident_token);
+
+                    // Now parse_closure will see ( as current token
+                    self.parse_closure()?
+                } else {
+                    // Regular group expression: (expr)
+                    let lhs = self.expr_pratt(0)?;
+                    self.expect(TokenKind::RParen)?; // skip )
+                    lhs
+                }
             }
             // array
             TokenKind::LSquare => self.array()?,
             // object
             TokenKind::LBrace => Expr::Object(self.object()?),
-            // lambda
-            TokenKind::VBar => self.lambda()?,
+            // lambda (deprecated - use closure syntax instead: (a, b) => expr)
+            // TokenKind::VBar => self.lambda()?,
             // fstr
             TokenKind::FStrStart => self.fstr()?,
             // grid
@@ -984,6 +1059,34 @@ impl<'a> Parser<'a> {
     }
 
     fn expr_pratt_with_left(&mut self, mut lhs: Expr, min_power: u8) -> AutoResult<Expr> {
+        // Plan 060: Check for single-param closure:  x => expr
+        // If lhs is an identifier and next token is =>, parse as closure
+        if matches!(lhs, Expr::Ident(_)) && self.is_kind(TokenKind::DoubleArrow) {
+            use crate::ast::{Closure, ClosureParam};
+
+            // Extract parameter name from identifier
+            let param_name = match &lhs {
+                Expr::Ident(name) => name.clone(),
+                _ => unreachable!(),
+            };
+
+            // Expect =>
+            self.expect(TokenKind::DoubleArrow)?;
+
+            // Parse body (expression or block)
+            let body = if self.is_kind(TokenKind::LBrace) {
+                Expr::Block(self.body()?)
+            } else {
+                self.parse_expr()?
+            };
+
+            return Ok(Expr::Closure(Closure::new(
+                vec![ClosureParam::new(param_name, None)],
+                None,
+                body,
+            )));
+        }
+
         loop {
             let op = match self.kind() {
                 TokenKind::EOF
@@ -1760,6 +1863,9 @@ impl<'a> Parser<'a> {
         self.parse_expr()
     }
 
+    // DEPRECATED: Lambda syntax |a, b| a + b is replaced by closure syntax (a, b) => a + b
+    // This method is kept for backwards compatibility but should not be used
+    #[allow(dead_code)]
     pub fn lambda(&mut self) -> AutoResult<Expr> {
         self.next(); // skip |
         let params = self.fn_params()?;
@@ -1791,6 +1897,58 @@ impl<'a> Parser<'a> {
         self.define(id.as_str(), Meta::Fn(lambda.clone()));
         // TODO: return meta instead?
         Ok(Expr::Lambda(lambda))
+    }
+
+    // Plan 060: Parse JavaScript/TypeScript-style closure: ` x => body` or `(a, b) => body`
+    pub fn parse_closure(&mut self) -> AutoResult<Expr> {
+        use crate::ast::{Closure, ClosureParam};
+
+        // Check if this is a single-param or multi-param closure
+        let params = if self.is_kind(TokenKind::LParen) {
+            // Multi-param closure: (a, b) => body or (a int, b int) => body
+            self.next(); // skip (
+
+            let mut params = Vec::new();
+            loop {
+                let name = self.parse_name()?;
+
+                // Optional type annotation (no colon - Auto syntax: a int, b int)
+                // Same logic as fn_params: check if next token is a type
+                let ty = if self.is_type_name() {
+                    Some(self.parse_type()?)
+                } else {
+                    None
+                };
+
+                params.push(ClosureParam::new(name, ty));
+
+                if !self.is_kind(TokenKind::Comma) {
+                    break;
+                }
+                self.next(); // skip ,
+            }
+
+            self.expect(TokenKind::RParen)?; // skip )
+            params
+        } else {
+            // Single-param closure:  x => body (no parentheses)
+            let name = self.parse_name()?;
+            vec![ClosureParam::new(name, None)]
+        };
+
+        // Expect =>
+        self.expect(TokenKind::DoubleArrow)?;
+
+        // Parse body (expression or block)
+        let body = if self.is_kind(TokenKind::LBrace) {
+            // Block body: { stmts }
+            Expr::Block(self.body()?)
+        } else {
+            // Expression body
+            self.parse_expr()?
+        };
+
+        Ok(Expr::Closure(Closure::new(params, None, body)))
     }
 }
 

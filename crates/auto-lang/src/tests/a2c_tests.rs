@@ -875,3 +875,9 @@ fn test_104_terminal_operators() {
     test_a2c("104_terminal_operators").unwrap();
 }
 
+// Plan 060: Closure tests
+#[test]
+fn test_108_closure() {
+    test_a2c("108_closure").unwrap();
+}
+

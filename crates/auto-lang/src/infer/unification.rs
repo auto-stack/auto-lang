@@ -158,6 +158,12 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         // Variadic 类型：不包含类型变量
         Type::Variadic => false,
 
+        // Function 类型：递归检查参数和返回类型
+        Type::Fn(params, ret) => {
+            occurs_in(var_name, ret) ||
+            params.iter().any(|p| occurs_in(var_name, p))
+        }
+
         // 用户类型：暂时假设不包含类型变量
         Type::User(_) | Type::CStruct(_) => false,
 

@@ -185,6 +185,40 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
             Type::Unknown
         }
 
+        // ========== Closure 表达式 (Plan 060) ==========
+        Expr::Closure(closure) => {
+            // Phase 2: 闭包类型推导
+            // 对于Phase 2（没有上下文信息），我们无法从函数签名推导参数类型
+            // 但我们可以：
+            // 1. 使用显式类型注解（如果有）
+            // 2. 推导body类型作为返回类型
+
+            // 推导body类型
+            let body_ty = infer_expr(ctx, &closure.body);
+
+            // 如果有显式返回类型注解，使用它；否则使用body类型
+            let ret_ty = if let Some(explicit_ret) = &closure.ret {
+                explicit_ret.clone()
+            } else {
+                body_ty.clone()
+            };
+
+            // 构造参数类型列表
+            let param_types: Vec<Type> = closure.params.iter()
+                .map(|param| {
+                    if let Some(explicit_ty) = &param.ty {
+                        explicit_ty.clone()
+                    } else {
+                        // 没有显式类型注解，返回Unknown
+                        Type::Unknown
+                    }
+                })
+                .collect();
+
+            // 构造函数类型
+            Type::Fn(param_types, Box::new(ret_ty))
+        }
+
         // ========== F-String 表达式 ==========
         Expr::FStr(_) => Type::Str(0),
 
@@ -623,5 +657,57 @@ mod tests {
         let expr = Expr::Index(Box::new(array_expr), Box::new(index_expr));
         let ty = infer_expr(&mut ctx, &expr);
         assert!(matches!(ty, Type::Int));
+    }
+
+    // ========== Plan 060: Closure Type Inference Tests ==========
+
+    #[test]
+    fn test_infer_closure_simple() {
+        use crate::ast::{Closure, ClosureParam, Name};
+        let mut ctx = make_test_context();
+
+        // Test 1: Simple closure:  x => x * 2
+        let closure = Closure::new(
+            vec![ClosureParam::new("x".into(), None)],
+            None,
+            Expr::Bina(Box::new(Expr::Ident("x".into())), Op::Mul, Box::new(Expr::Int(2))),
+        );
+
+        let ty = infer_expr(&mut ctx, &Expr::Closure(closure));
+
+        // Should infer as: fn(int) int
+        match &ty {
+            Type::Fn(params, ret) => {
+                assert_eq!(params.len(), 1);
+                assert!(matches!(params[0], Type::Unknown));  // x has no type annotation
+                assert!(matches!(&**ret, Type::Int));  // body is x * 2, so return type is int
+            }
+            _ => panic!("Expected Fn type, got {:?}", ty),
+        }
+    }
+
+    #[test]
+    fn test_infer_closure_with_explicit_types() {
+        use crate::ast::{Closure, ClosureParam, Name, Type};
+        let mut ctx = make_test_context();
+
+        // Test 2: Closure with explicit types: (x int) int => x + 1
+        let closure = Closure::new(
+            vec![ClosureParam::new("x".into(), Some(Type::Int))],
+            Some(Type::Int),
+            Expr::Bina(Box::new(Expr::Ident("x".into())), Op::Add, Box::new(Expr::Int(1))),
+        );
+
+        let ty = infer_expr(&mut ctx, &Expr::Closure(closure));
+
+        // Should infer as: fn(int) int
+        match &ty {
+            Type::Fn(params, ret) => {
+                assert_eq!(params.len(), 1);
+                assert!(matches!(params[0], Type::Int));  // x has explicit type annotation
+                assert!(matches!(&**ret, Type::Int));  // return type is explicitly int
+            }
+            _ => panic!("Expected Fn type, got {:?}", ty),
+        }
     }
 }

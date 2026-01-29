@@ -1,9 +1,9 @@
 # Plan 051: Auto Flow - Iterator & Functional Programming System
 
-**Status**: ✅ Phases 1-4 Complete | Phases 5-8 Pending
+**Status**: ✅ Phases 1-3 Complete | Phases 4-8 Blocked on Plan 060
 **Priority**: P0 (Core Standard Library Feature)
-**Dependencies**: Plan 052 (Storage-Based List), Plan 057 (Generic Specs), Plan 059 (Generic Type Fields)
-**Timeline**: 16 hours completed, 23-37 hours remaining
+**Dependencies**: Plan 052 (Storage-Based List), Plan 057 (Generic Specs), Plan 059 (Generic Type Fields), **Plan 060 (Closure Syntax)** ⚠️
+**Timeline**: 16 hours completed, 35-57 hours remaining (including Plan 060: 18-34 hours)
 
 ## Objective
 
@@ -18,15 +18,15 @@ fn main() {
 
     // Option 1: Explicit .iter() call
     let sum = list.iter()
-        .map(|x| x * 2)
-        .filter(|x| x > 2)
-        .reduce(0, |a, b| a + b)
+        .map( x => x * 2)
+        .filter( x => x > 2)
+        .reduce(0, (a, b) => a + b)
 
     // Option 2: Direct container methods (via auto-forwarding)
     let sum = list
-        .map(|x| x * 2)
-        .filter(|x| x > 2)
-        .reduce(0, |a, b| a + b)
+        .map( x => x * 2)
+        .filter( x => x > 2)
+        .reduce(0, (a, b) => a + b)
 
     say(sum)  // Output: 6
 }
@@ -51,12 +51,68 @@ fn main() {
 > - Iterator chains are **lazy** (no work until `!` or terminal operator)
 > - `!` operator triggers **eager** evaluation and collection
 
+## Critical Dependency: Plan 060 (Closure Syntax)
+
+⚠️ **IMPORTANT**: Phases 4-8 of this plan require **Plan 060 (Closure Syntax)** to be implemented first.
+
+### Why Plan 060 is Required
+
+The iterator methods in Plan 051 rely heavily on closures for ergonomic usage:
+
+```auto
+// These patterns require closure syntax ( x => expr)
+list.iter().map( x => x * 2)
+list.iter().filter( x => x > 5)
+list.iter().reduce(0, (a, b) => a + b)
+list.iter().for_each( x => say(x))
+```
+
+### Current Workarounds (Without Plan 060)
+
+Until Plan 060 is complete, we must use named functions:
+
+```auto
+// Verbose workaround: define named functions
+fn double(x int) int { return x * 2 }
+fn is_gt_5(x int) bool { return x > 5 }
+fn add(a int, b int) int { return a + b }
+
+// Use named functions instead of closures
+list.iter().map(double)
+list.iter().filter(is_gt_5)
+list.iter().reduce(0, add)
+```
+
+### Implementation Strategy
+
+**Option 1**: Implement Plan 060 first (Recommended)
+- ✅ Enables full iterator functionality
+- ✅ Clean, idiomatic syntax
+- ✅ Consistent with Plan 051 vision
+- ⏱️ Takes 18-34 hours (Plan 060)
+
+**Option 2**: Use named functions temporarily
+- ✅ Can start Plan 051 implementation immediately
+- ❌ Verbose and non-idiomatic
+- ❌ Requires refactoring when Plan 060 is done
+- ⏱️ Faster initial implementation, but more total work
+
+### Recommended Path
+
+**Implement Plan 060 first**, then complete Plan 051 Phases 4-8:
+
+1. **Phase 1-3** (Current): Spec definitions, basic adapters, List integration
+2. **Plan 060**: Implement closure syntax (18-34 hours)
+3. **Phase 4-8**: Terminal operators, bang operator, extended adapters, etc.
+
+This approach ensures the iterator system is implemented correctly from the start, without temporary workarounds.
+
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                         User Code                            │
-│  list.map(|x| x * 2).filter(|x| x > 5).reduce(0, |a,b| a+b) │
+│  list.map( x => x * 2).filter( x => x > 5).reduce(0, (a,b) => a+b) │
 │  (auto-forwarding: list.map → list.iter().map)               │
 └──────────────────────────────────┬──────────────────────────┘
                                      ↓
@@ -93,10 +149,10 @@ Auto-forwarding allows users to call iterator methods directly on containers wit
 
 ```auto
 // Without auto-forwarding (verbose)
-let result = list.iter().map(|x| x * 2).filter(|x| x > 5).collect()
+let result = list.iter().map( x => x * 2).filter( x => x > 5).collect()
 
 // With auto-forwarding (clean)
-let result = list.map(|x| x * 2).filter(|x| x > 5).collect()
+let result = list.map( x => x * 2).filter( x => x > 5).collect()
 ```
 
 ### How It Works
@@ -130,8 +186,8 @@ spec Iterable<T> {
 
 ```auto
 let list: List<i32>
-list.map(|x| x * 2)  // Returns MapIter<ListIter<i32>, ...>
-  .filter(|x| x > 5) // Returns FilterIter<MapIter<...>, ...>
+list.map( x => x * 2)  // Returns MapIter<ListIter<i32>, ...>
+  .filter( x => x > 5) // Returns FilterIter<MapIter<...>, ...>
   .collect()         // Returns List<i32>
 ```
 
@@ -342,7 +398,7 @@ impl<T> Iter<T> for FilterIter<I, P, T> where I: Iter<T> {
 **Success Criteria**:
 - ✅ Map and Filter parse and compile
 - ✅ Extension methods register in VM registry
-- ✅ Can write `list.iter().map(|x| x * 2)`
+- ✅ Can write `list.iter().map( x => x * 2)`
 - ✅ Unit tests for Map and Filter adapters
 
 ---
@@ -412,7 +468,7 @@ impl<T, S> Iterable<T> for List<T, S> {
 **Success Criteria**:
 - ✅ `List.new().iter()` works
 - ✅ `List<T,S>` implements `Iterable<T>` with auto-forwarding
-- ✅ Direct container calls work: `list.map(|x| x * 2)`
+- ✅ Direct container calls work: `list.map( x => x * 2)`
 - ✅ Forwarding has zero overhead (verified via C code inspection)
 - ✅ Type transformation works: `list.map()` returns `MapIter`, not `List`
 - ✅ `for x in list.iter()` syntax works (if supported)
@@ -478,9 +534,9 @@ fn for_each<T>(iter: Iter<T>, f: fn(T)void) void {
 ```
 
 **Success Criteria**:
-- ✅ `list.iter().reduce(0, |a, b| a + b)` sums list
+- ✅ `list.iter().reduce(0, (a, b) => a + b)` sums list
 - ✅ `list.iter().count()` returns correct count
-- ✅ `list.iter().for_each(|x| say(x))` prints all elements
+- ✅ `list.iter().for_each( x => say(x))` prints all elements
 - ✅ All terminal operators work with Map/Filter adapters
 
 ---
@@ -690,9 +746,9 @@ fn find<T>(iter: Iter<T>, p: fn(T)bool) May<T> {
 ```
 
 **Success Criteria**:
-- ✅ `list.iter().any(|x| x > 5)` works
-- ✅ `list.iter().all(|x| x > 0)` works
-- ✅ `list.iter().find(|x| x == 5)` returns matching element
+- ✅ `list.iter().any( x => x > 5)` works
+- ✅ `list.iter().all( x => x > 0)` works
+- ✅ `list.iter().find( x => x == 5)` returns matching element
 - ✅ Short-circuit behavior works correctly
 
 ---
@@ -783,10 +839,10 @@ fn main() {
     list.push(3)
 
     // Option 1: Explicit .iter() call
-    list.iter().for_each(|x| say(x))
+    list.iter().for_each( x => say(x))
 
     // Option 2: Auto-forwarding (no .iter() needed)
-    list.for_each(|x| say(x))
+    list.for_each( x => say(x))
 }
 ```
 
@@ -802,17 +858,17 @@ fn main() {
 
     // Option 1: Explicit .iter() call
     let doubled = list.iter()
-        .map(|x| x * 2)
-        .filter(|x| x > 2)
+        .map( x => x * 2)
+        .filter( x => x > 2)
         .collect()
 
     // Option 2: Auto-forwarding (cleaner!)
     let doubled = list
-        .map(|x| x * 2)
-        .filter(|x| x > 2)
+        .map( x => x * 2)
+        .filter( x => x > 2)
         .collect()
 
-    doubled.for_each(|x| say(x))
+    doubled.for_each( x => say(x))
     // Output: 6, 8
 }
 ```
@@ -836,9 +892,9 @@ fn main() {
 
     // ! operator triggers collection
     let sum = list.iter()
-        .map(|x| x * 2)
-        .filter(|x| x > 2)
-        .reduce(0, |a, b| a + b)!
+        .map( x => x * 2)
+        .filter( x => x > 2)
+        .reduce(0, (a, b) => a + b)!
 
     say(sum)  // Output: 6
 }
@@ -855,7 +911,7 @@ fn main() {
 
     list.iter()
         .enumerate()
-        .for_each(|pair| {
+        .for_each((pair) => {
             say(pair.0)  // index: 0, 1, 2
             say(pair.1)  // value: 10, 20, 30
         })
@@ -876,7 +932,7 @@ fn main() {
 
     list1.iter()
         .zip(list2.iter())
-        .for_each(|pair| {
+        .for_each((pair) => {
             say(pair.0)  // 1, 2
             say(pair.1)  // 10, 20
         })
@@ -953,8 +1009,8 @@ fn test_auto_forwarding() {
     list.push(3)
 
     // Both should produce identical results
-    let explicit = list.iter().map(|x| x * 2).collect()
-    let forwarded = list.map(|x| x * 2).collect()
+    let explicit = list.iter().map( x => x * 2).collect()
+    let forwarded = list.map( x => x * 2).collect()
 
     assert(explicit.len() == forwarded.len())
     assert(explicit.get(0)? == forwarded.get(0)?)
@@ -968,7 +1024,7 @@ fn test_map() {
     list.push(1)
     list.push(2)
 
-    let mapped = list.iter().map(|x| x * 2)
+    let mapped = list.iter().map( x => x * 2)
     assert(mapped.next()? == 2)
     assert(mapped.next()? == 4)
 }
@@ -980,7 +1036,7 @@ fn test_map_forwarded() {
     list.push(2)
 
     // Auto-forwarding should work identically
-    let mapped = list.map(|x| x * 2)
+    let mapped = list.map( x => x * 2)
     assert(mapped.next()? == 2)
     assert(mapped.next()? == 4)
 }
@@ -992,7 +1048,7 @@ fn test_reduce() {
     list.push(2)
     list.push(3)
 
-    let sum = list.iter().reduce(0, |a, b| a + b)
+    let sum = list.iter().reduce(0, (a, b) => a + b)
     assert(sum == 6)
 }
 
@@ -1005,7 +1061,7 @@ fn test_filter() {
     list.push(4)
     list.push(5)
 
-    let filtered = list.iter().filter(|x| x > 2)
+    let filtered = list.iter().filter( x => x > 2)
     assert(filtered.count() == 3)
 }
 
@@ -1030,7 +1086,7 @@ fn test_bang() {
     list.push(2)
     list.push(3)
 
-    let collected = list.iter().map(|x| x * 2)!
+    let collected = list.iter().map( x => x * 2)!
 
     assert(collected.len() == 3)
     assert(collected.get(0)? == 2)
@@ -1045,11 +1101,11 @@ fn test_any_all() {
     list.push(2)
     list.push(3)
 
-    assert(list.iter().any(|x| x == 2) == true)
-    assert(list.iter().any(|x| x == 99) == false)
+    assert(list.iter().any( x => x == 2) == true)
+    assert(list.iter().any( x => x == 99) == false)
 
-    assert(list.iter().all(|x| x > 0) == true)
-    assert(list.iter().all(|x| x > 2) == false)
+    assert(list.iter().all( x => x > 0) == true)
+    assert(list.iter().all( x => x > 2) == false)
 }
 ```
 
@@ -1096,9 +1152,9 @@ Test 098: Environment-sensitive collection (MCU vs PC)
 **Note**: Full List<T> integration pending Plan 052 completion.
 
 ### Phase 4: Terminal Operators ✅
-- [ ] `list.iter().reduce(0, |a,b| a+b)` sums list
+- [ ] `list.iter().reduce(0, (a,b) => a+b)` sums list
 - [ ] `list.iter().count()` returns correct count
-- [ ] `list.iter().for_each(|x| say(x))` works
+- [ ] `list.iter().for_each( x => say(x))` works
 - [ ] Terminal operators work with adapters
 
 ### Phase 5: Bang Operator ✅
@@ -1114,9 +1170,9 @@ Test 098: Environment-sensitive collection (MCU vs PC)
 - [ ] All adapters chain together
 
 ### Phase 7: More Terminal Operators ✅
-- [ ] `list.iter().any(|x| x > 5)` works
-- [ ] `list.iter().all(|x| x > 0)` works
-- [ ] `list.iter().find(|x| x == 5)` returns match
+- [ ] `list.iter().any( x => x > 5)` works
+- [ ] `list.iter().all( x => x > 0)` works
+- [ ] `list.iter().find( x => x == 5)` returns match
 - [ ] Short-circuit optimization verified
 
 ### Phase 8: Collect & To Operators ✅
@@ -1129,15 +1185,19 @@ Test 098: Environment-sensitive collection (MCU vs PC)
 
 | Phase | Duration | Dependencies | Status |
 |-------|----------|-------------|--------|
-| Phase 1 | 4-6 hours | None | Ready |
-| Phase 2 | 6-8 hours | Phase 1 | Ready |
-| Phase 3 | 4-6 hours | Phase 1, Plan 052 | Ready |
-| Phase 4 | 6-8 hours | Phase 1, 2 | Ready |
-| Phase 5 | 3-4 hours | Phase 4, Plan 055 | Ready |
-| Phase 6 | 8-10 hours | Phase 1, 2 | Ready |
-| Phase 7 | 4-6 hours | Phase 1 | Ready |
-| Phase 8 | 4-5 hours | Phase 1, 3 | Ready |
-| **Total** | **39-53 hours** | | |
+| Phase 1 | 4-6 hours | None | ✅ Complete |
+| Phase 2 | 6-8 hours | Phase 1 | ✅ Complete |
+| Phase 3 | 4-6 hours | Phase 1, Plan 052 | ✅ Complete |
+| **Plan 060** | **18-34 hours** | **None** | 🔜 **Must implement first** |
+| Phase 4 | 6-8 hours | Phase 1, 2, **Plan 060** | ⏸️ Blocked |
+| Phase 5 | 3-4 hours | Phase 4, Plan 055, **Plan 060** | ⏸️ Blocked |
+| Phase 6 | 8-10 hours | Phase 1, 2, **Plan 060** | ⏸️ Blocked |
+| Phase 7 | 4-6 hours | Phase 1, **Plan 060** | ⏸️ Blocked |
+| Phase 8 | 4-5 hours | Phase 1, 3, **Plan 060** | ⏸️ Blocked |
+| **Total (Plan 051)** | **39-53 hours** | | 16 hours done |
+| **Total (including Plan 060)** | **57-87 hours** | | |
+
+**Critical Path**: Plan 060 must be completed before Phases 4-8 can be implemented.
 
 ## Risks and Mitigations
 
@@ -1152,12 +1212,20 @@ Test 098: Environment-sensitive collection (MCU vs PC)
 
 ### Risk 2: Closure Syntax
 
-**Impact**: Medium - AutoLang closure syntax (`|x| x*2`) may not be implemented
+**Impact**: ✅ **RESOLVED** - Addressed by Plan 060
+
+**Previous Issue**: AutoLang closure syntax (` x => x*2`) was not implemented
+
+**Resolution**: Plan 060 (Closure Syntax) implements full closure support:
+- Lexer/parser for ` x => expr` and `(a, b) => expr` syntax
+- Type inference for closure parameters and return types
+- VM evaluation with variable capture
+- C transpilation to function pointers + environment structs
 
 **Mitigation**:
-- Use named functions initially: `fn double(x int) int { return x * 2 }`
-- List.iter().map(double)
-- Implement closure parsing if needed (separate feature)
+- ✅ Plan 060 provides complete closure implementation (18-34 hours)
+- ✅ Enables Plan 051 Phases 4-8 to use idiomatic closure syntax
+- ✅ Workaround available: use named functions in the interim
 
 ### Risk 3: Generic Method Constraints
 
@@ -1190,18 +1258,26 @@ Test 098: Environment-sensitive collection (MCU vs PC)
 
 ## Related Plans
 
-- **Plan 052**: Storage-Based List (provides collection to iterate)
+- **Plan 052**: Storage-Based List (provides collection to iterate) - ✅ Complete
 - **Plan 055**: Environment Injection (provides target-aware storage)
 - **Plan 057**: Generic Specs (provides type system foundation)
+- **Plan 059**: Generic Type Fields (enables MapIter/FilterIter type fields) - ✅ Phase 1 Complete
+- **Plan 060**: Closure Syntax (REQUIRED for Phases 4-8) - 🔜 Ready to Start
 
 ## Status
 
-**✅ READY FOR IMPLEMENTATION**
+**✅ Phases 1-3 Complete | Phases 4-8 Blocked on Plan 060**
 
-**Updated**: 2025-01-29 - Added Iterable Auto-Forwarding Mechanism
+**Updated**: 2025-01-29 - Added Plan 060 dependency
 
-This plan leverages the excellent foundation from Plans 052, 055, and 057 to create a complete, zero-cost iterator system for AutoLang. The implementation follows Rust's proven patterns while adapting to AutoLang's unique constraints (embedded systems, explicit memory management, environment-aware compilation).
+This plan leverages the excellent foundation from Plans 052, 055, 057, and 059 to create a complete, zero-cost iterator system for AutoLang. The implementation follows Rust's proven patterns while adapting to AutoLang's unique constraints (embedded systems, explicit memory management, environment-aware compilation).
 
 **Key Enhancement**: Iterable auto-forwarding enables ergonomic container methods (`list.map()`) that compile down to explicit iterator calls (`list.iter().map()`) with zero runtime overhead through compiler inlining.
+
+**Critical Dependency**: Plan 060 (Closure Syntax) must be implemented before Phases 4-8 can proceed. Without closures, iterator methods must use verbose named functions instead of idiomatic ` x => expr` syntax.
+
+**Recommended Next Steps**:
+1. Implement Plan 060 (Closure Syntax) - 18-34 hours
+2. Complete Plan 051 Phases 4-8 with full closure support
 
 All phases are well-defined with clear success criteria, file paths, and code examples. The implementation can proceed incrementally, with each phase adding valuable functionality even if later phases are delayed.

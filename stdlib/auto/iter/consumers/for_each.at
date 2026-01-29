@@ -5,11 +5,11 @@
 ///   fn for_each(f: fn(int)void)
 ///
 /// Usage example (when closures are supported):
-///   list.iter().for_each(|x| say(x))
+///   list.iter().for_each( x => say(x))
 ///
 /// Note: Full implementation requires:
 /// - Function pointer types (fn(int)void)
-/// - Closure syntax (|x| say(x))
+/// - Closure syntax ( x => say(x))
 /// - Match expressions for May<T> pattern matching
 
 use auto.iter.spec: Iter

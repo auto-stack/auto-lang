@@ -268,6 +268,164 @@ impl ToAtom for Fn {
     }
 }
 
+// ============================================================================
+// Closure - Plan 060: JavaScript/TypeScript-style closures
+// ============================================================================
+
+/// Closure parameter: (name, optional_type)
+/// Unlike Param, closure params don't have default values
+#[derive(Debug, Clone)]
+pub struct ClosureParam {
+    pub name: Name,
+    pub ty: Option<Type>,  // None means type should be inferred
+}
+
+impl ClosureParam {
+    pub fn new(name: Name, ty: Option<Type>) -> Self {
+        Self { name, ty }
+    }
+}
+
+impl fmt::Display for ClosureParam {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.ty {
+            Some(ty) => write!(f, "({} : {})", self.name, ty),
+            None => write!(f, "({})", self.name),
+        }
+    }
+}
+
+/// Closure expression: ` x => body` or `(a, b) => body`
+/// Plan 060: Lightweight anonymous functions with type inference
+#[derive(Debug, Clone)]
+pub struct Closure {
+    /// Closure parameters (names with optional types)
+    pub params: Vec<ClosureParam>,
+
+    /// Return type (None means inferred)
+    pub ret: Option<Type>,
+
+    /// Closure body (expression or block)
+    pub body: Box<Expr>,
+}
+
+impl Closure {
+    pub fn new(params: Vec<ClosureParam>, ret: Option<Type>, body: Expr) -> Self {
+        Self {
+            params,
+            ret,
+            body: Box::new(body),
+        }
+    }
+}
+
+impl fmt::Display for Closure {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(closure ")?;
+
+        // Parameters
+        if self.params.len() == 1 {
+            // Single param:  x => ...
+            write!(f, "{}", self.params[0])?;
+        } else {
+            // Multiple params: (a, b) => ...
+            write!(f, "(")?;
+            for (i, param) in self.params.iter().enumerate() {
+                if i > 0 { write!(f, ", ")?; }
+                write!(f, "{}", param.name)?;
+            }
+            write!(f, ")")?;
+        }
+
+        // Return type (if explicit)
+        if let Some(ret) = &self.ret {
+            write!(f, " : {}", ret)?;
+        }
+
+        // Body
+        write!(f, " => {}", self.body)?;
+        write!(f, ")")
+    }
+}
+
+impl PartialEq for Closure {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare params by name only (types may not be set)
+        let params_equal = self.params.len() == other.params.len() &&
+                          self.params.iter().zip(other.params.iter())
+                              .all(|(a, b)| a.name == b.name);
+
+        // Compare ret by reference (both None or both Some)
+        let ret_equal = match (&self.ret, &other.ret) {
+            (None, None) => true,
+            (Some(_), Some(_)) => true,  // Can't compare Type, just check both exist
+            _ => false,
+        };
+
+        params_equal && ret_equal  // Skip body comparison (Expr doesn't have PartialEq)
+    }
+}
+
+impl AtomWriter for ClosureParam {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "{}", self.name)?;
+        if let Some(ty) = &self.ty {
+            write!(f, ":{}", ty.to_atom_str())?;
+        }
+        Ok(())
+    }
+}
+
+impl AtomWriter for Closure {
+    fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
+        write!(f, "|")?;
+        for (i, param) in self.params.iter().enumerate() {
+            if i > 0 { write!(f, " ")?; }
+            param.write_atom(f)?;
+        }
+        write!(f, "|")?;
+
+        if let Some(ret) = &self.ret {
+            write!(f, ":{}", ret.to_atom_str())?;
+        }
+
+        write!(f, " {}", self.body.to_atom_str())?;
+        Ok(())
+    }
+}
+
+impl ToAtom for Closure {
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
+    }
+}
+
+impl ToNode for Closure {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("closure");
+
+        // Add return type if explicit
+        if let Some(ret) = &self.ret {
+            node.set_prop("return", Value::str(&*ret.to_atom()));
+        }
+
+        // Add params as children
+        for param in &self.params {
+            let mut param_node = AutoNode::new("param");
+            param_node.set_prop("name", Value::str(param.name.as_str()));
+            if let Some(ty) = &param.ty {
+                param_node.set_prop("type", Value::str(&*ty.to_atom()));
+            }
+            node.add_kid(param_node);
+        }
+
+        // Add body
+        node.add_kid(self.body.to_node());
+
+        node
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

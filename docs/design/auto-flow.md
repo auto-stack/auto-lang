@@ -147,11 +147,11 @@ let list = List<i32>.new()
 // - list.map(...) 调用的是 Iterable.map (转发方法)
 // - 内部执行 list.iter().map(...)
 // - 返回类型变成了 MapIter<ListIterator<i32>, ...>
-let pipeline = list.map(|x| x * 2) 
+let pipeline = list.map( x => x * 2)
 
 // 3. 后续的调用是在 Iterator 上进行的
 // - pipeline.filter(...) 调用的是 Iter.filter (真实算子)
-let result = pipeline.filter(|x| x > 10)
+let result = pipeline.filter( x => x > 10)
 
 ```
 

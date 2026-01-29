@@ -9,6 +9,7 @@ use crate::str_slice::StrSlice;
 use crate::string::*;
 use crate::types::Type;
 use crate::AutoStr;
+use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
 /// Unique identifier for a value stored in Universe
@@ -19,6 +20,19 @@ impl Display for ValueID {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "VID({})", self.0)
     }
+}
+
+/// Closure value: captured environment + function body (Plan 060 Phase 3+)
+#[derive(Debug, Clone, PartialEq)]
+pub struct Closure {
+    /// Unique closure ID for looking up closure data in evaluator
+    pub id: usize,
+
+    /// Parameter names
+    pub params: Vec<String>,
+
+    /// Closure name (for debugging/error reporting)
+    pub name: String,
 }
 
 /// Actual value data (stored in Universe, separate from ID)
@@ -132,6 +146,8 @@ pub enum Value {
     VmRef(VmRef),
     /// Reference to value stored in Universe (NEW)
     ValueRef(ValueID),
+    /// Closure value: captured environment + function body (Plan 060 Phase 3)
+    Closure(Closure),
 }
 
 // constructors
@@ -416,6 +432,7 @@ impl Display for Value {
             Value::Type(typ) => write!(f, "{}", typ.name()),
             Value::VmRef(_) => write!(f, "<vmref>"),
             Value::ValueRef(vid) => write!(f, "{}", vid), // NEW: Display ValueID
+            Value::Closure(closure) => write!(f, "<closure {}>", closure.name),
         }
     }
 }

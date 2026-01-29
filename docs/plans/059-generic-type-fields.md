@@ -254,21 +254,21 @@ spec Iterable<T> {
 **Proposed Syntax**:
 ```auto
 // Closure with single expression
-let double = |x| x * 2
+let double = x => x * 2
 
 // Closure with block
-let complex = |x, y| {
+let complex = (x, y) => {
     let temp = x + y
     temp * 2
 }
 
 // Closure with type annotations
-let add = |x int, y int| int { x + y }
+let add = (x int, y int) => x + y
 ```
 
 **Type Inference**:
-- Single param: `|x|` infers type from usage
-- Multiple params: `|x, y|` requires type annotation or usage
+- Single param: ` x => expr` infers type from usage
+- Multiple params: `(x, y) => expr` requires type annotation or usage
 - Return type: inferred from body or specified
 
 #### 5.2 Implementation
@@ -283,7 +283,7 @@ let add = |x int, y int| int { x + y }
 **C Transpilation Strategy**:
 ```c
 // AutoLang:
-let double = |x| x * 2
+let double = x => x * 2
 
 // Generated C:
 typedef struct {
@@ -450,7 +450,7 @@ fn main() {
     list.push(3)
 
     // Map using closure
-    let doubled = list.iter().map(|x| x * 2)
+    let doubled = list.iter().map( x => x * 2)
 }
 ```
 
@@ -483,10 +483,10 @@ fn main() {
 - [ ] a2c test 106 passes
 
 ### Phase 5: Closures ⏸️ FUTURE
-- [ ] `|x| x * 2` syntax parses
-- [ ] Multi-parameter closures: `|x, y| x + y`
-- [ ] Variable capture works
-- [ ] Type inference for params/return
+- [ ] ` x => x * 2` syntax parses (Plan 060)
+- [ ] Multi-parameter closures: `(x, y) => x + y` (Plan 060)
+- [ ] Variable capture works (Plan 060)
+- [ ] Type inference for params/return (Plan 060)
 - [ ] a2c test 107 passes
 
 ## Timeline Summary

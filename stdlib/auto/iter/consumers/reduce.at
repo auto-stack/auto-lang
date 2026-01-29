@@ -5,11 +5,11 @@
 ///   fn reduce(init: int, f: fn(int, int)int) int
 ///
 /// Usage example (when closures are supported):
-///   let sum = list.iter().reduce(0, |a, b| a + b)
+///   let sum = list.iter().reduce(0, (a, b) => a + b)
 ///
 /// Note: Full implementation requires:
 /// - Function pointer types (fn(int, int)int)
-/// - Closure syntax (|a, b| a + b)
+/// - Closure syntax ((a, b) => a + b)
 /// - Match expressions for May<T> pattern matching
 
 use auto.iter.spec: Iter
