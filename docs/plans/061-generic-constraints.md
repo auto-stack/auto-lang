@@ -1,9 +1,9 @@
 # Plan 061: Generic Constraints via #[with(...)]
 
-**Status**: ✅ Phase 1 Complete (Parser Implementation)  
-**Priority**: P0 (Pre-requisite for Plan 051 Phase 4-8)  
-**Dependencies**: None  
-**Timeline**: ~4 hours completed  
+**Status**: ✅ Complete (All Phases)
+**Priority**: P0 (Pre-requisite for Plan 051 Phase 4-8)
+**Dependencies**: None
+**Timeline**: ~6 hours completed  
 
 ## Objective
 
@@ -61,11 +61,14 @@ See [docs/design/generic-constraints.md](file:///d:/autostack/auto-lang/docs/des
 
 ## Success Criteria
 
-- [ ] `#[with(T)]` parses correctly (no constraint)
-- [ ] `#[with(T as Spec)]` parses with constraint populated
-- [ ] `#[with(A as Clone, B as Debug)]` handles multiple params
-- [ ] Existing `<T>` syntax continues to work
-- [ ] a2c test passes
+- [x] `#[with(T)]` parses correctly (no constraint)
+- [x] `#[with(T as Spec)]` parses with constraint populated
+- [x] `#[with(A as Clone, B as Debug)]` handles multiple params
+- [x] Existing `<T>` syntax continues to work
+- [x] a2c test passes (test_110_with_constraint)
+- [x] Type argument inference during function calls
+- [x] Constraint validation using TraitChecker
+- [x] type_args stored in Call AST for debugging
 
 ## Related Plans
 
