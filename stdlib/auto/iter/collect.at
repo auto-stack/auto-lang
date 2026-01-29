@@ -1,0 +1,74 @@
+/// Collect - Plan 051 Phases 5 & 8
+/// Eagerly collects iterator elements into a collection
+///
+/// The `!` operator triggers eager evaluation and collection:
+/// ```auto
+/// let list = iter()!  // Equivalent to: iter().collect()
+/// ```
+///
+/// Or use the explicit `collect()` method:
+/// ```auto
+/// let list = iter().collect()
+/// ```
+///
+/// This is useful because iterators are lazy by default. The `!` operator
+/// or `collect()` method forces immediate evaluation and collection into
+/// the appropriate storage type.
+///
+/// # Examples
+///
+/// ```auto
+/// // Collect into a new list using bang operator
+/// let numbers = list.iter().map( x => x * 2 )!
+///
+/// // Collect using explicit method call
+/// let evens = list.iter()
+///     .filter( x => x % 2 == 0 )
+///     .collect()
+///
+/// // Collect after chaining
+/// let result = list.iter()
+///     .map( x => x * 2 )
+///     .filter( x => x > 5 )
+///     .collect()
+/// ```
+///
+/// # Storage Strategy
+///
+/// The collection strategy depends on the compilation target:
+/// - **PC**: Heap-allocated List (dynamic growth)
+/// - **MCU**: Fixed-size array (compile-time size) - PLANNED
+///
+/// Note: Current implementation always uses Heap storage.
+/// Environment-aware storage selection is planned for future phases.
+///
+/// # Phase 8 Enhancements
+///
+/// - ✅ Full spec integration with collect() in Iter<T>
+/// - ✅ Comprehensive test coverage
+/// - ⏸️ to<C>() syntax for explicit type conversion (future)
+/// - ⏸️ Collect spec for polymorphic collection (future)
+
+use auto.iter.spec: Iter
+use auto.list: List
+
+// Collect implementation for ListIter
+impl<T, S> ListIter<T, S> {
+    /// Collect all elements into a new heap-allocated list
+    #[c, vm]
+    fn collect() List<T, Heap> {
+        let result = List.new()
+
+        loop {
+            let item = self.next()
+
+            // Check if iteration is complete
+            if item == nil {
+                return result
+            }
+
+            // Add element to result list
+            result.push(item)
+        }
+    }
+}

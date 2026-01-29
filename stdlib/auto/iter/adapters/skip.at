@@ -1,0 +1,49 @@
+/// Skip Adapter - Plan 051 Phase 6
+/// Skips the first n elements from an iterator
+
+use auto.iter.spec: Iter
+
+/// Iterator that skips the first n elements
+type SkipIter<I, T> {
+    iter I      // Underlying iterator
+    skip_count u32  // Number of elements to skip
+    skipped u32     // Number of elements already skipped
+}
+
+impl<T, S> ListIter<T, S> {
+    /// Create an iterator that skips the first n elements
+    #[c, vm]
+    fn skip(n u32) SkipIter<ListIter<T, S>, T> {
+        SkipIter {
+            iter: self,
+            skip_count: n,
+            skipped: 0,
+        }
+    }
+}
+
+impl<T> Iter<T> for SkipIter<Iter<T>, T> {
+    /// Get the next element, skipping the first n
+    #[c, vm]
+    fn next() May<T> {
+        // Skip elements until we've skipped enough
+        loop {
+            // Check if we've already skipped enough
+            if self.skipped >= self.skip_count {
+                // We've skipped enough, return next element
+                return self.iter.next()
+            }
+
+            // Try to get next element to skip
+            let item = self.iter.next()
+
+            // Check if iteration is complete
+            if item == nil {
+                return nil
+            }
+
+            // Increment skipped count
+            self.skipped = self.skipped + 1
+        }
+    }
+}

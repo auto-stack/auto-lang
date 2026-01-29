@@ -892,3 +892,27 @@ fn test_121_terminal_operators() {
     test_a2c("121_terminal_operators").unwrap();
 }
 
+// Plan 051 Phase 5: Bang Operator tests
+#[test]
+fn test_122_bang_operator() {
+    test_a2c("122_bang_operator").unwrap();
+}
+
+// Plan 051 Phase 6: Extended Adapters tests
+#[test]
+fn test_123_extended_adapters() {
+    test_a2c("123_extended_adapters").unwrap();
+}
+
+// Plan 051 Phase 7: Predicate Terminal Operators tests
+#[test]
+fn test_124_predicates() {
+    test_a2c("124_predicates").unwrap();
+}
+
+// Plan 051 Phase 8: Collect & To Operators tests
+#[test]
+fn test_125_collect() {
+    test_a2c("125_collect").unwrap();
+}
+

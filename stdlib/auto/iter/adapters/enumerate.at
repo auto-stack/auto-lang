@@ -1,0 +1,43 @@
+/// Enumerate Adapter - Plan 051 Phase 6
+/// Yields elements with their index
+
+use auto.iter.spec: Iter
+
+/// Iterator that yields (index, element) pairs
+type EnumerateIter<I, T> {
+    iter I      // Underlying iterator
+    index u32   // Current index
+}
+
+impl<T, S> ListIter<T, S> {
+    /// Create an iterator that yields (index, element) pairs
+    #[c, vm]
+    fn enumerate() EnumerateIter<ListIter<T, S>, T> {
+        EnumerateIter {
+            iter: self,
+            index: 0,
+        }
+    }
+}
+
+impl<T> Iter<(u32, T)> for EnumerateIter<Iter<T>, T> {
+    /// Get the next (index, element) pair
+    #[c, vm]
+    fn next() May<(u32, T)> {
+        // Get next element from underlying iterator
+        let item = self.iter.next()
+
+        // Check if iteration is complete
+        if item == nil {
+            return nil
+        }
+
+        // Create (index, element) pair
+        let result = (self.index, item)
+
+        // Increment index for next call
+        self.index = self.index + 1
+
+        return result
+    }
+}

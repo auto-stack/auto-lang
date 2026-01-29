@@ -1,0 +1,64 @@
+/// Predicate Terminal Operators - Plan 051 Phase 7
+/// any, all, find operations on iterators
+
+use auto.iter.spec: Iter
+
+// Implementation for ListIter
+impl<T, S> ListIter<T, S> {
+    /// Returns true if any element satisfies the predicate
+    /// Short-circuits: stops at first match
+    #[c, vm]
+    fn any(p: fn(T)bool) bool {
+        loop {
+            let item = self.next()
+
+            // Check if iteration is complete
+            if item == nil {
+                return false  // No element matched
+            }
+
+            // Check if element satisfies predicate
+            if p(item) {
+                return true  // Found a match, short-circuit
+            }
+        }
+    }
+
+    /// Returns true if all elements satisfy the predicate
+    /// Short-circuits: stops at first non-matching element
+    #[c, vm]
+    fn all(p: fn(T)bool) bool {
+        loop {
+            let item = self.next()
+
+            // Check if iteration is complete
+            if item == nil {
+                return true  // All elements matched
+            }
+
+            // Check if element satisfies predicate
+            if !p(item) {
+                return false  // Found non-matching element, short-circuit
+            }
+        }
+    }
+
+    /// Find the first element that satisfies the predicate
+    /// Returns nil if no element matches
+    #[c, vm]
+    fn find(p: fn(T)bool) May<T> {
+        loop {
+            let item = self.next()
+
+            // Check if iteration is complete
+            if item == nil {
+                return nil  // No element found
+            }
+
+            // Check if element satisfies predicate
+            if p(item) {
+                return item  // Found match, return element
+            }
+        }
+    }
+}

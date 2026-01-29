@@ -1,0 +1,49 @@
+/// Chain Adapter - Plan 051 Phase 6
+/// Chains two iterators together
+
+use auto.iter.spec: Iter
+
+/// Iterator that chains two iterators together
+type ChainIter<A, B, T> {
+    first A      // First iterator
+    second B     // Second iterator
+    is_first bool  // Whether we're still iterating over the first iterator
+}
+
+impl<T, S> ListIter<T, S> {
+    /// Chain this iterator with another
+    #[c, vm]
+    fn chain<U, S2>(other ListIter<U, S2>) ChainIter<ListIter<T, S>, ListIter<U, S2>, T> {
+        ChainIter {
+            first: self,
+            second: other,
+            is_first: true,
+        }
+    }
+}
+
+impl<T> Iter<T> for ChainIter<Iter<T>, Iter<T>, T> {
+    /// Get the next element from first, then second
+    #[c, vm]
+    fn next() May<T> {
+        // Check if we're still on the first iterator
+        if self.is_first {
+            // Try to get next element from first iterator
+            let item = self.first.next()
+
+            // Check if first iterator is exhausted
+            if item == nil {
+                // Switch to second iterator
+                self.is_first = false
+                // Get first element from second iterator
+                return self.second.next()
+            }
+
+            // Return element from first iterator
+            return item
+        } else {
+            // We're on the second iterator
+            return self.second.next()
+        }
+    }
+}

@@ -27,6 +27,18 @@ spec Iter<T> {
 
     /// Call function f for each element
     fn for_each(f: fn(T)void) void
+
+    /// Collect all elements into a collection
+    fn collect() List<T, Heap>
+
+    /// Check if any element satisfies predicate
+    fn any(p: fn(T)bool) bool
+
+    /// Check if all elements satisfy predicate
+    fn all(p: fn(T)bool) bool
+
+    /// Find first element matching predicate
+    fn find(p: fn(T)bool) May<T>
 }
 
 /// Type that can be iterated over
@@ -34,4 +46,11 @@ spec Iter<T> {
 spec Iterable<T> {
     /// Get an iterator for this collection
     fn iter() Iter<T>
+}
+
+/// Type that can collect from an iterator
+/// This allows different collection strategies (List, Array, etc.)
+spec Collect<T> {
+    /// Collect iterator elements into this collection type
+    fn from_iter(iter: Iter<T>) Self
 }

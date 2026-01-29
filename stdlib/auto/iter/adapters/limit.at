@@ -1,0 +1,38 @@
+/// Limit Adapter - Plan 051 Phase 6
+/// Limits the iterator to the first n elements
+
+use auto.iter.spec: Iter
+
+/// Iterator that limits to only the first n elements
+type LimitIter<I, T> {
+    iter I      // Underlying iterator
+    remaining u32  // Number of elements remaining to yield
+}
+
+impl<T, S> ListIter<T, S> {
+    /// Create an iterator that yields only the first n elements
+    #[c, vm]
+    fn limit(n u32) LimitIter<ListIter<T, S>, T> {
+        LimitIter {
+            iter: self,
+            remaining: n,
+        }
+    }
+}
+
+impl<T> Iter<T> for LimitIter<Iter<T>, T> {
+    /// Get the next element, stopping after n elements
+    #[c, vm]
+    fn next() May<T> {
+        // Check if we've yielded enough elements
+        if self.remaining == 0 {
+            return nil
+        }
+
+        // Decrement remaining count
+        self.remaining = self.remaining - 1
+
+        // Get next element from underlying iterator
+        return self.iter.next()
+    }
+}

@@ -73,7 +73,8 @@ const PREC_SIGN: PrefixPrec = prefix_prec(13);
 const PREC_NOT: PrefixPrec = prefix_prec(14);
 const PREC_CALL: PostfixPrec = postfix_prec(15);
 const PREC_INDEX: PostfixPrec = postfix_prec(16);
-const PREC_DOT: InfixPrec = infix_prec(17);
+const PREC_POSTFIX: PostfixPrec = postfix_prec(17); // Bang operator (!)
+const PREC_DOT: InfixPrec = infix_prec(18);
 const _PREC_ATOM: InfixPrec = infix_prec(18);
 
 fn prefix_power(op: Op, span: SourceSpan) -> AutoResult<PrefixPrec> {
@@ -93,6 +94,7 @@ fn postfix_power(op: Op) -> AutoResult<Option<PostfixPrec>> {
         Op::LSquare => Ok(Some(PREC_INDEX)),
         Op::LParen => Ok(Some(PREC_CALL)),
         Op::Colon => Ok(Some(PREC_PAIR)),
+        Op::Not => Ok(Some(PREC_POSTFIX)), // Bang operator (!) for eager collection
         _ => Ok(None),
     }
 }
@@ -1191,6 +1193,25 @@ impl<'a> Parser<'a> {
                             value: Box::new(rhs),
                         });
                         return Ok(lhs);
+                    }
+                    // Bang operator (!) for eager collection
+                    // Converts expr! into expr.collect()
+                    Op::Not => {
+                        self.next(); // skip !
+                        // Convert to method call: lhs.collect()
+                        let collect_name = crate::ast::Name::from("collect");
+                        let collect_expr = Expr::Bina(
+                            Box::new(lhs),
+                            Op::Dot,
+                            Box::new(Expr::Ident(collect_name))
+                        );
+                        lhs = Expr::Call(crate::ast::Call {
+                            name: Box::new(collect_expr),
+                            args: crate::ast::Args::new(),
+                            ret: crate::ast::Type::Unknown,
+                            type_args: Vec::new(),
+                        });
+                        continue;
                     }
                     _ => {
                         let message = format!("Invalid postfix operator: {}", op);

@@ -448,6 +448,7 @@ pub enum Op {
     MulEq,
     DivEq,
     Not,
+    Bang,  // Postfix bang operator for eager collection (!)
     LSquare,
     LParen,
     LBrace,
@@ -748,6 +749,7 @@ impl fmt::Display for Op {
             Op::MulEq => write!(f, "(op *=)"),
             Op::DivEq => write!(f, "(op /=)"),
             Op::Not => write!(f, "(op !)"),
+            Op::Bang => write!(f, "(op !)"),  // Bang operator (postfix)
             Op::LSquare => write!(f, "(op [)"),
             Op::Asn => write!(f, "(op =)"),
             Op::Eq => write!(f, "(op ==)"),
@@ -789,6 +791,7 @@ impl Op {
             Op::MulEq => "*=",
             Op::DivEq => "/=",
             Op::Not => "!",
+            Op::Bang => "!",  // Bang operator (postfix)
             Op::LSquare => "[",
             Op::LParen => "(",
             Op::LBrace => "{",

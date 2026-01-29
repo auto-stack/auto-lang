@@ -1,0 +1,46 @@
+/// Zip Adapter - Plan 051 Phase 6
+/// Combines two iterators into pairs
+
+use auto.iter.spec: Iter
+
+/// Iterator that zips two iterators together
+type ZipIter<A, B, T, U> {
+    iter_a A   // First iterator
+    iter_b B   // Second iterator
+}
+
+impl<T, S> ListIter<T, S> {
+    /// Zip this iterator with another
+    #[c, vm]
+    fn zip<U, S2>(other ListIter<U, S2>) ZipIter<ListIter<T, S>, ListIter<U, S2>, T, U> {
+        ZipIter {
+            iter_a: self,
+            iter_b: other,
+        }
+    }
+}
+
+impl<T, U> Iter<(T, U)> for ZipIter<Iter<T>, Iter<U>, T, U> {
+    /// Get the next (T, U) pair
+    #[c, vm]
+    fn next() May<(T, U)> {
+        // Get next element from first iterator
+        let a = self.iter_a.next()
+
+        // Check if first iterator is exhausted
+        if a == nil {
+            return nil
+        }
+
+        // Get next element from second iterator
+        let b = self.iter_b.next()
+
+        // Check if second iterator is exhausted
+        if b == nil {
+            return nil
+        }
+
+        // Return pair
+        return (a, b)
+    }
+}

@@ -1,0 +1,46 @@
+// Test Extended Adapters - Plan 051 Phase 6
+// Test limit, skip, enumerate, zip, and chain adapters
+
+use auto.list: List
+
+fn main() {
+    // Create two lists
+    let list1 = List.new()
+    list1.push(1)
+    list1.push(2)
+    list1.push(3)
+    list1.push(4)
+    list1.push(5)
+
+    let list2 = List.new()
+    list2.push(10)
+    list2.push(20)
+    list2.push(30)
+    list2.push(40)
+    list2.push(50)
+
+    // Test limit: limit to first 3 elements
+    // Should count 3 elements
+    let limited = list1.iter().limit(3)
+    say(limited.count())
+
+    // Test skip: skip first 2 elements
+    // Should count 3 remaining elements
+    let skipped = list1.iter().skip(2)
+    say(skipped.count())
+
+    // Test enumerate: get elements with indices
+    // Should count 5 elements
+    let enumerated = list1.iter().enumerate()
+    say(enumerated.count())
+
+    // Test zip: combine two lists
+    // Should have 5 pairs
+    let zipped = list1.iter().zip(list2.iter())
+    say(zipped.count())
+
+    // Test chain: concatenate two iterators
+    // Should have 10 elements total
+    let chained = list1.iter().chain(list2.iter())
+    say(chained.count())
+}
