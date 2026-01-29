@@ -2270,9 +2270,32 @@ impl Evaler {
                             }
                         }
 
+                        // Check if this is a direct variable access (like iter.next())
+                        // We need to update the binding after mutation
+                        let binding_name = if let Expr::Ident(var_name) = &**object {
+                            Some(var_name.clone())
+                        } else {
+                            None
+                        };
+
                         // Call the VM method with the instance
                         let uni = self.universe.clone();
-                        return Ok(method(uni, &mut inst.clone(), arg_vals));
+
+                        // Create a mutable copy for the method call
+                        let mut inst_copy = inst.clone();
+                        let result = method(uni, &mut inst_copy, arg_vals);
+
+                        // If this was a variable binding, update it with the mutated instance
+                        if let Some(var_name) = binding_name {
+                            if let Value::Instance(ref_inst) = &inst_copy {
+                                // Update the local variable with the mutated instance
+                                self.universe
+                                    .borrow_mut()
+                                    .set_local_val(var_name.as_str(), inst_copy);
+                            }
+                        }
+
+                        return Ok(result);
                     }
                 }
 
