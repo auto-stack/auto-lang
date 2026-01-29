@@ -66,7 +66,7 @@ const PREC_CMP: InfixPrec = infix_prec(8);
 const PREC_RANGE: InfixPrec = infix_prec(9);
 const PREC_ADD: InfixPrec = infix_prec(10);
 const PREC_MUL: InfixPrec = infix_prec(11);
-const PREC_NULLCOALESCE: InfixPrec = infix_prec(5);  // ?? operator (same as OR)
+const PREC_NULLCOALESCE: InfixPrec = infix_prec(5); // ?? operator (same as OR)
 
 const _PREC_REF: PrefixPrec = prefix_prec(12);
 const PREC_SIGN: PrefixPrec = prefix_prec(13);
@@ -311,8 +311,8 @@ impl<'a> Parser<'a> {
         self.next(); // Now self.cur is the token after [
 
         // Check for c or vm identifier
-        let is_annot = self.cur.kind == TokenKind::Ident
-            && (self.cur.text == "c" || self.cur.text == "vm");
+        let is_annot =
+            self.cur.kind == TokenKind::Ident && (self.cur.text == "c" || self.cur.text == "vm");
 
         if !is_annot {
             // Not an annotation, restore and return false
@@ -709,7 +709,8 @@ impl<'a> Parser<'a> {
         use crate::ast::Stmt;
 
         // Collect all TypeDecls and Exts in separate passes
-        let mut type_decl_indices: std::collections::HashMap<Name, usize> = std::collections::HashMap::new();
+        let mut type_decl_indices: std::collections::HashMap<Name, usize> =
+            std::collections::HashMap::new();
         let mut ext_statements: Vec<(usize, crate::ast::Ext)> = Vec::new();
 
         for (i, stmt) in stmts.iter().enumerate() {
@@ -798,7 +799,8 @@ impl<'a> Parser<'a> {
             return Err(SyntaxError::Generic {
                 message: "Unclosed block, missing '}'".to_string(),
                 span: pos_to_span(self.prev.pos),
-            }.into());
+            }
+            .into());
         }
         Ok(())
     }
@@ -937,7 +939,9 @@ impl<'a> Parser<'a> {
                         tokens.push(token.clone());
 
                         match token.kind {
-                            TokenKind::LParen | TokenKind::LSquare | TokenKind::LBrace => depth += 1,
+                            TokenKind::LParen | TokenKind::LSquare | TokenKind::LBrace => {
+                                depth += 1
+                            }
                             TokenKind::RParen | TokenKind::RSquare | TokenKind::RBrace => {
                                 depth -= 1;
                             }
@@ -1028,17 +1032,27 @@ impl<'a> Parser<'a> {
                 // Allow @, * as special field names for pointer operations
                 // Allow numeric literals for integer-keyed objects: a.1, a.2
                 // Allow boolean keywords: a.true, a.false
-                if self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::At) || self.is_kind(TokenKind::Star) ||
-                   self.is_kind(TokenKind::Int) || self.is_kind(TokenKind::Uint) ||
-                   self.is_kind(TokenKind::I8) || self.is_kind(TokenKind::U8) ||
-                   self.is_kind(TokenKind::Float) || self.is_kind(TokenKind::Double) ||
-                   self.is_kind(TokenKind::True) || self.is_kind(TokenKind::False) ||
-                   self.is_kind(TokenKind::Nil) {
+                if self.is_kind(TokenKind::Ident)
+                    || self.is_kind(TokenKind::At)
+                    || self.is_kind(TokenKind::Star)
+                    || self.is_kind(TokenKind::Int)
+                    || self.is_kind(TokenKind::Uint)
+                    || self.is_kind(TokenKind::I8)
+                    || self.is_kind(TokenKind::U8)
+                    || self.is_kind(TokenKind::Float)
+                    || self.is_kind(TokenKind::Double)
+                    || self.is_kind(TokenKind::True)
+                    || self.is_kind(TokenKind::False)
+                    || self.is_kind(TokenKind::Nil)
+                {
                     self.next();
                     // Use Expr::Dot for semantic clarity
                     lhs = Expr::Dot(Box::new(lhs), field_name);
                 } else {
-                    let message = format!("Expected identifier, @, *, number, or boolean after dot, got {:?}", self.cur.kind);
+                    let message = format!(
+                        "Expected identifier, @, *, number, or boolean after dot, got {:?}",
+                        self.cur.kind
+                    );
                     let span = pos_to_span(self.cur.pos);
                     return Err(SyntaxError::Generic { message, span }.into());
                 }
@@ -1054,7 +1068,7 @@ impl<'a> Parser<'a> {
         self.next(); // skip dot
         let name = self.cur.text.clone();
         self.next(); // skip name
-        // Use Expr::Dot for semantic clarity (.field is shorthand for self.field)
+                     // Use Expr::Dot for semantic clarity (.field is shorthand for self.field)
         Ok(Expr::Dot(Box::new(Expr::Ident("self".into())), name))
     }
 
@@ -1105,7 +1119,10 @@ impl<'a> Parser<'a> {
                 TokenKind::AddEq | TokenKind::SubEq | TokenKind::MulEq | TokenKind::DivEq => {
                     self.op()
                 }
-                TokenKind::DotView | TokenKind::DotMut | TokenKind::DotTake | TokenKind::DotQuestion => {
+                TokenKind::DotView
+                | TokenKind::DotMut
+                | TokenKind::DotTake
+                | TokenKind::DotQuestion => {
                     // Property keywords: .view, .mut, .take (Phase 3)
                     // Error propagation: ?. (Phase 1b.3)
                     // These are postfix operators with same precedence as dot
@@ -1254,7 +1271,9 @@ impl<'a> Parser<'a> {
                                                 call.name
                                             );
                                             let span = pos_to_span(self.cur.pos);
-                                            return Err(SyntaxError::Generic { message, span }.into());
+                                            return Err(
+                                                SyntaxError::Generic { message, span }.into()
+                                            );
                                         }
                                     };
                                     lhs = Expr::Call(Call {
@@ -1265,10 +1284,7 @@ impl<'a> Parser<'a> {
                                 }
                                 _ => {
                                     // Error: right-hand side of dot must be an identifier or method call
-                                    let message = format!(
-                                        "Invalid field name after dot: {}",
-                                        rhs
-                                    );
+                                    let message = format!("Invalid field name after dot: {}", rhs);
                                     let span = pos_to_span(self.cur.pos);
                                     return Err(SyntaxError::Generic { message, span }.into());
                                 }
@@ -2019,14 +2035,14 @@ impl<'a> Parser<'a> {
             TokenKind::Hash => {
                 // #[...] annotation syntax (Rust-style)
                 // Use centralized parse_fn_annotations() function
-                let (has_c, has_vm, _has_pub) = self.parse_fn_annotations()?;
+                let (has_c, has_vm, _has_pub, _with_params) = self.parse_fn_annotations()?;
 
                 // Skip empty lines after annotation
                 self.skip_empty_lines();
 
                 // Check if this annotation is compatible with current compile destination
                 let should_skip = match self.compile_dest {
-                    CompileDest::TransC if has_vm && !has_c => true,   // Skip #[vm] in C transpiler
+                    CompileDest::TransC if has_vm && !has_c => true, // Skip #[vm] in C transpiler
                     CompileDest::TransRust if has_vm && !has_c => true, // Skip #[vm] in Rust transpiler
                     CompileDest::Interp if has_c && !has_vm => true,    // Skip #[c] in interpreter
                     _ => false,
@@ -2075,7 +2091,7 @@ impl<'a> Parser<'a> {
                     if has_c && is_c_import {
                         // C import: #[c] use <stdio.h>
                         self.next(); // skip use
-                        // Call use_c directly since we know it's a C import
+                                     // Call use_c directly since we know it's a C import
                         let mut paths = Vec::new();
                         if self.is_kind(TokenKind::Lt) {
                             self.next(); // skip <
@@ -2110,11 +2126,13 @@ impl<'a> Parser<'a> {
                     self.parse_store_stmt()?
                 } else {
                     return Err(SyntaxError::Generic {
-                        message: "Expected 'fn', 'type', 'use', or 'let' after annotation".to_string(),
+                        message: "Expected 'fn', 'type', 'use', or 'let' after annotation"
+                            .to_string(),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
-            },
+            }
             TokenKind::Type => self.type_decl_stmt()?,
             TokenKind::Union => self.union_stmt()?,
             TokenKind::Tag => self.tag_stmt()?,
@@ -2223,15 +2241,15 @@ impl<'a> Parser<'a> {
 
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[pub], #[c,vm] before function declarations
-            let (has_c, has_vm, _has_pub) = self.parse_fn_annotations()?;
+            let (has_c, has_vm, _has_pub, _with_params) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
             // Check if this annotation should be skipped for current compile destination
             let should_skip = match self.compile_dest {
-                CompileDest::TransC if has_vm && !has_c => true,   // Skip #[vm] in C transpiler
+                CompileDest::TransC if has_vm && !has_c => true, // Skip #[vm] in C transpiler
                 CompileDest::TransRust if has_vm && !has_c => true, // Skip #[vm] in Rust transpiler
-                CompileDest::Interp if has_c && !has_vm => true,    // Skip #[c] in interpreter
+                CompileDest::Interp if has_c && !has_vm => true, // Skip #[c] in interpreter
                 _ => false,
             };
 
@@ -2281,10 +2299,13 @@ impl<'a> Parser<'a> {
                 // If static fn, skip the static keyword first
                 if is_static_method {
                     self.next(); // skip `static` keyword
-                    // Now we expect `fn` keyword
+                                 // Now we expect `fn` keyword
                     if !self.is_kind(TokenKind::Fn) {
                         return Err(SyntaxError::Generic {
-                            message: format!("expected 'fn' after 'static', found {:?}", self.kind()),
+                            message: format!(
+                                "expected 'fn' after 'static', found {:?}",
+                                self.kind()
+                            ),
                             span: pos_to_span(self.cur.pos),
                         }
                         .into());
@@ -2295,13 +2316,19 @@ impl<'a> Parser<'a> {
                 if should_skip {
                     // Skip the entire function declaration
                     // Parse with the actual annotation flags to correctly handle the function syntax
-                    let _ = self.fn_decl_stmt_with_annotations(&target, has_c, has_vm, is_static_method);
+                    let _ = self.fn_decl_stmt_with_annotations(
+                        &target,
+                        has_c,
+                        has_vm,
+                        is_static_method,
+                    );
                     self.expect_eos(false)?;
                     self.skip_empty_lines();
                     continue;
                 }
 
-                let fn_stmt = self.fn_decl_stmt_with_annotations(&target, has_c, has_vm, is_static_method)?;
+                let fn_stmt =
+                    self.fn_decl_stmt_with_annotations(&target, has_c, has_vm, is_static_method)?;
                 if let Stmt::Fn(mut fn_expr) = fn_stmt {
                     // Set is_static flag for static methods (Plan 035 Phase 4.2)
                     if is_static_method {
@@ -2535,8 +2562,8 @@ impl<'a> Parser<'a> {
     /// Plan 036: Returns extensions in load order (bottom layer first, then top layer)
     fn get_file_extensions(&self) -> Vec<&'static str> {
         match self.compile_dest {
-            CompileDest::Interp => vec![".at", ".vm.at"],     // Interpreter: Interface (first) → VM implementation (second)
-            CompileDest::TransC => vec![".at", ".c.at"],      // Transpiler: Interface (first) → C implementation (second)
+            CompileDest::Interp => vec![".at", ".vm.at"], // Interpreter: Interface (first) → VM implementation (second)
+            CompileDest::TransC => vec![".at", ".c.at"], // Transpiler: Interface (first) → C implementation (second)
             CompileDest::TransRust => vec![".at", ".rust.at"], // Rust transpiler
         }
     }
@@ -2582,7 +2609,8 @@ impl<'a> Parser<'a> {
                 return Err(SyntaxError::Generic {
                     message: format!("Cannot find stdlib parent directory"),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
         } else {
             // local lib
@@ -2625,11 +2653,16 @@ impl<'a> Parser<'a> {
         for ext in extensions.iter() {
             let file_path_str = dir.join(format!("{}{}", name_str, ext));
             if file_path_str.exists() {
-                let content = std::fs::read_to_string(file_path_str.path())
-                    .map_err(|e| SyntaxError::Generic {
-                        message: format!("Failed to read file {}: {}", file_path_str.path().display(), e),
+                let content = std::fs::read_to_string(file_path_str.path()).map_err(|e| {
+                    SyntaxError::Generic {
+                        message: format!(
+                            "Failed to read file {}: {}",
+                            file_path_str.path().display(),
+                            e
+                        ),
                         span: pos_to_span(self.cur.pos),
-                    })?;
+                    }
+                })?;
                 file_contents.push((content, file_path_str.clone()));
                 loaded_files.push(file_path_str);
             }
@@ -2639,11 +2672,16 @@ impl<'a> Parser<'a> {
         if loaded_files.is_empty() {
             let file_path_str = dir.join(format!("{}.at", name_str));
             if file_path_str.exists() {
-                let content = std::fs::read_to_string(file_path_str.path())
-                    .map_err(|e| SyntaxError::Generic {
-                        message: format!("Failed to read file {}: {}", file_path_str.path().display(), e),
+                let content = std::fs::read_to_string(file_path_str.path()).map_err(|e| {
+                    SyntaxError::Generic {
+                        message: format!(
+                            "Failed to read file {}: {}",
+                            file_path_str.path().display(),
+                            e
+                        ),
                         span: pos_to_span(self.cur.pos),
-                    })?;
+                    }
+                })?;
                 file_contents.push((content, file_path_str.clone()));
                 loaded_files.push(file_path_str);
             } else {
@@ -2651,7 +2689,8 @@ impl<'a> Parser<'a> {
                 return Err(SyntaxError::Generic {
                     message: format!("Cannot find file: {}{}", name_str, ".at"),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
         }
 
@@ -2662,7 +2701,9 @@ impl<'a> Parser<'a> {
             .map(|(content, _)| {
                 content
                     .lines()
-                    .filter(|line| !line.trim().starts_with("# ") && !line.trim().starts_with("#\t"))
+                    .filter(|line| {
+                        !line.trim().starts_with("# ") && !line.trim().starts_with("#\t")
+                    })
                     .collect::<Vec<_>>()
                     .join("\n")
             })
@@ -2718,13 +2759,20 @@ impl<'a> Parser<'a> {
         for spec_decl in spec_decls {
             // Import spec into current scope
             // println!("Importing spec: {}", spec_decl.name); // LSP: disabled
-            self.define_rc(spec_decl.name.clone().as_str(), std::rc::Rc::new(Meta::Spec(spec_decl)));
+            self.define_rc(
+                spec_decl.name.clone().as_str(),
+                std::rc::Rc::new(Meta::Spec(spec_decl)),
+            );
         }
 
         // Define items in scope
         for item in items.iter() {
             // lookup item's meta from its mod
-            let meta = if let Some(found_meta) = self.scope.borrow().lookup(item.as_str(), scope_name.clone()) {
+            let meta = if let Some(found_meta) = self
+                .scope
+                .borrow()
+                .lookup(item.as_str(), scope_name.clone())
+            {
                 found_meta
             } else {
                 // For C library functions (c.stdio, c.stdlib, etc.), create a placeholder meta
@@ -2746,7 +2794,8 @@ impl<'a> Parser<'a> {
                     return Err(SyntaxError::Generic {
                         message: format!("Cannot find symbol: {} in {}", item, scope_name),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
             };
             // define item with its name in current scope
@@ -2995,10 +3044,18 @@ impl<'a> Parser<'a> {
             }
 
             // Check if next token is a binary operator (like <, >, <=, >=, ==, !=, +, -, *, /)
-            let next_is_binop = matches!(self.kind(),
-                TokenKind::Lt | TokenKind::Gt | TokenKind::Le | TokenKind::Ge |
-                TokenKind::Eq | TokenKind::Neq | TokenKind::Add | TokenKind::Sub |
-                TokenKind::Star | TokenKind::Div
+            let next_is_binop = matches!(
+                self.kind(),
+                TokenKind::Lt
+                    | TokenKind::Gt
+                    | TokenKind::Le
+                    | TokenKind::Ge
+                    | TokenKind::Eq
+                    | TokenKind::Neq
+                    | TokenKind::Add
+                    | TokenKind::Sub
+                    | TokenKind::Star
+                    | TokenKind::Div
             );
 
             if next_is_binop {
@@ -3157,7 +3214,7 @@ impl<'a> Parser<'a> {
             name = self.parse_name()?;
             if name == "c" {
                 store_kind = StoreKind::CVar;
-            } 
+            }
         }
 
         // type (optional)
@@ -3186,9 +3243,13 @@ impl<'a> Parser<'a> {
             Expr::Nil
         } else {
             return Err(SyntaxError::Generic {
-                message: format!("Variable '{}' must have either a type annotation or an initial value", name),
+                message: format!(
+                    "Variable '{}' must have either a type annotation or an initial value",
+                    name
+                ),
                 span: pos_to_span(self.cur.pos),
-            }.into());
+            }
+            .into());
         };
 
         let store = Store {
@@ -3209,7 +3270,9 @@ impl<'a> Parser<'a> {
             name_pos.at,
             name_pos.pos,
         );
-        self.scope.borrow_mut().define_symbol_location(name.clone(), loc);
+        self.scope
+            .borrow_mut()
+            .define_symbol_location(name.clone(), loc);
 
         Ok(Stmt::Store(store))
     }
@@ -3357,28 +3420,31 @@ impl<'a> Parser<'a> {
         self.define(name.as_str(), Meta::Fn(fn_expr.clone()));
 
         // Register symbol location for LSP
-        let loc = SymbolLocation::new(
-            name_pos.line.saturating_sub(1),
-            name_pos.at,
-            name_pos.pos,
-        );
-        self.scope.borrow_mut().define_symbol_location(name.clone(), loc);
+        let loc = SymbolLocation::new(name_pos.line.saturating_sub(1), name_pos.at, name_pos.pos);
+        self.scope
+            .borrow_mut()
+            .define_symbol_location(name.clone(), loc);
 
         Ok(fn_stmt)
     }
 
     /// Parse function annotations: [c], [vm], [c,vm], [pub]
     ///
-    /// Parse function annotations: #[c], #[vm], #[pub], #[c,vm], etc.
+    /// Parse function annotations: #[c], #[vm], #[pub], #[c,vm], #[with(T as Spec)], etc.
     /// Annotations must start with # prefix (Rust-style).
-    /// Returns (has_c, has_vm, has_pub) tuple
-    fn parse_fn_annotations(&mut self) -> AutoResult<(bool, bool, bool)> {
+    /// Returns (has_c, has_vm, has_pub, with_params) tuple
+    ///
+    /// Plan 061: Added support for #[with(T as Spec)] generic constraints
+    fn parse_fn_annotations(
+        &mut self,
+    ) -> AutoResult<(bool, bool, bool, Vec<crate::ast::TypeParam>)> {
         let mut has_c = false;
         let mut has_vm = false;
         let mut has_pub = false;
+        let mut with_params: Vec<crate::ast::TypeParam> = Vec::new();
 
-        // Require # prefix
-        if self.is_kind(TokenKind::Hash) {
+        // Parse all annotation blocks: #[...] #[...] ...
+        while self.is_kind(TokenKind::Hash) {
             self.next(); // skip #
 
             if self.is_kind(TokenKind::LSquare) {
@@ -3390,14 +3456,23 @@ impl<'a> Parser<'a> {
                         "c" => has_c = true,
                         "vm" => has_vm = true,
                         "pub" => has_pub = true,
+                        "with" => {
+                            // Plan 061: Parse #[with(T, U as Spec<V>)]
+                            self.next(); // skip 'with'
+                            with_params = self.parse_with_params()?;
+                        }
                         _ => {
                             return Err(SyntaxError::Generic {
-                                message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[pub], #[c,vm]", annot),
+                                message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[pub], #[with(...)], #[c,vm]", annot),
                                 span: pos_to_span(self.cur.pos),
                             }.into());
                         }
                     }
-                    self.next(); // skip the annotation identifier (c, vm, or pub)
+
+                    // Skip 'with' since we already consumed it above
+                    if annot != "with" {
+                        self.next(); // skip the annotation identifier (c, vm, or pub)
+                    }
 
                     if self.is_kind(TokenKind::Comma) {
                         self.next(); // skip ,
@@ -3409,29 +3484,103 @@ impl<'a> Parser<'a> {
                         break;
                     } else {
                         return Err(SyntaxError::Generic {
-                            message: format!("Expected ',', ']', or annotation, found {:?}", self.kind()),
+                            message: format!(
+                                "Expected ',', ']', or annotation, found {:?}",
+                                self.kind()
+                            ),
                             span: pos_to_span(self.cur.pos),
-                        }.into());
+                        }
+                        .into());
                     }
                 }
             } else {
                 return Err(SyntaxError::Generic {
                     message: format!("Expected '[' after '#', found {:?}", self.kind()),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
+            }
+
+            // Skip any whitespace/newlines between multiple annotation blocks
+            self.skip_empty_lines();
+        }
+
+        Ok((has_c, has_vm, has_pub, with_params))
+    }
+
+    /// Plan 061: Parse with(...) parameter list: (T, U as Spec<V>)
+    /// Returns Vec<TypeParam> with constraints populated
+    fn parse_with_params(&mut self) -> AutoResult<Vec<crate::ast::TypeParam>> {
+        use crate::ast::TypeParam;
+
+        self.expect(TokenKind::LParen)?; // expect '('
+
+        let mut params = Vec::new();
+
+        loop {
+            self.skip_empty_lines();
+
+            // Check for ) to end the list
+            if self.is_kind(TokenKind::RParen) {
+                break;
+            }
+
+            // Parse parameter name
+            if !self.is_kind(TokenKind::Ident) {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected type parameter name in #[with(...)], got {:?}",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+
+            let name = self.parse_name()?;
+
+            // Check for 'as' keyword for constraint
+            let constraint = if self.is_kind(TokenKind::As) {
+                self.next(); // skip 'as'
+                Some(Box::new(self.parse_type()?))
+            } else {
+                None
+            };
+
+            params.push(TypeParam { name, constraint });
+
+            self.skip_empty_lines();
+
+            // Check for , or )
+            if self.is_kind(TokenKind::Comma) {
+                self.next(); // skip ,
+                continue;
+            } else if self.is_kind(TokenKind::RParen) {
+                break;
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected ',' or ')' in #[with(...)], got {:?}",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
             }
         }
 
-        Ok((has_c, has_vm, has_pub))
+        self.expect(TokenKind::RParen)?; // expect ')'
+
+        Ok(params)
     }
 
     // Function Declaration
     pub fn fn_decl_stmt(&mut self, parent_name: &str) -> AutoResult<Stmt> {
         // Check for annotations: #[c], #[vm], #[c,vm] BEFORE fn keyword
-        let (has_c, has_vm, _has_pub) = if self.is_kind(TokenKind::Hash) {
+        let (has_c, has_vm, _has_pub, with_params) = if self.is_kind(TokenKind::Hash) {
             self.parse_fn_annotations()?
         } else {
-            (false, false, false)
+            (false, false, false, Vec::new())
         };
 
         // Skip empty lines after annotations
@@ -3463,7 +3612,31 @@ impl<'a> Parser<'a> {
         let name_pos = self.prev.pos;
 
         // Plan 052: Parse generic parameters if present: fn foo<T, N u32>(...)
-        let generic_params = self.parse_generic_params()?;
+        let mut generic_params = self.parse_generic_params()?;
+
+        // Plan 061: Merge with_params from #[with(T as Spec)] into generic_params
+        // with_params override any params from <T> with the same name
+        if !with_params.is_empty() {
+            use crate::ast::GenericParam;
+
+            for with_param in with_params {
+                // Check if this param already exists in generic_params
+                let existing_idx = generic_params.iter().position(|p| match p {
+                    GenericParam::Type(tp) => tp.name == with_param.name,
+                    GenericParam::Const(cp) => cp.name == with_param.name,
+                });
+
+                if let Some(idx) = existing_idx {
+                    // Replace existing param with the with_param (which has constraint)
+                    generic_params[idx] = GenericParam::Type(with_param.clone());
+                } else {
+                    // Add new param from with_params
+                    generic_params.push(GenericParam::Type(with_param.clone()));
+                    // Also add to current_type_params for scope
+                    self.current_type_params.push(with_param.name.clone());
+                }
+            }
+        }
 
         // enter function scope
         self.scope.borrow_mut().enter_fn(name.clone());
@@ -3480,7 +3653,11 @@ impl<'a> Parser<'a> {
         let mut ret_type_name: Option<AutoStr> = None;
         // TODO: determine return type with last stmt if it's not specified
         // Support: Ident (int, str), LSquare ([]int), Star (*int)
-        if self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::LSquare) || self.is_kind(TokenKind::Star) || self.is_kind(TokenKind::Question) {
+        if self.is_kind(TokenKind::Ident)
+            || self.is_kind(TokenKind::LSquare)
+            || self.is_kind(TokenKind::Star)
+            || self.is_kind(TokenKind::Question)
+        {
             if self.is_kind(TokenKind::Ident) {
                 ret_type_name = Some(self.cur.text.clone());
             }
@@ -3493,11 +3670,17 @@ impl<'a> Parser<'a> {
             // For regular functions, we also accept semicolon for forward declarations
             // For methods in type blocks (parent_name is not empty), we also accept newline
             let allow_newline = is_c || is_vm || !parent_name.is_empty();
-            if !allow_newline && !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Semi) && !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::Hash) {
+            if !allow_newline
+                && !self.is_kind(TokenKind::LBrace)
+                && !self.is_kind(TokenKind::Semi)
+                && !self.is_kind(TokenKind::EOF)
+                && !self.is_kind(TokenKind::Hash)
+            {
                 return Err(SyntaxError::Generic {
                     message: format!("Expected '{{' or ';', found {:?}", self.kind()),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
         } else if self.is_kind(TokenKind::LBrace) {
             ret_type = Type::Void;
@@ -3590,7 +3773,9 @@ impl<'a> Parser<'a> {
             name_pos.at,
             name_pos.pos,
         );
-        self.scope.borrow_mut().define_symbol_location(unique_name.clone(), loc);
+        self.scope
+            .borrow_mut()
+            .define_symbol_location(unique_name.clone(), loc);
 
         Ok(fn_stmt)
     }
@@ -3633,7 +3818,11 @@ impl<'a> Parser<'a> {
         let mut ret_type_name: Option<AutoStr> = None;
         // TODO: determine return type with last stmt if it's not specified
         // Support: Ident (int, str), LSquare ([]int), Star (*int)
-        if self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::LSquare) || self.is_kind(TokenKind::Star) || self.is_kind(TokenKind::Question) {
+        if self.is_kind(TokenKind::Ident)
+            || self.is_kind(TokenKind::LSquare)
+            || self.is_kind(TokenKind::Star)
+            || self.is_kind(TokenKind::Question)
+        {
             if self.is_kind(TokenKind::Ident) {
                 ret_type_name = Some(self.cur.text.clone());
             }
@@ -3646,11 +3835,17 @@ impl<'a> Parser<'a> {
             // For regular functions, we also accept semicolon for forward declarations
             // For methods in type blocks (parent_name is not empty), we also accept newline
             let allow_newline = is_c || is_vm || !parent_name.is_empty();
-            if !allow_newline && !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Semi) && !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::Hash) {
+            if !allow_newline
+                && !self.is_kind(TokenKind::LBrace)
+                && !self.is_kind(TokenKind::Semi)
+                && !self.is_kind(TokenKind::EOF)
+                && !self.is_kind(TokenKind::Hash)
+            {
                 return Err(SyntaxError::Generic {
                     message: format!("Expected '{{' or ';', found {:?}", self.kind()),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
         } else if self.is_kind(TokenKind::LBrace) {
             ret_type = Type::Void;
@@ -3747,7 +3942,9 @@ impl<'a> Parser<'a> {
             name_pos.at,
             name_pos.pos,
         );
-        self.scope.borrow_mut().define_symbol_location(unique_name.clone(), loc);
+        self.scope
+            .borrow_mut()
+            .define_symbol_location(unique_name.clone(), loc);
 
         Ok(fn_stmt)
     }
@@ -3806,7 +4003,9 @@ impl<'a> Parser<'a> {
                 name_pos.at,
                 name_pos.pos,
             );
-            self.scope.borrow_mut().define_symbol_location(name.clone(), loc);
+            self.scope
+                .borrow_mut()
+                .define_symbol_location(name.clone(), loc);
 
             params.push(Param { name, ty, default });
             self.sep_params()?;
@@ -3819,11 +4018,12 @@ impl<'a> Parser<'a> {
                 return Err(SyntaxError::Generic {
                     message: "Expected '...' for variadic arguments, found '..'".to_string(),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
             self.next(); // skip final .
-            // Add a variadic marker parameter
-            // Use a special name to indicate variadic
+                         // Add a variadic marker parameter
+                         // Use a special name to indicate variadic
             params.push(Param {
                 name: "...".into(),
                 ty: Type::Variadic,
@@ -3851,7 +4051,8 @@ impl<'a> Parser<'a> {
             if let GenericParam::Type(tp) = param {
                 self.current_type_params.push(tp.name.clone());
             } else if let GenericParam::Const(cp) = param {
-                self.current_const_params.insert(cp.name.clone(), cp.typ.clone());
+                self.current_const_params
+                    .insert(cp.name.clone(), cp.typ.clone());
             }
         }
 
@@ -3914,11 +4115,7 @@ impl<'a> Parser<'a> {
             Type::Void // Default to void
         };
 
-        Ok(SpecMethod {
-            name,
-            params,
-            ret,
-        })
+        Ok(SpecMethod { name, params, ret })
     }
 
     /// Parse a type alias statement: `type List<T> = List<T, DefaultStorage>;`
@@ -4005,12 +4202,11 @@ impl<'a> Parser<'a> {
                 self.define(name.as_str(), Meta::Type(Type::CStruct(decl.clone())));
 
                 // Register symbol location for LSP
-                let loc = SymbolLocation::new(
-                    name_pos.line.saturating_sub(1),
-                    name_pos.at,
-                    name_pos.pos,
-                );
-                self.scope.borrow_mut().define_symbol_location(name.clone(), loc);
+                let loc =
+                    SymbolLocation::new(name_pos.line.saturating_sub(1), name_pos.at, name_pos.pos);
+                self.scope
+                    .borrow_mut()
+                    .define_symbol_location(name.clone(), loc);
 
                 return Ok(Stmt::TypeDecl(decl));
             }
@@ -4053,16 +4249,14 @@ impl<'a> Parser<'a> {
                 .into_iter()
                 .filter_map(|p| match p {
                     GenericParam::Type(tp) => Some(tp.name),
-                    GenericParam::Const(_) => None,  // Const params not supported in type aliases
+                    GenericParam::Const(_) => None, // Const params not supported in type aliases
                 })
                 .collect();
 
             // Store type alias in universe for later resolution
-            self.scope.borrow_mut().define_type_alias(
-                name.clone(),
-                params.clone(),
-                target.clone(),
-            );
+            self.scope
+                .borrow_mut()
+                .define_type_alias(name.clone(), params.clone(), target.clone());
 
             return Ok(Stmt::TypeAlias(TypeAlias {
                 name,
@@ -4078,7 +4272,8 @@ impl<'a> Parser<'a> {
             if let crate::ast::GenericParam::Type(tp) = param {
                 self.current_type_params.push(tp.name.clone());
             } else if let crate::ast::GenericParam::Const(cp) = param {
-                self.current_const_params.insert(cp.name.clone(), cp.typ.clone());
+                self.current_const_params
+                    .insert(cp.name.clone(), cp.typ.clone());
             }
         }
 
@@ -4109,12 +4304,10 @@ impl<'a> Parser<'a> {
 
         // Register symbol location for LSP
         // Use the saved name_pos which is the position of the type name
-        let loc = SymbolLocation::new(
-            name_pos.line.saturating_sub(1),
-            name_pos.at,
-            name_pos.pos,
-        );
-        self.scope.borrow_mut().define_symbol_location(name.clone(), loc);
+        let loc = SymbolLocation::new(name_pos.line.saturating_sub(1), name_pos.at, name_pos.pos);
+        self.scope
+            .borrow_mut()
+            .define_symbol_location(name.clone(), loc);
 
         // For C types, there's no body - they're opaque types
         if kind == TypeDeclKind::CType {
@@ -4136,23 +4329,25 @@ impl<'a> Parser<'a> {
                     return Err(SyntaxError::Generic {
                         message: format!("'{}' is not a user type", parent_name),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
             } else {
                 return Err(SyntaxError::Generic {
                     message: format!("Parent type '{}' not found", parent_name),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
         }
         decl.parent = parent;
 
         // Plan 057: deal with `as` keyword - parse spec implementations with optional type arguments
-        let mut specs = Vec::new();      // Backwards compatibility: names only
+        let mut specs = Vec::new(); // Backwards compatibility: names only
         let mut spec_impls = Vec::new(); // Plan 057: Generic spec implementations
         if self.is_kind(TokenKind::As) {
             self.next(); // skip `as` keyword
-            // Parse one or more spec names with optional type arguments
+                         // Parse one or more spec names with optional type arguments
             while !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Has) {
                 if !specs.is_empty() {
                     self.expect(TokenKind::Comma)?;
@@ -4176,9 +4371,13 @@ impl<'a> Parser<'a> {
                             continue;
                         } else {
                             return Err(SyntaxError::Generic {
-                                message: format!("Expected '>' or ',' in type argument list, got {}", self.cur.text),
+                                message: format!(
+                                    "Expected '>' or ',' in type argument list, got {}",
+                                    self.cur.text
+                                ),
                                 span: pos_to_span(self.cur.pos),
-                            }.into());
+                            }
+                            .into());
                         }
                     }
                     args
@@ -4224,15 +4423,15 @@ impl<'a> Parser<'a> {
         let mut delegations = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[pub], #[c,vm] before function declarations
-            let (has_c, has_vm, _has_pub) = self.parse_fn_annotations()?;
+            let (has_c, has_vm, _has_pub, _with_params) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
             // Check if this annotation should be skipped for current compile destination
             let should_skip = match self.compile_dest {
-                CompileDest::TransC if has_vm && !has_c => true,   // Skip #[vm] in C transpiler
+                CompileDest::TransC if has_vm && !has_c => true, // Skip #[vm] in C transpiler
                 CompileDest::TransRust if has_vm && !has_c => true, // Skip #[vm] in Rust transpiler
-                CompileDest::Interp if has_c && !has_vm => true,    // Skip #[c] in interpreter
+                CompileDest::Interp if has_c && !has_vm => true, // Skip #[c] in interpreter
                 _ => false,
             };
 
@@ -4262,10 +4461,12 @@ impl<'a> Parser<'a> {
                     return Err(SyntaxError::Generic {
                         message: format!("expected 'fn' after 'static', found {:?}", self.kind()),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
 
-                let fn_stmt = self.fn_decl_stmt_with_annotations(&name, has_c, has_vm, is_static)?;
+                let fn_stmt =
+                    self.fn_decl_stmt_with_annotations(&name, has_c, has_vm, is_static)?;
                 if let Stmt::Fn(fn_expr) = fn_stmt {
                     methods.push(fn_expr);
                 }
@@ -4339,10 +4540,9 @@ impl<'a> Parser<'a> {
                 if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
                     if let Meta::Spec(spec_decl) = meta.as_ref() {
                         // Use TraitChecker to verify conformance
-                        if let Err(errors) = crate::trait_checker::TraitChecker::check_conformance(
-                            &decl,
-                            spec_decl,
-                        ) {
+                        if let Err(errors) =
+                            crate::trait_checker::TraitChecker::check_conformance(&decl, spec_decl)
+                        {
                             // Add all conformance errors to parser errors
                             for error in errors {
                                 self.add_error(error);
@@ -4388,10 +4588,11 @@ impl<'a> Parser<'a> {
                             );
                         } else {
                             // Use TraitChecker to verify conformance
-                            if let Err(errors) = crate::trait_checker::TraitChecker::check_conformance(
-                                &decl,
-                                spec_decl,
-                            ) {
+                            if let Err(errors) =
+                                crate::trait_checker::TraitChecker::check_conformance(
+                                    &decl, spec_decl,
+                                )
+                            {
                                 for error in errors {
                                     self.add_error(error);
                                 }
@@ -4443,12 +4644,10 @@ impl<'a> Parser<'a> {
 
         // Register field location for LSP with qualified name "TypeName.fieldName"
         let qualified_name = format!("{}.{}", type_name, name);
-        let loc = SymbolLocation::new(
-            name_pos.line.saturating_sub(1),
-            name_pos.at,
-            name_pos.pos,
-        );
-        self.scope.borrow_mut().define_symbol_location(qualified_name.clone(), loc);
+        let loc = SymbolLocation::new(name_pos.line.saturating_sub(1), name_pos.at, name_pos.pos);
+        self.scope
+            .borrow_mut()
+            .define_symbol_location(qualified_name.clone(), loc);
 
         Ok(Member::new(name, ty, value))
     }
@@ -4528,13 +4727,16 @@ impl<'a> Parser<'a> {
         }
 
         // Set current type parameters for field parsing (extract names from generic_params)
-        let prev_type_params = std::mem::replace(&mut self.current_type_params,
-            generic_params.iter()
+        let prev_type_params = std::mem::replace(
+            &mut self.current_type_params,
+            generic_params
+                .iter()
                 .map(|gp| match gp {
                     crate::ast::GenericParam::Type(tp) => tp.name.clone(),
                     crate::ast::GenericParam::Const(cp) => cp.name.clone(),
                 })
-                .collect());
+                .collect(),
+        );
 
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
@@ -4836,7 +5038,8 @@ impl<'a> Parser<'a> {
             _ => Err(SyntaxError::Generic {
                 message: format!("Expected type parameter, got {}", self.cur.text),
                 span: pos_to_span(self.cur.pos),
-            }.into()),
+            }
+            .into()),
         }
     }
 
@@ -4845,14 +5048,15 @@ impl<'a> Parser<'a> {
     /// - Type parameter: `T` (no type annotation)
     /// - Const parameter: `N u32` (with type annotation)
     fn parse_generic_param(&mut self) -> AutoResult<crate::ast::GenericParam> {
-        use crate::ast::{GenericParam, TypeParam, ConstParam};
+        use crate::ast::{ConstParam, GenericParam, TypeParam};
 
         // First, parse the parameter name
         if self.cur.kind != TokenKind::Ident {
             return Err(SyntaxError::Generic {
                 message: format!("Expected generic parameter name, got {}", self.cur.text),
                 span: pos_to_span(self.cur.pos),
-            }.into());
+            }
+            .into());
         }
 
         let name = self.parse_name()?;
@@ -4866,7 +5070,7 @@ impl<'a> Parser<'a> {
             Ok(GenericParam::Const(ConstParam {
                 name,
                 typ,
-                default: None,  // TODO: Support default values
+                default: None, // TODO: Support default values
             }))
         } else {
             // Type parameter: just `T`
@@ -4901,9 +5105,13 @@ impl<'a> Parser<'a> {
                 continue;
             } else {
                 return Err(SyntaxError::Generic {
-                    message: format!("Expected '>' or ',' in generic parameter list, got {}", self.cur.text),
+                    message: format!(
+                        "Expected '>' or ',' in generic parameter list, got {}",
+                        self.cur.text
+                    ),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
         }
 
@@ -4913,7 +5121,8 @@ impl<'a> Parser<'a> {
                 self.current_type_params.push(tp.name.clone());
             } else if let crate::ast::GenericParam::Const(cp) = param {
                 // Store const parameter with its actual type for type resolution
-                self.current_const_params.insert(cp.name.clone(), cp.typ.clone());
+                self.current_const_params
+                    .insert(cp.name.clone(), cp.typ.clone());
             }
         }
 
@@ -4951,7 +5160,11 @@ impl<'a> Parser<'a> {
                 }
 
                 // Plan 058: Check if this is a type alias
-                let type_alias = self.scope.borrow().lookup_type_alias(name.as_str()).map(|(params, target)| (params.clone(), target.clone()));
+                let type_alias = self
+                    .scope
+                    .borrow()
+                    .lookup_type_alias(name.as_str())
+                    .map(|(params, target)| (params.clone(), target.clone()));
 
                 if let Some((alias_params, alias_target)) = type_alias {
                     // Check if there are type arguments (e.g., List<int>)
@@ -4978,7 +5191,8 @@ impl<'a> Parser<'a> {
                                     type_args.len()
                                 ),
                                 span: pos_to_span(self.cur.pos),
-                            }.into());
+                            }
+                            .into());
                         }
 
                         // Substitute type arguments into the target type
@@ -5033,12 +5247,13 @@ impl<'a> Parser<'a> {
     fn next_token_is_type(&mut self) -> bool {
         // Peek at the next token
         let next = self.peek();
-        matches!(next.kind,
+        matches!(
+            next.kind,
             TokenKind::Ident |      // Type name (int, List, etc.)
             TokenKind::Question |   // May type (?T)
             TokenKind::LSquare |    // Array type ([N]T)
             TokenKind::Star |       // Pointer type (*T)
-            TokenKind::Lt           // Nested generic (List<List<int>>)
+            TokenKind::Lt // Nested generic (List<List<int>>)
         )
     }
 
@@ -5085,7 +5300,10 @@ impl<'a> Parser<'a> {
             // For now, only support List<T, S> pattern where S has a default
             if type_name.as_str() == "List" && args.len() == 1 && expected_params == 2 {
                 // Get default storage from environment
-                let default_storage = self.scope.borrow().get_env_val("DEFAULT_STORAGE")
+                let default_storage = self
+                    .scope
+                    .borrow()
+                    .get_env_val("DEFAULT_STORAGE")
                     .unwrap_or_else(|| "Heap".into()); // Fallback to Heap for PC
 
                 // Parse the storage type from environment string
@@ -5100,7 +5318,8 @@ impl<'a> Parser<'a> {
                         args.len()
                     ),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
         }
 
@@ -5114,7 +5333,9 @@ impl<'a> Parser<'a> {
                 drop(base_type_ref); // Drop borrow before registering
 
                 // Collect generic parameter names
-                let param_names: Vec<_> = tag.generic_params.iter()
+                let param_names: Vec<_> = tag
+                    .generic_params
+                    .iter()
                     .map(|gp| match gp {
                         crate::ast::GenericParam::Type(tp) => tp.name.clone(),
                         crate::ast::GenericParam::Const(cp) => cp.name.clone(),
@@ -5122,7 +5343,9 @@ impl<'a> Parser<'a> {
                     .collect();
 
                 // Substitute type parameters in tag fields
-                let substituted_fields: Vec<_> = tag.fields.iter()
+                let substituted_fields: Vec<_> = tag
+                    .fields
+                    .iter()
                     .map(|field| TagField {
                         name: field.name.clone(),
                         ty: field.ty.substitute(&param_names, &args),
@@ -5131,9 +5354,15 @@ impl<'a> Parser<'a> {
 
                 // Create new substituted tag
                 let substituted_tag = Tag {
-                    name: format!("{}_{}", base_name,
-                        args.iter().map(|t| t.unique_name().to_string()).collect::<Vec<_>>().join("_")
-                    ).into(),
+                    name: format!(
+                        "{}_{}",
+                        base_name,
+                        args.iter()
+                            .map(|t| t.unique_name().to_string())
+                            .collect::<Vec<_>>()
+                            .join("_")
+                    )
+                    .into(),
                     generic_params: Vec::new(), // No type parameters in instantiated tag
                     fields: substituted_fields,
                     methods: tag.methods.clone(),
@@ -5143,7 +5372,7 @@ impl<'a> Parser<'a> {
                 let subst_name = substituted_tag.name.clone();
                 self.define(
                     subst_name.as_str(),
-                    Meta::Type(Type::Tag(shared(substituted_tag.clone())))
+                    Meta::Type(Type::Tag(shared(substituted_tag.clone()))),
                 );
 
                 return Ok(Type::Tag(shared(substituted_tag)));
@@ -5153,10 +5382,7 @@ impl<'a> Parser<'a> {
                 // TODO: Implement TypeDecl substitution (similar to Tag substitution)
                 // For now, return GenericInstance
                 drop(base_type_ref);
-                return Ok(Type::GenericInstance(GenericInstance {
-                    base_name,
-                    args,
-                }));
+                return Ok(Type::GenericInstance(GenericInstance { base_name, args }));
             }
             _ => {
                 // Either built-in type or non-generic user-defined type
@@ -5177,15 +5403,16 @@ impl<'a> Parser<'a> {
                 } else if args.len() == 2 {
                     // List<int, Heap> → Return GenericInstance for full type
                     // This allows the transpiler to see both parameters
-                    Ok(Type::GenericInstance(GenericInstance {
-                        base_name,
-                        args,
-                    }))
+                    Ok(Type::GenericInstance(GenericInstance { base_name, args }))
                 } else {
                     Err(SyntaxError::Generic {
-                        message: format!("List expects 1 or 2 type parameter(s), but got {}", args.len()),
+                        message: format!(
+                            "List expects 1 or 2 type parameter(s), but got {}",
+                            args.len()
+                        ),
                         span: pos_to_span(self.cur.pos),
-                    }.into())
+                    }
+                    .into())
                 }
             }
             "Fixed" if args.len() == 1 => {
@@ -5204,9 +5431,13 @@ impl<'a> Parser<'a> {
                     }
                     _ => {
                         return Err(SyntaxError::Generic {
-                            message: format!("Fixed storage requires integer capacity, got {}", args[0]),
+                            message: format!(
+                                "Fixed storage requires integer capacity, got {}",
+                                args[0]
+                            ),
                             span: pos_to_span(self.cur.pos),
-                        }.into());
+                        }
+                        .into());
                     }
                 };
 
@@ -5216,10 +5447,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 // User-defined generic instance (including May<T> from stdlib)
-                Ok(Type::GenericInstance(GenericInstance {
-                    base_name,
-                    args,
-                }))
+                Ok(Type::GenericInstance(GenericInstance { base_name, args }))
             }
         }
     }
@@ -5237,7 +5465,7 @@ impl<'a> Parser<'a> {
             _ => {
                 // Try to parse as Fixed<N> pattern
                 if storage_name.starts_with("Fixed<") && storage_name.ends_with(">") {
-                    let inner = &storage_name[6..storage_name.len()-1];
+                    let inner = &storage_name[6..storage_name.len() - 1];
                     if let Ok(capacity) = inner.parse::<usize>() {
                         return Ok(Type::Storage(crate::ast::StorageType {
                             kind: crate::ast::StorageKind::Fixed { capacity },
@@ -5286,7 +5514,9 @@ impl<'a> Parser<'a> {
                     Type::Tag(t) if !t.borrow().generic_params.is_empty() => {
                         // Use stdlib May<T> tag with substitution
                         let tag = t.borrow().clone();
-                        let param_names: Vec<_> = tag.generic_params.iter()
+                        let param_names: Vec<_> = tag
+                            .generic_params
+                            .iter()
                             .map(|gp| match gp {
                                 crate::ast::GenericParam::Type(tp) => tp.name.clone(),
                                 crate::ast::GenericParam::Const(cp) => cp.name.clone(),
@@ -5294,7 +5524,9 @@ impl<'a> Parser<'a> {
                             .collect();
                         let type_args = vec![inner_type.clone()];
 
-                        let fields: Vec<_> = tag.fields.iter()
+                        let fields: Vec<_> = tag
+                            .fields
+                            .iter()
                             .map(|field| TagField {
                                 name: field.name.clone(),
                                 ty: field.ty.substitute(&param_names, &type_args),
@@ -5312,9 +5544,18 @@ impl<'a> Parser<'a> {
                         let subst_name = format!("May{}", capitalize_first(&inner_name));
 
                         let fields = vec![
-                            TagField { name: Name::from("nil"), ty: Type::Unknown },
-                            TagField { name: Name::from("val"), ty: inner_type.clone() },
-                            TagField { name: Name::from("err"), ty: Type::Int },
+                            TagField {
+                                name: Name::from("nil"),
+                                ty: Type::Unknown,
+                            },
+                            TagField {
+                                name: Name::from("val"),
+                                ty: inner_type.clone(),
+                            },
+                            TagField {
+                                name: Name::from("err"),
+                                ty: Type::Int,
+                            },
                         ];
 
                         (subst_name, fields, Vec::new())
@@ -5332,7 +5573,7 @@ impl<'a> Parser<'a> {
                 // Register the substituted tag in scope
                 self.define(
                     subst_name.as_str(),
-                    Meta::Type(Type::Tag(shared(substituted_tag.clone())))
+                    Meta::Type(Type::Tag(shared(substituted_tag.clone()))),
                 );
 
                 Ok(Type::Tag(shared(substituted_tag)))
@@ -5472,7 +5713,9 @@ impl<'a> Parser<'a> {
                                         if let Expr::Ident(rname) = &**rhs {
                                             // For static methods, try to look up the method signature
                                             let combined_name = format!("{}::{}", lname, rname);
-                                            if let Some(method_meta) = self.lookup_meta(&combined_name) {
+                                            if let Some(method_meta) =
+                                                self.lookup_meta(&combined_name)
+                                            {
                                                 if let Meta::Fn(fn_decl) = method_meta.as_ref() {
                                                     return Ok(fn_decl.ret.clone());
                                                 }
@@ -5543,7 +5786,9 @@ impl<'a> Parser<'a> {
                                         // Allow type names for static method calls (e.g., HashMap.new())
                                         if let Expr::Ident(rname) = &**rhs {
                                             let combined_name = format!("{}::{}", lname, rname);
-                                            if let Some(method_meta) = self.lookup_meta(&combined_name) {
+                                            if let Some(method_meta) =
+                                                self.lookup_meta(&combined_name)
+                                            {
                                                 if let Meta::Fn(fn_decl) = method_meta.as_ref() {
                                                     return Ok(fn_decl.ret.clone());
                                                 }
@@ -5617,11 +5862,9 @@ impl<'a> Parser<'a> {
                             let value_ty = self.infer_type_expr(&value);
 
                             // 检查类型匹配（使用当前 token 位置作为近似位置）
-                            if let Err(err) = check_field_type(
-                                member,
-                                &value_ty,
-                                pos_to_span(self.cur.pos),
-                            ) {
+                            if let Err(err) =
+                                check_field_type(member, &value_ty, pos_to_span(self.cur.pos))
+                            {
                                 self.errors.push(err);
                             }
                         }
@@ -5693,7 +5936,8 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::Gt)?;
 
             // Generate descriptive name: "List<int>", "Heap<T>", etc.
-            let args_str = args.iter()
+            let args_str = args
+                .iter()
                 .map(|t| t.unique_name().to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -5708,9 +5952,9 @@ impl<'a> Parser<'a> {
         // Plan 056: Use Expr::Dot for semantic clarity
         while self.is_kind(TokenKind::Dot) {
             self.next(); // skip dot
-            // Allow @, * as special field names for pointer operations
-            // Allow numeric literals for integer-keyed objects: a.1, a.2
-            // Allow boolean keywords: a.true, a.false
+                         // Allow @, * as special field names for pointer operations
+                         // Allow numeric literals for integer-keyed objects: a.1, a.2
+                         // Allow boolean keywords: a.true, a.false
             let field_name = if self.is_kind(TokenKind::Ident) {
                 let text = self.cur.text.clone();
                 self.next();
@@ -5719,19 +5963,28 @@ impl<'a> Parser<'a> {
                 let text = self.cur.text.clone();
                 self.next();
                 text
-            } else if self.is_kind(TokenKind::Int) || self.is_kind(TokenKind::Uint) ||
-                      self.is_kind(TokenKind::I8) || self.is_kind(TokenKind::U8) ||
-                      self.is_kind(TokenKind::Float) || self.is_kind(TokenKind::Double) ||
-                      self.is_kind(TokenKind::True) || self.is_kind(TokenKind::False) ||
-                      self.is_kind(TokenKind::Nil) {
+            } else if self.is_kind(TokenKind::Int)
+                || self.is_kind(TokenKind::Uint)
+                || self.is_kind(TokenKind::I8)
+                || self.is_kind(TokenKind::U8)
+                || self.is_kind(TokenKind::Float)
+                || self.is_kind(TokenKind::Double)
+                || self.is_kind(TokenKind::True)
+                || self.is_kind(TokenKind::False)
+                || self.is_kind(TokenKind::Nil)
+            {
                 let text = self.cur.text.clone();
                 self.next();
                 text
             } else {
                 return Err(SyntaxError::Generic {
-                    message: format!("Expected identifier, @, *, number, or boolean after dot, got {:?}", self.cur.kind),
+                    message: format!(
+                        "Expected identifier, @, *, number, or boolean after dot, got {:?}",
+                        self.cur.kind
+                    ),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             };
             ident = Expr::Dot(Box::new(ident), field_name);
         }
@@ -5794,7 +6047,10 @@ impl<'a> Parser<'a> {
         // If has brace, must be a node instance
         // NOTE: If ident is a Dot expression (e.g., TypeName.method), treat as call even if is_constructor=true
         let is_dot_call = matches!(ident, Expr::Dot(_, _));
-        if self.is_kind(TokenKind::LBrace) || primary_prop.is_some() || (is_constructor && !is_dot_call) {
+        if self.is_kind(TokenKind::LBrace)
+            || primary_prop.is_some()
+            || (is_constructor && !is_dot_call)
+        {
             // node instance
             // with node instance, pair args also defines as properties
             for arg in &args.args {
@@ -6379,10 +6635,7 @@ mod tests {
         let code = "var a = {b: [0, 1, 2]}; a.b[0]";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(
-            last.to_string(),
-            "(index (dot (name a).b) (int 0))"
-        );
+        assert_eq!(last.to_string(), "(index (dot (name a).b) (int 0))");
     }
 
     #[test]
@@ -6762,7 +7015,9 @@ exe hello {
         let ast = parse_once(code);
         // Should parse both spec and type with 'as' clause
         // Filter out empty line statements
-        let non_empty_stmts: Vec<_> = ast.stmts.iter()
+        let non_empty_stmts: Vec<_> = ast
+            .stmts
+            .iter()
             .filter(|s| !s.to_string().starts_with("(nl"))
             .collect();
 
@@ -6775,8 +7030,11 @@ exe hello {
         assert!(spec_stmt.to_string().contains("Flyer"));
         // The type should contain Pigeon
         let type_str = type_stmt.to_string();
-        assert!(type_str.contains("Pigeon") || type_str.contains("pigeon"),
-            "Type statement should contain 'Pigeon', got: {}", type_str);
+        assert!(
+            type_str.contains("Pigeon") || type_str.contains("pigeon"),
+            "Type statement should contain 'Pigeon', got: {}",
+            type_str
+        );
     }
 
     #[test]
@@ -6802,7 +7060,9 @@ exe hello {
         let ast = parse_once(code);
         // Should parse spec and type with multiple 'as' specs
         // Filter out empty line statements
-        let non_empty_stmts: Vec<_> = ast.stmts.iter()
+        let non_empty_stmts: Vec<_> = ast
+            .stmts
+            .iter()
             .filter(|s| !s.to_string().starts_with("(nl"))
             .collect();
 
@@ -6811,7 +7071,10 @@ exe hello {
         // Debug output (disabled for LSP)
         // println!("Duck stmt: {}", duck_stmt.to_string());
         let duck_str = duck_stmt.to_string();
-        assert!(duck_str.contains("Duck") || duck_str.contains("duck"),
-            "Type statement should contain 'Duck', got: {}", duck_str);
+        assert!(
+            duck_str.contains("Duck") || duck_str.contains("duck"),
+            "Type statement should contain 'Duck', got: {}",
+            duck_str
+        );
     }
 }

@@ -383,7 +383,7 @@ impl Evaler {
             Stmt::OnEvents(on) => Ok(self.eval_on_events(on)),
             Stmt::Comment(_) => Ok(Value::Nil),
             Stmt::Alias(_) => Ok(Value::Void),
-            Stmt::TypeAlias(_) => Ok(Value::Void),  // Type aliases are compile-time only
+            Stmt::TypeAlias(_) => Ok(Value::Void), // Type aliases are compile-time only
             Stmt::EmptyLine(_) => Ok(Value::Void),
             Stmt::Union(_) => Ok(Value::Void),
             Stmt::Tag(tag) => Ok(self.eval_tag_decl(tag)),
@@ -1198,7 +1198,9 @@ impl Evaler {
                 let field_path = auto_val::AccessPath::Field(field);
                 path = Some(match path {
                     None => field_path,
-                    Some(inner) => auto_val::AccessPath::Nested(Box::new(inner), Box::new(field_path)),
+                    Some(inner) => {
+                        auto_val::AccessPath::Nested(Box::new(inner), Box::new(field_path))
+                    }
                 });
             }
 
@@ -1314,7 +1316,9 @@ impl Evaler {
                             Value::error(format!("Array not found: {}", arr_name))
                         }
                     } else {
-                        Value::error("Complex field assignment with non-identifier array not supported")
+                        Value::error(
+                            "Complex field assignment with non-identifier array not supported",
+                        )
                     }
                 } else if let Expr::Dot(inner_obj, inner_field) = object.as_ref() {
                     // Handle nested dot case: obj.inner.x = value or data[0].info.age = value
@@ -1364,7 +1368,8 @@ impl Evaler {
                                     );
 
                                     let right_data = val.into_data();
-                                    let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+                                    let right_vid =
+                                        self.universe.borrow_mut().alloc_value(right_data);
 
                                     match self
                                         .universe
@@ -1384,7 +1389,9 @@ impl Evaler {
                                 Value::error(format!("Array not found: {}", arr_name))
                             }
                         } else {
-                            Value::error("Nested field assignment with non-identifier array not supported")
+                            Value::error(
+                                "Nested field assignment with non-identifier array not supported",
+                            )
                         }
                     } else {
                         // Handle arbitrary nesting of dot expressions: obj.level1.level2.value = value
@@ -2038,7 +2045,7 @@ impl Evaler {
     fn eval_una(&mut self, op: &Op, e: &Expr) -> Value {
         let value = self.eval_expr(e);
         match op {
-            Op::Add => value,  // Unary & (address-of) - just return value for VM
+            Op::Add => value, // Unary & (address-of) - just return value for VM
             Op::Sub => value.neg(),
             Op::Not => value.not(),
             Op::Mul => {
@@ -2336,9 +2343,7 @@ impl Evaler {
                         // This allows functions like List.new(1, 2, 3) to receive
                         // all arguments as a single Value::Array parameter
                         use auto_val::{Array, AutoStr};
-                        let array_value = Value::Array(Array {
-                            values: arg_vals,
-                        });
+                        let array_value = Value::Array(Array { values: arg_vals });
                         let result = (vm_func.func)(uni, array_value);
                         return Ok(result);
                     }
@@ -2479,7 +2484,8 @@ impl Evaler {
                         // Plan 056: Try to find static function in VM registry
                         // For static methods like File.open, List.new, HashMap.new
                         // These are registered as "TypeName.method_name" in VM registry
-                        let vm_function_name: AutoStr = format!("{}.{}", type_name, method_name).into();
+                        let vm_function_name: AutoStr =
+                            format!("{}.{}", type_name, method_name).into();
                         let registry = crate::vm::VM_REGISTRY.lock().unwrap();
                         let vm_func_entry = registry
                             .modules()
@@ -2513,9 +2519,7 @@ impl Evaler {
                             } else {
                                 // For multi-argument functions, wrap them in an Array
                                 use auto_val::{Array, AutoStr};
-                                let array_value = Value::Array(Array {
-                                    values: arg_vals,
-                                });
+                                let array_value = Value::Array(Array { values: arg_vals });
                                 let result = (vm_func.func)(uni, array_value);
                                 return Ok(result);
                             }
@@ -3020,7 +3024,9 @@ impl Evaler {
                         .modules()
                         .values()
                         .find_map(|module| {
-                            module.types.get(type_name.as_str())
+                            module
+                                .types
+                                .get(type_name.as_str())
                                 .and_then(|type_entry| type_entry.methods.get(name.as_str()))
                         })
                         .cloned();
@@ -3032,7 +3038,8 @@ impl Evaler {
                         let mut target_clone = target.clone();
 
                         // Convert Args to Vec<Value> by evaluating each Arg
-                        let arg_vals: Vec<Value> = args.args
+                        let arg_vals: Vec<Value> = args
+                            .args
                             .iter()
                             .map(|arg| match arg {
                                 ast::Arg::Pos(expr) => self.eval_expr(expr),
@@ -3589,7 +3596,7 @@ impl Evaler {
                                         _ => Value::error(format!(
                                             "Field '{}' not found in object",
                                             field
-                                        ))
+                                        )),
                                     }
                                 }
                             } else {
@@ -3620,7 +3627,7 @@ impl Evaler {
                                     _ => Value::error(format!(
                                         "Field '{}' not found in object",
                                         field
-                                    ))
+                                    )),
                                 }
                             }
                         }
@@ -3903,8 +3910,7 @@ impl Evaler {
                 // Register each method from the composed type
                 for method in &has_decl.methods {
                     // Create fully qualified method name: TypeName::method_name
-                    let method_name: AutoStr =
-                        format!("{}.{}", type_decl.name, method.name).into();
+                    let method_name: AutoStr = format!("{}.{}", type_decl.name, method.name).into();
 
                     // Clone the method and update its name to reflect the new owner
                     let mut mixed_method = method.clone();
@@ -4129,7 +4135,6 @@ impl Evaler {
                 left_value = Value::from_data(data_clone);
             }
         }
-
 
         let res: Option<Value> = match &left_value {
             Value::Type(typ) => {
@@ -4530,7 +4535,8 @@ impl Evaler {
                 };
                 let value_val = self.eval_expr(&pair.value);
                 // Convert AutoStr to ValueKey using .into()
-                args.args.push(auto_val::Arg::Pair(key_name.into(), value_val));
+                args.args
+                    .push(auto_val::Arg::Pair(key_name.into(), value_val));
             }
         }
 
@@ -4732,7 +4738,118 @@ impl Evaler {
     //     self.universe.borrow_mut().exit_scope();
     // }
 
-    /// Evaluate closure expression and create closure value (Plan 060 Phase 3+)
+    /// Plan 060 Phase 4: Find variables referenced in closure body that should be captured
+    /// Excludes: parameters, local variables defined in closure body
+    fn find_captured_vars(
+        &mut self,
+        expr: &ast::Expr,
+        params: &[ast::ClosureParam],
+    ) -> HashMap<String, Value> {
+        let mut captured = HashMap::new();
+        let param_names: std::collections::HashSet<String> =
+            params.iter().map(|p| p.name.to_string()).collect();
+
+        // First collect all identifier names that need to be captured
+        let mut names_to_capture = Vec::new();
+        Self::collect_ident_names(expr, &param_names, &mut names_to_capture);
+
+        // Then evaluate each one to get the current value
+        for name in names_to_capture {
+            if !captured.contains_key(&name) {
+                // Use eval_expr to resolve the value like normal identifier evaluation
+                let ident_expr = ast::Expr::Ident(name.clone().into());
+                let val = self.eval_expr(&ident_expr);
+                // Only capture if it's a real value (not an error)
+                if !matches!(val, Value::Error(_)) {
+                    captured.insert(name, val);
+                }
+            }
+        }
+
+        captured
+    }
+
+    /// Recursively collect identifier names from an expression (static analysis)
+    fn collect_ident_names(
+        expr: &ast::Expr,
+        exclude: &std::collections::HashSet<String>,
+        names: &mut Vec<String>,
+    ) {
+        match expr {
+            ast::Expr::Ident(name) => {
+                let name_str = name.to_string();
+                // Skip if it's a parameter or already collected
+                if !exclude.contains(&name_str) && !names.contains(&name_str) {
+                    names.push(name_str);
+                }
+            }
+            // Bina is a tuple: (Box<Expr>, Op, Box<Expr>)
+            ast::Expr::Bina(left, _op, right) => {
+                Self::collect_ident_names(left, exclude, names);
+                Self::collect_ident_names(right, exclude, names);
+            }
+            // Unary is a tuple: (Op, Box<Expr>)
+            ast::Expr::Unary(_op, operand) => {
+                Self::collect_ident_names(operand, exclude, names);
+            }
+            ast::Expr::Call(call) => {
+                // Call.name is the function/method being called
+                Self::collect_ident_names(&call.name, exclude, names);
+                for arg in &call.args.args {
+                    if let ast::Arg::Pos(e) = arg {
+                        Self::collect_ident_names(e, exclude, names);
+                    }
+                }
+            }
+            // Index is a tuple: (Box<Expr>, Box<Expr>)
+            ast::Expr::Index(target, index) => {
+                Self::collect_ident_names(target, exclude, names);
+                Self::collect_ident_names(index, exclude, names);
+            }
+            // Dot is a tuple: (Box<Expr>, Name)
+            ast::Expr::Dot(object, _field) => {
+                Self::collect_ident_names(object, exclude, names);
+            }
+            ast::Expr::Block(body) => {
+                for stmt in &body.stmts {
+                    if let ast::Stmt::Expr(e) = stmt {
+                        Self::collect_ident_names(e, exclude, names);
+                    } else if let ast::Stmt::Return(e) = stmt {
+                        Self::collect_ident_names(e, exclude, names);
+                    }
+                }
+            }
+            ast::Expr::If(if_expr) => {
+                for branch in &if_expr.branches {
+                    Self::collect_ident_names(&branch.cond, exclude, names);
+                    for stmt in &branch.body.stmts {
+                        if let ast::Stmt::Expr(e) = stmt {
+                            Self::collect_ident_names(e, exclude, names);
+                        }
+                    }
+                }
+            }
+            ast::Expr::Closure(inner_closure) => {
+                // For nested closures, process inner body with updated excludes
+                let mut inner_exclude = exclude.clone();
+                for p in &inner_closure.params {
+                    inner_exclude.insert(p.name.to_string());
+                }
+                Self::collect_ident_names(&inner_closure.body, &inner_exclude, names);
+            }
+            // Primitives - no identifiers to collect
+            ast::Expr::Int(_)
+            | ast::Expr::Float(_, _)
+            | ast::Expr::Str(_)
+            | ast::Expr::Bool(_)
+            | ast::Expr::Nil
+            | ast::Expr::Byte(_) => {}
+            // Other expressions - add more cases as needed
+            _ => {}
+        }
+    }
+
+    /// Evaluate closure expression and create closure value (Plan 060 Phase 3+4)
     fn closure(&mut self, closure: &Closure) -> Value {
         use std::collections::HashMap;
 
@@ -4740,11 +4857,14 @@ impl Evaler {
         let closure_id = self.next_closure_id;
         self.next_closure_id += 1;
 
-        // Store closure data in evaluator
+        // Plan 060 Phase 4: Capture variables from enclosing scope
+        let captured_env = self.find_captured_vars(&closure.body, &closure.params);
+
+        // Store closure data in evaluator with captured environment
         let eval_closure = EvalClosure {
             params: closure.params.clone(),
             body: closure.body.clone(),
-            env: HashMap::new(), // Empty for now - no variable capture yet
+            env: captured_env, // Phase 4: Now populated with captured vars
         };
         self.closures.insert(closure_id, eval_closure);
 
@@ -4761,8 +4881,15 @@ impl Evaler {
     /// Call a closure value (Plan 060 Phase 3+)
     fn call_closure(&mut self, closure: &auto_val::Closure, args: &ast::Args) -> AutoResult<Value> {
         // Get closure data from evaluator (clone to avoid borrow checker issues)
-        let eval_closure = self.closures.get(&closure.id)
-            .ok_or_else(|| crate::error::AutoError::Msg(format!("Closure {} not found in evaluator", closure.id)))?
+        let eval_closure = self
+            .closures
+            .get(&closure.id)
+            .ok_or_else(|| {
+                crate::error::AutoError::Msg(format!(
+                    "Closure {} not found in evaluator",
+                    closure.id
+                ))
+            })?
             .clone();
 
         // Check argument count
@@ -4791,12 +4918,21 @@ impl Evaler {
         // Push new scope for closure execution
         self.universe.borrow_mut().enter_scope();
 
-        // Bind parameters to arguments
+        // Plan 060 Phase 4: Restore captured environment
+        for (name, value) in &eval_closure.env {
+            self.universe
+                .borrow_mut()
+                .set_local_val(name, value.clone());
+        }
+
+        // Bind parameters to arguments (after env, so params can shadow captured vars)
         for (param, arg_value) in eval_closure.params.iter().zip(arg_values.iter()) {
             let param_name = param.name.as_str();
             // Store the argument value in the current scope
             // This creates a ValueRef that can be resolved when the closure body references the parameter
-            self.universe.borrow_mut().set_local_val(param_name, arg_value.clone());
+            self.universe
+                .borrow_mut()
+                .set_local_val(param_name, arg_value.clone());
         }
 
         // Execute closure body
@@ -5045,7 +5181,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::List(_) => auto_val::Type::Array,         // TODO: Add List to auto_val::Type
         ast::Type::Slice(_) => auto_val::Type::Array,        // TODO: Add Slice to auto_val::Type
         ast::Type::Ptr(_) => auto_val::Type::Ptr,
-        ast::Type::Reference(_) => auto_val::Type::Ptr,  // Plan 052: Reference transpiles to Ptr
+        ast::Type::Reference(_) => auto_val::Type::Ptr, // Plan 052: Reference transpiles to Ptr
         ast::Type::User(type_decl) => auto_val::Type::User(type_decl.name.clone()),
         ast::Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
         ast::Type::Spec(decl) => auto_val::Type::User(decl.borrow().name.clone()),
@@ -5057,7 +5193,7 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Unknown => auto_val::Type::Any,
         ast::Type::CStruct(_) => auto_val::Type::Void,
         ast::Type::Storage(_) => auto_val::Type::Any, // Storage maps to Any for now
-        ast::Type::Fn(_, _) => auto_val::Type::Any, // Function type maps to Any for now
+        ast::Type::Fn(_, _) => auto_val::Type::Any,   // Function type maps to Any for now
         ast::Type::GenericInstance(_) => auto_val::Type::Any, // TODO: Handle generic instances properly
     }
 }
