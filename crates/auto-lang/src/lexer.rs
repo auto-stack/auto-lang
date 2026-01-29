@@ -654,6 +654,9 @@ impl<'a> Lexer<'a> {
                 '/' => {
                     return Ok(self.slash_or_comment());
                 }
+                '%' => {
+                    return Ok(self.with_equal(TokenKind::Mod, TokenKind::ModEq, c));
+                }
                 '!' => {
                     return Ok(self.with_equal(TokenKind::Not, TokenKind::Neq, c));
                 }

@@ -443,10 +443,12 @@ pub enum Op {
     Sub,
     Mul,
     Div,
+    Mod,
     AddEq,
     SubEq,
     MulEq,
     DivEq,
+    ModEq,
     Not,
     Bang,  // Postfix bang operator for eager collection (!)
     LSquare,
@@ -744,10 +746,12 @@ impl fmt::Display for Op {
             Op::Sub => write!(f, "(op -)"),
             Op::Mul => write!(f, "(op *)"),
             Op::Div => write!(f, "(op /)"),
+            Op::Mod => write!(f, "(op %)"),
             Op::AddEq => write!(f, "(op +=)"),
             Op::SubEq => write!(f, "(op -=)"),
             Op::MulEq => write!(f, "(op *=)"),
             Op::DivEq => write!(f, "(op /=)"),
+            Op::ModEq => write!(f, "(op %=)"),
             Op::Not => write!(f, "(op !)"),
             Op::Bang => write!(f, "(op !)"),  // Bang operator (postfix)
             Op::LSquare => write!(f, "(op [)"),
@@ -786,10 +790,12 @@ impl Op {
             Op::Sub => "-",
             Op::Mul => "*",
             Op::Div => "/",
+            Op::Mod => "%",
             Op::AddEq => "+=",
             Op::SubEq => "-=",
             Op::MulEq => "*=",
             Op::DivEq => "/=",
+            Op::ModEq => "%=",
             Op::Not => "!",
             Op::Bang => "!",  // Bang operator (postfix)
             Op::LSquare => "[",
@@ -890,6 +896,20 @@ pub fn div(a: Value, b: Value) -> Value {
         (Value::Int(left), Value::Int(right)) => Value::Int(left / right),
         (Value::Float(left), Value::Float(right)) => Value::Float(left / right),
         (Value::Byte(left), Value::Byte(right)) => Value::Byte(left / right),
+        _ => Value::Nil,
+    }
+}
+
+pub fn mod_(a: Value, b: Value) -> Value {
+    let (a, b) = try_promote(a, b);
+    if b == Value::Int(0) {
+        // TODO: Value::Infinity?
+        return Value::Nil;
+    }
+    match (a, b) {
+        (Value::Int(left), Value::Int(right)) => Value::Int(left % right),
+        (Value::Float(left), Value::Float(right)) => Value::Float(left % right),
+        (Value::Byte(left), Value::Byte(right)) => Value::Byte(left % right),
         _ => Value::Nil,
     }
 }

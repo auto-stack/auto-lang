@@ -41,6 +41,7 @@ pub enum TokenKind {
     Sub,            // -
     Star,           // *
     Div,            // /
+    Mod,            // %
     Not,            // !
     Lt,             // <
     Gt,             // >
@@ -53,6 +54,7 @@ pub enum TokenKind {
     SubEq,          // -=
     MulEq,          // *=
     DivEq,          // /=
+    ModEq,          // %=
     Dot,            // .
     Range,          // ..
     RangeEq,        // ..=
@@ -152,6 +154,7 @@ impl fmt::Display for Token {
             TokenKind::Sub => write!(f, "<->"),
             TokenKind::Star => write!(f, "<*>"),
             TokenKind::Div => write!(f, "</>"),
+            TokenKind::Mod => write!(f, "<%>"),
             TokenKind::Not => write!(f, "<!>"),
             TokenKind::Lt => write!(f, "<lt>"),
             TokenKind::Gt => write!(f, "<gt>"),

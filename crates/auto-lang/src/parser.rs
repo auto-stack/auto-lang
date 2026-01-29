@@ -112,9 +112,9 @@ fn capitalize_first(s: &str) -> String {
 fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
     match op {
         Op::Add | Op::Sub => Ok(PREC_ADD),
-        Op::Mul | Op::Div => Ok(PREC_MUL),
+        Op::Mul | Op::Div | Op::Mod => Ok(PREC_MUL),
         Op::AddEq | Op::SubEq => Ok(PREC_ADDEQ),
-        Op::MulEq | Op::DivEq => Ok(PREC_MULEQ),
+        Op::MulEq | Op::DivEq | Op::ModEq => Ok(PREC_MULEQ),
         Op::Asn => Ok(PREC_ASN),
         Op::Eq | Op::Neq => Ok(PREC_EQ),
         Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(PREC_CMP),
@@ -1117,8 +1117,9 @@ impl<'a> Parser<'a> {
                 | TokenKind::Sub
                 | TokenKind::Star
                 | TokenKind::Div
+                | TokenKind::Mod
                 | TokenKind::Not => self.op(),
-                TokenKind::AddEq | TokenKind::SubEq | TokenKind::MulEq | TokenKind::DivEq => {
+                TokenKind::AddEq | TokenKind::SubEq | TokenKind::MulEq | TokenKind::DivEq | TokenKind::ModEq => {
                     self.op()
                 }
                 TokenKind::DotView
@@ -1354,10 +1355,12 @@ impl<'a> Parser<'a> {
             TokenKind::Sub => Op::Sub,
             TokenKind::Star => Op::Mul,
             TokenKind::Div => Op::Div,
+            TokenKind::Mod => Op::Mod,
             TokenKind::AddEq => Op::AddEq,
             TokenKind::SubEq => Op::SubEq,
             TokenKind::MulEq => Op::MulEq,
             TokenKind::DivEq => Op::DivEq,
+            TokenKind::ModEq => Op::ModEq,
             TokenKind::LSquare => Op::LSquare,
             TokenKind::LParen => Op::LParen,
             TokenKind::LBrace => Op::LBrace,

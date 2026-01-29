@@ -5,7 +5,7 @@ use crate::scope;
 use crate::scope::Meta;
 use crate::universe::Universe;
 use auto_val;
-use auto_val::{add, comp, div, mul, sub};
+use auto_val::{add, comp, div, mod_, mul, sub};
 use auto_val::{Array, AutoStr, MetaID, Method, Obj, Op, Sig, Type, Value, ValueData, ValueKey};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -1109,9 +1109,9 @@ impl Evaler {
     }
 
     fn eval_bina(&mut self, left: &Expr, op: &Op, right: &Expr) -> Value {
-        // Handle compound assignment operators (+=, -=, *=, /=)
+        // Handle compound assignment operators (+=, -=, *=, /=, %=)
         match op {
-            Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq => {
+            Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq => {
                 // Get current value of left side
                 let current_value = self.eval_expr(left);
 
@@ -1124,6 +1124,7 @@ impl Evaler {
                     Op::SubEq => sub(current_value.clone(), right_value.clone()),
                     Op::MulEq => mul(current_value.clone(), right_value.clone()),
                     Op::DivEq => div(current_value.clone(), right_value.clone()),
+                    Op::ModEq => mod_(current_value.clone(), right_value.clone()),
                     _ => Value::Nil,
                 };
 
@@ -1156,6 +1157,10 @@ impl Evaler {
                         Value::from_data(right_resolved.clone()),
                     ),
                     Op::Div => div(
+                        Value::from_data(left_resolved.clone()),
+                        Value::from_data(right_resolved.clone()),
+                    ),
+                    Op::Mod => mod_(
                         Value::from_data(left_resolved.clone()),
                         Value::from_data(right_resolved.clone()),
                     ),
