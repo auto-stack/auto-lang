@@ -1,7 +1,7 @@
 use crate::error::AutoError;
 use crate::interp;
 use crate::universe::{Universe, VmRefData};
-use auto_val::{Shared, Value};
+use auto_val::{Shared, Type, Value};
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 

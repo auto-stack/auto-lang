@@ -25,5 +25,6 @@ mod storage_tests;
 mod default_storage_tests;  // Plan 052: DefaultStorage type alias tests
 mod storage_integration_tests;
 mod list_growth_tests;
+mod list_tests;  // Comprehensive List operation tests (Plan 051)
 mod vm_functions_tests;
 mod vm_tests;
