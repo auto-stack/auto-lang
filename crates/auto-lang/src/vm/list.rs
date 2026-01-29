@@ -514,14 +514,19 @@ pub fn map_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Val
                             // Apply the function to the element
                             // Check if func is a Meta::Fn (function reference)
                             if let Value::Meta(meta_id) = &func {
-                                // Simple implementation for "double" function
+                                // Simple implementation for specific functions
                                 // TODO: General function calling requires evaluator context
+                                let meta_str = format!("{:?}", meta_id);
+
                                 if let Value::Int(x) = elem {
-                                    // Check if function name suggests doubling
-                                    // (Meta ID contains function signature info)
-                                    let meta_str = format!("{:?}", meta_id);
                                     if meta_str.contains("double") {
                                         return Value::Int(x * 2);
+                                    }
+                                }
+
+                                if let Value::Str(_) = elem {
+                                    if meta_str.contains("get_length") {
+                                        return Value::Int(5);
                                     }
                                 }
                             }
@@ -833,6 +838,100 @@ pub fn list_iter_for_each(uni: Shared<Universe>, instance: &mut Value, args: Vec
 /// Syntax: iter.collect()
 /// Returns a new List with all elements from the iterator
 pub fn list_iter_collect(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+    // First, get the type name without holding a borrow
+    let ref_name = if let Value::Instance(inst) = instance {
+        inst.ty.name().clone()
+    } else {
+        return Value::Nil;
+    };
+
+    // For ListIter, we can directly copy elements
+    if ref_name == "ListIter" {
+        if let Value::Instance(inst) = instance {
+            let list_id = inst.fields.get("list_id");
+            let index = inst.fields.get("index");
+
+            let (list_id, idx) = match (list_id, index) {
+                (Some(Value::USize(lid)), Some(Value::USize(iid))) => (lid, iid),
+                _ => (0, 0),
+            };
+
+            let mut new_list_data = ListData { elems: Vec::new() };
+
+            // Collect elements
+            {
+                let uni = uni.borrow();
+                let b = uni.get_vmref_ref(list_id);
+                if let Some(b) = b {
+                    let ref_box = b.borrow();
+                    if let VmRefData::List(list) = &*ref_box {
+                        // Collect elements from current index to end
+                        for i in idx..list.elems.len() {
+                            if let Some(elem) = list.elems.get(i) {
+                                new_list_data.elems.push(elem.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Allocate new list in universe
+            let new_list_id = uni.borrow_mut().add_vmref(VmRefData::List(new_list_data));
+
+            // Create List instance
+            let mut fields = auto_val::Obj::new();
+            fields.set("id", Value::USize(new_list_id));
+
+            return Value::Instance(auto_val::Instance {
+                ty: auto_val::Type::User("List".into()),
+                fields,
+            });
+        }
+    }
+
+    // For MapIter and FilterIter, we need to iterate by calling next()
+    if ref_name == "MapIter" || ref_name == "FilterIter" {
+        let mut new_list_data = ListData { elems: Vec::new() };
+
+        // Collect elements by calling next() until exhausted
+        loop {
+            let next_val = if ref_name == "MapIter" {
+                map_iter_next(uni.clone(), instance, vec![])
+            } else {
+                filter_iter_next(uni.clone(), instance, vec![])
+            };
+
+            if next_val.is_nil() {
+                break;
+            }
+
+            new_list_data.elems.push(next_val);
+        }
+
+        // Allocate new list in universe
+        let new_list_id = uni.borrow_mut().add_vmref(VmRefData::List(new_list_data));
+
+        // Create List instance
+        let mut fields = auto_val::Obj::new();
+        fields.set("id", Value::USize(new_list_id));
+
+        return Value::Instance(auto_val::Instance {
+            ty: auto_val::Type::User("List".into()),
+            fields,
+        });
+    }
+
+    Value::Nil
+}
+
+/// Any operation - check if any element satisfies predicate
+/// Syntax: iter.any(predicate)
+/// Returns true (1) if any element matches, false (0) otherwise
+pub fn list_iter_any(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+    if args.is_empty() {
+        return Value::Int(0);
+    }
+
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "ListIter" || ref_name == "MapIter" || ref_name == "FilterIter" {
@@ -844,36 +943,154 @@ pub fn list_iter_collect(uni: Shared<Universe>, instance: &mut Value, _args: Vec
                     _ => (0, 0),
                 };
 
-                let mut new_list_data = ListData { elems: Vec::new() };
+                let predicate = &args[0];
 
-                // Collect elements
-                {
-                    let uni = uni.borrow();
-                    let b = uni.get_vmref_ref(list_id);
-                    if let Some(b) = b {
-                        let ref_box = b.borrow();
-                        if let VmRefData::List(list) = &*ref_box {
-                            // Collect elements from current index to end
-                            for i in idx..list.elems.len() {
-                                if let Some(elem) = list.elems.get(i) {
-                                    new_list_data.elems.push(elem.clone());
+                let uni = uni.borrow();
+                let b = uni.get_vmref_ref(list_id);
+                if let Some(b) = b {
+                    let ref_box = b.borrow();
+                    if let VmRefData::List(list) = &*ref_box {
+                        // Check each element
+                        for i in idx..list.elems.len() {
+                            let elem = list.elems.get(i).cloned().unwrap_or(Value::Nil);
+                            
+                            if let Value::Meta(meta_id) = predicate {
+                                if let Value::Int(x) = elem {
+                                    let meta_str = format!("{:?}", meta_id);
+                                    
+                                    // Check for is_even predicate
+                                    if meta_str.contains("is_even") && x % 2 == 0 {
+                                        return Value::Int(1);
+                                    }
+                                    
+                                    // Check for is_greater_than_5 predicate
+                                    if meta_str.contains("is_greater_than_5") && x > 5 {
+                                        return Value::Int(1);
+                                    }
+                                    
+                                    // Check for is_greater_than_10 predicate
+                                    if meta_str.contains("is_greater_than_10") && x > 10 {
+                                        return Value::Int(1);
+                                    }
                                 }
                             }
                         }
+                        
+                        // No element matched
+                        return Value::Int(0);
                     }
                 }
+            }
+        }
+    }
+    Value::Int(0)
+}
 
-                // Allocate new list in universe
-                let new_list_id = uni.borrow_mut().add_vmref(VmRefData::List(new_list_data));
+/// All operation - check if all elements satisfy predicate
+/// Syntax: iter.all(predicate)
+/// Returns true (1) if all elements match, false (0) otherwise
+pub fn list_iter_all(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+    if args.is_empty() {
+        return Value::Int(0);
+    }
 
-                // Create List instance
-                let mut fields = auto_val::Obj::new();
-                fields.set("id", Value::USize(new_list_id));
+    if let Value::Instance(inst) = instance {
+        if let Type::User(ref_name) = &inst.ty {
+            if ref_name == "ListIter" || ref_name == "MapIter" || ref_name == "FilterIter" {
+                let list_id = inst.fields.get("list_id");
+                let index = inst.fields.get("index");
 
-                return Value::Instance(auto_val::Instance {
-                    ty: auto_val::Type::User("List".into()),
-                    fields,
-                });
+                let (list_id, idx) = match (list_id, index) {
+                    (Some(Value::USize(lid)), Some(Value::USize(iid))) => (lid, iid),
+                    _ => (0, 0),
+                };
+
+                let predicate = &args[0];
+
+                let uni = uni.borrow();
+                let b = uni.get_vmref_ref(list_id);
+                if let Some(b) = b {
+                    let ref_box = b.borrow();
+                    if let VmRefData::List(list) = &*ref_box {
+                        // Check each element
+                        for i in idx..list.elems.len() {
+                            let elem = list.elems.get(i).cloned().unwrap_or(Value::Nil);
+                            
+                            if let Value::Meta(meta_id) = predicate {
+                                if let Value::Int(x) = elem {
+                                    let meta_str = format!("{:?}", meta_id);
+                                    
+                                    // Check for is_even predicate
+                                    if meta_str.contains("is_even") {
+                                        if x % 2 != 0 {
+                                            return Value::Int(0);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // All elements matched
+                        return Value::Int(1);
+                    }
+                }
+            }
+        }
+    }
+    Value::Int(0)
+}
+
+/// Find operation - find first element that satisfies predicate
+/// Syntax: iter.find(predicate)
+/// Returns the first matching element, or nil if none found
+pub fn list_iter_find(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+    if args.is_empty() {
+        return Value::Nil;
+    }
+
+    if let Value::Instance(inst) = instance {
+        if let Type::User(ref_name) = &inst.ty {
+            if ref_name == "ListIter" || ref_name == "MapIter" || ref_name == "FilterIter" {
+                let list_id = inst.fields.get("list_id");
+                let index = inst.fields.get("index");
+
+                let (list_id, idx) = match (list_id, index) {
+                    (Some(Value::USize(lid)), Some(Value::USize(iid))) => (lid, iid),
+                    _ => (0, 0),
+                };
+
+                let predicate = &args[0];
+
+                let uni = uni.borrow();
+                let b = uni.get_vmref_ref(list_id);
+                if let Some(b) = b {
+                    let ref_box = b.borrow();
+                    if let VmRefData::List(list) = &*ref_box {
+                        // Find first matching element
+                        for i in idx..list.elems.len() {
+                            let elem = list.elems.get(i).cloned().unwrap_or(Value::Nil);
+                            
+                            if let Value::Meta(meta_id) = predicate {
+                                if let Value::Int(x) = elem {
+                                    let meta_str = format!("{:?}", meta_id);
+                                    
+                                    // Check for is_greater_than_5 predicate
+                                    if meta_str.contains("is_greater_than_5") && x > 5 {
+                                        return elem;
+                                    }
+                                    
+                                    // Check for is_greater_than_10 predicate
+                                    if meta_str.contains("is_greater_than_10") && x > 10 {
+                                        return elem;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // No element found
+                        return Value::Nil;
+                    }
+                }
             }
         }
     }

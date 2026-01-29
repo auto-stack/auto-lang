@@ -339,6 +339,15 @@ pub fn init_collections_module() {
     listiter_type
         .methods
         .insert("collect".into(), list::list_iter_collect as VmMethod);
+    listiter_type
+        .methods
+        .insert("any".into(), list::list_iter_any as VmMethod);
+    listiter_type
+        .methods
+        .insert("all".into(), list::list_iter_all as VmMethod);
+    listiter_type
+        .methods
+        .insert("find".into(), list::list_iter_find as VmMethod);
 
     collections_module
         .types
@@ -365,6 +374,15 @@ pub fn init_collections_module() {
     mapiter_type
         .methods
         .insert("collect".into(), list::list_iter_collect as VmMethod);
+    mapiter_type
+        .methods
+        .insert("any".into(), list::list_iter_any as VmMethod);
+    mapiter_type
+        .methods
+        .insert("all".into(), list::list_iter_all as VmMethod);
+    mapiter_type
+        .methods
+        .insert("find".into(), list::list_iter_find as VmMethod);
 
     collections_module
         .types
@@ -391,6 +409,15 @@ pub fn init_collections_module() {
     filteriter_type
         .methods
         .insert("collect".into(), list::list_iter_collect as VmMethod);
+    filteriter_type
+        .methods
+        .insert("any".into(), list::list_iter_any as VmMethod);
+    filteriter_type
+        .methods
+        .insert("all".into(), list::list_iter_all as VmMethod);
+    filteriter_type
+        .methods
+        .insert("find".into(), list::list_iter_find as VmMethod);
 
     collections_module
         .types
