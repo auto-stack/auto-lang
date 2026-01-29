@@ -1,8 +1,8 @@
 # Plan 051: Auto Flow - Iterator & Functional Programming System
 
-**Status**: ✅ Phases 1-3 Complete | Phases 4-8 Blocked on Plan 060
+**Status**: ✅ Phases 1-3 Complete | Phases 4-8 Blocked on Plan 060/061
 **Priority**: P0 (Core Standard Library Feature)
-**Dependencies**: Plan 052 (Storage-Based List), Plan 057 (Generic Specs), Plan 059 (Generic Type Fields), **Plan 060 (Closure Syntax)** ⚠️
+**Dependencies**: Plan 052 (Storage-Based List), Plan 057 (Generic Specs), Plan 059 (Generic Type Fields), **Plan 060 (Closure Syntax)** ⚠️, **Plan 061 (Generic Constraints)** ⚠️
 **Timeline**: 16 hours completed, 35-57 hours remaining (including Plan 060: 18-34 hours)
 
 ## Objective
@@ -1263,6 +1263,7 @@ Test 098: Environment-sensitive collection (MCU vs PC)
 - **Plan 057**: Generic Specs (provides type system foundation)
 - **Plan 059**: Generic Type Fields (enables MapIter/FilterIter type fields) - ✅ Phase 1 Complete
 - **Plan 060**: Closure Syntax (REQUIRED for Phases 4-8) - 🔜 Ready to Start
+- **Plan 061**: Generic Constraints (provides `#[with(T as Spec)]` syntax) - 🔜 Ready to Start
 
 ## Status
 

@@ -1,0 +1,27 @@
+// Test Plan 061: #[with(...)] generic constraint syntax
+// Tests the new annotation-based generic parameter declaration
+
+// Simple generic without constraint
+#[with(T)]
+fn identity(x T) T {
+    return x
+}
+
+// Generic with spec constraint
+#[with(T as Clone)]
+fn duplicate(x T) T {
+    return x
+}
+
+// Multiple params, mixed constraints
+#[with(A, B as Eq)]
+fn compare(a A, b B) A {
+    return a
+}
+
+fn main() {
+    let a = identity(42)
+    let b = duplicate(10)
+    say(a)
+    say(b)
+}
