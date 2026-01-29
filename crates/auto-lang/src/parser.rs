@@ -1104,7 +1104,7 @@ impl<'a> Parser<'a> {
         }
 
         loop {
-            let op = match self.kind() {
+            let mut op = match self.kind() {
                 TokenKind::EOF
                 | TokenKind::Newline
                 | TokenKind::Semi
@@ -1152,6 +1152,26 @@ impl<'a> Parser<'a> {
                     return Err(SyntaxError::Generic { message, span }.into());
                 }
             };
+
+            // Special case: .! is the bang operator for eager collection
+            // When we see Op::Dot, check if the next token is ! and treat it as postfix Op::Not
+            if matches!(op, Op::Dot) {
+                // Try to peek at next token - if it's Not, convert this to a postfix Not operation
+                // We need to be very careful here to not corrupt the token stream
+                let next_is_bang = if let Ok(tok) = self.lexer.next() {
+                    self.lexer.push_token(tok.clone());
+                    matches!(tok.kind, TokenKind::Not)
+                } else {
+                    false
+                };
+
+                if next_is_bang {
+                    // This is .! - skip the . and let postfix ! handle it
+                    self.next(); // consume the .
+                    op = Op::Not; // change to postfix Not operator
+                }
+            }
+
             // Postfix
 
             if let Ok(Some(power)) = postfix_power(op) {

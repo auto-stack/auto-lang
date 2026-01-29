@@ -1,13 +1,12 @@
 #include "bang_operator.h"
 
 int main(void) {
+    struct List list = List_New();
+    List_Push(&list, 1);
+    List_Push(&list, 2);
+    List_Push(&list, 3);
 
-    list_void*_void* list = List.new();
-    list.push(1);
-    list.push(2);
-    list.push(3);
-
-    unknown collected = list.iter().collect();
+    unknown collected = List_Iter(&list).collect();
 
     say(collected.len());
     return 0;

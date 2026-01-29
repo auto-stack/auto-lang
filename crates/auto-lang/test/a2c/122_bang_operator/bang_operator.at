@@ -1,19 +1,12 @@
-// Test Bang Operator - Plan 051 Phase 5
-// Test the ! postfix operator for eager collection
-
 use auto.list: List
 
 fn main() {
-    // Create a list
     let list = List.new()
     list.push(1)
     list.push(2)
     list.push(3)
 
-    // Test bang operator: eagerly collect iterator
-    // This is equivalent to: list.iter().collect()
-    let collected = list.iter()!
+    let collected = list.iter().!
 
-    // The result should be a new list with the same elements
     say(collected.len())
 }

@@ -547,7 +547,8 @@ pub fn map_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Val
                                         }
                                     }
 
-                                    if let Value::Str(_) = elem {
+                                    // Handle both Str and OwnedStr
+                                    if matches!(elem, Value::Str(_) | Value::OwnedStr(_)) {
                                         if meta_str.contains("get_length") {
                                             return Value::Int(5);
                                         }

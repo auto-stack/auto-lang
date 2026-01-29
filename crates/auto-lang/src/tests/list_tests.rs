@@ -415,6 +415,44 @@ fn test_list_collect_filter() {
     assert!(result.contains("2"), "Should have 2 even numbers");
 }
 
+#[test]
+fn test_list_bang_operator() {
+    let code = r#"
+        let list = List.new()
+        list.push(1)
+        list.push(2)
+        list.push(3)
+
+        // Bang operator eagerly collects iterator into a list
+        let collected = list.iter().!
+
+        collected.len()
+    "#;
+    let result = run(code).unwrap();
+    assert!(result.contains("3"), "Bang operator should collect 3 elements");
+}
+
+#[test]
+fn test_list_bang_operator_with_map() {
+    let code = r#"
+        let list = List.new()
+        list.push(1)
+        list.push(2)
+        list.push(3)
+
+        fn double(x int) int {
+            return x * 2
+        }
+
+        // Bang operator with map: eagerly collect mapped values
+        let mapped = list.iter().map(double).!
+
+        mapped.len()
+    "#;
+    let result = run(code).unwrap();
+    assert!(result.contains("3"), "Bang operator should collect 3 mapped elements");
+}
+
 // ============================================================================
 // Any/All Tests
 // ============================================================================
