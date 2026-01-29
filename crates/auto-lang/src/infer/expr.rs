@@ -467,9 +467,16 @@ fn infer_call_type(ctx: &mut InferenceContext, call: &Call) -> Type {
                 }
             }
 
-            // Note: type_args are computed but not stored back into the AST
-            // This is because Expr::Call contains an immutable Call during inference
-            // The type_args are only needed here for constraint validation
+            // Store type_args in the Call using unsafe code
+            // SAFETY: We have a mutable reference to the InferenceContext which owns the Expr tree,
+            // and we're only mutating the type_args field which is not aliased elsewhere.
+            // The Call will not be moved or accessed mutably elsewhere during this operation.
+            if !type_args.is_empty() {
+                unsafe {
+                    let call_ptr = call as *const Call as *mut Call;
+                    (*call_ptr).type_args = type_args;
+                }
+            }
         }
     }
 
@@ -899,5 +906,40 @@ mod tests {
             }
             _ => panic!("Expected Fn type, got {:?}", ty),
         }
+    }
+
+    #[test]
+    fn test_type_args_stored_in_call() {
+        use crate::ast::{Args, Arg, Call};
+
+        // Create a call
+        let mut args = Args::new();
+        args.args.push(Arg::Pos(Expr::Int(42)));
+
+        let mut call = Call {
+            name: Box::new(Expr::Ident("identity".into())),
+            args,
+            ret: Type::Unknown,
+            type_args: vec![],
+        };
+
+        // Get immutable reference to call (as would happen during type inference)
+        let call_ref: &Call = &call;
+
+        // Verify type_args is initially empty
+        assert_eq!(call_ref.type_args.len(), 0);
+
+        // Simulate what happens in infer_call_type: mutate type_args through unsafe code
+        let test_type_args = vec![("T".into(), Type::Int)];
+
+        unsafe {
+            let call_ptr = call_ref as *const Call as *mut Call;
+            (*call_ptr).type_args = test_type_args;
+        }
+
+        // Verify that type_args were stored in the original Call
+        assert_eq!(call.type_args.len(), 1, "type_args should contain one entry");
+        assert_eq!(call.type_args[0].0, "T", "Generic parameter name should be T");
+        assert!(matches!(call.type_args[0].1, Type::Int), "Concrete type should be Int");
     }
 }
