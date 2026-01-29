@@ -489,6 +489,23 @@ impl TypeDecl {
     pub fn has_method(&self, name: &str) -> bool {
         self.methods.iter().find(|m| m.name == name).is_some()
     }
+
+    /// Create a builtin type declaration (for types like int, str, etc.)
+    /// Plan 061 Phase 2: Used for constraint validation on builtin types
+    pub fn builtin(name: &str) -> Self {
+        Self {
+            name: name.into(),
+            kind: TypeDeclKind::UserType,
+            parent: None,
+            has: Vec::new(),
+            specs: Vec::new(),
+            spec_impls: Vec::new(),
+            generic_params: Vec::new(),
+            members: Vec::new(),
+            delegations: Vec::new(),
+            methods: Vec::new(),
+        }
+    }
 }
 
 impl fmt::Display for TypeDecl {

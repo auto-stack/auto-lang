@@ -1,6 +1,6 @@
 use super::scope::*;
 use crate::ast::FnKind;
-use crate::ast::{self, Type, TypeAlias};
+use crate::ast::{self, SpecDecl, Type, TypeAlias};
 use crate::atom::Atom;
 use crate::libs;
 use crate::vm::collections::{HashMapData, HashSetData};
@@ -153,6 +153,10 @@ pub struct Universe {
     // NEW: Type alias storage for Plan 058
     // Maps alias name -> (params, target_type)
     pub type_aliases: HashMap<AutoStr, (Vec<AutoStr>, Type)>,
+
+    // Plan 061 Phase 2: Spec registry for constraint validation
+    // Maps spec name -> spec declaration
+    pub specs: HashMap<AutoStr, Rc<SpecDecl>>,
 }
 
 impl Default for Universe {
@@ -191,6 +195,8 @@ impl Universe {
             symbol_locations: HashMap::new(),
             // NEW: Initialize type alias storage
             type_aliases: HashMap::new(),
+            // Plan 061: Initialize spec registry
+            specs: HashMap::new(),
         };
         uni.define_sys_types();
         uni.define_builtin_funcs();
@@ -832,6 +838,31 @@ impl Universe {
 
     pub fn lookup_builtin(&self, name: &str) -> Option<Value> {
         self.builtins.get(name).cloned()
+    }
+
+    // Plan 061 Phase 2: Spec registry methods for constraint validation
+    /// Register a spec declaration for constraint validation
+    pub fn register_spec(&mut self, spec: Rc<SpecDecl>) {
+        self.specs.insert(spec.name.clone(), spec);
+    }
+
+    /// Get a spec declaration by name
+    pub fn get_spec(&self, name: &str) -> Option<Rc<SpecDecl>> {
+        self.specs.get(name).cloned()
+    }
+
+    /// Get function declaration by name (for constraint checking)
+    pub fn get_fn_decl(&self, name: &str) -> Option<ast::Fn> {
+        // Lookup function metadata
+        match self.lookup_meta(name) {
+            Some(meta) => {
+                match meta.as_ref() {
+                    Meta::Fn(fn_decl) => Some(fn_decl.clone()),
+                    _ => None,
+                }
+            }
+            None => None,
+        }
     }
 
     /// Get all defined variable/function names in current scope for suggestions

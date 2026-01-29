@@ -29,7 +29,7 @@
 //! assert!(matches!(ty, Type::Int));
 //! ```
 
-use crate::ast::{ArrayType, Call, Expr, If, PtrType, Range, Type};
+use crate::ast::{ArrayType, Arg, Call, Expr, If, Name, PtrType, Range, Type, TypeDecl};
 use crate::error::{AutoError, TypeError, Warning};
 use crate::infer::context::InferenceContext;
 use crate::infer::constraints::TypeConstraint;
@@ -411,12 +411,202 @@ fn infer_call_type(ctx: &mut InferenceContext, call: &Call) -> Type {
     // 推导被调用者的类型
     let callee_ty = infer_expr(ctx, &call.name);
 
+    // Plan 061: Type argument inference and constraint validation
+    // Check if this is a direct function call (identifier)
+    if let Expr::Ident(fn_name) = &*call.name {
+        // Try to get the function declaration and clone needed data
+        let type_params_and_constraints = {
+            if let Some(fn_decl) = ctx.universe.borrow().get_fn_decl(fn_name.as_str()) {
+                if !fn_decl.type_params.is_empty() {
+                    // Clone the data we need to avoid holding the borrow
+                    Some((
+                        fn_decl.type_params.clone(),
+                        fn_decl.params.clone(),
+                    ))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        // If function has generic parameters, infer their concrete types from arguments
+        if let Some((type_params, params)) = type_params_and_constraints {
+            let mut type_args = Vec::new();
+
+            // For each function parameter, check if it uses a generic type
+            for (i, param) in params.iter().enumerate() {
+                // Check if parameter type is a generic parameter
+                if let Type::User(param_type_decl) = &param.ty {
+                    // Check if this type name matches any of the function's generic parameters
+                    for type_param in &type_params {
+                        if param_type_decl.name == type_param.name {
+                            // This parameter uses a generic type
+                            // Get the corresponding argument's type
+                            if let Some(Arg::Pos(arg_expr)) = call.args.get(i) {
+                                let arg_type = infer_expr(ctx, &arg_expr);
+                                type_args.push((type_param.name.clone(), arg_type));
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Now validate constraints for any generic parameters with constraints
+            for (param_name, concrete_type) in &type_args {
+                // Find the type parameter declaration
+                if let Some(type_param) = type_params.iter().find(|tp| &tp.name == param_name) {
+                    if let Some(constraint) = &type_param.constraint {
+                        // Validate that concrete_type satisfies the constraint
+                        if let Err(error) = validate_spec_constraint(ctx, constraint, concrete_type) {
+                            ctx.errors.push(error.into());
+                        }
+                    }
+                }
+            }
+
+            // Note: type_args are computed but not stored back into the AST
+            // This is because Expr::Call contains an immutable Call during inference
+            // The type_args are only needed here for constraint validation
+        }
+    }
+
     match callee_ty {
         Type::Unknown => Type::Unknown,
 
         // TODO: 实现完整的函数类型检查
         // 暂时返回调用对象的返回类型字段
         _ => call.ret.clone(),
+    }
+}
+
+// Plan 061 Phase 2: Helper functions for constraint validation
+// These will be used when type argument tracking is implemented
+
+/// Find concrete type argument for a generic parameter in a function call
+///
+/// This is a placeholder for future type argument tracking functionality.
+/// When implemented, it will:
+/// 1. Infer types from call arguments
+/// 2. Match generic parameter names to concrete types
+/// 3. Return the concrete type for a given parameter
+///
+/// For now, returns None (no validation)
+fn find_type_arg_for_param(_call: &Call, _param_name: &Name) -> Option<Type> {
+    // TODO: Implement type argument inference
+    // This requires:
+    // 1. Building a type environment from the call arguments
+    // 2. Matching generic parameters to their concrete types
+    // 3. Handling partial type information
+    None
+}
+
+/// Validate that a type satisfies a spec constraint
+///
+/// This function validates that a concrete type implements all required methods
+/// from a spec constraint. Uses the TraitChecker for validation.
+///
+/// Note: The full validation logic is deferred until type argument tracking is implemented.
+/// This function provides the infrastructure and shows the structure of the validation.
+///
+/// # Arguments
+/// * `ctx` - The inference context (provides access to universe/specs)
+/// * `constraint` - The constraint type (e.g., Type::Spec(SpecDecl))
+/// * `concrete_type` - The concrete type to validate
+///
+/// # Returns
+/// * `Ok(())` if the constraint is satisfied
+/// * `Err(TypeError)` if the constraint is violated
+fn validate_spec_constraint(
+    ctx: &InferenceContext,
+    constraint: &Type,
+    concrete_type: &Type,
+) -> Result<(), crate::error::TypeError> {
+    use crate::error::TypeError;
+    use miette::SourceSpan;
+
+    let span = SourceSpan::new(0.into(), 0);  // Placeholder span
+
+    // Extract spec reference from constraint
+    // When fully implemented, constraint will be Type::Spec(SpecRef)
+    // For now, we skip validation as type argument tracking isn't implemented
+
+    match constraint {
+        Type::User(type_decl) => {
+            // This would be a Spec type when fully implemented
+            // Get spec declaration from universe
+            let spec_decl_opt = ctx.universe.borrow().get_spec(type_decl.name.as_str());
+
+            let spec_decl = match spec_decl_opt {
+                Some(decl) => decl,
+                None => {
+                    return Err(TypeError::UndefinedSpec {
+                        name: type_decl.name.to_string(),
+                        span,
+                    });
+                }
+            };
+
+            // Get the concrete type declaration
+            let concrete_type_decl = get_type_decl_from_type(ctx, concrete_type)?;
+
+            // Use TraitChecker to validate conformance
+            use crate::trait_checker::TraitChecker;
+            match TraitChecker::check_conformance(&concrete_type_decl, &spec_decl) {
+                Ok(_) => Ok(()),
+                Err(errors) => {
+                    // Convert AutoError to TypeError
+                    // For now, just return a generic constraint violation error
+                    Err(TypeError::ConstraintViolation {
+                        type_name: format!("{:?}", concrete_type),
+                        spec_name: type_decl.name.to_string(),
+                        span,
+                    })
+                }
+            }
+        }
+        _ => {
+            // Non-spec constraints not yet implemented
+            Ok(())
+        }
+    }
+}
+
+/// Extract TypeDecl from a Type
+///
+/// This helper function extracts the TypeDecl from various Type variants.
+/// For user-defined types, it returns the actual TypeDecl.
+/// For builtin types (int, str, etc.), it creates placeholder TypeDecls.
+///
+/// Note: Some types (Array, Ptr, etc.) don't have TypeDecls and will return an error.
+fn get_type_decl_from_type(
+    _ctx: &InferenceContext,
+    ty: &Type,
+) -> Result<TypeDecl, crate::error::TypeError> {
+    use crate::error::TypeError;
+    use miette::SourceSpan;
+
+    let span = SourceSpan::new(0.into(), 0);  // Placeholder span
+
+    match ty {
+        Type::User(type_decl) => Ok(type_decl.clone()),
+        // Builtin types - create placeholder TypeDecls
+        Type::Int => Ok(TypeDecl::builtin("int")),
+        Type::Uint => Ok(TypeDecl::builtin("uint")),
+        Type::Float => Ok(TypeDecl::builtin("float")),
+        Type::Double => Ok(TypeDecl::builtin("double")),
+        Type::Bool => Ok(TypeDecl::builtin("bool")),
+        Type::Str(_) => Ok(TypeDecl::builtin("str")),
+        Type::CStr => Ok(TypeDecl::builtin("cstr")),
+        Type::Char => Ok(TypeDecl::builtin("char")),
+        Type::Void => Ok(TypeDecl::builtin("void")),
+        // Types that don't have TypeDecls - return error
+        _ => Err(TypeError::CannotGetDecl {
+            type_: format!("{:?}", ty),
+            span,
+        }),
     }
 }
 

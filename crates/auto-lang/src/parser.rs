@@ -1280,6 +1280,7 @@ impl<'a> Parser<'a> {
                                         name: Box::new(Expr::Dot(Box::new(lhs), method_name)),
                                         args: call.args,
                                         ret: call.ret,
+                                        type_args: Vec::new(),  // Plan 061: No type args for method calls yet
                                     });
                                 }
                                 _ => {
@@ -2035,7 +2036,7 @@ impl<'a> Parser<'a> {
             TokenKind::Hash => {
                 // #[...] annotation syntax (Rust-style)
                 // Use centralized parse_fn_annotations() function
-                let (has_c, has_vm, _has_pub, _with_params) = self.parse_fn_annotations()?;
+                let (has_c, has_vm, _has_pub, with_params) = self.parse_fn_annotations()?;
 
                 // Skip empty lines after annotation
                 self.skip_empty_lines();
@@ -2059,7 +2060,7 @@ impl<'a> Parser<'a> {
                         // Parse with the actual annotation flags to correctly handle the function syntax
                         // For #[vm] functions, parse as VM function to allow newline termination
                         // For #[c] functions, parse as C function to allow semicolon termination
-                        let _ = self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static);
+                        let _ = self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static, with_params.clone());
                         return Ok(Stmt::Expr(Expr::Nil));
                     } else if self.is_kind(TokenKind::Type) {
                         // Skip type declaration
@@ -2075,7 +2076,7 @@ impl<'a> Parser<'a> {
                     if is_static {
                         self.next(); // skip static keyword
                     }
-                    self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static)?
+                    self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static, with_params)?
                 } else if self.is_kind(TokenKind::Type) {
                     // Type declaration
                     self.type_decl_stmt_with_annotation(has_c)?
@@ -2241,7 +2242,7 @@ impl<'a> Parser<'a> {
 
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[pub], #[c,vm] before function declarations
-            let (has_c, has_vm, _has_pub, _with_params) = self.parse_fn_annotations()?;
+            let (has_c, has_vm, _has_pub, with_params) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
@@ -2321,6 +2322,7 @@ impl<'a> Parser<'a> {
                         has_c,
                         has_vm,
                         is_static_method,
+                        with_params.clone(),
                     );
                     self.expect_eos(false)?;
                     self.skip_empty_lines();
@@ -2328,7 +2330,7 @@ impl<'a> Parser<'a> {
                 }
 
                 let fn_stmt =
-                    self.fn_decl_stmt_with_annotations(&target, has_c, has_vm, is_static_method)?;
+                    self.fn_decl_stmt_with_annotations(&target, has_c, has_vm, is_static_method, with_params)?;
                 if let Stmt::Fn(mut fn_expr) = fn_stmt {
                     // Set is_static flag for static methods (Plan 035 Phase 4.2)
                     if is_static_method {
@@ -2788,6 +2790,8 @@ impl<'a> Parser<'a> {
                         ret: Type::Int,
                         ret_name: None,
                         is_static: false,
+                        type_params: vec![],
+                        span: None,
                     };
                     std::rc::Rc::new(Meta::Fn(c_fn))
                 } else {
@@ -3787,6 +3791,7 @@ impl<'a> Parser<'a> {
         has_c: bool,
         has_vm: bool,
         is_static: bool,
+        with_params: Vec<crate::ast::TypeParam>,
     ) -> AutoResult<Stmt> {
         self.next(); // skip keyword `fn`
 
@@ -3802,6 +3807,30 @@ impl<'a> Parser<'a> {
 
         // Plan 052: Parse generic parameters if present: fn foo<T, N u32>(...)
         let generic_params = self.parse_generic_params()?;
+
+        // Plan 061: Merge with_params from #[with(...)] with generic_params from <T>
+        // with_params take precedence (can override constraints from <T>)
+        let mut type_params: Vec<crate::ast::TypeParam> = Vec::new();
+
+        // First, extract type params from generic_params
+        for gp in &generic_params {
+            if let crate::ast::GenericParam::Type(tp) = gp {
+                type_params.push(tp.clone());
+            }
+        }
+
+        // Then, merge/override with with_params
+        for wp in with_params {
+            // Check if this param already exists
+            let existing_idx = type_params.iter().position(|tp| tp.name == wp.name);
+            if let Some(idx) = existing_idx {
+                // Override with with_params version (has constraint)
+                type_params[idx] = wp;
+            } else {
+                // Add new param
+                type_params.push(wp);
+            }
+        }
 
         // enter function scope
         self.scope.borrow_mut().enter_fn(name.clone());
@@ -3911,7 +3940,7 @@ impl<'a> Parser<'a> {
         };
 
         // Create function, preserving return type name if type is Unknown
-        let fn_expr = if matches!(ret_type, Type::Unknown) {
+        let mut fn_expr = if matches!(ret_type, Type::Unknown) {
             if let Some(ret_name) = ret_type_name {
                 Fn::with_ret_name(kind, name.clone(), parent, params, body, ret_type, ret_name)
             } else {
@@ -3921,8 +3950,10 @@ impl<'a> Parser<'a> {
             Fn::new(kind, name.clone(), parent, params, body, ret_type)
         };
 
+        // Plan 061: Set type_params from #[with(...)] and <T>
+        fn_expr.type_params = type_params;
+
         // Set is_static flag
-        let mut fn_expr = fn_expr;
         fn_expr.is_static = is_static;
 
         let fn_stmt = Stmt::Fn(fn_expr.clone());
@@ -4096,6 +4127,11 @@ impl<'a> Parser<'a> {
 
         // Register spec in scope
         self.define(spec_decl.name.as_str(), Meta::Spec(spec_decl.clone()));
+
+        // Plan 061 Phase 2: Register spec in Universe for constraint validation
+        self.scope
+            .borrow_mut()
+            .register_spec(std::rc::Rc::new(spec_decl.clone()));
 
         Ok(Stmt::SpecDecl(spec_decl))
     }
@@ -4423,7 +4459,7 @@ impl<'a> Parser<'a> {
         let mut delegations = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
             // Check for annotations: #[c], #[vm], #[pub], #[c,vm] before function declarations
-            let (has_c, has_vm, _has_pub, _with_params) = self.parse_fn_annotations()?;
+            let (has_c, has_vm, _has_pub, with_params) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
@@ -4443,7 +4479,7 @@ impl<'a> Parser<'a> {
                         self.next(); // skip static
                     }
                     // Parse with actual flags to correctly handle the function syntax
-                    let _ = self.fn_decl_stmt_with_annotations(&name, has_c, has_vm, is_static);
+                    let _ = self.fn_decl_stmt_with_annotations(&name, has_c, has_vm, is_static, with_params.clone());
                 }
                 self.expect_eos(false)?;
                 continue;
@@ -4466,7 +4502,7 @@ impl<'a> Parser<'a> {
                 }
 
                 let fn_stmt =
-                    self.fn_decl_stmt_with_annotations(&name, has_c, has_vm, is_static)?;
+                    self.fn_decl_stmt_with_annotations(&name, has_c, has_vm, is_static, with_params)?;
                 if let Stmt::Fn(fn_expr) = fn_stmt {
                     methods.push(fn_expr);
                 }
@@ -6146,6 +6182,7 @@ impl<'a> Parser<'a> {
             name: Box::new(ident),
             args,
             ret: ret_type,
+            type_args: Vec::new(),  // Plan 061: Will be filled in during type inference
         });
         self.check_symbol(expr)
     }

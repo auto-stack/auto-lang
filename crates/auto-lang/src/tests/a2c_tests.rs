@@ -648,6 +648,11 @@ fn test_110_bool() {
 }
 
 #[test]
+fn test_110_with_constraint() {
+    test_a2c("110_with_constraint").unwrap();
+}
+
+#[test]
 fn test_112_inheritance() {
     test_a2c("112_inheritance").unwrap();
 }

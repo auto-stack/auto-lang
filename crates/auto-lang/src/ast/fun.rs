@@ -1,4 +1,5 @@
 use super::{Body, Expr, Name, Type};
+use super::types::TypeParam;
 use crate::ast::{AtomWriter, ToAtomStr};
 use serde::Serialize;
 use std::{fmt, io as stdio};
@@ -23,6 +24,8 @@ pub struct Fn {
     pub ret: Type,
     pub ret_name: Option<Name>, // Original return type name (for unresolved types)
     pub is_static: bool,         // Plan 035 Phase 4: true for static methods, false for instance methods
+    pub type_params: Vec<TypeParam>, // Plan 061: Generic type parameters with constraints
+    pub span: Option<(usize, usize)>, // Source location for error reporting
 }
 
 impl Serialize for Fn {
@@ -36,7 +39,10 @@ impl Serialize for Fn {
 
 impl PartialEq for Fn {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.params == other.params && self.is_static == other.is_static
+        self.name == other.name
+            && self.params == other.params
+            && self.is_static == other.is_static
+            // Note: type_params not compared (TypeParam doesn't implement PartialEq)
     }
 }
 
@@ -79,6 +85,8 @@ impl Fn {
             ret,
             ret_name: None,
             is_static: false, // Default to instance method
+            type_params: Vec::new(), // Default to no generic parameters
+            span: None,
         }
     }
 
@@ -100,6 +108,8 @@ impl Fn {
             ret,
             ret_name: Some(ret_name),
             is_static: false, // Default to instance method
+            type_params: Vec::new(), // Default to no generic parameters
+            span: None,
         }
     }
 }
@@ -248,6 +258,18 @@ impl ToNode for Fn {
 
         if !matches!(self.ret, Type::Unknown) {
             node.set_prop("return", Value::str(&*self.ret.to_atom()));
+        }
+
+        // Add type params if present (Plan 061)
+        if !self.type_params.is_empty() {
+            for type_param in &self.type_params {
+                let mut param_node = AutoNode::new("type_param");
+                param_node.set_prop("name", Value::str(type_param.name.as_str()));
+                if let Some(constraint) = &type_param.constraint {
+                    param_node.set_prop("constraint", Value::str(&*constraint.to_atom()));
+                }
+                node.add_kid(param_node);
+            }
         }
 
         // Add params as children

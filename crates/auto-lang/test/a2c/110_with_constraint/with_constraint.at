@@ -4,19 +4,19 @@
 // Simple generic without constraint
 #[with(T)]
 fn identity(x T) T {
-    return x
+    x
 }
 
 // Generic with spec constraint
 #[with(T as Clone)]
 fn duplicate(x T) T {
-    return x
+    x
 }
 
 // Multiple params, mixed constraints
 #[with(A, B as Eq)]
 fn compare(a A, b B) A {
-    return a
+    a
 }
 
 fn main() {

@@ -8,6 +8,9 @@ pub struct Call {
     pub name: Box<Expr>,
     pub args: Args,
     pub ret: Type,
+    /// Plan 061: Type argument bindings (generic param name -> concrete type)
+    /// E.g., for `duplicate(42)`, this might contain [("T", Int)]
+    pub type_args: Vec<(Name, Type)>,
 }
 
 impl Call {
@@ -309,6 +312,16 @@ impl ToNode for Call {
             node.set_prop("return", Value::str(&*self.ret.to_atom()));
         }
 
+        // Plan 061: Add type args if present (for debugging)
+        if !self.type_args.is_empty() {
+            for (param_name, concrete_type) in &self.type_args {
+                let mut type_arg_node = AutoNode::new("type_arg");
+                type_arg_node.set_prop("param", Value::str(param_name.as_str()));
+                type_arg_node.set_prop("type", Value::str(&*concrete_type.to_atom()));
+                node.add_kid(type_arg_node);
+            }
+        }
+
         node
     }
 }
@@ -366,6 +379,7 @@ mod tests {
             name: Box::new(Expr::Ident("print".into())),
             args: Args::new(),
             ret: Type::Unknown,
+            type_args: Vec::new(),
         };
         let atom = call.to_atom();
         assert_eq!(atom, "call print ()");
@@ -377,6 +391,7 @@ mod tests {
             name: Box::new(Expr::Ident("get_int".into())),
             args: Args::new(),
             ret: Type::Int,
+            type_args: Vec::new(),
         };
         let atom = call.to_atom();
         // Call atom doesn't include return type (only in function signature)
@@ -392,6 +407,7 @@ mod tests {
             name: Box::new(Expr::Ident("print".into())),
             args,
             ret: Type::Unknown,
+            type_args: Vec::new(),
         };
         let atom = call.to_atom();
         assert_eq!(atom, "call print (42)");

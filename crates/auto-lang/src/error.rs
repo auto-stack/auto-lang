@@ -643,6 +643,43 @@ pub enum TypeError {
         #[label("field `{field}` expects type `{expected}`, found `{found}`")]
         span: SourceSpan,
     },
+
+    /// Type does not satisfy constraint (Plan 061 Phase 2)
+    #[error("Type '{type_name}' does not satisfy constraint '{spec_name}'")]
+    #[diagnostic(
+        code(auto_type_E0201),
+        help("Ensure the type implements all required methods from the spec")
+    )]
+    ConstraintViolation {
+        type_name: String,
+        spec_name: String,
+        #[label("type '{type_name}' doesn't implement spec '{spec_name}'")]
+        span: SourceSpan,
+    },
+
+    /// Undefined spec (Plan 061 Phase 2)
+    #[error("Undefined spec: '{name}'")]
+    #[diagnostic(
+        code(auto_type_E0202),
+        help("Check that the spec is defined before using it in a constraint")
+    )]
+    UndefinedSpec {
+        name: String,
+        #[label("unknown spec '{name}'")]
+        span: SourceSpan,
+    },
+
+    /// Cannot get type declaration (Plan 061 Phase 2)
+    #[error("Cannot get type declaration for type '{type_}'")]
+    #[diagnostic(
+        code(auto_type_E0203),
+        help("This type cannot be used in a constraint")
+    )]
+    CannotGetDecl {
+        type_: String,
+        #[label("invalid type for constraint")]
+        span: SourceSpan,
+    },
 }
 
 // ============================================================================
