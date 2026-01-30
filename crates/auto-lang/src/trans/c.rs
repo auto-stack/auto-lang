@@ -258,7 +258,7 @@ impl CTrans {
         // Collect method info to avoid double borrow issues
         let methods: Vec<_> = tag.methods.iter().cloned().collect();
 
-        for (i, method) in methods.iter().enumerate() {
+        for (_i, method) in methods.iter().enumerate() {
             self.tag_method_impl(tag, &method, sink)?;
         }
 
@@ -2578,7 +2578,7 @@ impl CTrans {
             Expr::Str(_) => Some(Type::Str(0)),
             Expr::CStr(_) => Some(Type::CStr),
             // Plan 060: Binary operations - infer type from operands
-            Expr::Bina(lhs, op, rhs) => {
+            Expr::Bina(lhs, op, _rhs) => {
                 // For arithmetic operations, try to infer type from operands
                 match op {
                     Op::Add | Op::Sub | Op::Mul | Op::Div => {
@@ -3412,6 +3412,7 @@ impl CTrans {
         }
     }
 
+    #[allow(dead_code)]
     /// Validate struct initialization arguments against type declaration
     fn validate_struct_init(&mut self, type_decl: &TypeDecl, args: &Args) -> AutoResult<()> {
         for arg in &args.args {
@@ -3551,8 +3552,8 @@ impl CTrans {
 
     fn union_init_c(
         &mut self,
-        type_name: &AutoStr,
-        union_decl: &Union,
+        _type_name: &AutoStr,
+        _union_decl: &Union,
         args: &Args,
         out: &mut impl Write,
     ) -> AutoResult<()> {
@@ -3587,7 +3588,7 @@ impl CTrans {
 
     fn struct_init_c(
         &mut self,
-        type_name: &AutoStr,
+        _type_name: &AutoStr,
         type_decl: &TypeDecl,
         args: &Args,
         out: &mut impl Write,

@@ -1,5 +1,4 @@
 use crate::run;
-use crate::error::AutoResult;
 
 #[test]
 fn test_storage_environment_injection() {

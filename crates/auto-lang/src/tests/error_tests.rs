@@ -1,6 +1,6 @@
 use crate::error::{pos_to_span, SyntaxError, SyntaxErrorWithSource};
 use crate::token::Pos;
-use miette::{Diagnostic, NamedSource, SourceCode};
+use miette::{Diagnostic, NamedSource};
 
 #[test]
 fn test_source_code_in_error() {

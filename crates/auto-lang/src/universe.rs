@@ -1,6 +1,6 @@
 use super::scope::*;
 use crate::ast::FnKind;
-use crate::ast::{self, SpecDecl, Type, TypeAlias};
+use crate::ast::{self, SpecDecl, Type};
 use crate::atom::Atom;
 use crate::libs;
 use crate::vm::collections::{HashMapData, HashSetData};

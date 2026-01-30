@@ -44,7 +44,7 @@
 //! assert!(matches!(unify(&arr1, &arr2, span), Ok(Type::Array(..))));
 //! ```
 
-use crate::ast::{ArrayType, GenericInstance, PtrType, StorageKind, StorageType, Type};
+use crate::ast::{ArrayType, GenericInstance, PtrType, StorageKind, Type};
 use crate::error::{TypeError, Warning};
 use miette::SourceSpan;
 use std::fmt;
@@ -380,6 +380,7 @@ pub fn unify_with_coercion(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::StorageType;
 
     #[test]
     fn test_unify_same_types() {

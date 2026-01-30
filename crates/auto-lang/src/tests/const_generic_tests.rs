@@ -40,7 +40,7 @@ fn test_const_keyword_tokenized() {
     // But we've verified TokenKind::Const exists in the lexer.
 
     // This test verifies that the GenericParam and ConstParam structures work correctly
-    use crate::ast::{GenericParam, ConstParam, Type};
+    use crate::ast::{ConstParam, Type};
 
     let param = ConstParam {
         name: "SIZE".into(),

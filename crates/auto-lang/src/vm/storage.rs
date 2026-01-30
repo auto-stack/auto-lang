@@ -10,8 +10,8 @@ use crate::universe::Universe;
 
 /// Create a new empty Heap storage
 /// Returns an Instance with empty array and 0 capacity
-pub fn heap_new(uni: Shared<Universe>, _args: Value) -> Value {
-    use crate::vm::memory::alloc_array;
+pub fn heap_new(_uni: Shared<Universe>, _args: Value) -> Value {
+    
 
     // Start with empty array (no allocation yet)
     let initial_array = Value::Array(auto_val::Array::new());

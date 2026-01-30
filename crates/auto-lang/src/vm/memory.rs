@@ -59,7 +59,7 @@ use crate::Universe;
 /// ```auto
 /// let arr = alloc_array<int>(10)  // Create array with capacity 10
 /// ```
-pub fn alloc_array(uni: Shared<Universe>, size: Value) -> Value {
+pub fn alloc_array(_uni: Shared<Universe>, size: Value) -> Value {
     match size {
         Value::Int(n) if n > 0 => {
             // Create Vec with specified capacity

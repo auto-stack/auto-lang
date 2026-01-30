@@ -429,7 +429,7 @@ pub fn list_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Va
 /// Create a Map iterator from ListIter
 /// Syntax: iter.map(func)
 /// Returns a MapIter instance
-pub fn list_iter_map(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_iter_map(_uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }
@@ -583,7 +583,7 @@ pub fn map_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Val
 /// Create a Filter iterator from ListIter
 /// Syntax: iter.filter(predicate)
 /// Returns a FilterIter instance
-pub fn list_iter_filter(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_iter_filter(_uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }
@@ -937,7 +937,7 @@ pub fn list_iter_for_each(uni: Shared<Universe>, instance: &mut Value, args: Vec
                     if let VmRefData::List(list) = &*ref_box {
                         // Call function for each element
                         for i in idx..list.elems.len() {
-                            let elem = list.elems.get(i).cloned().unwrap_or(Value::Nil);
+                            let _elem = list.elems.get(i).cloned().unwrap_or(Value::Nil);
                             
                             // Apply function to element
                             // For now, just ignore the result (forEach doesn't collect)
@@ -1222,7 +1222,7 @@ pub fn list_iter_find(uni: Shared<Universe>, instance: &mut Value, args: Vec<Val
 /// Map operation on FilterIter - chain map after filter
 /// Syntax: filter_iter.map(func)
 /// Returns a MapIter that wraps the FilterIter
-pub fn filter_iter_map(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn filter_iter_map(_uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }
@@ -1275,7 +1275,7 @@ pub fn filter_iter_map(uni: Shared<Universe>, instance: &mut Value, args: Vec<Va
 /// Filter operation on MapIter - chain filter after map
 /// Syntax: map_iter.filter(predicate)
 /// Returns a FilterIter that wraps the MapIter
-pub fn map_iter_filter(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn map_iter_filter(_uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }

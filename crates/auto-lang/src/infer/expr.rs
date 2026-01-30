@@ -501,6 +501,7 @@ fn infer_call_type(ctx: &mut InferenceContext, call: &Call) -> Type {
 /// 3. Return the concrete type for a given parameter
 ///
 /// For now, returns None (no validation)
+#[allow(dead_code)]
 fn find_type_arg_for_param(_call: &Call, _param_name: &Name) -> Option<Type> {
     // TODO: Implement type argument inference
     // This requires:
@@ -563,7 +564,7 @@ fn validate_spec_constraint(
             use crate::trait_checker::TraitChecker;
             match TraitChecker::check_conformance(&concrete_type_decl, &spec_decl) {
                 Ok(_) => Ok(()),
-                Err(errors) => {
+                Err(_errors) => {
                     // Convert AutoError to TypeError
                     // For now, just return a generic constraint violation error
                     Err(TypeError::ConstraintViolation {
@@ -860,7 +861,7 @@ mod tests {
 
     #[test]
     fn test_infer_closure_simple() {
-        use crate::ast::{Closure, ClosureParam, Name};
+        use crate::ast::{Closure, ClosureParam};
         let mut ctx = make_test_context();
 
         // Test 1: Simple closure:  x => x * 2
@@ -885,7 +886,7 @@ mod tests {
 
     #[test]
     fn test_infer_closure_with_explicit_types() {
-        use crate::ast::{Closure, ClosureParam, Name, Type};
+        use crate::ast::{Closure, ClosureParam, Type};
         let mut ctx = make_test_context();
 
         // Test 2: Closure with explicit types: (x int) int => x + 1
@@ -916,6 +917,7 @@ mod tests {
         let mut args = Args::new();
         args.args.push(Arg::Pos(Expr::Int(42)));
 
+        #[allow(unused_mut)]
         let mut call = Call {
             name: Box::new(Expr::Ident("identity".into())),
             args,

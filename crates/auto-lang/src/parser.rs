@@ -4219,7 +4219,7 @@ impl<'a> Parser<'a> {
 
         // Plan 057: Clear type parameters after parsing spec body
         for param in &generic_params {
-            if let GenericParam::Type(tp) = param {
+            if let GenericParam::Type(_tp) = param {
                 self.current_type_params.pop();
             } else if let GenericParam::Const(cp) = param {
                 self.current_const_params.remove(&cp.name);
@@ -5179,6 +5179,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse a single type parameter (e.g., T, K, V)
+    #[allow(dead_code)]
     fn parse_type_param(&mut self) -> AutoResult<crate::ast::TypeParam> {
         use crate::ast::TypeParam;
 
@@ -5286,7 +5287,7 @@ impl<'a> Parser<'a> {
 
     /// Parse identifier type or generic instance (e.g., List, List<int>)
     fn parse_ident_or_generic_type(&mut self) -> AutoResult<Type> {
-        use crate::ast::{GenericInstance, Type};
+        use crate::ast::Type;
 
         let ident = self.parse_ident()?;
 
@@ -5636,6 +5637,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn parse_ident_type(&mut self) -> AutoResult<Type> {
         let ident = self.parse_ident()?;
         match ident {
@@ -5988,7 +5990,7 @@ impl<'a> Parser<'a> {
 
                 match meta.as_ref() {
                     Meta::Type(typ) => match typ {
-                        Type::User(decl) => {
+                        Type::User(_decl) => {
                             // Check for static methods (e.g., List.new not List::new)
                             // rhs is AutoStr (field/method name)
                             let combined_name = format!("{}.{}", base_name, rhs);

@@ -2096,6 +2096,7 @@ impl Evaler {
         }
     }
 
+    #[allow(dead_code)]
     /// Mark a variable as moved if the expression is a variable reference
     /// This is used to enforce move semantics when values are passed to functions
     fn mark_expr_as_moved(&mut self, expr: &Expr) {
@@ -2122,7 +2123,7 @@ impl Evaler {
             }
             // Plan 056: Dot expression - field access should NOT move the object
             // `say(p.x)` should read the field without moving p
-            Expr::Dot(object, field) => {
+            Expr::Dot(_object, _field) => {
                 // Do NOT mark the object as moved for field access
                 // Field access is a read operation, not a move
             }
@@ -2368,7 +2369,7 @@ impl Evaler {
                         // For multi-argument functions, wrap them in an Array
                         // This allows functions like List.new(1, 2, 3) to receive
                         // all arguments as a single Value::Array parameter
-                        use auto_val::{Array, AutoStr};
+                        use auto_val::Array;
                         let array_value = Value::Array(Array { values: arg_vals });
                         let result = (vm_func.func)(uni, array_value);
                         return Ok(result);
@@ -2544,7 +2545,7 @@ impl Evaler {
                                 return Ok(result);
                             } else {
                                 // For multi-argument functions, wrap them in an Array
-                                use auto_val::{Array, AutoStr};
+                                use auto_val::Array;
                                 let array_value = Value::Array(Array { values: arg_vals });
                                 let result = (vm_func.func)(uni, array_value);
                                 return Ok(result);
@@ -3951,13 +3952,18 @@ impl Evaler {
             }
         }
 
-        // Also register the type's own methods
+        // Also register the type's own methods (but only if they have bodies)
+        // Interface declarations without bodies (e.g., in .at files) should not register methods
+        // The actual implementations come from ext blocks (e.g., in .vm.at or .c.at files)
         for method in &type_decl.methods {
-            let method_name: AutoStr = format!("{}.{}", type_decl.name, method.name).into();
-            self.universe.borrow_mut().define(
-                method_name,
-                std::rc::Rc::new(scope::Meta::Fn(method.clone())),
-            );
+            // Only register methods that have bodies (interface-only methods are just declarations)
+            if !method.body.stmts.is_empty() {
+                let method_name: AutoStr = format!("{}.{}", type_decl.name, method.name).into();
+                self.universe.borrow_mut().define(
+                    method_name,
+                    std::rc::Rc::new(scope::Meta::Fn(method.clone())),
+                );
+            }
         }
 
         Value::Void
@@ -4878,7 +4884,7 @@ impl Evaler {
 
     /// Evaluate closure expression and create closure value (Plan 060 Phase 3+4)
     fn closure(&mut self, closure: &Closure) -> Value {
-        use std::collections::HashMap;
+        
 
         // Generate unique closure ID
         let closure_id = self.next_closure_id;

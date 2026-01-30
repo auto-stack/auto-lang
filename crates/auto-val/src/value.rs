@@ -9,7 +9,6 @@ use crate::str_slice::StrSlice;
 use crate::string::*;
 use crate::types::Type;
 use crate::AutoStr;
-use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
 /// Unique identifier for a value stored in Universe
