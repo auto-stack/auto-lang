@@ -1,9 +1,0 @@
-use auto.io: File
-
-fn main() {
-    let f = File.open("test.txt")
-    let ch = f.read_char()
-    let buf = "   "
-    let n = f.read_buf(buf, 3)
-    f.close()
-}

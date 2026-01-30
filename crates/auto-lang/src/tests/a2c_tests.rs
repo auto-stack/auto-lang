@@ -306,19 +306,15 @@ fn test_020_delegation_params() {
     test_a2c("020_delegation_params").unwrap();
 }
 
+
 #[test]
-fn test_111_io_specs() {
-    test_a2c("111_io_specs").unwrap();
+fn test_028_for_complex() {
+    test_a2c("028_complex_expr").unwrap();
 }
 
 #[test]
-fn test_037_for_complex() {
-    test_a2c("037_complex_expr").unwrap();
-}
-
-#[test]
-fn test_037_array_return() {
-    test_a2c("037_array_return").unwrap();
+fn test_029_array_return() {
+    test_a2c("029_array_return").unwrap();
 }
 
 // TODO: Test 038 - string methods with arraGy returns
@@ -337,23 +333,23 @@ fn test_021_type_error() {
 // The transpiler can't find auto/io.h when processing use statements
 // This needs to be fixed separately from the enum refactoring
 #[test]
-fn test_100_std_hello() {
-    test_a2c("100_std_hello").unwrap();
+fn test_137_std_hello() {
+    test_a2c("137_std_hello").unwrap();
 }
 
 #[test]
-fn test_101_std_getpid() {
-    test_a2c("101_std_getpid").unwrap();
+fn test_138_std_getpid() {
+    test_a2c("138_std_getpid").unwrap();
 }
 
 #[test]
-fn test_102_std_readline() {
-    test_a2c("102_std_readline").unwrap();
+fn test_139_std_readline() {
+    test_a2c("139_std_readline").unwrap();
 }
 
 #[test]
-fn test_103_std_file() {
-    match test_a2c("103_std_file") {
+fn test_140_std_file() {
+    match test_a2c("140_std_file") {
         Ok(_) => {}
         Err(e) => {
             // Print full error using Miette for better diagnostics
@@ -381,99 +377,99 @@ fn test_103_std_file() {
 
 #[test]
 #[ignore]
-fn test_104_std_repl() {
-    test_a2c("104_std_repl").unwrap();
+fn test_141_std_repl() {
+    test_a2c("141_std_repl").unwrap();
 }
 
 #[test]
-fn test_105_std_str() {
-    test_a2c("105_std_str").unwrap();
+fn test_142_std_str() {
+    test_a2c("142_std_str").unwrap();
 }
 
 #[test]
 #[ignore]
-fn test_106_file_operations() {
-    test_a2c("106_file_operations").unwrap();
+fn test_143_file_operations() {
+    test_a2c("143_file_operations").unwrap();
 }
 
 // ===================== Phase 5: Unified Section tests =======================
 
 #[test]
-fn test_037_unified_functions() {
-    test_a2c("037_unified_section").unwrap();
+fn test_027_unified_functions() {
+    test_a2c("027_unified_section").unwrap();
 }
 
 // ===================== Tag Type and May<T> tests =======================
 
 #[test]
-fn test_040_tag_types() {
-    test_a2c("040_tag_types").unwrap();
+fn test_032_tag_types() {
+    test_a2c("032_tag_types").unwrap();
 }
 
 #[test]
-fn test_041_may_basic() {
-    test_a2c("041_may_basic").unwrap();
+fn test_033_may_basic() {
+    test_a2c("033_may_basic").unwrap();
 }
 
 #[test]
-fn test_042_may_string() {
-    test_a2c("042_may_string").unwrap();
+fn test_034_may_string() {
+    test_a2c("034_may_string").unwrap();
 }
 
 #[test]
-fn test_043_may_bool() {
-    test_a2c("043_may_bool").unwrap();
+fn test_035_may_bool() {
+    test_a2c("035_may_bool").unwrap();
 }
 
 #[test]
-fn test_044_may_patterns() {
-    test_a2c("044_may_patterns").unwrap();
+fn test_036_may_patterns() {
+    test_a2c("036_may_patterns").unwrap();
 }
 
 #[test]
-fn test_045_may_nested() {
-    test_a2c("045_may_nested").unwrap();
+fn test_037_may_nested() {
+    test_a2c("037_may_nested").unwrap();
 }
 
 #[test]
-fn test_046_binary() {
-    test_a2c("046_binary").unwrap();
+fn test_038_binary() {
+    test_a2c("038_binary").unwrap();
 }
 #[test]
-fn test_047_tristate() {
-    test_a2c("047_tristate").unwrap();
+fn test_041_tristate() {
+    test_a2c("041_tristate").unwrap();
 }
 #[test]
-fn test_048_direction() {
-    test_a2c("048_direction").unwrap();
+fn test_042_direction() {
+    test_a2c("042_direction").unwrap();
 }
 #[test]
-fn test_049_status() {
-    test_a2c("049_status").unwrap();
+fn test_045_status() {
+    test_a2c("045_status").unwrap();
 }
 #[test]
-fn test_050_mode() {
-    test_a2c("050_mode").unwrap();
+fn test_046_mode() {
+    test_a2c("046_mode").unwrap();
 }
 #[test]
-fn test_051_result() {
-    test_a2c("051_result").unwrap();
+fn test_048_result() {
+    test_a2c("048_result").unwrap();
 }
 #[test]
-fn test_052_phase() {
-    test_a2c("052_phase").unwrap();
+fn test_049_phase() {
+    test_a2c("049_phase").unwrap();
 }
 #[test]
-fn test_053_level() {
-    test_a2c("053_level").unwrap();
+fn test_050_level() {
+    test_a2c("050_level").unwrap();
 }
 #[test]
-fn test_054_state() {
-    test_a2c("054_state").unwrap();
+fn test_051_state() {
+    test_a2c("051_state").unwrap();
 }
 #[test]
-fn test_055_type() {
-    test_a2c("055_type").unwrap();
+fn test_053_type() {
+    test_a2c("053_type").unwrap();
 }
 #[test]
 fn test_056_side() {
@@ -492,172 +488,172 @@ fn test_059_path() {
     test_a2c("059_path").unwrap();
 }
 #[test]
-fn test_060_color() {
-    test_a2c("060_color").unwrap();
+fn test_061_color() {
+    test_a2c("061_color").unwrap();
 }
 #[test]
-fn test_061_size() {
-    test_a2c("061_size").unwrap();
+fn test_065_size() {
+    test_a2c("065_size").unwrap();
 }
 #[test]
-fn test_062_speed() {
-    test_a2c("062_speed").unwrap();
+fn test_067_speed() {
+    test_a2c("067_speed").unwrap();
 }
 #[test]
-fn test_063_power() {
-    test_a2c("063_power").unwrap();
+fn test_068_power() {
+    test_a2c("068_power").unwrap();
 }
 #[test]
-fn test_064_signal() {
-    test_a2c("064_signal").unwrap();
+fn test_069_signal() {
+    test_a2c("069_signal").unwrap();
 }
 #[test]
-fn test_065_zone() {
-    test_a2c("065_zone").unwrap();
+fn test_070_zone() {
+    test_a2c("070_zone").unwrap();
 }
 #[test]
-fn test_066_mode2() {
-    test_a2c("066_mode2").unwrap();
+fn test_071_mode2() {
+    test_a2c("071_mode2").unwrap();
 }
 #[test]
-fn test_067_link() {
-    test_a2c("067_link").unwrap();
+fn test_072_link() {
+    test_a2c("072_link").unwrap();
 }
 #[test]
-fn test_068_source() {
-    test_a2c("068_source").unwrap();
+fn test_073_source() {
+    test_a2c("073_source").unwrap();
 }
 #[test]
-fn test_069_target() {
-    test_a2c("069_target").unwrap();
+fn test_074_target() {
+    test_a2c("074_target").unwrap();
 }
 #[test]
-fn test_070_format() {
-    test_a2c("070_format").unwrap();
-}
-
-#[test]
-fn test_071_question_syntax() {
-    test_a2c("071_question_syntax").unwrap();
+fn test_075_format() {
+    test_a2c("075_format").unwrap();
 }
 
 #[test]
-fn test_072_question_uint() {
-    test_a2c("072_question_uint").unwrap();
+fn test_076_question_syntax() {
+    test_a2c("076_question_syntax").unwrap();
 }
 
 #[test]
-fn test_073_question_float() {
-    test_a2c("073_question_float").unwrap();
+fn test_077_question_uint() {
+    test_a2c("077_question_uint").unwrap();
 }
 
 #[test]
-fn test_074_question_double() {
-    test_a2c("074_question_double").unwrap();
+fn test_078_question_float() {
+    test_a2c("078_question_float").unwrap();
 }
 
 #[test]
-fn test_075_question_char() {
-    test_a2c("075_question_char").unwrap();
+fn test_079_question_double() {
+    test_a2c("079_question_double").unwrap();
+}
+
+#[test]
+fn test_080_question_char() {
+    test_a2c("080_question_char").unwrap();
 }
 
 // Skip test_076_question_void - ?void doesn't make semantic sense
 
 #[test]
-fn test_079_question_return_int() {
-    test_a2c("079_question_return_int").unwrap();
+fn test_082_question_return_int() {
+    test_a2c("082_question_return_int").unwrap();
 }
 
 #[test]
-fn test_080_question_return_str() {
-    test_a2c("080_question_return_str").unwrap();
+fn test_083_question_return_str() {
+    test_a2c("083_question_return_str").unwrap();
 }
 
 #[test]
-fn test_081_question_return_bool() {
-    test_a2c("081_question_return_bool").unwrap();
+fn test_084_question_return_bool() {
+    test_a2c("084_question_return_bool").unwrap();
 }
 
 #[test]
-fn test_082_question_return_uint() {
-    test_a2c("082_question_return_uint").unwrap();
+fn test_085_question_return_uint() {
+    test_a2c("085_question_return_uint").unwrap();
 }
 
 #[test]
-fn test_083_question_return_float() {
-    test_a2c("083_question_return_float").unwrap();
+fn test_086_question_return_float() {
+    test_a2c("086_question_return_float").unwrap();
 }
 
 #[test]
-fn test_084_question_return_double() {
-    test_a2c("084_question_return_double").unwrap();
+fn test_087_question_return_double() {
+    test_a2c("087_question_return_double").unwrap();
 }
 
 #[test]
-fn test_085_question_return_char() {
-    test_a2c("085_question_return_char").unwrap();
+fn test_088_question_return_char() {
+    test_a2c("088_question_return_char").unwrap();
 }
 
 #[test]
-fn test_087_question_nested_call() {
-    test_a2c("087_question_nested_call").unwrap();
+fn test_089_question_nested_call() {
+    test_a2c("089_question_nested_call").unwrap();
 }
 
 #[test]
-fn test_088_question_arithmetic() {
-    test_a2c("088_question_arithmetic").unwrap();
+fn test_090_question_arithmetic() {
+    test_a2c("090_question_arithmetic").unwrap();
 }
 
 #[test]
-fn test_089_question_comparison() {
-    test_a2c("089_question_comparison").unwrap();
+fn test_091_question_comparison() {
+    test_a2c("091_question_comparison").unwrap();
 }
 
 // Skip test_090_question_logical - && operator has parsing issues
 
 #[test]
-fn test_091_question_negation() {
-    test_a2c("091_question_negation").unwrap();
+fn test_093_question_negation() {
+    test_a2c("093_question_negation").unwrap();
 }
 
 #[test]
-fn test_092_question_literal() {
-    test_a2c("092_question_literal").unwrap();
+fn test_094_question_literal() {
+    test_a2c("094_question_literal").unwrap();
 }
 
 #[test]
-fn test_093_question_zero() {
-    test_a2c("093_question_zero").unwrap();
+fn test_095_question_zero() {
+    test_a2c("095_question_zero").unwrap();
 }
 
 #[test]
-fn test_094_question_negative() {
-    test_a2c("094_question_negative").unwrap();
+fn test_096_question_negative() {
+    test_a2c("096_question_negative").unwrap();
 }
 
 #[test]
-fn test_095_null_coalesce() {
-    test_a2c("095_null_coalesce").unwrap();
+fn test_118_null_coalesce() {
+    test_a2c("118_null_coalesce").unwrap();
 }
 
 #[test]
-fn test_096_error_propagate() {
-    test_a2c("096_error_propagate").unwrap();
+fn test_119_error_propagate() {
+    test_a2c("119_error_propagate").unwrap();
 }
 
 #[test]
-fn test_110_bool() {
-    test_a2c("110_bool").unwrap();
+fn test_135_bool() {
+    test_a2c("135_bool").unwrap();
 }
 
 #[test]
-fn test_110_with_constraint() {
-    test_a2c("110_with_constraint").unwrap();
+fn test_136_with_constraint() {
+    test_a2c("136_with_constraint").unwrap();
 }
 
 #[test]
-fn test_112_inheritance() {
-    test_a2c("112_inheritance").unwrap();
+fn test_128_inheritance() {
+    test_a2c("128_inheritance").unwrap();
 }
 
 // ===================== Phase 3: HashMap/HashSet tests =======================
@@ -669,59 +665,59 @@ fn test_112_inheritance() {
 // 3. Create proper expected output files
 #[test]
 #[ignore]
-fn test_097_hashmap() {
-    test_a2c("097_hashmap").unwrap();
+fn test_123_hashmap() {
+    test_a2c("123_hashmap").unwrap();
 }
 
 #[test]
 #[ignore]
-fn test_098_hashset() {
-    test_a2c("098_hashset").unwrap();
+fn test_124_hashset() {
+    test_a2c("124_hashset").unwrap();
 }
 
 // ===================== Phase 3: Borrow Checker tests =======================
 
 #[test]
-fn test_030_borrow_view() {
-    test_a2c("030_borrow_view").unwrap();
+fn test_023_borrow_view() {
+    test_a2c("023_borrow_view").unwrap();
 }
 
 #[test]
-fn test_031_borrow_mut() {
-    test_a2c("031_borrow_mut").unwrap();
+fn test_024_borrow_mut() {
+    test_a2c("024_borrow_mut").unwrap();
 }
 
 #[test]
-fn test_032_borrow_take() {
-    test_a2c("032_borrow_take").unwrap();
+fn test_025_borrow_take() {
+    test_a2c("025_borrow_take").unwrap();
 }
 
 #[test]
-fn test_033_borrow_conflicts() {
-    test_a2c("033_borrow_conflicts").unwrap();
+fn test_026_borrow_conflicts() {
+    test_a2c("026_borrow_conflicts").unwrap();
 }
 
 #[test]
-fn test_114_std_readline() {
-    test_a2c("114_std_readline").unwrap();
+fn test_148_std_readline() {
+    test_a2c("148_std_readline").unwrap();
 }
 
 #[test]
-fn test_116_std_file_flush() {
-    test_a2c("116_std_file_flush").unwrap();
+fn test_150_std_file_flush() {
+    test_a2c("150_std_file_flush").unwrap();
 }
 
 #[test]
-fn test_117_std_file_read() {
-    test_a2c("117_std_file_read").unwrap();
+fn test_151_std_file_read() {
+    test_a2c("151_std_file_read").unwrap();
 }
 
 // ===================== Generic Type Tests =====================
 
 #[test]
 #[ignore = "Generic tag transpilation not yet implemented"]
-fn test_060_generic_tag() {
-    match test_a2c("060_generic_tag") {
+fn test_109_generic_tag() {
+    match test_a2c("109_generic_tag") {
         Ok(_) => {}
         Err(e) => {
             // Check if this is MultipleErrors and print each one
@@ -740,87 +736,72 @@ fn test_060_generic_tag() {
     }
 }
 
-// ===================== Array Capability Tests (Plan 051) =====================
-// Note: These tests use the format test_a2c("080_name") where files are in test/a2c/080_name/
-
 #[test]
-fn test_080_array_declaration() {
-    test_a2c("080_array_declaration").unwrap();
+fn test_097_array_declaration() {
+    test_a2c("097_array_declaration").unwrap();
 }
 
 #[test]
-fn test_080_array_mutation() {
-    test_a2c("080_array_mutation").unwrap();
+fn test_098_array_mutation() {
+    test_a2c("098_array_mutation").unwrap();
 }
 
 #[test]
-fn test_080_array_index_read() {
-    test_a2c("080_array_index_read").unwrap();
+fn test_099_array_index_read() {
+    test_a2c("099_array_index_read").unwrap();
 }
 
 #[test]
-fn test_080_array_copy() {
-    test_a2c("080_array_copy").unwrap();
+fn test_100_array_copy() {
+    test_a2c("100_array_copy").unwrap();
 }
 
 #[test]
-fn test_080_array_slice() {
-    test_a2c("080_array_slice").unwrap();
-}
-
-#[test]
-#[ignore = "Parser does not yet support zero-size arrays"]
-fn test_080_array_zero_size() {
-    test_a2c("080_array_zero_size").unwrap();
+fn test_101_array_slice() {
+    test_a2c("101_array_slice").unwrap();
 }
 
 #[test]
 #[ignore = "Parser does not yet support nested arrays"]
-fn test_080_array_nested() {
-    test_a2c("080_array_nested").unwrap();
+fn test_102_array_nested() {
+    test_a2c("102_array_nested").unwrap();
 }
 
 #[test]
-fn test_080_array_loop() {
-    test_a2c("080_array_loop").unwrap();
-}
-
-// ============================================================================
-// Plan 052: Runtime Array Allocation Tests
-// ============================================================================
-
-#[test]
-fn test_082_runtime_size_var() {
-    test_a2c("082_runtime_size_var").unwrap();
+#[ignore = "Parser does not yet support zero-size arrays"]
+fn test_103_array_zero_size() {
+    test_a2c("103_array_zero_size").unwrap();
 }
 
 #[test]
-fn test_083_runtime_size_expr() {
-    test_a2c("083_runtime_size_expr").unwrap();
+fn test_104_array_loop() {
+    test_a2c("104_array_loop").unwrap();
 }
 
-// ============================================================================
-// Plan 052: Pointer Type Tests
-// ============================================================================
+#[test]
+fn test_106_runtime_size_var() {
+    test_a2c("106_runtime_size_var").unwrap();
+}
 
 #[test]
-fn test_090_pointer_types() {
-    test_a2c("090_pointer_types").unwrap();
+fn test_107_runtime_size_expr() {
+    test_a2c("107_runtime_size_expr").unwrap();
+}
+
+#[test]
+fn test_108_pointer_types() {
+    test_a2c("108_pointer_types").unwrap();
 }
 
 #[test]
 #[ignore = "Const generics not yet implemented in C transpiler"]
-fn test_092_const_generics() {
-    test_a2c("092_const_generics").unwrap();
+fn test_110_const_generics() {
+    test_a2c("110_const_generics").unwrap();
 }
 
-// ============================================================================
-// Plan 057: Generic Spec Tests
-// ============================================================================
-
 #[test]
-fn test_093_generic_specs() {
-    test_a2c("093_generic_specs").unwrap();
+fn test_112_generic_specs() {
+    test_a2c("112_generic_specs").unwrap();
 }
 
 // ============================================================================
@@ -828,99 +809,101 @@ fn test_093_generic_specs() {
 // ============================================================================
 
 #[test]
-fn test_094_generic_spec_ext() {
-    test_a2c("094_generic_spec_ext").unwrap();
+fn test_113_generic_spec_ext() {
+    test_a2c("113_generic_spec_ext").unwrap();
 }
 
 #[test]
 #[ignore = "Storage module generics not yet implemented in C transpiler"]
-fn test_095_storage_module() {
-    test_a2c("095_storage_module").unwrap();
+fn test_114_storage_module() {
+    test_a2c("114_storage_module").unwrap();
 }
 
 #[test]
-fn test_096_storage_usage() {
-    test_a2c("096_storage_usage").unwrap();
+fn test_115_storage_usage() {
+    test_a2c("115_storage_usage").unwrap();
 }
 
 #[test]
-fn test_097_list_storage() {
-    test_a2c("097_list_storage").unwrap();
+fn test_117_list_storage() {
+    test_a2c("117_list_storage").unwrap();
+}
+
+
+
+#[test]
+fn test_116_plan055_auto_storage() {
+    test_a2c("116_plan055_auto_storage").unwrap();
 }
 
 #[test]
-#[ignore = "Test directory 090_type_alias does not exist"]
-fn test_090_type_alias() {
-    test_a2c("090_type_alias").unwrap();
+fn test_120_iter_specs() {
+    test_a2c("120_iter_specs").unwrap();
 }
 
 #[test]
-fn test_092_plan055_auto_storage() {
-    test_a2c("092_plan055_auto_storage").unwrap();
+fn test_121_map_adapter() {
+    test_a2c("121_map_adapter").unwrap();
 }
 
 #[test]
-fn test_099_iter_specs() {
-    test_a2c("099_iter_specs").unwrap();
+fn test_122_list_iter() {
+    test_a2c("122_list_iter").unwrap();
 }
 
 #[test]
-fn test_100_map_adapter() {
-    test_a2c("100_map_adapter").unwrap();
+fn test_126_generic_field() {
+    test_a2c("126_generic_field").unwrap();
 }
 
 #[test]
-fn test_101_list_iter() {
-    test_a2c("101_list_iter").unwrap();
+fn test_127_generic_ptr_field() {
+    test_a2c("127_generic_ptr_field").unwrap();
 }
 
 #[test]
-fn test_102_generic_field() {
-    test_a2c("102_generic_field").unwrap();
-}
-
-#[test]
-fn test_103_generic_ptr_field() {
-    test_a2c("103_generic_ptr_field").unwrap();
-}
-
-#[test]
-fn test_104_terminal_operators() {
-    test_a2c("104_terminal_operators").unwrap();
+fn test_129_terminal_operators() {
+    test_a2c("129_terminal_operators").unwrap();
 }
 
 // Plan 060: Closure tests
 #[test]
-fn test_108_closure() {
-    test_a2c("108_closure").unwrap();
+fn test_125_closure() {
+    test_a2c("125_closure").unwrap();
 }
 
 // Plan 051 Phase 4: Terminal Operators tests
 #[test]
-fn test_121_terminal_operators() {
-    test_a2c("121_terminal_operators").unwrap();
+fn test_130_terminal_operators() {
+    test_a2c("130_terminal_operators").unwrap();
 }
 
 // Plan 051 Phase 5: Bang Operator tests
 #[test]
-fn test_122_bang_operator() {
-    test_a2c("122_bang_operator").unwrap();
+fn test_131_bang_operator() {
+    test_a2c("131_bang_operator").unwrap();
 }
 
 // Plan 051 Phase 6: Extended Adapters tests
 #[test]
-fn test_123_extended_adapters() {
-    test_a2c("123_extended_adapters").unwrap();
+fn test_132_extended_adapters() {
+    test_a2c("132_extended_adapters").unwrap();
 }
 
 // Plan 051 Phase 7: Predicate Terminal Operators tests
 #[test]
-fn test_124_predicates() {
-    test_a2c("124_predicates").unwrap();
+fn test_133_predicates() {
+    test_a2c("133_predicates").unwrap();
 }
 
 // Plan 051 Phase 8: Collect & To Operators tests
 #[test]
-fn test_125_collect() {
-    test_a2c("125_collect").unwrap();
+fn test_134_collect() {
+    test_a2c("134_collect").unwrap();
+}
+
+
+#[test]
+fn test_146_io_specs() {
+    test_a2c("146_io_specs").unwrap();
 }

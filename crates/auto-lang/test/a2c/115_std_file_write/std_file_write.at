@@ -1,7 +1,0 @@
-use auto.io: File
-
-fn main() {
-    let file = File.open(c"output.txt")
-    file.write_line("Hello, World!")
-    file.close()
-}
