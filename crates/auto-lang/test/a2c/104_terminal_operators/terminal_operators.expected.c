@@ -8,8 +8,8 @@ void RangeIter_ForEach(struct RangeIter *self) {
 }
 
 int main(void) {
-    unknown range = RangeIter(1, 4);
-    unknown sum = range.reduce();
-    unknown count = range.count();
+    struct RangeIter range = {.current = 1, .end = 4};
+    unknown sum = RangeIter_Reduce(&range);
+    unknown count = RangeIter_Count(&range);
     return 0;
 }

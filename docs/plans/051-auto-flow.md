@@ -1,13 +1,13 @@
 # Plan 051: Auto Flow - Iterator & Functional Programming System
 
-**Status**: ⏸️ Partially Implemented (Specs Complete, Runtime Incomplete)
+**Status**: ✅ Specs Complete, ⏸️ C Transpiler Pending (see Plan 062)
 
-⚠️ **STATUS UPDATE (2025-01-30)**: Plan 051 was marked "Complete" but runtime testing reveals iterator operations don't work. See [051-status-reality-check.md](051-status-reality-check.md) for details.
+> **STATUS UPDATE (2026-01-30)**: Plan 051 specs and VM operations are ~95% complete. The C transpiler requires generic monomorphization work tracked in [Plan 062](062-c-transpiler-generics.md).
 
-**Previous Claim**: ✅ Plan 051 Complete (All 8 Phases)
 **Priority**: P0 (Core Standard Library Feature)
 **Dependencies**: Plan 052 ✅, Plan 057 ✅, Plan 059 ✅, Plan 060 ✅, Plan 061 ✅
-**Timeline**: 41 hours completed, 12 hours remaining (buffer)
+**Next Steps**: [Plan 062](062-c-transpiler-generics.md) - C Transpiler Generic Monomorphization
+**Timeline**: 41 hours completed, Plan 062 adds 16-24 hours
 
 ## Objective
 

@@ -1119,9 +1119,11 @@ impl<'a> Parser<'a> {
                 | TokenKind::Div
                 | TokenKind::Mod
                 | TokenKind::Not => self.op(),
-                TokenKind::AddEq | TokenKind::SubEq | TokenKind::MulEq | TokenKind::DivEq | TokenKind::ModEq => {
-                    self.op()
-                }
+                TokenKind::AddEq
+                | TokenKind::SubEq
+                | TokenKind::MulEq
+                | TokenKind::DivEq
+                | TokenKind::ModEq => self.op(),
                 TokenKind::DotView
                 | TokenKind::DotMut
                 | TokenKind::DotTake
@@ -1219,13 +1221,10 @@ impl<'a> Parser<'a> {
                     // Converts expr! into expr.collect()
                     Op::Not => {
                         self.next(); // skip !
-                        // Convert to method call: lhs.collect()
+                                     // Convert to method call: lhs.collect()
                         let collect_name = crate::ast::Name::from("collect");
-                        let collect_expr = Expr::Bina(
-                            Box::new(lhs),
-                            Op::Dot,
-                            Box::new(Expr::Ident(collect_name))
-                        );
+                        let collect_expr =
+                            Expr::Bina(Box::new(lhs), Op::Dot, Box::new(Expr::Ident(collect_name)));
                         lhs = Expr::Call(crate::ast::Call {
                             name: Box::new(collect_expr),
                             args: crate::ast::Args::new(),
@@ -1322,7 +1321,7 @@ impl<'a> Parser<'a> {
                                         name: Box::new(Expr::Dot(Box::new(lhs), method_name)),
                                         args: call.args,
                                         ret: call.ret,
-                                        type_args: Vec::new(),  // Plan 061: No type args for method calls yet
+                                        type_args: Vec::new(), // Plan 061: No type args for method calls yet
                                     });
                                 }
                                 _ => {
@@ -2144,7 +2143,13 @@ impl<'a> Parser<'a> {
                         // Parse with the actual annotation flags to correctly handle the function syntax
                         // For #[vm] functions, parse as VM function to allow newline termination
                         // For #[c] functions, parse as C function to allow semicolon termination
-                        let _ = self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static, with_params.clone());
+                        let _ = self.fn_decl_stmt_with_annotations(
+                            "",
+                            has_c,
+                            has_vm,
+                            is_static,
+                            with_params.clone(),
+                        );
                         return Ok(Stmt::Expr(Expr::Nil));
                     } else if self.is_kind(TokenKind::Type) {
                         // Skip type declaration
@@ -2413,8 +2418,13 @@ impl<'a> Parser<'a> {
                     continue;
                 }
 
-                let fn_stmt =
-                    self.fn_decl_stmt_with_annotations(&target, has_c, has_vm, is_static_method, with_params)?;
+                let fn_stmt = self.fn_decl_stmt_with_annotations(
+                    &target,
+                    has_c,
+                    has_vm,
+                    is_static_method,
+                    with_params,
+                )?;
                 if let Stmt::Fn(mut fn_expr) = fn_stmt {
                     // Set is_static flag for static methods (Plan 035 Phase 4.2)
                     if is_static_method {
@@ -4577,7 +4587,13 @@ impl<'a> Parser<'a> {
                         self.next(); // skip static
                     }
                     // Parse with actual flags to correctly handle the function syntax
-                    let _ = self.fn_decl_stmt_with_annotations(&name, has_c, has_vm, is_static, with_params.clone());
+                    let _ = self.fn_decl_stmt_with_annotations(
+                        &name,
+                        has_c,
+                        has_vm,
+                        is_static,
+                        with_params.clone(),
+                    );
                 }
                 self.expect_eos(false)?;
                 continue;
@@ -4599,8 +4615,13 @@ impl<'a> Parser<'a> {
                     .into());
                 }
 
-                let fn_stmt =
-                    self.fn_decl_stmt_with_annotations(&name, has_c, has_vm, is_static, with_params)?;
+                let fn_stmt = self.fn_decl_stmt_with_annotations(
+                    &name,
+                    has_c,
+                    has_vm,
+                    is_static,
+                    with_params,
+                )?;
                 if let Stmt::Fn(fn_expr) = fn_stmt {
                     methods.push(fn_expr);
                 }
@@ -6325,7 +6346,7 @@ impl<'a> Parser<'a> {
             name: Box::new(ident),
             args,
             ret: ret_type,
-            type_args: Vec::new(),  // Plan 061: Will be filled in during type inference
+            type_args: Vec::new(), // Plan 061: Will be filled in during type inference
         });
         self.check_symbol(expr)
     }
@@ -6722,7 +6743,10 @@ mod tests {
         let code = "(a int, b int) => a + b";
         let ast = parse_once(code);
         let last = ast.stmts.last().unwrap();
-        assert_eq!(last.to_string(), "(closure (a, b) => (bina (name a) (op +) (name b)))");
+        assert_eq!(
+            last.to_string(),
+            "(closure (a, b) => (bina (name a) (op +) (name b)))"
+        );
     }
 
     // #[test]

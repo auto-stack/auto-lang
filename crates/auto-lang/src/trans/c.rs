@@ -487,7 +487,12 @@ impl CTrans {
         // Convert the target type to C type name
         let target_c = self.c_type_name(&type_alias.target);
 
-        writeln!(out, "typedef {} {};", target_c, String::from_utf8_lossy(alias_name))?;
+        writeln!(
+            out,
+            "typedef {} {};",
+            target_c,
+            String::from_utf8_lossy(alias_name)
+        )?;
 
         Ok(())
     }
@@ -741,10 +746,15 @@ impl CTrans {
         // Plan 057: Generate vtable instances for generic spec implementations
         // Note: For now, we ignore type arguments and just use the spec declaration
         // Full monomorphization with type substitution will be implemented later
-        let spec_impls_to_process: Vec<_> = type_decl.spec_impls
+        let spec_impls_to_process: Vec<_> = type_decl
+            .spec_impls
             .iter()
             .filter_map(|spec_impl| {
-                if let Some(meta) = self.scope.borrow().lookup_meta(spec_impl.spec_name.as_str()) {
+                if let Some(meta) = self
+                    .scope
+                    .borrow()
+                    .lookup_meta(spec_impl.spec_name.as_str())
+                {
                     if let Meta::Spec(spec_decl) = meta.as_ref() {
                         Some((spec_decl.clone(), spec_impl.type_args.clone()))
                     } else {
@@ -761,12 +771,7 @@ impl CTrans {
             self.spec_decl_monomorphized(&spec_decl, &type_args, sink)?;
 
             // Plan 057: Generate vtable instance with type substitution
-            self.type_vtable_instance_with_args(
-                type_decl,
-                &spec_decl,
-                &type_args,
-                sink,
-            )?;
+            self.type_vtable_instance_with_args(type_decl, &spec_decl, &type_args, sink)?;
         }
 
         if type_decl.members.len() > 0 || !type_decl.delegations.is_empty() {
@@ -1112,8 +1117,8 @@ impl CTrans {
             Expr::Unary(op, expr) => {
                 // Plan 052: Unary operators - handle address-of and dereference
                 let op_str = match op {
-                    Op::Add => "&",  // Unary & for address-of
-                    Op::Mul => "*",  // Unary * for dereference
+                    Op::Add => "&", // Unary & for address-of
+                    Op::Mul => "*", // Unary * for dereference
                     _ => op.op(),
                 };
                 out.write(format!("{}", op_str).as_bytes()).to()?;
@@ -1235,7 +1240,9 @@ impl CTrans {
         self.closure_counter += 1;
 
         // Store closure info for later function definition generation
-        let params: Vec<(String, Option<Type>)> = closure.params.iter()
+        let params: Vec<(String, Option<Type>)> = closure
+            .params
+            .iter()
             .map(|p| (p.name.to_string(), p.ty.clone()))
             .collect();
 
@@ -1271,7 +1278,7 @@ impl CTrans {
             let return_type_str = if let Some(ref ty) = closure_info.return_type {
                 self.type_to_c(ty)
             } else {
-                "int".to_string()  // Default to int for now
+                "int".to_string() // Default to int for now
             };
 
             // Write function signature
@@ -1289,7 +1296,7 @@ impl CTrans {
                 let param_type_str = if let Some(ref ty) = param_ty {
                     self.type_to_c(ty)
                 } else {
-                    "int".to_string()  // Default to int
+                    "int".to_string() // Default to int
                 };
 
                 out.write_all(param_type_str.as_bytes())?;
@@ -1329,7 +1336,7 @@ impl CTrans {
             Type::Char => "char".to_string(),
             Type::Void => "void".to_string(),
             Type::Unknown => "int".to_string(),
-            _ => "int".to_string(),  // Default fallback
+            _ => "int".to_string(), // Default fallback
         }
     }
 
@@ -1982,9 +1989,7 @@ impl CTrans {
             Type::Void => "void".to_string(),
             Type::GenericInstance(inst) => {
                 // Generic instances: MyType<int, Heap> -> my_type_int_heap
-                let args: Vec<String> = inst.args.iter()
-                    .map(|t| self.c_type_name(t))
-                    .collect();
+                let args: Vec<String> = inst.args.iter().map(|t| self.c_type_name(t)).collect();
 
                 // Special case for List with storage type
                 // List<T, Storage> -> list_T (storage is not part of C type name)
@@ -1992,10 +1997,7 @@ impl CTrans {
                     // Second argument is storage type, skip it for C type name
                     format!("list_{}", args[0])
                 } else {
-                    format!("{}_{}",
-                        inst.base_name.to_lowercase(),
-                        args.join("_")
-                    )
+                    format!("{}_{}", inst.base_name.to_lowercase(), args.join("_"))
                 }
             }
             Type::Storage(storage) => {
@@ -2011,9 +2013,8 @@ impl CTrans {
             // Plan 060: Function types - transpile to C function pointers
             Type::Fn(param_types, return_type) => {
                 // Convert parameter types to C type names
-                let param_strs: Vec<String> = param_types.iter()
-                    .map(|t| self.c_type_name(t))
-                    .collect();
+                let param_strs: Vec<String> =
+                    param_types.iter().map(|t| self.c_type_name(t)).collect();
 
                 // Convert return type to C type name
                 let return_type_str = self.c_type_name(return_type);
@@ -2057,15 +2058,20 @@ impl CTrans {
     }
 
     /// Helper function to recursively substitute type parameters in a type
-    fn substitute_type_params_recursive(&self, ty: &Type, param_map: &std::collections::HashMap<Name, Type>) -> Type {
+    fn substitute_type_params_recursive(
+        &self,
+        ty: &Type,
+        param_map: &std::collections::HashMap<Name, Type>,
+    ) -> Type {
         match ty {
             // Type::User with no members is a type parameter - substitute it
-            Type::User(usr_type) if usr_type.members.is_empty()
-                && usr_type.methods.is_empty()
-                && usr_type.delegations.is_empty()
-                && usr_type.has.is_empty()
-                && usr_type.specs.is_empty()
-                && usr_type.parent.is_none() =>
+            Type::User(usr_type)
+                if usr_type.members.is_empty()
+                    && usr_type.methods.is_empty()
+                    && usr_type.delegations.is_empty()
+                    && usr_type.has.is_empty()
+                    && usr_type.specs.is_empty()
+                    && usr_type.parent.is_none() =>
             {
                 if let Some(concrete_type) = param_map.get(&usr_type.name) {
                     concrete_type.clone()
@@ -2075,33 +2081,27 @@ impl CTrans {
             }
 
             // Recursively substitute in composite types
-            Type::Array(array_type) => {
-                Type::Array(crate::ast::ArrayType {
-                    elem: Box::new(self.substitute_type_params_recursive(&array_type.elem, param_map)),
-                    len: array_type.len,
-                })
-            }
+            Type::Array(array_type) => Type::Array(crate::ast::ArrayType {
+                elem: Box::new(self.substitute_type_params_recursive(&array_type.elem, param_map)),
+                len: array_type.len,
+            }),
 
             // Plan 057: For pointer types, use a simpler approach - just clone for now
             // Full type substitution in pointers will require more complex handling
             Type::Ptr(_) => ty.clone(),
 
-            Type::List(elem) => {
-                Type::List(Box::new(self.substitute_type_params_recursive(elem, param_map)))
-            }
+            Type::List(elem) => Type::List(Box::new(
+                self.substitute_type_params_recursive(elem, param_map),
+            )),
 
-            Type::RuntimeArray(rta) => {
-                Type::RuntimeArray(crate::ast::RuntimeArrayType {
-                    size_expr: rta.size_expr.clone(),
-                    elem: Box::new(self.substitute_type_params_recursive(&rta.elem, param_map)),
-                })
-            }
+            Type::RuntimeArray(rta) => Type::RuntimeArray(crate::ast::RuntimeArrayType {
+                size_expr: rta.size_expr.clone(),
+                elem: Box::new(self.substitute_type_params_recursive(&rta.elem, param_map)),
+            }),
 
-            Type::Slice(slice) => {
-                Type::Slice(crate::ast::SliceType {
-                    elem: Box::new(self.substitute_type_params_recursive(&slice.elem, param_map)),
-                })
-            }
+            Type::Slice(slice) => Type::Slice(crate::ast::SliceType {
+                elem: Box::new(self.substitute_type_params_recursive(&slice.elem, param_map)),
+            }),
 
             // Other types remain unchanged
             _ => ty.clone(),
@@ -2210,7 +2210,14 @@ impl CTrans {
 
                     // Always use heap allocation (malloc) for runtime arrays
                     // This avoids scope issues with VLAs and ensures the array is accessible after declaration
-                    out.write(format!("{}* {} = malloc(sizeof({}) * ", elem_type, store.name, elem_type).as_bytes()).to()?;
+                    out.write(
+                        format!(
+                            "{}* {} = malloc(sizeof({}) * ",
+                            elem_type, store.name, elem_type
+                        )
+                        .as_bytes(),
+                    )
+                    .to()?;
 
                     // Add parentheses around binary operations to ensure correct precedence
                     if matches!(rta.size_expr.as_ref(), Expr::Bina(_, _, _)) {
@@ -2221,14 +2228,18 @@ impl CTrans {
                         self.expr(&rta.size_expr, out)?;
                     }
 
-                    out.write(b")").to()?;  // Close the malloc call
+                    out.write(b")").to()?; // Close the malloc call
 
                     // Initialize array if expression provided
                     if !matches!(store.expr, Expr::Nil) {
-                        out.write(b";\n    ").to()?;  // End malloc statement
-                        // For now, just zero-initialize
-                        // TODO: Add proper initialization based on store.expr
-                        out.write(format!("memset({}, 0, sizeof({}) * ", store.name, elem_type).as_bytes()).to()?;
+                        out.write(b";\n    ").to()?; // End malloc statement
+                                                     // For now, just zero-initialize
+                                                     // TODO: Add proper initialization based on store.expr
+                        out.write(
+                            format!("memset({}, 0, sizeof({}) * ", store.name, elem_type)
+                                .as_bytes(),
+                        )
+                        .to()?;
 
                         // Add parentheses around binary operations for memset too
                         if matches!(rta.size_expr.as_ref(), Expr::Bina(_, _, _)) {
@@ -2239,13 +2250,13 @@ impl CTrans {
                             self.expr(&rta.size_expr, out)?;
                         }
 
-                        out.write(b")").to()?;  // Close memset call
-                        // Note: eos() will add the final semicolon
+                        out.write(b")").to()?; // Close memset call
+                                               // Note: eos() will add the final semicolon
                     } else {
                         // No initialization, eos() will add semicolon
                     }
 
-                    return Ok(());  // Early return since we've handled everything
+                    return Ok(()); // Early return since we've handled everything
                 }
                 Type::Slice(slice_type) => {
                     // For slices, we need to determine the size from the initializer expression
@@ -2533,10 +2544,13 @@ impl CTrans {
                                     // If the return type is a bare User type (e.g., just "File"),
                                     // look up the complete type with methods from meta
                                     if let Type::User(ret_decl) = &method.ret {
-                                        if ret_decl.methods.is_empty() && !ret_decl.name.is_empty() {
+                                        if ret_decl.methods.is_empty() && !ret_decl.name.is_empty()
+                                        {
                                             // This is a bare type reference, look up the complete type
                                             if let Some(meta) = self.lookup_meta(&ret_decl.name) {
-                                                if let Meta::Type(Type::User(complete_decl)) = meta.as_ref() {
+                                                if let Meta::Type(Type::User(complete_decl)) =
+                                                    meta.as_ref()
+                                                {
                                                     return Some(Type::User(complete_decl.clone()));
                                                 }
                                             }
@@ -2579,7 +2593,9 @@ impl CTrans {
             // Plan 060: Infer closure type
             Expr::Closure(closure) => {
                 // Build function type: Fn(param_types, return_type)
-                let param_types: Vec<Type> = closure.params.iter()
+                let param_types: Vec<Type> = closure
+                    .params
+                    .iter()
                     .map(|p| p.ty.clone().unwrap_or(Type::Unknown))
                     .collect();
 
@@ -3176,21 +3192,25 @@ impl CTrans {
                     // Plan 052/061: Check if this is a static type method call
                     // e.g., List<int, Heap>.new() or Heap.new() - calling new() on the type itself
                     // Static calls use GenName (generic) or bare Ident matching type name (non-generic)
-                    let is_static_call = matches!(lhs.as_ref(), Expr::GenName(_)) ||
-                                         (matches!(lhs.as_ref(), Expr::Ident(_)) && {
-                                             // Check if this Ident matches the type name
-                                             // e.g., lhs is Ident("Heap") and decl.name is "Heap"
-                                             if let Expr::Ident(name) = lhs.as_ref() {
-                                                 name == &decl.name
-                                             } else {
-                                                 false
-                                             }
-                                         });
+                    let is_static_call = matches!(lhs.as_ref(), Expr::GenName(_))
+                        || (matches!(lhs.as_ref(), Expr::Ident(_)) && {
+                            // Check if this Ident matches the type name
+                            // e.g., lhs is Ident("Heap") and decl.name is "Heap"
+                            if let Expr::Ident(name) = lhs.as_ref() {
+                                name == &decl.name
+                            } else {
+                                false
+                            }
+                        });
 
                     // Check if this is a delegation wrapper method
                     // Delegation wrappers should use lowercase method names
                     let is_delegation = decl.delegations.iter().any(|delegation| {
-                        if let Some(meta) = self.scope.borrow().lookup_meta(delegation.spec_name.as_str()) {
+                        if let Some(meta) = self
+                            .scope
+                            .borrow()
+                            .lookup_meta(delegation.spec_name.as_str())
+                        {
                             if let Meta::Spec(spec_decl) = meta.as_ref() {
                                 spec_decl.methods.iter().any(|m| m.name == *method_name)
                             } else {
@@ -3481,7 +3501,12 @@ impl CTrans {
         } else if let Expr::Dot(object, method) = call.name.as_ref() {
             // Plan 056: Method call using Expr::Dot(object, method)
             // Convert object and method to boxed references for method_call
-            if self.method_call(&Box::new(object.as_ref().clone()), &Box::new(Expr::Ident(method.clone())), call, out)? {
+            if self.method_call(
+                &Box::new(object.as_ref().clone()),
+                &Box::new(Expr::Ident(method.clone())),
+                call,
+                out,
+            )? {
                 return Ok(());
             }
         }
@@ -3524,7 +3549,13 @@ impl CTrans {
         Ok(())
     }
 
-    fn union_init_c(&mut self, type_name: &AutoStr, union_decl: &Union, args: &Args, out: &mut impl Write) -> AutoResult<()> {
+    fn union_init_c(
+        &mut self,
+        type_name: &AutoStr,
+        union_decl: &Union,
+        args: &Args,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
         // Generate C union initialization: {.field = value}
         // Note: Unions in C use designated initializer syntax: {.field = value}
         out.write(b"{").to()?;
@@ -3541,7 +3572,9 @@ impl CTrans {
                 }
                 _ => {
                     // Positional arg - error in test input
-                    return Err("Union initialization requires named arguments (field: value)".into());
+                    return Err(
+                        "Union initialization requires named arguments (field: value)".into(),
+                    );
                 }
             }
             if i < args.args.len() - 1 {
@@ -3552,7 +3585,13 @@ impl CTrans {
         Ok(())
     }
 
-    fn struct_init_c(&mut self, type_name: &AutoStr, type_decl: &TypeDecl, args: &Args, out: &mut impl Write) -> AutoResult<()> {
+    fn struct_init_c(
+        &mut self,
+        type_name: &AutoStr,
+        type_decl: &TypeDecl,
+        args: &Args,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
         // Generate C struct initialization: {.field1 = value1, .field2 = value2}
         // Note: In C, we don't include the type name in the initializer for variable declarations
         // The type is specified separately: struct Point p = {.x = 1, .y = 2};
@@ -3623,7 +3662,7 @@ impl CTrans {
 
     fn is_returnable(&self, stmt: &Stmt) -> bool {
         match stmt {
-            Stmt::Return(_) => true,  // Explicit return statement is always returnable
+            Stmt::Return(_) => true, // Explicit return statement is always returnable
             Stmt::Expr(expr) => match expr {
                 Expr::Call(call) => {
                     if let Expr::Ident(name) = &call.name.as_ref() {
@@ -3668,9 +3707,18 @@ impl CTrans {
     fn is_const_expr(&self, expr: &Expr) -> bool {
         match expr {
             // Literals are constant
-            Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_) | Expr::I64(_) |
-            Expr::Byte(_) | Expr::Float(_, _) | Expr::Double(_, _) |
-            Expr::Bool(_) | Expr::Char(_) | Expr::Str(_) | Expr::CStr(_) => true,
+            Expr::Int(_)
+            | Expr::Uint(_)
+            | Expr::I8(_)
+            | Expr::U8(_)
+            | Expr::I64(_)
+            | Expr::Byte(_)
+            | Expr::Float(_, _)
+            | Expr::Double(_, _)
+            | Expr::Bool(_)
+            | Expr::Char(_)
+            | Expr::Str(_)
+            | Expr::CStr(_) => true,
 
             // Array literals are constant if all elements are constant
             Expr::Array(elems) => elems.iter().all(|e| self.is_const_expr(e)),
@@ -3694,10 +3742,7 @@ impl CTrans {
             }
 
             // Unary ops: only some are constant if operand is constant
-            Expr::Unary(op, expr) => {
-                matches!(op, Op::Sub | Op::Not)
-                    && self.is_const_expr(expr)
-            }
+            Expr::Unary(op, expr) => matches!(op, Op::Sub | Op::Not) && self.is_const_expr(expr),
 
             // Everything else is treated as non-constant for safety
             _ => false,

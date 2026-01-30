@@ -737,7 +737,9 @@ impl Diagnostic for NameError {
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
-            NameError::UndefinedVariable { name, suggested, .. } => {
+            NameError::UndefinedVariable {
+                name, suggested, ..
+            } => {
                 if let Some(suggestion) = suggested {
                     Some(Box::new(format!(
                         "Variable '{}' is not defined in this scope. Did you mean '{}'?",
@@ -758,7 +760,9 @@ impl Diagnostic for NameError {
                 "Use 'mut' instead of 'let' to make '{}' mutable",
                 name
             ))),
-            NameError::UndefinedFunction { name, suggested, .. } => {
+            NameError::UndefinedFunction {
+                name, suggested, ..
+            } => {
                 if let Some(suggestion) = suggested {
                     Some(Box::new(format!(
                         "Function '{}' is not defined. Did you mean '{}'?",
@@ -999,12 +1003,20 @@ pub fn attach_source(err: AutoError, name: String, code: String) -> AutoError {
             source: NamedSource::new(name, code),
             error: e,
         }),
-        AutoError::MultipleErrors { count, plural, mut errors } => {
+        AutoError::MultipleErrors {
+            count,
+            plural,
+            mut errors,
+        } => {
             // Attach source to each error in the list
             for error in errors.iter_mut() {
                 *error = attach_source(error.clone(), name.clone(), code.clone());
             }
-            AutoError::MultipleErrors { count, plural, errors }
+            AutoError::MultipleErrors {
+                count,
+                plural,
+                errors,
+            }
         }
         _ => {
             // For other error types (Name, Type, Runtime), we can't attach source
@@ -1012,4 +1024,29 @@ pub fn attach_source(err: AutoError, name: String, code: String) -> AutoError {
             err
         }
     }
+}
+
+/// Print an error using Miette's rich diagnostic format
+///
+/// This function formats the error with source code snippets, error codes,
+/// and helpful suggestions when available.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use auto_lang::error::{print_error, AutoError};
+///
+/// if let Err(e) = some_operation() {
+///     print_error(&e);
+/// }
+/// ```
+pub fn print_error(err: &AutoError) {
+    eprintln!("{:?}", miette::Report::new(err.clone()));
+}
+
+/// Format an error as a string using Miette's diagnostic format
+///
+/// Useful for capturing error output in tests or logs.
+pub fn format_error(err: &AutoError) -> String {
+    format!("{:?}", miette::Report::new(err.clone()))
 }

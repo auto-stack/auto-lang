@@ -2,33 +2,33 @@
 
 int main(void) {
 
-    list_void*_void* list1 = List.new();
-    list1.push(1);
-    list1.push(2);
-    list1.push(3);
-    list1.push(4);
-    list1.push(5);
+    struct List list1 = List_New();
+    List_Push(&list1, 1);
+    List_Push(&list1, 2);
+    List_Push(&list1, 3);
+    List_Push(&list1, 4);
+    List_Push(&list1, 5);
 
-    list_void*_void* list2 = List.new();
-    list2.push(10);
-    list2.push(20);
-    list2.push(30);
-    list2.push(40);
-    list2.push(50);
+    struct List list2 = List_New();
+    List_Push(&list2, 10);
+    List_Push(&list2, 20);
+    List_Push(&list2, 30);
+    List_Push(&list2, 40);
+    List_Push(&list2, 50);
 
-    unknown limited = list1.iter().limit(3);
+    unknown limited = List_Iter(&list1).limit(3);
     say(limited.count());
 
-    unknown skipped = list1.iter().skip(2);
+    unknown skipped = List_Iter(&list1).skip(2);
     say(skipped.count());
 
-    unknown enumerated = list1.iter().enumerate();
+    unknown enumerated = List_Iter(&list1).enumerate();
     say(enumerated.count());
 
-    unknown zipped = list1.iter().zip(list2.iter());
+    unknown zipped = List_Iter(&list1).zip(List_Iter(&list2));
     say(zipped.count());
 
-    unknown chained = list1.iter().chain(list2.iter());
+    unknown chained = List_Iter(&list1).chain(List_Iter(&list2));
     say(chained.count());
     return 0;
 }

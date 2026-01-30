@@ -10,5 +10,5 @@ struct MyReader {
     char* data;
 };
 
-str MyReader_Read(struct MyReader *self);
+char* MyReader_Read(struct MyReader *self);
 

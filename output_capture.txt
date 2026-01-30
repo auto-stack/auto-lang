@@ -1,0 +1,268 @@
+warning: unused import: `std::collections::HashMap`
+  --> crates\auto-val\src\value.rs:12:5
+   |
+12 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `auto-val` (lib) generated 1 warning (run `cargo fix --lib -p auto-val` to apply 1 suggestion)
+   Compiling auto-lang v0.1.0 (D:\autostack\auto-lang\crates\auto-lang)
+warning: unused import: `AutoStr`
+    --> crates\auto-lang\src\eval.rs:2371:47
+     |
+2371 |                         use auto_val::{Array, AutoStr};
+     |                                               ^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `AutoStr`
+    --> crates\auto-lang\src\eval.rs:2547:55
+     |
+2547 | ...                   use auto_val::{Array, AutoStr};
+     |                                             ^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+    --> crates\auto-lang\src\eval.rs:4881:13
+     |
+4881 |         use std::collections::HashMap;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Name`
+   --> crates\auto-lang\src\infer\expr.rs:863:49
+    |
+863 |         use crate::ast::{Closure, ClosureParam, Name};
+    |                                                 ^^^^
+
+warning: unused import: `Name`
+   --> crates\auto-lang\src\infer\expr.rs:888:49
+    |
+888 |         use crate::ast::{Closure, ClosureParam, Name, Type};
+    |                                                 ^^^^
+
+warning: unused import: `GenericInstance`
+    --> crates\auto-lang\src\parser.rs:5334:26
+     |
+5334 |         use crate::ast::{GenericInstance, Type};
+     |                          ^^^^^^^^^^^^^^^
+
+warning: unused import: `TypeAlias`
+ --> crates\auto-lang\src\universe.rs:3:40
+  |
+3 | use crate::ast::{self, SpecDecl, Type, TypeAlias};
+  |                                        ^^^^^^^^^
+
+warning: unused import: `crate::vm::memory::alloc_array`
+  --> crates\auto-lang\src\vm\storage.rs:14:9
+   |
+14 |     use crate::vm::memory::alloc_array;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `SourceCode`
+ --> crates\auto-lang\src\tests\error_tests.rs:3:39
+  |
+3 | use miette::{Diagnostic, NamedSource, SourceCode};
+  |                                       ^^^^^^^^^^
+
+warning: unused import: `GenericParam`
+  --> crates\auto-lang\src\tests\const_generic_tests.rs:43:22
+   |
+43 |     use crate::ast::{GenericParam, ConstParam, Type};
+   |                      ^^^^^^^^^^^^
+
+warning: unused import: `crate::error::AutoResult`
+ --> crates\auto-lang\src\tests\storage_integration_tests.rs:2:5
+  |
+2 | use crate::error::AutoResult;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `object`
+    --> crates\auto-lang\src\eval.rs:2125:23
+     |
+2125 |             Expr::Dot(object, field) => {
+     |                       ^^^^^^ help: if this is intentional, prefix it with an underscore: `_object`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `field`
+    --> crates\auto-lang\src\eval.rs:2125:31
+     |
+2125 |             Expr::Dot(object, field) => {
+     |                               ^^^^^ help: if this is intentional, prefix it with an underscore: `_field`
+
+warning: unused variable: `errors`
+   --> crates\auto-lang\src\infer\expr.rs:566:21
+    |
+566 |                 Err(errors) => {
+    |                     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_errors`
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\infer\expr.rs:919:13
+    |
+919 |         let mut call = Call {
+    |             ----^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `result`
+  --> crates\auto-lang\src\interp.rs:94:17
+   |
+94 |             let result = interpreter.interpret(&prelude_code);
+   |                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_result`
+
+warning: unreachable pattern
+    --> crates\auto-lang\src\parser.rs:2238:13
+     |
+2114 |             TokenKind::Is => self.is_stmt()?,
+     |             ------------- matches all the relevant values
+...
+2238 |             TokenKind::Is => Stmt::Is(self.parse_is_stmt()?),
+     |             ^^^^^^^^^^^^^ no value can reach this
+     |
+     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `tp`
+    --> crates\auto-lang\src\parser.rs:4267:39
+     |
+4267 |             if let GenericParam::Type(tp) = param {
+     |                                       ^^ help: if this is intentional, prefix it with an underscore: `_tp`
+
+warning: unused variable: `decl`
+    --> crates\auto-lang\src\parser.rs:6036:36
+     |
+6036 |                         Type::User(decl) => {
+     |                                    ^^^^ help: if this is intentional, prefix it with an underscore: `_decl`
+
+warning: unused variable: `i`
+   --> crates\auto-lang\src\trans\c.rs:281:14
+    |
+281 |         for (i, method) in methods.iter().enumerate() {
+    |              ^ help: if this is intentional, prefix it with an underscore: `_i`
+
+warning: unused variable: `rhs`
+    --> crates\auto-lang\src\trans\c.rs:2750:33
+     |
+2750 |             Expr::Bina(lhs, op, rhs) => {
+     |                                 ^^^ help: if this is intentional, prefix it with an underscore: `_rhs`
+
+warning: unused variable: `type_name`
+    --> crates\auto-lang\src\trans\c.rs:3723:9
+     |
+3723 |         type_name: &AutoStr,
+     |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_type_name`
+
+warning: unused variable: `union_decl`
+    --> crates\auto-lang\src\trans\c.rs:3724:9
+     |
+3724 |         union_decl: &Union,
+     |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_union_decl`
+
+warning: unused variable: `type_name`
+    --> crates\auto-lang\src\trans\c.rs:3759:9
+     |
+3759 |         type_name: &AutoStr,
+     |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_type_name`
+
+warning: unused variable: `uni`
+   --> crates\auto-lang\src\vm\list.rs:432:22
+    |
+432 | pub fn list_iter_map(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+    |                      ^^^ help: if this is intentional, prefix it with an underscore: `_uni`
+
+warning: unused variable: `uni`
+   --> crates\auto-lang\src\vm\list.rs:586:25
+    |
+586 | pub fn list_iter_filter(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+    |                         ^^^ help: if this is intentional, prefix it with an underscore: `_uni`
+
+warning: unused variable: `elem`
+   --> crates\auto-lang\src\vm\list.rs:940:33
+    |
+940 | ...                   let elem = list.elems.get(i).cloned().unwrap_or(Value::Nil);
+    |                           ^^^^ help: if this is intentional, prefix it with an underscore: `_elem`
+
+warning: unused variable: `uni`
+    --> crates\auto-lang\src\vm\list.rs:1225:24
+     |
+1225 | pub fn filter_iter_map(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+     |                        ^^^ help: if this is intentional, prefix it with an underscore: `_uni`
+
+warning: unused variable: `uni`
+    --> crates\auto-lang\src\vm\list.rs:1278:24
+     |
+1278 | pub fn map_iter_filter(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+     |                        ^^^ help: if this is intentional, prefix it with an underscore: `_uni`
+
+warning: unused variable: `uni`
+  --> crates\auto-lang\src\vm\memory.rs:62:20
+   |
+62 | pub fn alloc_array(uni: Shared<Universe>, size: Value) -> Value {
+   |                    ^^^ help: if this is intentional, prefix it with an underscore: `_uni`
+
+warning: unused variable: `uni`
+  --> crates\auto-lang\src\vm\storage.rs:13:17
+   |
+13 | pub fn heap_new(uni: Shared<Universe>, _args: Value) -> Value {
+   |                 ^^^ help: if this is intentional, prefix it with an underscore: `_uni`
+
+warning: method `mark_expr_as_moved` is never used
+    --> crates\auto-lang\src\eval.rs:2101:8
+     |
+  55 | impl Evaler {
+     | ----------- method in this implementation
+...
+2101 |     fn mark_expr_as_moved(&mut self, expr: &Expr) {
+     |        ^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `find_type_arg_for_param` is never used
+   --> crates\auto-lang\src\infer\expr.rs:504:4
+    |
+504 | fn find_type_arg_for_param(_call: &Call, _param_name: &Name) -> Option<Type> {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `parse_type_param` and `parse_ident_type` are never used
+    --> crates\auto-lang\src\parser.rs:5227:8
+     |
+2056 | impl<'a> Parser<'a> {
+     | ------------------- methods in this implementation
+...
+5227 |     fn parse_type_param(&mut self) -> AutoResult<crate::ast::TypeParam> {
+     |        ^^^^^^^^^^^^^^^^
+...
+5684 |     fn parse_ident_type(&mut self) -> AutoResult<Type> {
+     |        ^^^^^^^^^^^^^^^^
+
+warning: method `validate_struct_init` is never used
+    --> crates\auto-lang\src\trans\c.rs:3585:8
+     |
+ 147 | impl CTrans {
+     | ----------- method in this implementation
+...
+3585 |     fn validate_struct_init(&mut self, type_decl: &TypeDecl, args: &Args) -> AutoResult<()> {
+     |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: `auto-lang` (lib test) generated 35 warnings (run `cargo fix --lib -p auto-lang --tests` to apply 30 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.70s
+     Running unittests src\lib.rs (target\debug\deps\auto_lang-c06d48d5fd34073c.exe)
+
+running 1 test
+Directory of cargo : D:\autostack\auto-lang\crates\auto-lang
+src_path: D:\autostack\auto-lang\crates\auto-lang\test/a2c/060_generic_tag/generic_tag.at
+
+thread 'tests::a2c_tests::test_060_generic_tag' (73116) panicked at crates\auto-lang\src\tests\a2c_tests.rs:745:13:
+Transpilation failed - generics not yet implemented
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test tests::a2c_tests::test_060_generic_tag ... FAILED
+
+failures:
+
+failures:
+    tests::a2c_tests::test_060_generic_tag
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 905 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p auto-lang --lib`

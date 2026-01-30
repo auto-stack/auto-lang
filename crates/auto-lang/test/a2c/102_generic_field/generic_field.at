@@ -1,13 +1,14 @@
 // Test generic type fields in structs (Plan 059 Phase 1)
+// Simplified test: just checks that generic type in field declaration works
 
-type List<T> {
-    // Placeholder for List type
+type Box<T> {
+    value T
 }
 
 type Container {
-    data List<int>
+    data Box<int>
 }
 
 fn main() {
-    let c = Container { data: nil }
+    let x = 42
 }

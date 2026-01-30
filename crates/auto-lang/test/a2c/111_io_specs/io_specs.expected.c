@@ -1,7 +1,7 @@
 #include "io_specs.h"
 
 
-str MyReader_Read(struct MyReader *self) {
+char* MyReader_Read(struct MyReader *self) {
     return self->data;
 }
 Reader_vtable MyReader_Reader_vtable = {

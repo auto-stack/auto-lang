@@ -1,0 +1,10 @@
+parse_stmt (tag): Tag
+parse_stmt (fn): Fn
+parse_stmt (var): Var
+parse_stmt (x): Ident
+parse_stmt (is): Is
+parse_stmt (tag): Tag
+parse_stmt (fn): Fn
+parse_stmt (var): Var
+parse_stmt (x): Ident
+parse_stmt (is): Is
