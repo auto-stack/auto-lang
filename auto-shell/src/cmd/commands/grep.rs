@@ -1,7 +1,7 @@
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
 use auto_val::{Value, Obj, Array};
-use miette::{IntoDiagnostic, Result, miette};
+use miette::{IntoDiagnostic, Result};
 use regex::Regex;
 use std::path::Path;
 

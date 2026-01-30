@@ -2,7 +2,7 @@
 //!
 //! Implements core file system operations: ls, cd, mkdir, rm, mv, cp
 
-use auto_val::{Value, Obj, Array, AutoStr};
+use auto_val::{Value, Obj, Array};
 use miette::{IntoDiagnostic, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -214,7 +214,7 @@ pub fn ls_command_value(
             .unwrap_or("?")
             .to_string();
 
-        let mut obj = build_file_entry_obj(&name, false, &metadata, long);
+        let obj = build_file_entry_obj(&name, false, &metadata, long);
         let mut arr = Array::new();
         arr.push(Value::Obj(obj));
         return Ok(Value::Array(arr));

@@ -1,4 +1,4 @@
-use crate::cmd::{Argument, Command, PipelineData, Signature};
+use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
 use miette::Result;
 

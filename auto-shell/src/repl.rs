@@ -1,6 +1,6 @@
 use miette::Result;
 use reedline::{
-    default_emacs_keybindings, ColumnarMenu, DefaultPrompt, EditCommand, Emacs, FileBackedHistory,
+    default_emacs_keybindings, ColumnarMenu, EditCommand, Emacs, FileBackedHistory,
     KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal,
     TraversalDirection,
 };
@@ -18,7 +18,7 @@ pub struct Repl {
 pub struct ShellPrompt;
 
 impl reedline::Prompt for ShellPrompt {
-    fn render_prompt_left(&self) -> std::borrow::Cow<str> {
+    fn render_prompt_left(&self) -> std::borrow::Cow<'_, str> {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let mut path_str = cwd.display().to_string();
 
@@ -33,25 +33,25 @@ impl reedline::Prompt for ShellPrompt {
         std::borrow::Cow::Owned(format!("{}〉", path_str))
     }
 
-    fn render_prompt_right(&self) -> std::borrow::Cow<str> {
+    fn render_prompt_right(&self) -> std::borrow::Cow<'_, str> {
         std::borrow::Cow::Borrowed("")
     }
 
     fn render_prompt_indicator(
         &self,
         _prompt_mode: reedline::PromptEditMode,
-    ) -> std::borrow::Cow<str> {
+    ) -> std::borrow::Cow<'_, str> {
         std::borrow::Cow::Borrowed("")
     }
 
-    fn render_prompt_multiline_indicator(&self) -> std::borrow::Cow<str> {
+    fn render_prompt_multiline_indicator(&self) -> std::borrow::Cow<'_, str> {
         std::borrow::Cow::Borrowed("..> ")
     }
 
     fn render_prompt_history_search_indicator(
         &self,
         history_search: reedline::PromptHistorySearch,
-    ) -> std::borrow::Cow<str> {
+    ) -> std::borrow::Cow<'_, str> {
         std::borrow::Cow::Owned(format!("({}): ", history_search.term))
     }
 }

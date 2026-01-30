@@ -141,7 +141,7 @@ impl Shell {
     /// Execute a pipeline with Auto function support
     fn execute_pipeline_with_auto(&mut self, commands: &[String]) -> Result<Option<String>> {
         use crate::cmd::{auto, builtin, external, PipelineData};
-        use crate::data::ShellValue;
+        
         use crate::parser::quote::parse_args;
 
         if commands.is_empty() {

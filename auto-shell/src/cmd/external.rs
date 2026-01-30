@@ -106,7 +106,7 @@ fn try_execute_powershell(
 ) -> Result<Option<String>> {
     // Build PowerShell command
     // Use -Command with encoded arguments
-    let mut ps_cmd = format!("{}{}", cmd_name,
+    let ps_cmd = format!("{}{}", cmd_name,
         args.iter()
             .map(|arg| format!(" \"{arg}\""))
             .collect::<Vec<_>>()

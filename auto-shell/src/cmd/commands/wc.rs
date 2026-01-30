@@ -36,7 +36,7 @@ impl Command for WcCommand {
         match input {
             PipelineData::Value(Value::Array(arr)) => {
                 // For counting lines (-l), or counting all with non-text array, count array elements
-                if (count_lines && !count_words && !count_bytes && !count_chars) {
+                if count_lines && !count_words && !count_bytes && !count_chars {
                     // Special case: just counting elements (like "ls | wc -l")
                     let mut obj = Obj::new();
                     obj.set("lines", Value::Int(arr.len() as i32));

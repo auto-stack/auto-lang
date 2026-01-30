@@ -1,6 +1,6 @@
 use crate::cmd::{Command, PipelineData, Signature};
 use crate::shell::Shell;
-use auto_val::{Value, Array, AutoStr};
+use auto_val::{Value, Array};
 use miette::Result;
 
 pub struct GetCommand;

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Manages directory bookmarks ensuring persistence
 pub struct BookmarkManager {

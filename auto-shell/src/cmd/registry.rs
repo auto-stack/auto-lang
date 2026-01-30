@@ -1,5 +1,4 @@
 use crate::cmd::Command;
-use miette::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
 

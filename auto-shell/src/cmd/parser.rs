@@ -1,5 +1,5 @@
 use crate::cmd::{Argument, Signature};
-use miette::{IntoDiagnostic, Result};
+use miette::Result;
 use std::collections::HashMap;
 
 /// Parsed arguments ready for command consumption
