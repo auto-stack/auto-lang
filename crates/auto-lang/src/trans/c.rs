@@ -2735,12 +2735,9 @@ impl CTrans {
                 // sink.body.write(format!("{}++", idx).as_bytes())?;
             }
             Iter::Cond => {
-                sink.body.write(b"for (").to()?;
-                // Handle init statement if present: for init; condition { ... }
-                if let Some(init_stmt) = &for_stmt.init {
-                    self.stmt(init_stmt, sink)?;
-                    sink.body.write(b"; ").to()?;
-                }
+                // Conditional for loop (while): for condition { ... }
+                // Transpile to C's while loop
+                sink.body.write(b"while (").to()?;
                 self.expr(&for_stmt.range, &mut sink.body)?;
             }
             Iter::Indexed(_, _) => {

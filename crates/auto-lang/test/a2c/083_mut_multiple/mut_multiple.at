@@ -1,0 +1,11 @@
+fn main() int {
+    mut sum = 0
+    mut product = 1
+    mut i = 1
+    for i < 5 {
+        sum = sum + i
+        product = product * i
+        i = i + 1
+    }
+    sum + product
+}

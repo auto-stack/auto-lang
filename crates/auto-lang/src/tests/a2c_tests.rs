@@ -907,3 +907,24 @@ fn test_134_collect() {
 fn test_146_io_specs() {
     test_a2c("146_io_specs").unwrap();
 }
+
+// Plan 053: Mutable variables in loop scopes
+#[test]
+fn test_083_mut_counter() {
+    test_a2c("083_mut_counter").unwrap();
+}
+
+#[test]
+fn test_083_mut_accumulator() {
+    test_a2c("083_mut_accumulator").unwrap();
+}
+
+#[test]
+fn test_083_mut_multiple() {
+    test_a2c("083_mut_multiple").unwrap();
+}
+
+#[test]
+fn test_083_mut_array_sum() {
+    test_a2c("083_mut_array_sum").unwrap();
+}
