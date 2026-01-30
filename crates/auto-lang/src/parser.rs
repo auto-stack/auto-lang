@@ -2832,6 +2832,12 @@ impl<'a> Parser<'a> {
             })
             .collect();
 
+        // Plan 019 Stage 8.5: Register all specs in universe's specs HashMap
+        // This makes them available for spec method resolution and type checking
+        for spec_decl in &spec_decls {
+            self.scope.borrow_mut().register_spec(std::rc::Rc::new(spec_decl.clone()));
+        }
+
         // Import the merged AST into scope
         // Use the path of the last loaded file (usually the main .at file)
         let last_file_path = loaded_files.last().unwrap();
@@ -4114,8 +4120,11 @@ impl<'a> Parser<'a> {
             let name_pos = self.cur.pos; // Capture position before skipping name
             self.next(); // skip name
 
-            // param type
+            // param type (skip ':' if present for type annotation)
             let mut ty = Type::Int;
+            if self.is_kind(TokenKind::Colon) {
+                self.next(); // skip ':'
+            }
             if self.is_type_name() {
                 ty = self.parse_type()?;
             }
@@ -4259,7 +4268,14 @@ impl<'a> Parser<'a> {
             Type::Void // Default to void
         };
 
-        Ok(SpecMethod { name, params, ret })
+        // Parse optional method body (default implementation)
+        let body = if self.is_kind(TokenKind::LBrace) {
+            Some(Box::new(crate::ast::Expr::Block(self.body()?)))
+        } else {
+            None  // Just signature, no default implementation
+        };
+
+        Ok(SpecMethod { name, params, ret, body })
     }
 
     /// Parse a type alias statement: `type List<T> = List<T, DefaultStorage>;`
@@ -5178,6 +5194,39 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse function type: fn(Params)ReturnType (Plan 060)
+    /// Examples: fn(int)str, fn(int, bool)void, fn()int
+    fn parse_fn_type(&mut self) -> AutoResult<Type> {
+        use crate::ast::Type;
+
+        self.expect(TokenKind::Fn)?; // Consume 'fn'
+        self.expect(TokenKind::LParen)?; // Consume '('
+
+        // Parse parameters
+        let mut params = Vec::new();
+        if !self.is_kind(TokenKind::RParen) {
+            // Parse first parameter type
+            params.push(self.parse_type()?);
+
+            // Parse remaining parameter types
+            while self.is_kind(TokenKind::Comma) {
+                self.next(); // Consume ','
+                params.push(self.parse_type()?);
+            }
+        }
+
+        self.expect(TokenKind::RParen)?; // Consume ')'
+
+        // Parse return type (if present)
+        let ret = if self.is_type_name() {
+            Box::new(self.parse_type()?)
+        } else {
+            Box::new(Type::Void)
+        };
+
+        Ok(Type::Fn(params, ret))
+    }
+
     /// Parse a single type parameter (e.g., T, K, V)
     #[allow(dead_code)]
     fn parse_type_param(&mut self) -> AutoResult<crate::ast::TypeParam> {
@@ -5656,6 +5705,7 @@ impl<'a> Parser<'a> {
         || self.is_kind(TokenKind::LSquare) // array types like `[5]int`
         || self.is_kind(TokenKind::Star) // ptr types like `*int`
         || self.is_kind(TokenKind::At) // ref types like `@int`
+        || self.is_kind(TokenKind::Fn) // function types like `fn(int)str` (Plan 060)
     }
 
     pub fn parse_type(&mut self) -> AutoResult<Type> {
@@ -5738,6 +5788,7 @@ impl<'a> Parser<'a> {
             TokenKind::Ident => self.parse_ident_or_generic_type(),
             TokenKind::Star => self.parse_ptr_type(),
             TokenKind::LSquare => self.parse_array_type(),
+            TokenKind::Fn => self.parse_fn_type(), // Plan 060: function types like fn(int)str
             _ => {
                 let message = format!("Expected type, got {}", self.cur.text);
                 let span = pos_to_span(self.cur.pos);

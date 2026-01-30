@@ -206,6 +206,53 @@ fn test_list_map_double() {
 }
 
 #[test]
+fn test_list_map_square() {
+    let code = r#"
+        let list = List.new(10, 20, 30)
+
+        fn square(x int) int {
+            return x * x
+        }
+
+        // let mapped = list.iter().map(square)
+        let mapped = list.map(square).!
+
+        [mapped[0], mapped[1], mapped[2]]
+    "#;
+    let result = run(code).unwrap();
+    assert!(result.contains("100"), "Doubled 10 should be 20, got: {}", result);
+    assert!(result.contains("400"), "Doubled 20 should be 40, got: {}", result);
+    assert!(result.contains("900"), "Doubled 30 should be 60, got: {}", result);
+}
+
+#[test]
+fn test_list_map_triple() {
+    // Test general function calling with a non-hardcoded function
+    let code = r#"
+        let list = List.new()
+        list.push(1)
+        list.push(2)
+        list.push(3)
+
+        fn triple(x int) int {
+            return x * 3
+        }
+
+        let iter = list.iter()
+        let mapped = iter.map(triple)
+        let first = mapped.next()
+        let second = mapped.next()
+        let third = mapped.next()
+
+        [first, second, third]
+    "#;
+    let result = run(code).unwrap();
+    assert!(result.contains("3"), "Tripled 1 should be 3, got: {}", result);
+    assert!(result.contains("6"), "Tripled 2 should be 6, got: {}", result);
+    assert!(result.contains("9"), "Tripled 3 should be 9, got: {}", result);
+}
+
+#[test]
 fn test_list_map_string_length() {
     let code = r#"
         let list = List.new()
@@ -717,3 +764,66 @@ fn test_list_single_element() {
     assert!(result.contains("42"), "Original element should be 42");
     assert!(result.contains("84"), "Doubled element should be 84");
 }
+
+#[test]
+fn test_list_map_direct_via_spec() {
+    // Plan 019 Stage 8.5: Test spec default methods
+    // This test verifies that list.map(func) works directly without explicit iter()
+    let code = r#"
+        let list = List.new()
+        list.push(10)
+        list.push(20)
+        list.push(30)
+
+        fn triple(x int) int {
+            return x * 3
+        }
+
+        // Direct call to list.map() without list.iter().map()
+        // Should work via Iterable<T> spec default method
+        let iter = list.map(triple)
+        let first = iter.next()
+        let second = iter.next()
+        let third = iter.next()
+
+        [first, second, third]
+    "#;
+
+    let result = run(code).unwrap();
+    assert!(result.contains("30"), "Tripled 10 should be 30, got: {}", result);
+    assert!(result.contains("60"), "Tripled 20 should be 60, got: {}", result);
+    assert!(result.contains("90"), "Tripled 30 should be 90, got: {}", result);
+}
+
+#[test]
+fn test_list_filter_direct_via_spec() {
+    // Plan 019 Stage 8.5: Test spec default methods for filter
+    let code = r#"
+        let list = List.new()
+        list.push(1)
+        list.push(2)
+        list.push(3)
+        list.push(4)
+        list.push(5)
+
+        fn is_even(x int) bool {
+            return x % 2 == 0
+        }
+
+        // Direct call to list.filter() without list.iter().filter()
+        let iter = list.filter(is_even)
+        let first = iter.next()
+        let second = iter.next()
+        let third = iter.next()
+        let fourth = iter.next()
+        let done = iter.next()
+
+        [first, second, third, fourth, done]
+    "#;
+
+    let result = run(code).unwrap();
+    assert!(result.contains("2"), "First even should be 2, got: {}", result);
+    assert!(result.contains("4"), "Second even should be 4, got: {}", result);
+    assert!(result.contains("nil"), "Done should be nil");
+}
+

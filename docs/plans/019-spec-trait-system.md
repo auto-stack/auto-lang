@@ -24,6 +24,15 @@
 
 **设计更新**: 新的成员级 `has` 委托语法（2025-01-12）
 
+**新增任务** (2025-01-31):
+- ⏸️ **阶段 8.5: Spec Default Method Implementations (NEW)**
+  - Add `body` field to `SpecMethod` for default implementations
+  - Parse spec method bodies: `fn map<U>(f: fn(T)U) MapIter<Self, T, U> { ... }`
+  - Implement method resolution: walk spec hierarchy when method not found on type
+  - Support forwarding: `list.map()` → `list.iter().map()` via `Iterable<T>` spec
+  - Update VM registry to check spec implementations
+  - Test with List/Iterable: `list.map(func)` should work without explicit `iter()`
+
 **待完成** (阶段 9-11):
 - ⏸️ 阶段 9: 多态类型和 Trait Bounds
 - ⏸️ 阶段 10: 测试和验证
@@ -1635,6 +1644,323 @@ fn eval_super(&mut self, super_expr: &Super) -> Value {
 - [ ] 方法重写与 `super` 工作
 - [ ] 菱形问题正确解决
 - [ ] 组合测试通过
+
+---
+
+### ⏸️ 阶段 8.5: Spec Default Method Implementations (NEW - 2025-01-31)
+
+**工期**: 8-12 小时
+**依赖**: 阶段 2 (SpecDecl), 阶段 3 (Parser)
+**风险**: 中
+**优先级**: HIGH - Required for elegant iterator API
+
+#### 背景
+
+当前 spec 系统只支持方法签名声明，不支持默认方法实现。这导致：
+
+```auto
+// 当前需要显式调用 iter()
+list.iter().map(func)
+list.iter().filter(pred)
+
+// 期望能够直接调用（通过 spec 默认方法）
+list.map(func)     // 自动转发到 list.iter().map(func)
+list.filter(pred)  // 自动转发到 list.iter().filter(pred)
+```
+
+#### 目标
+
+实现 spec 默认方法和方法转发，支持：
+1. Spec 方法可以有默认实现
+2. 类型可以通过实现 spec 自动获得这些方法
+3. 方法解析时自动查找 spec 层级
+
+#### 8.5.1 添加 SpecMethod Body 字段
+
+**文件**: `crates/auto-lang/src/ast/spec.rs`
+
+```rust
+#[derive(Debug, Clone)]
+pub struct SpecMethod {
+    pub name: Name,
+    pub params: Vec<Param>,
+    pub ret: Type,
+    pub body: Option<Box<Expr>>,  // NEW: Default method implementation
+}
+```
+
+#### 8.5.2 Parser: 解析 Spec 方法体
+
+**文件**: `crates/auto-lang/src/parser.rs`
+
+**当前** (约 4247-4262 行):
+```rust
+fn spec_method(&mut self) -> AutoResult<SpecMethod> {
+    self.expect(TokenKind::Fn)?;
+    let name = self.parse_name()?;
+    self.expect(TokenKind::LParen)?;
+    let params = self.fn_params()?;
+    self.expect(TokenKind::RParen)?;
+    let ret = if self.is_type_name() {
+        self.parse_type()?
+    } else {
+        Type::Void
+    };
+
+    Ok(SpecMethod { name, params, ret })  // 无 body
+}
+```
+
+**修改为**:
+```rust
+fn spec_method(&mut self) -> AutoResult<SpecMethod> {
+    self.expect(TokenKind::Fn)?;
+    let name = self.parse_name()?;
+    self.expect(TokenKind::LParen)?;
+    let params = self.fn_params()?;
+    self.expect(TokenKind::RParen)?;
+    let ret = if self.is_type_name() {
+        self.parse_type()?
+    } else {
+        Type::Void
+    };
+
+    // 解析可选的方法体
+    let body = if self.is_kind(TokenKind::LBrace) {
+        Some(Box::new(self.block()?))
+    } else {
+        None  // 只有签名，无默认实现
+    };
+
+    Ok(SpecMethod { name, params, ret, body })
+}
+```
+
+**语法示例**:
+```auto
+spec Iter<T> {
+    // 只有签名，无默认实现
+    fn next() May<T>
+
+    // 有默认实现
+    fn map<U>(f: fn(T)U) MapIter<Self, T, U> {
+        return MapIter::new(self, f)
+    }
+
+    fn filter(p: fn(T)bool) FilterIter<Self, T> {
+        return FilterIter::new(self, p)
+    }
+}
+```
+
+#### 8.5.3 注册 Spec 方法到 Meta
+
+**文件**: `crates/auto-lang/src/scope/meta.rs`
+
+确保 spec 方法可以被查找为 `Meta::Method`:
+
+```rust
+pub enum Meta {
+    Fn(Fn),
+    Lambda(Sig),
+    Type(Type),
+    Spec(Rc<SpecDecl>),
+    Method(Rc<Fn>),  // Spec 方法
+    // ...
+}
+```
+
+在 `Universe::lookup_meta()` 中返回 spec 方法:
+
+```rust
+pub fn lookup_meta(&self, name: &str) -> Option<Rc<Meta>> {
+    // 查找当前 scope
+    // 如果未找到，遍历所有 specs
+    for (_spec_name, spec_decl) in &self.specs {
+        if let Some(method) = spec_decl.get_method(&Name::from(name)) {
+            if let Some(body) = &method.body {
+                // 返回 spec 方法
+                return Some(Rc::new(Meta::Method(/* ... */)));
+            }
+        }
+    }
+    // ...
+}
+```
+
+#### 8.5.4 VM: 方法解析时查找 Spec
+
+**文件**: `crates/auto-lang/src/eval.rs`
+
+在 `eval_call()` 方法中，当方法在类型上找不到时：
+
+```rust
+// 当前 (约 2272-2293 行):
+if let Value::Instance(ref inst_data) = &inst {
+    let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+    let method = registry
+        .get_method(&inst_data.ty.name(), method_name.as_str())
+        .cloned();
+    drop(registry);
+
+    if let Some(method) = method {
+        // 调用 VM 方法
+        // ...
+    }
+    // 如果未找到，返回错误
+}
+
+// 修改为:
+if let Value::Instance(ref inst_data) = &inst {
+    let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+    let method = registry
+        .get_method(&inst_data.ty.name(), method_name.as_str())
+        .cloned();
+    drop(registry);
+
+    if let Some(method) = method {
+        // 调用 VM 方法
+        // ...
+    } else {
+        // NEW: 尝试从 spec implementations 查找
+        if let Some(spec_method) = self.resolve_spec_method(&inst_data.ty, method_name.as_str()) {
+            return spec_method;
+        }
+
+        // 未找到，返回错误
+        return Err(...);
+    }
+}
+```
+
+#### 8.5.5 实现 Spec 方法转发
+
+**文件**: `crates/auto-lang/src/eval.rs`
+
+```rust
+impl Evaler {
+    /// 解析 spec 方法，支持转发
+    fn resolve_spec_method(&mut self, ty: &Type, method_name: &str) -> AutoResult<Value> {
+        // 1. 获取类型的 spec 实现
+        let type_decl = self.get_type_decl(ty)?;
+
+        // 2. 遍历每个 spec 实现
+        for spec_impl in &type_decl.spec_impls {
+            let spec_decl = self.lookup_spec_decl(&spec_impl.spec_name)?;
+
+            // 3. 查找 spec 中是否有该方法
+            if let Some(spec_method) = spec_decl.get_method(&Name::from(method_name)) {
+                if let Some(body) = &spec_method.body {
+                    // 4. 执行默认方法实现
+                    // body 中可以使用 self (当前实例)
+                    return self.eval_spec_method_body(body, &instance);
+                }
+            }
+        }
+
+        // 未找到
+        Err(...)
+    }
+}
+```
+
+**转发逻辑示例**:
+
+对于 `list.map(func)`:
+1. 查找 `List` 类型 → 没有 `map` 方法
+2. 检查 `List` 的 spec 实现 → `as Iterable<T>`
+3. 查找 `Iterable<T>` spec → 没有 `map` (只有 `iter()`)
+4. 调用 `list.iter()` → 返回 `ListIter`
+5. 在 `ListIter` 上查找 `map` → 找到了！
+6. 调用 `list.iter().map(func)`
+
+或者更简单的方式：
+- Spec 中声明 `map` 方法并有默认实现
+- 默认实现中调用 `self.iter().map(func)`
+
+#### 8.5.6 简化方案: VM-Level Forwarding
+
+如果完整的 spec 默认方法太复杂，可以先实现简化的 VM-level forwarding:
+
+```rust
+// 在 vm.rs 初始化时
+list_type.methods.insert("map".into(), forward_to_iter_method);
+list_type.methods.insert("filter".into(), forward_to_iter_method);
+
+// forward_to_iter_method:
+// 1. 调用 instance.iter() 获取 iterator
+// 2. 在 iterator 上调用原方法
+```
+
+**文件**: `crates/auto-lang/src/vm/list.rs`
+
+```rust
+/// Forward map call to iterator
+pub fn list_map(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+    // 1. 调用 list.iter()
+    let iter = list_iter(uni.clone(), instance, vec![]);
+
+    // 2. 在 iterator 上调用 map
+    list_iter_map(uni, &mut iter.clone(), args)
+}
+```
+
+#### 8.5.7 测试
+
+**测试文件**: `crates/auto-lang/src/tests/list_tests.rs`
+
+```rust
+#[test]
+fn test_list_map_direct() {
+    let code = r#"
+        let list = List.new()
+        list.push(1)
+        list.push(2)
+        list.push(3)
+
+        fn double(x int) int { return x * 2 }
+
+        // 直接调用 list.map()，不需要 list.iter().map()
+        let result = list.map(double)
+        result.collect()
+    "#;
+
+    let result = run(code).unwrap();
+    assert!(result.contains("[2, 4, 6]"));
+}
+```
+
+**C 转译测试**: `test/a2c/095_spec_default_methods/`
+**Rust 转译测试**: `test/a2r/035_spec_default_methods/`
+
+#### 成功标准
+
+- [ ] SpecMethod 支持 body 字段
+- [ ] Parser 解析 spec 方法体
+- [ ] Spec 方法可以调用 `self` 访问实例
+- [ ] `list.map(func)` 可以工作（转发到 `list.iter().map(func)`）
+- [ ] `list.filter(pred)` 可以工作
+- [ ] 其他 iterator 方法也可以直接调用
+- [ ] VM tests 通过
+- [ ] C/Rust 转译器支持（或至少不报错）
+
+#### 实现建议
+
+**阶段 1**: 简化方案（推荐先做）
+- VM-level forwarding: `list.map()` → `list.iter().map()`
+- 快速实现，解决用户问题
+
+**阶段 2**: 完整方案
+- Spec 默认方法实现
+- 方法解析时查找 spec 层级
+- 支持任意 spec 的默认方法
+
+#### 参考文件
+
+- `stdlib/auto/iter/spec.at` - Iter<T> spec 定义
+- `stdlib/auto/list.at` - List 类型定义
+- `crates/auto-lang/src/vm/list.rs` - List VM 方法实现
+- `crates/auto-lang/src/eval.rs:2272-2293` - 方法调用解析
 
 ---
 

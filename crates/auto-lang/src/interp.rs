@@ -32,6 +32,9 @@ impl Interpreter {
             enable_error_recovery: false,
         };
 
+        // Register the evaluator with the universe so VM functions can call back
+        interpreter.evaler.register_with_universe();
+
         // Inject environment variables based on target platform (Plan 055)
         // This must happen BEFORE loading Prelude so that Prelude can access env vars
         let target = crate::target::Target::detect();
@@ -82,6 +85,16 @@ impl Interpreter {
         });
         if !prelude_code.is_empty() {
             let _result = interpreter.interpret(&prelude_code);
+        }
+
+        // Plan 019 Stage 8.5: Load iter/spec.at to register Iterator specs
+        // This is needed because use statements in prelude only load VM modules, not .at spec files
+        let iter_spec_code = std::fs::read_to_string("../../stdlib/auto/iter/spec.at").unwrap_or_else(|_| {
+            // Try alternate path
+            std::fs::read_to_string("stdlib/auto/iter/spec.at").unwrap_or(String::new())
+        });
+        if !iter_spec_code.is_empty() {
+            let _result = interpreter.interpret(&iter_spec_code);
         }
 
         interpreter
@@ -189,7 +202,7 @@ impl Interpreter {
     }
 
     pub fn with_univ(univ: Shared<Universe>) -> Self {
-        let interp = Self {
+        let mut interp = Self {
             evaler: Evaler::new(univ.clone()),
             scope: univ.clone(),
             fstr_note: '$',
@@ -197,6 +210,9 @@ impl Interpreter {
             skip_check: false,
             enable_error_recovery: false,
         };
+
+        // Register the evaluator with the universe so VM functions can call back
+        interp.evaler.register_with_universe();
 
         // Load standard type definitions to register HashMap, HashSet, StringBuilder, List types
         // This must be called for each new Universe/scope
@@ -304,6 +320,7 @@ impl Interpreter {
         let mut parser = Parser::new_with_note(code, self.scope.clone(), self.fstr_note);
         let ast = parser.parse().map_err(|e| e.to_string())?;
         let mut config_evaler = Evaler::new(self.scope.clone()).with_mode(EvalMode::CONFIG);
+        config_evaler.register_with_universe();
         let res = config_evaler.eval(&ast)?;
         Ok(res)
     }

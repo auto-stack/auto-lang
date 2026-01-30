@@ -54,7 +54,7 @@ pub struct Evaler {
 
 impl Evaler {
     pub fn new(universe: Rc<RefCell<Universe>>) -> Self {
-        Evaler {
+        let mut evaluator = Evaler {
             universe,
             tempo_for_nodes: HashMap::new(),
             mode: EvalMode::SCRIPT,
@@ -63,6 +63,23 @@ impl Evaler {
             lifetime_ctx: crate::ownership::lifetime::LifetimeContext::new(),
             closures: HashMap::new(),
             next_closure_id: 0,
+        };
+
+        // Note: We don't set the evaluator pointer here because the evaluator
+        // will be moved when returned. The pointer should be set by the caller
+        // after the evaluator is in its final location.
+
+        evaluator
+    }
+
+    /// Register this evaluator with the universe so VM functions can call back
+    /// This should be called after the evaluator is created and in its final location
+    pub fn register_with_universe(&mut self) {
+        // SAFETY: The evaluator owns the universe via Rc<RefCell>, so we guarantee
+        // the evaluator outlives the universe during all call chains
+        let eval_ptr = self as *mut Evaler;
+        unsafe {
+            self.universe.borrow_mut().set_evaluator_raw(eval_ptr);
         }
     }
 
@@ -2298,6 +2315,14 @@ impl Evaler {
                     }
                 }
 
+                // Plan 019 Stage 8.5: Check spec default methods
+                // If method not found on type, look through spec implementations
+                if let Value::Instance(ref inst_data) = &inst {
+                    if let Some(result) = self.resolve_spec_method(&inst, method_name, &call.args) {
+                        return Ok(result);
+                    }
+                }
+
                 // Next, check if it's an ext method (Plan 035) or type method
                 // Look for "TypeName.method_name" in universe (using dot)
                 let qualified_method_name: AutoStr =
@@ -3358,6 +3383,47 @@ impl Evaler {
         result
     }
 
+    /// Evaluate a user-defined function by name with provided arguments
+    /// This is called by VM functions (like map_iter_next) to invoke user functions
+    pub fn eval_user_function(&mut self, fn_name: &AutoStr, args: Vec<Value>) -> Value {
+        // Look up the function in the universe's meta registry
+        let meta = self.universe.borrow().lookup_meta(fn_name);
+
+        if let Some(ref meta_rc) = meta {
+            if let scope::Meta::Fn(fn_decl) = meta_rc.as_ref() {
+                // Build Args from the Vec<Value> by creating literal expressions
+                let mut expr_args = Vec::new();
+                for arg_val in args {
+                    let expr = match arg_val {
+                        Value::Int(i) => Expr::Int(i),
+                        Value::Uint(u) => Expr::Uint(u),
+                        Value::Float(f) => Expr::Float(f as f64, "".into()),
+                        Value::Double(d) => Expr::Float(d, "".into()),
+                        Value::Bool(b) => Expr::Bool(b),
+                        Value::Str(ref s) => Expr::Str(s.clone()),
+                        Value::OwnedStr(ref s) => Expr::Str(s.to_string().into()),
+                        Value::Char(c) => Expr::Char(c),
+                        Value::Nil => Expr::Nil,
+                        _ => Expr::Nil, // For complex values, we'd need more handling
+                    };
+                    expr_args.push(ast::Arg::Pos(expr));
+                }
+
+                let call_args = Args { args: expr_args };
+
+                // Call the function
+                match self.eval_fn_call(fn_decl, &call_args) {
+                    Ok(result) => result,
+                    Err(e) => Value::Error(format!("Function call error: {}", e).into()),
+                }
+            } else {
+                Value::Error(format!("{} is not a function", fn_name).into())
+            }
+        } else {
+            Value::Error(format!("Function not found: {}", fn_name).into())
+        }
+    }
+
     fn index(&mut self, array: &Expr, index: &Expr) -> Value {
         let mut array_value = self.eval_expr(array);
 
@@ -4054,14 +4120,102 @@ impl Evaler {
         Value::Void
     }
 
-    fn spec_decl(&mut self, _spec_decl: &ast::SpecDecl) -> Value {
-        // The spec is already registered in the parser
-        // In the future, we might want to:
-        // - Create a vtable for trait methods
-        // - Store trait metadata for runtime checks
-        // - Support trait object creation
-        // For now, just return Void as the spec is already in scope
+    fn spec_decl(&mut self, spec_decl: &ast::SpecDecl) -> Value {
+        // Plan 019 Stage 8.5: Register the spec in the universe's specs HashMap
+        // This makes specs available for:
+        // - Spec method resolution (default method implementations)
+        // - Type checking and constraint validation
+        self.universe.borrow_mut().register_spec(std::rc::Rc::new(spec_decl.clone()));
         Value::Void
+    }
+
+    /// Plan 019 Stage 8.5: Resolve spec methods with default implementations
+    /// When a method is not found on a type, look through its spec implementations
+    /// Returns Some(result) if found and executed, None if not found
+    fn resolve_spec_method(&mut self, instance: &Value, method_name: &AutoStr, args: &ast::Args) -> Option<Value> {
+        // Get the type name
+        let type_name = if let Value::Instance(ref inst_data) = instance {
+            inst_data.ty.name().to_string()
+        } else {
+            return None;
+        };
+
+        // Get the TypeDecl for this type
+        let type_decl = {
+            let universe = self.universe.borrow();
+            universe.lookup_type(&type_name)
+        };
+
+        let type_decl = match type_decl {
+            ast::Type::User(decl) => decl,
+            _ => return None,
+        };
+
+        // Iterate through spec implementations
+        for spec_impl in type_decl.spec_impls.iter() {
+            // Look up the spec declaration from specs HashMap
+            let spec_decl = {
+                let universe = self.universe.borrow();
+                universe.specs.get(&spec_impl.spec_name).cloned()
+            };
+
+            let spec_decl = match spec_decl {
+                Some(decl) => decl,
+                None => continue,
+            };
+
+            // Check if this spec has the method
+            if let Some(spec_method) = spec_decl.get_method(&ast::Name::from(method_name.as_str())) {
+                // Check if it has a default implementation
+                if let Some(body) = &spec_method.body {
+                    return Some(self.eval_spec_method_body(instance, body, args, &spec_method.params));
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Evaluate a spec method body with `self` bound to the instance
+    fn eval_spec_method_body(&mut self, instance: &Value, body: &ast::Expr, args: &ast::Args, params: &[ast::Param]) -> Value {
+        // Create a new scope and bind `self` to the instance
+        self.universe.borrow_mut().enter_fn(&AutoStr::from("<spec_method>"));
+
+        // Bind `self` to the instance
+        self.universe
+            .borrow_mut()
+            .set_local_val("self", instance.clone());
+
+        // Bind spec method parameters (e.g., `f` in `map(f)`)
+        for (i, param) in params.iter().enumerate() {
+            if let Some(arg_expr) = args.args.get(i) {
+                match arg_expr {
+                    ast::Arg::Pos(expr) => {
+                        let arg_val = self.eval_expr(expr);
+                        self.universe.borrow_mut().set_local_val(&param.name.to_string(), arg_val);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Evaluate the method body
+        let result = match body {
+            ast::Expr::Block(block) => {
+                // Evaluate each statement in the block
+                let mut value = Value::Void;
+                for stmt in &block.stmts {
+                    value = self.eval_stmt(stmt).unwrap_or(Value::Void);
+                }
+                value
+            }
+            _ => self.eval_expr(body),
+        };
+
+        // Exit the scope
+        self.exit_scope();
+
+        result
     }
 
     fn dot_node(&mut self, node: &auto_val::Node, right: &Expr) -> Option<Value> {

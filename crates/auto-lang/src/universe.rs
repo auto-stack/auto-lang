@@ -157,6 +157,11 @@ pub struct Universe {
     // Plan 061 Phase 2: Spec registry for constraint validation
     // Maps spec name -> spec declaration
     pub specs: HashMap<AutoStr, Rc<SpecDecl>>,
+
+    // Raw pointer to evaluator for VM functions to call user-defined functions
+    // WARNING: This is only valid during evaluator's lifetime
+    // The evaluator must outlive the universe (guaranteed by ownership: Evaler owns Universe)
+    evaluator_ptr: *mut crate::eval::Evaler,
 }
 
 impl Default for Universe {
@@ -197,6 +202,8 @@ impl Universe {
             type_aliases: HashMap::new(),
             // Plan 061: Initialize spec registry
             specs: HashMap::new(),
+            // Initialize evaluator pointer (will be set by evaluator)
+            evaluator_ptr: std::ptr::null_mut(),
         };
         uni.define_sys_types();
         uni.define_builtin_funcs();
@@ -213,6 +220,44 @@ impl Universe {
 
     pub fn get_arg(&self, name: &str) -> Value {
         self.args.get_or_nil(name)
+    }
+
+    /// Set the evaluator pointer for VM functions to call user-defined functions
+    /// This allows VM operations like map/filter to call arbitrary user functions
+    /// # Safety
+    /// The evaluator must outlive the universe. This is guaranteed by the ownership
+    /// structure where Evaler owns the Universe via Rc<RefCell<Universe>>
+    pub fn set_evaluator(&mut self, evaluator: &mut crate::eval::Evaler) {
+        self.evaluator_ptr = evaluator;
+    }
+
+    /// Set the evaluator pointer from a raw pointer
+    /// # Safety
+    /// The pointer must be valid and outlive the universe
+    pub unsafe fn set_evaluator_raw(&mut self, evaluator: *mut crate::eval::Evaler) {
+        self.evaluator_ptr = evaluator;
+    }
+
+    /// Evaluate a user-defined function using the stored evaluator pointer
+    /// Returns None if no evaluator is set
+    /// # Safety
+    /// The evaluator pointer must be valid and outlive this call
+    pub fn eval_user_fn(&self, fn_name: &AutoStr, args: Vec<Value>) -> Option<Value> {
+        if self.evaluator_ptr.is_null() {
+            return None;
+        }
+        // SAFETY: The evaluator outlives the universe during call chains
+        // This is guaranteed by the ownership structure (Evaler owns Universe)
+        unsafe {
+            Some((*self.evaluator_ptr).eval_user_function(fn_name, args))
+        }
+    }
+
+    /// Get the raw evaluator pointer
+    /// # Safety
+    /// The pointer must only be used while the original borrow is active
+    pub unsafe fn get_evaluator_ptr(&self) -> *mut crate::eval::Evaler {
+        self.evaluator_ptr
     }
 
     pub fn dump(&self) {

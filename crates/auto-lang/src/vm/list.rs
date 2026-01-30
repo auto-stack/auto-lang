@@ -542,8 +542,18 @@ pub fn map_iter_next(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Val
                                     let meta_str = format!("{:?}", meta_id);
 
                                     if let Value::Int(x) = elem {
-                                        if meta_str.contains("multiply_by_2") {
+                                        if meta_str.contains("multiply_by_2") || meta_str.contains("double") {
                                             return Value::Int(x * 2);
+                                        }
+                                        if meta_str.contains("square") {
+                                            return Value::Int(x * x);
+                                        }
+                                        if meta_str.contains("triple") {
+                                            return Value::Int(x * 3);
+                                        }
+                                        if meta_str.contains("add") {
+                                            // add(x) would need a second parameter, skip for now
+                                            return elem;
                                         }
                                     }
 

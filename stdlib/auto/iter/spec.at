@@ -11,7 +11,7 @@ spec Iter<T> {
 
     /// Transform each element using function f
     /// Returns a new iterator that maps each element
-    fn map<U>(f: fn(T)U) MapIter<Self, T, U>
+    fn map(f: fn(T)T) MapIter<Self, T, T>
 
     /// Filter elements by predicate p
     /// Returns a new iterator with only matching elements
@@ -20,7 +20,7 @@ spec Iter<T> {
     // --- Terminal operators ---
 
     /// Fold/reduce: consume iterator, accumulating values
-    fn reduce<B>(init: B, f: fn(B, T)B) B
+    fn reduce(init: T, f: fn(T,T)T) T
 
     /// Count elements in iterator
     fn count() u32
@@ -46,6 +46,62 @@ spec Iter<T> {
 spec Iterable<T> {
     /// Get an iterator for this collection
     fn iter() Iter<T>
+
+    // --- Default method implementations that forward to iter() ---
+
+    /// Transform each element using function f
+    /// Default implementation: forwards to self.iter().map(f)
+    fn map(f: fn(T)T) MapIter<Iter<T>, T, T> {
+        return self.iter().map(f)
+    }
+
+    /// Filter elements by predicate p
+    /// Default implementation: forwards to self.iter().filter(p)
+    fn filter(p: fn(T)bool) FilterIter<Iter<T>, T> {
+        return self.iter().filter(p)
+    }
+
+    /// Fold/reduce: consume iterator, accumulating values
+    /// Default implementation: forwards to self.iter().reduce(init, f)
+    fn reduce(init: T, f: fn(T,T)T) T {
+        return self.iter().reduce(init, f)
+    }
+
+    /// Count elements in iterator
+    /// Default implementation: forwards to self.iter().count()
+    fn count() u32 {
+        return self.iter().count()
+    }
+
+    /// Call function f for each element
+    /// Default implementation: forwards to self.iter().for_each(f)
+    fn for_each(f: fn(T)void) void {
+        return self.iter().for_each(f)
+    }
+
+    /// Collect all elements into a collection
+    /// Default implementation: forwards to self.iter().collect()
+    fn collect() List<T, Heap> {
+        return self.iter().collect()
+    }
+
+    /// Check if any element satisfies predicate
+    /// Default implementation: forwards to self.iter().any(p)
+    fn any(p: fn(T)bool) bool {
+        return self.iter().any(p)
+    }
+
+    /// Check if all elements satisfy predicate
+    /// Default implementation: forwards to self.iter().all(p)
+    fn all(p: fn(T)bool) bool {
+        return self.iter().all(p)
+    }
+
+    /// Find first element matching predicate
+    /// Default implementation: forwards to self.iter().find(p)
+    fn find(p: fn(T)bool) May<T> {
+        return self.iter().find(p)
+    }
 }
 
 /// Type that can collect from an iterator

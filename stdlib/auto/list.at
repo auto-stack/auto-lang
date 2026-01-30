@@ -91,6 +91,18 @@ type List<T, S> {
     fn iter() ListIter<T, S>
 }
 
+// ============================================================================
+// Spec Conformance (Plan 019 Stage 8.5)
+// ============================================================================
+
+/// List conforms to Iterable<T>
+/// This allows list.map(), list.filter(), list.reduce(), etc. to work directly
+/// These methods use the default implementations from Iterable<T> spec
+type List<T, S> as Iterable<T> {
+    // The iter() method is already implemented above (line 90-91)
+    // Default methods from Iterable<T> spec provide map, filter, reduce, etc.
+}
+
 /// Iterator for List<T, S>
 /// Plan 051: Basic iterator implementation
 type ListIter<T, S> {

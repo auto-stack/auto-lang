@@ -264,6 +264,7 @@ mod tests {
             name: Name::from(name),
             params,
             ret,
+            body: None,  // No default implementation in trait checker
         }
     }
 

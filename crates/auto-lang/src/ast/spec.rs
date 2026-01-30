@@ -52,11 +52,16 @@ pub struct SpecMethod {
     pub name: Name,
     pub params: Vec<Param>,
     pub ret: Type,
+    pub body: Option<Box<crate::ast::Expr>>,  // Plan 019 Stage 8.5: Default method implementation
 }
 
 impl SpecMethod {
     pub fn new(name: Name, params: Vec<Param>, ret: Type) -> Self {
-        Self { name, params, ret }
+        Self { name, params, ret, body: None }
+    }
+
+    pub fn with_body(name: Name, params: Vec<Param>, ret: Type, body: crate::ast::Expr) -> Self {
+        Self { name, params, ret, body: Some(Box::new(body)) }
     }
 }
 
@@ -98,6 +103,11 @@ impl fmt::Display for SpecMethod {
 
         if !matches!(self.ret, Type::Void) {
             write!(f, " {}", self.ret)?;
+        }
+
+        // Show if there's a default implementation
+        if self.body.is_some() {
+            write!(f, " {{ ... }}")?;
         }
 
         Ok(())
