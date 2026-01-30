@@ -1,3 +1,0 @@
-fn main() {
-    let heap = Heap.new()
-}

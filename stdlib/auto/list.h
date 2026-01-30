@@ -16,6 +16,8 @@ int List_Set(struct List *self, int, void*);
 void List_Clear(struct List *self);
 void List_Drop(struct List *self);
 listiter_void*_void* List_Iter(struct List *self);
+struct List {
+};
 struct ListIter {
     list_void** list;
     unknown index;

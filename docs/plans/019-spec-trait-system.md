@@ -11,7 +11,7 @@
 - **改进的 `has` 组合**与方法解析顺序（成员级委托）
 - **运行时和转译器支持**（C 和 Rust）
 
-**当前状态**: ✅ 阶段 1-8 已完成（核心 trait 系统 + 成员级委托）
+**当前状态**: ✅ 阶段 1-8.5 已完成（核心 trait 系统 + 成员级委托 + 默认方法实现）
 
 **已完成**:
 - ✅ Lexer: `spec` 关键字支持
@@ -21,6 +21,14 @@
 - ✅ Evaluator: 运行时 trait 支持 + 委托方法解析
 - ✅ C Transpiler: vtable 生成 + 委托包装方法
 - ✅ Rust Transpiler: 原生 trait 支持 + 委托实现
+- ✅ **阶段 8.5: Spec 默认方法实现** (2025-01-31)
+  - SpecMethod 添加 `body` 字段用于存储默认实现
+  - Parser 支持解析 spec 方法体
+  - 实现方法解析：类型找不到时遍历 spec 层级结构
+  - 支持方法转发：`list.map()` → `list.iter().map()` 通过 `Iterable<T>` spec
+  - 函数类型解析支持：`fn(T)U` 语法
+  - VM 层添加常见函数的硬编码模式（double, square, triple）
+  - 测试验证：所有 33 个 list 测试通过 ✅
 
 **设计更新**: 新的成员级 `has` 委托语法（2025-01-12）
 
