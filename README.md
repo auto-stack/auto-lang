@@ -48,15 +48,15 @@ Auto supports basic types: int(i32), uint(u32), byte(u8), float(f64), bool, nil.
 let a int = 1
 a = 2 // Error! a is not mutable
 
-// mutable storage value, with type inference
-mut b = 2.2
+// variable storage value, with type inference
+var b = 2.2
 b = 3.3
 
 // const storage value, usually used as global constants
 const PI = 3.14
 PI = 3.15 // Error! PI is not mutable
 
-// variant storage value, used in script mode
+// variant storage value, used in script mode (dynamic typing)
 var c = true
 // vars can mutate its value
 c = false
@@ -134,7 +134,7 @@ AutoConfig is a superset of JSON, and can use scripting abilities of AutoLang.
 use std::str::upper;
 
 // Variable
-mut dir = "/home/user/data"
+var dir = "/home/user/data"
 
 // {key : value} pairs
 root: dir
@@ -354,12 +354,11 @@ TODO: translate into English
 
 ### 存量
 
-在auto语言里，有四种不同类型的“存量”，用来存放与访问数据：
+在auto语言里，有三种不同类型的"存量"，用来存放与访问数据：
 
 - 定量（`let`）：定量是声明之后就不能再改变的量，但是可以取地址和访问。相当于Rust中的`let`。
-- 变量（`mut`）：这种存量的值可以任意改变，但是类型一旦确定就不能再改变。这其实就是C/C++中的普通变量。在Rust中，这样的变量用`let mut`声明。
+- 变量（`var`）：这种存量的值可以任意改变，但是类型一旦确定就不能再改变。这其实就是C/C++中的普通变量。在Rust中，这样的变量用`let mut`声明。
 - 常量（`const`）：常量是声明之后就不能再改变的量，但是可以取地址和访问。相当于Rust中的`const`。
-- 幻量（`var`）：幻量是最自由的量，可以任意改变值和类型，一般用于脚本环境，如配置文件、DSL、脚本代码等。
 
 ```rust
 // 定量
@@ -372,24 +371,19 @@ let f = e + 4
 let b = b * 2
 
 // 变量定义，编译器可以自动推导类型
-mut a = 1
+var a = 1
 // 变量的定义可以指定类型
-mut b bool = false
+var b bool = false
 // 声明多个变量
-mut c, d = 2, 3
+var c, d = 2, 3
 
-// 变量可以修改，也叫“赋值”
+// 变量可以修改，也叫"赋值"
 a = 10
 // 甚至可以交换两个变量的值
 c, d = d, c
 
 // 常量定义：常量只能是全局量
 const PI = 3.14
-
-// 幻量：幻量是最自由的量，可以任意改变值和类型，一般用于脚本环境
-var x = 1
-x = "hello"
-x = [x+"1", x+"2", x+"3"]
 ```
 
 ### 数组
@@ -417,7 +411,7 @@ let r1 = 0..=10 // 0 <= r <= 10
 
 ```rust
 // 对象
-mut obj = {
+var obj = {
     name: "John",
     age: 30,
     is_student: false
@@ -528,7 +522,7 @@ calc(mul, 2, 3)
 // 数值类型：默认拷贝传递
 let a = 1
 let b = a // 这里b是a的一份拷贝
-mut c = a // 这里c是a的一份拷贝，而且c可以修改
+var c = a // 这里c是a的一份拷贝，而且c可以修改
 c = 2
 println(c) // 2
 println(a) // 1 // a没有变化
@@ -538,8 +532,8 @@ println(a) // 1 // a没有变化
 // 引用类型：默认引用传递
 let a = [1, 2, 3, 4, 5] // 数组默认是引用类型
 let b = a // 这里b是a的一个引用，在使用b的时候，就和使用a一样。内存中只存在一个数组。
-mut c = a // 错误！由于a是不可修改的，所以可修改的c不能引用它。
-mut d = copy a // 如果想进行修改，可以显式地复制它。
+var c = a // 错误！由于a是不可修改的，所以可修改的c不能引用它。
+var d = copy a // 如果想进行修改，可以显式地复制它。
 d[0] = 9 // d = [9, 2, 3, 4, 5]
 println(a) // a = [1, 2, 3, 4, 5]， a数组没变
 ```
@@ -552,7 +546,7 @@ println(a) // a = [1, 2, 3, 4, 5]， a数组没变
 let a = [1, 2, 3, 4, 5]
 let b = move a // 转移后，a不能再使用
 println(a) // Error! a已经不能再使用
-mut c = move b // b转移给了c，由于是转移，c可以选择修改
+var c = move b // b转移给了c，由于是转移，c可以选择修改
 c[0] = 9 // c = [9, 2, 3, 4, 5]
 println(b) // Error! b已经不能再使用
 ```
@@ -560,8 +554,8 @@ println(b) // Error! b已经不能再使用
 我们可以看到，`a`的值在转移到`b`之后，它的声明周期就结束了。
 从此存量`a`不复存在，但它的“灵魂”会继续在`b`中存活。
 
-同样，`b`转移给`c`时，由于转移操作实际上一种“转世重生”、“借尸还魂”，
-因此`c`可以拥有和`b`不一样的属性，比如`mut`。
+同样，`b`转移给`c`时，由于转移操作实际上一种"转世重生"、"借尸还魂"，
+因此`c`可以拥有和`b`不一样的属性，比如`var`。
 
 转移相当于把拷贝和引用的好处结合在一起了，但代价是什么呢？
 代价是需要编译器能够逐行分析每个存量的生命周期。
@@ -596,10 +590,10 @@ fn read_buffer(buf Buffer) {
     }
 }
 
-// mut ref可以用来修改变量：
+// var ref可以用来修改变量：
 
-mut x = 1
-fn inc(a mut ref int) {
+var x = 1
+fn inc(a var ref int) {
     a += 1
 }
 inc(x)
@@ -611,15 +605,15 @@ println(x) // 2
 
 // 指针和引用不同的地方在于，因为它和原始量指向同一个地址，因此可以修改原始量的值。
 
-mut x = 1
+var x = 1
 sys {
-    mut p = ptr x
+    var p = ptr x
     p.target += 1 // 间接修改x的值，注意这里和C不一样，用的是`.target`
 }
 println(x) // 2
 
 // 在函数调用时，指针类型的参数，可以修改原始量
-mut m = 10
+var m = 10
 fn inc(a ptr int) {
     a += 10
 }
@@ -628,13 +622,13 @@ println(m) // 20
 
 // 指针还可以直接进行地址运算
 sys { // 注意：地址运算要放在sys块中
-    mut arr = [1, 2, 3, 4, 5]
-    mut p = ptr arr // p的类型是 Ptr<[5]int>
+    var arr = [1, 2, 3, 4, 5]
+    var p = ptr arr // p的类型是 Ptr<[5]int>
     println(p) // [1, 2, 3, 4, 5]
     p[0] = 101 // 直接修改arr[0]的值
     println(arr) // [101, 2, 3, 4, 5]
 
-    mut o = p // 记住p的地址
+    var o = p // 记住p的地址
 
     p.inc(2) // 地址自增2，此时p指向的是arr[2]
     println(p) // [3, 4, 5]
@@ -663,7 +657,7 @@ for n in [1, 2, 3] {
 }
 
 // 循环修改数组的值
-mut arr = [1, 2, 3, 4, 5]
+var arr = [1, 2, 3, 4, 5]
 for ref n in arr {
     n = n * n
 }
@@ -680,7 +674,7 @@ for i, n in arr {
 }
 
 // 无限循环
-mut i = 0
+var i = 0
 loop {
     println("loop")
     if i > 10 {
@@ -722,7 +716,7 @@ enum Scale {
 }
 
 // 枚举变量
-mut a = Scale.M
+var a = Scale.M
 
 // 访问枚举成员
 println(a.name)
@@ -744,7 +738,7 @@ enum Shape union {
 }
 
 // 联合枚举匹配
-mut s = get_shape(/*...*/)
+var s = get_shape(/*...*/)
 is s as Shape {
     Point(x, y) -> println(f"Point($x, $y)")
     Rect(x, y, w, h) -> println(f"Rect($x, $y, $w, $h)")
@@ -752,7 +746,7 @@ is s as Shape {
     else -> println("not a shape")
 }
 // 获取联合枚举的数据
-mut p = s as Shape::Point
+var p = s as Shape::Point
 println(p.x, p.y)
 ```
 
@@ -779,7 +773,7 @@ type Point {
 }
 
 // Create instance
-mut p = Point()
+var p = Point()
 p.x = 1
 p.y = 2
 println(p.info())        // "Point(1, 2)"
@@ -948,7 +942,7 @@ impl Dog {
 ```rust
 // 生成器
 fn fib() {
-    mut a, b = 0, 1
+    var a, b = 0, 1
     loop {
         yield b
         a, b = b, a + b
@@ -1237,7 +1231,7 @@ main();
 | AutoLang | JavaScript | 说明 |
 |----------|-----------|------|
 | `let x = 1` | `const x = 1` | 不可变变量使用 const |
-| `mut x = 1` | `let x = 1` | 可变变量使用 let |
+| `var x = 1` | `let x = 1` | 可变变量使用 let |
 | `type Point { x int }` | `class Point { constructor... }` | ES6 类语法 |
 | `enum Color { Red }` | `const Color = Object.freeze({...})` | 冻结对象防止修改 |
 | `is x { 0 => print() }` | `switch (x) { case 0: ... }` | switch/case 语句 |

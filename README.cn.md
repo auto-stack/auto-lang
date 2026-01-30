@@ -135,7 +135,7 @@ int32_t add(int32_t a, int32_t b) {
 ```rust
 use std.fs::list, is_dir
 
-mut dir = "~/code/auto"
+var dir = "~/code/auto"
 
 // 支持函数调用
 src: dir.join("src")
@@ -250,22 +250,17 @@ Auto 提供四种存量类型用于存储和访问数据：
 | 类型 | 关键字 | 可变性 | 类型可变性 | 用途 |
 |------|--------|--------|-----------|------|
 | 定量 | `let` | ❌ 不可变 | ❌ 不可变 | 默认选项，类似 Rust 的 `let` |
-| 变量 | `mut` | ✅ 可变 | ❌ 不可变 | 需要修改值的场景 |
+| 变量 | `var` | ✅ 可变 | ❌ 不可变 | 需要修改值的场景 |
 | 常量 | `const` | ❌ 不可变 | ❌ 不可变 | 全局常量 |
-| 幻量 | `var` | ✅ 可变 | ✅ 可变 | 动态类型，用于脚本/配置 |
+| 幻量 | (已移除) | - | - | 已合并到变量类型 |
 
 ```rust
 // 定量 - 不可变
 let a = 1
 
 // 变量 - 值可变，类型不可变
-mut b = 2
+var b = 2
 b = 3
-
-// 幻量 - 值和类型都可变
-var x = 1
-x = "hello"
-x = [1, 2, 3]
 ```
 
 ### 基本类型
@@ -285,7 +280,7 @@ println(arr[-1])  // 5（最后一个元素）
 let slice = arr[1..3]  // [2, 3]
 
 // 对象
-mut obj = {
+var obj = {
     name: "John",
     age: 30
 }
@@ -376,7 +371,7 @@ type Point {
 }
 
 // 构造实例
-mut p = Point()
+var p = Point()
 p.x = 1
 p.y = 2
 println(p.info())        // "Point(1, 2)"
