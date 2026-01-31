@@ -9,6 +9,7 @@ pub mod eval;
 pub mod infer;
 pub mod indexer;
 pub mod interp;
+pub mod query;
 mod lexer;
 pub mod libs;
 pub mod macro_;
