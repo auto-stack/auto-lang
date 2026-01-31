@@ -225,6 +225,9 @@ pub struct Database {
     frag_asts: HashMap<FragId, Arc<Fn>>,
     frag_meta: HashMap<FragId, FragMeta>,
 
+    // Fragment ID counters (per-file)
+    frag_counters: HashMap<FileId, u64>,  // FileId -> next fragment index
+
     // Symbol metadata (for LSP support)
     symbol_locations: HashMap<SymbolId, SymbolLocation>,
 
@@ -264,6 +267,7 @@ impl Database {
             dep_graph: DependencyGraph::new(),
             file_counter: AtomicU64::new(0),
             frag_counter: AtomicU64::new(0),
+            frag_counters: HashMap::new(),
         }
     }
 
@@ -311,6 +315,7 @@ impl Database {
     pub fn remove_file(&mut self, file_id: FileId) {
         self.sources.remove(&file_id);
         self.file_paths.remove(&file_id);
+        self.frag_counters.remove(&file_id);
 
         // Remove all fragments belonging to this file
         let frags_to_remove: Vec<_> = self.frag_meta
@@ -339,7 +344,14 @@ impl Database {
         kind: FragKind,
         ast: Arc<Fn>,
     ) -> FragId {
-        let frag_id = FragId::new(file_id, span.offset);
+        // Generate unique fragment ID using file-specific counter
+        let frag_index = self.frag_counters.entry(file_id).or_insert(0);
+        let frag_id = FragId {
+            file: file_id,
+            offset: *frag_index as usize,  // Use counter instead of span offset
+            generation: 0,
+        };
+        *frag_index += 1;
 
         let meta = FragMeta {
             name: name.clone(),

@@ -1,6 +1,7 @@
 pub mod ast;
 pub mod atom;
 pub mod atom_error;
+pub mod compile;
 pub mod config;
 pub mod database;
 pub mod error;
