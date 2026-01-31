@@ -1,9 +1,19 @@
 # Plan 064: Split Universe into Compile-time (Database) and Runtime (ExecutionEngine)
 
-**Status**: 🔄 Planning
+**Status**: ⏸️ **PHASE 4 BLOCKED** (Phases 1-3 Complete ✅)
 **Priority**: P0 (Critical Architecture Refactor)
 **Created**: 2025-01-31
+**Last Updated**: 2025-01-31
 **Dependencies**: Plan 063 Phase 3.5 ✅
+
+**Progress Summary**:
+- ✅ Phase 1: Field classification complete (19 fields analyzed)
+- ✅ Phase 2: ExecutionEngine extended with 11 runtime fields
+- ✅ Phase 3: AIE Database extended with 7 compile-time fields
+- ⏸️ Phase 4: **BLOCKED** - Requires Scope split architecture redesign
+  - Blocker: Scopes contain both compile-time AND runtime data
+  - Blocker: 139 references to `self.universe` in eval.rs
+  - Estimated effort: 2-3 days (was 1-2 hours)
 
 ---
 
@@ -409,9 +419,111 @@ pub struct Database {
 - [x] Database can manage scopes, types, specs, type aliases
 - [x] Tests pass
 
+**Status**: ✅ **COMPLETED** (2025-01-31)
+
+**Implementation Summary**:
+- Added 7 compile-time fields to Database (scopes, types, type_aliases, specs, lambda_counter, cur_spot, code_paks)
+- Added 20 accessor methods for compile-time data management
+- Added 5 new tests (total: 29 tests passing)
+- All compile-time data from Universe now in AIE Database
+
 ---
 
-## Phase 4: Create Bridge Layer (1-2 hours)
+## Phase 4 Status: ⚸️ **BLOCKED - Requires Additional Design**
+
+**Current State**: Phases 1-3 Complete ✅
+
+**Phase 4 Blockers**:
+
+After completing Phases 1-3, analysis revealed significant architectural challenges for Phase 4:
+
+### 1. Scope Hybrid Nature Problem
+
+The `Scope` structure contains BOTH compile-time AND runtime data:
+
+```rust
+pub struct Scope {
+    // Compile-time data
+    pub kind: ScopeKind,
+    pub sid: Sid,
+    pub parent: Option<Sid>,
+    pub kids: Vec<Sid>,
+    pub symbols: HashMap<AutoStr, Rc<Meta>>,  // Could be compile-time
+    pub types: HashMap<AutoStr, Rc<Meta>>,    // Compile-time
+
+    // Runtime data
+    pub vals: HashMap<AutoStr, ValueID>,      // Runtime values!
+    pub moved_vars: HashSet<AutoStr>,         // Runtime ownership state!
+    pub cur_block: usize,                     // Runtime position!
+}
+```
+
+**Problem**: Scopes are used during evaluation to store runtime variable values. We cannot simply move scopes to Database without splitting them.
+
+### 2. Massive Universe Usage in Evaler
+
+Analysis of `eval.rs` revealed:
+- **139 references** to `self.universe` across ~4500 lines
+- Operations include:
+  - Scope management: `enter_scope()`, `exit_scope()`, `lookup_meta()`
+  - Variable storage: `set_local_val()`, `define()`, `remove_local()`
+  - Type registration: `define_type()`
+  - VM operations: VM ref allocation, evaluator pointer management
+
+**Problem**: Migrating 139 references is a multi-day effort requiring careful testing.
+
+### 3. Interpreter Initialization Complexity
+
+The `Interpreter::new()` method performs complex initialization:
+- Creates Universe
+- Registers evaluator pointer
+- Injects environment variables
+- Loads standard library types
+- Loads prelude and spec files
+- Initializes VM modules
+
+All of this currently assumes Universe exists.
+
+### Required Design Work Before Phase 4 Implementation
+
+1. **Split Scope Structure** (2-4 hours):
+   - Create `ScopeTemplate` (compile-time): kind, sid, parent, kids, symbols, types
+   - Create `ScopeRuntime` (runtime): vals, moved_vars, cur_block
+   - Add linkage: `ScopeRuntime` references `ScopeTemplate` by Sid
+   - Update all Scope operations to use split structure
+
+2. **Bridge Layer Design** (1-2 hours):
+   - Design `Evaler::new_with_db_engine(db: Arc<Database>, engine: Rc<RefCell<ExecutionEngine>>)`
+   - Create bridge methods that delegate to Database/Engine
+   - Plan incremental migration strategy for 139 references
+
+3. **Migration Execution** (1-2 days):
+   - Update Evaler structure
+   - Migrate all eval_* methods (139 references)
+   - Update Interpreter structure and initialization
+   - Test all execution paths
+   - Ensure no regressions
+
+### Recommendation
+
+**Phase 4 should be split into sub-phases**:
+
+- **Phase 4.1**: Design Scope split architecture
+- **Phase 4.2**: Implement Scope split (ScopeTemplate + ScopeRuntime)
+- **Phase 4.3**: Create bridge layer in Evaler (support both Universe and Database/Engine)
+- **Phase 4.4**: Migrate Interpreter to use CompileSession + ExecutionEngine
+- **Phase 4.5**: Migrate Evaler methods incrementally (with tests at each step)
+- **Phase 4.6**: Remove Universe dependencies, mark Universe as deprecated
+
+**Total Estimated Time**: 2-3 days (vs. original estimate of 1-2 hours)
+
+**Decision**: ⏸️ **DEFER Phase 4** until architectural blockers are resolved.
+
+**Alternative**: Continue with Universe-based execution for now. The AIE infrastructure is in place (Phases 1-3), and we can incrementally migrate evaluation logic when ready.
+
+---
+
+## Phase 4: Create Bridge Layer (DEFERRED - see analysis above)
 
 **Goal**: Update Interpreter/Evaluator to use AIE Database + ExecutionEngine instead of Universe.
 
