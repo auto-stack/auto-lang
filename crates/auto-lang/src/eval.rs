@@ -1099,9 +1099,8 @@ impl Evaler {
         is_mid: bool,
         is_new_line: bool,
     ) -> AutoResult<Value> {
-        self.universe
-            .borrow_mut()
-            .set_local_val("is_mid", Value::Bool(is_mid));
+        // Phase 4.5: Use bridge method
+        self.set_local_val("is_mid", Value::Bool(is_mid));
         let mut res = Vec::new();
         let sep = if is_new_line { "\n" } else { "" };
         for stmt in body.stmts.iter() {
@@ -2613,11 +2612,8 @@ impl Evaler {
     }
 
     fn lookup(&self, name: &str) -> Value {
-        // lookup value - now returns Value::ValueRef(vid)
-        self.universe
-            .borrow()
-            .lookup_val(name)
-            .unwrap_or(Value::Nil)
+        // Phase 4.5: Use bridge method
+        self.lookup_val(name).unwrap_or(Value::Nil)
     }
 
     /// Get value ID directly without wrapping (Phase 4.5: bridge method)
