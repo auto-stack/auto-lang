@@ -3995,7 +3995,7 @@ impl Evaler {
                             // Get the list data
                             let id = instance.fields.get("id");
                             if let Some(Value::USize(_list_id)) = id {
-                                let _uni = self.universe.clone();
+                                // Phase 4.5: Removed unused _uni variable (was dead code)
                                 // Create a new list from the slice
                                 // TODO: Implement efficient List slicing
                                 Value::error(format!("List slicing not yet implemented"))
