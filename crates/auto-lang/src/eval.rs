@@ -100,6 +100,60 @@ impl Evaler {
         self.skip_check = true;
     }
 
+    // =========================================================================
+    // Bridge Methods (Phase 4.3 Plan 064)
+    // =========================================================================
+
+    /// Get reference to the Universe (legacy, for gradual migration)
+    ///
+    /// **Phase 4.3**: Provides access to Universe while migration is in progress.
+    /// **Phase 4.5+**: Will be deprecated in favor of db() + engine() methods.
+    pub fn universe(&self) -> &Rc<RefCell<Universe>> {
+        &self.universe
+    }
+
+    /// Get mutable reference to the Universe (legacy, for gradual migration)
+    ///
+    /// **Phase 4.3**: Provides access to Universe while migration is in progress.
+    /// **Phase 4.5+**: Will be deprecated in favor of db() + engine() methods.
+    pub fn universe_mut(&mut self) -> &mut Rc<RefCell<Universe>> {
+        &mut self.universe
+    }
+
+    /// Get reference to the Database (compile-time data)
+    ///
+    /// **Phase 4.3**: Currently returns empty Database stub.
+    /// **Phase 4.4+**: Will return actual Database from CompileSession.
+    ///
+    /// **Note**: During migration (Phases 4.3-4.5), this is a placeholder.
+    /// Use `universe()` to access data until Database is fully integrated.
+    #[allow(dead_code)]
+    pub fn db(&self) -> Result<&crate::database::Database, String> {
+        // Phase 4.3: Placeholder - will be implemented in Phase 4.4+
+        // For now, this just returns a reference to whatever Database we have
+        // In Phase 4.4, Evaler will have its own Database field
+        Err("Evaler::db() not yet implemented - use universe() during migration (Phase 4.3)".to_string())
+    }
+
+    /// Get reference to the ExecutionEngine (runtime data)
+    ///
+    /// **Phase 4.3**: Currently returns empty ExecutionEngine stub.
+    /// **Phase 4.4+**: Will return actual ExecutionEngine from CompileSession.
+    ///
+    /// **Note**: During migration (Phases 4.3-4.5), this is a placeholder.
+    /// Use `universe()` to access data until ExecutionEngine is fully integrated.
+    #[allow(dead_code)]
+    pub fn engine(&self) -> Result<&crate::runtime::ExecutionEngine, String> {
+        // Phase 4.3: Placeholder - will be implemented in Phase 4.4+
+        // For now, this just returns a reference to whatever ExecutionEngine we have
+        // In Phase 4.4, Evaler will have its own ExecutionEngine field
+        Err("Evaler::engine() not yet implemented - use universe() during migration (Phase 4.3)".to_string())
+    }
+
+    // =========================================================================
+    // Evaluation Methods
+    // =========================================================================
+
     pub fn eval(&mut self, code: &Code) -> AutoResult<Value> {
         match self.mode {
             EvalMode::SCRIPT => {

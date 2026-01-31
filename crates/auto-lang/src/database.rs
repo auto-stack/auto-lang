@@ -15,7 +15,7 @@
 // Phase 3: Add fragment-level hashing and fine-grained dependencies
 
 use crate::ast::{Fn, Type};
-use crate::scope::{Scope, Sid, SID_PATH_GLOBAL};
+use crate::scope::{Scope, Sid, SID_PATH_GLOBAL, SymbolTable};
 use crate::universe::{CodePak, SymbolLocation};
 use auto_val::{AutoStr, TypeInfoStore};
 use dashmap::DashMap;
@@ -255,7 +255,8 @@ pub struct Database {
     // =========================================================================
 
     // Scope management (compile-time scoping structure)
-    scopes: HashMap<Sid, Scope>,
+    scopes: HashMap<Sid, Scope>,  // Legacy Scope (will be deprecated)
+    symbol_tables: HashMap<Sid, SymbolTable>,  // Phase 4.2: SymbolTable (compile-time only)
 
     // Type information storage (compile-time type registry)
     type_info_store: TypeInfoStore,
@@ -316,7 +317,8 @@ impl Database {
             dirty_files: std::collections::HashSet::new(),
             frag_iface_hashes: HashMap::new(),
             // Phase 3: Compile-time data from Universe (Plan 064)
-            scopes: HashMap::new(),
+            scopes: HashMap::new(),  // Legacy Scope (will be deprecated)
+            symbol_tables: HashMap::new(),  // Phase 4.2: SymbolTable (compile-time only)
             type_info_store: TypeInfoStore::new(),
             type_aliases: HashMap::new(),
             specs: HashMap::new(),
@@ -787,6 +789,45 @@ impl Database {
     /// Get all scopes
     pub fn get_all_scopes(&self) -> &HashMap<Sid, Scope> {
         &self.scopes
+    }
+
+    // -------------------------------------------------------------------------
+    // Symbol Table Management (Phase 4.2 Plan 064)
+    // -------------------------------------------------------------------------
+
+    /// Get a symbol table by its ID
+    pub fn get_symbol_table(&self, sid: &Sid) -> Option<&SymbolTable> {
+        self.symbol_tables.get(sid)
+    }
+
+    /// Get a mutable symbol table by its ID
+    pub fn get_symbol_table_mut(&mut self, sid: &Sid) -> Option<&mut SymbolTable> {
+        self.symbol_tables.get_mut(sid)
+    }
+
+    /// Insert a symbol table into the database
+    pub fn insert_symbol_table(&mut self, sid: Sid, table: SymbolTable) {
+        self.symbol_tables.insert(sid, table);
+    }
+
+    /// Remove a symbol table from the database
+    pub fn remove_symbol_table(&mut self, sid: &Sid) -> Option<SymbolTable> {
+        self.symbol_tables.remove(sid)
+    }
+
+    /// Get all symbol tables
+    pub fn get_all_symbol_tables(&self) -> &HashMap<Sid, SymbolTable> {
+        &self.symbol_tables
+    }
+
+    /// Convert a Scope to SymbolTable (migration helper for Plan 064)
+    ///
+    /// This extracts only the compile-time fields from Scope,
+    /// creating a SymbolTable. Runtime fields (vals, moved_vars, cur_block)
+    /// are discarded since they belong in StackFrame (ExecutionEngine).
+    pub fn scope_to_symbol_table(&self, sid: &Sid) -> Option<SymbolTable> {
+        let scope = self.scopes.get(sid)?;
+        Some(SymbolTable::from_scope(scope))
     }
 
     // -------------------------------------------------------------------------
@@ -1538,5 +1579,178 @@ mod tests {
         // Remove spec
         db.remove_spec("MySpec");
         assert!(db.get_spec("MySpec").is_none());
+    }
+
+    // =========================================================================
+    // Phase 4.2: SymbolTable Tests (Plan 064)
+    // =========================================================================
+
+    #[test]
+    fn test_symbol_table_insert_get() {
+        use crate::scope::{SymbolTable, ScopeKind};
+
+        let mut db = Database::new();
+        let sid = Sid::new("test_symbol_table");
+
+        // Create a symbol table using the constructor
+        let symbol_table = SymbolTable::new(ScopeKind::Block, sid.clone());
+
+        // Insert symbol table
+        db.insert_symbol_table(sid.clone(), symbol_table);
+
+        // Get symbol table
+        let retrieved = db.get_symbol_table(&sid);
+        assert!(retrieved.is_some());
+        assert!(matches!(retrieved.unwrap().kind, ScopeKind::Block));
+    }
+
+    #[test]
+    fn test_symbol_table_get_mut() {
+        use crate::scope::{SymbolTable, ScopeKind};
+
+        let mut db = Database::new();
+        let sid = Sid::new("test_mut");
+
+        // Create and insert symbol table
+        let symbol_table = SymbolTable::new(ScopeKind::Block, sid.clone());
+        db.insert_symbol_table(sid.clone(), symbol_table);
+
+        // Get mutable reference and modify
+        if let Some(table) = db.get_symbol_table_mut(&sid) {
+            table.symbols.insert(AutoStr::from("x"), Rc::new(crate::scope::Meta::Ref(crate::ast::Name::from("x"))));
+            table.types.insert(AutoStr::from("x"), Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int)));
+        }
+
+        // Verify modifications
+        let retrieved = db.get_symbol_table(&sid).unwrap();
+        assert_eq!(retrieved.symbols.len(), 1);
+        assert!(retrieved.symbols.contains_key("x"));
+        assert_eq!(retrieved.types.len(), 1);
+        assert!(retrieved.types.contains_key("x"));
+    }
+
+    #[test]
+    fn test_symbol_table_remove() {
+        use crate::scope::{SymbolTable, ScopeKind};
+
+        let mut db = Database::new();
+        let sid = Sid::new("test_remove");
+
+        // Create and insert symbol table
+        let symbol_table = SymbolTable::new(ScopeKind::Block, sid.clone());
+        db.insert_symbol_table(sid.clone(), symbol_table);
+
+        // Verify it exists
+        assert!(db.get_symbol_table(&sid).is_some());
+
+        // Remove it
+        let removed = db.remove_symbol_table(&sid);
+        assert!(removed.is_some());
+
+        // Verify it's gone
+        assert!(db.get_symbol_table(&sid).is_none());
+    }
+
+    #[test]
+    fn test_scope_to_symbol_table_migration() {
+        use crate::scope::{Scope, ScopeKind};
+
+        let mut db = Database::new();
+        let sid = Sid::new("test_migration");
+
+        // Create a scope with some data
+        let mut scope = Scope::new(ScopeKind::Block, sid.clone());
+        scope.symbols.insert(AutoStr::from("x"), Rc::new(crate::scope::Meta::Ref(crate::ast::Name::from("x"))));
+        scope.types.insert(AutoStr::from("x"), Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int)));
+        db.insert_scope(sid.clone(), scope);
+
+        // Convert to symbol table
+        let symbol_table = db.scope_to_symbol_table(&sid);
+        assert!(symbol_table.is_some());
+
+        let st = symbol_table.unwrap();
+        assert_eq!(st.sid, sid);
+        assert!(matches!(st.kind, ScopeKind::Block));
+        assert_eq!(st.symbols.len(), 1);
+        assert!(st.symbols.contains_key("x"));
+        assert_eq!(st.types.len(), 1);
+        assert!(st.types.contains_key("x"));
+    }
+
+    #[test]
+    fn test_symbol_table_and_scope_coexistence() {
+        use crate::scope::{Scope, SymbolTable, ScopeKind};
+
+        let mut db = Database::new();
+        let sid = Sid::new("test_coexist");
+
+        // Create both Scope and SymbolTable with same ID
+        let scope = Scope::new(ScopeKind::Block, sid.clone());
+        db.insert_scope(sid.clone(), scope);
+
+        let symbol_table = SymbolTable::new(ScopeKind::Block, sid.clone());
+        db.insert_symbol_table(sid.clone(), symbol_table);
+
+        // Both should exist
+        assert!(db.get_scope(&sid).is_some());
+        assert!(db.get_symbol_table(&sid).is_some());
+
+        // Get all scopes and symbol tables
+        let all_scopes = db.get_all_scopes();
+        let all_symbol_tables = db.get_all_symbol_tables();
+        assert_eq!(all_scopes.len(), 1);
+        assert_eq!(all_symbol_tables.len(), 1);
+    }
+
+    #[test]
+    fn test_symbol_table_fields_preservation() {
+        use crate::scope::{SymbolTable, ScopeKind};
+
+        let mut db = Database::new();
+        let sid = Sid::new("test_fields");
+        let parent_sid = Sid::new("parent");
+        let kid_sid = Sid::new("kid");
+
+        // Create symbol table using constructor, then modify fields
+        let mut symbol_table = SymbolTable::new(ScopeKind::Fn, sid.clone());
+        symbol_table.parent = Some(parent_sid.clone());
+        symbol_table.kids.push(kid_sid.clone());
+
+        // Add symbols and types
+        symbol_table.symbols.insert(
+            AutoStr::from("x"),
+            Rc::new(crate::scope::Meta::Ref(crate::ast::Name::from("x")))
+        );
+        symbol_table.symbols.insert(
+            AutoStr::from("myfunc"),
+            Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int))
+        );
+        symbol_table.types.insert(
+            AutoStr::from("x"),
+            Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int))
+        );
+        symbol_table.types.insert(
+            AutoStr::from("mytype"),
+            Rc::new(crate::scope::Meta::Type(crate::ast::Type::Float))
+        );
+
+        // Insert into database
+        db.insert_symbol_table(sid.clone(), symbol_table);
+
+        // Retrieve and verify all fields
+        let retrieved = db.get_symbol_table(&sid).unwrap();
+        assert!(matches!(retrieved.kind, ScopeKind::Fn));
+        assert_eq!(&retrieved.sid, &sid);
+        assert_eq!(retrieved.parent, Some(parent_sid));
+        assert_eq!(retrieved.kids.len(), 1);
+        assert_eq!(retrieved.kids[0], kid_sid);
+        assert_eq!(retrieved.symbols.len(), 2);
+        assert_eq!(retrieved.types.len(), 2);
+
+        // Verify specific symbol and type
+        assert!(retrieved.symbols.contains_key("x"));
+        assert!(retrieved.symbols.contains_key("myfunc"));
+        assert!(retrieved.types.contains_key("x"));
+        assert!(retrieved.types.contains_key("mytype"));
     }
 }
