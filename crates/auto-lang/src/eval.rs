@@ -2771,19 +2771,15 @@ impl Evaler {
                 // Look for "TypeName.method_name" in universe (using dot)
                 let qualified_method_name: AutoStr =
                     format!("{}.{}", type_name, method_name).into();
-                let fn_decl_opt = {
-                    let universe = self.universe.borrow();
-                    universe
-                        .lookup_meta(&qualified_method_name)
-                        .map(|meta| {
-                            if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
-                                Some(fn_decl.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .flatten()
-                };
+                // Phase 4.5: Use bridge method for lookup
+                let fn_decl_opt = self.lookup_meta(&qualified_method_name)
+                    .and_then(|meta| {
+                        if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
+                            Some(fn_decl.clone())
+                        } else {
+                            None
+                        }
+                    });
 
                 if let Some(fn_decl) = fn_decl_opt {
                     // Plan 035 Phase 4.3: Only bind self for instance methods
@@ -2848,10 +2844,7 @@ impl Evaler {
                 // Plan 038: Try to find VM function (e.g., str_split for str.split())
                 // VM function naming convention: {type}_{method}
                 let vm_function_name: AutoStr = format!("{}_{}", type_name, method_name).into();
-                let vm_fn = {
-                    let universe = self.universe.borrow();
-                    universe.lookup_val(&vm_function_name)
-                };
+                let vm_fn = self.lookup_val(&vm_function_name);  // Phase 4.5: Use bridge method
 
                 if let Some(Value::ExtFn(ext_fn)) = vm_fn {
                     // Call VM function with self as first argument
@@ -2948,19 +2941,15 @@ impl Evaler {
                         // Look for "TypeName::method_name" in universe (using double colon)
                         let qualified_method_name: AutoStr =
                             format!("{}.{}", type_name, method_name).into();
-                        let fn_decl_opt = {
-                            let universe = self.universe.borrow();
-                            universe
-                                .lookup_meta(&qualified_method_name)
-                                .map(|meta| {
-                                    if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
-                                        Some(fn_decl.clone())
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .flatten()
-                        };
+                        // Phase 4.5: Use bridge method for lookup
+                        let fn_decl_opt = self.lookup_meta(&qualified_method_name)
+                            .and_then(|meta| {
+                                if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
+                                    Some(fn_decl.clone())
+                                } else {
+                                    None
+                                }
+                            });
 
                         if let Some(fn_decl) = fn_decl_opt {
                             // Plan 035 Phase 4.3: Only bind self for instance methods
@@ -2968,9 +2957,7 @@ impl Evaler {
                             if !fn_decl.is_static {
                                 // Bind self to the instance value before calling the method
                                 // This allows the method body to access the instance via 'self'
-                                self.universe
-                                    .borrow_mut()
-                                    .set_local_val("self", inst.clone());
+                                self.set_local_val("self", inst.clone());  // Phase 4.5: Use bridge method
                             }
 
                             // Call the method
@@ -3026,9 +3013,8 @@ impl Evaler {
                         let vm_function_name: AutoStr =
                             format!("{}_{}", type_name, method_name).into();
                         let vm_fn = {
-                            let universe = self.universe.borrow();
-                            universe.lookup_val(&vm_function_name)
-                        };
+                        self.lookup_val(&vm_function_name)  // Phase 4.5: Use bridge method
+                    };
 
                         if let Some(Value::ExtFn(ext_fn)) = vm_fn {
                             // Call VM function with self as first argument
