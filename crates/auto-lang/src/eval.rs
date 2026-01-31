@@ -36,18 +36,38 @@ pub enum EvalMode {
 }
 
 pub struct Evaler {
+    // ========================================================================
+    // Phase 4.5: New AIE Architecture Fields (Plan 064)
+    // ========================================================================
+    /// AIE Database (compile-time data)
+    /// Phase 4.5: Added for gradual migration from Universe
+    db: Option<std::sync::Arc<crate::database::Database>>,
+
+    /// Execution engine (runtime state)
+    /// Phase 4.5: Added for gradual migration from Universe
+    engine: Option<Rc<RefCell<crate::runtime::ExecutionEngine>>>,
+
+    // ========================================================================
+    // Legacy Fields (will be deprecated in Phase 4.6)
+    // ========================================================================
+    /// Legacy Universe (contains both compile-time and runtime data)
+    /// Phase 4.5: Gradually migrating to Database + ExecutionEngine
     universe: Rc<RefCell<Universe>>,
-    // configure whether to evaluate a node immediately or lazily
+
+    // ========================================================================
+    // Common Fields (used by both old and new architecture)
+    // ========================================================================
+    /// Configure whether to evaluate a node immediately or lazily
     tempo_for_nodes: HashMap<AutoStr, EvalTempo>,
-    // evaluation mode
+    /// Evaluation mode
     mode: EvalMode,
-    // skip_check
+    /// Skip type checking
     skip_check: bool,
-    // borrow checker for Phase 3 ownership system
+    /// Borrow checker for Phase 3 ownership system
     borrow_checker: crate::ownership::borrow::BorrowChecker,
-    // lifetime context for Phase 3 ownership system
+    /// Lifetime context for Phase 3 ownership system
     lifetime_ctx: crate::ownership::lifetime::LifetimeContext,
-    // Plan 060 Phase 3+: Closure storage
+    /// Plan 060 Phase 3+: Closure storage
     closures: HashMap<usize, EvalClosure>,
     next_closure_id: usize,
 }
@@ -55,6 +75,10 @@ pub struct Evaler {
 impl Evaler {
     pub fn new(universe: Rc<RefCell<Universe>>) -> Self {
         let mut evaluator = Evaler {
+            // Phase 4.5: Initialize AIE architecture fields as None (will be set later)
+            db: None,
+            engine: None,
+            // Legacy: Initialize Universe (still used during migration)
             universe,
             tempo_for_nodes: HashMap::new(),
             mode: EvalMode::SCRIPT,
@@ -101,53 +125,119 @@ impl Evaler {
     }
 
     // =========================================================================
-    // Bridge Methods (Phase 4.3 Plan 064)
+    // Bridge Methods (Phase 4.5 Plan 064)
     // =========================================================================
 
     /// Get reference to the Universe (legacy, for gradual migration)
     ///
-    /// **Phase 4.3**: Provides access to Universe while migration is in progress.
-    /// **Phase 4.5+**: Will be deprecated in favor of db() + engine() methods.
+    /// **Phase 4.3-4.5**: Provides access to Universe while migration is in progress.
+    /// **Phase 4.6+**: Will be deprecated in favor of db() + engine() methods.
     pub fn universe(&self) -> &Rc<RefCell<Universe>> {
         &self.universe
     }
 
     /// Get mutable reference to the Universe (legacy, for gradual migration)
     ///
-    /// **Phase 4.3**: Provides access to Universe while migration is in progress.
-    /// **Phase 4.5+**: Will be deprecated in favor of db() + engine() methods.
+    /// **Phase 4.3-4.5**: Provides access to Universe while migration is in progress.
+    /// **Phase 4.6+**: Will be deprecated in favor of db() + engine() methods.
     pub fn universe_mut(&mut self) -> &mut Rc<RefCell<Universe>> {
         &mut self.universe
     }
 
+    /// Set the AIE Database for this evaluator
+    ///
+    /// **Phase 4.5**: Called by Interpreter to provide Database access
+    pub fn set_db(&mut self, db: std::sync::Arc<crate::database::Database>) {
+        self.db = Some(db);
+    }
+
+    /// Set the ExecutionEngine for this evaluator
+    ///
+    /// **Phase 4.5**: Called by Interpreter to provide ExecutionEngine access
+    pub fn set_engine(&mut self, engine: Rc<RefCell<crate::runtime::ExecutionEngine>>) {
+        self.engine = Some(engine);
+    }
+
     /// Get reference to the Database (compile-time data)
     ///
-    /// **Phase 4.3**: Currently returns empty Database stub.
-    /// **Phase 4.4+**: Will return actual Database from CompileSession.
+    /// **Phase 4.5**: Returns Some(Database) if set, None otherwise
     ///
-    /// **Note**: During migration (Phases 4.3-4.5), this is a placeholder.
-    /// Use `universe()` to access data until Database is fully integrated.
-    #[allow(dead_code)]
-    pub fn db(&self) -> Result<&crate::database::Database, String> {
-        // Phase 4.3: Placeholder - will be implemented in Phase 4.4+
-        // For now, this just returns a reference to whatever Database we have
-        // In Phase 4.4, Evaler will have its own Database field
-        Err("Evaler::db() not yet implemented - use universe() during migration (Phase 4.3)".to_string())
+    /// **Note**: During migration (Phase 4.5), this will return None until
+    /// Interpreter calls set_db(). Use universe() as fallback.
+    pub fn db(&self) -> Option<&std::sync::Arc<crate::database::Database>> {
+        self.db.as_ref()
     }
 
     /// Get reference to the ExecutionEngine (runtime data)
     ///
-    /// **Phase 4.3**: Currently returns empty ExecutionEngine stub.
-    /// **Phase 4.4+**: Will return actual ExecutionEngine from CompileSession.
+    /// **Phase 4.5**: Returns Some(ExecutionEngine) if set, None otherwise
     ///
-    /// **Note**: During migration (Phases 4.3-4.5), this is a placeholder.
-    /// Use `universe()` to access data until ExecutionEngine is fully integrated.
-    #[allow(dead_code)]
-    pub fn engine(&self) -> Result<&crate::runtime::ExecutionEngine, String> {
-        // Phase 4.3: Placeholder - will be implemented in Phase 4.4+
-        // For now, this just returns a reference to whatever ExecutionEngine we have
-        // In Phase 4.4, Evaler will have its own ExecutionEngine field
-        Err("Evaler::engine() not yet implemented - use universe() during migration (Phase 4.3)".to_string())
+    /// **Note**: During migration (Phase 4.5), this will return None until
+    /// Interpreter calls set_engine(). Use universe() as fallback.
+    pub fn engine(&self) -> Option<&Rc<RefCell<crate::runtime::ExecutionEngine>>> {
+        self.engine.as_ref()
+    }
+
+    // =========================================================================
+    // Group 1: Scope Operations (Phase 4.5 Plan 064)
+    // =========================================================================
+
+    /// Enter a new scope (compile-time + runtime)
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    /// **Future**: Will use Database (compile-time SymbolTable) + ExecutionEngine (runtime StackFrame).
+    ///
+    /// # Migration Path
+    ///
+    /// - **Current**: Uses `universe.enter_scope()` for both compile-time and runtime
+    /// - **Target**: Will create SymbolTable in Database and StackFrame in ExecutionEngine
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Old (Universe)
+    /// self.universe.borrow_mut().enter_scope();
+    ///
+    /// // New (Phase 4.5+)
+    /// self.enter_scope();  // Bridge method
+    ///
+    /// // Future (Phase 4.6)
+    /// self.db.create_symbol_table(sid, ScopeKind::Block);
+    /// self.engine.push_frame(sid);
+    /// ```
+    pub fn enter_scope(&mut self) {
+        self.universe.borrow_mut().enter_scope();
+    }
+
+    /// Exit the current scope
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    /// **Future**: Will pop StackFrame from ExecutionEngine.
+    ///
+    /// # Migration Path
+    ///
+    /// - **Current**: Uses `universe.exit_scope()` for both compile-time and runtime
+    /// - **Target**: Will pop StackFrame from ExecutionEngine (compile-time SymbolTable persists)
+    pub fn exit_scope(&mut self) {
+        self.universe.borrow_mut().exit_scope();
+    }
+
+    /// Look up a symbol (function, type, variable) by name
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    /// **Future**: Will use Database for compile-time symbol lookup.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(Rc<Meta>)` if symbol is found
+    /// - `None` if symbol doesn't exist
+    ///
+    /// # Migration Path
+    ///
+    /// - **Current**: Uses `universe.lookup_meta()` for symbol lookup
+    /// - **Target**: Will use Database's SymbolTables to find symbols
+    pub fn lookup_meta(&self, name: &str) -> Option<Rc<Meta>> {
+        self.universe.borrow().lookup_meta(name)
     }
 
     // =========================================================================
@@ -3227,16 +3317,6 @@ impl Evaler {
 
         let msg: AutoStr = format!("Invalid function call {}", sig.name.as_str()).into();
         Ok(Value::error(msg))
-    }
-
-    #[inline]
-    fn enter_scope(&mut self) {
-        self.universe.borrow_mut().enter_scope();
-    }
-
-    #[inline]
-    fn exit_scope(&mut self) {
-        self.universe.borrow_mut().exit_scope();
     }
 
     fn eval_fn_arg(&mut self, arg: &Arg, i: usize, params: &Vec<Param>) -> Value {
