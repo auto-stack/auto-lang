@@ -1034,13 +1034,11 @@ impl Evaler {
     fn eval_iter(&mut self, iter: &Iter, idx: usize, item: Value) {
         match iter {
             Iter::Indexed(index, iter) => {
-                self.universe
-                    .borrow_mut()
-                    .set_local_val(&index, Value::Int(idx as i32));
+                self.set_local_val(&index, Value::Int(idx as i32));  // Phase 4.5: Use bridge method
                 // println!("set index {}, iter: {}, item: {}", index.text, iter.text, item.clone());
-                self.universe.borrow_mut().set_local_val(&iter, item);
+                self.set_local_val(&iter, item);  // Phase 4.5: Use bridge method
             }
-            Iter::Named(iter) => self.universe.borrow_mut().set_local_val(&iter, item),
+            Iter::Named(iter) => self.set_local_val(&iter, item),  // Phase 4.5: Use bridge method
             Iter::Call(_) => {
                 todo!()
             }
@@ -1071,13 +1069,13 @@ impl Evaler {
             // For simple conditionals like "for i < max { ... }", use outer scope
             let has_init = for_stmt.init.is_some();
             if has_init {
-                self.universe.borrow_mut().enter_scope();
+                self.enter_scope();  // Phase 4.5: Use bridge method
             }
 
             loop {
                 if max_loop <= 0 {
                     if has_init {
-                        self.universe.borrow_mut().exit_scope();
+                        self.exit_scope();  // Phase 4.5: Use bridge method
                     }
                     return Ok(Value::error("Max loop reached"));
                 }
@@ -1100,14 +1098,14 @@ impl Evaler {
                     }
                     Err(e) => {
                         if has_init {
-                            self.universe.borrow_mut().exit_scope();
+                            self.exit_scope();  // Phase 4.5: Use bridge method
                         }
                         return Err(e);
                     }
                 }
             }
             if has_init {
-                self.universe.borrow_mut().exit_scope();
+                self.exit_scope();  // Phase 4.5: Use bridge method
             }
 
             return Ok(match self.mode {
@@ -1153,7 +1151,7 @@ impl Evaler {
         let mut is_mid = true;
         let is_new_line = for_stmt.new_line;
         let sep = if for_stmt.new_line { "\n" } else { "" };
-        self.universe.borrow_mut().enter_scope();
+        self.enter_scope();  // Phase 4.5: Use bridge method
         match range_final {
             Value::Range(start, end) => {
                 let len = (end - start) as usize;
@@ -1171,7 +1169,7 @@ impl Evaler {
                             }
                         }
                         Err(e) => {
-                            self.universe.borrow_mut().exit_scope();
+                            self.exit_scope();  // Phase 4.5: Use bridge method
                             return Err(e);
                         }
                     }
@@ -1194,7 +1192,7 @@ impl Evaler {
                             }
                         }
                         Err(e) => {
-                            self.universe.borrow_mut().exit_scope();
+                            self.exit_scope();  // Phase 4.5: Use bridge method
                             return Err(e);
                         }
                     }
@@ -1217,7 +1215,7 @@ impl Evaler {
                             }
                         }
                         Err(e) => {
-                            self.universe.borrow_mut().exit_scope();
+                            self.exit_scope();  // Phase 4.5: Use bridge method
                             return Err(e);
                         }
                     }
@@ -1248,7 +1246,7 @@ impl Evaler {
                             let len = list_elems.len();
                             for (idx, item) in list_elems.iter().enumerate() {
                                 if max_loop <= 0 {
-                                    self.universe.borrow_mut().exit_scope();
+                                    self.exit_scope();  // Phase 4.5: Use bridge method
                                     return Ok(Value::error("Max loop reached"));
                                 }
 
@@ -1265,13 +1263,13 @@ impl Evaler {
                                         }
                                     }
                                     Err(e) => {
-                                        self.universe.borrow_mut().exit_scope();
+                                        self.exit_scope();  // Phase 4.5: Use bridge method
                                         return Err(e);
                                     }
                                 }
                                 max_loop -= 1;
                             }
-                            self.universe.borrow_mut().exit_scope();
+                            self.exit_scope();  // Phase 4.5: Use bridge method
                             return Ok(match self.mode {
                                 EvalMode::SCRIPT => Value::Void,
                                 EvalMode::CONFIG => Value::Array(res),
@@ -1300,7 +1298,7 @@ impl Evaler {
                 return Ok(Value::error(format!("Invalid range {}", range_final)));
             }
         }
-        self.universe.borrow_mut().exit_scope();
+        self.exit_scope();  // Phase 4.5: Use bridge method
         if max_loop <= 0 {
             Ok(Value::error("Max loop reached"))
         } else {
@@ -1432,11 +1430,11 @@ impl Evaler {
             self.universe.borrow_mut().clear_moved(&store.name);
         }
 
-        self.universe.borrow_mut().define(
+        self.define(
             store.name.as_str(),
             Rc::new(scope::Meta::Store(store.clone())),
-        );
-        self.universe.borrow_mut().set_local_val(&store.name, value);
+        );  // Phase 4.5: Use bridge method
+        self.set_local_val(&store.name, value);  // Phase 4.5: Use bridge method
         Value::Void
     }
 
@@ -5416,13 +5414,11 @@ impl Evaler {
         }
 
         // Push new scope for closure execution
-        self.universe.borrow_mut().enter_scope();
+        self.enter_scope();  // Phase 4.5: Use bridge method
 
         // Plan 060 Phase 4: Restore captured environment
         for (name, value) in &eval_closure.env {
-            self.universe
-                .borrow_mut()
-                .set_local_val(name, value.clone());
+            self.set_local_val(name, value.clone());  // Phase 4.5: Use bridge method
         }
 
         // Bind parameters to arguments (after env, so params can shadow captured vars)
@@ -5430,16 +5426,14 @@ impl Evaler {
             let param_name = param.name.as_str();
             // Store the argument value in the current scope
             // This creates a ValueRef that can be resolved when the closure body references the parameter
-            self.universe
-                .borrow_mut()
-                .set_local_val(param_name, arg_value.clone());
+            self.set_local_val(param_name, arg_value.clone());  // Phase 4.5: Use bridge method
         }
 
         // Execute closure body
         let result = self.eval_expr(&eval_closure.body);
 
         // Pop scope
-        self.universe.borrow_mut().exit_scope();
+        self.exit_scope();  // Phase 4.5: Use bridge method
 
         Ok(result)
     }
