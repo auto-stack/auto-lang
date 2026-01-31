@@ -2826,11 +2826,11 @@ impl Evaler {
                         };
 
                         // Call the VM method with the instance
-                        let uni = self.universe.clone();
+                        // Phase 4.6: Pass &mut self instead of uni.clone()
 
                         // Create a mutable copy for the method call
                         let mut inst_copy = inst.clone();
-                        let result = method(uni, &mut inst_copy, arg_vals);
+                        let result = method(self, &mut inst_copy, arg_vals);
 
                         // If this was a variable binding, update it with the mutated instance
                         if let Some(var_name) = binding_name {
@@ -2893,7 +2893,7 @@ impl Evaler {
 
                 if let Some(vm_func) = vm_func_entry {
                     // This is a VM static function - call it directly
-                    let uni = self.universe.clone();
+                    // Phase 4.6: Pass &mut self instead of uni.clone()
                     let arg_vals: Vec<Value> = call
                         .args
                         .args
@@ -2904,14 +2904,14 @@ impl Evaler {
                         })
                         .collect();
 
-                    // VM static functions take (universe, Value)
+                    // VM static functions take (&mut Evaler, Value)
                     // For functions with single argument
                     if arg_vals.len() == 1 {
-                        let result = (vm_func.func)(uni, arg_vals[0].clone());
+                        let result = (vm_func.func)(self, arg_vals[0].clone());
                         return Ok(result);
                     } else if arg_vals.is_empty() {
                         // For no-argument functions, pass Nil
-                        let result = (vm_func.func)(uni, Value::Nil);
+                        let result = (vm_func.func)(self, Value::Nil);
                         return Ok(result);
                     } else {
                         // For multi-argument functions, wrap them in an Array
@@ -2919,7 +2919,7 @@ impl Evaler {
                         // all arguments as a single Value::Array parameter
                         use auto_val::Array;
                         let array_value = Value::Array(Array { values: arg_vals });
-                        let result = (vm_func.func)(uni, array_value);
+                        let result = (vm_func.func)(self, array_value);
                         return Ok(result);
                     }
                 }
@@ -3015,8 +3015,8 @@ impl Evaler {
                                 }
 
                                 // Call the VM method with the instance
-                                let uni = self.universe.clone();
-                                return Ok(method(uni, &mut inst.clone(), arg_vals));
+                                // Phase 4.6: Pass &mut self instead of uni.clone()
+                                return Ok(method(self, &mut inst.clone(), arg_vals));
                             }
                         }
 
@@ -3062,7 +3062,7 @@ impl Evaler {
 
                         if let Some(vm_func) = vm_func_entry {
                             // This is a VM static function - call it directly
-                            let uni = self.universe.clone();
+                            // Phase 4.6: Pass &mut self instead of uni.clone()
                             let arg_vals: Vec<Value> = call
                                 .args
                                 .args
@@ -3073,20 +3073,20 @@ impl Evaler {
                                 })
                                 .collect();
 
-                            // VM static functions take (universe, Value)
+                            // VM static functions take (&mut Evaler, Value)
                             // For functions with single argument
                             if arg_vals.len() == 1 {
-                                let result = (vm_func.func)(uni, arg_vals[0].clone());
+                                let result = (vm_func.func)(self, arg_vals[0].clone());
                                 return Ok(result);
                             } else if arg_vals.is_empty() {
                                 // For no-argument functions, pass Nil
-                                let result = (vm_func.func)(uni, Value::Nil);
+                                let result = (vm_func.func)(self, Value::Nil);
                                 return Ok(result);
                             } else {
                                 // For multi-argument functions, wrap them in an Array
                                 use auto_val::Array;
                                 let array_value = Value::Array(Array { values: arg_vals });
-                                let result = (vm_func.func)(uni, array_value);
+                                let result = (vm_func.func)(self, array_value);
                                 return Ok(result);
                             }
                         }
@@ -3187,13 +3187,14 @@ impl Evaler {
                 }
 
                 // Call the VM function (single parameter - the last argument)
+                // Phase 4.6: Pass &mut self instead of self.universe.clone()
                 // For multi-arg functions, they should be wrapped in Array
                 let result = if arg_vals.len() == 1 {
-                    (func_entry.func)(self.universe.clone(), arg_vals[0].clone())
+                    (func_entry.func)(self, arg_vals[0].clone())
                 } else {
                     // Multiple arguments - wrap in Array
                     let args_array = Value::Array(auto_val::Array { values: arg_vals });
-                    (func_entry.func)(self.universe.clone(), args_array)
+                    (func_entry.func)(self, args_array)
                 };
 
                 return Ok(result);
@@ -3597,7 +3598,7 @@ impl Evaler {
 
                     if let Some(method_fn) = method_opt {
                         // Call the VM instance method
-                        let uni = self.universe.clone();
+                        // Phase 4.6: Pass &mut self instead of uni.clone()
                         let mut target_clone = target.clone();
 
                         // Convert Args to Vec<Value> by evaluating each Arg
@@ -3611,7 +3612,7 @@ impl Evaler {
                             })
                             .collect();
 
-                        return Ok(method_fn(uni, &mut target_clone, arg_vals));
+                        return Ok(method_fn(self, &mut target_clone, arg_vals));
                     }
                 }
             }
@@ -3659,7 +3660,7 @@ impl Evaler {
 
         if let Some(func_entry) = func_entry {
             // This is a VM static function - call it directly
-            let uni = self.universe.clone();
+            // Phase 4.6: Pass &mut self instead of uni.clone()
             let arg_vals: Vec<Value> = args
                 .args
                 .iter()
@@ -3669,16 +3670,16 @@ impl Evaler {
                 })
                 .collect();
 
-            // VM static functions take (universe, Value)
+            // VM static functions take (&mut Evaler, Value)
             // For varargs support (e.g., List.new(1, 2, 3)), pack multiple args into an Array
             if arg_vals.len() == 0 {
-                return Ok((func_entry.func)(uni, Value::Nil));
+                return Ok((func_entry.func)(self, Value::Nil));
             } else if arg_vals.len() == 1 {
-                return Ok((func_entry.func)(uni, arg_vals[0].clone()));
+                return Ok((func_entry.func)(self, arg_vals[0].clone()));
             } else {
                 // Pack multiple arguments into an Array for varargs functions
                 let args_array = Value::Array(auto_val::Array { values: arg_vals });
-                return Ok((func_entry.func)(uni, args_array));
+                return Ok((func_entry.func)(self, args_array));
             }
         }
 
@@ -3726,12 +3727,12 @@ impl Evaler {
 
         match func_entry {
             Some(func_entry) => {
-                // Call the Rust function with universe and first argument
-                let uni = self.universe.clone();
+                // Call the Rust function with evaluator and first argument
+                // Phase 4.6: Pass &mut self instead of uni.clone()
 
                 // For single-argument functions like open()
                 if args.len() == 1 {
-                    (func_entry.func)(uni, args[0].clone())
+                    (func_entry.func)(self, args[0].clone())
                 } else {
                     // For multi-argument functions (not yet supported)
                     Value::Error(
@@ -3982,8 +3983,8 @@ impl Evaler {
                             // Use the list_get VM method
                             let id = instance.fields.get("id");
                             if let Some(Value::USize(_list_id)) = id {
-                                let uni = self.universe.clone();
-                                crate::vm::list::list_get(uni, &mut array_value, vec![index_value])
+                                // Phase 4.6: Pass &mut self instead of uni.clone()
+                                crate::vm::list::list_get(self, &mut array_value, vec![index_value])
                             } else {
                                 Value::error(format!("Invalid List instance"))
                             }

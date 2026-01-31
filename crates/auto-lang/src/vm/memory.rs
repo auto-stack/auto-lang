@@ -32,14 +32,14 @@
 //! }
 //! ```
 
-use auto_val::{Array, Shared, Value};
-use crate::Universe;
+use auto_val::{Array, Value};
+use crate::eval::Evaler;
 
 /// Allocate a new runtime array with the specified capacity
 ///
 /// # Arguments
 ///
-/// * `uni` - Universe reference for type lookup
+/// * `_evaler` - Evaluator reference (Phase 4.6: use bridge methods if needed)
 /// * `size` - Array capacity (must be positive integer)
 ///
 /// # Returns
@@ -59,7 +59,7 @@ use crate::Universe;
 /// ```auto
 /// let arr = alloc_array<int>(10)  // Create array with capacity 10
 /// ```
-pub fn alloc_array(_uni: Shared<Universe>, size: Value) -> Value {
+pub fn alloc_array(_evaler: &mut Evaler, size: Value) -> Value {
     match size {
         Value::Int(n) if n > 0 => {
             // Create Vec with specified capacity
@@ -89,8 +89,8 @@ pub fn alloc_array(_uni: Shared<Universe>, size: Value) -> Value {
 ///
 /// # Arguments
 ///
-/// * `uni` - Universe reference (unused, for API consistency)
-/// * `array` - Array to free (ignored)
+/// * `_evaler` - Evaluator reference (unused, for API consistency)
+/// * `_array` - Array to free (ignored)
 ///
 /// # Returns
 ///
@@ -108,7 +108,7 @@ pub fn alloc_array(_uni: Shared<Universe>, size: Value) -> Value {
 /// This function exists for API compatibility with C transpilation.
 /// In the VM, garbage collection automatically handles cleanup.
 /// In transpiled C code, this generates a real `free()` call.
-pub fn free_array(_uni: Shared<Universe>, _array: Value) -> Value {
+pub fn free_array(_evaler: &mut Evaler, _array: Value) -> Value {
     // VM uses garbage collection, no explicit free needed
     // This function exists for API compatibility with C transpilation
     Value::Nil
@@ -118,7 +118,7 @@ pub fn free_array(_uni: Shared<Universe>, _array: Value) -> Value {
 ///
 /// # Arguments
 ///
-/// * `uni` - Universe reference (unused, for API consistency)
+/// * `_evaler` - Evaluator reference (unused, for API consistency)
 /// * `array` - Original array to reallocate
 /// * `new_size` - New capacity (must be larger than current)
 ///
@@ -150,7 +150,7 @@ pub fn free_array(_uni: Shared<Universe>, _array: Value) -> Value {
 /// let new_arr = realloc_array<int>(arr, 10)  // Grow to capacity 10
 /// // new_arr[0] == 1, new_arr[1] == 2, rest are Nil
 /// ```
-pub fn realloc_array(_uni: Shared<Universe>, array: Value, new_size: Value) -> Value {
+pub fn realloc_array(_evaler: &mut Evaler, array: Value, new_size: Value) -> Value {
     // Validate array type first
     let arr = match &array {
         Value::Array(a) => a,
@@ -197,7 +197,7 @@ pub fn realloc_array(_uni: Shared<Universe>, array: Value, new_size: Value) -> V
 ///
 /// # Arguments
 ///
-/// * `uni` - Universe reference
+/// * `evaler` - Evaluator reference
 /// * `args` - Array containing [array, new_size]
 ///
 /// # Returns
@@ -213,14 +213,14 @@ pub fn realloc_array(_uni: Shared<Universe>, array: Value, new_size: Value) -> V
 /// ```
 ///
 /// The actual `realloc_array` function has signature:
-/// `fn(uni, array: Value, new_size: Value) -> Value`
+/// `fn(evaler, array: Value, new_size: Value) -> Value`
 ///
 /// This wrapper adapts it to VM function signature:
-/// `fn(uni, args: Value) -> Value`
-pub fn realloc_array_wrapped(uni: Shared<Universe>, args: Value) -> Value {
+/// `fn(evaler, args: Value) -> Value`
+pub fn realloc_array_wrapped(evaler: &mut Evaler, args: Value) -> Value {
     match args {
         Value::Array(arr) if arr.values.len() >= 2 => {
-            realloc_array(uni, arr.values[0].clone(), arr.values[1].clone())
+            realloc_array(evaler, arr.values[0].clone(), arr.values[1].clone())
         }
         Value::Array(arr) => {
             Value::Error(
@@ -263,15 +263,18 @@ pub fn array_capacity(array: Value) -> Value {
 mod tests {
     use super::*;
     use crate::Universe;
+    use crate::eval::Evaler;
+    use auto_val::Shared;
 
-    fn test_universe() -> Shared<Universe> {
-        std::rc::Rc::new(std::cell::RefCell::new(Universe::new()))
+    fn test_evaler() -> Evaler {
+        let universe: Shared<Universe> = std::rc::Rc::new(std::cell::RefCell::new(Universe::new()));
+        Evaler::new(universe)
     }
 
     #[test]
     fn test_alloc_array_basic() {
-        let uni = test_universe();
-        let result = alloc_array(uni.clone(), Value::Int(10));
+        let mut evaler = test_evaler();
+        let result = alloc_array(&mut evaler, Value::Int(10));
 
         match result {
             Value::Array(arr) => {
@@ -289,8 +292,8 @@ mod tests {
 
     #[test]
     fn test_alloc_array_empty() {
-        let uni = test_universe();
-        let result = alloc_array(uni, Value::Int(0));
+        let mut evaler = test_evaler();
+        let result = alloc_array(&mut evaler, Value::Int(0));
 
         match result {
             Value::Array(arr) => {
@@ -302,8 +305,8 @@ mod tests {
 
     #[test]
     fn test_alloc_array_invalid() {
-        let uni = test_universe();
-        let result = alloc_array(uni, Value::Int(-5));
+        let mut evaler = test_evaler();
+        let result = alloc_array(&mut evaler, Value::Int(-5));
 
         match result {
             Value::Error(_) => {
@@ -315,10 +318,10 @@ mod tests {
 
     #[test]
     fn test_realloc_array_growth() {
-        let uni = test_universe();
+        let mut evaler = test_evaler();
 
         // Create initial array with some data
-        let arr1 = alloc_array(uni.clone(), Value::Int(5));
+        let arr1 = alloc_array(&mut evaler, Value::Int(5));
         let mut arr1_data = match arr1 {
             Value::Array(ref arr) => arr.clone(),
             _ => panic!("Expected Array"),
@@ -330,7 +333,7 @@ mod tests {
         arr1_data.values[2] = Value::Int(3);
 
         // Reallocate to larger size
-        let arr2 = realloc_array(uni.clone(), Value::Array(arr1_data), Value::Int(10));
+        let arr2 = realloc_array(&mut evaler, Value::Array(arr1_data), Value::Int(10));
 
         match arr2 {
             Value::Array(arr) => {
@@ -349,10 +352,10 @@ mod tests {
 
     #[test]
     fn test_realloc_array_preserves_data() {
-        let uni = test_universe();
+        let mut evaler = test_evaler();
 
         // Create array
-        let arr1 = alloc_array(uni.clone(), Value::Int(3));
+        let arr1 = alloc_array(&mut evaler, Value::Int(3));
         let mut arr1_data = match arr1 {
             Value::Array(ref arr) => arr.clone(),
             _ => panic!("Expected Array"),
@@ -364,7 +367,7 @@ mod tests {
         arr1_data.values[2] = Value::Bool(true);
 
         // Realloc
-        let arr2 = realloc_array(uni, Value::Array(arr1_data), Value::Int(5));
+        let arr2 = realloc_array(&mut evaler, Value::Array(arr1_data), Value::Int(5));
 
         match arr2 {
             Value::Array(arr) => {
@@ -380,9 +383,9 @@ mod tests {
 
     #[test]
     fn test_free_array_no_op() {
-        let uni = test_universe();
-        let arr = alloc_array(uni.clone(), Value::Int(5));
-        let result = free_array(uni, arr);
+        let mut evaler = test_evaler();
+        let arr = alloc_array(&mut evaler, Value::Int(5));
+        let result = free_array(&mut evaler, arr);
 
         // Should always return Nil (no-op in VM)
         assert_eq!(result, Value::Nil);
@@ -390,8 +393,8 @@ mod tests {
 
     #[test]
     fn test_array_capacity_helper() {
-        let uni = test_universe();
-        let arr = alloc_array(uni, Value::Int(10));
+        let mut evaler = test_evaler();
+        let arr = alloc_array(&mut evaler, Value::Int(10));
         let cap = array_capacity(arr);
 
         match cap {

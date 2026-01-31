@@ -9,12 +9,14 @@ pub mod list;
 pub mod memory;
 pub mod storage;
 
-/// VM function signature: takes universe and single value argument
-pub type VmFunction = fn(Shared<crate::Universe>, auto_val::Value) -> auto_val::Value;
+/// Phase 4.6: VM function signature - now takes Evaler instead of Universe
+/// This allows VM functions to use bridge methods for Database/ExecutionEngine access
+pub type VmFunction = fn(&mut crate::eval::Evaler, auto_val::Value) -> auto_val::Value;
 
-/// VM method signature: takes universe, mutable instance reference, and arguments
+/// Phase 4.6: VM method signature - now takes Evaler instead of Universe
+/// Takes evaluator, mutable instance reference, and arguments
 pub type VmMethod =
-    fn(Shared<crate::Universe>, &mut auto_val::Value, Vec<auto_val::Value>) -> auto_val::Value;
+    fn(&mut crate::eval::Evaler, &mut auto_val::Value, Vec<auto_val::Value>) -> auto_val::Value;
 
 /// Represents a VM function in the registry
 #[derive(Clone)]

@@ -1,5 +1,5 @@
-use auto_val::{Instance, Obj, Shared, Type, Value};
-use crate::{ast, Universe};
+use auto_val::{Instance, Obj, Type, Value};
+use crate::{ast, eval::Evaler};
 
 // ============================================================================
 // StringBuilder Implementation
@@ -10,8 +10,8 @@ pub struct StringBuilderData {
     pub buffer: String,
 }
 
-pub fn string_builder_new(uni: Shared<Universe>, capacity: Value) -> Value {
-    let ty = uni.borrow().lookup_type("StringBuilder");
+pub fn string_builder_new(_evaler: &mut Evaler, capacity: Value) -> Value {
+    let ty = _evaler.lookup_type("StringBuilder");
     match &ty {
         ast::Type::User(_) => {
             let _cap = if let Value::Int(c) = capacity {
@@ -23,7 +23,7 @@ pub fn string_builder_new(uni: Shared<Universe>, capacity: Value) -> Value {
             let builder_data = StringBuilderData {
                 buffer: String::with_capacity(_cap),
             };
-            let id = uni.borrow_mut().add_vmref(crate::universe::VmRefData::StringBuilder(builder_data));
+            let id = _evaler.universe().borrow_mut().add_vmref(crate::universe::VmRefData::StringBuilder(builder_data));
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
             Value::Instance(Instance {
@@ -35,13 +35,13 @@ pub fn string_builder_new(uni: Shared<Universe>, capacity: Value) -> Value {
     }
 }
 
-pub fn string_builder_append(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn string_builder_append(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = uni.borrow();
+                    let uni = _evaler.universe().borrow();
                     let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
@@ -60,13 +60,13 @@ pub fn string_builder_append(uni: Shared<Universe>, instance: &mut Value, args: 
     Value::Nil
 }
 
-pub fn string_builder_append_char(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn string_builder_append_char(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = uni.borrow();
+                    let uni = _evaler.universe().borrow();
                     let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
@@ -86,13 +86,13 @@ pub fn string_builder_append_char(uni: Shared<Universe>, instance: &mut Value, a
     Value::Nil
 }
 
-pub fn string_builder_append_int(uni: Shared<Universe>, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn string_builder_append_int(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = uni.borrow();
+                    let uni = _evaler.universe().borrow();
                     let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
@@ -111,13 +111,13 @@ pub fn string_builder_append_int(uni: Shared<Universe>, instance: &mut Value, ar
     Value::Nil
 }
 
-pub fn string_builder_build(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn string_builder_build(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = uni.borrow();
+                    let uni = _evaler.universe().borrow();
                     let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
@@ -132,13 +132,13 @@ pub fn string_builder_build(uni: Shared<Universe>, instance: &mut Value, _args: 
     Value::empty_str()
 }
 
-pub fn string_builder_clear(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn string_builder_clear(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = uni.borrow();
+                    let uni = _evaler.universe().borrow();
                     let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
@@ -154,13 +154,13 @@ pub fn string_builder_clear(uni: Shared<Universe>, instance: &mut Value, _args: 
     Value::Nil
 }
 
-pub fn string_builder_len(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn string_builder_len(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = uni.borrow();
+                    let uni = _evaler.universe().borrow();
                     let b = uni.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
@@ -175,14 +175,13 @@ pub fn string_builder_len(uni: Shared<Universe>, instance: &mut Value, _args: Ve
     Value::Int(0)
 }
 
-pub fn string_builder_drop(uni: Shared<Universe>, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn string_builder_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let mut uni = uni.borrow_mut();
-                    uni.drop_vmref(id);
+                    _evaler.universe().borrow_mut().drop_vmref(id);
                     return Value::Nil;
                 }
             }
@@ -192,11 +191,11 @@ pub fn string_builder_drop(uni: Shared<Universe>, instance: &mut Value, _args: V
 }
 
 // Wrapper for static new() method (VmFunction signature - takes single Value)
-pub fn string_builder_new_static(uni: Shared<Universe>, arg: Value) -> Value {
-    string_builder_new(uni, arg)
+pub fn string_builder_new_static(_evaler: &mut Evaler, arg: Value) -> Value {
+    string_builder_new(_evaler, arg)
 }
 
 // Wrapper for static new_with_default() method (VmFunction signature - takes single Value)
-pub fn string_builder_new_with_default_static(uni: Shared<Universe>, _arg: Value) -> Value {
-    string_builder_new(uni, Value::Int(1024))
+pub fn string_builder_new_with_default_static(_evaler: &mut Evaler, _arg: Value) -> Value {
+    string_builder_new(_evaler, Value::Int(1024))
 }

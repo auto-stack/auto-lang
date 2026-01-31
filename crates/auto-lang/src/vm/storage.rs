@@ -1,8 +1,8 @@
 // VM implementation of storage strategies (Plan 052)
 // This module provides VM-level implementations for Heap<T>, Inline<T>, etc.
 
-use auto_val::{Shared, Value, Instance, Obj};
-use crate::universe::Universe;
+use auto_val::{Value, Instance, Obj};
+use crate::eval::Evaler;
 
 // ============================================================================
 // Heap<T> Implementation
@@ -10,7 +10,7 @@ use crate::universe::Universe;
 
 /// Create a new empty Heap storage
 /// Returns an Instance with empty array and 0 capacity
-pub fn heap_new(_uni: Shared<Universe>, _args: Value) -> Value {
+pub fn heap_new(_evaler: &mut Evaler, _args: Value) -> Value {
     
 
     // Start with empty array (no allocation yet)
@@ -30,7 +30,7 @@ pub fn heap_new(_uni: Shared<Universe>, _args: Value) -> Value {
 
 /// Get the data pointer from Heap storage
 /// Returns the underlying array
-pub fn heap_data(_uni: Shared<Universe>, self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn heap_data(_evaler: &mut Evaler, self_instance: &mut Value, _args: Vec<Value>) -> Value {
     // Extract .ptr field from the Heap instance (now stores actual array)
     match self_instance {
         Value::Instance(instance) => {
@@ -41,7 +41,7 @@ pub fn heap_data(_uni: Shared<Universe>, self_instance: &mut Value, _args: Vec<V
 }
 
 /// Get the capacity from Heap storage
-pub fn heap_capacity(_uni: Shared<Universe>, self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn heap_capacity(_evaler: &mut Evaler, self_instance: &mut Value, _args: Vec<Value>) -> Value {
     // Extract .cap field from the Heap instance
     match self_instance {
         Value::Instance(instance) => {
@@ -53,7 +53,7 @@ pub fn heap_capacity(_uni: Shared<Universe>, self_instance: &mut Value, _args: V
 
 /// Try to grow the Heap storage to minimum capacity
 /// Uses alloc_array/realloc_array from VM memory module
-pub fn heap_try_grow(uni: Shared<Universe>, self_instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn heap_try_grow(_evaler: &mut Evaler, self_instance: &mut Value, args: Vec<Value>) -> Value {
     use crate::vm::memory::{alloc_array, realloc_array};
 
     // Extract min_cap from args[0]
@@ -90,10 +90,10 @@ pub fn heap_try_grow(uni: Shared<Universe>, self_instance: &mut Value, args: Vec
             // Allocate or reallocate memory
             let new_array = if cap == 0 {
                 // First allocation
-                alloc_array(uni.clone(), Value::Uint(new_cap))
+                alloc_array(_evaler, Value::Uint(new_cap))
             } else {
                 // Reallocation: grow existing array
-                realloc_array(uni.clone(), current_array, Value::Uint(new_cap))
+                realloc_array(_evaler, current_array, Value::Uint(new_cap))
             };
 
             // Check if allocation succeeded
@@ -120,7 +120,7 @@ pub fn heap_try_grow(uni: Shared<Universe>, self_instance: &mut Value, args: Vec
 }
 
 /// Free the Heap storage memory
-pub fn heap_drop(uni: Shared<Universe>, self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn heap_drop(_evaler: &mut Evaler, self_instance: &mut Value, _args: Vec<Value>) -> Value {
     use crate::vm::memory::free_array;
 
     match self_instance {
@@ -131,7 +131,7 @@ pub fn heap_drop(uni: Shared<Universe>, self_instance: &mut Value, _args: Vec<Va
             match array_value {
                 Value::Array(_) => {
                     // Free the array (no-op in VM with GC, but good for completeness)
-                    free_array(uni, array_value);
+                    free_array(_evaler, array_value);
 
                     // Reset fields to empty state
                     let mut instance_mut = instance.clone();
@@ -161,7 +161,7 @@ pub fn heap_drop(uni: Shared<Universe>, self_instance: &mut Value, _args: Vec<Va
 
 /// Create a new InlineInt64 storage (64-element stack-allocated array for integers)
 /// Returns an Instance with buffer=[0]*64
-pub fn inline_int64_new(_uni: Shared<Universe>, _args: Value) -> Value {
+pub fn inline_int64_new(_evaler: &mut Evaler, _args: Value) -> Value {
     // Create an InlineInt64 instance with a 64-element buffer initialized to 0
     let mut fields = Obj::new();
 
@@ -179,7 +179,7 @@ pub fn inline_int64_new(_uni: Shared<Universe>, _args: Value) -> Value {
 
 /// Get the data pointer from InlineInt64 storage
 /// Returns the buffer field (which is an Array)
-pub fn inline_int64_data(_uni: Shared<Universe>, self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn inline_int64_data(_evaler: &mut Evaler, self_instance: &mut Value, _args: Vec<Value>) -> Value {
     // Extract .buffer field from the InlineInt64 instance
     match self_instance {
         Value::Instance(instance) => {
@@ -191,13 +191,13 @@ pub fn inline_int64_data(_uni: Shared<Universe>, self_instance: &mut Value, _arg
 }
 
 /// Get the capacity from InlineInt64 storage (always 64)
-pub fn inline_int64_capacity(_uni: Shared<Universe>, _self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn inline_int64_capacity(_evaler: &mut Evaler, _self_instance: &mut Value, _args: Vec<Value>) -> Value {
     // InlineInt64 always has capacity 64
     Value::Int(64)
 }
 
 /// Try to grow the InlineInt64 storage (only succeeds if min_cap <= 64)
-pub fn inline_int64_try_grow(_uni: Shared<Universe>, _self_instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn inline_int64_try_grow(_evaler: &mut Evaler, _self_instance: &mut Value, args: Vec<Value>) -> Value {
     // Extract min_cap from args[0]
     if args.is_empty() {
         return Value::Error("inline_int64_try_grow requires min_cap argument".into());
@@ -214,7 +214,7 @@ pub fn inline_int64_try_grow(_uni: Shared<Universe>, _self_instance: &mut Value,
 }
 
 /// Free the InlineInt64 storage (no-op for stack allocation)
-pub fn inline_int64_drop(_uni: Shared<Universe>, _self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn inline_int64_drop(_evaler: &mut Evaler, _self_instance: &mut Value, _args: Vec<Value>) -> Value {
     // No-op for stack-allocated storage
     Value::Nil
 }
