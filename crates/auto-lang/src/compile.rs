@@ -602,4 +602,83 @@ mod tests {
         // C should not be dirty (cleared after re-index)
         assert!(!session.database().is_file_dirty(file_c));
     }
+
+    // =============================================================================
+    // Phase 3.2: Fragment Hash熔断Tests
+    // =============================================================================
+
+    #[test]
+    fn test_fragment_iface_hash_storage() {
+        // Test: Fragment interface hashes are computed and stored
+        let mut session = CompileSession::new();
+        let source = "fn add(a int, b int) int { a + b }";
+
+        session.compile_source(source, "test.at").unwrap();
+
+        // Get the fragment
+        let frag_id = session.database().get_fragments_in_file(
+            session.database().get_file_id_by_path("test.at").unwrap()
+        ).into_iter().next().unwrap();
+
+        // Verify interface hash was computed and stored
+        let hash = session.database().get_fragment_iface_hash(&frag_id);
+        assert!(hash.is_some(), "Interface hash should be stored");
+        assert_ne!(hash.unwrap(), 0, "Interface hash should not be zero");
+    }
+
+    #[test]
+    fn test_interface_hash_unchanged_body_change() {
+        // Test熔断: Function body change doesn't change interface hash
+        use crate::hash::FragmentHasher;
+
+        let mut session = CompileSession::new();
+
+        // Initial version
+        let source_v1 = "fn add(a int, b int) int { a + b }";
+        session.compile_source(source_v1, "test.at").unwrap();
+
+        // Get initial interface hash
+        let file_id = session.database().get_file_id_by_path("test.at").unwrap();
+        let frag_id_v1 = session.database().get_fragments_in_file(file_id)[0].clone();
+        let hash_v1 = session.database().get_fragment_iface_hash(&frag_id_v1).unwrap();
+
+        // Re-index with changed body but same signature
+        let source_v2 = "fn add(a int, b int) int { a + b + 0 }";  // Body changed
+        session.reindex_source("test.at", source_v2).unwrap();
+
+        // Get new interface hash
+        let frag_id_v2 = session.database().get_fragments_in_file(file_id)[0].clone();
+        let hash_v2 = session.database().get_fragment_iface_hash(&frag_id_v2).unwrap();
+
+        // Interface hash should be UNCHANGED (熔断!)
+        assert_eq!(hash_v1, hash_v2, "Interface hash should be unchanged when only body changes");
+    }
+
+    #[test]
+    fn test_interface_hash_changed_signature_change() {
+        // Test: Signature change DOES change interface hash
+        use crate::hash::FragmentHasher;
+
+        let mut session = CompileSession::new();
+
+        // Initial version
+        let source_v1 = "fn add(a int, b int) int { a + b }";
+        session.compile_source(source_v1, "test.at").unwrap();
+
+        // Get initial interface hash
+        let file_id = session.database().get_file_id_by_path("test.at").unwrap();
+        let frag_id_v1 = session.database().get_fragments_in_file(file_id)[0].clone();
+        let hash_v1 = session.database().get_fragment_iface_hash(&frag_id_v1).unwrap();
+
+        // Re-index with changed signature
+        let source_v2 = "fn add(a int, b int, c int) int { a + b + c }";  // Signature changed!
+        session.reindex_source("test.at", source_v2).unwrap();
+
+        // Get new interface hash
+        let frag_id_v2 = session.database().get_fragments_in_file(file_id)[0].clone();
+        let hash_v2 = session.database().get_fragment_iface_hash(&frag_id_v2).unwrap();
+
+        // Interface hash should be CHANGED
+        assert_ne!(hash_v1, hash_v2, "Interface hash should change when signature changes");
+    }
 }

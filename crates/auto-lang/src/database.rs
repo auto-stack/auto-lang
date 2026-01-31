@@ -242,6 +242,14 @@ pub struct Database {
     dirty_files: std::collections::HashSet<FileId>,
 
     // =========================================================================
+    // PHASE 3.2: FRAGMENT HASHING (for fine-grained incremental compilation)
+    // =========================================================================
+
+    // Fragment interface hashes (L3: signature-only hash)
+    // Used for熔断: If L3 hash unchanged, dependents don't need to recompile
+    frag_iface_hashes: HashMap<FragId, u64>,
+
+    // =========================================================================
     // LAYER 2: CACHE (computed by Query Engine)
     // =========================================================================
 
@@ -280,6 +288,7 @@ impl Database {
             frag_counters: HashMap::new(),
             text_hashes: HashMap::new(),
             dirty_files: std::collections::HashSet::new(),
+            frag_iface_hashes: HashMap::new(),
         }
     }
 
@@ -495,6 +504,39 @@ impl Database {
     }
 
     // =========================================================================
+    // Fragment Hashing (Phase 3.2: Fine-Grained Incremental Compilation)
+    // =========================================================================
+
+    /// Set the interface hash (L3) for a fragment
+    ///
+    /// The L3 hash represents only the function signature (name, params, return type).
+    /// If the L3 hash is unchanged, dependents don't need to recompile even if the body changed.
+    pub fn set_fragment_iface_hash(&mut self, frag_id: FragId, hash: u64) {
+        self.frag_iface_hashes.insert(frag_id, hash);
+    }
+
+    /// Get the stored interface hash for a fragment
+    pub fn get_fragment_iface_hash(&self, frag_id: &FragId) -> Option<u64> {
+        self.frag_iface_hashes.get(frag_id).copied()
+    }
+
+    /// Clear all fragment hashes for a file
+    ///
+    /// Called when re-indexing a file (old fragments are removed).
+    pub fn clear_fragment_hashes(&mut self, file_id: FileId) {
+        // Collect hashes to remove (fragments belonging to this file)
+        let to_remove: Vec<FragId> = self.frag_meta
+            .iter()
+            .filter(|(_, meta)| meta.file_id == file_id)
+            .map(|(frag_id, _)| frag_id.clone())
+            .collect();
+
+        for frag_id in to_remove {
+            self.frag_iface_hashes.remove(&frag_id);
+        }
+    }
+
+    // =========================================================================
     // Fragment Management
     // =========================================================================
 
@@ -557,6 +599,7 @@ impl Database {
         self.bytecodes.remove(frag_id);
         self.dep_graph.frag_deps.remove(frag_id);
         self.dep_graph.frag_dependents.remove(frag_id);
+        self.frag_iface_hashes.remove(frag_id);  // Phase 3.2: Clear interface hash
     }
 
     /// Clear all fragments for a file (for re-indexing)
@@ -1092,5 +1135,104 @@ mod tests {
         // Non-existent file
         let not_found = db.get_file_id_by_path("nonexistent.at");
         assert_eq!(not_found, None);
+    }
+
+    // =========================================================================
+    // Phase 3.2: Fragment Hashing Tests
+    // =========================================================================
+
+    #[test]
+    fn test_set_and_get_fragment_iface_hash() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Create a fragment
+        let frag_span = FragSpan {
+            offset: 0,
+            length: 0,
+            line: 1,
+            column: 1,
+        };
+
+        let frag_id = db.insert_fragment(
+            AutoStr::from("main"),
+            file_id,
+            frag_span,
+            FragKind::Function,
+            Arc::new(Fn::new(
+                crate::ast::FnKind::Function,
+                AutoStr::from("main"),
+                None,
+                vec![],
+                crate::ast::Body::new(),
+                Type::Int,
+            )),
+        );
+
+        // Set interface hash
+        db.set_fragment_iface_hash(frag_id.clone(), 0x1234);
+
+        // Get interface hash
+        let hash = db.get_fragment_iface_hash(&frag_id);
+        assert_eq!(hash, Some(0x1234));
+    }
+
+    #[test]
+    fn test_clear_fragment_hashes() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Create two fragments
+        let frag_span = FragSpan {
+            offset: 0,
+            length: 0,
+            line: 1,
+            column: 1,
+        };
+
+        let frag_id1 = db.insert_fragment(
+            AutoStr::from("foo"),
+            file_id,
+            frag_span,
+            FragKind::Function,
+            Arc::new(Fn::new(
+                crate::ast::FnKind::Function,
+                AutoStr::from("foo"),
+                None,
+                vec![],
+                crate::ast::Body::new(),
+                Type::Int,
+            )),
+        );
+
+        let frag_id2 = db.insert_fragment(
+            AutoStr::from("bar"),
+            file_id,
+            frag_span,
+            FragKind::Function,
+            Arc::new(Fn::new(
+                crate::ast::FnKind::Function,
+                AutoStr::from("bar"),
+                None,
+                vec![],
+                crate::ast::Body::new(),
+                Type::Int,
+            )),
+        );
+
+        // Set interface hashes
+        db.set_fragment_iface_hash(frag_id1.clone(), 0x1111);
+        db.set_fragment_iface_hash(frag_id2.clone(), 0x2222);
+
+        // Verify hashes are set
+        assert_eq!(db.get_fragment_iface_hash(&frag_id1), Some(0x1111));
+        assert_eq!(db.get_fragment_iface_hash(&frag_id2), Some(0x2222));
+
+        // Clear fragment hashes for file
+        db.clear_fragment_hashes(file_id);
+
+        // Hashes should be cleared
+        assert_eq!(db.get_fragment_iface_hash(&frag_id1), None);
+        assert_eq!(db.get_fragment_iface_hash(&frag_id2), None);
     }
 }

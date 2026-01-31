@@ -10,10 +10,12 @@
 // Phase 1: Basic indexing (parse top-level declarations)
 // Phase 2: Add file-level dependency tracking (import statements)
 // Phase 3: Add fragment-level dependency tracking (function calls, type usage)
+// Phase 3.2: Compute and store fragment interface hashes
 
 use crate::ast::{Code, Fn, SpecDecl, Stmt, Type};
 use crate::database::{Database, FileId, FragId, FragKind, FragSpan};
 use crate::error::{AutoError, AutoResult};
+use crate::hash::FragmentHasher;
 use crate::parser::Parser;
 use crate::scope::{Sid, SID_PATH_GLOBAL};
 use crate::universe::SymbolLocation;
@@ -158,6 +160,12 @@ impl<'db> Indexer<'db> {
             FragKind::Function,
             Arc::new(fn_decl.clone()),
         );
+
+        // Phase 3.2: Compute and store interface hash (L3)
+        // The L3 hash represents only the function signature (name, params, return type).
+        // If the L3 hash is unchanged, dependents don't need to recompile.
+        let iface_hash = FragmentHasher::hash_interface(fn_decl);
+        self.db.set_fragment_iface_hash(frag_id.clone(), iface_hash);
 
         // Register symbol location (for LSP support)
         if let Some((line, col)) = fn_decl.span.as_ref() {
