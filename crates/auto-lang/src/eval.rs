@@ -489,7 +489,35 @@ impl Evaler {
     ///
     /// **Phase 4.5**: Bridge method that uses Universe during migration.
     pub fn lookup_type(&self, name: &str) -> ast::Type {
-        self.lookup_type(name)
+        self.universe.borrow().lookup_type(name)
+    }
+
+    /// Mark a variable as moved (Phase 4.5: bridge method)
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn mark_moved(&mut self, name: &str) {
+        self.mark_moved(name);
+    }
+
+    /// Enter a function scope (Phase 4.5: bridge method)
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn enter_fn(&mut self, name: impl Into<AutoStr>) {
+        self.enter_fn(name);
+    }
+
+    /// Set local object properties (Phase 4.5: bridge method)
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn set_local_obj(&mut self, obj: &Obj) {
+        self.set_local_obj(obj);
+    }
+
+    /// Register a spec declaration (Phase 4.5: bridge method)
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn register_spec(&mut self, spec: std::rc::Rc<ast::SpecDecl>) {
+        self.register_spec(spec);
     }
 
     // =========================================================================
@@ -2516,11 +2544,11 @@ impl Evaler {
         match expr {
             // Direct variable reference: `x`
             Expr::Ident(name) => {
-                self.universe.borrow_mut().mark_moved(name.as_str());
+                self.mark_moved(name.as_str());
             }
             // Variable reference through `ref`: `ref x`
             Expr::Ref(name) => {
-                self.universe.borrow_mut().mark_moved(name.as_str());
+                self.mark_moved(name.as_str());
             }
             // For expressions, we need to check if the base is a variable
             // e.g., `x.field` or `x[index` - x is moved
@@ -3169,7 +3197,7 @@ impl Evaler {
         }
 
         // Lookup Fn meta
-        let meta = self.universe.borrow().lookup_meta(&call.get_name_text());
+        let meta = self.lookup_meta(&call.get_name_text());  // Phase 4.5: Use bridge method
         if let Some(meta) = meta {
             match meta.as_ref() {
                 scope::Meta::Fn(fn_decl) => {
@@ -3368,14 +3396,14 @@ impl Evaler {
             }
             Value::Instance(inst) => {
                 // First, try to find the method directly in the type
-                let meth = self.universe.borrow().lookup_meta(&method.name);
+                let meth = self.lookup_meta(&method.name);  // Phase 4.5: Use bridge method
                 if let Some(meta) = meth {
                     match meta.as_ref() {
                         Meta::Fn(fn_decl) => {
                             // println!("Eval Method: {}", fn_decl.name); // LSP: disabled
                             // println!("Current Scope: {}", self.universe.borrow().cur_spot); // LSP: disabled
                             // self.enter_scope();
-                            self.universe.borrow_mut().set_local_obj(&inst.fields);
+                            self.set_local_obj(&inst.fields);
                             // Fields are now available as local variables (x, y, etc.)
                             // No need to add 'self' parameter - methods access fields directly
                             let res = self.eval_fn_call(fn_decl, args)?;
@@ -3398,14 +3426,14 @@ impl Evaler {
                     auto_val::Type::User(type_name) => {
                         // Lookup the TypeDecl from universe
                         let type_name_clone = type_name.clone();
-                        if let Some(meta) = self.universe.borrow().lookup_meta(&type_name_clone) {
+                        if let Some(meta) = self.lookup_meta(&type_name_clone)  /* Phase 4.5: Use bridge method */ {
                             if let Meta::Type(ast::Type::User(type_decl)) = meta.as_ref() {
                                 for delegation in &type_decl.delegations {
                                     // Check if this delegation handles the method
                                     let spec_name = delegation.spec_name.clone();
                                     let member_name = delegation.member_name.clone();
                                     if let Some(spec_meta) =
-                                        self.universe.borrow().lookup_meta(&spec_name)
+                                        self.lookup_meta(&spec_name)  /* Phase 4.5: Use bridge method */
                                     {
                                         if let Meta::Spec(spec_decl) = spec_meta.as_ref() {
                                             // Check if the spec has this method
@@ -3728,7 +3756,7 @@ impl Evaler {
         }
         */
 
-        self.universe.borrow_mut().enter_fn(&fn_decl.name);
+        self.enter_fn(&fn_decl.name);
         // println!("scope after enter: {}", self.universe.borrow().cur_spot); // LSP: disabled
         // println!(
         //     "enter call scope {}",
@@ -3769,7 +3797,7 @@ impl Evaler {
     /// This is called by VM functions (like map_iter_next) to invoke user functions
     pub fn eval_user_function(&mut self, fn_name: &AutoStr, args: Vec<Value>) -> Value {
         // Look up the function in the universe's meta registry
-        let meta = self.universe.borrow().lookup_meta(fn_name);
+        let meta = self.lookup_meta(fn_name)  /* Phase 4.5 */;
 
         if let Some(ref meta_rc) = meta {
             if let scope::Meta::Fn(fn_decl) = meta_rc.as_ref() {
@@ -4230,13 +4258,11 @@ impl Evaler {
                 };
 
                 // Bind the path value to the name (using Meta::Store)
-                self.universe.borrow_mut().define(
+                self.define(  // Phase 4.5: Use bridge method
                     hold.name.clone(),
                     std::rc::Rc::new(crate::scope::Meta::Store(store)),
                 );
-                self.universe
-                    .borrow_mut()
-                    .set_local_val(&hold.name, path_value);
+                self.set_local_val(&hold.name, path_value);  // Phase 4.5: Use bridge method
 
                 // Evaluate the body
                 let result = match self.eval_body(&hold.body) {
@@ -4407,7 +4433,7 @@ impl Evaler {
             // Only register methods that have bodies (interface-only methods are just declarations)
             if !method.body.stmts.is_empty() {
                 let method_name: AutoStr = format!("{}.{}", type_decl.name, method.name).into();
-                self.universe.borrow_mut().define(
+                self.define(  /* Phase 4.5 */
                     method_name,
                     std::rc::Rc::new(scope::Meta::Fn(method.clone())),
                 );
@@ -4443,7 +4469,7 @@ impl Evaler {
             let method_name: AutoStr = format!("{}.{}", ext.target, method.name).into();
 
             // Plan 035 Phase 5: Check for duplicate method definitions
-            if let Some(existing_meta) = self.universe.borrow().lookup_meta(&method_name) {
+            if let Some(existing_meta) = self.lookup_meta(&method_name)  /* Phase 4.5 */ {
                 // Method already exists, issue a warning
                 if let scope::Meta::Fn(_existing_fn) = existing_meta.as_ref() {
                     eprintln!(
@@ -4460,7 +4486,7 @@ impl Evaler {
             registered_method.name = method_name.clone(); // Update name to qualified name (e.g., "str::contains")
 
             // Register in universe with qualified name
-            self.universe.borrow_mut().define(
+            self.define(  /* Phase 4.5 */
                 method_name,
                 std::rc::Rc::new(scope::Meta::Fn(registered_method)),
             );
@@ -4477,7 +4503,7 @@ impl Evaler {
             let method_name: AutoStr = format!("{}.{}", tag.name, method.name).into();
 
             // Check for duplicate method definitions
-            if let Some(existing_meta) = self.universe.borrow().lookup_meta(&method_name) {
+            if let Some(existing_meta) = self.lookup_meta(&method_name)  /* Phase 4.5 */ {
                 // Method already exists, issue a warning
                 if let scope::Meta::Fn(_existing_fn) = existing_meta.as_ref() {
                     eprintln!(
@@ -4493,7 +4519,7 @@ impl Evaler {
             registered_method.name = method_name.clone(); // Update name to qualified name
 
             // Register in universe with qualified name
-            self.universe.borrow_mut().define(
+            self.define(  /* Phase 4.5 */
                 method_name,
                 std::rc::Rc::new(scope::Meta::Fn(registered_method)),
             );
@@ -4507,7 +4533,7 @@ impl Evaler {
         // This makes specs available for:
         // - Spec method resolution (default method implementations)
         // - Type checking and constraint validation
-        self.universe.borrow_mut().register_spec(std::rc::Rc::new(spec_decl.clone()));
+        self.register_spec(std::rc::Rc::new(spec_decl.clone()));
         Value::Void
     }
 
@@ -4561,7 +4587,7 @@ impl Evaler {
     /// Evaluate a spec method body with `self` bound to the instance
     fn eval_spec_method_body(&mut self, instance: &Value, body: &ast::Expr, args: &ast::Args, params: &[ast::Param]) -> Value {
         // Create a new scope and bind `self` to the instance
-        self.universe.borrow_mut().enter_fn(&AutoStr::from("<spec_method>"));
+        self.enter_fn(&AutoStr::from("<spec_method>"));
 
         // Bind `self` to the instance
         self.universe
@@ -4887,7 +4913,7 @@ impl Evaler {
                             let typ = instance.ty.name();
                             let combined_name: AutoStr = format!("{}.{}", typ, name).into();
                             // println!("Combined name: {}", combined_name); // LSP: disabled
-                            let method = self.universe.borrow().lookup_meta(&combined_name);
+                            let method = self.lookup_meta(&combined_name)  /* Phase 4.5 */;
                             if let Some(meta) = method {
                                 match meta.as_ref() {
                                     scope::Meta::Fn(_) => Some(Value::Method(Method::new(
