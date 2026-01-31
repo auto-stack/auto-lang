@@ -240,6 +240,19 @@ impl Evaler {
         self.universe.borrow().lookup_meta(name)
     }
 
+    /// Look up a variable value by name (Phase 4.5: bridge method)
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    /// **Future**: Will use ExecutionEngine's StackFrame for runtime variable lookup.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(Value)` if variable is found
+    /// - `None` if variable doesn't exist
+    pub fn lookup_val(&self, name: &str) -> Option<Value> {
+        self.universe.borrow().lookup_val(name)
+    }
+
     // =========================================================================
     // Group 2: Variable Operations (Phase 4.5 Plan 064)
     // =========================================================================
