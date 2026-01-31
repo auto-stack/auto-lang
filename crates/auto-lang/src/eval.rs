@@ -2749,10 +2749,8 @@ impl Evaler {
 
                         // If this was a variable binding, update it with the mutated instance
                         if let Some(var_name) = binding_name {
-                            // Update the local variable with the mutated instance
-                            self.universe
-                                .borrow_mut()
-                                .set_local_val(var_name.as_str(), inst_copy);
+                            // Phase 4.5: Use bridge method instead of direct Universe access
+                            self.set_local_val(var_name.as_str(), inst_copy);
                         }
 
                         return Ok(result);
@@ -3673,10 +3671,8 @@ impl Evaler {
                     fn_decl.name.clone()
                 };
 
-                let builtin_opt = {
-                    let universe = self.universe.borrow();
-                    universe.lookup_val(&lookup_name)
-                };
+                // Phase 4.5: Use bridge method instead of direct Universe access
+                let builtin_opt = self.lookup_val(&lookup_name);
 
                 if let Some(Value::ExtFn(extfn)) = builtin_opt {
                     // Check if this is an instance method (has parent) and needs self as first arg
