@@ -293,6 +293,102 @@ impl Interpreter {
         Self::with_univ(shared(scope))
     }
 
+    /// Create a new Interpreter with an existing CompileSession
+    ///
+    /// **Phase 2 (Plan 065)**: Enables incremental compilation
+    ///
+    /// This creates an Interpreter that shares the provided CompileSession's
+    /// Database, allowing multiple executions to reuse compiled artifacts.
+    pub fn new_with_session(session: &CompileSession) -> Self {
+        // Use the provided session instead of creating a new one
+        let session_clone = session.clone(); // CompileSession is cheap to clone (Rc wrapper)
+
+        let engine = Rc::new(RefCell::new(ExecutionEngine::new()));
+
+        // Get references for Evaler before moving into struct
+        let db_ref = session_clone.db();
+        let engine_ref = engine.clone();
+
+        // Legacy: Create Universe (still needed until Evaler migration)
+        let scope = shared(Universe::new());
+
+        let mut interpreter = Self {
+            session: session_clone,
+            engine,
+            evaler: Evaler::new(scope.clone()),
+            scope,
+            result: Value::Nil,
+            fstr_note: '$',
+            skip_check: false,
+            enable_error_recovery: false,
+        };
+
+        // Register the evaluator with the universe
+        interpreter.evaler.register_with_universe();
+
+        // Initialize Evaler's db and engine fields
+        interpreter.evaler.set_db(db_ref);
+        interpreter.evaler.set_engine(engine_ref.clone());
+
+        // Register evaluator with ExecutionEngine
+        engine_ref.borrow_mut().set_evaluator(&mut interpreter.evaler);
+
+        // Inject environment variables
+        let target = crate::target::Target::detect();
+        interpreter.scope.borrow_mut().inject_environment(target);
+
+        // Initialize VM modules
+        crate::vm::init_io_module();
+        crate::vm::init_collections_module();
+        crate::vm::init_builder_module();
+        crate::vm::init_storage_module();
+
+        // Load standard library types
+        Self::load_stdlib_types(&interpreter.scope);
+
+        // Load dstr.at
+        let dstr_code = std::fs::read_to_string("../../stdlib/auto/dstr.at").unwrap_or_else(|_| {
+            std::fs::read_to_string("stdlib/auto/dstr.at").unwrap_or(String::new())
+        });
+        if !dstr_code.is_empty() {
+            let _ = interpreter.interpret(&dstr_code);
+        }
+
+        // Load list_node.at
+        let list_node_code = std::fs::read_to_string("../../stdlib/auto/list_node.at").unwrap_or_else(|_| {
+            std::fs::read_to_string("stdlib/auto/list_node.at").unwrap_or(String::new())
+        });
+        if !list_node_code.is_empty() {
+            let _ = interpreter.interpret(&list_node_code);
+        }
+
+        // Load storage.at
+        let storage_code = std::fs::read_to_string("../../stdlib/auto/storage.at").unwrap_or_else(|_| {
+            std::fs::read_to_string("stdlib/auto/storage.at").unwrap_or(String::new())
+        });
+        if !storage_code.is_empty() {
+            let _ = interpreter.interpret(&storage_code);
+        }
+
+        // Load prelude.at
+        let prelude_code = std::fs::read_to_string("../../stdlib/auto/prelude.at").unwrap_or_else(|_| {
+            std::fs::read_to_string("stdlib/auto/prelude.at").unwrap_or(String::new())
+        });
+        if !prelude_code.is_empty() {
+            let _result = interpreter.interpret(&prelude_code);
+        }
+
+        // Load iter/spec.at
+        let iter_spec_code = std::fs::read_to_string("../../stdlib/auto/iter/spec.at").unwrap_or_else(|_| {
+            std::fs::read_to_string("stdlib/auto/iter/spec.at").unwrap_or(String::new())
+        });
+        if !iter_spec_code.is_empty() {
+            let _result = interpreter.interpret(&iter_spec_code);
+        }
+
+        interpreter
+    }
+
     pub fn with_eval_mode(mut self, mode: EvalMode) -> Self {
         self.evaler = self.evaler.with_mode(mode);
         self

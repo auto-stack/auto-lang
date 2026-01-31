@@ -30,6 +30,14 @@ pub struct CompileSession {
     db: Rc<RefCell<Database>>,
 }
 
+impl Clone for CompileSession {
+    fn clone(&self) -> Self {
+        Self {
+            db: self.db.clone(),
+        }
+    }
+}
+
 impl CompileSession {
     /// Create a new compilation session
     pub fn new() -> Self {

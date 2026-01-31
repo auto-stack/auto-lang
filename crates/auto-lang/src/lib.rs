@@ -42,6 +42,7 @@ pub use auto_lang_macros::{atom, node, value};
 use crate::scope::Meta;
 use crate::trans::c::CTrans;
 pub use crate::universe::{SymbolLocation, Universe};
+use crate::compile::CompileSession;
 use crate::{eval::EvalMode, trans::Sink, trans::Trans};
 use auto_val::{AutoPath, Obj};
 use std::cell::RefCell;
@@ -90,6 +91,54 @@ pub fn run_with_errors(code: &str) -> AutoResult<String> {
 pub fn run_with_scope(code: &str, scope: Universe) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::with_scope(scope);
     interpreter.interpret(code)?;
+    Ok(interpreter.result.repr().to_string())
+}
+
+/// Run code with incremental compilation support
+///
+/// **Phase 2**: Execute code with persistent CompileSession
+///
+/// This function takes a mutable CompileSession and executes the code,
+/// reusing the Database and QueryEngine across multiple calls for
+/// incremental compilation benefits.
+///
+/// # Arguments
+///
+/// * `session` - Mutable reference to persistent CompileSession
+/// * `code` - AutoLang source code to execute
+///
+/// # Returns
+///
+/// String representation of the result
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use auto_lang::{run_with_session, compile::CompileSession};
+///
+/// let mut session = CompileSession::new();
+///
+/// // First run - parses and compiles
+/// let result1 = run_with_session(&mut session, "fn add(a int, b int) int { a + b }")?;
+///
+/// // Second run - can reuse cached data from first run
+/// let result2 = run_with_session(&mut session, "add(10, 20)")?;
+///
+/// # Ok::<(), auto_lang::error::AutoError>(())
+/// ```
+pub fn run_with_session(session: &mut CompileSession, code: &str) -> AutoResult<String> {
+    // Phase 2: Compile source with incremental support
+    // The CompileSession tracks which files/fragments have changed
+    session.compile_source(code, "<repl-input>")?;
+
+    // Create a new Interpreter for this execution
+    // Note: Each execution gets its own Evaler, but shares the Database
+    let mut interpreter = interp::Interpreter::new_with_session(session);
+
+    // Interpret the code (this parses and executes)
+    // TODO: Phase 3 - Check Database cache before parsing
+    interpreter.interpret(code)?;
+
     Ok(interpreter.result.repr().to_string())
 }
 
