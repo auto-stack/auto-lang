@@ -1,5 +1,7 @@
+use crate::compile::CompileSession;
 use crate::eval::{EvalMode, Evaler};
 use crate::parser::Parser;
+use crate::runtime::ExecutionEngine;
 use crate::universe::Universe;
 use crate::AutoResult;
 use auto_val::{shared, Shared};
@@ -11,8 +13,33 @@ pub struct Importer {
 }
 
 pub struct Interpreter {
+    // ========================================================================
+    // Phase 4.4: New AIE Architecture Fields (Plan 064)
+    // ========================================================================
+    /// AIE Database session (compile-time data)
+    /// Phase 4.4: Added for gradual migration from Universe
+    /// Phase 4.5+: Will become the primary compile-time data source
+    pub session: CompileSession,
+
+    /// Execution engine (runtime state)
+    /// Phase 4.4: Added for gradual migration from Universe
+    /// Phase 4.5+: Will become the primary runtime state container
+    pub engine: ExecutionEngine,
+
+    // ========================================================================
+    // Legacy Fields (will be deprecated in Phase 4.6)
+    // ========================================================================
+    /// Legacy evaluator (still uses Universe internally)
+    /// Phase 4.5: Will migrate to use Database + ExecutionEngine
     pub evaler: Evaler,
+
+    /// Legacy Universe (contains both compile-time and runtime data)
+    /// Phase 4.6: Will be fully deprecated after Evaler migration
     pub scope: Shared<Universe>,
+
+    // ========================================================================
+    // Common Fields (used by both old and new architecture)
+    // ========================================================================
     pub result: Value,
     pub fstr_note: char,
     skip_check: bool,
@@ -22,8 +49,16 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
+        // Phase 4.4: Create AIE architecture components
+        let session = CompileSession::new();
+        let engine = ExecutionEngine::new();
+
+        // Legacy: Create Universe (still needed until Evaler migration)
         let scope = shared(Universe::new());
+
         let mut interpreter = Self {
+            session,
+            engine,
             evaler: Evaler::new(scope.clone()),
             scope,
             result: Value::Nil,
@@ -34,6 +69,11 @@ impl Interpreter {
 
         // Register the evaluator with the universe so VM functions can call back
         interpreter.evaler.register_with_universe();
+
+        // Phase 4.4: Register evaluator with ExecutionEngine for VM → user function calls
+        // SAFETY: The evaluator owns the engine via the interpreter struct,
+        // guaranteeing the evaluator outlives the engine during all call chains
+        interpreter.engine.set_evaluator(&mut interpreter.evaler);
 
         // Inject environment variables based on target platform (Plan 055)
         // This must happen BEFORE loading Prelude so that Prelude can access env vars
@@ -202,7 +242,13 @@ impl Interpreter {
     }
 
     pub fn with_univ(univ: Shared<Universe>) -> Self {
+        // Phase 4.4: Create AIE architecture components
+        let session = CompileSession::new();
+        let engine = ExecutionEngine::new();
+
         let mut interp = Self {
+            session,
+            engine,
             evaler: Evaler::new(univ.clone()),
             scope: univ.clone(),
             fstr_note: '$',
@@ -213,6 +259,9 @@ impl Interpreter {
 
         // Register the evaluator with the universe so VM functions can call back
         interp.evaler.register_with_universe();
+
+        // Phase 4.4: Register evaluator with ExecutionEngine
+        interp.engine.set_evaluator(&mut interp.evaler);
 
         // Load standard type definitions to register HashMap, HashSet, StringBuilder, List types
         // This must be called for each new Universe/scope
