@@ -419,7 +419,59 @@ impl Evaler {
     // In Phase 4.6, this will be replaced with `self.engine.get_vm_ref(refid)`.
 
     // =========================================================================
-    // Evaluation Methods
+    // Additional Helper Bridge Methods (Phase 4.5 Plan 064)
+    // =========================================================================
+
+    /// Check if a local variable exists in current scope
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn has_local(&self, name: &str) -> bool {
+        self.universe.borrow().has_local(name)
+    }
+
+    /// Clear moved status for a variable
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn clear_moved(&mut self, name: &str) {
+        self.universe.borrow_mut().clear_moved(name);
+    }
+
+    /// Check if a variable exists (in any scope)
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn exists(&self, name: &str) -> bool {
+        self.universe.borrow().exists(name)
+    }
+
+    /// Update a variable's value
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn update_val(&mut self, name: &str, value: Value) {
+        self.universe.borrow_mut().update_val(name, value);
+    }
+
+    /// Get all defined variable names
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn get_defined_names(&self) -> Vec<String> {
+        self.universe.borrow().get_defined_names()
+    }
+
+    /// Check if there's an argument with the given name
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn has_arg(&self, name: &str) -> bool {
+        self.universe.borrow().has_arg(name)
+    }
+
+    /// Get an argument value by name
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn get_arg(&self, name: &str) -> Value {
+        self.universe.borrow().get_arg(name)
+    }
+
+    // =========================================================================
     // Evaluation Methods
     // =========================================================================
 
@@ -435,7 +487,7 @@ impl Evaler {
 
                 // Automatically call main() if it's defined
                 // This allows test code to define fn main() {...} and have it execute
-                let main_fn = self.universe.borrow().lookup_meta("main");
+                let main_fn = self.lookup_meta("main");  // Phase 4.5: Use bridge method
                 if let Some(main_meta) = main_fn {
                     if let scope::Meta::Fn(fn_decl) = main_meta.as_ref() {
                         // Call main() with no arguments
@@ -578,16 +630,16 @@ impl Evaler {
                             // TODO: this should only happen in a Config scenario
                             let mut value = *value;
                             if let Some(name) = key.name() {
-                                let mut scope = self.universe.borrow_mut();
-                                if scope.has_arg(name) {
-                                    let arg_val = scope.get_arg(name);
+                                // Phase 4.5: Use bridge methods instead of direct Universe access
+                                if self.has_arg(name) {
+                                    let arg_val = self.get_arg(name);
                                     // println!(
                                     // "replacing value of {} from {} to {}",
                                     // name, value, arg_val
                                     // );
                                     value = arg_val;
                                 }
-                                scope.set_local_val(name, value.clone());
+                                self.set_local_val(name, value.clone());
                             }
                             node.set_prop(key, value);
                         }
@@ -770,10 +822,10 @@ impl Evaler {
                 delegations: vec![],
                 methods: vec![],
             };
-            self.universe.borrow_mut().define_type(
+            self.define_type(
                 type_name.clone(),
                 std::rc::Rc::new(crate::scope::Meta::Type(ast::Type::User(type_decl))),
-            );
+            );  // Phase 4.5: Use bridge method
         }
         drop(registry);
 
@@ -1422,12 +1474,12 @@ impl Evaler {
 
         // Move semantics: Check if this is a reassignment
         // If so, the old value is dropped here (its last use)
-        if self.universe.borrow().has_local(&store.name) {
+        if self.has_local(&store.name) {  // Phase 4.5: Use bridge method
             // Remove old value - this will trigger cleanup if implemented
             // TODO: In Phase 2, we'll call drop_linear() here for linear types
-            self.universe.borrow_mut().remove_local(&store.name);
+            self.remove_local(&store.name);  // Phase 4.5: Use bridge method
             // Clear moved status since we're reassigning
-            self.universe.borrow_mut().clear_moved(&store.name);
+            self.clear_moved(&store.name);  // Phase 4.5: Use bridge method
         }
 
         self.define(
@@ -1562,11 +1614,11 @@ impl Evaler {
                 match left_val {
                     Value::Ref(target) => {
                         // println!("ref: {}", target); // LSP: disabled
-                        if self.universe.borrow().exists(&target) {
-                            self.universe.borrow_mut().update_val(&target, val);
+                        if self.exists(&target) {  // Phase 4.5: Use bridge method
+                            self.update_val(&target, val);  // Phase 4.5: Use bridge method
                         } else {
                             // Variable not found - return error with suggestion
-                            let candidates = self.universe.borrow().get_defined_names();
+                            let candidates = self.get_defined_names();  // Phase 4.5: Use bridge method
                             let suggestion = if let Some(s) =
                                 crate::error::find_best_match(&target, &candidates)
                             {
@@ -1584,11 +1636,11 @@ impl Evaler {
                         }
                     }
                     _ => {
-                        if self.universe.borrow().exists(&name) {
-                            self.universe.borrow_mut().update_val(&name, val);
+                        if self.exists(&name) {  // Phase 4.5: Use bridge method
+                            self.update_val(&name, val);  // Phase 4.5: Use bridge method
                         } else {
                             // Variable not found - return error with suggestion
-                            let candidates = self.universe.borrow().get_defined_names();
+                            let candidates = self.get_defined_names();  // Phase 4.5: Use bridge method
                             let suggestion = if let Some(s) =
                                 crate::error::find_best_match(&name, &candidates)
                             {
@@ -2341,12 +2393,14 @@ impl Evaler {
         }
     }
 
+    /// Update an object's properties (Phase 4.5: bridge method)
     #[allow(dead_code)]
     fn update_obj(&mut self, name: &str, f: impl FnOnce(&mut Obj)) -> Value {
         self.universe.borrow_mut().update_obj(name, f);
         Value::Void
     }
 
+    /// Update an array element (Phase 4.5: bridge method)
     #[allow(dead_code)]
     fn update_array(&mut self, name: &str, idx: Value, val: Value) -> Value {
         self.universe.borrow_mut().update_array(name, idx, val);
@@ -2408,12 +2462,12 @@ impl Evaler {
             .unwrap_or(Value::Nil)
     }
 
-    /// Get value ID directly without wrapping
+    /// Get value ID directly without wrapping (Phase 4.5: bridge method)
     fn lookup_vid(&self, name: &str) -> Option<auto_val::ValueID> {
         self.universe.borrow().lookup_val_id(name)
     }
 
-    /// Resolve Value::Ref to actual data
+    /// Resolve Value::Ref to actual data (Phase 4.5: bridge method)
     fn resolve_value(&self, value: &Value) -> Option<Rc<RefCell<auto_val::ValueData>>> {
         match value {
             Value::ValueRef(vid) => self.universe.borrow().get_value(*vid),
@@ -3063,7 +3117,7 @@ impl Evaler {
             }
             Value::Lambda(name) => {
                 // Try to lookup lambda in SymbolTable
-                let meta = self.universe.borrow().lookup_meta(&name);
+                let meta = self.lookup_meta(&name);  // Phase 4.5: Use bridge method
                 if let Some(meta) = meta {
                     match meta.as_ref() {
                         scope::Meta::Fn(fn_decl) => {
@@ -3260,13 +3314,11 @@ impl Evaler {
 
                 // Plan 025 String Migration: Check for ext methods in universe
                 // name might already be qualified (e.g., "str::contains") or simple (e.g., "contains")
-                let ext_method = self.universe.borrow().lookup_meta(name);
+                let ext_method = self.lookup_meta(name);  // Phase 4.5: Use bridge method
                 if let Some(meta) = ext_method {
                     if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
                         // Bind self and call the ext method
-                        self.universe
-                            .borrow_mut()
-                            .set_local_val("self", target.as_ref().clone());
+                        self.set_local_val("self", target.as_ref().clone());  // Phase 4.5: Use bridge method
                         return self.eval_fn_call(fn_decl, args);
                     }
                 }
@@ -3283,7 +3335,7 @@ impl Evaler {
                 }
 
                 // Plan 025 String Migration: Check for ext methods
-                let ext_method = self.universe.borrow().lookup_meta(name);
+                let ext_method = self.lookup_meta(name);  // Phase 4.5: Use bridge method
                 if let Some(meta) = ext_method {
                     if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
                         self.universe
@@ -4276,7 +4328,7 @@ impl Evaler {
                     return Value::Type(vty);
                 }
                 // Try meta (after types)
-                let meta = self.universe.borrow().lookup_meta(&name);
+                let meta = self.lookup_meta(&name);  // Phase 4.5: Use bridge method
                 if let Some(meta) = meta {
                     return Value::Meta(to_meta_id(&meta));
                 }
