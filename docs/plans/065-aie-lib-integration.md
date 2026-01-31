@@ -1,9 +1,14 @@
 # Plan 065: AIE Integration with lib.rs Entry Points
 
-**Status**: 📝 Planning
+**Status**: 📝 Planning (Waiting for Plan 064)
 **Priority**: P0 (Core Feature)
 **Created**: 2025-01-31
-**Dependencies**: Plan 064 (Universe split) ⏸️
+**Dependencies**: Plan 064 Phase 4 (SymbolTable + StackFrame implementation) ⏸️
+
+**Note**: Plan 064 Phase 4 design is complete ✅. Waiting on implementation of:
+- SymbolTable (compile-time scopes)
+- StackFrame + CallStack (runtime scopes)
+- Database + ExecutionEngine integration
 
 ---
 

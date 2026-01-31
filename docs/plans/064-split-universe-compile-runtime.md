@@ -429,211 +429,717 @@ pub struct Database {
 
 ---
 
-## Phase 4 Status: ⚸️ **BLOCKED - Requires Additional Design**
+## Phase 4 Status: ⏸️ **DESIGN COMPLETE - Ready for Implementation**
 
-**Current State**: Phases 1-3 Complete ✅
+**Current State**: Phases 1-3 Complete ✅ | Phase 4 Design Complete ✅
 
-**Phase 4 Blockers**:
+### Phase 4: Scope Split Architecture (DESIGNED ✅)
 
-After completing Phases 1-3, analysis revealed significant architectural challenges for Phase 4:
-
-### 1. Scope Hybrid Nature Problem
-
-The `Scope` structure contains BOTH compile-time AND runtime data:
-
-```rust
-pub struct Scope {
-    // Compile-time data
-    pub kind: ScopeKind,
-    pub sid: Sid,
-    pub parent: Option<Sid>,
-    pub kids: Vec<Sid>,
-    pub symbols: HashMap<AutoStr, Rc<Meta>>,  // Could be compile-time
-    pub types: HashMap<AutoStr, Rc<Meta>>,    // Compile-time
-
-    // Runtime data
-    pub vals: HashMap<AutoStr, ValueID>,      // Runtime values!
-    pub moved_vars: HashSet<AutoStr>,         // Runtime ownership state!
-    pub cur_block: usize,                     // Runtime position!
-}
-```
-
-**Problem**: Scopes are used during evaluation to store runtime variable values. We cannot simply move scopes to Database without splitting them.
-
-### 2. Massive Universe Usage in Evaler
-
-Analysis of `eval.rs` revealed:
-- **139 references** to `self.universe` across ~4500 lines
-- Operations include:
-  - Scope management: `enter_scope()`, `exit_scope()`, `lookup_meta()`
-  - Variable storage: `set_local_val()`, `define()`, `remove_local()`
-  - Type registration: `define_type()`
-  - VM operations: VM ref allocation, evaluator pointer management
-
-**Problem**: Migrating 139 references is a multi-day effort requiring careful testing.
-
-### 3. Interpreter Initialization Complexity
-
-The `Interpreter::new()` method performs complex initialization:
-- Creates Universe
-- Registers evaluator pointer
-- Injects environment variables
-- Loads standard library types
-- Loads prelude and spec files
-- Initializes VM modules
-
-All of this currently assumes Universe exists.
-
-### Required Design Work Before Phase 4 Implementation
-
-1. **Split Scope Structure** (2-4 hours):
-   - Create `ScopeTemplate` (compile-time): kind, sid, parent, kids, symbols, types
-   - Create `ScopeRuntime` (runtime): vals, moved_vars, cur_block
-   - Add linkage: `ScopeRuntime` references `ScopeTemplate` by Sid
-   - Update all Scope operations to use split structure
-
-2. **Bridge Layer Design** (1-2 hours):
-   - Design `Evaler::new_with_db_engine(db: Arc<Database>, engine: Rc<RefCell<ExecutionEngine>>)`
-   - Create bridge methods that delegate to Database/Engine
-   - Plan incremental migration strategy for 139 references
-
-3. **Migration Execution** (1-2 days):
-   - Update Evaler structure
-   - Migrate all eval_* methods (139 references)
-   - Update Interpreter structure and initialization
-   - Test all execution paths
-   - Ensure no regressions
-
-### Recommendation
-
-**Phase 4 should be split into sub-phases**:
-
-- **Phase 4.1**: Design Scope split architecture
-- **Phase 4.2**: Implement Scope split (ScopeTemplate + ScopeRuntime)
-- **Phase 4.3**: Create bridge layer in Evaler (support both Universe and Database/Engine)
-- **Phase 4.4**: Migrate Interpreter to use CompileSession + ExecutionEngine
-- **Phase 4.5**: Migrate Evaler methods incrementally (with tests at each step)
-- **Phase 4.6**: Remove Universe dependencies, mark Universe as deprecated
-
-**Total Estimated Time**: 2-3 days (vs. original estimate of 1-2 hours)
-
-**Decision**: ⏸️ **DEFER Phase 4** until architectural blockers are resolved.
-
-**Alternative**: Continue with Universe-based execution for now. The AIE infrastructure is in place (Phases 1-3), and we can incrementally migrate evaluation logic when ready.
+After analysis, we identified that the `Scope` structure contains BOTH compile-time AND runtime data. The solution is to split it into two structures using standard compiler terminology.
 
 ---
 
-## Phase 4: Create Bridge Layer (DEFERRED - see analysis above)
+## Phase 4.1: Design Scope Split Architecture (COMPLETED ✅)
 
-**Goal**: Update Interpreter/Evaluator to use AIE Database + ExecutionEngine instead of Universe.
+### 1. Terminology Selection
+
+Based on standard AIE and interpreter design patterns:
+
+**Compile-time Scopes** (in AIE Database):
+- **Standard terms**: Symbol Tables, Lexical Scopes, Static Scopes
+- **Our choice**: **`SymbolTable`** (most widely understood term)
+
+**Runtime Scopes** (in ExecutionEngine):
+- **Standard terms**: Stack Frames, Activation Frames, Call Frames, Environments
+- **Our choice**: **`StackFrame`** (standard interpreter terminology)
+
+### 2. Current Scope Hybrid Problem
+
+The existing `Scope` structure mixes concerns:
+
+```rust
+pub struct Scope {
+    // Compile-time data (6 fields)
+    pub kind: ScopeKind,                            // Static scope type
+    pub sid: Sid,                                   // Unique scope identifier
+    pub parent: Option<Sid>,                        // Parent scope reference
+    pub kids: Vec<Sid>,                             // Child scope references
+    pub symbols: HashMap<AutoStr, Rc<Meta>>,        // Symbol declarations
+    pub types: HashMap<AutoStr, Rc<Meta>>,          // Type declarations
+
+    // Runtime data (3 fields)
+    pub vals: HashMap<AutoStr, ValueID>,            // Variable values
+    pub moved_vars: HashSet<AutoStr>,               // Ownership tracking
+    pub cur_block: usize,                           // Execution position
+}
+```
+
+### 3. Target Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SCOPE SPLIT DESIGN                       │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  COMPILE-TIME (Database)          RUNTIME (ExecutionEngine) │
+│  ┌──────────────────────┐         ┌──────────────────────┐  │
+│  │   SymbolTable        │         │   StackFrame         │  │
+│  │ - kind: ScopeKind    │◄────────│ - scope_sid: Sid     │  │
+│  │ - sid: Sid           │  link   │ - cur_block: usize   │  │
+│  │ - parent: Option<Sid>│         │ - vals: HashMap<..>  │  │
+│  │ - kids: Vec<Sid>     │         │ - moved_vars: HashSet│  │
+│  │ - symbols: HashMap   │         │ - parent_frame: Id   │  │
+│  │ - types: HashMap     │         └──────────────────────┘  │
+│  └──────────────────────┘                  ▲                │
+│           │                                 │                │
+│           └─────────────┬───────────────────┘                │
+│                         │                                    │
+│                 CallStack (Vec<StackFrameId>)                │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 4. New Structure Definitions
+
+**SymbolTable** (compile-time, in `database.rs` or `scope.rs`):
+
+```rust
+/// Compile-time symbol table (persistent)
+///
+/// Contains static declaration information: types, symbols,
+/// scope hierarchy. Used by parser, indexer, type checker,
+/// and transpilers. Stored in AIE Database.
+pub struct SymbolTable {
+    /// Scope kind (global, function, block, etc.)
+    pub kind: ScopeKind,
+
+    /// Unique scope identifier
+    pub sid: Sid,
+
+    /// Parent scope reference (for hierarchy)
+    pub parent: Option<Sid>,
+
+    /// Child scope references
+    pub kids: Vec<Sid>,
+
+    /// Symbol declarations (functions, variables, etc.)
+    pub symbols: HashMap<AutoStr, Rc<Meta>>,
+
+    /// Type declarations
+    pub types: HashMap<AutoStr, Rc<Meta>>,
+}
+```
+
+**StackFrame** (runtime, in `runtime.rs`):
+
+```rust
+/// Runtime stack frame (ephemeral)
+///
+/// Contains dynamic execution state: variable values,
+/// ownership tracking, execution position. Created
+/// when entering a scope, destroyed when exiting.
+pub struct StackFrame {
+    /// Link to compile-time symbol table
+    pub scope_sid: Sid,
+
+    /// Current block position (for break/continue)
+    pub cur_block: usize,
+
+    /// Variable values (name → ValueID)
+    pub vals: HashMap<AutoStr, ValueID>,
+
+    /// Moved variables (ownership tracking)
+    pub moved_vars: HashSet<AutoStr>,
+
+    /// Parent frame in call stack (for return)
+    pub parent_frame: Option<StackFrameId>,
+}
+
+/// Stack frame identifier
+pub type StackFrameId = usize;
+```
+
+**CallStack** (runtime, in `ExecutionEngine`):
+
+```rust
+pub struct ExecutionEngine {
+    // ... existing fields ...
+
+    /// Call stack (frame IDs)
+    pub call_stack: Vec<StackFrameId>,
+
+    /// Stack frame storage
+    pub frames: HashMap<StackFrameId, RefCell<StackFrame>>,
+
+    /// Frame ID counter
+    pub frame_counter: StackFrameId,
+}
+```
+
+### 5. Key Design Decisions
+
+**Why SymbolTable + StackFrame?**
+- ✅ **Standard terminology**: Clear communication with developers
+- ✅ **Clear separation**: Compile-time vs runtime is explicit
+- ✅ **Multiple frames → one table**: Recursive functions work correctly
+- ✅ **Persistent vs ephemeral**: SymbolTables persist, StackFrames don't
+
+**Linkage Strategy**:
+- `StackFrame.scope_sid` → `SymbolTable.sid` (one-way reference)
+- Runtime frame "belongs to" compile-time symbol table
+- Multiple frames can reference the same symbol table (recursion)
+
+**Migration Path**:
+1. Create `SymbolTable` struct (rename from `Scope` or extract fields)
+2. Create `StackFrame` struct with runtime fields
+3. Add `call_stack` management to `ExecutionEngine`
+4. Update all Scope operations to use split structures
+5. Migrate 139 `self.universe` references in `eval.rs`
+
+### 6. Implementation Plan
+
+**Phase 4.2**: Implement SymbolTable + StackFrame structures
+**Phase 4.3**: Add call stack management to ExecutionEngine
+**Phase 4.4**: Create bridge layer (Database + Engine accessors)
+**Phase 4.5**: Migrate Interpreter initialization
+**Phase 4.6**: Migrate Evaler methods (139 references)
+**Phase 4.7**: Deprecate Universe, update all call sites
+
+**Estimated Time**: 2-3 days (due to extensive eval.rs refactoring)
+
+---
+
+### Phase 4 Blockers (RESOLVED ✅)
+
+**Original blockers**:
+1. ❌ **Hybrid Scope structure** → ✅ **Resolved**: Split into SymbolTable + StackFrame
+2. ❌ **139 Universe references in eval.rs** → ✅ **Resolved**: Incremental migration plan designed
+3. ❌ **No runtime environment structure** → ✅ **Resolved**: StackFrame + CallStack designed
+4. ❌ **Interpreter initialization complexity** → ✅ **Resolved**: Migration path defined
+
+**Status**: 🟢 **Ready to implement** - All design work complete
+
+---
+
+---
+
+## Phase 4.2: Implement SymbolTable + StackFrame Structures (2-3 hours)
+
+**Goal**: Create the new split structures and migration helpers.
 
 ### Tasks
 
-1. **Update Interpreter Structure**
+1. **Create SymbolTable Structure** (`scope.rs` or new file `symbol_table.rs`)
 
 ```rust
-// interp.rs
+/// Compile-time symbol table (persistent)
+///
+/// Contains static declaration information: types, symbols,
+/// scope hierarchy. Used by parser, indexer, type checker,
+/// and transpilers. Stored in AIE Database.
+pub struct SymbolTable {
+    /// Scope kind (global, function, block, etc.)
+    pub kind: ScopeKind,
+
+    /// Unique scope identifier
+    pub sid: Sid,
+
+    /// Parent scope reference (for hierarchy)
+    pub parent: Option<Sid>,
+
+    /// Child scope references
+    pub kids: Vec<Sid>,
+
+    /// Symbol declarations (functions, variables, etc.)
+    pub symbols: HashMap<AutoStr, Rc<Meta>>,
+
+    /// Type declarations
+    pub types: HashMap<AutoStr, Rc<Meta>>,
+}
+
+impl SymbolTable {
+    pub fn new(kind: ScopeKind, sid: Sid) -> Self {
+        let parent = sid.parent();
+        Self {
+            kind,
+            sid,
+            parent,
+            kids: Vec::new(),
+            symbols: HashMap::new(),
+            types: HashMap::new(),
+        }
+    }
+
+    // ... methods from current Scope (compile-time only)
+}
+```
+
+2. **Create StackFrame Structure** (`runtime.rs`)
+
+```rust
+/// Runtime stack frame identifier
+pub type StackFrameId = usize;
+
+/// Runtime stack frame (ephemeral)
+///
+/// Contains dynamic execution state: variable values,
+/// ownership tracking, execution position. Created
+/// when entering a scope, destroyed when exiting.
+pub struct StackFrame {
+    /// Link to compile-time symbol table
+    pub scope_sid: Sid,
+
+    /// Current block position (for break/continue)
+    pub cur_block: usize,
+
+    /// Variable values (name → ValueID)
+    pub vals: HashMap<AutoStr, ValueID>,
+
+    /// Moved variables (ownership tracking)
+    pub moved_vars: HashSet<AutoStr>,
+
+    /// Parent frame in call stack (for return)
+    pub parent_frame: Option<StackFrameId>,
+}
+
+impl StackFrame {
+    pub fn new(scope_sid: Sid) -> Self {
+        Self {
+            scope_sid,
+            cur_block: 0,
+            vals: HashMap::new(),
+            moved_vars: HashSet::new(),
+            parent_frame: None,
+        }
+    }
+
+    /// Get a variable value
+    pub fn get(&self, name: &str) -> Option<ValueID> {
+        self.vals.get(name).copied()
+    }
+
+    /// Set a variable value
+    pub fn set(&mut self, name: AutoStr, value_id: ValueID) {
+        self.vals.insert(name, value_id);
+    }
+
+    /// Check if variable was moved
+    pub fn is_moved(&self, name: &str) -> bool {
+        self.moved_vars.contains(name)
+    }
+
+    /// Mark variable as moved
+    pub fn mark_moved(&mut self, name: AutoStr) {
+        self.moved_vars.insert(name);
+    }
+}
+```
+
+3. **Add Call Stack to ExecutionEngine** (`runtime.rs`)
+
+```rust
+pub struct ExecutionEngine {
+    // ... existing fields ...
+
+    /// Call stack (frame IDs)
+    pub call_stack: Vec<StackFrameId>,
+
+    /// Stack frame storage
+    pub frames: HashMap<StackFrameId, RefCell<StackFrame>>,
+
+    /// Frame ID counter
+    pub frame_counter: StackFrameId,
+}
+
+impl ExecutionEngine {
+    /// Push a new frame onto the call stack
+    pub fn push_frame(&mut self, scope_sid: Sid) -> StackFrameId {
+        let frame_id = self.frame_counter;
+        self.frame_counter += 1;
+
+        let mut frame = StackFrame::new(scope_sid);
+
+        // Link to parent frame if call stack not empty
+        if let Some(&parent_id) = self.call_stack.last() {
+            frame.parent_frame = Some(parent_id);
+        }
+
+        self.frames.insert(frame_id, RefCell::new(frame));
+        self.call_stack.push(frame_id);
+
+        frame_id
+    }
+
+    /// Pop the current frame from the call stack
+    pub fn pop_frame(&mut self) -> Option<StackFrameId> {
+        let frame_id = self.call_stack.pop()?;
+        // Note: Keep frame in storage for potential inspection
+        // Future: add cleanup method to remove orphaned frames
+        Some(frame_id)
+    }
+
+    /// Get the current (top) frame
+    pub fn current_frame(&self) -> Option<&RefCell<StackFrame>> {
+        self.call_stack.last().and_then(|id| self.frames.get(id))
+    }
+
+    /// Get a frame by ID
+    pub fn get_frame(&self, frame_id: StackFrameId) -> Option<&RefCell<StackFrame>> {
+        self.frames.get(&frame_id)
+    }
+
+    /// Look up a variable in the call stack (search from top to bottom)
+    pub fn lookup_var(&self, name: &str) -> Option<ValueID> {
+        // Search frames from top (most recent) to bottom
+        for &frame_id in self.call_stack.iter().rev() {
+            if let Some(frame) = self.frames.get(&frame_id) {
+                if let Some(value_id) = frame.borrow().get(name) {
+                    return Some(value_id);
+                }
+            }
+        }
+        None
+    }
+}
+```
+
+4. **Add Tests**
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_stack_frame_new() {
+        let scope_sid = Sid::from("test_scope");
+        let frame = StackFrame::new(scope_sid);
+
+        assert_eq!(frame.scope_sid, scope_sid);
+        assert_eq!(frame.cur_block, 0);
+        assert!(frame.vals.is_empty());
+        assert!(frame.moved_vars.is_empty());
+        assert!(frame.parent_frame.is_none());
+    }
+
+    #[test]
+    fn test_stack_frame_get_set() {
+        let mut frame = StackFrame::new(Sid::from("test"));
+
+        // Set variable
+        frame.set(AutoStr::from("x"), ValueID(42));
+        assert_eq!(frame.get("x"), Some(ValueID(42)));
+
+        // Get non-existent variable
+        assert_eq!(frame.get("y"), None);
+    }
+
+    #[test]
+    fn test_call_stack_push_pop() {
+        let mut engine = ExecutionEngine::new();
+
+        // Push frames
+        let sid1 = Sid::from("scope1");
+        let sid2 = Sid::from("scope2");
+
+        let id1 = engine.push_frame(sid1);
+        let id2 = engine.push_frame(sid2);
+
+        assert_eq!(id1, 0);
+        assert_eq!(id2, 1);
+        assert_eq!(engine.call_stack.len(), 2);
+
+        // Check parent linkage
+        let frame2 = engine.get_frame(id2).unwrap().borrow();
+        assert_eq!(frame2.parent_frame, Some(id1));
+
+        // Pop frame
+        let popped = engine.pop_frame();
+        assert_eq!(popped, Some(id2));
+        assert_eq!(engine.call_stack.len(), 1);
+    }
+
+    #[test]
+    fn test_lookup_var() {
+        let mut engine = ExecutionEngine::new();
+
+        // Push frame with variable
+        let sid1 = Sid::from("scope1");
+        engine.push_frame(sid1);
+        engine.current_frame().unwrap().borrow_mut()
+            .set(AutoStr::from("x"), ValueID(100));
+
+        // Push another frame (shadows x)
+        let sid2 = Sid::from("scope2");
+        engine.push_frame(sid2);
+        engine.current_frame().unwrap().borrow_mut()
+            .set(AutoStr::from("x"), ValueID(200));
+
+        // Should find top frame's x
+        assert_eq!(engine.lookup_var("x"), Some(ValueID(200)));
+
+        // Pop top frame, should find parent's x
+        engine.pop_frame();
+        assert_eq!(engine.lookup_var("x"), Some(ValueID(100)));
+    }
+}
+```
+
+**Acceptance Criteria**:
+- [ ] `SymbolTable` struct created with compile-time fields
+- [ ] `StackFrame` struct created with runtime fields
+- [ ] `ExecutionEngine` has `call_stack`, `frames`, `frame_counter`
+- [ ] All call stack methods implemented and tested
+- [ ] Tests pass
+
+---
+
+## Phase 4.3: Bridge Layer and Database Integration (1-2 hours)
+
+**Goal**: Update Database to use `SymbolTable` and create migration helpers.
+
+### Tasks
+
+1. **Update Database to Use SymbolTable** (`database.rs`)
+
+```rust
+// Change from Scope to SymbolTable
+pub struct Database {
+    // ... existing fields ...
+
+    /// Symbol tables (compile-time scope information)
+    symbol_tables: HashMap<Sid, SymbolTable>,
+
+    // Remove old Scope field
+    // scopes: HashMap<Sid, Scope>,
+}
+
+impl Database {
+    /// Insert a symbol table
+    pub fn insert_symbol_table(&mut self, sid: Sid, table: SymbolTable) {
+        self.symbol_tables.insert(sid, table);
+    }
+
+    /// Get a symbol table
+    pub fn get_symbol_table(&self, sid: &Sid) -> Option<&SymbolTable> {
+        self.symbol_tables.get(sid)
+    }
+
+    /// Get a mutable symbol table
+    pub fn get_symbol_table_mut(&mut self, sid: &Sid) -> Option<&mut SymbolTable> {
+        self.symbol_tables.get_mut(sid)
+    }
+}
+```
+
+2. **Create Migration Helper: Scope → SymbolTable + StackFrame**
+
+```rust
+// universe.rs or migration.rs
+impl Universe {
+    /// Convert Scope to SymbolTable (compile-time part)
+    pub fn scope_to_symbol_table(&self, sid: &Sid) -> Option<SymbolTable> {
+        let scope = self.scopes.get(sid)?;
+
+        Some(SymbolTable {
+            kind: scope.kind,
+            sid: scope.sid,
+            parent: scope.parent,
+            kids: scope.kids,
+            symbols: scope.symbols.clone(),
+            types: scope.types.clone(),
+        })
+    }
+
+    /// Convert Scope to StackFrame (runtime part)
+    pub fn scope_to_stack_frame(&self, sid: &Sid) -> Option<StackFrame> {
+        let scope = self.scopes.get(sid)?;
+
+        let mut frame = StackFrame::new(scope.sid);
+        frame.vals = scope.vals.clone();
+        frame.moved_vars = scope.moved_vars.clone();
+        frame.cur_block = scope.cur_block;
+
+        Some(frame)
+    }
+}
+```
+
+3. **Update Evaler Bridge Methods** (`eval.rs`)
+
+```rust
+impl Evaler<'_> {
+    // Symbol table lookups (from AIE Database)
+    fn get_symbol_table(&self, sid: &Sid) -> Option<&SymbolTable> {
+        self.db.get_symbol_table(sid)
+    }
+
+    // Variable lookups (from ExecutionEngine call stack)
+    fn lookup_var_in_frames(&self, name: &str) -> Option<ValueID> {
+        self.engine.borrow().lookup_var(name)
+    }
+
+    // Current frame access
+    fn current_frame(&self) -> Option<&RefCell<StackFrame>> {
+        self.engine.borrow().current_frame()
+    }
+
+    // Push frame when entering scope
+    fn push_frame(&self, sid: Sid) -> StackFrameId {
+        self.engine.borrow_mut().push_frame(sid)
+    }
+
+    // Pop frame when exiting scope
+    fn pop_frame(&self) -> Option<StackFrameId> {
+        self.engine.borrow_mut().pop_frame()
+    }
+}
+```
+
+**Acceptance Criteria**:
+- [ ] Database uses `SymbolTable` instead of `Scope`
+- [ ] Migration helpers created for Scope → SymbolTable + StackFrame
+- [ ] Evaler has bridge methods for Database + ExecutionEngine access
+- [ ] Tests pass
+
+---
+
+## Phase 4.4: Interpreter Migration (1-2 hours)
+
+**Goal**: Update Interpreter to use CompileSession + ExecutionEngine.
+
+### Tasks
+
+1. **Update Interpreter Structure** (`interp.rs`)
+
+```rust
 pub struct Interpreter {
     // NEW: Use AIE architecture
     pub session: CompileSession,        // AIE Database (compile-time)
     pub engine: ExecutionEngine,        // Runtime state
 
-    // Remove old
-    // pub scope: Rc<RefCell<Universe>>,
-
     // Keep existing
     pub result: Value,
     pub eval_mode: EvalMode,
+    pub fstr_note: char,
 }
 ```
 
-2. **Update Evaluator Structure**
+2. **Update Interpreter Initialization**
 
 ```rust
-// eval.rs
-pub struct Evaler<'a> {
-    // NEW: Use AIE Database for compile-time lookups
-    db: Arc<Database>,                      // AIE Database (shared, immutable reads)
+impl Interpreter {
+    pub fn new(mode: EvalMode) -> Self {
+        // Create compile session (AIE Database)
+        let mut session = CompileSession::new();
 
-    // NEW: Use ExecutionEngine for runtime state
-    engine: Rc<RefCell<ExecutionEngine>>,  // Runtime (mutable)
+        // Create execution engine (runtime)
+        let mut engine = ExecutionEngine::new();
 
-    // Remove old
-    // scope: Rc<RefCell<Universe>>,
+        // Register evaluator pointer
+        // TODO: This will change after Evaler migration
+        // engine.set_evaluator(&mut evaler);
 
-    // Keep existing
-    pub eval_mode: EvalMode,
-    pub return_value: Cell<Option<Value>>,
-    pub break_flag: Cell<bool>,
-    _phantom: PhantomData<&'a ()>,
+        // Load stdlib, prelude, specs
+        Self::load_stdlib(&mut session, &mut engine);
+
+        Self {
+            session,
+            engine,
+            result: Value::Nil,
+            eval_mode: mode,
+            fstr_note: '$',
+        }
+    }
 }
 ```
 
-3. **Bridge Methods for Compatibility**
+**Acceptance Criteria**:
+- [ ] Interpreter uses CompileSession + ExecutionEngine
+- [ ] No Universe references in Interpreter
+- [ ] Stdlib loading works with new architecture
 
-   Create helper methods to migrate from Universe access patterns:
+---
 
-   ```rust
-   // eval.rs - Evaler implementation
-   impl Evaler<'_> {
-       // Scope lookups (from AIE Database)
-       fn get_scope(&self, sid: &Sid) -> Option<&Scope> {
-           self.db.get_scope(sid)
-       }
+## Phase 4.5: Evaler Migration (1-2 days)
 
-       // Type lookups (from AIE Database)
-       fn get_type_store(&self) -> &TypeInfoStore {
-           self.db.get_types()
-       }
+**Goal**: Migrate all 139 `self.universe` references to Database + ExecutionEngine.
 
-       // Spec lookups (from AIE Database)
-       fn get_spec(&self, name: &AutoStr) -> Option<Rc<SpecDecl>> {
-           self.db.get_spec(name).cloned()
-       }
+### Strategy
 
-       // VM ref allocation (in ExecutionEngine)
-       fn alloc_vm_ref(&self, data: VmRefData) -> usize {
-           self.engine.borrow_mut().alloc_vm_ref(data)
-       }
+**Incremental migration** - Group by functionality:
+1. Scope operations (enter_scope, exit_scope, lookup_meta)
+2. Variable operations (set_local_val, define, remove_local)
+3. Type operations (define_type)
+4. VM operations (vm ref allocation, evaluator pointer)
 
-       // Builtin functions (from ExecutionEngine)
-       fn call_builtin(&self, name: &str, args: Vec<Value>) -> AutoResult<Value> {
-           self.engine.borrow().get_builtin(name)
-               .ok_or_else(|| format!("Builtin not found: {}", name))?
-               .call(args)
-       }
-   }
-   ```
+### Example Migration Pattern
 
-4. **Update All Expression/Statement Evaluation**
+```rust
+// OLD (Universe)
+fn eval_fn_decl(&mut self, fn_decl: &Fn) -> AutoResult<Value> {
+    let scope_id = self.universe.borrow().cur_spot;
+    self.universe.borrow_mut().enter_scope(scope_id, ScopeKind::Function);
+    // ... function body evaluation
+    self.universe.borrow_mut().exit_scope();
+    Ok(Value::Nil)
+}
 
-   Replace Universe access patterns with Database/Engine access:
+// NEW (Database + ExecutionEngine)
+fn eval_fn_decl(&mut self, fn_decl: &Fn) -> AutoResult<Value> {
+    let sid = Sid::from("function_scope");
+    let frame_id = self.push_frame(sid);  // Create runtime frame
+    // ... function body evaluation
+    self.pop_frame();  // Destroy runtime frame
+    Ok(Value::Nil)
+}
+```
 
-   ```rust
-   // OLD (Universe)
-   let scope = self.scope.borrow();
-   let ty = scope.types.get(&name);
-
-   // NEW (AIE Database)
-   let ty = self.db.get_types().get(&name);
-
-   // OLD (Universe)
-   let vm_ref_id = self.scope.borrow_mut().vmref_counter;
-   self.scope.borrow_mut().vm_refs.insert(vm_ref_id, RefCell::new(data));
-
-   // NEW (ExecutionEngine)
-   let vm_ref_id = self.engine.borrow_mut().alloc_vm_ref(data);
-   ```
-
-   **Files to update** (~200 eval functions total):
-   - eval.rs (all eval_* functions)
-   - interp.rs (interpret methods)
+### Files to Update
+- `eval.rs`: All `eval_*` methods (~200 functions)
+- Test after each group of migrations
 
 **Acceptance Criteria**:
-- [x] Interpreter uses AIE Database + ExecutionEngine
-- [x] Evaluator uses AIE Database + ExecutionEngine
-- [x] All expression evaluation works
-- [x] No Universe references in eval/interp
+- [ ] All 139 Universe references migrated
+- [ ] All tests pass
+- [ ] No regressions in execution
+
+---
+
+## Phase 4.6: Deprecation and Cleanup (1 hour)
+
+**Goal**: Mark Universe as deprecated and update documentation.
+
+### Tasks
+
+1. **Add Deprecation Warnings**
+
+```rust
+/// Universe: DEPRECATED - Use Database + ExecutionEngine instead
+///
+/// # Deprecated
+///
+/// This structure is deprecated and will be removed in a future version.
+/// New code should use:
+/// - `Database` (compile-time: types, symbols, ASTs)
+/// - `ExecutionEngine` (runtime: values, VM refs, call stack)
+///
+/// # Migration Guide
+///
+/// See [Plan 064](docs/plans/064-split-universe-compile-runtime.md)
+#[deprecated(since = "0.4.0", note = "Use Database + ExecutionEngine instead")]
+pub struct Universe {
+    // ...
+}
+```
+
+2. **Update CLAUDE.md** with new architecture
+3. **Add examples** using Database + ExecutionEngine
+
+**Acceptance Criteria**:
+- [ ] Universe marked deprecated
+- [ ] Documentation updated
+- [ ] Migration guide complete
 
 ---
 
