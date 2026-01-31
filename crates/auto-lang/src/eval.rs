@@ -471,6 +471,27 @@ impl Evaler {
         self.universe.borrow().get_arg(name)
     }
 
+    /// Allocate a new value ID (Phase 4.5: bridge method)
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn alloc_value(&mut self, data: auto_val::ValueData) -> auto_val::ValueID {
+        self.alloc_value(data)
+    }
+
+    /// Dereference a Value to its actual data (Phase 4.5: bridge method)
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn deref_val(&self, val: Value) -> Value {
+        self.deref_val(val)
+    }
+
+    /// Look up a type by name (Phase 4.5: bridge method)
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn lookup_type(&self, name: &str) -> ast::Type {
+        self.lookup_type(name)
+    }
+
     // =========================================================================
     // Evaluation Methods
     // =========================================================================
@@ -1665,7 +1686,7 @@ impl Evaler {
                         let field_name = field.clone();
                         let path = auto_val::AccessPath::Field(field_name);
                         let right_data = val.into_data();
-                        let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+                        let right_vid = self.alloc_value(right_data);
 
                         match self
                             .universe
@@ -1686,7 +1707,7 @@ impl Evaler {
                             if let Value::Int(i) = idx_val {
                                 let field_name = field.clone();
                                 let right_data = val.into_data();
-                                let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+                                let right_vid = self.alloc_value(right_data);
 
                                 let path = auto_val::AccessPath::Nested(
                                     Box::new(auto_val::AccessPath::Index(i as usize)),
@@ -1729,7 +1750,7 @@ impl Evaler {
                             );
 
                             let right_data = val.into_data();
-                            let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+                            let right_vid = self.alloc_value(right_data);
 
                             match self
                                 .universe
@@ -1764,7 +1785,7 @@ impl Evaler {
 
                                     let right_data = val.into_data();
                                     let right_vid =
-                                        self.universe.borrow_mut().alloc_value(right_data);
+                                        self.alloc_value(right_data);
 
                                     match self
                                         .universe
@@ -1795,7 +1816,7 @@ impl Evaler {
                         if let Some((root_name, path)) = self.build_dot_path(&full_dot) {
                             if let Some(root_vid) = self.lookup_vid(&root_name) {
                                 let right_data = val.into_data();
-                                let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+                                let right_vid = self.alloc_value(right_data);
 
                                 match self
                                     .universe
@@ -1824,7 +1845,7 @@ impl Evaler {
             Expr::Bina(left_obj, op, right_field) if *op == Op::Dot => {
                 // Convert right-hand side to ValueData and allocate (only for nested assignment)
                 let right_data = val.into_data();
-                let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+                let right_vid = self.alloc_value(right_data);
 
                 match left_obj.as_ref() {
                     // Simple case: obj.field = value
@@ -1976,7 +1997,7 @@ impl Evaler {
             Expr::Index(array, index) => {
                 // Convert right-hand side to ValueData and allocate (only for nested assignment)
                 let right_data = val.into_data();
-                let right_vid = self.universe.borrow_mut().alloc_value(right_data);
+                let right_vid = self.alloc_value(right_data);
 
                 match array.as_ref() {
                     // Simple case: arr[0] = value
@@ -2612,7 +2633,7 @@ impl Evaler {
             // First, check if this is tag construction: `Tag.Variant(args)`
             if let Expr::Ident(tag_name) = &**object {
                 // Check if tag_name is a tag type
-                let tag_type = self.universe.borrow().lookup_type(tag_name);
+                let tag_type = self.lookup_type(tag_name);
                 if matches!(tag_type, ast::Type::Tag(_)) {
                     // This is tag construction!
                     return self.eval_tag_construction(tag_name, method, &call.args);
@@ -2816,7 +2837,7 @@ impl Evaler {
                 if let Expr::Ident(tag_name) = &**left {
                     if let Expr::Ident(variant_name) = &**right {
                         // Check if tag_name is a tag type
-                        let tag_type = self.universe.borrow().lookup_type(tag_name);
+                        let tag_type = self.lookup_type(tag_name);
                         if matches!(tag_type, ast::Type::Tag(_)) {
                             // This is tag construction!
                             return self.eval_tag_construction(tag_name, variant_name, &call.args);
@@ -2994,7 +3015,7 @@ impl Evaler {
         // This enables functions like alloc_array() that are registered globally
         if let Expr::Ident(func_name) = call.name.as_ref() {
             // Check if this is a type instantiation (e.g., Point(x: 1, y: 2))
-            let type_lookup = self.universe.borrow().lookup_type(func_name);
+            let type_lookup = self.lookup_type(func_name);
             if !matches!(type_lookup, ast::Type::Unknown) {
                 // This is a type instantiation!
                 // Convert AST args to auto_val::Args
@@ -3170,7 +3191,7 @@ impl Evaler {
     }
 
     pub fn eval_type_new(&mut self, name: &str, args: &auto_val::Args) -> Value {
-        let typ = self.universe.borrow().lookup_type(name);
+        let typ = self.lookup_type(name);
         match typ {
             ast::Type::User(type_decl) => {
                 let instance = self.eval_instance(&type_decl, args);
@@ -3204,7 +3225,7 @@ impl Evaler {
                         match &member.value {
                             Some(default_value) => {
                                 let val_data = self.eval_expr(default_value).into_data();
-                                let vid = self.universe.borrow_mut().alloc_value(val_data);
+                                let vid = self.alloc_value(val_data);
                                 fields.set(member.name.clone(), auto_val::Value::ValueRef(vid));
                             }
                             None => {
@@ -3240,7 +3261,7 @@ impl Evaler {
                             };
                             if let Some(v) = val_to_store {
                                 let val_data = v.into_data();
-                                let vid = self.universe.borrow_mut().alloc_value(val_data);
+                                let vid = self.alloc_value(val_data);
                                 fields.set(member.name.clone(), auto_val::Value::ValueRef(vid));
                             }
                         }
@@ -3265,7 +3286,7 @@ impl Evaler {
                         };
                         if let Some(v) = val_to_store {
                             let val_data = v.into_data();
-                            let vid = self.universe.borrow_mut().alloc_value(val_data);
+                            let vid = self.alloc_value(val_data);
                             fields.set(member.name.clone(), auto_val::Value::ValueRef(vid));
                         }
                     }
@@ -3287,7 +3308,7 @@ impl Evaler {
                         continue;
                     }
                     let val_data = self.eval_expr(value).into_data();
-                    let vid = self.universe.borrow_mut().alloc_value(val_data);
+                    let vid = self.alloc_value(val_data);
                     fields.set(member.name.clone(), auto_val::Value::ValueRef(vid));
                 }
                 None => {}
@@ -4015,20 +4036,20 @@ impl Evaler {
                         // First, try as string key
                         let str_key = ValueKey::Str(field.as_str().into());
                         if let Some(val) = obj.get(str_key) {
-                            self.universe.borrow().deref_val(val.clone())
+                            self.deref_val(val.clone())
                         } else {
                             // Try as integer key (e.g., a.3 for {3: value})
                             if let Ok(int_val) = field.as_str().parse::<i32>() {
                                 let int_key = ValueKey::Int(int_val);
                                 if let Some(val) = obj.get(int_key) {
-                                    self.universe.borrow().deref_val(val.clone())
+                                    self.deref_val(val.clone())
                                 } else {
                                     // Try as boolean key
                                     match field.as_str().to_lowercase().as_str() {
                                         "true" => {
                                             let bool_key = ValueKey::Bool(true);
                                             if let Some(val) = obj.get(bool_key) {
-                                                self.universe.borrow().deref_val(val.clone())
+                                                self.deref_val(val.clone())
                                             } else {
                                                 Value::error(format!(
                                                     "Field '{}' not found in object",
@@ -4039,7 +4060,7 @@ impl Evaler {
                                         "false" => {
                                             let bool_key = ValueKey::Bool(false);
                                             if let Some(val) = obj.get(bool_key) {
-                                                self.universe.borrow().deref_val(val.clone())
+                                                self.deref_val(val.clone())
                                             } else {
                                                 Value::error(format!(
                                                     "Field '{}' not found in object",
@@ -4059,7 +4080,7 @@ impl Evaler {
                                     "true" => {
                                         let bool_key = ValueKey::Bool(true);
                                         if let Some(val) = obj.get(bool_key) {
-                                            self.universe.borrow().deref_val(val.clone())
+                                            self.deref_val(val.clone())
                                         } else {
                                             Value::error(format!(
                                                 "Field '{}' not found in object",
@@ -4070,7 +4091,7 @@ impl Evaler {
                                     "false" => {
                                         let bool_key = ValueKey::Bool(false);
                                         if let Some(val) = obj.get(bool_key) {
-                                            self.universe.borrow().deref_val(val.clone())
+                                            self.deref_val(val.clone())
                                         } else {
                                             Value::error(format!(
                                                 "Field '{}' not found in object",
@@ -4317,12 +4338,12 @@ impl Evaler {
             }
             Value::ValueRef(vid) => {
                 // Resolve ValueRef to actual value
-                self.universe.borrow().deref_val(Value::ValueRef(vid))
+                self.deref_val(Value::ValueRef(vid))
             }
             Value::Nil => {
                 // Try types FIRST (before meta)
                 // This ensures type names are found before local functions
-                let typ = self.universe.borrow().lookup_type(name);
+                let typ = self.lookup_type(name);
                 if !matches!(typ, ast::Type::Unknown) {
                     let vty: auto_val::Type = typ.into();
                     return Value::Type(vty);
@@ -4619,7 +4640,7 @@ impl Evaler {
 
     fn enum_val(&mut self, en: &AutoStr, name: &AutoStr) -> Value {
         // find enum's decl
-        let typ = self.universe.borrow().lookup_type(en);
+        let typ = self.lookup_type(en);
         match typ {
             ast::Type::Enum(en) => {
                 // lookup enum value in Enum's items
@@ -4639,7 +4660,7 @@ impl Evaler {
         args: &ast::Args,
     ) -> AutoResult<Value> {
         // Get the tag type definition
-        let tag_type = self.universe.borrow().lookup_type(tag_name);
+        let tag_type = self.lookup_type(tag_name);
         match tag_type {
             ast::Type::Tag(tag) => {
                 let tag = tag.borrow();
@@ -5190,7 +5211,7 @@ impl Evaler {
             let first_arg = node.args.first_arg();
             if let Some(Expr::Ident(ident)) = first_arg {
                 let v = self.eval_ident(&ident);
-                let v = self.universe.borrow().deref_val(v);
+                let v = self.deref_val(v);
                 match v {
                     Value::Str(s) => {
                         nd.id = s;
