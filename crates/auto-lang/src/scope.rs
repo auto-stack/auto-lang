@@ -8,6 +8,7 @@ use std::sync::LazyLock;
 
 pub static SID_PATH_GLOBAL: LazyLock<Sid> = LazyLock::new(|| Sid::new(""));
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScopeKind {
     Global,
     Mod,
@@ -114,6 +115,147 @@ impl Sid {
     }
 }
 
+// =============================================================================
+// SymbolTable: Compile-time symbol table (Plan 064 Phase 4)
+// =============================================================================
+
+/// Compile-time symbol table (persistent)
+///
+/// Contains static declaration information: types, symbols,
+/// scope hierarchy. Used by parser, indexer, type checker,
+/// and transpilers. Stored in AIE Database.
+///
+/// # Architecture (Plan 064 Phase 4)
+///
+/// ```text
+/// Compile-time (Database)       Runtime (ExecutionEngine)
+/// ┌──────────────────┐         ┌──────────────────┐
+/// │   SymbolTable    │◄────────│   StackFrame      │
+/// │ - kind, sid      │  link   │ - scope_sid       │
+/// │ - symbols, types │         │ - vals            │
+/// └──────────────────┘         │ - moved_vars      │
+///                              └──────────────────┘
+/// ```
+///
+/// # Purpose
+///
+/// - **Parser**: Records symbol and type declarations
+/// - **Indexer**: Builds scope hierarchy
+/// - **Type checker**: Resolves type references
+/// - **Transpilers**: Generates backend code
+///
+/// # Key Difference from Scope
+///
+/// `SymbolTable` is **compile-time only** - it contains NO runtime values.
+/// Runtime values live in `StackFrame` (in ExecutionEngine).
+///
+/// This separation enables:
+/// - Incremental compilation (SymbolTables persist)
+/// - Hot reloading (runtime state is separate)
+/// - Recursive functions (multiple StackFrames → one SymbolTable)
+#[derive(Debug, Clone)]
+pub struct SymbolTable {
+    /// Scope kind (global, function, block, etc.)
+    pub kind: ScopeKind,
+
+    /// Unique scope identifier
+    pub sid: Sid,
+
+    /// Parent scope reference (for hierarchy)
+    pub parent: Option<Sid>,
+
+    /// Child scope references
+    pub kids: Vec<Sid>,
+
+    /// Symbol declarations (functions, variables, etc.)
+    pub symbols: HashMap<AutoStr, Rc<Meta>>,
+
+    /// Type declarations
+    pub types: HashMap<AutoStr, Rc<Meta>>,
+}
+
+impl SymbolTable {
+    /// Create a new symbol table
+    pub fn new(kind: ScopeKind, sid: Sid) -> Self {
+        let parent = sid.parent();
+        Self {
+            kind,
+            sid,
+            parent,
+            kids: Vec::new(),
+            symbols: HashMap::new(),
+            types: HashMap::new(),
+        }
+    }
+
+    /// Check if this is the global scope
+    pub fn is_global(&self) -> bool {
+        matches!(self.kind, ScopeKind::Global)
+    }
+
+    /// Get the scope name
+    pub fn name(&self) -> AutoStr {
+        self.sid.name()
+    }
+
+    /// Add a child scope
+    pub fn add_kid(&mut self, kid_sid: Sid) {
+        self.kids.push(kid_sid);
+    }
+
+    /// Insert a symbol declaration
+    pub fn insert_symbol(&mut self, name: AutoStr, meta: Rc<Meta>) {
+        self.symbols.insert(name, meta);
+    }
+
+    /// Get a symbol declaration
+    pub fn get_symbol(&self, name: &str) -> Option<&Rc<Meta>> {
+        self.symbols.get(name)
+    }
+
+    /// Insert a type declaration
+    pub fn insert_type(&mut self, name: AutoStr, meta: Rc<Meta>) {
+        self.types.insert(name, meta);
+    }
+
+    /// Get a type declaration
+    pub fn get_type(&self, name: &str) -> Option<&Rc<Meta>> {
+        self.types.get(name)
+    }
+
+    /// Convert from Scope (compile-time part only)
+    ///
+    /// This is a migration helper for Plan 064.
+    /// It extracts only the compile-time fields from Scope.
+    pub fn from_scope(scope: &Scope) -> Self {
+        Self {
+            kind: scope.kind,
+            sid: scope.sid.clone(),
+            parent: scope.parent.clone(),
+            kids: scope.kids.clone(),
+            symbols: scope.symbols.clone(),
+            types: scope.types.clone(),
+        }
+    }
+}
+
+// =============================================================================
+// Scope: Hybrid compile-time + runtime (DEPRECATED - Plan 064)
+// =============================================================================
+
+/// Legacy Scope structure (DEPRECATED)
+///
+/// # Deprecated
+///
+/// This structure mixes compile-time and runtime concerns.
+/// New code should use:
+/// - `SymbolTable` (compile-time, in Database)
+/// - `StackFrame` (runtime, in ExecutionEngine)
+///
+/// # Migration Guide
+///
+/// See [Plan 064](../../docs/plans/064-split-universe-compile-runtime.md)
+#[derive(Debug)]
 pub struct Scope {
     pub kind: ScopeKind,
     pub sid: Sid,            // TODO: should use SharedString?
@@ -372,5 +514,123 @@ mod tests {
             }
             other => panic!("Expected ValueRef, got {:?}", other),
         }
+    }
+
+    // ========================================================================
+    // SymbolTable Tests (Plan 064 Phase 4)
+    // ========================================================================
+
+    #[test]
+    fn test_symbol_table_new() {
+        let sid = Sid::from("test_scope");
+        let table = SymbolTable::new(ScopeKind::Fn, sid.clone());
+
+        assert_eq!(table.kind, ScopeKind::Fn);
+        assert_eq!(table.sid, sid);
+        assert!(table.symbols.is_empty());
+        assert!(table.types.is_empty());
+        assert!(table.kids.is_empty());
+        assert!(!table.is_global());
+    }
+
+    #[test]
+    fn test_symbol_table_global() {
+        let table = SymbolTable::new(ScopeKind::Global, Sid::from(""));
+        assert!(table.is_global());
+
+        let table2 = SymbolTable::new(ScopeKind::Fn, Sid::from("test"));
+        assert!(!table2.is_global());
+    }
+
+    #[test]
+    fn test_symbol_table_name() {
+        let sid = Sid::from("std.math");
+        let table = SymbolTable::new(ScopeKind::Mod, sid);
+        assert_eq!(table.name(), "math");
+    }
+
+    #[test]
+    fn test_symbol_table_parent() {
+        let sid = Sid::from("std.math");
+        let table = SymbolTable::new(ScopeKind::Mod, sid);
+
+        // Parent should be automatically set from Sid
+        assert_eq!(table.parent, Some(Sid::from("std")));
+    }
+
+    #[test]
+    fn test_symbol_table_symbols() {
+        let mut table = SymbolTable::new(ScopeKind::Fn, Sid::from("test_fn"));
+
+        // Insert and retrieve symbol
+        let meta = Rc::new(Meta::Store(ast::Store {
+            kind: ast::StoreKind::Let,
+            name: AutoStr::from("x"),
+            ty: ast::Type::Int,
+            expr: ast::Expr::Int(42),
+        }));
+        table.insert_symbol(AutoStr::from("x"), meta.clone());
+
+        let retrieved = table.get_symbol("x");
+        assert!(retrieved.is_some());
+        assert!(Rc::ptr_eq(retrieved.unwrap(), &meta));
+
+        // Non-existent symbol
+        assert!(table.get_symbol("y").is_none());
+    }
+
+    #[test]
+    fn test_symbol_table_types() {
+        let mut table = SymbolTable::new(ScopeKind::Type, Sid::from("MyType"));
+
+        // Insert and retrieve type
+        let meta = Rc::new(Meta::Type(ast::Type::Int));
+        table.insert_type(AutoStr::from("Int"), meta.clone());
+
+        let retrieved = table.get_type("Int");
+        assert!(retrieved.is_some());
+        assert!(Rc::ptr_eq(retrieved.unwrap(), &meta));
+
+        // Non-existent type
+        assert!(table.get_type("Float").is_none());
+    }
+
+    #[test]
+    fn test_symbol_table_kids() {
+        let mut table = SymbolTable::new(ScopeKind::Mod, Sid::from("std"));
+
+        // Add child scopes
+        table.add_kid(Sid::from("std.math"));
+        table.add_kid(Sid::from("std.io"));
+
+        assert_eq!(table.kids.len(), 2);
+        assert_eq!(table.kids[0], Sid::from("std.math"));
+        assert_eq!(table.kids[1], Sid::from("std.io"));
+    }
+
+    #[test]
+    fn test_symbol_table_from_scope() {
+        // Create a scope with some data
+        let mut scope = Scope::new(ScopeKind::Fn, Sid::from("test_fn"));
+
+        let meta = Rc::new(Meta::Store(ast::Store {
+            kind: ast::StoreKind::Let,
+            name: AutoStr::from("x"),
+            ty: ast::Type::Int,
+            expr: ast::Expr::Int(42),
+        }));
+        scope.symbols.insert(AutoStr::from("x"), meta);
+
+        // Convert to SymbolTable
+        let table = SymbolTable::from_scope(&scope);
+
+        // Check compile-time fields are copied
+        assert_eq!(table.kind, ScopeKind::Fn);
+        assert_eq!(table.sid, Sid::from("test_fn"));
+        assert_eq!(table.parent, scope.parent);
+        assert!(table.symbols.contains_key("x"));
+
+        // Note: SymbolTable does NOT have vals or moved_vars
+        // Those are runtime-only and belong in StackFrame
     }
 }

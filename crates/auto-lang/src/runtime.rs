@@ -14,11 +14,95 @@
 // Phase 3: Full integration with Database
 
 use crate::eval::Evaler;
+use crate::scope::Sid;
 use crate::universe::VmRefData;
 use auto_val::{AutoStr, Obj, Value, ValueData, ValueID};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
+
+/// Stack frame identifier
+pub type StackFrameId = usize;
+
+/// Runtime stack frame (ephemeral)
+///
+/// Contains dynamic execution state: variable values,
+/// ownership tracking, execution position. Created
+/// when entering a scope, destroyed when exiting.
+///
+/// # Architecture (Plan 064 Phase 4)
+///
+/// ```text
+/// Compile-time (Database)       Runtime (ExecutionEngine)
+/// ┌──────────────────┐         ┌──────────────────┐
+/// │   SymbolTable    │◄────────│   StackFrame      │
+/// │ - kind, sid      │  link   │ - scope_sid       │
+/// │ - symbols, types │         │ - vals            │
+/// └──────────────────┘         │ - moved_vars      │
+///                              │ - cur_block       │
+///                              └──────────────────┘
+/// ```
+///
+/// # Linkage
+///
+/// `StackFrame.scope_sid` → `SymbolTable.sid` (one-way reference)
+/// - Runtime frame "belongs to" compile-time symbol table
+/// - Multiple frames can reference the same symbol table (recursion support)
+#[derive(Debug)]
+pub struct StackFrame {
+    /// Link to compile-time symbol table
+    pub scope_sid: Sid,
+
+    /// Current block position (for break/continue)
+    pub cur_block: usize,
+
+    /// Variable values (name → ValueID)
+    pub vals: HashMap<AutoStr, ValueID>,
+
+    /// Moved variables (ownership tracking)
+    pub moved_vars: HashSet<AutoStr>,
+
+    /// Parent frame in call stack (for return)
+    pub parent_frame: Option<StackFrameId>,
+}
+
+impl StackFrame {
+    /// Create a new stack frame for a scope
+    pub fn new(scope_sid: Sid) -> Self {
+        Self {
+            scope_sid,
+            cur_block: 0,
+            vals: HashMap::new(),
+            moved_vars: HashSet::new(),
+            parent_frame: None,
+        }
+    }
+
+    /// Get a variable value
+    pub fn get(&self, name: &str) -> Option<ValueID> {
+        self.vals.get(name).copied()
+    }
+
+    /// Set a variable value
+    pub fn set(&mut self, name: AutoStr, value_id: ValueID) {
+        self.vals.insert(name, value_id);
+    }
+
+    /// Check if variable was moved
+    pub fn is_moved(&self, name: &str) -> bool {
+        self.moved_vars.contains(name)
+    }
+
+    /// Mark variable as moved
+    pub fn mark_moved(&mut self, name: AutoStr) {
+        self.moved_vars.insert(name);
+    }
+
+    /// Remove a variable (returns old value if present)
+    pub fn remove(&mut self, name: &str) -> Option<ValueID> {
+        self.vals.remove(name)
+    }
+}
 
 /// Runtime execution engine (ephemeral, per-run)
 ///
@@ -68,6 +152,15 @@ pub struct ExecutionEngine {
     /// Weak references to values (for cleanup)
     pub weak_refs: HashMap<ValueID, Weak<RefCell<ValueData>>>,
 
+    /// Call stack (frame IDs) - Phase 4 Plan 064
+    pub call_stack: Vec<StackFrameId>,
+
+    /// Stack frame storage - Phase 4 Plan 064
+    pub frames: HashMap<StackFrameId, RefCell<StackFrame>>,
+
+    /// Frame ID counter - Phase 4 Plan 064
+    pub frame_counter: StackFrameId,
+
     /// Raw pointer to evaluator for VM functions to call user-defined functions
     /// WARNING: This is only valid during evaluator's lifetime
     /// The evaluator must outlive the ExecutionEngine
@@ -90,6 +183,9 @@ impl ExecutionEngine {
             values: HashMap::new(),
             value_counter: 0,
             weak_refs: HashMap::new(),
+            call_stack: Vec::new(),
+            frames: HashMap::new(),
+            frame_counter: 0,
             evaluator_ptr: std::ptr::null_mut(),
         }
     }
@@ -160,6 +256,74 @@ impl ExecutionEngine {
     /// Remove a value from storage
     pub fn remove_value(&mut self, id: ValueID) -> Option<Rc<RefCell<ValueData>>> {
         self.values.remove(&id)
+    }
+
+    // ========================================================================
+    // Call Stack Management (Phase 4 Plan 064)
+    // ========================================================================
+
+    /// Push a new frame onto the call stack
+    ///
+    /// Creates a new StackFrame for the given scope and adds it to the call stack.
+    /// The frame is automatically linked to its parent frame (if any).
+    ///
+    /// # Returns
+    ///
+    /// The ID of the newly created frame
+    pub fn push_frame(&mut self, scope_sid: Sid) -> StackFrameId {
+        let frame_id = self.frame_counter;
+        self.frame_counter += 1;
+
+        let mut frame = StackFrame::new(scope_sid);
+
+        // Link to parent frame if call stack not empty
+        if let Some(&parent_id) = self.call_stack.last() {
+            frame.parent_frame = Some(parent_id);
+        }
+
+        self.frames.insert(frame_id, RefCell::new(frame));
+        self.call_stack.push(frame_id);
+
+        frame_id
+    }
+
+    /// Pop the current frame from the call stack
+    ///
+    /// Removes and returns the ID of the top frame.
+    /// Note: The frame data remains in storage for potential inspection.
+    /// Future: Add cleanup method to remove orphaned frames.
+    pub fn pop_frame(&mut self) -> Option<StackFrameId> {
+        self.call_stack.pop()
+    }
+
+    /// Get the current (top) frame
+    ///
+    /// Returns the frame at the top of the call stack, or None if stack is empty.
+    pub fn current_frame(&self) -> Option<&RefCell<StackFrame>> {
+        self.call_stack.last().and_then(|id| self.frames.get(id))
+    }
+
+    /// Get a frame by ID
+    pub fn get_frame(&self, frame_id: StackFrameId) -> Option<&RefCell<StackFrame>> {
+        self.frames.get(&frame_id)
+    }
+
+    /// Look up a variable in the call stack
+    ///
+    /// Searches frames from top (most recent) to bottom (oldest).
+    /// Returns the ValueID if found, None otherwise.
+    ///
+    /// This implements lexical scoping - inner frames shadow outer frames.
+    pub fn lookup_var(&self, name: &str) -> Option<ValueID> {
+        // Search frames from top (most recent) to bottom
+        for &frame_id in self.call_stack.iter().rev() {
+            if let Some(frame) = self.frames.get(&frame_id) {
+                if let Some(value_id) = frame.borrow().get(name) {
+                    return Some(value_id);
+                }
+            }
+        }
+        None
     }
 
     // ========================================================================
@@ -329,5 +493,177 @@ mod tests {
         let removed = engine.remove_value(id1);
         assert!(removed.is_some());
         assert!(engine.get_value(id1).is_none());
+    }
+
+    // ========================================================================
+    // StackFrame Tests (Phase 4 Plan 064)
+    // ========================================================================
+
+    #[test]
+    fn test_stack_frame_new() {
+        let scope_sid = Sid::from("test_scope");
+        let frame = StackFrame::new(scope_sid.clone());
+
+        assert_eq!(frame.scope_sid, scope_sid);
+        assert_eq!(frame.cur_block, 0);
+        assert!(frame.vals.is_empty());
+        assert!(frame.moved_vars.is_empty());
+        assert!(frame.parent_frame.is_none());
+    }
+
+    #[test]
+    fn test_stack_frame_get_set() {
+        let mut frame = StackFrame::new(Sid::from("test"));
+
+        // Set variable
+        frame.set(AutoStr::from("x"), ValueID(42));
+        assert_eq!(frame.get("x"), Some(ValueID(42)));
+
+        // Get non-existent variable
+        assert_eq!(frame.get("y"), None);
+    }
+
+    #[test]
+    fn test_stack_frame_moved_vars() {
+        let mut frame = StackFrame::new(Sid::from("test"));
+
+        // Initially not moved
+        assert!(!frame.is_moved("x"));
+
+        // Mark as moved
+        frame.mark_moved(AutoStr::from("x"));
+        assert!(frame.is_moved("x"));
+
+        // Other variable not moved
+        assert!(!frame.is_moved("y"));
+    }
+
+    #[test]
+    fn test_stack_frame_remove() {
+        let mut frame = StackFrame::new(Sid::from("test"));
+
+        frame.set(AutoStr::from("x"), ValueID(42));
+        assert_eq!(frame.get("x"), Some(ValueID(42)));
+
+        // Remove variable
+        let removed = frame.remove("x");
+        assert_eq!(removed, Some(ValueID(42)));
+        assert_eq!(frame.get("x"), None);
+
+        // Remove non-existent variable
+        assert_eq!(frame.remove("y"), None);
+    }
+
+    // ========================================================================
+    // Call Stack Tests (Phase 4 Plan 064)
+    // ========================================================================
+
+    #[test]
+    fn test_call_stack_push_pop() {
+        let mut engine = ExecutionEngine::new();
+
+        // Initially empty
+        assert_eq!(engine.call_stack.len(), 0);
+        assert!(engine.current_frame().is_none());
+
+        // Push first frame
+        let sid1 = Sid::from("scope1");
+        let id1 = engine.push_frame(sid1.clone());
+        assert_eq!(id1, 0);
+        assert_eq!(engine.call_stack.len(), 1);
+        assert!(engine.current_frame().is_some());
+
+        // Push second frame
+        let sid2 = Sid::from("scope2");
+        let id2 = engine.push_frame(sid2.clone());
+        assert_eq!(id2, 1);
+        assert_eq!(engine.call_stack.len(), 2);
+
+        // Check parent linkage
+        {
+            let frame2 = engine.get_frame(id2).unwrap().borrow();
+            assert_eq!(frame2.parent_frame, Some(id1));
+        } // Drop borrow before calling pop_frame
+
+        // Pop frame
+        let popped = engine.pop_frame();
+        assert_eq!(popped, Some(id2));
+        assert_eq!(engine.call_stack.len(), 1);
+
+        // Current frame is now the first frame
+        let current = engine.current_frame().unwrap().borrow();
+        assert_eq!(current.scope_sid, sid1);
+    }
+
+    #[test]
+    fn test_lookup_var() {
+        let mut engine = ExecutionEngine::new();
+
+        // Push frame with variable
+        let sid1 = Sid::from("scope1");
+        engine.push_frame(sid1);
+        engine.current_frame().unwrap().borrow_mut()
+            .set(AutoStr::from("x"), ValueID(100));
+
+        // Look up variable
+        assert_eq!(engine.lookup_var("x"), Some(ValueID(100)));
+
+        // Push another frame (shadows x)
+        let sid2 = Sid::from("scope2");
+        engine.push_frame(sid2);
+        engine.current_frame().unwrap().borrow_mut()
+            .set(AutoStr::from("x"), ValueID(200));
+
+        // Should find top frame's x
+        assert_eq!(engine.lookup_var("x"), Some(ValueID(200)));
+
+        // Pop top frame, should find parent's x
+        engine.pop_frame();
+        assert_eq!(engine.lookup_var("x"), Some(ValueID(100)));
+    }
+
+    #[test]
+    fn test_lookup_var_not_found() {
+        let mut engine = ExecutionEngine::new();
+
+        // Empty stack
+        assert_eq!(engine.lookup_var("x"), None);
+
+        // Push frame without variable
+        engine.push_frame(Sid::from("scope1"));
+        assert_eq!(engine.lookup_var("x"), None);
+    }
+
+    #[test]
+    fn test_frame_counter() {
+        let mut engine = ExecutionEngine::new();
+
+        // Frame IDs increment
+        let id1 = engine.push_frame(Sid::from("scope1"));
+        let id2 = engine.push_frame(Sid::from("scope2"));
+        let id3 = engine.push_frame(Sid::from("scope3"));
+
+        assert_eq!(id1, 0);
+        assert_eq!(id2, 1);
+        assert_eq!(id3, 2);
+        assert_eq!(engine.frame_counter, 3);
+    }
+
+    #[test]
+    fn test_get_frame_by_id() {
+        let mut engine = ExecutionEngine::new();
+
+        let sid = Sid::from("test_scope");
+        let frame_id = engine.push_frame(sid.clone());
+
+        // Get frame by ID
+        let frame = engine.get_frame(frame_id);
+        assert!(frame.is_some());
+
+        let borrowed = frame.unwrap().borrow();
+        assert_eq!(borrowed.scope_sid, sid);
+
+        // Get non-existent frame
+        assert!(engine.get_frame(999).is_none());
     }
 }
