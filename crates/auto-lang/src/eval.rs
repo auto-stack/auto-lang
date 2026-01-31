@@ -241,6 +241,185 @@ impl Evaler {
     }
 
     // =========================================================================
+    // Group 2: Variable Operations (Phase 4.5 Plan 064)
+    // =========================================================================
+
+    /// Set a local variable value in the current scope
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    /// **Future**: Will use ExecutionEngine's StackFrame for runtime variable storage.
+    ///
+    /// # Migration Path
+    ///
+    /// - **Current**: Uses `universe.set_local_val()` for both compile-time and runtime
+    /// - **Target**: Will use `engine.current_frame().set(name, value_id)` for runtime
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Old (Universe)
+    /// self.universe.borrow_mut().set_local_val("x", Value::Int(42));
+    ///
+    /// // New (Phase 4.5+)
+    /// self.set_local_val("x", Value::Int(42));  // Bridge method
+    ///
+    /// // Future (Phase 4.6)
+    /// let value_id = self.engine.alloc_value(ValueData::Int(42));
+    /// self.engine.current_frame().set("x", value_id);
+    /// ```
+    pub fn set_local_val(&mut self, name: &str, value: Value) {
+        self.universe.borrow_mut().set_local_val(name, value);
+    }
+
+    /// Define a symbol (function, type, variable) in the current scope
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    /// **Future**: Will use Database's SymbolTable for compile-time symbol definitions.
+    ///
+    /// # Migration Path
+    ///
+    /// - **Current**: Uses `universe.define()` for both compile-time and runtime
+    /// - **Target**: Will use Database's SymbolTable for compile-time symbols
+    ///
+    /// # Parameters
+    ///
+    /// - `name`: Symbol name (converts to AutoStr)
+    /// - `meta`: Symbol metadata (function, type, variable reference)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Old (Universe)
+    /// self.universe.borrow_mut().define("my_func", Rc::new(Meta::Fn(...)));
+    ///
+    /// // New (Phase 4.5+)
+    /// self.define("my_func", Rc::new(Meta::Fn(...)));  // Bridge method
+    ///
+    /// // Future (Phase 4.6)
+    /// self.db.define_symbol(sid, "my_func", Symbol::Fn(...));
+    /// ```
+    pub fn define(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
+        self.universe.borrow_mut().define(name, meta);
+    }
+
+    /// Remove a local variable from the current scope
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    /// **Future**: Will use ExecutionEngine's StackFrame for runtime variable removal.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(ValueID)` if variable was removed
+    /// - `None` if variable didn't exist
+    ///
+    /// # Migration Path
+    ///
+    /// - **Current**: Uses `universe.remove_local()` for both compile-time and runtime
+    /// - **Target**: Will use `engine.current_frame().remove(name)` for runtime
+    pub fn remove_local(&mut self, name: &str) -> Option<auto_val::ValueID> {
+        self.universe.borrow_mut().remove_local(name)
+    }
+
+    /// Set a global variable value
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    /// **Future**: Will use Database for global variable storage.
+    ///
+    /// # Migration Path
+    ///
+    /// - **Current**: Uses `universe.set_global()` for global variables
+    /// - **Target**: Will use Database's global symbol table
+    ///
+    /// # Parameters
+    ///
+    /// - `name`: Global variable name
+    /// - `value`: Value to store
+    pub fn set_global(&mut self, name: impl Into<String>, value: Value) {
+        self.universe.borrow_mut().set_global(name, value);
+    }
+
+    // =========================================================================
+    // Group 3: Type Operations (Phase 4.5 Plan 064)
+    // =========================================================================
+
+    /// Define a type in the current scope
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    /// **Future**: Will use Database's SymbolTable for compile-time type definitions.
+    ///
+    /// # Migration Path
+    ///
+    /// - **Current**: Uses `universe.define_type()` for both compile-time and runtime
+    /// - **Target**: Will use Database's SymbolTable for type storage
+    ///
+    /// # Parameters
+    ///
+    /// - `name`: Type name (converts to AutoStr)
+    /// - `meta`: Type metadata (TypeDecl, enum variants, etc.)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Old (Universe)
+    /// self.universe.borrow_mut().define_type("MyType", Rc::new(Meta::Type(...)));
+    ///
+    /// // New (Phase 4.5+)
+    /// self.define_type("MyType", Rc::new(Meta::Type(...)));  // Bridge method
+    ///
+    /// // Future (Phase 4.6)
+    /// self.db.define_type(sid, "MyType", type_decl);
+    /// ```
+    pub fn define_type(&mut self, name: impl Into<AutoStr>, meta: Rc<Meta>) {
+        self.universe.borrow_mut().define_type(name, meta);
+    }
+
+    // =========================================================================
+    // Group 4: VM Operations (Phase 4.5 Plan 064)
+    // =========================================================================
+
+    /// Allocate a new VM reference (HashMap, HashSet, File, List, etc.)
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    /// **Future**: Will use ExecutionEngine's VM reference management.
+    ///
+    /// # Migration Path
+    ///
+    /// - **Current**: Uses `universe.add_vmref()` for VM resource allocation
+    /// - **Target**: Will use `engine.alloc_vm_ref()` for runtime VM resources
+    ///
+    /// # Returns
+    ///
+    /// The VM reference ID (usize)
+    ///
+    /// # Parameters
+    ///
+    /// - `data`: VM reference data (List, HashMap, HashSet, File, etc.)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Old (Universe)
+    /// let list_data = ListData::new();
+    /// let ref_id = self.universe.borrow_mut().add_vmref(VmRefData::List(list_data));
+    ///
+    /// // New (Phase 4.5+)
+    /// let list_data = ListData::new();
+    /// let ref_id = self.alloc_vmref(VmRefData::List(list_data));  // Bridge method
+    ///
+    /// // Future (Phase 4.6)
+    /// let list_data = ListData::new();
+    /// let ref_id = self.engine.alloc_vm_ref(VmRefData::List(list_data));
+    /// ```
+    pub fn alloc_vmref(&mut self, data: crate::universe::VmRefData) -> usize {
+        self.universe.borrow_mut().add_vmref(data)
+    }
+
+    // NOTE: get_vmref() is not provided as a bridge method due to lifetime issues.
+    // During migration, use `self.universe.borrow().get_vmref_ref(refid)` directly.
+    // In Phase 4.6, this will be replaced with `self.engine.get_vm_ref(refid)`.
+
+    // =========================================================================
+    // Evaluation Methods
     // Evaluation Methods
     // =========================================================================
 
