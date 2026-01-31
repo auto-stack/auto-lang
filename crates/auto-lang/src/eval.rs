@@ -488,14 +488,14 @@ impl Evaler {
     ///
     /// **Phase 4.5**: Bridge method that uses Universe during migration.
     pub fn alloc_value(&mut self, data: auto_val::ValueData) -> auto_val::ValueID {
-        self.alloc_value(data)
+        self.universe.borrow_mut().alloc_value(data)
     }
 
     /// Dereference a Value to its actual data (Phase 4.5: bridge method)
     ///
     /// **Phase 4.5**: Bridge method that uses Universe during migration.
     pub fn deref_val(&self, val: Value) -> Value {
-        self.deref_val(val)
+        self.universe.borrow().deref_val(val)
     }
 
     /// Look up a type by name (Phase 4.5: bridge method)
@@ -509,28 +509,35 @@ impl Evaler {
     ///
     /// **Phase 4.5**: Bridge method that uses Universe during migration.
     pub fn mark_moved(&mut self, name: &str) {
-        self.mark_moved(name);
+        self.universe.borrow_mut().mark_moved(name);
     }
 
     /// Enter a function scope (Phase 4.5: bridge method)
     ///
     /// **Phase 4.5**: Bridge method that uses Universe during migration.
     pub fn enter_fn(&mut self, name: impl Into<AutoStr>) {
-        self.enter_fn(name);
+        self.universe.borrow_mut().enter_fn(name);
     }
 
     /// Set local object properties (Phase 4.5: bridge method)
     ///
     /// **Phase 4.5**: Bridge method that uses Universe during migration.
     pub fn set_local_obj(&mut self, obj: &Obj) {
-        self.set_local_obj(obj);
+        self.universe.borrow_mut().set_local_obj(obj);
     }
 
     /// Register a spec declaration (Phase 4.5: bridge method)
     ///
     /// **Phase 4.5**: Bridge method that uses Universe during migration.
     pub fn register_spec(&mut self, spec: std::rc::Rc<ast::SpecDecl>) {
-        self.register_spec(spec);
+        self.universe.borrow_mut().register_spec(spec);
+    }
+
+    /// Get a spec declaration by name (Phase 4.5: bridge method)
+    ///
+    /// **Phase 4.5**: Bridge method that uses Universe during migration.
+    pub fn get_spec(&self, name: &AutoStr) -> Option<std::rc::Rc<ast::SpecDecl>> {
+        self.universe.borrow().specs.get(name).cloned()
     }
 
     // =========================================================================
@@ -3696,7 +3703,7 @@ impl Evaler {
                         // Add self as the first argument
                         // Note: self was bound in eval_method, but we need to get it here
                         // Try to get self from current scope
-                        let self_val = self.universe.borrow().lookup_val("self");
+                        let self_val = self.lookup_val("self");  // Phase 4.5: Use bridge method
 
                         match self_val {
                             Some(val) => {
@@ -4562,10 +4569,7 @@ impl Evaler {
         };
 
         // Get the TypeDecl for this type
-        let type_decl = {
-            let universe = self.universe.borrow();
-            universe.lookup_type(&type_name)
-        };
+        let type_decl = self.lookup_type(&type_name);  // Phase 4.5: Use bridge method
 
         let type_decl = match type_decl {
             ast::Type::User(decl) => decl,
@@ -4575,10 +4579,7 @@ impl Evaler {
         // Iterate through spec implementations
         for spec_impl in type_decl.spec_impls.iter() {
             // Look up the spec declaration from specs HashMap
-            let spec_decl = {
-                let universe = self.universe.borrow();
-                universe.specs.get(&spec_impl.spec_name).cloned()
-            };
+            let spec_decl = self.get_spec(&spec_impl.spec_name);  // Phase 4.5: Use bridge method
 
             let spec_decl = match spec_decl {
                 Some(decl) => decl,
@@ -4613,7 +4614,7 @@ impl Evaler {
                 match arg_expr {
                     ast::Arg::Pos(expr) => {
                         let arg_val = self.eval_expr(expr);
-                        self.universe.borrow_mut().set_local_val(&param.name.to_string(), arg_val);
+                        self.set_local_val(&param.name.to_string(), arg_val)  // Phase 4.5;
                     }
                     _ => {}
                 }
@@ -5309,7 +5310,7 @@ impl Evaler {
         let nd = Value::Node(nd);
         // save value to scope
         if !ndid.is_empty() {
-            self.universe.borrow_mut().set_global(ndid, nd.clone());
+            self.set_global(ndid, nd.clone())  // Phase 4.5;
         }
 
         Ok(nd)
@@ -5654,10 +5655,7 @@ impl Evaler {
 
     fn create_default_instance(&mut self, type_name: &str) -> Value {
         // Look up the type declaration
-        let type_decl_opt = {
-            let universe = self.universe.borrow();
-            universe.lookup_type(type_name).clone()
-        };
+        let type_decl_opt = self.lookup_type(type_name);  // Phase 4.5: Use bridge method
 
         if let ast::Type::User(decl) = type_decl_opt {
             let mut fields = auto_val::Obj::new();
