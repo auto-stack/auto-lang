@@ -138,18 +138,18 @@ impl Evaler {
     // Bridge Methods (Phase 4.5 Plan 064)
     // =========================================================================
 
-    /// Get reference to the Universe (legacy, for gradual migration)
+    /// Get reference to the Universe (for VM modules during migration)
     ///
-    /// **Phase 4.3-4.5**: Provides access to Universe while migration is in progress.
-    /// **Phase 4.6+**: Will be deprecated in favor of db() + engine() methods.
+    /// **Phase 4.6**: Used by VM modules to access add_vmref(), drop_vmref(), etc.
+    /// **Future**: Will be removed once VM references are managed by ExecutionEngine.
     pub fn universe(&self) -> &Rc<RefCell<Universe>> {
         &self.universe
     }
 
-    /// Get mutable reference to the Universe (legacy, for gradual migration)
+    /// Get mutable reference to the Universe (for VM modules during migration)
     ///
-    /// **Phase 4.3-4.5**: Provides access to Universe while migration is in progress.
-    /// **Phase 4.6+**: Will be deprecated in favor of db() + engine() methods.
+    /// **Phase 4.6**: Used by VM modules to access add_vmref(), drop_vmref(), etc.
+    /// **Future**: Will be removed once VM references are managed by ExecutionEngine.
     pub fn universe_mut(&mut self) -> &mut Rc<RefCell<Universe>> {
         &mut self.universe
     }
@@ -508,17 +508,29 @@ impl Evaler {
     /// let list_data = ListData::new();
     /// let ref_id = self.alloc_vmref(VmRefData::List(list_data));  // Bridge method
     ///
-    /// // Future (Phase 4.6)
+    /// // Phase 4.7: Delegates to ExecutionEngine
     /// let list_data = ListData::new();
-    /// let ref_id = self.engine.alloc_vm_ref(VmRefData::List(list_data));
+    /// let ref_id = self.alloc_vmref(VmRefData::List(list_data));
     /// ```
     pub fn alloc_vmref(&mut self, data: crate::universe::VmRefData) -> usize {
-        self.universe.borrow_mut().add_vmref(data)
+        if let Some(engine) = &self.engine {
+            engine.borrow_mut().alloc_vm_ref(data)
+        } else {
+            self.universe.borrow_mut().add_vmref(data)
+        }
     }
 
-    // NOTE: get_vmref() is not provided as a bridge method due to lifetime issues.
-    // During migration, use `self.universe.borrow().get_vmref_ref(refid)` directly.
-    // In Phase 4.6, this will be replaced with `self.engine.get_vm_ref(refid)`.
+    /// Drop a VM reference (Phase 4.7)
+    ///
+    /// **Phase 4.7**: Bridge method that delegates to ExecutionEngine when available.
+    /// Falls back to Universe during migration.
+    pub fn drop_vmref(&mut self, id: usize) {
+        if let Some(engine) = &self.engine {
+            engine.borrow_mut().drop_vm_ref(id);
+        } else {
+            self.universe.borrow_mut().drop_vmref(id);
+        }
+    }
 
     // =========================================================================
     // Additional Helper Bridge Methods (Phase 4.5 Plan 064)
@@ -2548,20 +2560,6 @@ impl Evaler {
             }
             _ => Err(format!("Invalid expression: {}", expr)),
         }
-    }
-
-    /// Update an object's properties (Phase 4.5: bridge method)
-    #[allow(dead_code)]
-    fn update_obj(&mut self, name: &str, f: impl FnOnce(&mut Obj)) -> Value {
-        self.universe.borrow_mut().update_obj(name, f);
-        Value::Void
-    }
-
-    /// Update an array element (Phase 4.5: bridge method)
-    #[allow(dead_code)]
-    fn update_array(&mut self, name: &str, idx: Value, val: Value) -> Value {
-        self.universe.borrow_mut().update_array(name, idx, val);
-        Value::Void
     }
 
     fn range(&mut self, left: &Expr, right: &Expr) -> Value {

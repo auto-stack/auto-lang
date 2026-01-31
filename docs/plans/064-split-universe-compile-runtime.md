@@ -10,21 +10,27 @@
 - ✅ Phase 1: Field classification complete (19 fields analyzed)
 - ✅ Phase 2: ExecutionEngine extended with 11 runtime fields
 - ✅ Phase 3: AIE Database extended with 7 compile-time fields
-- ⏸️ Phase 4: **PAUSED** - Scope split architecture implementation (58% complete)
+- ⏸️ Phase 4: **PAUSED** - Scope split architecture implementation (60% complete)
   - ✅ Phase 4.1: Design complete ✅
   - ✅ Phase 4.2: SymbolTable + StackFrame structures implemented ✅
   - ✅ Phase 4.3: Bridge layer and Database integration ✅
   - ✅ Phase 4.4: Interpreter migration to CompileSession + ExecutionEngine ✅
-  - ⏸️ Phase 4.5: Evaler migration (52% complete - 59/141 references)
+  - ⏸️ Phase 4.5: Evaler migration (60% complete - 57/141 references)
     - ✅ Bridge methods created (Groups 1-8: 20+ methods)
     - ✅ Bridge methods enabled (db/engine shared from Interpreter)
     - ✅ 89 call sites migrated to use bridge methods
-    - ⏸️ Remaining 59 references (bridge fallbacks, temporary code)
+    - ✅ Dead code removed (update_obj, update_array)
+    - ✅ Getter methods updated with documentation
+    - ⏸️ Remaining 57 references (mostly bridge fallbacks)
   - ✅ Phase 4.6: VM signature redesign **COMPLETE**
     - ✅ Type definitions updated (VmFunction, VmMethod)
     - ✅ All ~53 VM function implementations migrated
     - ✅ All 10 call sites in eval.rs updated
     - ✅ Tests: 999 passing (no regressions)
+  - ⏸️ Phase 4.7: VM reference migration **BLOCKED** (lifetime issues)
+    - ✅ Bridge methods added (alloc_vmref, drop_vmref)
+    - ❌ VM module updates blocked on RefCell lifetime issues
+    - ⏸️ Deferred to future work (see Phase 4.7 section below)
 
 ---
 
@@ -1632,6 +1638,119 @@ let result = method(self, &mut inst, arg_vals);
 ✅ VM functions use `&mut Evaler` signature
 ✅ VM functions use bridge methods (no direct Universe access)
 ✅ Universe reference count reduced from 68 to ~30
+
+---
+
+## Phase 4.7: Migrate VM References to ExecutionEngine ⏸️ **BLOCKED**
+
+**Status**: ⏸️ **BLOCKED** (Attempted 2025-02-01, blocked on Rust lifetime issues)
+
+### Problem
+
+VM modules currently manage references (HashMap, HashSet, List, File, StringBuilder) in Universe's `vm_refs` HashMap. To complete the Universe split, these should move to ExecutionEngine.
+
+**Current State**:
+- Universe has `vm_refs: HashMap<usize, RefCell<VmRefData>>`
+- Universe has `vmref_counter: usize`
+- VM modules call `_evaler.universe().borrow_mut().add_vmref()`
+- VM modules call `_evaler.universe().borrow().get_vmref_ref(id)`
+- VM modules call `_evaler.universe().borrow_mut().drop_vmref(id)`
+
+**Target State**:
+- ExecutionEngine has `vm_refs` and `vmref_counter` (already ✅)
+- VM modules call bridge methods that delegate to ExecutionEngine
+- Universe no longer manages VM references
+
+### Attempted Approach
+
+1. ✅ **Added bridge methods** to Evaler:
+   ```rust
+   pub fn alloc_vmref(&mut self, data: VmRefData) -> usize {
+       if let Some(engine) = &self.engine {
+           engine.borrow_mut().alloc_vm_ref(data)
+       } else {
+           self.universe.borrow_mut().add_vmref(data)
+       }
+   }
+
+   pub fn drop_vmref(&mut self, id: usize) { ... }
+   ```
+
+2. ❌ **Attempted to update VM modules**:
+   - Changed `_evaler.universe().borrow_mut().add_vmref()` → `_evaler.alloc_vmref()`
+   - Changed `_evaler.universe().borrow_mut().drop_vmref()` → `_evaler.drop_vmref()`
+   - Attempted to change `get_vmref_ref` calls
+
+3. ❌ **Blocked by lifetime issues**:
+   ```
+   error[E0716]: temporary value dropped while borrowed
+   --> list.rs:803:25
+   |
+   803 |                 let b = engine.borrow().get_vm_ref(list_id);
+       |                         ^^^^^^^^^^^^^^^
+       |                         creates a temporary which is freed while still in use
+   804 |                 if let Some(b) = b {
+       |                                  - borrow later used here
+   ```
+
+### Root Cause
+
+The pattern:
+```rust
+if let Some(engine) = &_evaler.engine {
+    let b = engine.borrow().get_vm_ref(id);  // Ref<VmRefData>
+    if let Some(b) = b {
+        let mut ref_box = b.borrow_mut();    // Needs RefMut
+        // ...
+    }
+}
+```
+
+Creates a temporary `Ref<ExecutionEngine>` that's dropped before we can use the returned `Ref<VmRefData>`.
+
+### Possible Solutions
+
+**Option A**: Extend lifetime with intermediate binding
+```rust
+if let Some(engine) = &_evaler.engine {
+    let engine_ref = engine.borrow();  // Keep Ref<ExecutionEngine> alive
+    let b = engine_ref.get_vm_ref(id); // Ref<VmRefData> borrows from engine_ref
+    if let Some(b) = b {
+        let mut ref_box = b.borrow_mut();
+        // ...
+    }
+}  // engine_ref dropped here
+```
+
+**Option B**: Refactor VM module methods to avoid nested borrows
+- Requires extensive refactoring of 43+ call sites across 4 VM modules
+- Complex control flow (loops, early returns) makes this difficult
+
+**Option C**: Keep VM references in Universe for now
+- Accept hybrid approach where VM references remain in Universe
+- Focus on completing other phases first
+- Revisit after Database/ExecutionEngine split is stable
+
+### Decision
+
+**Status**: ⏸️ **BLOCKED - Deferring to future work**
+
+**Rationale**:
+1. Lifetime issues require significant refactoring (2-3 days estimated)
+2. Current hybrid approach works (VM references in Universe, other data split)
+3. Higher priority to complete Plan 064 Phase 4.5 (Evaler migration) and Plan 065 (AIE Integration)
+4. Can revisit VM reference migration after architecture is more stable
+
+**Infrastructure in place** (for future):
+- ✅ Bridge methods `alloc_vmref()` and `drop_vmref()` added to Evaler
+- ✅ ExecutionEngine has `vm_refs`, `vmref_counter`, and management methods
+- ✅ Pattern established for future migration
+
+**Next steps when unblocking**:
+1. Use Option A pattern (intermediate bindings) across all 43 `get_vmref_ref` calls
+2. Test thoroughly with StringBuilder, List, HashMap, HashSet, File tests
+3. Remove `vm_refs` and `vmref_counter` from Universe
+4. Update documentation
 
 ---
 
