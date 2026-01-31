@@ -799,10 +799,10 @@ impl Evaler {
                 );
 
                 // Register in current scope
-                self.universe.borrow_mut().define(
+                self.define(
                     item_name.clone(),
                     std::rc::Rc::new(crate::scope::Meta::Fn(fn_decl)),
-                );
+                );  // Phase 4.5: Use bridge method
             } else {
                 // Check if it's a type (with short-lived lock)
                 let has_type = {
@@ -828,10 +828,10 @@ impl Evaler {
                         methods: vec![],
                     };
 
-                    self.universe.borrow_mut().define(
+                    self.define(
                         item_name.clone(),
                         std::rc::Rc::new(crate::scope::Meta::Type(ast::Type::User(type_decl))),
-                    );
+                    );  // Phase 4.5: Use bridge method
                 }
             }
         }
@@ -3501,7 +3501,7 @@ impl Evaler {
             Arg::Pair(name, expr) => {
                 let val = self.eval_expr(expr);
                 let name = &name;
-                self.universe.borrow_mut().set_local_val(&name, val.clone());
+                self.set_local_val(&name, val.clone());  // Phase 4.5: Use bridge method
                 val
             }
             Arg::Pos(expr) => {
@@ -3510,14 +3510,12 @@ impl Evaler {
                 // VM functions have empty params, so we skip setting local vars
                 if i < params.len() {
                     let name = &params[i].name;
-                    self.universe.borrow_mut().set_local_val(&name, val.clone());
+                    self.set_local_val(&name, val.clone());  // Phase 4.5: Use bridge method
                 }
                 val
             }
             Arg::Name(name) => {
-                self.universe
-                    .borrow_mut()
-                    .set_local_val(name.as_str(), Value::Str(name.clone()));
+                self.set_local_val(name.as_str(), Value::Str(name.clone()));  // Phase 4.5: Use bridge method
                 Value::Str(name.clone())
             }
         }
