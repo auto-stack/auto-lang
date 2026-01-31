@@ -6,6 +6,7 @@ pub mod config;
 pub mod database;
 pub mod error;
 pub mod eval;
+pub mod hash;
 pub mod infer;
 pub mod indexer;
 pub mod interp;
