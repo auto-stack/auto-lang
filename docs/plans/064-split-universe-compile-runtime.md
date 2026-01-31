@@ -1125,7 +1125,7 @@ Interpreter
 
 **Goal**: Migrate all 141 `self.universe` references to Database + ExecutionEngine.
 
-**Status**: 🔄 **IN PROGRESS** (Started 2025-01-31)
+**Status**: 🔄 **IN PROGRESS** (Started 2025-01-31, Latest commit: e4ff95d)
 
 ### Progress (2025-01-31)
 
@@ -1153,19 +1153,42 @@ Interpreter
      - `alloc_vmref()` - allocate VM reference (HashMap, List, etc.)
      - Note: `get_vmref()` removed due to lifetime issues
 
-3. **Testing**: 1000/1026 tests passing (same 6 pre-existing failures, no new regressions)
+3. **Additional Bridge Methods** (commits 2d5cb72, f62cf74, 1798a3d):
+   - **Group 5: Value Operations** (3 methods):
+     - `lookup_val()` - get value by name
+     - `lookup_vid()` - get ValueID directly
+     - `resolve_value()` - resolve ValueRef to stored data
+   - **Group 6: Variable Operations** (3 methods):
+     - `has_local()`, `exists()` - check variable existence
+     - `clear_moved()`, `mark_moved()` - move semantics
+     - `update_val()` - update variable value
+   - **Group 7: Helper Methods** (3 methods):
+     - `has_arg()`, `get_arg()` - argument access
+     - `get_defined_names()` - list all variables
+   - **Group 8: Type Operations** (1 method):
+     - `lookup_type()` - type lookup
+
+4. **Call Site Migration** (commits fd4f3fb, f20bc2e, a3e2ca2, 1a5da5f, 3fabd97, e4ff95d):
+   - Migrated ~85 call sites to use bridge methods
+   - Recent migrations:
+     - Line 3677-3678: `lookup_val()` for ExtFn lookup
+     - Line 2753-2755: `set_local_val()` for VM instance method updates
+
+5. **Testing**: 1000/1026 tests passing (same 6 pre-existing failures, no new regressions)
 
 **Remaining Work**:
-- Migrate actual `self.universe.*` calls to use bridge methods
-- Replace direct Universe access with Database + ExecutionEngine calls
-- Update ~100 locations that call `self.universe.borrow()` or `self.universe.borrow_mut()`
+- Current Universe reference count: **56** (down from 141 original)
+- Remaining patterns:
+  - VM function calls (`self.universe.clone()` for native API) - ~8 locations
+  - Bridge method implementations themselves - ~30 locations (expected)
+  - Helper methods with lifetime constraints (e.g., `get_vmref_ref`) - ~18 locations
 
 **Current State**:
-- Total Universe references in eval.rs: **141** (counted on 2025-01-31)
+- Total reduction: **141 → 56** (60% migrated)
 - Evaler still uses `universe: Rc<RefCell<Universe>>` field alongside new db/engine fields
 - All Interpreter functionality works (hybrid architecture from Phase 4.4)
 - Bridge methods delegate to Universe during migration
-- Ready for incremental migration of individual eval methods
+- Remaining patterns require Phase 4.6 (native API redesign) or accept as hybrid
 
 **Migration Strategy**:
 
