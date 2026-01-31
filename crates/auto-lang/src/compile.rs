@@ -219,6 +219,54 @@ impl CompileSession {
             total_specs,
         }
     }
+
+    /// Re-index a file with new source content (incremental compilation)
+    ///
+    /// This method updates a file's content in the database and re-indexes it.
+    /// If the file hash hasn't changed, no recompilation occurs (empty result).
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The file path to re-index
+    /// * `source` - The new source content
+    ///
+    /// # Returns
+    ///
+    /// A list of new fragment IDs if recompiled, empty if unchanged.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// let mut session = CompileSession::new();
+    /// session.compile_source("fn main() int { 42 }", "test.at").unwrap();
+    ///
+    /// // Re-index with same content (no recompilation)
+    /// let frags = session.reindex_source("test.at", "fn main() int { 42 }").unwrap();
+    /// assert!(frags.is_empty());
+    ///
+    /// // Re-index with changed content (recompiles)
+    /// let frags = session.reindex_source("test.at", "fn main() int { 100 }").unwrap();
+    /// assert_eq!(frags.len(), 1);
+    /// ```
+    pub fn reindex_source(
+        &mut self,
+        path: &str,
+        source: &str,
+    ) -> AutoResult<Vec<crate::database::FragId>> {
+        // Update source content (insert_source updates if file exists)
+        self.db.insert_source(path, AutoStr::from(source));
+
+        // Get file ID
+        let file_id = self.db.get_file_id_by_path(path)
+            .ok_or_else(|| AutoError::Msg(format!("File not found: {}", path)))?;
+
+        // Re-index using indexer
+        let mut indexer = Indexer::new(&mut self.db);
+        let frag_ids = indexer.reindex_file(file_id, source)
+            .map_err(|e| AutoError::Msg(format!("Reindex error: {}", e)))?;
+
+        Ok(frag_ids)
+    }
 }
 
 impl Default for CompileSession {
@@ -411,5 +459,147 @@ mod tests {
         assert_eq!(stats.total_frags, 2);  // 1 function + 1 spec
         assert_eq!(stats.total_functions, 1);
         assert_eq!(stats.total_specs, 1);
+    }
+
+    // =============================================================================
+    // Phase 2.5: Incremental Compilation Tests
+    // =============================================================================
+
+    #[test]
+    fn test_file_no_change() {
+        // Test: No recompilation if file unchanged
+        let mut session = CompileSession::new();
+        let source = "fn main() int { 42 }";
+
+        // First compilation
+        let frag_ids1 = session.compile_source(source, "test.at").unwrap();
+        assert_eq!(frag_ids1.len(), 1);
+
+        // Get file ID and initial hash
+        let file_id = session.database().get_file_id_by_path("test.at").unwrap();
+        let hash1 = session.database_mut().hash_file(file_id).unwrap();
+
+        // Re-index same content (should skip)
+        let frags = session.reindex_source("test.at", source).unwrap();
+
+        // Should not recompile (no fragments returned)
+        assert!(frags.is_empty());
+
+        // Hash should be unchanged
+        let hash2 = session.database_mut().hash_file(file_id).unwrap();
+        assert_eq!(hash1, hash2);
+
+        // File should not be dirty
+        assert!(!session.database().is_file_dirty(file_id));
+    }
+
+    #[test]
+    fn test_file_changed() {
+        // Test: Only changed file recompiled
+        let mut session = CompileSession::new();
+        let source1 = "fn main() int { 42 }";
+
+        // First compilation
+        let frag_ids1 = session.compile_source(source1, "test.at").unwrap();
+        assert_eq!(frag_ids1.len(), 1);
+
+        // Get file ID and initial hash
+        let file_id = session.database().get_file_id_by_path("test.at").unwrap();
+        let hash1 = session.database_mut().hash_file(file_id).unwrap();
+
+        // Change source and re-index
+        let source2 = "fn main() int { 100 }";
+        let frags = session.reindex_source("test.at", source2).unwrap();
+
+        // Should return new fragments (recompiled)
+        assert_eq!(frags.len(), 1);
+
+        // Hash should be changed
+        let hash2 = session.database_mut().hash_file(file_id).unwrap();
+        assert_ne!(hash1, hash2);
+
+        // File should not be dirty after re-indexing
+        assert!(!session.database().is_file_dirty(file_id));
+    }
+
+    #[test]
+    fn test_import_chain() {
+        // Test: A imports B, B changes → A recompiled
+        let mut session = CompileSession::new();
+
+        // Compile B first (dependency)
+        let source_b = "fn foo() int { 42 }";
+        session.compile_source(source_b, "std/b.at").unwrap();
+
+        // Compile A
+        let source_a = "fn main() int { 42 }";
+        session.compile_source(source_a, "test.a.at").unwrap();
+
+        // Get file IDs
+        let file_b = session.database().get_file_id_by_path("std/b.at").unwrap();
+        let file_a = session.database().get_file_id_by_path("test.a.at").unwrap();
+
+        // Manually add dependency: A imports B
+        session.database_mut().dep_graph_mut().add_file_import(file_a, vec![file_b]);
+
+        // Check dependency: A imports B
+        let deps_a = session.database().dep_graph().get_file_imports(file_a);
+        assert_eq!(deps_a.len(), 1);
+        assert!(deps_a.contains(&file_b));
+
+        // Modify B
+        let source_b_new = "fn foo() int { 100 }";
+        session.reindex_source("std/b.at", source_b_new).unwrap();
+
+        // Mark B dirty and propagate
+        session.database_mut().mark_file_dirty(file_b);
+        session.database_mut().propagate_dirty_recursive(file_b);
+
+        // A should be dirty (depends on B)
+        assert!(session.database().is_file_dirty(file_a));
+    }
+
+    #[test]
+    fn test_import_diamond() {
+        // Test: A,B import C, C changes → A,B recompiled
+        let mut session = CompileSession::new();
+
+        // Compile C (shared dependency)
+        let source_c = "fn shared() int { 42 }";
+        session.compile_source(source_c, "std/c.at").unwrap();
+
+        // Compile A
+        let source_a = "fn func_a() int { 42 }";
+        session.compile_source(source_a, "test/a.at").unwrap();
+
+        // Compile B
+        let source_b = "fn func_b() int { 42 }";
+        session.compile_source(source_b, "test/b.at").unwrap();
+
+        // Get file IDs
+        let file_c = session.database().get_file_id_by_path("std/c.at").unwrap();
+        let file_a = session.database().get_file_id_by_path("test/a.at").unwrap();
+        let file_b = session.database().get_file_id_by_path("test/b.at").unwrap();
+
+        // Manually add dependencies: A imports C, B imports C
+        session.database_mut().dep_graph_mut().add_file_import(file_a, vec![file_c]);
+        session.database_mut().dep_graph_mut().add_file_import(file_b, vec![file_c]);
+
+        // Verify diamond dependencies
+        let deps_a = session.database().dep_graph().get_file_imports(file_a);
+        let deps_b = session.database().dep_graph().get_file_imports(file_b);
+        assert!(deps_a.contains(&file_c));
+        assert!(deps_b.contains(&file_c));
+
+        // Modify C (this will mark C as dirty, propagate to A and B, then clear C's dirty flag)
+        let source_c_new = "fn shared() int { 100 }";
+        session.reindex_source("std/c.at", source_c_new).unwrap();
+
+        // Both A and B should be dirty (dependents of C)
+        assert!(session.database().is_file_dirty(file_a));
+        assert!(session.database().is_file_dirty(file_b));
+
+        // C should not be dirty (cleared after re-index)
+        assert!(!session.database().is_file_dirty(file_c));
     }
 }
