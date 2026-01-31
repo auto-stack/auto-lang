@@ -308,8 +308,9 @@ impl Evaler {
                 search_sid = sid.parent();
             }
 
-            // Not found in scope chain
-            None
+            // Not found in Database - fall back to Universe during migration
+            // (Database is empty until stdlib registration is migrated)
+            self.universe.borrow().lookup_meta(name)
         } else {
             // Fallback: Use legacy Universe during migration
             self.universe.borrow().lookup_meta(name)
@@ -340,7 +341,8 @@ impl Evaler {
                 // TODO: In full implementation, dereference and return the actual Value
                 Some(Value::ValueRef(value_id))
             } else {
-                None
+                // Not found in ExecutionEngine - fall back to Universe during migration
+                self.universe.borrow().lookup_val(name)
             }
         } else {
             // Fallback: Use legacy Universe during migration

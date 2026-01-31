@@ -17,32 +17,40 @@ use crate::scope::{Sid, SID_PATH_GLOBAL};
 use crate::universe::SymbolLocation;
 use auto_val::AutoStr;
 use std::rc::Rc;
+use std::cell::RefCell;
 use std::sync::Arc;
 
 /// Compilation session using the new AIE architecture
 ///
 /// A compilation session manages a Database and provides methods to
 /// compile source code with incremental support.
+///
+/// Phase 4.5: Database is now wrapped in Rc<RefCell<>> for sharing with Evaler
 pub struct CompileSession {
-    db: Database,
+    db: Rc<RefCell<Database>>,
 }
 
 impl CompileSession {
     /// Create a new compilation session
     pub fn new() -> Self {
         Self {
-            db: Database::new(),
+            db: Rc::new(RefCell::new(Database::new())),
         }
     }
 
+    /// Get reference to the database (for sharing with Evaler)
+    pub fn db(&self) -> Rc<RefCell<Database>> {
+        self.db.clone()
+    }
+
     /// Get the underlying database (for advanced usage)
-    pub fn database(&self) -> &Database {
-        &self.db
+    pub fn database(&self) -> std::cell::Ref<Database> {
+        self.db.borrow()
     }
 
     /// Get mutable access to the database (for advanced usage)
-    pub fn database_mut(&mut self) -> &mut Database {
-        &mut self.db
+    pub fn database_mut(&mut self) -> std::cell::RefMut<Database> {
+        self.db.borrow_mut()
     }
 
     /// Compile source code and index it into the database
@@ -84,7 +92,7 @@ impl CompileSession {
         path: &str,
     ) -> AutoResult<Vec<crate::database::FragId>> {
         // Insert source into database
-        let file_id = self.db.insert_source(path, AutoStr::from(source));
+        let file_id = self.db.borrow_mut().insert_source(path, AutoStr::from(source));
 
         // Parse source code to AST
         // Note: Phase 1.2 will make parser pure, but for now we use existing parser
@@ -94,7 +102,8 @@ impl CompileSession {
             .map_err(|e| AutoError::Msg(format!("Parse error: {}", e)))?;
 
         // Index AST into database
-        let mut indexer = Indexer::new(&mut self.db);
+        let mut db = self.db.borrow_mut();
+        let mut indexer = Indexer::new(&mut db);
         let frag_ids = indexer.index_ast(&ast, file_id)
             .map_err(|e| AutoError::Msg(format!("Index error: {}", e)))?;
 
@@ -137,11 +146,11 @@ impl CompileSession {
         name: &str,
     ) -> Option<Arc<crate::ast::Fn>> {
         // Search all fragments for one with matching name
-        for file_id in self.db.get_files() {
-            for frag_id in self.db.get_fragments_in_file(file_id) {
-                if let Some(meta) = self.db.get_fragment_meta(&frag_id) {
+        for file_id in self.db.borrow().get_files() {
+            for frag_id in self.db.borrow().get_fragments_in_file(file_id) {
+                if let Some(meta) = self.db.borrow().get_fragment_meta(&frag_id) {
                     if meta.name.as_ref() == name {
-                        return self.db.get_fragment(&frag_id);
+                        return self.db.borrow().get_fragment(&frag_id);
                     }
                 }
             }
@@ -158,9 +167,9 @@ impl CompileSession {
     /// # Returns
     ///
     /// The symbol location if found.
-    pub fn get_symbol_location(&self, name: &str) -> Option<&SymbolLocation> {
+    pub fn get_symbol_location(&self, name: &str) -> Option<SymbolLocation> {
         let symbol_id = Sid::kid_of(&SID_PATH_GLOBAL, name);
-        self.db.get_symbol_location(&symbol_id)
+        self.db.borrow().get_symbol_location(&symbol_id).cloned()
     }
 
     /// List all functions in the database
@@ -171,9 +180,9 @@ impl CompileSession {
     pub fn list_functions(&self) -> Vec<String> {
         let mut functions = Vec::new();
 
-        for file_id in self.db.get_files() {
-            for frag_id in self.db.get_fragments_in_file(file_id) {
-                if let Some(meta) = self.db.get_fragment_meta(&frag_id) {
+        for file_id in self.db.borrow().get_files() {
+            for frag_id in self.db.borrow().get_fragments_in_file(file_id) {
+                if let Some(meta) = self.db.borrow().get_fragment_meta(&frag_id) {
                     if matches!(meta.kind, crate::database::FragKind::Function) {
                         functions.push(meta.name.to_string());
                     }
@@ -188,7 +197,7 @@ impl CompileSession {
 
     /// Clear all data from the database
     pub fn clear(&mut self) {
-        self.db = Database::new();
+        self.db = Rc::new(RefCell::new(Database::new()));
     }
 
     /// Get statistics about the database
@@ -197,12 +206,12 @@ impl CompileSession {
         let mut total_functions = 0;
         let mut total_specs = 0;
 
-        for file_id in self.db.get_files() {
-            let frags = self.db.get_fragments_in_file(file_id);
+        for file_id in self.db.borrow().get_files() {
+            let frags = self.db.borrow().get_fragments_in_file(file_id);
             total_frags += frags.len();
 
             for frag_id in &frags {
-                if let Some(meta) = self.db.get_fragment_meta(frag_id) {
+                if let Some(meta) = self.db.borrow().get_fragment_meta(frag_id) {
                     match meta.kind {
                         crate::database::FragKind::Function => total_functions += 1,
                         crate::database::FragKind::Spec => total_specs += 1,
@@ -213,7 +222,7 @@ impl CompileSession {
         }
 
         CompileStats {
-            total_files: self.db.get_files().len(),
+            total_files: self.db.borrow().get_files().len(),
             total_frags,
             total_functions,
             total_specs,
@@ -254,14 +263,15 @@ impl CompileSession {
         source: &str,
     ) -> AutoResult<Vec<crate::database::FragId>> {
         // Update source content (insert_source updates if file exists)
-        self.db.insert_source(path, AutoStr::from(source));
+        self.db.borrow_mut().insert_source(path, AutoStr::from(source));
 
         // Get file ID
-        let file_id = self.db.get_file_id_by_path(path)
+        let file_id = self.db.borrow().get_file_id_by_path(path)
             .ok_or_else(|| AutoError::Msg(format!("File not found: {}", path)))?;
 
         // Re-index using indexer
-        let mut indexer = Indexer::new(&mut self.db);
+        let mut db = self.db.borrow_mut();
+        let mut indexer = Indexer::new(&mut db);
         let frag_ids = indexer.reindex_file(file_id, source)
             .map_err(|e| AutoError::Msg(format!("Reindex error: {}", e)))?;
 
@@ -536,16 +546,23 @@ mod tests {
         session.compile_source(source_a, "test.a.at").unwrap();
 
         // Get file IDs
-        let file_b = session.database().get_file_id_by_path("std/b.at").unwrap();
-        let file_a = session.database().get_file_id_by_path("test.a.at").unwrap();
+        let (file_b, file_a) = {
+            let db = session.database();
+            let fb = db.get_file_id_by_path("std/b.at").unwrap();
+            let fa = db.get_file_id_by_path("test.a.at").unwrap();
+            (fb, fa)
+        };
 
         // Manually add dependency: A imports B
         session.database_mut().dep_graph_mut().add_file_import(file_a, vec![file_b]);
 
         // Check dependency: A imports B
-        let deps_a = session.database().dep_graph().get_file_imports(file_a);
-        assert_eq!(deps_a.len(), 1);
-        assert!(deps_a.contains(&file_b));
+        {
+            let db = session.database();
+            let deps_a = db.dep_graph().get_file_imports(file_a);
+            assert_eq!(deps_a.len(), 1);
+            assert!(deps_a.contains(&file_b));
+        }
 
         // Modify B
         let source_b_new = "fn foo() int { 100 }";
@@ -556,7 +573,10 @@ mod tests {
         session.database_mut().propagate_dirty_recursive(file_b);
 
         // A should be dirty (depends on B)
-        assert!(session.database().is_file_dirty(file_a));
+        {
+            let db = session.database();
+            assert!(db.is_file_dirty(file_a));
+        }
     }
 
     #[test]
@@ -577,30 +597,43 @@ mod tests {
         session.compile_source(source_b, "test/b.at").unwrap();
 
         // Get file IDs
-        let file_c = session.database().get_file_id_by_path("std/c.at").unwrap();
-        let file_a = session.database().get_file_id_by_path("test/a.at").unwrap();
-        let file_b = session.database().get_file_id_by_path("test/b.at").unwrap();
+        let (file_c, file_a, file_b) = {
+            let db = session.database();
+            let fc = db.get_file_id_by_path("std/c.at").unwrap();
+            let fa = db.get_file_id_by_path("test/a.at").unwrap();
+            let fb = db.get_file_id_by_path("test/b.at").unwrap();
+            (fc, fa, fb)
+        };
 
         // Manually add dependencies: A imports C, B imports C
         session.database_mut().dep_graph_mut().add_file_import(file_a, vec![file_c]);
         session.database_mut().dep_graph_mut().add_file_import(file_b, vec![file_c]);
 
         // Verify diamond dependencies
-        let deps_a = session.database().dep_graph().get_file_imports(file_a);
-        let deps_b = session.database().dep_graph().get_file_imports(file_b);
-        assert!(deps_a.contains(&file_c));
-        assert!(deps_b.contains(&file_c));
+        {
+            let db = session.database();
+            let deps_a = db.dep_graph().get_file_imports(file_a);
+            let deps_b = db.dep_graph().get_file_imports(file_b);
+            assert!(deps_a.contains(&file_c));
+            assert!(deps_b.contains(&file_c));
+        }
 
         // Modify C (this will mark C as dirty, propagate to A and B, then clear C's dirty flag)
         let source_c_new = "fn shared() int { 100 }";
         session.reindex_source("std/c.at", source_c_new).unwrap();
 
         // Both A and B should be dirty (dependents of C)
-        assert!(session.database().is_file_dirty(file_a));
-        assert!(session.database().is_file_dirty(file_b));
+        {
+            let db = session.database();
+            assert!(db.is_file_dirty(file_a));
+            assert!(db.is_file_dirty(file_b));
+        }
 
         // C should not be dirty (cleared after re-index)
-        assert!(!session.database().is_file_dirty(file_c));
+        {
+            let db = session.database();
+            assert!(!db.is_file_dirty(file_c));
+        }
     }
 
     // =============================================================================

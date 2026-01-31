@@ -6,6 +6,8 @@ use crate::universe::Universe;
 use crate::AutoResult;
 use auto_val::{shared, Shared};
 use auto_val::{AutoStr, Value};
+use std::rc::Rc;
+use std::cell::RefCell;
 
 pub struct Importer {
     pub path: AutoStr,
@@ -24,7 +26,8 @@ pub struct Interpreter {
     /// Execution engine (runtime state)
     /// Phase 4.4: Added for gradual migration from Universe
     /// Phase 4.5+: Will become the primary runtime state container
-    pub engine: ExecutionEngine,
+    /// Phase 4.5: Now wrapped in Rc<RefCell<>> for sharing with Evaler
+    pub engine: Rc<RefCell<ExecutionEngine>>,
 
     // ========================================================================
     // Legacy Fields (will be deprecated in Phase 4.6)
@@ -51,7 +54,11 @@ impl Interpreter {
     pub fn new() -> Self {
         // Phase 4.4: Create AIE architecture components
         let session = CompileSession::new();
-        let engine = ExecutionEngine::new();
+        let engine = Rc::new(RefCell::new(ExecutionEngine::new()));
+
+        // Get references for Evaler before moving into struct
+        let db_ref = session.db();
+        let engine_ref = engine.clone();
 
         // Legacy: Create Universe (still needed until Evaler migration)
         let scope = shared(Universe::new());
@@ -70,13 +77,14 @@ impl Interpreter {
         // Register the evaluator with the universe so VM functions can call back
         interpreter.evaler.register_with_universe();
 
-        // Phase 4.5: Note - db/engine not set yet, bridge methods will use Universe fallback
-        // TODO: Set db/engine once we have proper Arc/Rc sharing mechanism
+        // Phase 4.5: Initialize Evaler's db and engine fields (ENABLES NEW BRIDGE METHODS!)
+        interpreter.evaler.set_db(db_ref);
+        interpreter.evaler.set_engine(engine_ref.clone());
 
         // Phase 4.4: Register evaluator with ExecutionEngine for VM → user function calls
         // SAFETY: The evaluator owns the engine via the interpreter struct,
         // guaranteeing the evaluator outlives the engine during all call chains
-        interpreter.engine.set_evaluator(&mut interpreter.evaler);
+        engine_ref.borrow_mut().set_evaluator(&mut interpreter.evaler);
 
         // Inject environment variables based on target platform (Plan 055)
         // This must happen BEFORE loading Prelude so that Prelude can access env vars
@@ -247,7 +255,11 @@ impl Interpreter {
     pub fn with_univ(univ: Shared<Universe>) -> Self {
         // Phase 4.4: Create AIE architecture components
         let session = CompileSession::new();
-        let engine = ExecutionEngine::new();
+        let engine = Rc::new(RefCell::new(ExecutionEngine::new()));
+
+        // Get references for Evaler before moving into struct
+        let db_ref = session.db();
+        let engine_ref = engine.clone();
 
         let mut interp = Self {
             session,
@@ -263,11 +275,12 @@ impl Interpreter {
         // Register the evaluator with the universe so VM functions can call back
         interp.evaler.register_with_universe();
 
-        // Phase 4.5: Note - db/engine not set yet, bridge methods will use Universe fallback
-        // TODO: Set db/engine once we have proper Arc/Rc sharing mechanism
+        // Phase 4.5: Initialize Evaler's db and engine fields (ENABLES NEW BRIDGE METHODS!)
+        interp.evaler.set_db(db_ref);
+        interp.evaler.set_engine(engine_ref.clone());
 
         // Phase 4.4: Register evaluator with ExecutionEngine
-        interp.engine.set_evaluator(&mut interp.evaler);
+        engine_ref.borrow_mut().set_evaluator(&mut interp.evaler);
 
         // Load standard type definitions to register HashMap, HashSet, StringBuilder, List types
         // This must be called for each new Universe/scope
@@ -377,7 +390,8 @@ impl Interpreter {
         let mut config_evaler = Evaler::new(self.scope.clone()).with_mode(EvalMode::CONFIG);
         config_evaler.register_with_universe();
 
-        // Phase 4.5: Note - db not set, bridge methods will use Universe fallback
+        // Phase 4.5: Initialize config_evaler's db field (ENABLES NEW BRIDGE METHODS!)
+        config_evaler.set_db(self.session.db());
 
         let res = config_evaler.eval(&ast)?;
         Ok(res)
