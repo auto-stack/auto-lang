@@ -12,6 +12,8 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::RwLock;
 
 /// Closure data stored in evaluator (not in auto-val to avoid circular dependency)
 #[derive(Debug, Clone)]
@@ -41,8 +43,8 @@ pub struct Evaler {
     // ========================================================================
     /// AIE Database (compile-time data)
     /// Phase 4.5: Added for gradual migration from Universe
-    /// Changed to Rc<RefCell<>> to allow mutable access (consistent with engine field)
-    db: Option<Rc<RefCell<crate::database::Database>>>,
+    /// Phase 3: Changed to Arc<RwLock<>> for thread safety and consistency
+    db: Option<Arc<RwLock<crate::database::Database>>>,
 
     /// Execution engine (runtime state)
     /// Phase 4.5: Added for gradual migration from Universe
@@ -157,7 +159,8 @@ impl Evaler {
     /// Set the AIE Database for this evaluator
     ///
     /// **Phase 4.5**: Called by Interpreter to provide Database access
-    pub fn set_db(&mut self, db: Rc<RefCell<crate::database::Database>>) {
+    /// **Phase 3**: Changed to Arc<RwLock<>> for thread safety
+    pub fn set_db(&mut self, db: Arc<RwLock<crate::database::Database>>) {
         self.db = Some(db);
     }
 
@@ -171,10 +174,11 @@ impl Evaler {
     /// Get reference to the Database (compile-time data)
     ///
     /// **Phase 4.5**: Returns Some(Database) if set, None otherwise
+    /// **Phase 3**: Changed to Arc<RwLock<>>
     ///
     /// **Note**: During migration (Phase 4.5), this will return None until
     /// Interpreter calls set_db(). Use universe() as fallback.
-    pub fn db(&self) -> Option<&Rc<RefCell<crate::database::Database>>> {
+    pub fn db(&self) -> Option<&Arc<RwLock<crate::database::Database>>> {
         self.db.as_ref()
     }
 
@@ -218,7 +222,7 @@ impl Evaler {
 
             // Create SymbolTable in Database (compile-time)
             let symbol_table = SymbolTable::new(ScopeKind::Block, new_sid.clone());
-            db.borrow_mut().insert_symbol_table(new_sid.clone(), symbol_table);
+            db.write().unwrap().insert_symbol_table(new_sid.clone(), symbol_table);
 
             // Push StackFrame in ExecutionEngine if available
             if let Some(engine) = &self.engine {
@@ -293,7 +297,7 @@ impl Evaler {
             // Search from current scope up through parent scopes
             let mut search_sid = Some(self.current_scope.clone());
             while let Some(sid) = search_sid {
-                if let Some(symbol_table) = db.borrow().get_symbol_table(&sid) {
+                if let Some(symbol_table) = db.read().unwrap().get_symbol_table(&sid) {
                     // Check symbols
                     if let Some(meta) = symbol_table.symbols.get(&auto_name) {
                         return Some(meta.clone());

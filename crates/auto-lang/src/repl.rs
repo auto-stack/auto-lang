@@ -59,7 +59,7 @@ impl ReplSession {
 
     /// Get session statistics
     pub fn stats(&self) -> ReplStats {
-        let db = self.session.database();
+        let db = self.session.database().unwrap();
         ReplStats {
             total_files: db.get_files().len(),
             total_fragments: 0, // TODO: Implement fragment counting
