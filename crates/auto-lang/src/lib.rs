@@ -19,6 +19,7 @@ pub mod maker;
 pub mod ownership;
 pub mod parser;
 pub use parser::Parser;
+pub mod patch;
 pub mod repl;
 pub mod runtime;
 pub mod scope;
