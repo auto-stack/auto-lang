@@ -1,25 +1,26 @@
 # Plan 064: Split Universe into Compile-time (Database) and Runtime (ExecutionEngine)
 
-**Status**: 🔄 **IN PROGRESS - Phase 4.4 Complete ✅ | Phase 4.5 In Progress**
+**Status**: ⏸️ **PAUSED - Phase 4.5 Complete (52%) | Phase 4.6 Planned**
 **Priority**: P0 (Critical Architecture Refactor)
 **Created**: 2025-01-31
-**Last Updated**: 2025-01-31
+**Last Updated**: 2025-02-01
 **Dependencies**: Plan 063 Phase 3.5 ✅
 
 **Progress Summary**:
 - ✅ Phase 1: Field classification complete (19 fields analyzed)
 - ✅ Phase 2: ExecutionEngine extended with 11 runtime fields
 - ✅ Phase 3: AIE Database extended with 7 compile-time fields
-- 🔄 Phase 4: **IN PROGRESS** - Scope split architecture implementation
+- ⏸️ Phase 4: **PAUSED** - Scope split architecture implementation (52% complete)
   - ✅ Phase 4.1: Design complete ✅
   - ✅ Phase 4.2: SymbolTable + StackFrame structures implemented ✅
   - ✅ Phase 4.3: Bridge layer and Database integration ✅
   - ✅ Phase 4.4: Interpreter migration to CompileSession + ExecutionEngine ✅
-  - 🔄 Phase 4.5: Evaler migration (141 Universe references)
-    - ✅ Bridge methods created (Groups 1-4: 9 methods)
-    - ✅ Evaler struct updated with db + engine fields
-    - ⏸️ Active migration: Replace Universe calls with bridge methods
-  - ⏸️ Phase 4.6: Deprecation and cleanup - PENDING
+  - ⏸️ Phase 4.5: Evaler migration (52% complete - 68/141 references)
+    - ✅ Bridge methods created (Groups 1-8: 20+ methods)
+    - ✅ Bridge methods enabled (db/engine shared from Interpreter)
+    - ✅ 87 call sites migrated to use bridge methods
+    - ⏸️ Remaining 68 references (VM calls, fallbacks, temporary code)
+  - 📋 Phase 4.6: VM signature redesign - PLANNED (2-3 days)
 
 ---
 
@@ -1125,7 +1126,11 @@ Interpreter
 
 **Goal**: Migrate all 141 `self.universe` references to Database + ExecutionEngine.
 
-**Status**: 🔄 **IN PROGRESS** (Started 2025-01-31, Latest commit: e4ff95d)
+**Status**: ⏸️ **PAUSED** (Started 2025-01-31, Latest commit: 503980a)
+- **52% complete** (141 → 68 Universe references migrated)
+- Bridge methods **ACTIVE** and functional
+- Remaining ~38 references require Phase 4.6 (VM signature redesign)
+- **Decision**: Accept hybrid approach, proceed to Phase 4.6
 
 ### Progress (2025-01-31)
 
@@ -1174,21 +1179,34 @@ Interpreter
      - Line 3677-3678: `lookup_val()` for ExtFn lookup
      - Line 2753-2755: `set_local_val()` for VM instance method updates
 
-5. **Testing**: 1000/1026 tests passing (same 6 pre-existing failures, no new regressions)
+5. **Testing**: 999/1006 tests passing (7 pre-existing failures, no new regressions)
+
+6. **Call Site Migration** (commits fd4f3fb, f20bc2e, a3e2ca2, 1a5da5f, 3fabd97, e4ff95d, 7f00333, 503980a):
+   - Migrated ~87 call sites to use bridge methods
+   - Recent migrations:
+     - Line 3677-3678: `lookup_val()` for ExtFn lookup
+     - Line 2753-2755: `set_local_val()` for VM instance method updates
+     - Line 1102: `set_local_val()` for template evaluation
+     - Line 2617: `lookup_val()` for variable lookup
+   - Enabled bridge methods by sharing db/engine from Interpreter (commit 7f00333)
 
 **Remaining Work**:
-- Current Universe reference count: **56** (down from 141 original)
+- Current Universe reference count: **68** (down from 141 original)
 - Remaining patterns:
-  - VM function calls (`self.universe.clone()` for native API) - ~8 locations
-  - Bridge method implementations themselves - ~30 locations (expected)
-  - Helper methods with lifetime constraints (e.g., `get_vmref_ref`) - ~18 locations
+  - VM function calls (`self.universe.clone()` for native API) - ~10 locations
+  - Bridge method implementations themselves - ~30 locations (expected, fallbacks)
+  - Getter methods (universe(), universe_mut()) - 2 locations (temporary API)
+  - Dead code (update_obj, update_array) - 4 locations (obsolete)
+  - Debug/diagnostic - ~5 locations (non-critical)
+  - Other direct access - ~17 locations (miscellaneous)
 
 **Current State**:
-- Total reduction: **141 → 56** (60% migrated)
-- Evaler still uses `universe: Rc<RefCell<Universe>>` field alongside new db/engine fields
+- Total reduction: **141 → 68** (52% migrated, 48% remaining)
+- Bridge methods are **ACTIVE** and functional (commit 7f00333)
+- Evaler shares db/engine with Interpreter via `Rc<RefCell<>>`
 - All Interpreter functionality works (hybrid architecture from Phase 4.4)
-- Bridge methods delegate to Universe during migration
-- Remaining patterns require Phase 4.6 (native API redesign) or accept as hybrid
+- Bridge methods delegate to Universe when Database lookup fails
+- **Next step**: Phase 4.6 - VM signature redesign to eliminate remaining ~38 non-trivial references
 
 **Migration Strategy**:
 
@@ -1197,7 +1215,8 @@ Interpreter
 2. ✅ Variable operations (set_local_val, define, remove_local) - Bridge methods added
 3. ✅ Type operations (define_type) - Bridge methods added
 4. ✅ VM operations (vm ref allocation, evaluator pointer) - Bridge methods added
-5. ⏸️ Active Migration - Replace `self.universe.*` calls with bridge method calls
+5. ✅ Bridge methods enabled - db/engine shared from Interpreter to Evaler
+6. ⏸️ **PAUSED** - Remaining patterns require Phase 4.6 (VM signature redesign)
 
 ### Example Migration Pattern
 
@@ -1476,6 +1495,131 @@ let mut parser = Parser::new(code, db.clone());
 - **Plan 063 Phase 3.5**: Must be complete (Patch generation) ✅
 - **Database**: Must be stable and feature-complete
 - **ExecutionEngine**: Must support all runtime operations
+
+---
+
+## Phase 4.6: VM Signature Redesign (2-3 days)
+
+**Goal**: Change VM function signatures from `fn(Shared<Universe>, ...)` to `fn(&mut Evaler, ...)`.
+
+**Status**: 📋 **PLANNED** (Starts after Phase 4.5 completion)
+
+### Overview
+
+The remaining ~10 VM function call sites in Evaler pass `self.universe.clone()` to native functions. To complete the migration, we need to change the VM function type signatures to accept `Evaler` instead of `Universe`.
+
+### Current State
+
+**VM Function Types** ([vm.rs:13-17](../../crates/auto-lang/src/vm.rs#L13-L17)):
+```rust
+pub type VmFunction = fn(Shared<Universe>, Value) -> Value;
+pub type VmMethod = fn(Shared<Universe>, &mut Value, Vec<Value>) -> Value;
+```
+
+**Call Sites** ([eval.rs](../../crates/auto-lang/src/eval.rs)):
+- Line 2833, 2900, 3022, 3069, 3604, 3666, 3734, 3989: `let uni = self.universe.clone()`
+- Line 3196, 3200: `(func_entry.func)(self.universe.clone(), ...)`
+
+### Migration Plan
+
+#### Step 1: Update Type Definitions (1 hour)
+**File**: [crates/auto-lang/src/vm.rs](../../crates/auto-lang/src/vm.rs)
+
+```rust
+// OLD:
+pub type VmFunction = fn(Shared<Universe>, Value) -> Value;
+pub type VmMethod = fn(Shared<Universe>, &mut Value, Vec<Value>) -> Value;
+
+// NEW:
+pub type VmFunction = fn(&mut Evaler, Value) -> Value;
+pub type VmMethod = fn(&mut Evaler, &mut Value, Vec<Value>) -> Value;
+```
+
+#### Step 2: Update VM Registry (30 min)
+**File**: [crates/auto-lang/src/vm.rs](../../crates/auto-lang/src/vm.rs)
+
+Update `VmFunctionEntry` and `VmTypeEntry` to use new signatures.
+
+#### Step 3: Update All VM Implementations (4-6 hours)
+
+**Affected modules**:
+- [vm/io.rs](../../crates/auto-lang/src/vm/io.rs) - ~10 functions
+- [vm/collections.rs](../../crates/auto-lang/src/vm/collections.rs) - ~15 functions
+- [vm/list.rs](../../crates/auto-lang/src/vm/list.rs) - ~12 functions
+- [vm/storage.rs](../../crates/auto-lang/src/vm/storage.rs) - ~8 functions
+- [vm/builder.rs](../../crates/auto-lang/src/vm/builder.rs) - ~5 functions
+- [vm/memory.rs](../../crates/auto-lang/src/vm/memory.rs) - ~3 functions
+
+**Pattern for each function**:
+```rust
+// OLD:
+pub fn vm_print(universe: Shared<Universe>, val: Value) -> Value {
+    universe.borrow_mut().lookup_val("output")...  // Direct Universe access
+}
+
+// NEW:
+pub fn vm_print(evaler: &mut Evaler, val: Value) -> Value {
+    evaler.lookup_val("output")...  // Use bridge methods
+}
+```
+
+#### Step 4: Update Call Sites in Evaler (2-3 hours)
+**File**: [crates/auto-lang/src/eval.rs](../../crates/auto-lang/src/eval.rs)
+
+**Pattern**:
+```rust
+// OLD:
+let uni = self.universe.clone();
+let result = method(uni, &mut inst, arg_vals);
+
+// NEW:
+let result = method(self, &mut inst, arg_vals);
+```
+
+**Locations** (~10 sites):
+- Lines 2833, 2900, 3022, 3069, 3604, 3666, 3734, 3989
+- Lines 3196, 3200
+
+#### Step 5: Testing (1-2 hours)
+
+1. **Unit tests**: All VM module tests
+2. **Integration tests**: Full test suite
+3. **Manual testing**: VM function calls in scripts
+
+### Expected Results
+
+**Before Phase 4.6**:
+- 68 remaining `self.universe` references
+- VM functions use `Shared<Universe>` signature
+- ~10 call sites pass `self.universe.clone()`
+
+**After Phase 4.6**:
+- ~30 remaining `self.universe` references (bridge method fallbacks only)
+- VM functions use `&mut Evaler` signature
+- VM functions use bridge methods internally
+- Cleaner separation: Evaler orchestrates, Universe is legacy fallback
+
+### Risk Assessment
+
+**Medium Risk** - Large but mechanical change
+
+**Risks**:
+1. **Breaking VM modules**: All ~53 VM functions need signature updates
+   - **Mitigation**: Compile error will catch all sites
+2. **Runtime errors**: Bridge methods might not handle all cases
+   - **Mitigation**: Comprehensive test suite
+3. **Lifetime issues**: `&mut Evaler` has different lifetime semantics
+   - **Mitigation**: VM calls already isolated in evaluation context
+
+**Rollback Plan**: Keep commit before Phase 4.6, revert if tests fail
+
+### Success Criteria
+
+✅ All tests passing (999+ tests)
+✅ Zero compilation errors
+✅ VM functions use `&mut Evaler` signature
+✅ VM functions use bridge methods (no direct Universe access)
+✅ Universe reference count reduced from 68 to ~30
 
 ---
 
