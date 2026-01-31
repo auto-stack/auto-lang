@@ -15,11 +15,12 @@
 // Phase 3: Add fragment-level hashing and fine-grained dependencies
 
 use crate::ast::{Fn, Type};
-use crate::scope::Sid;
-use crate::universe::SymbolLocation;
-use auto_val::AutoStr;
+use crate::scope::{Scope, Sid, SID_PATH_GLOBAL};
+use crate::universe::{CodePak, SymbolLocation};
+use auto_val::{AutoStr, TypeInfoStore};
 use dashmap::DashMap;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -250,6 +251,31 @@ pub struct Database {
     frag_iface_hashes: HashMap<FragId, u64>,
 
     // =========================================================================
+    // PHASE 3: COMPILE-TIME DATA FROM UNIVERSE (Plan 064)
+    // =========================================================================
+
+    // Scope management (compile-time scoping structure)
+    scopes: HashMap<Sid, Scope>,
+
+    // Type information storage (compile-time type registry)
+    type_info_store: TypeInfoStore,
+
+    // Type aliases (typedefs)
+    type_aliases: HashMap<AutoStr, (Vec<AutoStr>, Type)>,
+
+    // Spec/trait registry (contracts that types can implement)
+    specs: HashMap<AutoStr, Rc<crate::ast::SpecDecl>>,
+
+    // Lambda name counter (for generating unique lambda names)
+    lambda_counter: usize,
+
+    // Current scope position (for scope tracking)
+    cur_spot: Sid,
+
+    // Code packages (for transpilation to C/Rust/Python/JS)
+    code_paks: HashMap<Sid, CodePak>,
+
+    // =========================================================================
     // LAYER 2: CACHE (computed by Query Engine)
     // =========================================================================
 
@@ -289,6 +315,14 @@ impl Database {
             text_hashes: HashMap::new(),
             dirty_files: std::collections::HashSet::new(),
             frag_iface_hashes: HashMap::new(),
+            // Phase 3: Compile-time data from Universe (Plan 064)
+            scopes: HashMap::new(),
+            type_info_store: TypeInfoStore::new(),
+            type_aliases: HashMap::new(),
+            specs: HashMap::new(),
+            lambda_counter: 0,
+            cur_spot: SID_PATH_GLOBAL.clone(),
+            code_paks: HashMap::new(),
         }
     }
 
@@ -725,6 +759,144 @@ impl Database {
     /// Get the dependency graph (read-only access)
     pub fn dep_graph(&self) -> &DependencyGraph {
         &self.dep_graph
+    }
+
+    // =========================================================================
+    // Phase 3: Compile-time Data Accessors (Plan 064)
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // Scope Management
+    // -------------------------------------------------------------------------
+
+    /// Get a scope by its ID
+    pub fn get_scope(&self, sid: &Sid) -> Option<&Scope> {
+        self.scopes.get(sid)
+    }
+
+    /// Insert a scope into the database
+    pub fn insert_scope(&mut self, sid: Sid, scope: Scope) {
+        self.scopes.insert(sid, scope);
+    }
+
+    /// Remove a scope from the database
+    pub fn remove_scope(&mut self, sid: &Sid) -> Option<Scope> {
+        self.scopes.remove(sid)
+    }
+
+    /// Get all scopes
+    pub fn get_all_scopes(&self) -> &HashMap<Sid, Scope> {
+        &self.scopes
+    }
+
+    // -------------------------------------------------------------------------
+    // Type Info Store Management
+    // -------------------------------------------------------------------------
+
+    /// Get the type info store (read-only)
+    pub fn type_info_store(&self) -> &TypeInfoStore {
+        &self.type_info_store
+    }
+
+    /// Get the type info store (mutable)
+    pub fn type_info_store_mut(&mut self) -> &mut TypeInfoStore {
+        &mut self.type_info_store
+    }
+
+    // -------------------------------------------------------------------------
+    // Type Alias Management
+    // -------------------------------------------------------------------------
+
+    /// Get a type alias by name
+    pub fn get_type_alias(&self, name: &str) -> Option<&(Vec<AutoStr>, Type)> {
+        self.type_aliases.get(name)
+    }
+
+    /// Insert a type alias
+    pub fn insert_type_alias(&mut self, name: AutoStr, alias: (Vec<AutoStr>, Type)) {
+        self.type_aliases.insert(name, alias);
+    }
+
+    /// Remove a type alias
+    pub fn remove_type_alias(&mut self, name: &str) -> Option<(Vec<AutoStr>, Type)> {
+        self.type_aliases.remove(name)
+    }
+
+    // -------------------------------------------------------------------------
+    // Spec/Trait Management
+    // -------------------------------------------------------------------------
+
+    /// Get a spec/trait declaration by name
+    pub fn get_spec(&self, name: &str) -> Option<&Rc<crate::ast::SpecDecl>> {
+        self.specs.get(name)
+    }
+
+    /// Insert a spec/trait declaration
+    pub fn insert_spec(&mut self, name: AutoStr, spec: Rc<crate::ast::SpecDecl>) {
+        self.specs.insert(name, spec);
+    }
+
+    /// Remove a spec/trait declaration
+    pub fn remove_spec(&mut self, name: &str) -> Option<Rc<crate::ast::SpecDecl>> {
+        self.specs.remove(name)
+    }
+
+    /// Get all specs
+    pub fn get_all_specs(&self) -> &HashMap<AutoStr, Rc<crate::ast::SpecDecl>> {
+        &self.specs
+    }
+
+    // -------------------------------------------------------------------------
+    // Lambda Counter Management
+    // -------------------------------------------------------------------------
+
+    /// Get the current lambda counter value
+    pub fn get_lambda_counter(&self) -> usize {
+        self.lambda_counter
+    }
+
+    /// Increment the lambda counter and return the new value
+    pub fn increment_lambda_counter(&mut self) -> usize {
+        self.lambda_counter += 1;
+        self.lambda_counter
+    }
+
+    // -------------------------------------------------------------------------
+    // Current Scope Position Management
+    // -------------------------------------------------------------------------
+
+    /// Get the current scope position (cur_spot)
+    pub fn get_cur_spot(&self) -> Sid {
+        self.cur_spot.clone()
+    }
+
+    /// Set the current scope position
+    pub fn set_cur_spot(&mut self, sid: Sid) {
+        self.cur_spot = sid;
+    }
+
+    // -------------------------------------------------------------------------
+    // Code Package Management
+    // -------------------------------------------------------------------------
+
+    /// Get a code package by scope ID
+    pub fn get_code_pak(&self, sid: &Sid) -> Option<&CodePak> {
+        self.code_paks.get(sid)
+    }
+
+    /// Insert a code package
+    pub fn insert_code_pak(&mut self, sid: Sid, pak: CodePak) {
+        self.code_paks.insert(sid, pak);
+    }
+
+    /// Remove a code package
+    pub fn remove_code_pak(&mut self, sid: &Sid) -> Option<CodePak> {
+        self.code_paks.remove(sid)
+    }
+
+    /// Get all code packages
+    pub fn get_all_code_paks(&self) -> &HashMap<Sid, CodePak> {
+        &self.code_paks
     }
 
     // =========================================================================
@@ -1265,5 +1437,106 @@ mod tests {
         // Hashes should be cleared
         assert_eq!(db.get_fragment_iface_hash(&frag_id1), None);
         assert_eq!(db.get_fragment_iface_hash(&frag_id2), None);
+    }
+
+    // =========================================================================
+    // Phase 3: Compile-time Data Tests (Plan 064)
+    // =========================================================================
+
+    #[test]
+    fn test_scope_management() {
+        use crate::scope::{Scope, ScopeKind};
+
+        let mut db = Database::new();
+        let sid = Sid::new("test_scope");
+
+        // Insert a scope
+        let scope = Scope::new(ScopeKind::Block, sid.clone());
+        db.insert_scope(sid.clone(), scope);
+
+        // Get scope
+        let retrieved = db.get_scope(&sid);
+        assert!(retrieved.is_some());
+        // Check kind using matches! instead of assert_eq! (ScopeKind doesn't impl Debug)
+        assert!(matches!(retrieved.unwrap().kind, ScopeKind::Block));
+
+        // Remove scope
+        db.remove_scope(&sid);
+        assert!(db.get_scope(&sid).is_none());
+    }
+
+    #[test]
+    fn test_type_alias_management() {
+        use crate::ast::Type;
+
+        let mut db = Database::new();
+
+        // Insert type alias
+        let alias_name = AutoStr::from("MyInt");
+        let alias_data = (vec![AutoStr::from("int")], Type::Int);
+        db.insert_type_alias(alias_name.clone(), alias_data.clone());
+
+        // Get type alias
+        let retrieved = db.get_type_alias("MyInt");
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().0, vec![AutoStr::from("int")]);
+
+        // Remove type alias
+        db.remove_type_alias("MyInt");
+        assert!(db.get_type_alias("MyInt").is_none());
+    }
+
+    #[test]
+    fn test_lambda_counter() {
+        let mut db = Database::new();
+
+        // Initial counter should be 0
+        assert_eq!(db.get_lambda_counter(), 0);
+
+        // Increment counter
+        assert_eq!(db.increment_lambda_counter(), 1);
+        assert_eq!(db.increment_lambda_counter(), 2);
+        assert_eq!(db.get_lambda_counter(), 2);
+    }
+
+    #[test]
+    fn test_cur_spot() {
+        let mut db = Database::new();
+
+        // Initial cur_spot should be SID_PATH_GLOBAL (empty path = global)
+        let initial_spot = db.get_cur_spot();
+        assert!(initial_spot.is_global());
+
+        // Set new cur_spot
+        let new_spot = Sid::new("new_scope");
+        db.set_cur_spot(new_spot.clone());
+
+        // Verify new spot is set
+        let current_spot = db.get_cur_spot();
+        assert_eq!(current_spot.name(), AutoStr::from("new_scope"));
+    }
+
+    #[test]
+    fn test_spec_management() {
+        use crate::ast::SpecDecl;
+
+        let mut db = Database::new();
+
+        // Insert a spec
+        let spec_name = AutoStr::from("MySpec");
+        let spec = SpecDecl::new(
+            crate::ast::Name::from("MySpec"),
+            vec![],
+        );
+        db.insert_spec(spec_name.clone(), Rc::new(spec));
+
+        // Get spec
+        let retrieved = db.get_spec("MySpec");
+        assert!(retrieved.is_some());
+        assert_eq!(format!("{}", retrieved.unwrap().name), "MySpec");
+
+        // Remove spec
+        db.remove_spec("MySpec");
+        assert!(db.get_spec("MySpec").is_none());
     }
 }

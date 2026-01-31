@@ -131,24 +131,86 @@ Split `Universe` by migrating compile-time data **into the existing AIE Database
 
 **Goal**: Document every Universe field and classify it.
 
-### Tasks
+### Complete Universe Field Classification
 
-1. **Universe Field Audit**
-   - List all fields in Universe
-   - Classify as compile-time or runtime
-   - Document data flow
+| # | Field | Type | Classification | Target | Migration Strategy |
+|---|-------|------|----------------|--------|-------------------|
+| 1 | `scopes` | `HashMap<Sid, Scope>` | **Compile-time** | Database (add) | Move directly |
+| 2 | `asts` | `HashMap<Sid, ast::Code>` | **Compile-time** | Database (use fragments) | Use existing fragment system |
+| 3 | `code_paks` | `HashMap<Sid, CodePak>` | **Compile-time** | Database (add) | Move directly |
+| 4 | `env_vals` | `HashMap<AutoStr, Box<dyn Any>>` | **Runtime** | ExecutionEngine (✓ already there) | Move directly |
+| 5 | `shared_vals` | `HashMap<AutoStr, Rc<RefCell<Value>>>` | **Runtime** | ExecutionEngine (add) | Move directly |
+| 6 | `builtins` | `HashMap<AutoStr, Value>` | **Runtime** | ExecutionEngine (add) | Move directly |
+| 7 | `vm_refs` | `HashMap<usize, RefCell<VmRefData>>` | **Runtime** | ExecutionEngine (add) | Move directly |
+| 8 | `types` | `TypeInfoStore` | **Compile-time** | Database (add) | Move directly |
+| 9 | `args` | `Obj` | **Runtime** | ExecutionEngine (✓ already there) | Already migrated |
+| 10 | `lambda_counter` | `usize` | **Compile-time** | Database (add) | Move directly |
+| 11 | `cur_spot` | `Sid` | **Compile-time** | Database (add) | Move directly |
+| 12 | `vmref_counter` | `usize` | **Runtime** | ExecutionEngine (add) | Move directly |
+| 13 | `value_counter` | `usize` | **Runtime** | ExecutionEngine (add) | Move directly |
+| 14 | `values` | `HashMap<ValueID, Rc<RefCell<ValueData>>>` | **Runtime** | ExecutionEngine (add) | Move directly |
+| 15 | `weak_refs` | `HashMap<ValueID, Weak<RefCell<ValueData>>>` | **Runtime** | ExecutionEngine (add) | Move directly |
+| 16 | `symbol_locations` | `HashMap<AutoStr, SymbolLocation>` | **Compile-time** | Database (✓ already there) | Already in Database! |
+| 17 | `type_aliases` | `HashMap<AutoStr, (Vec<AutoStr>, Type)>` | **Compile-time** | Database (add) | Move directly |
+| 18 | `specs` | `HashMap<AutoStr, Rc<SpecDecl>>` | **Compile-time** | Database (add) | Move directly |
+| 19 | `evaluator_ptr` | `*mut crate::eval::Evaler` | **Runtime** | ExecutionEngine (add) | Move directly |
 
-2. **Dependency Analysis**
-   - Which fields reference each other?
-   - Who reads/writes each field?
-   - What needs atomics/locking for shared access?
+### Summary Statistics
 
-3. **Create Migration Matrix**
-   - Field → Target structure (Database vs ExecutionEngine)
-   - Migration strategy (move, copy, or bridge)
-   - Breaking changes assessment
+- **Total Fields**: 19
+- **Compile-time**: 8 (scopes, asts, code_paks, types, lambda_counter, cur_spot, symbol_locations, type_aliases, specs)
+- **Runtime**: 11 (env_vals, shared_vals, builtins, vm_refs, args, vmref_counter, value_counter, values, weak_refs, evaluator_ptr)
+- **Already in Database**: 1 (symbol_locations) ✓
+- **Already in ExecutionEngine**: 1 (args) ✓
+- **Need to migrate**: 17 fields
 
-**Deliverable**: Complete field classification table in this plan
+### Data Flow Analysis
+
+**Compile-time Data Flow**:
+```
+Parser → Indexer → Database
+  ↓         ↓          ↓
+ ASTs    Scopes   Symbol Locations
+  ↓         ↓          ↓
+Query Engine ← ← ← ← ← ← ← ← ←
+  ↓
+Incremental Compilation
+```
+
+**Runtime Data Flow**:
+```
+Code → Evaluator → ExecutionEngine
+  ↓       ↓              ↓
+Values  VM Refs      Call Stack
+  ↓       ↓              ↓
+Result → Output
+```
+
+**Key Insight**: No cross-dependencies between compile-time and runtime data in the new architecture! This clean separation is what enables incremental compilation.
+
+### Dependencies Between Fields
+
+**Compile-time field dependencies**:
+- `scopes` → references `parent` (other scopes)
+- `asts` → contains function bodies
+- `code_paks` → references ASTs
+- `types` → independent
+- `symbol_locations` → independent
+- `type_aliases` → references `types`
+- `specs` → references `types`
+- `lambda_counter` → independent
+- `cur_spot` → references `scopes`
+
+**Runtime field dependencies**:
+- `values` ↔ `weak_refs` (weak references)
+- `vm_refs` → independent (managed by ID)
+- `shared_vals` → independent
+- `builtins` → independent (cached functions)
+- `evaluator_ptr` → points to Evaler (unsafe, lifetime-bound)
+
+**No circular dependencies** between compile-time and runtime! ✅
+
+**Deliverable**: Complete field classification table (above) ✓
 
 ---
 
