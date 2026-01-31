@@ -13,8 +13,12 @@
 
 use crate::ast::{Code, Fn, SpecDecl, Stmt, Type};
 use crate::database::{Database, FileId, FragId, FragKind, FragSpan};
+use crate::error::{AutoError, AutoResult};
+use crate::parser::Parser;
 use crate::scope::{Sid, SID_PATH_GLOBAL};
 use crate::universe::SymbolLocation;
+use auto_val::AutoStr;
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// Indexer: Responsible for fragmenting source code and registering symbols
@@ -350,6 +354,80 @@ impl<'db> Indexer<'db> {
             })
         }
     }
+
+    // =========================================================================
+    // Phase 2.3: Incremental Re-Indexing
+    // =========================================================================
+
+    /// Re-index a file that has changed
+    ///
+    /// This method implements incremental re-indexing by:
+    /// 1. Checking if the file actually changed (hash comparison)
+    /// 2. If unchanged, returning early (no work needed)
+    /// 3. If changed:
+    ///    - Updating the source code
+    ///    - Clearing old fragments
+    ///    - Re-parsing and re-indexing
+    ///    - Updating the hash
+    ///    - Marking dependents as dirty
+    ///
+    /// # Arguments
+    ///
+    /// * `file_id` - The file to re-index
+    /// * `new_code` - The new source code
+    ///
+    /// # Returns
+    ///
+    /// A list of fragment IDs that were created, or empty if no change detected.
+    pub fn reindex_file(
+        &mut self,
+        file_id: FileId,
+        new_code: &str,
+    ) -> AutoResult<Vec<FragId>> {
+        // Get file path before any mutations
+        let file_path = self.db.get_file_path(file_id)
+            .map(|p| p.to_string())
+            .unwrap_or_else(|| "unknown.at".to_string());
+
+        // Update source first (needed for hash computation)
+        self.db.insert_source(&file_path, AutoStr::from(new_code));
+
+        // Check if file actually changed
+        if !self.db.is_file_dirty(file_id) {
+            return Ok(vec![]);  // No change, skip re-indexing
+        }
+
+        // Clear old fragments for this file
+        self.db.clear_file_fragments(file_id);
+
+        // Clear symbol locations for this file (Phase 2: more granular clearing)
+        // For now, we'll keep all symbol locations
+
+        // Clear cache for this file (types, bytecodes)
+        // Note: Fragments have been cleared, so cache entries will be orphaned
+        // Phase 2: More granular cache invalidation
+
+        // Re-parse the source code
+        let scope = Rc::new(std::cell::RefCell::new(crate::universe::Universe::new()));
+        let mut parser = Parser::new(new_code, scope.clone());
+        let ast = parser.parse()
+            .map_err(|e| AutoError::Msg(format!("Parse error during re-indexing: {}", e)))?;
+
+        // Re-index the AST
+        let frag_ids = self.index_ast(&ast, file_id)
+            .map_err(|e| AutoError::Msg(format!("Index error during re-indexing: {}", e)))?;
+
+        // Update the hash
+        self.db.hash_file(file_id);
+
+        // Mark dependents as dirty (they need recompilation)
+        self.db.propagate_dirty(file_id);
+
+        // Clear dirty flag for this file (we just re-indexed it)
+        self.db.clear_dirty_flag(file_id);
+
+        Ok(frag_ids)
+    }
 }
 
 // =============================================================================
@@ -485,5 +563,75 @@ mod tests {
         let dependents = db.dep_graph().get_file_dependents(imported_file);
         assert_eq!(dependents.len(), 1);
         assert_eq!(dependents[0], main_file);
+    }
+
+    #[test]
+    fn test_reindex_file_unchanged() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Hash the original file
+        db.hash_file(file_id);
+
+        // Re-index with same content
+        let mut indexer = Indexer::new(&mut db);
+        let result = indexer.reindex_file(file_id, "fn main() int { 42 }");
+
+        assert!(result.is_ok());
+        let frag_ids = result.unwrap();
+        assert_eq!(frag_ids.len(), 0);  // No change detected, skipped
+
+        // File should not be marked as dirty
+        assert!(!db.is_marked_dirty(file_id));
+    }
+
+    #[test]
+    fn test_reindex_file_changed() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Hash the original file
+        db.hash_file(file_id);
+
+        // Re-index with different content
+        let mut indexer = Indexer::new(&mut db);
+        let new_code = "fn main() int { 100 }\nfn foo() int { 1 }";
+        let result = indexer.reindex_file(file_id, new_code);
+
+        assert!(result.is_ok());
+        let frag_ids = result.unwrap();
+        assert_eq!(frag_ids.len(), 2);  // Two functions indexed
+
+        // File should not be marked as dirty (we just re-indexed it)
+        assert!(!db.is_marked_dirty(file_id));
+
+        // Hash should be updated
+        assert!(db.get_file_hash(file_id).is_some());
+    }
+
+    #[test]
+    fn test_reindex_file_propagates_dirty() {
+        let mut db = Database::new();
+
+        // Set up dependency: main imports lib
+        let lib_file = db.insert_source("lib.at", AutoStr::from("fn lib_fn() int { 1 }"));
+        let main_file = db.insert_source("main.at", AutoStr::from("fn main() int { 42 }"));
+        db.dep_graph_mut().add_file_import(main_file, vec![lib_file]);
+
+        // Hash both files
+        db.hash_file(lib_file);
+        db.hash_file(main_file);
+
+        // Re-index lib_file with changed content
+        let mut indexer = Indexer::new(&mut db);
+        let result = indexer.reindex_file(lib_file, "fn lib_fn() int { 999 }");
+
+        assert!(result.is_ok());
+
+        // main_file should be marked dirty (it depends on lib_file)
+        assert!(db.is_marked_dirty(main_file));
+
+        // lib_file should NOT be marked dirty (we just re-indexed it)
+        assert!(!db.is_marked_dirty(lib_file));
     }
 }
