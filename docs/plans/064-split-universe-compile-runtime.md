@@ -1,6 +1,6 @@
 # Plan 064: Split Universe into Compile-time (Database) and Runtime (ExecutionEngine)
 
-**Status**: ⏸️ **PAUSED - Phase 4.5 Complete (52%) | Phase 4.6 Planned**
+**Status**: ⏸️ **PAUSED - Phase 4.5 Complete (52%) | Phase 4.6 Complete ✅**
 **Priority**: P0 (Critical Architecture Refactor)
 **Created**: 2025-01-31
 **Last Updated**: 2025-02-01
@@ -10,17 +10,21 @@
 - ✅ Phase 1: Field classification complete (19 fields analyzed)
 - ✅ Phase 2: ExecutionEngine extended with 11 runtime fields
 - ✅ Phase 3: AIE Database extended with 7 compile-time fields
-- ⏸️ Phase 4: **PAUSED** - Scope split architecture implementation (52% complete)
+- ⏸️ Phase 4: **PAUSED** - Scope split architecture implementation (58% complete)
   - ✅ Phase 4.1: Design complete ✅
   - ✅ Phase 4.2: SymbolTable + StackFrame structures implemented ✅
   - ✅ Phase 4.3: Bridge layer and Database integration ✅
   - ✅ Phase 4.4: Interpreter migration to CompileSession + ExecutionEngine ✅
-  - ⏸️ Phase 4.5: Evaler migration (52% complete - 68/141 references)
+  - ⏸️ Phase 4.5: Evaler migration (52% complete - 59/141 references)
     - ✅ Bridge methods created (Groups 1-8: 20+ methods)
     - ✅ Bridge methods enabled (db/engine shared from Interpreter)
-    - ✅ 87 call sites migrated to use bridge methods
-    - ⏸️ Remaining 68 references (VM calls, fallbacks, temporary code)
-  - 📋 Phase 4.6: VM signature redesign - PLANNED (2-3 days)
+    - ✅ 89 call sites migrated to use bridge methods
+    - ⏸️ Remaining 59 references (bridge fallbacks, temporary code)
+  - ✅ Phase 4.6: VM signature redesign **COMPLETE**
+    - ✅ Type definitions updated (VmFunction, VmMethod)
+    - ✅ All ~53 VM function implementations migrated
+    - ✅ All 10 call sites in eval.rs updated
+    - ✅ Tests: 999 passing (no regressions)
 
 ---
 
@@ -1201,12 +1205,16 @@ Interpreter
   - Other direct access - ~17 locations (miscellaneous)
 
 **Current State**:
-- Total reduction: **141 → 68** (52% migrated, 48% remaining)
+- Total reduction: **141 → 59** (58% migrated, 42% remaining)
 - Bridge methods are **ACTIVE** and functional (commit 7f00333)
 - Evaler shares db/engine with Interpreter via `Rc<RefCell<>>`
 - All Interpreter functionality works (hybrid architecture from Phase 4.4)
 - Bridge methods delegate to Universe when Database lookup fails
-- **Next step**: Phase 4.6 - VM signature redesign to eliminate remaining ~38 non-trivial references
+- ✅ **Phase 4.6 COMPLETE**: VM signature redesign (commit 4e00a15)
+  - VM functions now accept `&mut Evaler` instead of `Shared<Universe>`
+  - All ~53 VM functions migrated to use bridge methods or Universe accessor
+  - All 10 VM call sites updated to pass `self` instead of `self.universe.clone()`
+  - Remaining 59 references: bridge fallbacks (~30), getters (~2), dead code (~4), debug (~5), misc (~18)
 
 **Migration Strategy**:
 
@@ -1498,11 +1506,15 @@ let mut parser = Parser::new(code, db.clone());
 
 ---
 
-## Phase 4.6: VM Signature Redesign (2-3 days)
+## Phase 4.6: VM Signature Redesign ✅ **COMPLETED**
 
 **Goal**: Change VM function signatures from `fn(Shared<Universe>, ...)` to `fn(&mut Evaler, ...)`.
 
-**Status**: 📋 **PLANNED** (Starts after Phase 4.5 completion)
+**Status**: ✅ **COMPLETED** (2025-02-01, commit 4e00a15)
+- VM type definitions updated
+- All ~53 VM function implementations migrated
+- All 10 call sites in eval.rs updated
+- Tests: 999 passing (no regressions)
 
 ### Overview
 
