@@ -4,6 +4,7 @@ pub mod atom_error;
 pub mod compile;
 pub mod config;
 pub mod database;
+pub mod dep;
 pub mod error;
 pub mod eval;
 pub mod hash;

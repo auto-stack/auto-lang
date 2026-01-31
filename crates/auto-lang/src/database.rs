@@ -536,6 +536,37 @@ impl Database {
         }
     }
 
+    /// Propagate dirty flag to files containing fragments that depend on the given fragment
+    ///
+    /// Phase 3.3: Fragment-level dependency propagation with熔断support
+    ///
+    /// If function A changes and function B calls A, then B's file should be marked dirty.
+    /// This bridges fragment-level dependencies to file-level dirty tracking.
+    ///
+    /// #熔断Optimization
+    ///
+    /// This should ONLY be called when a fragment's L3 (interface) hash changes.
+    /// If only the function body changed (L1/L2 hashes changed but L3 unchanged),
+    /// do NOT call this method - that's the熔断optimization!
+    ///
+    /// # Arguments
+    ///
+    /// * `frag_id` - The fragment that changed (signature changed)
+    pub fn propagate_frag_dirty(&mut self, frag_id: FragId) {
+        // Get all fragments that depend on this fragment
+        let dependent_frags: Vec<FragId> = self.dep_graph.get_frag_dependents(&frag_id)
+            .iter()
+            .cloned()
+            .collect();
+
+        // Mark all files containing dependent fragments as dirty
+        for dep_frag in dependent_frags {
+            if let Some(meta) = self.frag_meta.get(&dep_frag) {
+                self.mark_file_dirty(meta.file_id);
+            }
+        }
+    }
+
     // =========================================================================
     // Fragment Management
     // =========================================================================

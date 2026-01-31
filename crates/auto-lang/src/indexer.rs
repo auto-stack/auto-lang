@@ -11,9 +11,11 @@
 // Phase 2: Add file-level dependency tracking (import statements)
 // Phase 3: Add fragment-level dependency tracking (function calls, type usage)
 // Phase 3.2: Compute and store fragment interface hashes
+// Phase 3.3: Scan and store fragment-level dependencies
 
 use crate::ast::{Code, Fn, SpecDecl, Stmt, Type};
 use crate::database::{Database, FileId, FragId, FragKind, FragSpan};
+use crate::dep::DepScanner;
 use crate::error::{AutoError, AutoResult};
 use crate::hash::FragmentHasher;
 use crate::parser::Parser;
@@ -166,6 +168,14 @@ impl<'db> Indexer<'db> {
         // If the L3 hash is unchanged, dependents don't need to recompile.
         let iface_hash = FragmentHasher::hash_interface(fn_decl);
         self.db.set_fragment_iface_hash(frag_id.clone(), iface_hash);
+
+        // Phase 3.3: Scan and store fragment-level dependencies
+        // Find all functions that this function calls (direct dependencies)
+        let scanner = DepScanner::new(self.db);
+        let deps = scanner.scan_fn(fn_decl);
+        if !deps.is_empty() {
+            self.db.dep_graph_mut().add_frag_deps(frag_id.clone(), deps);
+        }
 
         // Register symbol location (for LSP support)
         if let Some((line, col)) = fn_decl.span.as_ref() {
@@ -369,15 +379,15 @@ impl<'db> Indexer<'db> {
 
     /// Re-index a file that has changed
     ///
-    /// This method implements incremental re-indexing by:
+    /// This method implements incremental re-indexing with熔断:
     /// 1. Checking if the file actually changed (hash comparison)
     /// 2. If unchanged, returning early (no work needed)
     /// 3. If changed:
-    ///    - Updating the source code
+    ///    - Saving old fragment interface hashes
     ///    - Clearing old fragments
     ///    - Re-parsing and re-indexing
-    ///    - Updating the hash
-    ///    - Marking dependents as dirty
+    ///    - Comparing L3 hashes (old vs new)
+    ///    - ONLY propagating dirty to dependents of fragments with CHANGED L3 hashes (熔断!)
     ///
     /// # Arguments
     ///
@@ -405,6 +415,19 @@ impl<'db> Indexer<'db> {
             return Ok(vec![]);  // No change, skip re-indexing
         }
 
+        // Phase 3.3: Save old fragment interface hashes before clearing
+        // We need to compare old vs new L3 hashes for熔断
+        let old_hashes: std::collections::HashMap<AutoStr, u64> = self
+            .db
+            .get_fragments_in_file(file_id)
+            .into_iter()
+            .filter_map(|frag_id| {
+                let meta = self.db.get_fragment_meta(&frag_id)?;
+                let hash = self.db.get_fragment_iface_hash(&frag_id)?;
+                Some((meta.name.clone(), hash))
+            })
+            .collect();
+
         // Clear old fragments for this file
         self.db.clear_file_fragments(file_id);
 
@@ -425,11 +448,31 @@ impl<'db> Indexer<'db> {
         let frag_ids = self.index_ast(&ast, file_id)
             .map_err(|e| AutoError::Msg(format!("Index error during re-indexing: {}", e)))?;
 
+        // Phase 3.3: Compare L3 hashes and implement熔断
+        // Only propagate dirty to dependents if fragment signature changed
+        for new_frag_id in &frag_ids {
+            if let Some(meta) = self.db.get_fragment_meta(new_frag_id) {
+                if let Some(&old_hash) = old_hashes.get(&meta.name) {
+                    let new_hash = self.db.get_fragment_iface_hash(new_frag_id)
+                        .unwrap_or(0);  // Should always exist after indexing
+
+                    if old_hash != new_hash {
+                        // Signature changed! Mark dependents dirty (熔断FAILED)
+                        self.db.propagate_frag_dirty(new_frag_id.clone());
+                    }
+                    // else: Signature unchanged - 熔断WORKS! Don't propagate
+                } else {
+                    // New fragment - mark dependents dirty (no熔断possible)
+                    self.db.propagate_frag_dirty(new_frag_id.clone());
+                }
+            }
+        }
+
+        // Also propagate file-level dependencies (Phase 2)
+        self.db.propagate_dirty(file_id);
+
         // Update the hash
         self.db.hash_file(file_id);
-
-        // Mark dependents as dirty (they need recompilation)
-        self.db.propagate_dirty(file_id);
 
         // Clear dirty flag for this file (we just re-indexed it)
         self.db.clear_dirty_flag(file_id);
