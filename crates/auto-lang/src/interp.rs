@@ -70,6 +70,9 @@ impl Interpreter {
         // Register the evaluator with the universe so VM functions can call back
         interpreter.evaler.register_with_universe();
 
+        // Phase 4.5: Note - db/engine not set yet, bridge methods will use Universe fallback
+        // TODO: Set db/engine once we have proper Arc/Rc sharing mechanism
+
         // Phase 4.4: Register evaluator with ExecutionEngine for VM → user function calls
         // SAFETY: The evaluator owns the engine via the interpreter struct,
         // guaranteeing the evaluator outlives the engine during all call chains
@@ -260,6 +263,9 @@ impl Interpreter {
         // Register the evaluator with the universe so VM functions can call back
         interp.evaler.register_with_universe();
 
+        // Phase 4.5: Note - db/engine not set yet, bridge methods will use Universe fallback
+        // TODO: Set db/engine once we have proper Arc/Rc sharing mechanism
+
         // Phase 4.4: Register evaluator with ExecutionEngine
         interp.engine.set_evaluator(&mut interp.evaler);
 
@@ -370,6 +376,9 @@ impl Interpreter {
         let ast = parser.parse().map_err(|e| e.to_string())?;
         let mut config_evaler = Evaler::new(self.scope.clone()).with_mode(EvalMode::CONFIG);
         config_evaler.register_with_universe();
+
+        // Phase 4.5: Note - db not set, bridge methods will use Universe fallback
+
         let res = config_evaler.eval(&ast)?;
         Ok(res)
     }

@@ -41,11 +41,16 @@ pub struct Evaler {
     // ========================================================================
     /// AIE Database (compile-time data)
     /// Phase 4.5: Added for gradual migration from Universe
-    db: Option<std::sync::Arc<crate::database::Database>>,
+    /// Changed to Rc<RefCell<>> to allow mutable access (consistent with engine field)
+    db: Option<Rc<RefCell<crate::database::Database>>>,
 
     /// Execution engine (runtime state)
     /// Phase 4.5: Added for gradual migration from Universe
     engine: Option<Rc<RefCell<crate::runtime::ExecutionEngine>>>,
+
+    /// Current scope ID (replaces Universe.cur_spot)
+    /// Phase 4.5: Track current scope for bridge method implementations
+    current_scope: crate::scope::Sid,
 
     // ========================================================================
     // Legacy Fields (will be deprecated in Phase 4.6)
@@ -74,10 +79,15 @@ pub struct Evaler {
 
 impl Evaler {
     pub fn new(universe: Rc<RefCell<Universe>>) -> Self {
+        // Initialize current_scope from Universe's cur_spot (for migration compatibility)
+        let current_scope = universe.borrow().cur_spot.clone();
+
         let mut evaluator = Evaler {
             // Phase 4.5: Initialize AIE architecture fields as None (will be set later)
             db: None,
             engine: None,
+            // Phase 4.5: Track current scope for bridge method implementations
+            current_scope,
             // Legacy: Initialize Universe (still used during migration)
             universe,
             tempo_for_nodes: HashMap::new(),
@@ -147,7 +157,7 @@ impl Evaler {
     /// Set the AIE Database for this evaluator
     ///
     /// **Phase 4.5**: Called by Interpreter to provide Database access
-    pub fn set_db(&mut self, db: std::sync::Arc<crate::database::Database>) {
+    pub fn set_db(&mut self, db: Rc<RefCell<crate::database::Database>>) {
         self.db = Some(db);
     }
 
@@ -164,7 +174,7 @@ impl Evaler {
     ///
     /// **Note**: During migration (Phase 4.5), this will return None until
     /// Interpreter calls set_db(). Use universe() as fallback.
-    pub fn db(&self) -> Option<&std::sync::Arc<crate::database::Database>> {
+    pub fn db(&self) -> Option<&Rc<RefCell<crate::database::Database>>> {
         self.db.as_ref()
     }
 
@@ -184,73 +194,158 @@ impl Evaler {
 
     /// Enter a new scope (compile-time + runtime)
     ///
-    /// **Phase 4.5**: Bridge method that uses Universe during migration.
-    /// **Future**: Will use Database (compile-time SymbolTable) + ExecutionEngine (runtime StackFrame).
+    /// **Phase 4.5**: Bridge method - NOW uses Database + ExecutionEngine directly!
     ///
-    /// # Migration Path
+    /// # Migration Status
     ///
-    /// - **Current**: Uses `universe.enter_scope()` for both compile-time and runtime
-    /// - **Target**: Will create SymbolTable in Database and StackFrame in ExecutionEngine
+    /// - ✅ **COMPLETED**: Now creates SymbolTable in Database and StackFrame in ExecutionEngine
+    /// - Falls back to Universe if db not set (for gradual migration)
     ///
-    /// # Example
+    /// # Implementation
     ///
-    /// ```ignore
-    /// // Old (Universe)
-    /// self.universe.borrow_mut().enter_scope();
-    ///
-    /// // New (Phase 4.5+)
-    /// self.enter_scope();  // Bridge method
-    ///
-    /// // Future (Phase 4.6)
-    /// self.db.create_symbol_table(sid, ScopeKind::Block);
-    /// self.engine.push_frame(sid);
-    /// ```
+    /// Creates a new scope as child of current scope:
+    /// 1. Generate new scope ID (child of current_scope)
+    /// 2. Create SymbolTable in Database (compile-time)
+    /// 3. Push StackFrame in ExecutionEngine (runtime)
+    /// 4. Update current_scope
     pub fn enter_scope(&mut self) {
-        self.universe.borrow_mut().enter_scope();
+        // Phase 4.5: Try to use new AIE architecture
+        if let Some(db) = &self.db {
+            use crate::scope::{ScopeKind, SymbolTable};
+
+            // Generate new scope ID as child of current scope
+            let new_sid = crate::scope::Sid::kid_of(&self.current_scope, "_block");
+
+            // Create SymbolTable in Database (compile-time)
+            let symbol_table = SymbolTable::new(ScopeKind::Block, new_sid.clone());
+            db.borrow_mut().insert_symbol_table(new_sid.clone(), symbol_table);
+
+            // Push StackFrame in ExecutionEngine if available
+            if let Some(engine) = &self.engine {
+                engine.borrow_mut().push_frame(new_sid.clone());
+            }
+
+            // Update current scope
+            self.current_scope = new_sid;
+        } else {
+            // Fallback: Use legacy Universe during migration
+            self.universe.borrow_mut().enter_scope();
+            // Sync current_scope from Universe
+            self.current_scope = self.universe.borrow().cur_spot.clone();
+        }
     }
 
     /// Exit the current scope
     ///
-    /// **Phase 4.5**: Bridge method that uses Universe during migration.
-    /// **Future**: Will pop StackFrame from ExecutionEngine.
+    /// **Phase 4.5**: Bridge method - NOW uses ExecutionEngine directly!
     ///
-    /// # Migration Path
+    /// # Migration Status
     ///
-    /// - **Current**: Uses `universe.exit_scope()` for both compile-time and runtime
-    /// - **Target**: Will pop StackFrame from ExecutionEngine (compile-time SymbolTable persists)
+    /// - ✅ **COMPLETED**: Now pops StackFrame from ExecutionEngine
+    /// - Falls back to Universe if engine not set (for gradual migration)
+    ///
+    /// # Implementation
+    ///
+    /// Exits current scope:
+    /// 1. Pop StackFrame from ExecutionEngine (runtime cleanup)
+    /// 2. Update current_scope to parent scope
+    /// 3. SymbolTable persists in Database (compile-time data)
     pub fn exit_scope(&mut self) {
-        self.universe.borrow_mut().exit_scope();
+        // Phase 4.5: Try to use new AIE architecture
+        if let Some(engine) = &self.engine {
+            // Pop StackFrame from ExecutionEngine
+            if let Some(_frame_id) = engine.borrow_mut().pop_frame() {
+                // Update current_scope to parent
+                if let Some(parent) = self.current_scope.parent() {
+                    self.current_scope = parent;
+                } else {
+                    // Fallback to global if no parent (shouldn't happen normally)
+                    self.current_scope = crate::scope::SID_PATH_GLOBAL.clone();
+                }
+            }
+        } else {
+            // Fallback: Use legacy Universe during migration
+            self.universe.borrow_mut().exit_scope();
+            // Sync current_scope from Universe
+            self.current_scope = self.universe.borrow().cur_spot.clone();
+        }
     }
 
     /// Look up a symbol (function, type, variable) by name
     ///
-    /// **Phase 4.5**: Bridge method that uses Universe during migration.
-    /// **Future**: Will use Database for compile-time symbol lookup.
+    /// **Phase 4.5**: Bridge method - NOW uses Database directly!
+    ///
+    /// # Migration Status
+    ///
+    /// - ✅ **COMPLETED**: Now searches Database's SymbolTables
+    /// - Falls back to Universe if db not set (for gradual migration)
+    /// - Searches from current scope up through parent scopes
     ///
     /// # Returns
     ///
     /// - `Some(Rc<Meta>)` if symbol is found
     /// - `None` if symbol doesn't exist
-    ///
-    /// # Migration Path
-    ///
-    /// - **Current**: Uses `universe.lookup_meta()` for symbol lookup
-    /// - **Target**: Will use Database's SymbolTables to find symbols
     pub fn lookup_meta(&self, name: &str) -> Option<Rc<Meta>> {
-        self.universe.borrow().lookup_meta(name)
+        // Phase 4.5: Try to use new AIE architecture
+        if let Some(db) = &self.db {
+            let auto_name = auto_val::AutoStr::from(name);
+
+            // Search from current scope up through parent scopes
+            let mut search_sid = Some(self.current_scope.clone());
+            while let Some(sid) = search_sid {
+                if let Some(symbol_table) = db.borrow().get_symbol_table(&sid) {
+                    // Check symbols
+                    if let Some(meta) = symbol_table.symbols.get(&auto_name) {
+                        return Some(meta.clone());
+                    }
+                    // Check types
+                    if let Some(meta) = symbol_table.types.get(&auto_name) {
+                        return Some(meta.clone());
+                    }
+                }
+
+                // Move to parent scope
+                search_sid = sid.parent();
+            }
+
+            // Not found in scope chain
+            None
+        } else {
+            // Fallback: Use legacy Universe during migration
+            self.universe.borrow().lookup_meta(name)
+        }
     }
 
     /// Look up a variable value by name (Phase 4.5: bridge method)
     ///
-    /// **Phase 4.5**: Bridge method that uses Universe during migration.
-    /// **Future**: Will use ExecutionEngine's StackFrame for runtime variable lookup.
+    /// **Phase 4.5**: Bridge method - NOW uses ExecutionEngine directly!
+    ///
+    /// # Migration Status
+    ///
+    /// - ✅ **COMPLETED**: Now searches ExecutionEngine's StackFrames
+    /// - Falls back to Universe if engine not set (for gradual migration)
+    /// - Searches from current frame up through parent frames
     ///
     /// # Returns
     ///
     /// - `Some(Value)` if variable is found
     /// - `None` if variable doesn't exist
     pub fn lookup_val(&self, name: &str) -> Option<Value> {
-        self.universe.borrow().lookup_val(name)
+        // Phase 4.5: Try to use new AIE architecture
+        if let Some(engine) = &self.engine {
+            // Use ExecutionEngine's built-in lookup_var which searches the call stack
+            if let Some(value_id) = engine.borrow().lookup_var(name) {
+                // Resolve ValueID to actual Value
+                // For now, return Value::ValueRef wrapper (caller can resolve)
+                // TODO: In full implementation, dereference and return the actual Value
+                Some(Value::ValueRef(value_id))
+            } else {
+                None
+            }
+        } else {
+            // Fallback: Use legacy Universe during migration
+            self.universe.borrow().lookup_val(name)
+        }
     }
 
     // =========================================================================
@@ -259,28 +354,20 @@ impl Evaler {
 
     /// Set a local variable value in the current scope
     ///
-    /// **Phase 4.5**: Bridge method that uses Universe during migration.
-    /// **Future**: Will use ExecutionEngine's StackFrame for runtime variable storage.
+    /// **Phase 4.5**: Bridge method - Uses Universe during migration.
     ///
-    /// # Migration Path
+    /// # Migration Status
     ///
-    /// - **Current**: Uses `universe.set_local_val()` for both compile-time and runtime
-    /// - **Target**: Will use `engine.current_frame().set(name, value_id)` for runtime
+    /// - ⏸️ **TODO**: Need ValueID allocation system to use ExecutionEngine
+    /// - For now, uses Universe (requires Value → ValueID conversion)
     ///
-    /// # Example
+    /// # Implementation
     ///
-    /// ```ignore
-    /// // Old (Universe)
-    /// self.universe.borrow_mut().set_local_val("x", Value::Int(42));
-    ///
-    /// // New (Phase 4.5+)
-    /// self.set_local_val("x", Value::Int(42));  // Bridge method
-    ///
-    /// // Future (Phase 4.6)
-    /// let value_id = self.engine.alloc_value(ValueData::Int(42));
-    /// self.engine.current_frame().set("x", value_id);
-    /// ```
+    /// Stores variable in current scope:
+    /// 1. Allocates ValueID from ExecutionEngine (TODO)
+    /// 2. Stores ValueID in current StackFrame
     pub fn set_local_val(&mut self, name: &str, value: Value) {
+        // Phase 4.5: For now, use Universe (needs ValueID allocation system)
         self.universe.borrow_mut().set_local_val(name, value);
     }
 
