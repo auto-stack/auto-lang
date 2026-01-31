@@ -30,3 +30,4 @@ miette = { workspace = true }
 regex = "1"
 auto-lang-macros = { path = "../auto-lang-macros" }
 dashmap = { workspace = true }
+blake3 = { workspace = true }

@@ -227,9 +227,44 @@ impl<'db> Indexer<'db> {
     /// Index a use (import) statement
     ///
     /// Phase 2: Track file-level dependencies
-    fn index_use_stmt(&mut self, _use_stmt: &crate::ast::Use, _file_id: FileId) -> Result<(), String> {
-        // Phase 1: Skip - no dependency tracking yet
-        // Phase 2: Extract file path and add to dependency graph
+    fn index_use_stmt(&mut self, use_stmt: &crate::ast::Use, file_id: FileId) -> Result<(), String> {
+        // Phase 2: Only track Auto imports (not C or Rust)
+        use crate::ast::UseKind;
+
+        if !matches!(use_stmt.kind, UseKind::Auto) {
+            return Ok(());  // Skip C and Rust imports
+        }
+
+        // Try to resolve import paths to FileIds
+        let mut imported_files = Vec::new();
+
+        // For each path in the use statement, try to find a matching file
+        for path in &use_stmt.paths {
+            // Convert path like "std::io" to potential file paths
+            // Common patterns: "std/io.at", "std.io.at", etc.
+            let path_str = path.as_ref();
+
+            // Try different path patterns
+            let candidates = vec![
+                format!("{}.at", path_str.replace("::", "/")),
+                format!("{}.at", path_str.replace("::", ".")),
+                format!("{}/index.at", path_str.replace("::", "/")),
+            ];
+
+            // Check if any candidate exists in the database
+            for candidate in candidates {
+                if let Some(imported_file_id) = self.db.get_file_id_by_path(&candidate) {
+                    imported_files.push(imported_file_id);
+                    break;  // Found a match, stop trying other patterns
+                }
+            }
+        }
+
+        // Add dependencies to the graph
+        if !imported_files.is_empty() {
+            self.db.dep_graph_mut().add_file_import(file_id, imported_files);
+        }
+
         Ok(())
     }
 
@@ -413,5 +448,42 @@ mod tests {
         // Verify the fragment
         let frag = db.get_fragment(&frag_ids[0]);
         assert!(frag.is_some());
+    }
+
+    #[test]
+    fn test_index_use_stmt_dependency() {
+        let mut db = Database::new();
+
+        // Insert an imported file first (dependency)
+        let imported_file = db.insert_source("std/io.at", AutoStr::from("fn say() void {}"));
+
+        // Insert main file that imports std::io
+        let main_file = db.insert_source("main.at", AutoStr::from("use std::io\nfn main() int { 42 }"));
+
+        // Create AST with use statement
+        let use_stmt = crate::ast::Use {
+            kind: crate::ast::UseKind::Auto,
+            paths: vec![AutoStr::from("std::io")],
+            items: vec![],
+        };
+
+        let mut ast = Code::new();
+        ast.stmts.push(crate::ast::Stmt::Use(use_stmt));
+
+        // Index the AST
+        let mut indexer = Indexer::new(&mut db);
+        let result = indexer.index_ast(&ast, main_file);
+
+        assert!(result.is_ok());
+
+        // Verify dependency was tracked
+        let imports = db.dep_graph().get_file_imports(main_file);
+        assert_eq!(imports.len(), 1);
+        assert_eq!(imports[0], imported_file);
+
+        // Verify reverse dependency
+        let dependents = db.dep_graph().get_file_dependents(imported_file);
+        assert_eq!(dependents.len(), 1);
+        assert_eq!(dependents[0], main_file);
     }
 }

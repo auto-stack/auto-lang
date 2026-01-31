@@ -232,6 +232,16 @@ pub struct Database {
     symbol_locations: HashMap<SymbolId, SymbolLocation>,
 
     // =========================================================================
+    // PHASE 2: FILE HASHING (for incremental compilation)
+    // =========================================================================
+
+    // File content hashes (BLAKE3 truncated to u64)
+    text_hashes: HashMap<FileId, u64>,
+
+    // Dirty file tracking (files that need recompilation)
+    dirty_files: std::collections::HashSet<FileId>,
+
+    // =========================================================================
     // LAYER 2: CACHE (computed by Query Engine)
     // =========================================================================
 
@@ -268,6 +278,8 @@ impl Database {
             file_counter: AtomicU64::new(0),
             frag_counter: AtomicU64::new(0),
             frag_counters: HashMap::new(),
+            text_hashes: HashMap::new(),
+            dirty_files: std::collections::HashSet::new(),
         }
     }
 
@@ -306,6 +318,16 @@ impl Database {
         self.file_paths.get(&file_id)
     }
 
+    /// Get FileId by file path (reverse lookup)
+    pub fn get_file_id_by_path(&self, path: &str) -> Option<FileId> {
+        for (&file_id, file_path) in &self.file_paths {
+            if file_path.as_ref() == path {
+                return Some(file_id);
+            }
+        }
+        None
+    }
+
     /// Get all file IDs
     pub fn get_files(&self) -> Vec<FileId> {
         self.file_paths.keys().copied().collect()
@@ -316,6 +338,8 @@ impl Database {
         self.sources.remove(&file_id);
         self.file_paths.remove(&file_id);
         self.frag_counters.remove(&file_id);
+        self.text_hashes.remove(&file_id);
+        self.dirty_files.remove(&file_id);
 
         // Remove all fragments belonging to this file
         let frags_to_remove: Vec<_> = self.frag_meta
@@ -326,6 +350,147 @@ impl Database {
 
         for frag_id in frags_to_remove {
             self.remove_fragment(&frag_id);
+        }
+    }
+
+    // =========================================================================
+    // File Hashing (Phase 2: Incremental Compilation)
+    // =========================================================================
+
+    /// Compute and store BLAKE3 hash of a file's source code
+    ///
+    /// Returns the hash as a u64 (first 8 bytes of BLAKE3 hash).
+    pub fn hash_file(&mut self, file_id: FileId) -> Option<u64> {
+        let code = self.sources.get(&file_id)?;
+        let hash = blake3::hash(code.as_bytes());
+        // Take first 8 bytes and convert to u64 (little-endian)
+        let hash_u64 = u64::from_le_bytes(
+            hash.as_bytes()[..8]
+                .try_into()
+                .expect("BLAKE3 hash is at least 8 bytes")
+        );
+
+        self.text_hashes.insert(file_id, hash_u64);
+        Some(hash_u64)
+    }
+
+    /// Get the stored hash for a file
+    pub fn get_file_hash(&self, file_id: FileId) -> Option<u64> {
+        self.text_hashes.get(&file_id).copied()
+    }
+
+    /// Check if a file is dirty (needs recompilation)
+    ///
+    /// Returns true if:
+    /// - File is explicitly marked as dirty (via mark_file_dirty)
+    /// - File has no stored hash (new file)
+    /// - Current hash differs from stored hash (content changed)
+    pub fn is_file_dirty(&self, file_id: FileId) -> bool {
+        // Check explicit dirty flag first
+        if self.dirty_files.contains(&file_id) {
+            return true;
+        }
+
+        // Compute current hash
+        let current_hash = match self.sources.get(&file_id) {
+            Some(code) => {
+                let hash = blake3::hash(code.as_bytes());
+                u64::from_le_bytes(
+                    hash.as_bytes()[..8]
+                        .try_into()
+                        .expect("BLAKE3 hash is at least 8 bytes")
+                )
+            }
+            None => return true,  // File doesn't exist, treat as dirty
+        };
+
+        // Compare with stored hash
+        match self.text_hashes.get(&file_id) {
+            Some(stored_hash) => stored_hash != &current_hash,
+            None => true,  // No stored hash, file is new
+        }
+    }
+
+    /// Mark a file as dirty (needs recompilation)
+    pub fn mark_file_dirty(&mut self, file_id: FileId) {
+        self.dirty_files.insert(file_id);
+    }
+
+    /// Check if a file is marked as dirty
+    pub fn is_marked_dirty(&self, file_id: FileId) -> bool {
+        self.dirty_files.contains(&file_id)
+    }
+
+    /// Get all files explicitly marked as dirty (does not check hash-based dirty)
+    #[allow(dead_code)]
+    pub fn get_marked_dirty_files(&self) -> Vec<FileId> {
+        self.dirty_files.iter().copied().collect()
+    }
+
+    /// Clear dirty flag for a file
+    pub fn clear_dirty_flag(&mut self, file_id: FileId) {
+        self.dirty_files.remove(&file_id);
+    }
+
+    /// Clear all dirty flags
+    pub fn clear_all_dirty_flags(&mut self) {
+        self.dirty_files.clear();
+    }
+
+    /// Propagate dirty flag to all files that depend on the given file
+    ///
+    /// If file A changes and file B imports A, then B should be marked dirty.
+    /// This method marks all direct dependents as dirty.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_id` - The file that changed
+    pub fn propagate_dirty(&mut self, file_id: FileId) {
+        // Get all files that import this file (dependents)
+        let dependents: Vec<FileId> = self.dep_graph.get_file_dependents(file_id)
+            .iter()
+            .copied()
+            .collect();
+
+        // Mark all dependents as dirty
+        for dep in dependents {
+            self.mark_file_dirty(dep);
+        }
+    }
+
+    /// Propagate dirty flag recursively through the dependency graph
+    ///
+    /// If file A changes and:
+    /// - file B imports A
+    /// - file C imports B
+    ///
+    /// Then both B and C should be marked dirty.
+    ///
+    /// This uses BFS to traverse the dependency graph.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_id` - The file that changed
+    pub fn propagate_dirty_recursive(&mut self, file_id: FileId) {
+        use std::collections::VecDeque;
+
+        let mut queue = VecDeque::new();
+        queue.push_back(file_id);
+
+        while let Some(current) = queue.pop_front() {
+            // Get dependents of current file (collect to avoid borrow issues)
+            let dependents: Vec<FileId> = self.dep_graph.get_file_dependents(current)
+                .iter()
+                .copied()
+                .collect();
+
+            for dep in dependents {
+                // Mark as dirty if not already dirty
+                if !self.is_marked_dirty(dep) {
+                    self.mark_file_dirty(dep);
+                    queue.push_back(dep);  // Continue propagating
+                }
+            }
         }
     }
 
@@ -492,30 +657,24 @@ impl Database {
     // Query Methods (Phase 2: Incremental Compilation)
     // =========================================================================
 
-    /// Check if a file needs recompilation
+    /// Get all dirty files (combines explicit flags and hash-based detection)
     ///
-    /// Phase 2: Compare file hashes
-    /// Phase 1: Always returns true (no hashing yet)
-    pub fn is_file_dirty(&self, _file_id: FileId) -> bool {
-        // Phase 1: No hashing yet, always dirty
-        true
-    }
-
-    /// Mark a file as dirty (needs recompilation)
+    /// Returns files that are dirty due to:
+    /// 1. Explicit dirty flags (via mark_file_dirty)
+    /// 2. Hash changes (content changed since last hash)
     ///
-    /// Phase 2: Update dirty flags
-    /// Phase 1: No-op
-    pub fn mark_file_dirty(&mut self, _file_id: FileId) {
-        // Phase 1: No dirty tracking yet
-    }
-
-    /// Get all dirty files
-    ///
-    /// Phase 2: Scan dirty flags
-    /// Phase 1: Returns all files
+    /// Note: This is the comprehensive dirty list for incremental compilation.
     pub fn get_dirty_files(&self) -> Vec<FileId> {
-        // Phase 1: All files are dirty
-        self.get_files()
+        let mut dirty = std::collections::HashSet::new();
+
+        // Check all files
+        for file_id in self.get_files() {
+            if self.is_file_dirty(file_id) {
+                dirty.insert(file_id);
+            }
+        }
+
+        dirty.into_iter().collect()
     }
 }
 
@@ -694,5 +853,244 @@ mod tests {
         // Clear cache
         db.clear_bytecode(&frag_id);
         assert!(db.get_bytecode(&frag_id).is_none());
+    }
+
+    // =========================================================================
+    // Phase 2: File Hashing Tests
+    // =========================================================================
+
+    #[test]
+    fn test_hash_file() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Hash the file
+        let hash = db.hash_file(file_id);
+        assert!(hash.is_some());
+
+        // Retrieve the stored hash
+        let stored = db.get_file_hash(file_id);
+        assert_eq!(stored, hash);
+    }
+
+    #[test]
+    fn test_is_file_dirty_new_file() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // New file with no hash is dirty
+        assert!(db.is_file_dirty(file_id));
+    }
+
+    #[test]
+    fn test_is_file_dirty_unchanged() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Hash the file
+        db.hash_file(file_id);
+
+        // File is not dirty after hashing
+        assert!(!db.is_file_dirty(file_id));
+    }
+
+    #[test]
+    fn test_is_file_dirty_changed() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Hash the original content
+        let original_hash = db.hash_file(file_id).unwrap();
+        assert!(!db.is_file_dirty(file_id));
+
+        // Update the file content
+        db.insert_source("test.at", AutoStr::from("fn main() int { 100 }"));
+
+        // File is now dirty
+        assert!(db.is_file_dirty(file_id));
+
+        // Hash has changed
+        let new_hash = db.hash_file(file_id).unwrap();
+        assert_ne!(original_hash, new_hash);
+    }
+
+    #[test]
+    fn test_mark_file_dirty() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Hash the file (not dirty by hash)
+        db.hash_file(file_id);
+        assert!(!db.is_file_dirty(file_id));
+
+        // Mark as dirty explicitly
+        db.mark_file_dirty(file_id);
+        assert!(db.is_marked_dirty(file_id));
+        assert!(db.is_file_dirty(file_id)); // Still dirty due to explicit flag
+    }
+
+    #[test]
+    fn test_clear_dirty_flag() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Mark as dirty
+        db.mark_file_dirty(file_id);
+        assert!(db.is_marked_dirty(file_id));
+
+        // Clear dirty flag
+        db.clear_dirty_flag(file_id);
+        assert!(!db.is_marked_dirty(file_id));
+    }
+
+    #[test]
+    fn test_get_dirty_files() {
+        let mut db = Database::new();
+
+        let file1 = db.insert_source("test1.at", AutoStr::from("fn foo() int { 1 }"));
+        let file2 = db.insert_source("test2.at", AutoStr::from("fn bar() int { 2 }"));
+        let file3 = db.insert_source("test3.at", AutoStr::from("fn baz() int { 3 }"));
+
+        // Hash all files
+        db.hash_file(file1);
+        db.hash_file(file2);
+        db.hash_file(file3);
+
+        // No dirty files
+        let dirty = db.get_dirty_files();
+        assert_eq!(dirty.len(), 0);
+
+        // Mark file2 as dirty
+        db.mark_file_dirty(file2);
+
+        // Only file2 is dirty
+        let dirty = db.get_dirty_files();
+        assert_eq!(dirty.len(), 1);
+        assert!(dirty.contains(&file2));
+
+        // Change file1 content
+        db.insert_source("test1.at", AutoStr::from("fn foo() int { 999 }"));
+
+        // Now file1 and file2 are dirty
+        let dirty = db.get_dirty_files();
+        assert_eq!(dirty.len(), 2);
+        assert!(dirty.contains(&file1));
+        assert!(dirty.contains(&file2));
+        assert!(!dirty.contains(&file3));
+    }
+
+    #[test]
+    fn test_clear_all_dirty_flags() {
+        let mut db = Database::new();
+
+        let file1 = db.insert_source("test1.at", AutoStr::from("fn foo() int { 1 }"));
+        let file2 = db.insert_source("test2.at", AutoStr::from("fn bar() int { 2 }"));
+
+        // Hash both files (so they're not dirty by hash)
+        db.hash_file(file1);
+        db.hash_file(file2);
+
+        // Mark both as dirty (explicitly)
+        db.mark_file_dirty(file1);
+        db.mark_file_dirty(file2);
+        assert_eq!(db.get_dirty_files().len(), 2);
+
+        // Clear all flags
+        db.clear_all_dirty_flags();
+        assert_eq!(db.get_dirty_files().len(), 0);
+    }
+
+    #[test]
+    fn test_remove_file_clears_hash() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Hash and mark dirty
+        db.hash_file(file_id);
+        db.mark_file_dirty(file_id);
+        assert!(db.get_file_hash(file_id).is_some());
+        assert!(db.is_marked_dirty(file_id));
+
+        // Remove file
+        db.remove_file(file_id);
+
+        // Hash and dirty flag are cleared
+        assert!(db.get_file_hash(file_id).is_none());
+        assert!(!db.is_marked_dirty(file_id));
+    }
+
+    // =========================================================================
+    // Phase 2.2: Dirty Propagation Tests
+    // =========================================================================
+
+    #[test]
+    fn test_propagate_dirty() {
+        let mut db = Database::new();
+
+        let file_a = db.insert_source("lib_a.at", AutoStr::from("fn a() int { 1 }"));
+        let file_b = db.insert_source("lib_b.at", AutoStr::from("fn b() int { 2 }"));
+        let file_c = db.insert_source("main.at", AutoStr::from("fn main() int { 3 }"));
+
+        // Set up dependencies: main imports lib_a and lib_b
+        db.dep_graph_mut().add_file_import(file_c, vec![file_a, file_b]);
+
+        // Hash all files
+        db.hash_file(file_a);
+        db.hash_file(file_b);
+        db.hash_file(file_c);
+
+        // Propagate dirty from lib_a
+        db.propagate_dirty(file_a);
+
+        // Only file_c (which imports lib_a) should be dirty
+        assert!(!db.is_marked_dirty(file_a));
+        assert!(!db.is_marked_dirty(file_b));
+        assert!(db.is_marked_dirty(file_c));
+    }
+
+    #[test]
+    fn test_propagate_dirty_recursive() {
+        let mut db = Database::new();
+
+        let file_a = db.insert_source("lib_a.at", AutoStr::from("fn a() int { 1 }"));
+        let file_b = db.insert_source("lib_b.at", AutoStr::from("fn b() int { 2 }"));
+        let file_c = db.insert_source("lib_c.at", AutoStr::from("fn c() int { 3 }"));
+        let file_main = db.insert_source("main.at", AutoStr::from("fn main() int { 4 }"));
+
+        // Set up dependencies:
+        // main -> lib_c -> lib_b -> lib_a
+        db.dep_graph_mut().add_file_import(file_main, vec![file_c]);
+        db.dep_graph_mut().add_file_import(file_c, vec![file_b]);
+        db.dep_graph_mut().add_file_import(file_b, vec![file_a]);
+
+        // Hash all files
+        db.hash_file(file_a);
+        db.hash_file(file_b);
+        db.hash_file(file_c);
+        db.hash_file(file_main);
+
+        // Propagate dirty recursively from lib_a
+        db.propagate_dirty_recursive(file_a);
+
+        // All dependent files should be dirty
+        assert!(!db.is_marked_dirty(file_a));  // Original file not marked
+        assert!(db.is_marked_dirty(file_b));   // Direct dependent
+        assert!(db.is_marked_dirty(file_c));   // Indirect dependent
+        assert!(db.is_marked_dirty(file_main)); // Indirect dependent
+    }
+
+    #[test]
+    fn test_get_file_id_by_path() {
+        let mut db = Database::new();
+
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Find file by path
+        let found = db.get_file_id_by_path("test.at");
+        assert_eq!(found, Some(file_id));
+
+        // Non-existent file
+        let not_found = db.get_file_id_by_path("nonexistent.at");
+        assert_eq!(not_found, None);
     }
 }
