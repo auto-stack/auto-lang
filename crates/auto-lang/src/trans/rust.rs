@@ -1173,6 +1173,11 @@ impl RustTrans {
                 Ok(true)
             }
 
+            Stmt::TypeAlias(type_alias) => {
+                self.type_alias_decl(type_alias, sink)?;
+                Ok(true)
+            }
+
             Stmt::SpecDecl(spec_decl) => {
                 self.spec_decl(spec_decl, sink)?;
                 Ok(true)
@@ -1999,6 +2004,49 @@ impl RustTrans {
         Ok(())
     }
 
+    // **Phase 6: Generic Programming**
+    // Type alias declaration
+    fn type_alias_decl(&mut self, type_alias: &TypeAlias, sink: &mut Sink) -> AutoResult<()> {
+        // Generate type alias: type List<T> = List<T, Heap>;
+        // In Rust: type List<T> = List<T, Heap>;
+        write!(sink.body, "type {}", type_alias.name)?;
+
+        // Type parameters
+        if !type_alias.params.is_empty() {
+            write!(sink.body, "<")?;
+            for (i, param) in type_alias.params.iter().enumerate() {
+                write!(sink.body, "{}", param)?;
+                if i < type_alias.params.len() - 1 {
+                    write!(sink.body, ", ")?;
+                }
+            }
+            write!(sink.body, ">")?;
+        }
+
+        // For the target type, if it's a GenericInstance with Unknown args,
+        // we need to use the type parameter names instead of "Unknown"
+        if let Type::GenericInstance(inst) = &type_alias.target {
+            write!(sink.body, " = {}<", inst.base_name)?;
+            // Use type parameters if available, otherwise use Unknown count
+            let args: Vec<String> = if !type_alias.params.is_empty() {
+                type_alias.params.iter().map(|p| p.to_string()).collect()
+            } else {
+                inst.args.iter().map(|t| {
+                    match t {
+                        Type::Unknown => "_".to_string(),
+                        _ => self.rust_type_name(t),
+                    }
+                }).collect()
+            };
+            write!(sink.body, "{}>;", args.join(", "))?;
+        } else {
+            write!(sink.body, " = {};", self.rust_type_name(&type_alias.target))?;
+        }
+        sink.body.write(b"\n")?;
+
+        Ok(())
+    }
+
     // Enum declaration
     fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
         // Generate enum definition
@@ -2619,6 +2667,11 @@ mod tests {
     #[test]
     fn test_034_delegation_params() {
         test_a2r("034_delegation_params").unwrap();
+    }
+
+    #[test]
+    fn test_111_generic_alias() {
+        test_a2r("111_generic_alias").unwrap();
     }
 
     #[test]
