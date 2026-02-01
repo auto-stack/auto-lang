@@ -2552,4 +2552,9 @@ mod tests {
     fn test_014_tag() {
         test_a2r("014_tag").unwrap();
     }
+
+    #[test]
+    fn test_004_cstr() {
+        test_a2r("004_cstr").unwrap();
+    }
 }
