@@ -469,7 +469,8 @@ impl<'db> Indexer<'db> {
         }
 
         // Also propagate file-level dependencies (Phase 2)
-        self.db.propagate_dirty(file_id);
+        // Use recursive propagation to handle transitive dependencies
+        self.db.propagate_dirty_recursive(file_id);
 
         // Update the hash
         self.db.hash_file(file_id);
@@ -684,5 +685,39 @@ mod tests {
 
         // lib_file should NOT be marked dirty (we just re-indexed it)
         assert!(!db.is_marked_dirty(lib_file));
+    }
+
+    #[test]
+    fn test_reindex_file_propagates_dirty_recursive() {
+        let mut db = Database::new();
+
+        // Set up transitive dependency: app imports lib imports core
+        let core_file = db.insert_source("core.at", AutoStr::from("fn core_fn() int { 1 }"));
+        let lib_file = db.insert_source("lib.at", AutoStr::from("fn lib_fn() int { 2 }"));
+        let app_file = db.insert_source("app.at", AutoStr::from("fn app_fn() int { 3 }"));
+
+        // lib imports core, app imports lib
+        db.dep_graph_mut().add_file_import(lib_file, vec![core_file]);
+        db.dep_graph_mut().add_file_import(app_file, vec![lib_file]);
+
+        // Hash all files
+        db.hash_file(core_file);
+        db.hash_file(lib_file);
+        db.hash_file(app_file);
+
+        // Re-index core_file with changed content
+        let mut indexer = Indexer::new(&mut db);
+        let result = indexer.reindex_file(core_file, "fn core_fn() int { 999 }");
+
+        assert!(result.is_ok());
+
+        // lib_file should be marked dirty (direct dependency on core_file)
+        assert!(db.is_marked_dirty(lib_file));
+
+        // app_file should ALSO be marked dirty (transitive dependency via lib_file)
+        assert!(db.is_marked_dirty(app_file), "app_file should be marked dirty due to transitive dependency");
+
+        // core_file should NOT be marked dirty (we just re-indexed it)
+        assert!(!db.is_marked_dirty(core_file));
     }
 }

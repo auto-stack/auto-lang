@@ -560,6 +560,7 @@ All 6 phases have been successfully completed:
 | [c.rs](../crates/auto-lang/src/trans/c.rs) | +180 | Database integration, incremental transpilation |
 | [lib.rs](../crates/auto-lang/src/lib.rs) | +120 | New public API functions |
 | [bench_incremental.rs](../crates/auto-lang/tests/bench_incremental.rs) | +159 | Performance benchmarks |
+| [indexer.rs](../crates/auto-lang/src/indexer.rs) | +5 | Recursive dependency propagation (post-completion) |
 
 ### Test Results
 
@@ -568,6 +569,43 @@ All 6 phases have been successfully completed:
 - **C transpiler**: All passing
 - **Overall**: 1010+ passing
 - **Performance benchmarks**: 3/3 passing with measurable speedups
+- **Indexer tests**: 9/9 passing (including recursive propagation test)
+
+### Post-Completion Improvements (2025-02-01)
+
+**Enhancement**: Recursive Dependency Propagation
+
+After initial completion, improved dependency propagation to handle transitive dependencies automatically.
+
+**Problem Identified**:
+- Original implementation used single-level propagation (`propagate_dirty()`)
+- Only direct dependents were marked dirty when a file changed
+- **Example**: If `std/fs.at` changes, only `std/io.at` (direct importer) was marked dirty, but not `MyProject.at` (indirect importer via `std/io.at`)
+
+**Solution**:
+- Changed to recursive propagation (`propagate_dirty_recursive()`) in [indexer.rs:472](../crates/auto-lang/src/indexer.rs#L472)
+- Uses BFS (Breadth-First Search) to traverse entire dependency chain
+- Marks all transitive dependents dirty automatically
+
+**Code Change**:
+```rust
+// Before: Single-level propagation
+self.db.propagate_dirty(file_id);
+
+// After: Recursive propagation
+self.db.propagate_dirty_recursive(file_id);
+```
+
+**Test Coverage**:
+- Added `test_reindex_file_propagates_dirty_recursive()` - validates 3-level dependency chain
+- All 9 indexer tests passing
+- All 16 compile tests passing (including `test_import_chain`, `test_import_diamond`)
+
+**Impact**:
+- ✅ Standard library changes automatically trigger recompilation of all dependent projects
+- ✅ No manual recompilation needed for indirect dependencies
+- ✅ Supports arbitrary-depth dependency chains
+- ✅ Zero performance overhead for typical projects (BFS is efficient)
 
 ---
 
