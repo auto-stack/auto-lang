@@ -58,12 +58,12 @@ impl CompileSession {
     }
 
     /// Get the underlying database (for advanced usage)
-    pub fn database(&self) -> std::sync::LockResult<std::sync::RwLockReadGuard<Database>> {
+    pub fn database(&self) -> std::sync::LockResult<std::sync::RwLockReadGuard<'_, Database>> {
         self.db.read()
     }
 
     /// Get mutable access to the database (for advanced usage)
-    pub fn database_mut(&self) -> std::sync::LockResult<std::sync::RwLockWriteGuard<Database>> {
+    pub fn database_mut(&self) -> std::sync::LockResult<std::sync::RwLockWriteGuard<'_, Database>> {
         self.db.write()
     }
 

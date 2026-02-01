@@ -21,8 +21,7 @@
 //
 // **Phase 3.1**: Fragment-level hashing for fine-grained incremental compilation
 
-use crate::ast::{Body, Fn, FnKind, Type};
-use auto_val::AutoStr;
+use crate::ast::{Fn, Type};
 
 // =============================================================================
 // Fragment Hasher
@@ -175,7 +174,8 @@ fn hash_type_no_rc(hasher: &mut blake3::Hasher, ty: &Type) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::Param;
+    use crate::ast::{Body, Fn, FnKind, Param};
+    use auto_val::AutoStr;
 
     #[test]
     fn test_hash_text_consistent() {
