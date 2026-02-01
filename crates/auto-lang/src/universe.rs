@@ -126,6 +126,52 @@ pub struct CodePak {
     pub header: AutoStr,
 }
 
+/// Universe: **DEPRECATED** - Use Database + ExecutionEngine instead
+///
+/// # Deprecation Notice
+///
+/// **This structure is deprecated** and will be removed in a future version.
+/// New code should use the split architecture:
+/// - **`Database`** (compile-time): Types, symbols, scopes, ASTs
+/// - **`ExecutionEngine`** (runtime): Values, VM refs, call stack
+///
+/// # Migration Guide
+///
+/// See [Plan 064](docs/plans/064-split-universe-compile-runtime.md) for details.
+///
+/// ## Quick Reference
+///
+/// | Old (Universe) | New (Split Architecture) |
+/// |----------------|--------------------------|
+/// | `universe.scopes` | `database.symbol_tables()` |
+/// | `universe.types` | `database.get_types()` |
+/// | `universe.values` | `engine.get_value()` |
+/// | `universe.vm_refs` | `engine.get_vm_ref()` |
+/// | `universe.args` | `engine.args` |
+///
+/// ## Current Status
+///
+/// The compiler is in a **hybrid migration state** (Plan 064 Phase 4.5):
+/// - ✅ Database and ExecutionEngine implemented
+/// - ✅ Bridge methods active (try Database/Engine first, fallback to Universe)
+/// - ⏸️ VM reference migration deferred (Phase 4.7 blocked on lifetime issues)
+/// - ⏸️ Parser/Indexer migration deferred (requires breaking API changes)
+/// - ⏸️ Transpiler migration deferred (requires breaking API changes)
+///
+/// ## When to Use Universe
+///
+/// During migration, you may still need to use `universe()` and `universe_mut()`
+/// getter methods from Evaler for:
+/// - VM reference management (until Phase 4.7)
+/// - Bridge method fallbacks when db/engine are None
+/// - Diagnostic/debug code
+///
+/// ## Timeline
+///
+/// - **2025-01-31**: Phases 1-4 complete (60% migrated)
+/// - **2025-02-01**: Phase 4.5 practically complete (hybrid architecture accepted)
+/// - **Future**: Phases 4.7, 5-6 to complete migration
+#[deprecated(since = "0.4.0", note = "Use Database + ExecutionEngine instead (see Plan 064)")]
 pub struct Universe {
     pub scopes: HashMap<Sid, Scope>,   // sid -> scope
     pub asts: HashMap<Sid, ast::Code>, // sid -> ast
