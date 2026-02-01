@@ -2675,6 +2675,26 @@ mod tests {
     }
 
     #[test]
+    fn test_126_generic_field() {
+        test_a2r("126_generic_field").unwrap();
+    }
+
+    #[test]
+    fn test_127_generic_ptr_field() {
+        test_a2r("127_generic_ptr_field").unwrap();
+    }
+
+    #[test]
+    fn test_110_const_generics() {
+        test_a2r("110_const_generics").unwrap();
+    }
+
+    #[test]
+    fn test_109_generic_tag() {
+        test_a2r("109_generic_tag").unwrap();
+    }
+
+    #[test]
     fn test_035_inheritance() {
         test_a2r("035_inheritance").unwrap();
     }
