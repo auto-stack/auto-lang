@@ -2653,4 +2653,14 @@ mod tests {
     fn test_026_borrow_conflicts() {
         test_a2r("026_borrow_conflicts").unwrap();
     }
+
+    #[test]
+    fn test_016_basic_spec() {
+        test_a2r("016_basic_spec").unwrap();
+    }
+
+    #[test]
+    fn test_017_spec() {
+        test_a2r("017_spec").unwrap();
+    }
 }
