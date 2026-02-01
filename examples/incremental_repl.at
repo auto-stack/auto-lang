@@ -1,0 +1,163 @@
+# =============================================================================
+# Incremental Compilation Example (Plan 065)
+# =============================================================================
+#
+# This example demonstrates the incremental compilation capabilities of the
+# AutoLang REPL using the AIE (Auto Incremental Engine) architecture.
+#
+# To run this example:
+#   cargo run --release
+#   Then type/paste the code blocks below incrementally
+#
+# Features demonstrated:
+#   - Persistent compile-time data (Database) across REPL inputs
+#   - Function definitions persist and can be called later
+#   - :stats command shows compilation statistics
+#   - :reset command clears runtime but keeps compile-time data
+#   - Only recompiles changed code (incremental)
+#
+# =============================================================================
+
+# =============================================================================
+# Step 1: Define a simple function
+# =============================================================================
+# Type this in the REPL:
+#
+# fn add(a int, b int) int {
+#     a + b
+# }
+#
+# The REPL compiles this function and stores it in the Database.
+# You can now call it:
+#
+# add(1, 2)  # Returns: 3
+
+# =============================================================================
+# Step 2: Define another function that uses the first
+# =============================================================================
+# Type this in the REPL:
+#
+# fn calculate(x int) int {
+#     add(x, 10) * 2
+# }
+#
+# The function `add` from Step 1 is still in the Database, so this
+# compilation succeeds without recompiling `add`.
+#
+# Now call it:
+#
+# calculate(5)  # Returns: 30 (5 + 10 = 15, 15 * 2 = 30)
+
+# =============================================================================
+# Step 3: Modify a function (incremental recompilation)
+# =============================================================================
+# Type this in the REPL (redefining `add` with different body):
+#
+# fn add(a int, b int) int {
+#     a + b + 100  # Changed: now adds 100
+# }
+#
+# The Database updates the `add` function. The `calculate` function
+# is NOT recompiled (it still references `add` by name).
+#
+# Call both functions:
+#
+# add(1, 2)      # Returns: 103 (1 + 2 + 100)
+# calculate(5)   # Returns: 230 (uses the new add function!)
+
+# =============================================================================
+# Step 4: Check statistics
+# =============================================================================
+# Type in the REPL:
+#
+# :stats
+#
+# Output example:
+#   Total Files: 1        # Number of files compiled
+#   Total Fragments: 2    # Number of functions/types
+#   Cache Entries: 0      # QueryEngine cache (TODO: Phase 3)
+#   Dirty Files: 0        # Files marked for recompilation
+
+# =============================================================================
+# Step 5: Reset runtime (keep compile-time data)
+# =============================================================================
+# Type in the REPL:
+#
+# :reset
+#
+# This clears the runtime (variables, call stack) but keeps the
+# compile-time data (Database). Your functions are still defined!
+#
+# You can call them again:
+#
+# add(1, 2)      # Still works: 103
+# calculate(5)   # Still works: 230
+
+# =============================================================================
+# Step 6: Incremental compilation benefits
+# =============================================================================
+#
+# Without incremental compilation:
+#   - Every input recompiles everything
+#   - Slow for large codebases
+#   - No caching of compilation artifacts
+#
+# With incremental compilation (Plan 065):
+#   - Only recompiles changed files
+#   - Reuses compiled artifacts from Database
+#   - Fast for iterative development
+#   - Persistent compile-time data across REPL sessions
+#
+# =============================================================================
+
+# =============================================================================
+# Advanced Example: Type definitions and dependencies
+# =============================================================================
+#
+# Step 1: Define a type
+#
+# type Point {
+#     x int
+#     y int
+# }
+#
+# Step 2: Define a function using the type
+#
+# fn distance(p1 Point, p2 Point) int {
+#     let dx = p2.x - p1.x
+#     let dy = p2.y - p1.y
+#     dx * dx + dy * dy
+# }
+#
+# Step 3: Use the function
+#
+# let p1 = Point { x: 0, y: 0 }
+# let p2 = Point { x: 3, y: 4 }
+# distance(p1, p2)  # Returns: 25
+#
+# Step 4: Modify the type (add a field)
+#
+# type Point {
+#     x int
+#     y int
+#     z int  # New field!
+# }
+#
+# Step 5: The `distance` function still works (uses only x and y)
+#
+# let p1 = Point { x: 0, y: 0, z: 0 }
+# let p2 = Point { x: 3, y: 4, z: 5 }
+# distance(p1, p2)  # Returns: 25
+#
+# =============================================================================
+
+# =============================================================================
+# REPL Commands Reference
+# =============================================================================
+#
+# :stats  - Show compilation statistics (files, fragments, cache)
+# :reset  - Reset runtime (keep compile-time data)
+# :help   - Show all available commands
+# :quit   - Exit the REPL
+#
+# =============================================================================

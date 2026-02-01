@@ -87,6 +87,84 @@ Parser (parser.rs) → AST (ast.rs)
 - **C Transpiler** (`c.rs`): Transpiles AutoLang to C for embedded systems
 - **Rust Transpiler** (`rust.rs`): Transpiles AutoLang to Rust for native apps
 
+#### 7. **AIE (Auto Incremental Engine)** (`crates/auto-lang/src/database.rs`, `compile.rs`, `runtime.rs`)
+- **Database** (`database.rs`): Compile-time data storage with dirty tracking
+  - Stores source files, fragments, AST nodes, symbol tables
+  - Tracks file dependencies and propagation of changes
+  - Interface hashing for signature-based cache validation (熔断)
+- **Indexer** (`indexer.rs`): Converts AST into Database fragments
+- **CompileSession** (`compile.rs`): Incremental compilation session manager
+  - `compile_source()`: Compile source with incremental support
+  - `reindex_source()`: Re-index modified files
+  - Persistent Database across compilations
+- **ExecutionEngine** (`runtime.rs`): Runtime state separated from compile-time
+  - Stack frames, function calls, VM references
+  - Clean separation: Database (compile-time) vs ExecutionEngine (runtime)
+
+**Incremental Compilation Architecture (Plan 063-065)**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    User Code (.at files)                    │
+│                                                              │
+│  fn add(a int, b int) int { a + b }                         │
+│  fn main() { say(add(1, 2)) }                               │
+└─────────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────┐
+│                  CompileSession (Persistent)                 │
+│  ┌────────────────────────────────────────────────────┐     │
+│  │ Database (Arc<RwLock<Database>>)                   │     │
+│  │  - Files: source code storage                      │     │
+│  │  - Fragments: parsed functions/types                │     │
+│  │  - SymbolTables: compile-time symbols               │     │
+│  │  - DepGraph: file dependencies                      │     │
+│  │  - HashCache: content hash tracking                 │     │
+│  └────────────────────────────────────────────────────┘     │
+│                           ↓                                  │
+│  QueryEngine (smart caching with 熔断)                       │
+└─────────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────┐
+│              ExecutionEngine (Per-Execution)                 │
+│  - Stack frames, function calls                             │
+│  - VM references (StringBuilder, List, HashMap, etc.)       │
+│  - Runtime state only (no compile-time data)                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Concepts**:
+- **Compile-time vs Runtime**: Database (compile-time) is separate from ExecutionEngine (runtime)
+- **Incremental Updates**: Only recompile changed files, reuse cached artifacts
+- **熔断 (Circuit Breaker)**: Cache invalidation based on interface hash changes
+  - If function signature unchanged → cache valid (reuse bytecode, types, etc.)
+  - If function signature changed → cache invalid → recompile dependents
+- **Dirty Propagation**: Track file dependencies, mark dependents as dirty
+
+**API Entry Points** (lib.rs):
+```rust
+// Basic execution (no Database)
+run(code: &str) -> AutoResult<String>
+
+// Incremental compilation with persistent session
+run_with_session(session: &mut CompileSession, code: &str) -> AutoResult<String>
+
+// REPL session management (repl.rs)
+let mut session = ReplSession::new();
+session.run(code);  // Uses persistent CompileSession
+session.stats();    // Get compilation statistics
+session.reset_runtime();  // Clear runtime, keep compile-time data
+```
+
+**Implementation Status** (2025):
+- ✅ **Phase 1-4 (Plan 065)**: REPL integration with CompileSession
+  - `ReplSession` struct with persistent Database
+  - `run_with_session()` API for incremental compilation
+  - REPL commands: `:stats`, `:reset`, `:help`, `:quit`
+- ⏸️ **Phase 3 (Plan 065)**: QueryEngine smart caching
+  - Deferred: Needs `Arc<Database>` vs `Arc<RwLock<Database>>` reconciliation
+- 🔄 **Plan 064**: Split Universe → Database + ExecutionEngine (60% complete)
+- 🔄 **Plan 063**: AIE core architecture (70% complete)
+
 ### Test Infrastructure
 
 #### a2c (Auto-to-C) Tests
