@@ -180,11 +180,10 @@ impl RustTrans {
                 format!("&[{}]", self.rust_type_name(&slice.elem))
             }
             Type::Ptr(ptr) => {
-                // Check if we need reference or Box
-                match &*ptr.of.borrow() {
-                    Type::User(_) => format!("Box<{}>", self.rust_type_name(&*ptr.of.borrow())),
-                    _ => format!("&{}", self.rust_type_name(&*ptr.of.borrow())),
-                }
+                // **Phase 1.1: Pointer Types (test: 005_pointer)**
+                // AutoLang *T transpiles to Rust raw pointer *mut T
+                // This is for raw pointer operations like @ (address-of) and .* (dereference)
+                format!("*mut {}", self.rust_type_name(&*ptr.of.borrow()))
             }
             Type::Reference(inner) => {  // Plan 052: Reference transpiles to &T in Rust
                 format!("&{}", self.rust_type_name(inner))
@@ -789,6 +788,27 @@ impl RustTrans {
 
             // Plan 056: Dot expression for field access
             Expr::Dot(object, field) => {
+                // **Phase 1.1: Pointer Operators (test: 005_pointer)**
+                // Handle @ (address-of) and * (dereference) as special field names
+                match field.as_str() {
+                    "@" => {
+                        // x.@ -> raw pointer to x (address-of operator)
+                        // In Rust, we need to cast reference to raw pointer
+                        // x as *mut T
+                        self.expr(object, out)?;
+                        write!(out, " as *mut _")?;  // Use _ for type inference
+                        return Ok(());
+                    }
+                    "*" => {
+                        // y.* -> *y (dereference operator)
+                        // In Rust, we use * for dereference
+                        write!(out, "*")?;
+                        self.expr(object, out)?;
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+
                 // Check if this is an enum access: Enum.Value -> Enum::Value (Rust syntax)
                 if let Expr::Ident(type_name) = object.as_ref() {
                     // Check if type_name is an enum
@@ -1059,6 +1079,11 @@ impl RustTrans {
 
             Stmt::EnumDecl(enum_decl) => {
                 self.enum_decl(enum_decl, sink)?;
+                Ok(true)
+            }
+
+            Stmt::Union(union) => {
+                self.union_decl(union, sink)?;
                 Ok(true)
             }
 
@@ -1919,6 +1944,30 @@ impl RustTrans {
         Ok(())
     }
 
+    // **Phase 1.2: Union Types (test: 013_union)**
+    fn union_decl(&mut self, union: &Union, sink: &mut Sink) -> AutoResult<()> {
+        // Generate union definition
+        // In Rust, unions are unsafe but supported
+        writeln!(sink.body, "union {} {{", union.name)?;
+        self.indent();
+
+        for field in &union.fields {
+            self.print_indent(&mut sink.body)?;
+            writeln!(
+                sink.body,
+                "{}: {},",
+                field.name,
+                self.rust_type_name(&field.ty)
+            )?;
+        }
+
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}}")?;
+
+        Ok(())
+    }
+
     // Spec/trait declaration
     fn spec_decl(&mut self, spec_decl: &SpecDecl, sink: &mut Sink) -> AutoResult<()> {
         // Generate trait definition
@@ -2284,6 +2333,11 @@ mod tests {
     }
 
     #[test]
+    fn test_005_pointer() {
+        test_a2r("005_pointer").unwrap();
+    }
+
+    #[test]
     fn test_006_struct() {
         test_a2r("006_struct").unwrap();
     }
@@ -2426,5 +2480,10 @@ mod tests {
     #[test]
     fn test_035_inheritance() {
         test_a2r("035_inheritance").unwrap();
+    }
+
+    #[test]
+    fn test_055_union() {
+        test_a2r("055_union").unwrap();
     }
 }
