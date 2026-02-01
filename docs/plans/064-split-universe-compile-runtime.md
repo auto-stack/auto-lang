@@ -1536,9 +1536,13 @@ let mut parser = Parser::new(code, db.clone());
 
 ## Dependencies
 
-- **Plan 063 Phase 3.5**: Must be complete (Patch generation) ✅
-- **Database**: Must be stable and feature-complete
-- **ExecutionEngine**: Must support all runtime operations
+- **Plan 063 Phase 3.5**: Patch generation - ✅ Complete
+- **Plan 063 Phase 3.6**: PC-Server Enhancements - ✅ Complete (2025-02-01)
+  - Advanced queries (type inference, symbol locations, references)
+  - LRU cache eviction for memory management
+  - Database enhancements (all_fragment_ids method)
+- **Database**: Stable and feature-complete (HashMap-based, Arc<RwLock<>> for thread safety)
+- **ExecutionEngine**: Supports all runtime operations (values, stack, VM refs, args, env)
 
 ---
 

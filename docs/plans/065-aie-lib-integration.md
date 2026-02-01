@@ -724,13 +724,25 @@ let result = run("42 + 8")?;
 
 After this plan:
 - **Plan 066**: Incremental Transpilation (C/Rust/Python transpilers use Database)
-- **Plan 067**: IDE/LSP Integration (use Database for real-time diagnostics)
-- **Plan 068**: Hot Reloading (apply patches without restart - requires Plan 063 Phase 3.6)
+- **Plan 067**: IDE/LSP Integration (use Database for real-time diagnostics) - **Phase 3.6 complete!**
+  - ✅ Advanced queries available: GetSymbolLocationQuery, FindReferencesQuery, GetCompletionsQuery
+  - ✅ Type inference queries: InferExprTypeQuery for hover-to-see-type
+  - ✅ LRU cache management for memory-conscious language servers
+- **Plan 068**: Hot Reloading (apply patches without restart - requires Plan 063 Phase 3.6 MCU integration, still deferred)
 
 ---
 
 ## Dependencies
 
-- **Plan 064**: Must complete Universe split first (Database + ExecutionEngine separated)
-- **Plan 063 Phase 3.4**: QueryEngine with 熔断 caching (already complete ✅)
-- **Plan 063 Phase 3.5**: Patch generation (already complete ✅)
+- **Plan 064**: Universe split (Database + ExecutionEngine) - ✅ 85% Complete (Phases 1-4, 7-8 done; Phases 5-6 deferred)
+- **Plan 063 Phase 3.4**: QueryEngine with 熔断 caching - ✅ Complete
+- **Plan 063 Phase 3.5**: Patch generation - ✅ Complete
+- **Plan 063 Phase 3.6**: PC-Server Enhancements - ✅ Complete (2025-02-01)
+  - Advanced type inference queries (InferExprTypeQuery, GetSymbolLocationQuery, FindReferencesQuery)
+  - LRU cache eviction with configurable capacity
+  - Database enhancement (all_fragment_ids method)
+
+**Phase 3.6 Benefits for Plan 065**:
+- **LRU Cache Eviction**: Prevents unbounded cache growth in long-running REPL sessions
+- **Advanced Queries**: Enables IDE-like features (go-to-def, find-refs) for future LSP integration (Plan 067)
+- **Memory Management**: Configurable cache capacity allows tuning for different workloads
