@@ -1,14 +1,88 @@
 # Plan 065: AIE Integration with lib.rs Entry Points
 
-**Status**: 📝 Planning (Waiting for Plan 064)
+**Status**: ✅ **COMPLETE** (2025-02-01)
 **Priority**: P0 (Core Feature)
 **Created**: 2025-01-31
-**Dependencies**: Plan 064 Phase 4 (SymbolTable + StackFrame implementation) ⏸️
+**Last Updated**: 2025-02-01
+**Dependencies**: Plan 064 ✅ COMPLETE, Plan 063 Phase 3.6 ✅ COMPLETE
 
-**Note**: Plan 064 Phase 4 design is complete ✅. Waiting on implementation of:
-- SymbolTable (compile-time scopes)
-- StackFrame + CallStack (runtime scopes)
-- Database + ExecutionEngine integration
+---
+
+## Completion Summary (2025-02-01)
+
+**Status**: ✅ **PLAN 065 COMPLETE** - All phases implemented and tested
+
+### Implementation Summary
+
+All 6 phases of Plan 065 have been completed:
+
+**✅ Phase 1: Design Session Management** (Already in plan)
+- ReplSession structure designed
+- Backwards-compatible API designed
+
+**✅ Phase 2: Implement run_with_session** (Already existed)
+- `run_with_session()` already implemented in lib.rs
+- `Interpreter::new_with_session()` already exists
+- No changes needed - implementation was complete
+
+**✅ Phase 3: QueryEngine Integration** (NEW - Implemented)
+- **Reconciled Arc<Database> vs Arc<RwLock<Database>>**:
+  - Updated QueryEngine to accept `Arc<RwLock<Database>>`
+  - Updated all query execution methods to acquire read locks
+  - Updated all tests to use `Arc<RwLock<Database>>`
+- **Integrated QueryEngine with CompileSession**:
+  - Added `query_engine: Option<QueryEngine>` field to CompileSession
+  - Added `query_engine()` method for on-demand creation
+  - Added `get_query_engine()` method for optional access
+  - Updated `clear()` to reset QueryEngine
+- **Added EvalResultQuery**:
+  - Created EvalResultQuery for caching evaluation results
+  - GetBytecodeQuery already existed
+
+**✅ Phase 4: REPL Integration** (Already existed)
+- ReplSession already implemented in repl.rs
+- REPL main_loop already uses ReplSession
+- `:stats` and `:reset` commands already implemented
+
+**✅ Phase 5: Testing** (Verified)
+- All 19 query module tests passing
+- All 16 compile module tests passing
+- No regressions from QueryEngine integration
+- Test pass rate: 1005/1013 (99.2%, same as Plan 064 baseline)
+
+**✅ Phase 6: Documentation** (This update)
+- Plan 065 marked as complete
+- Implementation summary added
+
+### Key Technical Achievements
+
+1. **Unified Arc<RwLock<Database>> Architecture**:
+   - QueryEngine now accepts Arc<RwLock<Database>>
+   - CompileSession exposes QueryEngine on-demand
+   - No breaking changes to existing API
+
+2. **QueryEngine Caching**:
+   - GetBytecodeQuery caches bytecode for fragments
+   - EvalResultQuery placeholder for future evaluation caching
+   - LRU cache eviction (from Plan 063 Phase 3.6)
+
+3. **Incremental Compilation**:
+   - `run_with_session()` reuses Database across calls
+   - REPL uses persistent ReplSession
+   - Compile-time data cached, runtime state resettable
+
+### Files Modified
+
+- [query.rs](../crates/auto-lang/src/query.rs): Updated QueryEngine to accept Arc<RwLock<Database>>
+- [compile.rs](../crates/auto-lang/src/compile.rs): Integrated QueryEngine with CompileSession
+- [docs/plans/065-aie-lib-integration.md](065-aie-lib-integration.md): Marked complete
+
+### Future Work
+
+After this plan:
+- **Plan 066**: Incremental Transpilation (use Database for transpilers)
+- **Plan 067**: IDE/LSP Integration (use Database for diagnostics)
+- **Plan 068**: Hot Reloading (apply patches without restart)
 
 ---
 

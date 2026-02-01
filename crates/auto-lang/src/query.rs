@@ -15,6 +15,7 @@ use crate::ast::Type;
 use crate::scope::Sid;
 use dashmap::DashMap;
 use std::sync::Arc;
+use std::sync::RwLock;
 
 // =============================================================================
 // Cache Entry (Phase 3.4)
@@ -154,7 +155,9 @@ pub trait Query {
 /// - Configurable cache capacity (default: 1000 entries per query type)
 pub struct QueryEngine {
     /// The database (shared reference for thread safety)
-    db: Arc<Database>,
+    /// **Plan 065 Phase 3**: Changed from Arc<Database> to Arc<RwLock<Database>>
+    /// to integrate with CompileSession
+    db: Arc<RwLock<Database>>,
 
     /// Type-specific caches (indexed by type name)
     /// Phase 2: Vec<u8> placeholders (not used)
@@ -168,7 +171,9 @@ pub struct QueryEngine {
 
 impl QueryEngine {
     /// Create a new query engine with default capacity (1000 entries per type)
-    pub fn new(db: Arc<Database>) -> Self {
+    ///
+    /// **Plan 065 Phase 3**: Now accepts Arc<RwLock<Database>> to integrate with CompileSession
+    pub fn new(db: Arc<RwLock<Database>>) -> Self {
         Self {
             db,
             type_cache: DashMap::new(),
@@ -180,7 +185,7 @@ impl QueryEngine {
     ///
     /// # Arguments
     ///
-    /// * `db` - The database to query
+    /// * `db` - The database to query (Arc<RwLock<Database>> for Plan 065 integration)
     /// * `max_entries_per_type` - Maximum cache entries per query type (default: 1000)
     ///
     /// # Example
@@ -188,7 +193,9 @@ impl QueryEngine {
     /// ```ignore
     /// let engine = QueryEngine::with_capacity(db, 500); // 500 entries per type
     /// ```
-    pub fn with_capacity(db: Arc<Database>, max_entries_per_type: usize) -> Self {
+    ///
+    /// **Plan 065 Phase 3**: Now accepts Arc<RwLock<Database>>
+    pub fn with_capacity(db: Arc<RwLock<Database>>, max_entries_per_type: usize) -> Self {
         Self {
             db,
             type_cache: DashMap::new(),
@@ -204,6 +211,8 @@ impl QueryEngine {
     /// 3. If cache valid, downcast and return cached result
     /// 4. Otherwise, execute the query, track dependencies, and cache the result
     /// 5. Phase 3.6: Evict LRU entries if cache exceeds capacity
+    ///
+    /// **Plan 065 Phase 3**: Acquires read lock on Database before executing queries
     ///
     /// # Type Parameters
     ///
@@ -252,7 +261,9 @@ impl QueryEngine {
         }
 
         // Cache miss or invalid - execute query
-        let result = query.execute(&self.db)?;
+        // **Plan 065 Phase 3**: Acquire read lock on Database
+        let db_read = self.db.read().unwrap();
+        let result = query.execute(&*db_read)?;
 
         // Phase 3.4: Track dependencies and cache the result
         let dependencies = self.extract_dependencies::<Q>(query);
@@ -272,24 +283,29 @@ impl QueryEngine {
 
     /// Check if a cache entry is still valid
     ///
+    /// **Plan 065 Phase 3**: Acquires read lock on Database
+    ///
     /// Phase 3.4: Validate dependencies by checking:
     /// 1. Fragments are not marked as dirty
     /// 2. Fragment interface hashes haven't changed (熔断)
     fn is_cache_valid(&self, entry: &CacheEntry) -> bool {
+        // **Plan 065 Phase 3**: Acquire read lock on Database
+        let db = self.db.read().unwrap();
+
         for dep in &entry.dependencies {
             // Check if fragment is marked as dirty
             let file_id = crate::database::FileId::new(dep.file_id);
-            if self.db.is_marked_dirty(file_id) {
+            if db.is_marked_dirty(file_id) {
                 return false;
             }
 
             // Phase 3.4: Check if interface hash changed (熔断validation)
             // We need to find the fragment by file_id:offset to check its current hash
-            let frag_id = self.find_fragment_by_offset(file_id, dep.offset);
+            let frag_id = Self::find_fragment_by_offset_with_db(&db, file_id, dep.offset);
 
             if let Some(frag_id) = frag_id {
                 // Get current interface hash from database
-                if let Some(current_hash) = self.db.get_fragment_iface_hash(&frag_id) {
+                if let Some(current_hash) = db.get_fragment_iface_hash(&frag_id) {
                     // Compare with cached hash
                     if current_hash != dep.iface_hash {
                         // Interface hash changed - signature changed,熔断FAILED
@@ -311,19 +327,22 @@ impl QueryEngine {
 
     /// Find a fragment by file ID and offset
     ///
+    /// **Plan 065 Phase 3**: Static method that takes a &Database reference
+    ///
     /// Phase 3.4: Enable fragment lookup for熔断hash checking
     ///
     /// # Arguments
     ///
+    /// * `db` - The database to query (acquired read lock)
     /// * `file_id` - The file ID
     /// * `offset` - The fragment offset within the file
     ///
     /// # Returns
     ///
     /// The FragId if found, None otherwise
-    fn find_fragment_by_offset(&self, file_id: crate::database::FileId, offset: usize) -> Option<crate::database::FragId> {
+    fn find_fragment_by_offset_with_db(db: &Database, file_id: crate::database::FileId, offset: usize) -> Option<crate::database::FragId> {
         // Get all fragments in the file
-        let frag_ids = self.db.get_fragments_in_file(file_id);
+        let frag_ids = db.get_fragments_in_file(file_id);
 
         // Find the fragment with matching offset
         for frag_id in frag_ids {
@@ -337,6 +356,8 @@ impl QueryEngine {
 
     /// Extract fragment dependencies from a query
     ///
+    /// **Plan 065 Phase 3**: Acquires read lock on Database
+    ///
     /// Phase 3.4: Determine which fragments this query depends on.
     /// This is used for cache invalidation.
     ///
@@ -347,6 +368,9 @@ impl QueryEngine {
 
         // Extract dependencies based on query type
         let type_name = std::any::type_name::<Q>();
+
+        // **Plan 065 Phase 3**: Acquire read lock on Database
+        let db = self.db.read().unwrap();
 
         // GetTypeQuery: Depends on fragments that define the symbol
         if type_name.contains("GetTypeQuery") {
@@ -359,7 +383,7 @@ impl QueryEngine {
             // Extract frag_id from query using downcast
             if let Some(bc_query) = (query as &dyn std::any::Any).downcast_ref::<GetBytecodeQuery>() {
                 let frag_id = bc_query.frag_id.clone();
-                if let Some(hash) = self.db.get_fragment_iface_hash(&frag_id) {
+                if let Some(hash) = db.get_fragment_iface_hash(&frag_id) {
                     deps.push(FragDep::new(frag_id, hash));
                 }
             }
@@ -381,10 +405,13 @@ impl QueryEngine {
 
     /// Execute a query without caching
     ///
+    /// **Plan 065 Phase 3**: Acquires read lock on Database
+    ///
     /// Use this for queries that shouldn't be cached (e.g., very large results,
     /// or queries that change frequently).
     pub fn execute_uncached<Q: Query>(&self, query: &Q) -> AutoResult<Q::Output> {
-        query.execute(&self.db)
+        let db = self.db.read().unwrap();
+        query.execute(&*db)
     }
 
     /// Clear all cached results
@@ -500,13 +527,10 @@ impl QueryEngine {
         }
     }
 
-    /// Get the underlying database (for direct access)
-    pub fn database(&self) -> &Database {
-        &self.db
-    }
-
-    /// Get the underlying database as Arc (for sharing)
-    pub fn database_arc(&self) -> Arc<Database> {
+    /// Get the underlying database as Arc<RwLock<Database>> (for sharing)
+    ///
+    /// **Plan 065 Phase 3**: Returns Arc<RwLock<Database>> instead of Arc<Database>
+    pub fn database_arc(&self) -> Arc<RwLock<Database>> {
         Arc::clone(&self.db)
     }
 }
@@ -560,6 +584,31 @@ impl Query for GetBytecodeQuery {
 
     fn cache_key(&self) -> String {
         format!("bytecode:{}:{}", self.frag_id.file.as_u64(), self.frag_id.offset)
+    }
+}
+
+/// Query to get evaluated result for a fragment
+///
+/// **Plan 065 Phase 3**: Caches the final Value result for a fragment.
+/// This enables incremental execution where unchanged functions return cached results.
+#[derive(Debug, Clone)]
+pub struct EvalResultQuery {
+    /// The fragment ID to query
+    pub frag_id: crate::database::FragId,
+}
+
+impl Query for EvalResultQuery {
+    type Output = Option<auto_val::Value>;
+
+    fn execute(&self, _db: &Database) -> AutoResult<Self::Output> {
+        // For now, we don't store evaluation results in the Database
+        // This is a placeholder for future caching of evaluated results
+        // Phase 3 enhancement: Store and retrieve cached evaluation results
+        Ok(None)
+    }
+
+    fn cache_key(&self) -> String {
+        format!("eval_result:{}:{}", self.frag_id.file.as_u64(), self.frag_id.offset)
     }
 }
 
@@ -916,7 +965,7 @@ mod tests {
 
     #[test]
     fn test_query_engine_new() {
-        let db = Arc::new(Database::new());
+        let db = Arc::new(RwLock::new(Database::new()));
         let engine = QueryEngine::new(db);
 
         // Should have empty cache
@@ -927,7 +976,7 @@ mod tests {
 
     #[test]
     fn test_get_type_query_miss() {
-        let db = Arc::new(Database::new());
+        let db = Arc::new(RwLock::new(Database::new()));
         let engine = QueryEngine::new(db);
 
         let symbol_id = Sid::from("test_function");
@@ -945,7 +994,7 @@ mod tests {
         // Set a type in the database
         db.set_type(symbol_id.clone(), Type::Int);
 
-        let db = Arc::new(db);
+        let db = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db);
 
         // Execute query
@@ -960,7 +1009,7 @@ mod tests {
 
     #[test]
     fn test_clear_cache() {
-        let db = Arc::new(Database::new());
+        let db = Arc::new(RwLock::new(Database::new()));
         let engine = QueryEngine::new(db);
 
         // Create a cache entry by executing a query
@@ -1002,7 +1051,7 @@ mod tests {
             )),
         );
 
-        let db = Arc::new(db);
+        let db = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db);
 
         let query = GetFunctionsQuery { file_id };
@@ -1055,7 +1104,7 @@ mod tests {
             )),
         );
 
-        let db = Arc::new(db);
+        let db = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db);
 
         let query = GetFragmentsQuery { file_id };
@@ -1066,7 +1115,7 @@ mod tests {
 
     #[test]
     fn test_get_file_deps_query() {
-        let db = Arc::new(Database::new());
+        let db = Arc::new(RwLock::new(Database::new()));
         let engine = QueryEngine::new(db);
 
         let file_id = FileId::new(42);
@@ -1083,7 +1132,7 @@ mod tests {
 
         db.set_type(symbol_id.clone(), Type::Int);
 
-        let db = Arc::new(db);
+        let db = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db);
 
         // Execute without caching
@@ -1130,7 +1179,7 @@ mod tests {
         db.set_fragment_iface_hash(frag_id.clone(), iface_hash);
 
         // Create Arc for engine, but keep mutable db for testing
-        let db_arc = Arc::new(db);
+        let db_arc = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db_arc);
 
         // Note: Can't test dirty flag marking here since db was moved into Arc
@@ -1179,7 +1228,7 @@ mod tests {
         );
         db.set_fragment_iface_hash(frag_id.clone(), iface_hash_v1);
 
-        let db_arc = Arc::new(db);
+        let db_arc = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db_arc);
 
         // Execute query to populate cache
@@ -1240,7 +1289,7 @@ mod tests {
         );
         db.set_fragment_iface_hash(frag_id.clone(), iface_hash_v1);
 
-        let db_arc = Arc::new(db);
+        let db_arc = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db_arc);
 
         // Execute query to populate cache
@@ -1304,7 +1353,7 @@ mod tests {
         );
         db.set_fragment_iface_hash(frag_id.clone(), iface_hash);
 
-        let db = Arc::new(db);
+        let db = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db);
 
         // Execute query to populate cache
@@ -1331,7 +1380,7 @@ mod tests {
     fn test_infer_expr_type_query_int_literal() {
         use crate::ast::Expr;
 
-        let db = Arc::new(Database::new());
+        let db = Arc::new(RwLock::new(Database::new()));
         let engine = QueryEngine::new(db);
 
         // Test: Infer type of integer literal
@@ -1349,7 +1398,7 @@ mod tests {
     fn test_infer_expr_type_query_with_binding() {
         use crate::ast::{Expr, Name};
 
-        let db = Arc::new(Database::new());
+        let db = Arc::new(RwLock::new(Database::new()));
         let engine = QueryEngine::new(db);
 
         // Test: Infer type of variable reference
@@ -1368,7 +1417,7 @@ mod tests {
 
     #[test]
     fn test_get_symbol_location_query() {
-        let db = Arc::new(Database::new());
+        let db = Arc::new(RwLock::new(Database::new()));
         let engine = QueryEngine::new(db);
 
         // Test with symbol that doesn't exist
@@ -1426,7 +1475,7 @@ mod tests {
             )),
         );
 
-        let db = Arc::new(db);
+        let db = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db);
 
         // Query for completions with prefix "f"
@@ -1471,7 +1520,7 @@ mod tests {
             )),
         );
 
-        let db = Arc::new(db);
+        let db = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db);
 
         let query = FindReferencesQuery {
@@ -1490,7 +1539,7 @@ mod tests {
 
     #[test]
     fn test_query_engine_with_capacity() {
-        let db = Arc::new(Database::new());
+        let db = Arc::new(RwLock::new(Database::new()));
         let engine = QueryEngine::with_capacity(db, 10); // Small capacity
 
         // Should create engine with custom capacity
@@ -1530,7 +1579,7 @@ mod tests {
             );
         }
 
-        let db = Arc::new(db);
+        let db = Arc::new(RwLock::new(db));
         // Create engine with capacity of 3 (smaller than number of functions)
         let engine = QueryEngine::with_capacity(db, 3);
 

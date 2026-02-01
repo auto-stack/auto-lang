@@ -27,15 +27,17 @@ use std::sync::RwLock;
 /// compile source code with incremental support.
 ///
 /// Phase 4.5: Database is now wrapped in Arc<RwLock<>> for sharing with Evaler
-/// Phase 3: QueryEngine integration deferred (needs Arc<Database> vs Arc<RwLock<Database>> reconciliation)
+/// Phase 3 (Plan 065): QueryEngine integration complete (now accepts Arc<RwLock<Database>>)
 pub struct CompileSession {
     db: Arc<RwLock<Database>>,
+    query_engine: Option<crate::query::QueryEngine>,
 }
 
 impl Clone for CompileSession {
     fn clone(&self) -> Self {
         Self {
             db: self.db.clone(),
+            query_engine: None, // QueryEngine is recreated on-demand after clone
         }
     }
 }
@@ -43,8 +45,10 @@ impl Clone for CompileSession {
 impl CompileSession {
     /// Create a new compilation session
     pub fn new() -> Self {
+        let db = Arc::new(RwLock::new(Database::new()));
         Self {
-            db: Arc::new(RwLock::new(Database::new())),
+            db,
+            query_engine: None,
         }
     }
 
@@ -61,6 +65,23 @@ impl CompileSession {
     /// Get mutable access to the database (for advanced usage)
     pub fn database_mut(&self) -> std::sync::LockResult<std::sync::RwLockWriteGuard<Database>> {
         self.db.write()
+    }
+
+    /// Get or create the QueryEngine for this session
+    ///
+    /// **Plan 065 Phase 3**: QueryEngine is created on-demand and reused across calls
+    pub fn query_engine(&mut self) -> &mut crate::query::QueryEngine {
+        if self.query_engine.is_none() {
+            self.query_engine = Some(crate::query::QueryEngine::new(self.db.clone()));
+        }
+        self.query_engine.as_mut().unwrap()
+    }
+
+    /// Get the QueryEngine if it exists
+    ///
+    /// **Plan 065 Phase 3**: Returns None if QueryEngine hasn't been created yet
+    pub fn get_query_engine(&self) -> Option<&crate::query::QueryEngine> {
+        self.query_engine.as_ref()
     }
 
     /// Compile source code and index it into the database
@@ -208,8 +229,11 @@ impl CompileSession {
     }
 
     /// Clear all data from the database
+    ///
+    /// **Plan 065 Phase 3**: Also resets QueryEngine to clear cache
     pub fn clear(&mut self) {
         self.db = Arc::new(RwLock::new(Database::new()));
+        self.query_engine = None; // Reset QueryEngine to clear cache
     }
 
     /// Get statistics about the database
