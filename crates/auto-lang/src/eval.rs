@@ -142,16 +142,34 @@ impl Evaler {
 
     /// Get reference to the Universe (for VM modules during migration)
     ///
-    /// **Phase 4.6**: Used by VM modules to access add_vmref(), drop_vmref(), etc.
-    /// **Future**: Will be removed once VM references are managed by ExecutionEngine.
+    /// **Phase 4.5**: TEMPORARY API - Part of hybrid architecture
+    ///
+    /// This getter provides access to the legacy Universe during migration.
+    /// The hybrid approach uses:
+    /// - **Database** (compile-time): Symbols, types, scopes
+    /// - **ExecutionEngine** (runtime): Values, VM refs, call stack
+    /// - **Universe** (legacy): Fallback for features not yet migrated
+    ///
+    /// **Usage during migration**:
+    /// - Bridge methods use Universe as fallback when db/engine are None
+    /// - VM modules use this for VM reference management (Phase 4.7 deferred)
+    /// - Diagnostic/debug code can use this temporarily
+    ///
+    /// **Future**: Will be removed once all features are migrated to Database/ExecutionEngine
+    /// **See**: Plan 064 Phase 4.5.3 for hybrid architecture documentation
     pub fn universe(&self) -> &Rc<RefCell<Universe>> {
         &self.universe
     }
 
     /// Get mutable reference to the Universe (for VM modules during migration)
     ///
-    /// **Phase 4.6**: Used by VM modules to access add_vmref(), drop_vmref(), etc.
-    /// **Future**: Will be removed once VM references are managed by ExecutionEngine.
+    /// **Phase 4.5**: TEMPORARY API - Part of hybrid architecture
+    ///
+    /// This getter provides mutable access to the legacy Universe during migration.
+    /// See `universe()` documentation for details on the hybrid approach.
+    ///
+    /// **Future**: Will be removed once all features are migrated to Database/ExecutionEngine
+    /// **See**: Plan 064 Phase 4.5.3 for hybrid architecture documentation
     pub fn universe_mut(&mut self) -> &mut Rc<RefCell<Universe>> {
         &mut self.universe
     }

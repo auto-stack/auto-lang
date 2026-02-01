@@ -688,26 +688,6 @@ impl Universe {
         self.builtins.get(name).cloned()
     }
 
-    #[allow(dead_code)]
-    fn update_obj_recurse(&mut self, _name: &str, _f: impl FnOnce(&mut Obj)) {
-        // DEPRECATED: Use update_nested instead
-        // This is a no-op during migration
-    }
-
-    pub fn update_obj(&mut self, _name: &str, _f: impl FnOnce(&mut Obj)) {
-        // DEPRECATED: Use update_nested instead
-        eprintln!("Warning: update_obj is deprecated. Use update_nested instead.");
-    }
-
-    fn update_array_recurse(&mut self, _name: &str, _idx: Value, _val: Value) {
-        // DEPRECATED: Use update_nested instead
-        eprintln!("Warning: update_array_recurse is deprecated. Use update_nested instead.");
-    }
-
-    pub fn update_array(&mut self, name: &str, idx: Value, val: Value) {
-        self.update_array_recurse(name, idx, val);
-    }
-
     fn lookup_val_mut_recurse(&mut self, name: &str, sid: &Sid) -> Option<&mut Value> {
         // DEPRECATED: Use get_value_mut with ValueID instead
         if !self.scopes.contains_key(sid) {
