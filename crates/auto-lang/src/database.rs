@@ -111,6 +111,30 @@ pub enum FragKind {
 }
 
 // =============================================================================
+// Artifact Tracking (Phase 066: Incremental Transpilation)
+// =============================================================================
+
+/// Type of transpilation artifact
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArtifactType {
+    CSource,
+    CHeader,
+    RustSource,
+}
+
+/// Transpilation artifact (generated code)
+///
+/// Stores metadata about transpiled output files for caching.
+/// Phase 066: Added for C transpiler code_paks support.
+#[derive(Debug, Clone)]
+pub struct Artifact {
+    pub frag_id: FragId,
+    pub artifact_type: ArtifactType,
+    pub path: std::path::PathBuf,
+    pub content_hash: u64,
+}
+
+// =============================================================================
 // Dependency Graph (Phase 1: Placeholder, Phase 2: File-level, Phase 3: Fragment-level)
 // =============================================================================
 
@@ -277,6 +301,13 @@ pub struct Database {
     code_paks: HashMap<Sid, CodePak>,
 
     // =========================================================================
+    // PHASE 066: ARTIFACT TRACKING (for incremental transpilation)
+    // =========================================================================
+
+    // Transpilation artifacts (generated code files)
+    artifacts: HashMap<FragId, Artifact>,
+
+    // =========================================================================
     // LAYER 2: CACHE (computed by Query Engine)
     // =========================================================================
 
@@ -325,6 +356,8 @@ impl Database {
             lambda_counter: 0,
             cur_spot: SID_PATH_GLOBAL.clone(),
             code_paks: HashMap::new(),
+            // Phase 066: Artifact tracking
+            artifacts: HashMap::new(),
         }
     }
 
@@ -669,6 +702,54 @@ impl Database {
             .collect()
     }
 
+    /// Get all fragments for a file (alias for get_fragments_in_file)
+    ///
+    /// Phase 066: Added for transpiler incremental compilation
+    pub fn get_fragments_by_file(&self, file_id: FileId) -> Vec<FragId> {
+        self.get_fragments_in_file(file_id)
+    }
+
+    /// Check if a fragment is dirty (needs re-transpilation)
+    ///
+    /// A fragment is dirty if:
+    /// - Its file is marked as dirty
+    /// - Its file's hash has changed
+    ///
+    /// Phase 066: Added for transpiler incremental compilation
+    pub fn is_fragment_dirty(&self, frag_id: &FragId) -> bool {
+        if let Some(meta) = self.frag_meta.get(frag_id) {
+            self.is_file_dirty(meta.file_id)
+        } else {
+            false
+        }
+    }
+
+    /// Mark a fragment as transpiled (clear dirty flag)
+    ///
+    /// This clears the dirty flag for the fragment's file
+    /// after successful transpilation.
+    ///
+    /// Phase 066: Added for transpiler incremental compilation
+    pub fn mark_transpiled(&mut self, frag_id: &FragId) {
+        if let Some(meta) = self.frag_meta.get(frag_id) {
+            self.clear_dirty_flag(meta.file_id);
+        }
+    }
+
+    /// Get all dirty fragments that need re-transpilation
+    ///
+    /// Returns fragments whose files are marked as dirty or have changed.
+    ///
+    /// Phase 066: Added for transpiler incremental compilation
+    pub fn get_dirty_fragments(&self) -> Vec<FragId> {
+        let dirty_files = self.get_dirty_files();
+        self.frag_meta
+            .iter()
+            .filter(|(_, meta)| dirty_files.contains(&meta.file_id))
+            .map(|(frag_id, _)| frag_id.clone())
+            .collect()
+    }
+
     /// Remove a fragment
     pub fn remove_fragment(&mut self, frag_id: &FragId) {
         self.frag_asts.remove(frag_id);
@@ -972,6 +1053,32 @@ impl Database {
         }
 
         dirty.into_iter().collect()
+    }
+
+    // =========================================================================
+    // Phase 066: Artifact Management (Incremental Transpilation)
+    // =========================================================================
+
+    /// Insert a transpilation artifact
+    ///
+    /// Stores metadata about a transpiled output file for caching.
+    pub fn insert_artifact(&mut self, artifact: Artifact) {
+        self.artifacts.insert(artifact.frag_id.clone(), artifact);
+    }
+
+    /// Get an artifact by fragment ID
+    pub fn get_artifact(&self, frag_id: &FragId) -> Option<&Artifact> {
+        self.artifacts.get(frag_id)
+    }
+
+    /// Remove an artifact
+    pub fn remove_artifact(&mut self, frag_id: &FragId) -> Option<Artifact> {
+        self.artifacts.remove(frag_id)
+    }
+
+    /// Get all artifacts
+    pub fn get_all_artifacts(&self) -> &HashMap<FragId, Artifact> {
+        &self.artifacts
     }
 }
 
@@ -1762,5 +1869,316 @@ mod tests {
         assert!(retrieved.symbols.contains_key("myfunc"));
         assert!(retrieved.types.contains_key("x"));
         assert!(retrieved.types.contains_key("mytype"));
+    }
+
+    // =========================================================================
+    // Phase 066: Fragment Query & Artifact Tests
+    // =========================================================================
+
+    #[test]
+    fn test_get_fragments_by_file() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Create some fragments
+        let frag_span = FragSpan {
+            offset: 0,
+            length: 0,
+            line: 1,
+            column: 1,
+        };
+
+        let frag1 = db.insert_fragment(
+            AutoStr::from("foo"),
+            file_id,
+            frag_span,
+            FragKind::Function,
+            Arc::new(Fn::new(
+                crate::ast::FnKind::Function,
+                AutoStr::from("foo"),
+                None,
+                vec![],
+                crate::ast::Body::new(),
+                Type::Int,
+            )),
+        );
+
+        let frag2 = db.insert_fragment(
+            AutoStr::from("bar"),
+            file_id,
+            frag_span,
+            FragKind::Function,
+            Arc::new(Fn::new(
+                crate::ast::FnKind::Function,
+                AutoStr::from("bar"),
+                None,
+                vec![],
+                crate::ast::Body::new(),
+                Type::Int,
+            )),
+        );
+
+        // Get fragments by file
+        let frags = db.get_fragments_by_file(file_id);
+        assert_eq!(frags.len(), 2);
+        assert!(frags.contains(&frag1));
+        assert!(frags.contains(&frag2));
+    }
+
+    #[test]
+    fn test_is_fragment_dirty() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Create a fragment
+        let frag_span = FragSpan {
+            offset: 0,
+            length: 0,
+            line: 1,
+            column: 1,
+        };
+
+        let frag_id = db.insert_fragment(
+            AutoStr::from("main"),
+            file_id,
+            frag_span,
+            FragKind::Function,
+            Arc::new(Fn::new(
+                crate::ast::FnKind::Function,
+                AutoStr::from("main"),
+                None,
+                vec![],
+                crate::ast::Body::new(),
+                Type::Int,
+            )),
+        );
+
+        // New file -> fragment is dirty
+        assert!(db.is_fragment_dirty(&frag_id));
+
+        // Hash the file
+        db.hash_file(file_id);
+        assert!(!db.is_fragment_dirty(&frag_id));
+
+        // Mark file as dirty
+        db.mark_file_dirty(file_id);
+        assert!(db.is_fragment_dirty(&frag_id));
+    }
+
+    #[test]
+    fn test_mark_transpiled() {
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Create a fragment
+        let frag_span = FragSpan {
+            offset: 0,
+            length: 0,
+            line: 1,
+            column: 1,
+        };
+
+        let frag_id = db.insert_fragment(
+            AutoStr::from("main"),
+            file_id,
+            frag_span,
+            FragKind::Function,
+            Arc::new(Fn::new(
+                crate::ast::FnKind::Function,
+                AutoStr::from("main"),
+                None,
+                vec![],
+                crate::ast::Body::new(),
+                Type::Int,
+            )),
+        );
+
+        // Mark file as dirty
+        db.mark_file_dirty(file_id);
+        assert!(db.is_marked_dirty(file_id));
+
+        // Mark fragment as transpiled (should clear dirty flag)
+        db.mark_transpiled(&frag_id);
+        assert!(!db.is_marked_dirty(file_id));
+    }
+
+    #[test]
+    fn test_get_dirty_fragments() {
+        let mut db = Database::new();
+
+        // Create two files
+        let file1 = db.insert_source("test1.at", AutoStr::from("fn foo() int { 1 }"));
+        let file2 = db.insert_source("test2.at", AutoStr::from("fn bar() int { 2 }"));
+
+        // Hash both files (so they're not dirty)
+        db.hash_file(file1);
+        db.hash_file(file2);
+
+        // Create fragments in both files
+        let frag_span = FragSpan {
+            offset: 0,
+            length: 0,
+            line: 1,
+            column: 1,
+        };
+
+        let frag1 = db.insert_fragment(
+            AutoStr::from("foo"),
+            file1,
+            frag_span,
+            FragKind::Function,
+            Arc::new(Fn::new(
+                crate::ast::FnKind::Function,
+                AutoStr::from("foo"),
+                None,
+                vec![],
+                crate::ast::Body::new(),
+                Type::Int,
+            )),
+        );
+
+        let frag2 = db.insert_fragment(
+            AutoStr::from("bar"),
+            file2,
+            frag_span,
+            FragKind::Function,
+            Arc::new(Fn::new(
+                crate::ast::FnKind::Function,
+                AutoStr::from("bar"),
+                None,
+                vec![],
+                crate::ast::Body::new(),
+                Type::Int,
+            )),
+        );
+
+        // No dirty fragments initially
+        let dirty_frags = db.get_dirty_fragments();
+        assert_eq!(dirty_frags.len(), 0);
+
+        // Mark file1 as dirty
+        db.mark_file_dirty(file1);
+
+        // Now only frag1 should be dirty
+        let dirty_frags = db.get_dirty_fragments();
+        assert_eq!(dirty_frags.len(), 1);
+        assert!(dirty_frags.contains(&frag1));
+        assert!(!dirty_frags.contains(&frag2));
+    }
+
+    #[test]
+    fn test_artifact_management() {
+        use std::path::PathBuf;
+
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Create a fragment
+        let frag_span = FragSpan {
+            offset: 0,
+            length: 0,
+            line: 1,
+            column: 1,
+        };
+
+        let frag_id = db.insert_fragment(
+            AutoStr::from("main"),
+            file_id,
+            frag_span,
+            FragKind::Function,
+            Arc::new(Fn::new(
+                crate::ast::FnKind::Function,
+                AutoStr::from("main"),
+                None,
+                vec![],
+                crate::ast::Body::new(),
+                Type::Int,
+            )),
+        );
+
+        // Insert artifact
+        let artifact = Artifact {
+            frag_id: frag_id.clone(),
+            artifact_type: ArtifactType::CSource,
+            path: PathBuf::from("test_generated.c"),
+            content_hash: 0x1234,
+        };
+        db.insert_artifact(artifact);
+
+        // Get artifact
+        let retrieved = db.get_artifact(&frag_id);
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().artifact_type, ArtifactType::CSource);
+
+        // Remove artifact
+        db.remove_artifact(&frag_id);
+        assert!(db.get_artifact(&frag_id).is_none());
+    }
+
+    #[test]
+    fn test_get_all_artifacts() {
+        use std::path::PathBuf;
+
+        let mut db = Database::new();
+        let file_id = db.insert_source("test.at", AutoStr::from("fn main() int { 42 }"));
+
+        // Create two fragments
+        let frag_span = FragSpan {
+            offset: 0,
+            length: 0,
+            line: 1,
+            column: 1,
+        };
+
+        let frag1 = db.insert_fragment(
+            AutoStr::from("foo"),
+            file_id,
+            frag_span,
+            FragKind::Function,
+            Arc::new(Fn::new(
+                crate::ast::FnKind::Function,
+                AutoStr::from("foo"),
+                None,
+                vec![],
+                crate::ast::Body::new(),
+                Type::Int,
+            )),
+        );
+
+        let frag2 = db.insert_fragment(
+            AutoStr::from("bar"),
+            file_id,
+            frag_span,
+            FragKind::Function,
+            Arc::new(Fn::new(
+                crate::ast::FnKind::Function,
+                AutoStr::from("bar"),
+                None,
+                vec![],
+                crate::ast::Body::new(),
+                Type::Int,
+            )),
+        );
+
+        // Insert artifacts
+        db.insert_artifact(Artifact {
+            frag_id: frag1.clone(),
+            artifact_type: ArtifactType::CSource,
+            path: PathBuf::from("foo.c"),
+            content_hash: 0x1111,
+        });
+
+        db.insert_artifact(Artifact {
+            frag_id: frag2.clone(),
+            artifact_type: ArtifactType::RustSource,
+            path: PathBuf::from("bar.rs"),
+            content_hash: 0x2222,
+        });
+
+        // Get all artifacts
+        let all_artifacts = db.get_all_artifacts();
+        assert_eq!(all_artifacts.len(), 2);
+        assert!(all_artifacts.contains_key(&frag1));
+        assert!(all_artifacts.contains_key(&frag2));
     }
 }

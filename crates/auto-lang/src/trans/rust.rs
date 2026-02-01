@@ -1,12 +1,15 @@
 use super::{Sink, Trans};
 use crate::ast::*;
 use crate::parser::Parser;
+use crate::database::Database;
 use crate::universe::Universe;
-use crate::AutoResult;
+use crate::{AutoResult, Rc};
 use auto_val::{shared, Shared};
 use auto_val::{AutoStr, Op};
 use std::collections::HashSet;
 use std::io::Write;
+use std::sync::Arc;
+use std::sync::RwLock;
 
 pub enum RustEdition {
     E2021,
@@ -16,8 +19,17 @@ pub enum RustEdition {
 pub struct RustTrans {
     indent: usize,
     uses: HashSet<AutoStr>,
-    scope: Shared<crate::universe::Universe>,
+
+    // Hybrid: Support both Universe (deprecated) and Database (new)
+    // Phase 066: Migrating to Database-based architecture
+    scope: Option<Shared<crate::universe::Universe>>,     // Old (deprecated)
+    db: Option<Arc<RwLock<Database>>>,   // New (Phase 066)
+
     edition: RustEdition,
+
+    // Transpiler internal state (not from Database or Universe)
+    current_fn: Option<AutoStr>,
+    current_scope: Option<crate::scope::Sid>,
 }
 
 impl RustTrans {
@@ -25,17 +37,103 @@ impl RustTrans {
         Self {
             indent: 0,
             uses: HashSet::new(),
-            scope: shared(crate::universe::Universe::default()),
+            scope: Some(shared(crate::universe::Universe::default())),  // Old (deprecated)
+            db: None,  // New (Phase 066)
             edition: RustEdition::E2021,
+            current_fn: None,
+            current_scope: None,
         }
     }
 
+    /// Create transpiler with Database (Phase 066: new API)
+    pub fn with_database(db: Arc<RwLock<Database>>) -> Self {
+        Self {
+            indent: 0,
+            uses: HashSet::new(),
+            scope: None,  // Database mode
+            db: Some(db),
+            edition: RustEdition::E2021,
+            current_fn: None,
+            current_scope: None,
+        }
+    }
+
+    #[deprecated(note = "Use with_database() instead (Phase 066)")]
     pub fn set_scope(&mut self, scope: Shared<crate::universe::Universe>) {
-        self.scope = scope;
+        self.scope = Some(scope);
+        self.db = None;  // Clear Database if set
     }
 
     pub fn set_edition(&mut self, edition: RustEdition) {
         self.edition = edition;
+    }
+
+    /// Get Database reference (Phase 066)
+    pub fn db(&self) -> Option<&Arc<RwLock<Database>>> {
+        self.db.as_ref()
+    }
+
+    // =========================================================================
+    // Phase 066: Unified Helper Methods (Universe or Database)
+    // =========================================================================
+
+    /// Check if a type is an enum (works with Universe or Database)
+    fn is_enum_type(&self, type_name: &AutoStr) -> bool {
+        if let Some(scope) = &self.scope {
+            // Old path: Universe
+            match scope.borrow().lookup_type(type_name) {
+                Type::Enum(_) => true,
+                _ => false,
+            }
+        } else if let Some(_db) = &self.db {
+            // New path: Database
+            // NOTE: TypeInfoStore doesn't store type kind (enum/struct/union)
+            // For transpilation purposes, assume false (conservative)
+            false
+        } else {
+            false
+        }
+    }
+
+    /// Look up metadata by name (works with Universe or Database)
+    /// Phase 066: Unified helper for Database/Universe access
+    fn lookup_meta(&self, name: &str) -> Option<Rc<crate::scope::Meta>> {
+        if let Some(scope) = &self.scope {
+            // Old path: Universe
+            scope.borrow().lookup_meta(name)
+        } else if let Some(db) = &self.db {
+            // New path: Database
+            if let Ok(db) = db.try_read() {
+                // Search through symbol tables for the symbol
+                for (_sid, table) in db.get_all_symbol_tables() {
+                    if let Some(meta) = table.symbols.get(name) {
+                        return Some(meta.clone());
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Look up type by name (works with Universe or Database)
+    /// Phase 066: Unified helper for Database/Universe access
+    fn lookup_type(&self, type_name: &AutoStr) -> Type {
+        if let Some(scope) = &self.scope {
+            // Old path: Universe
+            scope.borrow().lookup_type(type_name)
+        } else if let Some(db) = &self.db {
+            // New path: Database
+            // NOTE: TypeInfoStore doesn't store type kind (enum/struct/union)
+            // Return Type::Unknown for now (conservative approach)
+            // TODO: Enhance Database to store type metadata (enum/struct/union)
+            Type::Unknown
+        } else {
+            Type::Unknown
+        }
     }
 
     fn indent(&mut self) {
@@ -127,12 +225,8 @@ impl RustTrans {
         }
     }
 
-    fn is_enum_type(&self, type_name: &AutoStr) -> bool {
-        match self.scope.borrow().lookup_type(type_name) {
-            Type::Enum(_) => true,
-            _ => false,
-        }
-    }
+    // is_enum_type() moved to unified helper methods (line 83)
+    // Old implementation removed in Phase 066
 
     fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
         match expr {
@@ -398,7 +492,7 @@ impl RustTrans {
                     }
 
                     // Try to get type declaration to map positional args to field names
-                    let type_decl = self.scope.borrow().lookup_type(&node.name);
+                    let type_decl = self.lookup_type(&node.name);
 
                     for (i, arg) in node.args.args.iter().enumerate() {
                         match arg {
@@ -726,7 +820,7 @@ impl RustTrans {
         // Check if this is a struct construction call: Type(args)
         // If the callee name matches a type name, generate struct initialization syntax
         if let Expr::Ident(type_name) = call.name.as_ref() {
-            let type_decl = self.scope.borrow().lookup_type(type_name);
+            let type_decl = self.lookup_type(type_name);
             if !matches!(type_decl, Type::Unknown) {
                 // This is a struct construction: Type { field1: value1, ... }
                 return self.struct_init(type_name, &call.args, out);
@@ -756,7 +850,7 @@ impl RustTrans {
         write!(out, "{} {{ ", type_name)?;
 
         // Try to get type declaration to map positional args to field names
-        let type_decl = self.scope.borrow().lookup_type(type_name);
+        let type_decl = self.lookup_type(type_name);
 
         for (i, arg) in args.args.iter().enumerate() {
             match arg {
@@ -1092,9 +1186,13 @@ impl RustTrans {
 
         // Function body
         write!(sink.body, " ")?;
-        self.scope.borrow_mut().enter_fn(fn_decl.name.clone());
+        if let Some(scope) = &self.scope {
+            scope.borrow_mut().enter_fn(fn_decl.name.clone());
+        }
         self.body(&fn_decl.body, sink, &fn_decl.ret, "")?;
-        self.scope.borrow_mut().exit_fn();
+        if let Some(scope) = &self.scope {
+            scope.borrow_mut().exit_fn();
+        }
 
         Ok(())
     }
@@ -1628,7 +1726,7 @@ impl RustTrans {
             let member_name = delegation.member_name.clone();
 
             // Get the spec declaration - clone to avoid borrow issues
-            let spec_decl_clone = if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+            let spec_decl_clone = if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
                 if let crate::scope::Meta::Spec(spec_decl) = meta.as_ref() {
                     Some(spec_decl.clone())
                 } else {
@@ -1705,7 +1803,7 @@ impl RustTrans {
         if !type_decl.specs.is_empty() {
             // Collect spec declarations from scope
             let spec_decls: Vec<_> = type_decl.specs.iter().filter_map(|spec_name| {
-                if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+                if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
                     if let crate::scope::Meta::Spec(spec_decl) = meta.as_ref() {
                         Some(spec_decl.clone())
                     } else {
@@ -1942,6 +2040,51 @@ impl RustTrans {
             _ => false,
         }
     }
+
+    /// Incremental transpilation (Phase 066)
+    /// Only transpiles dirty fragments, caches results in Database
+    pub fn trans_incremental(
+        &mut self,
+        session: &mut crate::compile::CompileSession,
+        file_id: crate::database::FileId,
+    ) -> AutoResult<std::collections::HashMap<crate::database::FragId, String>> {
+        use std::collections::HashMap;
+
+        let db = session.db();
+
+        // Get dirty fragments for the file
+        let dirty_frags = {
+            let db_read = db.read().unwrap();
+            let all_frags = db_read.get_fragments_by_file(file_id);
+            all_frags.into_iter()
+                .filter(|frag| db_read.is_fragment_dirty(frag))
+                .collect::<Vec<_>>()
+        };
+
+        let mut results = HashMap::new();
+
+        for frag_id in dirty_frags {
+            let frag_ast = {
+                let db_read = db.read().unwrap();
+                db_read.get_fragment(&frag_id)
+            };
+
+            if let Some(fn_ast) = frag_ast {
+                // Transpile the function
+                let mut sink = Sink::new(AutoStr::from(format!("{:?}", frag_id)));
+                self.fn_decl(&fn_ast, &mut sink)?;
+                let output = String::from_utf8(sink.done()?.to_vec())
+                    .map_err(|e| format!("Invalid UTF-8: {}", e))?;
+
+                results.insert(frag_id.clone(), output);
+
+                // Mark as transpiled
+                db.write().unwrap().mark_transpiled(&frag_id);
+            }
+        }
+
+        Ok(results)
+    }
 }
 
 impl Trans for RustTrans {
@@ -2064,7 +2207,7 @@ pub fn transpile_rust(
 
     let mut out = Sink::new(name.clone());
     let mut transpiler = RustTrans::new(name);
-    transpiler.scope = parser.scope.clone();
+    transpiler.scope = Some(parser.scope.clone());
     transpiler.trans(ast, &mut out)?;
 
     Ok((out, parser.scope.clone()))

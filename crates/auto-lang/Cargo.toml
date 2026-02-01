@@ -32,3 +32,11 @@ auto-lang-macros = { path = "../auto-lang-macros" }
 dashmap = { workspace = true }
 blake3 = { workspace = true }
 bincode = { workspace = true }
+
+[dev-dependencies]
+criterion = "0.5"
+tempfile = "3"
+
+[[bench]]
+name = "incremental_transpile_bench"
+harness = false

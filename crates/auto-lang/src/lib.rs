@@ -274,6 +274,150 @@ pub fn trans_rust(path: &str) -> AutoResult<String> {
     Ok(format!("[trans] {} -> {}", path, rsname))
 }
 
+// =============================================================================
+// Phase 066: Incremental Transpilation API (with CompileSession)
+// =============================================================================
+
+/// Transpile to C with incremental compilation support
+///
+/// This function uses CompileSession to enable incremental compilation,
+/// caching results between calls for faster subsequent transpilations.
+///
+/// # Arguments
+/// * `session` - Mutable reference to CompileSession (maintains cache)
+/// * `path` - Path to the AutoLang source file
+///
+/// # Returns
+/// Ok(String) with success message indicating transpiled file names
+///
+/// # Example
+/// ```no_run
+/// use auto_lang::{trans_c_with_session, compile::CompileSession};
+///
+/// let mut session = CompileSession::new();
+/// let result = trans_c_with_session(&mut session, "test.at").unwrap();
+/// println!("{}", result);
+/// ```
+pub fn trans_c_with_session(
+    session: &mut CompileSession,
+    path: &str,
+) -> AutoResult<String> {
+    let code = std::fs::read_to_string(path)?;
+
+    // Compile source with incremental support
+    let frag_ids = session.compile_source(&code, path)?;
+
+    // Get file_id and Database
+    let db = session.db();
+    let file_id = {
+        let db_read = db.read().unwrap();
+        db_read.get_file_id_by_path(path)
+            .ok_or_else(|| format!("File not found in database: {}", path))?
+    };
+
+    // Create transpiler with Database
+    let mut trans = CTrans::with_database(db.clone());
+
+    // Perform incremental transpilation
+    let results = trans.trans_incremental_c(session, file_id)?;
+
+    // Merge results and write output files
+    let cname = path.replace(".at", ".c");
+    let hname = path.replace(".at", ".h");
+
+    let mut source_content = String::new();
+    let mut header_content = String::new();
+
+    // Merge results
+    for (_frag_id, (source, header)) in &results {
+        source_content.push_str(source);
+        header_content.push_str(header);
+    }
+
+    // Write output files
+    if !source_content.is_empty() {
+        std::fs::write(&cname, source_content)?;
+    }
+    if !header_content.is_empty() {
+        std::fs::write(&hname, header_content)?;
+    }
+
+    Ok(format!(
+        "[trans] {} -> {} ({} fragments, {} dirty, {} transpiled)",
+        path,
+        cname,
+        frag_ids.len(),
+        db.read().unwrap().get_dirty_fragments().len(),
+        results.len()
+    ))
+}
+
+/// Transpile to Rust with incremental compilation support
+///
+/// This function uses CompileSession to enable incremental compilation,
+/// caching results between calls for faster subsequent transpilations.
+///
+/// # Arguments
+/// * `session` - Mutable reference to CompileSession (maintains cache)
+/// * `path` - Path to the AutoLang source file
+///
+/// # Returns
+/// Ok(String) with success message indicating transpiled file names
+///
+/// # Example
+/// ```no_run
+/// use auto_lang::{trans_rust_with_session, compile::CompileSession};
+///
+/// let mut session = CompileSession::new();
+/// let result = trans_rust_with_session(&mut session, "test.at").unwrap();
+/// println!("{}", result);
+/// ```
+pub fn trans_rust_with_session(
+    session: &mut CompileSession,
+    path: &str,
+) -> AutoResult<String> {
+    let code = std::fs::read_to_string(path)?;
+
+    // Compile source with incremental support
+    let frag_ids = session.compile_source(&code, path)?;
+
+    // Get file_id and Database
+    let db = session.db();
+    let file_id = {
+        let db_read = db.read().unwrap();
+        db_read.get_file_id_by_path(path)
+            .ok_or_else(|| format!("File not found in database: {}", path))?
+    };
+
+    // Create transpiler with Database
+    let mut trans = crate::trans::rust::RustTrans::with_database(db.clone());
+
+    // Perform incremental transpilation
+    let results = trans.trans_incremental(session, file_id)?;
+
+    // Merge results and write output file
+    let rsname = path.replace(".at", ".rs");
+
+    let mut source_content = String::new();
+    for (_frag_id, source) in &results {
+        source_content.push_str(source);
+    }
+
+    // Write output file
+    if !source_content.is_empty() {
+        std::fs::write(&rsname, source_content)?;
+    }
+
+    Ok(format!(
+        "[trans] {} -> {} ({} fragments, {} dirty, {} transpiled)",
+        path,
+        rsname,
+        frag_ids.len(),
+        db.read().unwrap().get_dirty_fragments().len(),
+        results.len()
+    ))
+}
+
 /// Transpile AutoLang file to Python
 pub fn trans_python(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path)

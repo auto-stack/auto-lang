@@ -119,6 +119,11 @@ impl TypeInfoStore {
             Type::Tag(name) => self.types.get(name.as_str()).unwrap(),
         }
     }
+
+    /// Get TypeInfo by name (Phase 066: for Database/Transpiler integration)
+    pub fn get(&self, name: &str) -> Option<&TypeInfo> {
+        self.types.get(name)
+    }
 }
 
 fn type_info_any() -> TypeInfo {

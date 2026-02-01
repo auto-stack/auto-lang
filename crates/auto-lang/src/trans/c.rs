@@ -1,6 +1,7 @@
 use super::{Sink, ToStrError, Trans};
 use crate::ast::*;
 use crate::ast::{ArrayType, Type};
+use crate::database::Database;
 use crate::error::attach_source;
 use crate::parser::Parser;
 use crate::scope::Meta;
@@ -16,6 +17,8 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::RwLock;
 
 pub enum OutKind {
     Header,
@@ -35,7 +38,9 @@ pub struct CTrans {
     pub header: Vec<u8>,
     uses_bool: bool,
     name: AutoStr,
-    scope: Shared<Universe>,
+    // Phase 066: Hybrid support for Universe (deprecated) and Database (new)
+    scope: Option<Shared<Universe>>,      // Old (deprecated)
+    db: Option<Arc<RwLock<Database>>>,    // New (Phase 066)
     last_out: OutKind,
     style: CStyle,
     // Plan 060: Closure support
@@ -60,7 +65,8 @@ impl CTrans {
             libs: HashSet::new(),
             header: Vec::new(),
             name,
-            scope: shared(Universe::default()),
+            scope: Some(shared(Universe::default())),
+            db: None,
             last_out: OutKind::None,
             style: CStyle::Modern,
             closure_counter: 0,
@@ -68,12 +74,147 @@ impl CTrans {
         }
     }
 
+    /// NEW: Create with Database (Phase 066)
+    pub fn with_database(db: Arc<RwLock<Database>>) -> Self {
+        Self {
+            indent: 0,
+            uses_bool: false,
+            libs: HashSet::new(),
+            header: Vec::new(),
+            name: "".into(),  // Will be set later
+            scope: None,  // Database mode
+            db: Some(db),
+            last_out: OutKind::None,
+            style: CStyle::Modern,
+            closure_counter: 0,
+            closures: Vec::new(),
+        }
+    }
+
+    /// DEPRECATED: Use with_database() instead (Phase 066)
+    #[deprecated(note = "Use with_database() instead (Phase 066)")]
     pub fn set_scope(&mut self, scope: Shared<Universe>) {
-        self.scope = scope;
+        self.scope = Some(scope);
+        self.db = None;
     }
 
     pub fn set_stayle(&mut self, style: CStyle) {
         self.style = style;
+    }
+
+    pub fn db(&self) -> Option<&Arc<RwLock<Database>>> {
+        self.db.as_ref()
+    }
+
+    // =========================================================================
+    // Phase 066: Unified Helper Methods (Database/Universe abstraction)
+    // =========================================================================
+
+    /// Look up metadata by name (works with Universe or Database)
+    fn lookup_meta(&self, name: &str) -> Option<Rc<Meta>> {
+        if let Some(scope) = &self.scope {
+            // Old path: Universe
+            scope.borrow().lookup_meta(name)
+        } else if let Some(db) = &self.db {
+            // New path: Database
+            if let Ok(db) = db.try_read() {
+                for (_sid, table) in db.get_all_symbol_tables() {
+                    if let Some(meta) = table.symbols.get(name) {
+                        return Some(meta.clone());
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Look up type by name (works with Universe or Database)
+    fn lookup_type(&self, type_name: &str) -> Type {
+        if let Some(scope) = &self.scope {
+            // Old path: Universe
+            scope.borrow().lookup_type(type_name)
+        } else if let Some(_db) = &self.db {
+            // New path: Database
+            // NOTE: TypeInfoStore doesn't store type kind (enum/struct/union)
+            // Return Type::Unknown for now (conservative approach)
+            Type::Unknown
+        } else {
+            Type::Unknown
+        }
+    }
+
+    /// Look up identifier type (works with Universe or Database)
+    fn lookup_ident_type(&self, name: &AutoStr) -> Option<Type> {
+        if let Some(scope) = &self.scope {
+            // Old path: Universe
+            scope.borrow().lookup_ident_type(name)
+        } else if let Some(_db) = &self.db {
+            // New path: Database
+            // TODO: Implement type lookup from Database symbol tables
+            None
+        } else {
+            None
+        }
+    }
+
+    /// Incremental transpilation (Phase 066)
+    /// Only transpiles dirty fragments, caches results in Database
+    pub fn trans_incremental_c(
+        &mut self,
+        session: &mut crate::compile::CompileSession,
+        file_id: crate::database::FileId,
+    ) -> AutoResult<std::collections::HashMap<crate::database::FragId, (String, String)>> {
+        use std::collections::HashMap;
+
+        let db = session.db();
+
+        // Get dirty fragments for the file
+        let dirty_frags = {
+            let db_read = db.read().unwrap();
+            let all_frags = db_read.get_fragments_by_file(file_id);
+            all_frags.into_iter()
+                .filter(|frag| db_read.is_fragment_dirty(frag))
+                .collect::<Vec<_>>()
+        };
+
+        let mut results = HashMap::new();
+
+        for frag_id in dirty_frags {
+            let frag_ast = {
+                let db_read = db.read().unwrap();
+                db_read.get_fragment(&frag_id)
+            };
+
+            if let Some(fn_ast) = frag_ast {
+                // Transpile the function (both .c source and .h header)
+                let mut sink = Sink::new(AutoStr::from(format!("{:?}", frag_id)));
+                self.fn_decl(&fn_ast, &mut sink)?;
+
+                let source = String::from_utf8(sink.done()?.to_vec())
+                    .map_err(|e| format!("Invalid UTF-8: {}", e))?;
+                let header = String::from_utf8(sink.header)
+                    .map_err(|e| format!("Invalid UTF-8 in header: {}", e))?;
+
+                results.insert(frag_id.clone(), (source, header));
+
+                // Store artifacts in Database
+                db.write().unwrap().insert_artifact(crate::database::Artifact {
+                    frag_id: frag_id.clone(),
+                    artifact_type: crate::database::ArtifactType::CSource,
+                    path: std::path::PathBuf::from(format!("{:?}_source.c", frag_id)),
+                    content_hash: 0,  // TODO: compute actual hash
+                });
+
+                // Mark as transpiled
+                db.write().unwrap().mark_transpiled(&frag_id);
+            }
+        }
+
+        Ok(results)
     }
 
     fn indent(&mut self) {
@@ -308,9 +449,13 @@ impl CTrans {
         }
 
         // Function body (drop the borrow before calling self.body)
-        self.scope.borrow_mut().enter_fn(method.name.clone());
+        if let Some(scope) = &self.scope {
+            scope.borrow_mut().enter_fn(method.name.clone());
+        }
         self.body(&method.body, sink, &method.ret, "", &method.name)?;
-        self.scope.borrow_mut().exit_fn();
+        if let Some(scope) = &self.scope {
+            scope.borrow_mut().exit_fn();
+        }
 
         // Write closing brace
         {
@@ -599,7 +744,7 @@ impl CTrans {
         // Generate delegation wrapper method declarations
         for delegation in type_decl.delegations.iter() {
             let spec_name = delegation.spec_name.clone();
-            if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+            if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
                 if let Meta::Spec(spec_decl) = meta.as_ref() {
                     for spec_method in spec_decl.methods.iter() {
                         // Return type
@@ -671,7 +816,7 @@ impl CTrans {
             let spec_name = delegation.spec_name.clone();
             let member_type_name = delegation.member_type.unique_name();
             let member_name = delegation.member_name.clone();
-            if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+            if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
                 if let Meta::Spec(spec_decl) = meta.as_ref() {
                     for spec_method in spec_decl.methods.iter() {
                         let out = &mut sink.body;
@@ -727,7 +872,7 @@ impl CTrans {
             .specs
             .iter()
             .filter_map(|spec_name| {
-                if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+                if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
                     if let Meta::Spec(spec_decl) = meta.as_ref() {
                         Some(spec_decl.clone())
                     } else {
@@ -750,11 +895,7 @@ impl CTrans {
             .spec_impls
             .iter()
             .filter_map(|spec_impl| {
-                if let Some(meta) = self
-                    .scope
-                    .borrow()
-                    .lookup_meta(spec_impl.spec_name.as_str())
-                {
+                if let Some(meta) = self.lookup_meta(spec_impl.spec_name.as_str()) {
                     if let Meta::Spec(spec_decl) = meta.as_ref() {
                         Some((spec_decl.clone(), spec_impl.type_args.clone()))
                     } else {
@@ -1471,7 +1612,7 @@ impl CTrans {
 
     fn node(&mut self, node: &Node, out: &mut impl Write) -> AutoResult<()> {
         // lookup type meta and find field name for each arg
-        let Some(typ) = self.scope.borrow().lookup_ident_type(&node.name) else {
+        let Some(typ) = self.lookup_ident_type(&node.name) else {
             return Err(format!("Type not found for node: {}", node.name).into());
         };
 
@@ -1678,13 +1819,17 @@ impl CTrans {
             }
             _ => {
                 out.write(b" ").to()?;
-                self.scope.borrow_mut().enter_fn(fn_decl.name.clone());
+                if let Some(scope) = &self.scope {
+                    scope.borrow_mut().enter_fn(fn_decl.name.clone());
+                }
                 if fn_decl.name == "main" {
                     self.body(&fn_decl.body, sink, &Type::Int, "", &fn_decl.name)?;
                 } else {
                     self.body(&fn_decl.body, sink, &fn_decl.ret, "", &fn_decl.name)?;
                 }
-                self.scope.borrow_mut().exit_fn();
+                if let Some(scope) = &self.scope {
+                    scope.borrow_mut().exit_fn();
+                }
             }
         }
 
@@ -1776,7 +1921,9 @@ impl CTrans {
         let has_return = !matches!(ret_type, Type::Void | Type::Unknown { .. });
         let ret_is_array = matches!(ret_type, Type::Array(_) | Type::Slice(_));
 
-        self.scope.borrow_mut().enter_scope();
+        if let Some(scope) = &self.scope {
+            scope.borrow_mut().enter_scope();
+        }
         sink.body.write(b"{\n")?;
         self.indent();
         if !insert.is_empty() {
@@ -1912,7 +2059,9 @@ impl CTrans {
         self.dedent();
         self.print_indent(&mut sink.body)?;
         sink.body.write(b"}")?;
-        self.scope.borrow_mut().exit_scope();
+        if let Some(scope) = &self.scope {
+            scope.borrow_mut().exit_scope();
+        }
         Ok(())
     }
 
@@ -2183,9 +2332,9 @@ impl CTrans {
         } else if matches!(store.ty, Type::Unknown) {
             if let Some(inferred_type) = self.infer_expr_type(&store.expr) {
                 // Update the scope with the inferred type for future lookups
-                self.scope
-                    .borrow_mut()
-                    .update_store_type(&store.name, inferred_type.clone());
+                if let Some(scope) = &self.scope {
+                    scope.borrow_mut().update_store_type(&store.name, inferred_type.clone());
+                }
 
                 let type_name = self.c_type_name(&inferred_type);
                 out.write(format!("{} {} = ", type_name, store.name).as_bytes())
@@ -2802,13 +2951,8 @@ impl CTrans {
         Ok(())
     }
 
-    fn lookup_meta(&self, ident: &AutoStr) -> Option<Rc<Meta>> {
-        self.scope.borrow().lookup_meta(ident)
-    }
-
-    fn lookup_type(&self, ident: &AutoStr) -> Type {
-        self.scope.borrow().lookup_type(ident)
-    }
+    // lookup_meta() and lookup_type() moved to unified helper methods (Phase 066)
+    // Old implementations removed - use the methods above that work with Database
 
     fn is_enum_type(&self, type_name: &AutoStr) -> bool {
         match self.lookup_type(type_name) {
@@ -3088,7 +3232,7 @@ impl CTrans {
         let mut delegation_impl: Option<(AutoStr, AutoStr)> = None;
         for delegation in decl.delegations.iter() {
             let spec_name = delegation.spec_name.clone();
-            if let Some(meta) = self.scope.borrow().lookup_meta(spec_name.as_str()) {
+            if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
                 if let Meta::Spec(spec_decl) = meta.as_ref() {
                     for spec_method in spec_decl.methods.iter() {
                         if spec_method.name == *method_name {
@@ -3203,11 +3347,7 @@ impl CTrans {
                     // Check if this is a delegation wrapper method
                     // Delegation wrappers should use lowercase method names
                     let is_delegation = decl.delegations.iter().any(|delegation| {
-                        if let Some(meta) = self
-                            .scope
-                            .borrow()
-                            .lookup_meta(delegation.spec_name.as_str())
-                        {
+                        if let Some(meta) = self.lookup_meta(delegation.spec_name.as_str()) {
                             if let Meta::Spec(spec_decl) = meta.as_ref() {
                                 spec_decl.methods.iter().any(|m| m.name == *method_name)
                             } else {
@@ -3801,23 +3941,32 @@ impl Trans for CTrans {
 
         // Transpile substituted generic tags from scope
         // These are tags created during parsing when generic instances are used (e.g., May<int> → May_int)
-        let scope = self.scope.clone();
-        let scope_borrowed = scope.borrow();
-        // Iterate through all scopes to find substituted tags
-        for (_sid, scope_data) in scope_borrowed.scopes.iter() {
-            for (name, meta) in scope_data.symbols.iter() {
-                if let Meta::Type(Type::Tag(tag)) = &**meta {
-                    // Check if this is a substituted tag (contains underscore and has no type params)
-                    let tag_borrowed = tag.borrow();
-                    if tag_borrowed.generic_params.is_empty() && name.contains('_') {
-                        // This is likely a substituted tag - transpile it
-                        drop(tag_borrowed);
-                        self.tag(&tag.borrow(), sink)?;
+        let tags_to_transpile = if let Some(scope) = &self.scope {
+            let scope_borrowed = scope.borrow();
+            let mut tags = Vec::new();
+            // Iterate through all scopes to find substituted tags
+            for (_sid, scope_data) in scope_borrowed.scopes.iter() {
+                for (name, meta) in scope_data.symbols.iter() {
+                    if let Meta::Type(Type::Tag(tag)) = &**meta {
+                        // Check if this is a substituted tag (contains underscore and has no type params)
+                        let tag_borrowed = tag.borrow();
+                        if tag_borrowed.generic_params.is_empty() && name.contains('_') {
+                            // This is likely a substituted tag - collect for transpilation
+                            tags.push(tag.clone());
+                        }
                     }
                 }
             }
+            drop(scope_borrowed);
+            tags
+        } else {
+            Vec::new()
+        };
+
+        // Transpile collected tags (outside of scope borrow)
+        for tag in tags_to_transpile {
+            self.tag(&tag.borrow(), sink)?;
         }
-        drop(scope_borrowed);
 
         // Main
         // TODO: check wether auto code already has a main function
@@ -3913,7 +4062,7 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Sh
     })?;
     let mut out = Sink::new(name.clone());
     let mut transpiler = CTrans::new(name);
-    transpiler.scope = parser.scope.clone();
+    transpiler.scope = Some(parser.scope.clone());
     transpiler.trans(ast, &mut out)?;
 
     let uni = parser.scope.clone();
@@ -3924,7 +4073,7 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Sh
         let mut out = Sink::new(name.clone());
         let mut transpiler = CTrans::new(sid.name().into());
         uni.borrow_mut().set_spot(sid.clone());
-        transpiler.scope = uni.clone();
+        transpiler.scope = Some(uni.clone());
         transpiler.trans(pak.ast.clone(), &mut out)?;
 
         let src = out.done()?.clone();
