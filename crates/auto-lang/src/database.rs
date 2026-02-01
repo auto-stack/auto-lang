@@ -659,6 +659,16 @@ impl Database {
             .collect()
     }
 
+    /// Get all fragment IDs in the database
+    ///
+    /// Phase 3.6: Added for advanced queries (find-references, completions)
+    pub fn all_fragment_ids(&self) -> Vec<FragId> {
+        self.frag_meta
+            .keys()
+            .cloned()
+            .collect()
+    }
+
     /// Remove a fragment
     pub fn remove_fragment(&mut self, frag_id: &FragId) {
         self.frag_asts.remove(frag_id);
