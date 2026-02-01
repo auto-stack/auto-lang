@@ -1205,6 +1205,13 @@ impl RustTrans {
                 Ok(true)
             }
 
+            Stmt::Return(expr) => {
+                sink.body.write(b"return ")?;
+                self.expr(expr, &mut sink.body)?;
+                sink.body.write(b";")?;
+                Ok(true)
+            }
+
             Stmt::Node(node) => {
                 // Handle loop and other control flow nodes
                 self.expr(&Expr::Node(node.clone()), &mut sink.body)?;
@@ -2662,5 +2669,10 @@ mod tests {
     #[test]
     fn test_017_spec() {
         test_a2r("017_spec").unwrap();
+    }
+
+    #[test]
+    fn test_117_list_storage() {
+        test_a2r("117_list_storage").unwrap();
     }
 }
