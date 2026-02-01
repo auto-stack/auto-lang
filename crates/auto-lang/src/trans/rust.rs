@@ -83,6 +83,7 @@ impl RustTrans {
             // Old path: Universe
             match scope.borrow().lookup_type(type_name) {
                 Type::Enum(_) => true,
+                Type::Tag(_) => true,  // **Phase 1.3: Tags use enum syntax**
                 _ => false,
             }
         } else if let Some(_db) = &self.db {
@@ -404,8 +405,9 @@ impl RustTrans {
                 // Cover expression for tagged unions
                 match cover {
                     crate::ast::Cover::Tag(tag_cover) => {
-                        write!(out, "/* TagCover: {} {} {} */",
-                               tag_cover.kind, tag_cover.tag, tag_cover.elem).map_err(Into::into)
+                        // **Phase 1.3: Tag Types**
+                        // Tag patterns: Atom.Int(i) -> Atom::Int(i)
+                        write!(out, "{}::{}({})", tag_cover.kind, tag_cover.tag, tag_cover.elem).map_err(Into::into)
                     }
                 }
             }
@@ -837,6 +839,29 @@ impl RustTrans {
             }
         }
 
+        // **Phase 1.3: Tag Types**
+        // Check if this is a tag construction call: Tag.Variant(value)
+        // E.g., Atom.Int(11) should generate: Atom::Int(11)
+        if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
+            if matches!(op, Op::Dot) {
+                if let Expr::Ident(type_name) = lhs.as_ref() {
+                    if let Expr::Ident(variant_name) = rhs.as_ref() {
+                        let type_decl = self.lookup_type(type_name);
+                        if matches!(type_decl, Type::Tag(_)) {
+                            // Tag construction: TypeName::VariantName(arg)
+                            write!(out, "{}::{}", type_name, variant_name)?;
+                            write!(out, "(")?;
+                            if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                                self.expr(expr, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+
         // Check if this is a struct construction call: Type(args)
         // If the callee name matches a type name, generate struct initialization syntax
         if let Expr::Ident(type_name) = call.name.as_ref() {
@@ -1084,6 +1109,11 @@ impl RustTrans {
 
             Stmt::Union(union) => {
                 self.union_decl(union, sink)?;
+                Ok(true)
+            }
+
+            Stmt::Tag(tag) => {
+                self.tag_decl(tag, sink)?;
                 Ok(true)
             }
 
@@ -1968,6 +1998,37 @@ impl RustTrans {
         Ok(())
     }
 
+    // **Phase 1.3: Tag Types (test: 014_tag)**
+    fn tag_decl(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
+        // Generate enum definition for tag
+        // AutoLang tags are algebraic data types that map to Rust enums
+        writeln!(sink.body, "enum {} {{", tag.name)?;
+        self.indent();
+
+        for field in &tag.fields {
+            self.print_indent(&mut sink.body)?;
+            writeln!(
+                sink.body,
+                "{}({}),",
+                field.name,
+                self.rust_type_name(&field.ty)
+            )?;
+        }
+
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}}")?;
+        sink.body.write(b"\n")?;
+
+        // TODO: Generate impl block for tag methods (if any)
+        for method in &tag.methods {
+            // Tag methods will be added here
+            let _ = method;
+        }
+
+        Ok(())
+    }
+
     // Spec/trait declaration
     fn spec_decl(&mut self, spec_decl: &SpecDecl, sink: &mut Sink) -> AutoResult<()> {
         // Generate trait definition
@@ -2485,5 +2546,10 @@ mod tests {
     #[test]
     fn test_055_union() {
         test_a2r("055_union").unwrap();
+    }
+
+    #[test]
+    fn test_014_tag() {
+        test_a2r("014_tag").unwrap();
     }
 }
