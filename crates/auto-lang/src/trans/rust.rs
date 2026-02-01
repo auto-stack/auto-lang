@@ -261,6 +261,42 @@ impl RustTrans {
             Expr::Bina(lhs, op, rhs) => {
                 match op {
                     Op::Dot => {
+                        // **Phase 1.1 & 2: Special field names (@, *, view, mut, take)**
+                        if let Expr::Ident(field_name) = rhs.as_ref() {
+                            match field_name.as_str() {
+                                "@" => {
+                                    // x.@ -> raw pointer (address-of)
+                                    self.expr(lhs, out)?;
+                                    write!(out, " as *mut _")?;
+                                    return Ok(());
+                                }
+                                "*" => {
+                                    // y.* -> dereference
+                                    write!(out, "*")?;
+                                    self.expr(lhs, out)?;
+                                    return Ok(());
+                                }
+                                "view" => {
+                                    // x.view -> &x (immutable borrow)
+                                    write!(out, "&")?;
+                                    self.expr(lhs, out)?;
+                                    return Ok(());
+                                }
+                                "mut" => {
+                                    // x.mut -> &mut x (mutable borrow)
+                                    write!(out, "&mut ")?;
+                                    self.expr(lhs, out)?;
+                                    return Ok(());
+                                }
+                                "take" => {
+                                    // x.take -> x (move semantics)
+                                    self.expr(lhs, out)?;
+                                    return Ok(());
+                                }
+                                _ => {}
+                            }
+                        }
+
                         // Member access: expr.field or .field (shorthand for self.field)
                         match lhs.as_ref() {
                             Expr::Nil | Expr::Null => {
@@ -324,6 +360,27 @@ impl RustTrans {
                     _ => op.op(),
                 };
                 write!(out, "{}", op_str)?;
+                self.expr(expr, out)?;
+                Ok(())
+            }
+
+            // **Phase 2: Borrow Checking System**
+            Expr::View(expr) => {
+                // e.view -> &e (immutable borrow)
+                write!(out, "&")?;
+                self.expr(expr, out)?;
+                Ok(())
+            }
+
+            Expr::Mut(expr) => {
+                // e.mut -> &mut e (mutable borrow)
+                write!(out, "&mut ")?;
+                self.expr(expr, out)?;
+                Ok(())
+            }
+
+            Expr::Take(expr) => {
+                // e.take -> e (move semantics, default in Rust)
                 self.expr(expr, out)?;
                 Ok(())
             }
@@ -805,6 +862,25 @@ impl RustTrans {
                         // y.* -> *y (dereference operator)
                         // In Rust, we use * for dereference
                         write!(out, "*")?;
+                        self.expr(object, out)?;
+                        return Ok(());
+                    }
+                    // **Phase 2: Borrow Checking System**
+                    "view" => {
+                        // s.view -> &s (immutable borrow)
+                        write!(out, "&")?;
+                        self.expr(object, out)?;
+                        return Ok(());
+                    }
+                    "mut" => {
+                        // s.mut -> &mut s (mutable borrow)
+                        write!(out, "&mut ")?;
+                        self.expr(object, out)?;
+                        return Ok(());
+                    }
+                    "take" => {
+                        // s.take -> s (move semantics, default in Rust)
+                        // Just emit the object itself (no additional syntax needed)
                         self.expr(object, out)?;
                         return Ok(());
                     }
@@ -2556,5 +2632,25 @@ mod tests {
     #[test]
     fn test_004_cstr() {
         test_a2r("004_cstr").unwrap();
+    }
+
+    #[test]
+    fn test_023_borrow_view() {
+        test_a2r("023_borrow_view").unwrap();
+    }
+
+    #[test]
+    fn test_024_borrow_mut() {
+        test_a2r("024_borrow_mut").unwrap();
+    }
+
+    #[test]
+    fn test_025_borrow_take() {
+        test_a2r("025_borrow_take").unwrap();
+    }
+
+    #[test]
+    fn test_026_borrow_conflicts() {
+        test_a2r("026_borrow_conflicts").unwrap();
     }
 }
