@@ -5,7 +5,7 @@
 
 use crate::{ast, eval::Evaler};
 use crate::universe::{ListData, VmRefData};
-use auto_val::{Instance, Obj, Shared, Type, Value};
+use auto_val::{Instance, Obj, Type, Value};
 
 /// Create a new empty List
 /// Syntax: List.new()

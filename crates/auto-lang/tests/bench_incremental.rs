@@ -5,7 +5,6 @@
 
 use auto_lang::{trans_c, trans_c_with_session, trans_rust, trans_rust_with_session, compile::CompileSession};
 use std::fs;
-use std::io::Write;
 use tempfile::TempDir;
 
 /// Prepare test files for benchmarking

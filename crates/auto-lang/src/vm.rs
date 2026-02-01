@@ -1,4 +1,4 @@
-use auto_val::{AutoStr, Shared};
+use auto_val::AutoStr;
 use std::collections::HashMap;
 use std::sync::Mutex;
 

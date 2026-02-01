@@ -1,4 +1,4 @@
-use auto_val::{Instance, Obj, Shared, Type, Value};
+use auto_val::{Instance, Obj, Type, Value};
 use std::{
     fs::File,
     io::{BufRead, Read},

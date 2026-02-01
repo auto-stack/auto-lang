@@ -58,12 +58,12 @@ impl CompileSession {
     }
 
     /// Get the underlying database (for advanced usage)
-    pub fn database(&self) -> std::sync::LockResult<std::sync::RwLockReadGuard<Database>> {
+    pub fn database(&self) -> std::sync::LockResult<std::sync::RwLockReadGuard<'_, Database>> {
         self.db.read()
     }
 
     /// Get mutable access to the database (for advanced usage)
-    pub fn database_mut(&self) -> std::sync::LockResult<std::sync::RwLockWriteGuard<Database>> {
+    pub fn database_mut(&self) -> std::sync::LockResult<std::sync::RwLockWriteGuard<'_, Database>> {
         self.db.write()
     }
 
@@ -369,7 +369,6 @@ pub fn compile_file_once(path: &str) -> AutoResult<CompileSession> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Body, Fn, FnKind};
 
     #[test]
     fn test_compile_session_new() {
@@ -699,8 +698,6 @@ mod tests {
     #[test]
     fn test_interface_hash_unchanged_body_change() {
         // Test熔断: Function body change doesn't change interface hash
-        use crate::hash::FragmentHasher;
-
         let mut session = CompileSession::new();
 
         // Initial version
@@ -727,8 +724,6 @@ mod tests {
     #[test]
     fn test_interface_hash_changed_signature_change() {
         // Test: Signature change DOES change interface hash
-        use crate::hash::FragmentHasher;
-
         let mut session = CompileSession::new();
 
         // Initial version
