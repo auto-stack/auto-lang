@@ -1,3 +1,4 @@
+use crate::vm::channel::{AutoChannel, ChannelId};
 use crate::vm::native::NativeInterface;
 /// BigVM Execution Engine
 /// The core loop that executes AutoByteCode (ABC).
@@ -27,9 +28,12 @@ pub struct BigVM {
     /// String constant pool
     pub strings: Arc<Vec<Vec<u8>>>,
 
-    // Task Registry
     pub tasks: DashMap<TaskId, Arc<Mutex<AutoTask>>>,
     pub id_gen: AtomicU64,
+
+    // Channel Registry
+    pub channels: DashMap<ChannelId, Arc<AutoChannel>>,
+    pub channel_id_gen: AtomicU64,
 }
 
 impl BigVM {
@@ -42,6 +46,8 @@ impl BigVM {
             strings: Arc::new(Vec::new()),
             tasks: DashMap::new(),
             id_gen: AtomicU64::new(0),
+            channels: DashMap::new(),
+            channel_id_gen: AtomicU64::new(0),
         }
     }
 
@@ -165,6 +171,13 @@ impl BigVM {
             match op {
                 OpCode::NOP => {
                     // Do nothing
+                }
+                OpCode::POP => {
+                    task.ram.pop_i32();
+                }
+                OpCode::DUP => {
+                    let val = task.ram.top().unwrap_or(0);
+                    task.ram.push_i32(val);
                 }
 
                 // === Constants ===
@@ -314,6 +327,90 @@ impl BigVM {
                 }
                 OpCode::YIELD => {
                     return Ok(TaskStatus::Ready);
+                }
+                OpCode::JOIN => {
+                    let _task_id = task.ram.pop_i32();
+                    // TODO: Implement JOIN logic (check if task terminated, get result)
+                    // For now, blocking wait or poll?
+                    // MVP: Just return 0
+                    task.ram.push_i32(0);
+                }
+                OpCode::CHAN_NEW => {
+                    let id = self.channel_id_gen.fetch_add(1, Ordering::Relaxed) as u32;
+                    let chan = Arc::new(AutoChannel::new(id, 16));
+                    self.channels.insert(id, chan);
+                    task.ram.push_i32(id as i32);
+                }
+                OpCode::SEND => {
+                    let data = task.ram.pop_i32();
+                    let chan_id = task.ram.pop_i32() as u32;
+                    let mut success = false;
+                    let mut closed = false;
+
+                    if let Some(chan_ref) = self.channels.get(&chan_id) {
+                        let chan = chan_ref.value().clone();
+                        drop(chan_ref);
+                        match chan.tx.try_send(data) {
+                            Ok(_) => success = true,
+                            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                                // Channel full
+                            }
+                            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                                closed = true;
+                            }
+                        }
+                    } else {
+                        closed = true;
+                    }
+
+                    if !success && !closed {
+                        // Retry later
+                        task.ip -= 1;
+                        task.ram.push_i32(chan_id as i32);
+                        task.ram.push_i32(data);
+                        return Ok(TaskStatus::Ready);
+                    }
+                }
+                OpCode::RECV => {
+                    let chan_id = task.ram.pop_i32() as u32;
+                    let mut success = false;
+                    let mut val = 0;
+                    let mut closed = false;
+                    match self.channels.get(&chan_id) {
+                        Some(chan_ref) => {
+                            let chan = chan_ref.value().clone();
+                            drop(chan_ref);
+                            // Lock rx
+                            let mut rx = chan.rx.lock().unwrap();
+                            match rx.try_recv() {
+                                Ok(v) => {
+                                    val = v;
+                                    success = true;
+                                }
+                                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                                    // Empty
+                                }
+                                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                                    closed = true;
+                                }
+                            }
+                        }
+                        None => {
+                            closed = true; // Invalid = closed
+                            val = -1; // Error code?
+                        }
+                    }
+
+                    if success {
+                        task.ram.push_i32(val);
+                    } else if closed {
+                        task.ram.push_i32(0); // TODO: Null/None
+                    } else {
+                        // Empty, Retry
+                        task.ip -= 1;
+                        task.ram.push_i32(chan_id as i32);
+                        return Ok(TaskStatus::Ready);
+                    }
                 }
 
                 // === Local Variables ===

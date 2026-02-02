@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 pub mod builder;
+pub mod channel;
 pub mod codegen;
 pub mod collections;
 pub mod engine;
@@ -19,6 +20,8 @@ pub mod virt_memory;
 
 #[cfg(test)]
 mod tests_bigvm;
+#[cfg(test)]
+mod tests_channel;
 #[cfg(test)]
 mod tests_loader;
 

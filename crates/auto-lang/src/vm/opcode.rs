@@ -66,11 +66,14 @@ pub enum OpCode {
     CALL_NAT = 0x72,
 
     // === Concurrency ===
-    SPAWN = 0x80,   // func_id: u32, arg_count: u8 -> task_id: u32
-    TASK_ID = 0x81, // -> task_id: u32
-    YIELD = 0x82,   // -> void
-    SLEEP = 0x83,   // ms: u32 -> void
-    JOIN = 0x84,    // task_id: u32 -> result
+    SPAWN = 0x80,    // func_id: u32, arg_count: u8 -> task_id: u32
+    TASK_ID = 0x81,  // -> task_id: u32
+    YIELD = 0x82,    // -> void
+    SLEEP = 0x83,    // ms: u32 -> void
+    JOIN = 0x84,     // task_id: u32 -> result
+    CHAN_NEW = 0x85, // -> channel_id: u32
+    SEND = 0x86,     // channel_id: u32, data: i32 -> void
+    RECV = 0x87,     // channel_id: u32 -> data: i32
 
     // === Debug ===
     PRINT = 0xF0,
