@@ -65,6 +65,13 @@ pub enum OpCode {
     RET = 0x71,
     CALL_NAT = 0x72,
 
+    // === Concurrency ===
+    SPAWN = 0x80,   // func_id: u32, arg_count: u8 -> task_id: u32
+    TASK_ID = 0x81, // -> task_id: u32
+    YIELD = 0x82,   // -> void
+    SLEEP = 0x83,   // ms: u32 -> void
+    JOIN = 0x84,    // task_id: u32 -> result
+
     // === Debug ===
     PRINT = 0xF0,
     HALT = 0xFF,

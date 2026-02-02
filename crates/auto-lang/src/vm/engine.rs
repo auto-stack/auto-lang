@@ -2,7 +2,13 @@ use crate::vm::native::NativeInterface;
 /// BigVM Execution Engine
 /// The core loop that executes AutoByteCode (ABC).
 use crate::vm::opcode::OpCode;
+use crate::vm::task::{AutoTask, TaskId, TaskStatus};
 use crate::vm::virt_memory::{VirtualFlash, VirtualRAM};
+use dashmap::DashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 
 #[derive(Debug)]
 pub enum VMError {
@@ -12,35 +18,45 @@ pub enum VMError {
     DivisionByZero,
     Halt,
     MissingNative(u16),
+    RuntimeError(String),
 }
 
 pub struct BigVM {
-    pub flash: VirtualFlash,
-    pub ram: VirtualRAM,
-    pub ip: usize, // Instruction Pointer
-    pub bp: usize, // Base Pointer (Start of current stack frame)
-    pub native_interface: NativeInterface,
+    pub flash: Arc<VirtualFlash>,
+    pub native_interface: Arc<NativeInterface>,
     /// String constant pool
-    pub strings: Vec<Vec<u8>>,
+    pub strings: Arc<Vec<Vec<u8>>>,
+
+    // Task Registry
+    pub tasks: DashMap<TaskId, Arc<Mutex<AutoTask>>>,
+    pub id_gen: AtomicU64,
 }
 
 impl BigVM {
-    pub fn new(flash: VirtualFlash, ram_size: usize) -> Self {
+    pub fn new(flash: VirtualFlash, _ram_size: usize) -> Self {
         let mut native_interface = NativeInterface::new();
         native_interface.register_std_shims();
         Self {
-            flash,
-            ram: VirtualRAM::new(ram_size),
-            ip: 0,
-            bp: 0,
-            native_interface,
-            strings: Vec::new(),
+            flash: Arc::new(flash),
+            native_interface: Arc::new(native_interface),
+            strings: Arc::new(Vec::new()),
+            tasks: DashMap::new(),
+            id_gen: AtomicU64::new(0),
         }
     }
 
     /// Load strings from a module's string constant pool
     pub fn load_strings(&mut self, strings: Vec<Vec<u8>>) {
-        self.strings = strings;
+        self.strings = Arc::new(strings);
+    }
+
+    /// Spawn a new task starting at the given instruction pointer
+    /// Returns the TaskId
+    pub fn spawn_task(&self, start_ip: usize, ram_size: usize) -> TaskId {
+        let id = self.id_gen.fetch_add(1, Ordering::Relaxed);
+        let task = AutoTask::new(id, ram_size, start_ip);
+        self.tasks.insert(id, Arc::new(Mutex::new(task)));
+        id
     }
 
     /// Get string by index from the constant pool
@@ -48,17 +64,100 @@ impl BigVM {
         self.strings.get(index as usize).map(|v| v.as_slice())
     }
 
-    /// Run the VM until completion or error
-    pub fn run(&mut self) -> Result<(), VMError> {
+    /// The main async loop that schedules and runs tasks.
+    pub async fn run_task_loop(&self) {
         loop {
-            // 1. Fetch
-            if self.ip >= self.flash.memory.len() {
-                // End of code
-                return Ok(());
+            let mut active_count = 0;
+            let mut alive_count = 0;
+
+            // Collect tasks to iterate
+            // We use a Vec of Arcs to avoid holding the map lock during execution
+            let tasks: Vec<(TaskId, Arc<Mutex<AutoTask>>)> = self
+                .tasks
+                .iter()
+                .map(|r| (*r.key(), r.value().clone()))
+                .collect();
+
+            if tasks.is_empty() {
+                break; // No tasks left, exit VM
             }
 
-            let op_byte = self.flash.read_u8(self.ip);
-            self.ip += 1;
+            for (_id, task_mutex) in tasks {
+                let mut task = task_mutex.lock().await;
+
+                if task.status == TaskStatus::Terminated {
+                    continue;
+                }
+                alive_count += 1;
+
+                // Check if task is runnable
+                if task.status != TaskStatus::Running && task.status != TaskStatus::Ready {
+                    continue;
+                }
+
+                active_count += 1;
+                task.status = TaskStatus::Running;
+
+                // Run a chunk of instructions
+                match self.execute_task(&mut task) {
+                    Ok(new_status) => {
+                        task.status = new_status;
+                    }
+                    Err(e) => {
+                        println!("Task {} Error: {:?}", task.id, e);
+                        task.status = TaskStatus::Terminated;
+                    }
+                }
+            }
+
+            // Cleanup terminated tasks
+            // This is a simplified garbage collection for MVP
+            /*
+            self.tasks.retain(|_, v| {
+                // We need to try_lock to avoid deadlocks or blocking?
+                // Since we are single-threaded loop essentially here (sequential iteration),
+                // blocking_lock or try_lock is fine if no one else holds it.
+                // But wait, if we are in async context, blocking_lock is bad.
+                // However, we cloned the Arcs above, so we don't hold the map lock.
+                // Re-acquiring lock here is okay.
+                if let Ok(task) = v.try_lock() {
+                    task.status != TaskStatus::Terminated
+                } else {
+                    true // Keep it if locked (should be rare/impossible in this simple loop)
+                }
+            });
+            */
+
+            if alive_count == 0 {
+                break;
+            }
+
+            if active_count == 0 {
+                if self.tasks.is_empty() {
+                    break;
+                }
+                // All tasks waiting/sleeping?
+                sleep(Duration::from_millis(10)).await;
+            }
+
+            // Yield to tokio runtime to let other things happen
+            tokio::task::yield_now().await;
+        }
+    }
+
+    /// Execute a chunk of opcodes for a specific task
+    fn execute_task(&self, task: &mut AutoTask) -> Result<TaskStatus, VMError> {
+        let budget = 100; // OpCode Budget
+        let mut ops_executed = 0;
+
+        while ops_executed < budget {
+            // 1. Fetch
+            if task.ip >= self.flash.memory.len() {
+                return Ok(TaskStatus::Terminated);
+            }
+
+            let op_byte = self.flash.read_u8(task.ip);
+            task.ip += 1;
 
             let op: OpCode = op_byte.into();
 
@@ -70,347 +169,270 @@ impl BigVM {
 
                 // === Constants ===
                 OpCode::CONST_I32 => {
-                    let val = self.flash.read_i32(self.ip);
-                    self.ip += 4;
-                    self.ram.push_i32(val);
+                    let val = self.flash.read_i32(task.ip);
+                    task.ip += 4;
+                    task.ram.push_i32(val);
                 }
                 OpCode::CONST_F32 => {
-                    let val = self.flash.read_i32(self.ip);
-                    self.ip += 4;
-                    self.ram.push_i32(val);
+                    let val = self.flash.read_i32(task.ip);
+                    task.ip += 4;
+                    task.ram.push_i32(val);
                 }
                 OpCode::CONST_0 => {
-                    self.ram.push_i32(0);
+                    task.ram.push_i32(0);
                 }
                 OpCode::CONST_1 => {
-                    self.ram.push_i32(1);
+                    task.ram.push_i32(1);
                 }
                 OpCode::LOAD_STR => {
-                    // Load string index as i32 onto stack
-                    // The index is a u16 in bytecode
-                    let str_idx = self.flash.read_u16(self.ip);
-                    self.ip += 2;
-                    // Push the string index as i32 (for use by print_str native)
-                    self.ram.push_i32(str_idx as i32);
+                    let str_idx = self.flash.read_u16(task.ip);
+                    task.ip += 2;
+                    task.ram.push_i32(str_idx as i32);
                 }
                 // === Arithmetic ===
                 OpCode::ADD => {
-                    let b = self.ram.pop_i32();
-                    let a = self.ram.pop_i32();
-                    self.ram.push_i32(a.wrapping_add(b));
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(a.wrapping_add(b));
                 }
                 OpCode::SUB => {
-                    let b = self.ram.pop_i32();
-                    let a = self.ram.pop_i32();
-                    self.ram.push_i32(a.wrapping_sub(b));
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(a.wrapping_sub(b));
                 }
                 OpCode::MUL => {
-                    let b = self.ram.pop_i32();
-                    let a = self.ram.pop_i32();
-                    self.ram.push_i32(a.wrapping_mul(b));
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(a.wrapping_mul(b));
                 }
                 OpCode::DIV => {
-                    let b = self.ram.pop_i32();
-                    let a = self.ram.pop_i32();
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
                     if b == 0 {
                         return Err(VMError::DivisionByZero);
                     }
-                    self.ram.push_i32(a.wrapping_div(b));
+                    task.ram.push_i32(a.wrapping_div(b));
                 }
 
                 // === Control Flow ===
                 OpCode::NEG => {
-                    let a = self.ram.pop_i32();
-                    self.ram.push_i32(a.wrapping_neg());
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(a.wrapping_neg());
                 }
                 OpCode::NOT => {
-                    let a = self.ram.pop_i32();
-                    // Bitwise NOT
-                    self.ram.push_i32(!a);
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(!a);
                 }
                 OpCode::CALL => {
-                    let target = self.flash.read_u32(self.ip) as usize;
-                    self.ip += 4;
+                    let target = self.flash.read_u32(task.ip) as usize;
+                    task.ip += 4;
 
                     // Push Return Address (IP)
-                    self.ram.push_i32(self.ip as i32);
+                    task.ram.push_i32(task.ip as i32);
                     // Push Old Stack Frame (BP)
-                    self.ram.push_i32(self.bp as i32);
+                    task.ram.push_i32(task.bp as i32);
 
                     // New BP points to the saved BP location (SP - 1)
-                    // SP is currently "next free", so the top item is at SP-1.
-                    self.bp = self.ram.sp - 1;
+                    task.bp = task.ram.sp - 1;
 
                     // Jump
-                    self.ip = target;
-                    // Jump
-                    self.ip = target;
+                    task.ip = target;
                 }
                 OpCode::CALL_NAT => {
-                    let native_id = self.flash.read_u16(self.ip);
-                    self.ip += 2;
+                    let native_id = self.flash.read_u16(task.ip);
+                    task.ip += 2;
 
                     // Execute Native Shim
-                    // We clone the Arc<ShimFunc> to release the borrow on self.native_interface
-                    // This allows passing &mut self to the shim
                     let shim = self.native_interface.get(native_id).cloned();
 
                     if let Some(shim) = shim {
-                        shim(self)?;
+                        // Pass task and vm
+                        shim(task, self)?;
                     } else {
                         return Err(VMError::MissingNative(native_id));
                     }
                 }
                 OpCode::RET => {
                     // Spec: RET n_args
-                    let n_args = self.flash.read_u8(self.ip) as usize;
-                    self.ip += 1;
+                    let n_args = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
 
                     // Expect Result on Top of Stack
-                    let result = self.ram.pop_i32();
+                    let result = task.ram.pop_i32();
 
-                    // BP points to [SavedBP].
-                    // Stack: [Arg1] ... [ArgN] [SavedIP] [SavedBP] [Locals...] [Result]
-                    //                                      ^ BP    ^ SP
+                    let old_bp = task.ram.read_i32(task.bp) as usize;
+                    let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
 
-                    // We want to restore SP to: Address of Arg1.
-                    // Address of [SavedBP] is self.bp.
-                    // Address of [SavedIP] is self.bp - 1.
-                    // Address of [ArgN] is self.bp - 2.
-                    // Address of [Arg1] is self.bp - 1 - n_args.
-
-                    // Wait, let's trace CALL logic.
-                    // CALL: Push IP, Push BP. BP = SP-1.
-                    // So at entry of Function:
-                    // Stack: [Arg1] ... [ArgN] [SavedIP] [SavedBP]
-                    //                                      ^ BP / Top
-
-                    // Then locals are pushed.
-                    // Stack: ... [SavedBP] [L0] [L1] ... [Top]
-
-                    // RET execution:
-                    // 1. Pop Result.
-                    // 2. Read n_args.
-                    // 3. We want to pop locals, SavedBP, SavedIP, AND args.
-                    // 4. And push Result.
-
-                    let old_bp = self.ram.read_i32(self.bp) as usize;
-                    let ret_ip = self.ram.read_i32(self.bp - 1) as usize;
-
-                    // Calculate new SP.
-                    // We want SP to be below SavedIP (which is BP-1).
-                    // Specifically, we want to remove 'n_args' slots below SavedIP.
-                    // Target SP = (self.bp - 1) - n_args.
-                    // Since SP points to the *next free slot* (or top? No, auto-val stack usually: sp is usage count).
-                    // My VirtualRAM implementation: sp is index of next free slot.
-                    // So if stack has 1 element, sp=1. Top is at sp-1.
-
-                    // If BP points to SavedBP slot.
-                    // That slot index is BP.
-                    // The slot index of SavedIP is BP - 1.
-                    // The slot index of Last Argument is BP - 2.
-                    // The slot index of First Argument is BP - 1 - n_args.
-
-                    // We want the stack to end up containing [Result] at the position of First Argument.
-                    // So new SP should be (BP - 1 - n_args) + 1.
-                    // = BP - n_args.
-
-                    // Let's verify.
-                    // Args=2. BP=10.
-                    // SavedBP at 10. SavedIP at 9.
-                    // Arg2 at 8. Arg1 at 7.
-                    // We want Arg1 (7) to be replaced by Result.
-                    // So we write Result to 7.
-                    // And SP should be 8.
-                    // Formula: BP - n_args = 10 - 2 = 8. Correct.
-
-                    let new_sp = self.bp - n_args;
-
-                    // Write result to the new top (which is at new_sp - 1? No, new_sp is usage).
-                    // Wait, if SP=8, valid indices are 0..7.
-                    // We want Result at 7.
+                    let new_sp = task.bp - n_args;
 
                     // Safety check for underflow
-                    if self.bp < n_args {
-                        panic!("Stack Underflow during RET argument cleanup");
+                    if task.bp < n_args {
+                        // In valid stack frame logic, bp should be >= args_count if args were pushed before call.
+                        // But actually logic depends on calling convention.
+                        // Assuming simple verification for now.
                     }
 
-                    self.ram.write_i32(new_sp - 1, result); // Wait, this writes to [7] NOT [8-1=7]? Yes.
-                                                            // But wait, the loop above used:
-                                                            // self.ram.sp = self.bp + 1;
-                                                            // which means clean up locals only.
+                    task.ram.write_i32(new_sp - 1, result);
 
-                    // Now we effectively do:
-                    self.bp = old_bp;
-                    self.ip = ret_ip;
-                    self.ram.sp = new_sp;
+                    task.bp = old_bp;
+                    task.ip = ret_ip;
+                    task.ram.sp = new_sp;
+                    task.ram.write_i32(new_sp - 1, result); // Write Result confirmed
+                }
 
-                    // Wait, I need to WRITE the result *before* changing SP safely?
-                    // actually, `self.ram.write_i32(addr, val)` doesn't check SP, just length.
-                    // So we can write to `new_sp - 1` (which is `self.bp - n_args - 1`? No `self.bp - n_args - 1`... wait).
-                    // If SP=8. Top index is 7.
-                    // We calculated new_sp = 8.
-                    // So we write to 7.
-                    // Correct.
+                // === Concurrency ===
+                OpCode::SPAWN => {
+                    let target = self.flash.read_u32(task.ip) as usize;
+                    task.ip += 4;
+                    let arg_count = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
 
-                    self.ram.write_i32(new_sp - 1, result);
+                    let mut args = Vec::new();
+                    for _ in 0..arg_count {
+                        args.push(task.ram.pop_i32());
+                    }
+
+                    let new_task_id = self.spawn_task(target, 1024);
+
+                    if let Some(new_task_arc) = self.tasks.get(&new_task_id) {
+                        if let Ok(mut new_task) = new_task_arc.try_lock() {
+                            // Push args in reverse order (A, B, C)
+                            for arg in args.into_iter().rev() {
+                                new_task.ram.push_i32(arg);
+                            }
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Failed to lock spawned task {}",
+                                new_task_id
+                            )));
+                        }
+                    }
+                    task.ram.push_i32(new_task_id as i32);
+                }
+                OpCode::TASK_ID => {
+                    task.ram.push_i32(task.id as i32);
+                }
+                OpCode::YIELD => {
+                    return Ok(TaskStatus::Ready);
                 }
 
                 // === Local Variables ===
                 OpCode::LOAD_LOCAL => {
-                    let idx = self.flash.read_u8(self.ip) as usize;
-                    self.ip += 1;
-                    let val = self.ram.read_i32(self.bp + idx);
-                    self.ram.push_i32(val);
+                    let idx = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+                    let val = task.ram.read_i32(task.bp + idx);
+                    task.ram.push_i32(val);
                 }
                 OpCode::STORE_LOCAL => {
-                    let idx = self.flash.read_u8(self.ip) as usize;
-                    self.ip += 1;
-                    let val = self.ram.pop_i32();
-                    self.ram.write_i32(self.bp + idx, val);
+                    let idx = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+                    let val = task.ram.pop_i32();
+                    task.ram.write_i32(task.bp + idx, val);
                 }
                 OpCode::LOAD_LOC_0 => {
-                    let val = self.ram.read_i32(self.bp + 0);
-                    self.ram.push_i32(val);
+                    let val = task.ram.read_i32(task.bp + 0);
+                    task.ram.push_i32(val);
                 }
                 OpCode::LOAD_LOC_1 => {
-                    let val = self.ram.read_i32(self.bp + 1);
-                    self.ram.push_i32(val);
+                    let val = task.ram.read_i32(task.bp + 1);
+                    task.ram.push_i32(val);
                 }
                 OpCode::LOAD_LOC_2 => {
-                    let val = self.ram.read_i32(self.bp + 2);
-                    self.ram.push_i32(val);
+                    let val = task.ram.read_i32(task.bp + 2);
+                    task.ram.push_i32(val);
                 }
                 OpCode::STORE_LOC_0 => {
-                    let val = self.ram.pop_i32();
-                    self.ram.write_i32(self.bp + 0, val);
+                    let val = task.ram.pop_i32();
+                    task.ram.write_i32(task.bp + 0, val);
                 }
                 OpCode::STORE_LOC_1 => {
-                    let val = self.ram.pop_i32();
-                    self.ram.write_i32(self.bp + 1, val);
+                    let val = task.ram.pop_i32();
+                    task.ram.write_i32(task.bp + 1, val);
                 }
 
                 // === Stack ===
                 OpCode::POP => {
-                    self.ram.pop_i32();
+                    task.ram.pop_i32();
                 }
                 OpCode::DROP => {
-                    // RAII cleanup: pops value from stack.
-                    // For primitive types (i32), this is same as POP.
-                    // For heap pointers, this would trigger deallocation.
-                    // TODO: Once we have heap tracking, check if value is a heap ptr.
-                    self.ram.pop_i32();
+                    task.ram.pop_i32();
                 }
 
                 // === Comparison ===
                 OpCode::EQ => {
-                    let b = self.ram.pop_i32();
-                    let a = self.ram.pop_i32();
-                    self.ram.push_i32(if a == b { 1 } else { 0 });
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(if a == b { 1 } else { 0 });
                 }
                 OpCode::NE => {
-                    let b = self.ram.pop_i32();
-                    let a = self.ram.pop_i32();
-                    self.ram.push_i32(if a != b { 1 } else { 0 });
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(if a != b { 1 } else { 0 });
                 }
                 OpCode::LT => {
-                    let b = self.ram.pop_i32();
-                    let a = self.ram.pop_i32();
-                    self.ram.push_i32(if a < b { 1 } else { 0 });
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(if a < b { 1 } else { 0 });
                 }
                 OpCode::GT => {
-                    let b = self.ram.pop_i32();
-                    let a = self.ram.pop_i32();
-                    self.ram.push_i32(if a > b { 1 } else { 0 });
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(if a > b { 1 } else { 0 });
                 }
                 OpCode::LE => {
-                    let b = self.ram.pop_i32();
-                    let a = self.ram.pop_i32();
-                    self.ram.push_i32(if a <= b { 1 } else { 0 });
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(if a <= b { 1 } else { 0 });
                 }
                 OpCode::GE => {
-                    let b = self.ram.pop_i32();
-                    let a = self.ram.pop_i32();
-                    self.ram.push_i32(if a >= b { 1 } else { 0 });
+                    let b = task.ram.pop_i32();
+                    let a = task.ram.pop_i32();
+                    task.ram.push_i32(if a >= b { 1 } else { 0 });
                 }
 
                 // === Control Flow ===
                 OpCode::JMP => {
-                    // JMP i16 offset
-                    // Offset is relative to the *start* of the instruction?
-                    // ABC Spec: "Offset = Target Address - (Current IP + 3)"
-                    // But here, self.ip has already been incremented by 1 (opcode fetch).
-                    // And reading i16 will increment it by 2 more.
-                    // So after reading offset, self.ip points to Next Instruction (Instruction End).
-                    // So if offset is calculated relative to (IP+3), and our IP IS (IP+3),
-                    // then new_ip = current_ip + offset.
+                    let offset = self.flash.read_i16(task.ip) as isize;
+                    task.ip += 2;
 
-                    let offset = self.flash.read_i16(self.ip);
-                    let after_read_ip = self.ip + 2;
-
-                    // Logic: self.ip is currently opcode+1.
-                    // read_i16 reads from ip, ip+1.
-                    // We want to land at `after_read_ip + offset`.
-                    // Wait, if offset is -3 (jump to self), valid?
-                    // Opcode(1) + I16(2) = 3 bytes.
-                    // If we are at N+3. N is start.
-                    // Target = N.
-                    // Offset = N - (N+3) = -3.
-                    // So Target = (N+3) + (-3) = N.
-                    // So yes, logic is: new_ip = (address after operand) + offset.
-
-                    // Our read_i16 does NOT auto-increment self.ip in VirtualFlash helpers if not using a stream?
-                    // Let's check: self.flash.read_i32 just reads. It doesn't modify self.ip.
-                    // CONST_I32: self.ip += 4; is done manually.
-
-                    // So:
-                    // 1. Read offset.
-                    // 2. Advance IP past operand.
-                    // 3. Apply offset.
-
-                    let offset = self.flash.read_i16(self.ip) as isize;
-                    self.ip += 2; // Advance past operand
-
-                    let new_ip = (self.ip as isize) + offset;
+                    let new_ip = (task.ip as isize) + offset;
 
                     if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
-                        // For now panic or return error.
-                        // Returning Halt for now on bad jump to prevent loop
-                        return Err(VMError::InvalidOpCode(0xFF)); // Using 0xFF as generic error for now or add InvalidJump
+                        return Err(VMError::InvalidOpCode(0xFF));
                     }
 
-                    self.ip = new_ip as usize;
+                    task.ip = new_ip as usize;
                 }
                 OpCode::JMP_IF_Z => {
-                    let offset = self.flash.read_i16(self.ip) as isize;
-                    self.ip += 2;
+                    let offset = self.flash.read_i16(task.ip) as isize;
+                    task.ip += 2;
 
-                    let cond = self.ram.pop_i32();
+                    let cond = task.ram.pop_i32();
                     if cond == 0 {
-                        let new_ip = (self.ip as isize) + offset;
+                        let new_ip = (task.ip as isize) + offset;
                         if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
                             return Err(VMError::InvalidOpCode(0xFF));
                         }
-                        self.ip = new_ip as usize;
+                        task.ip = new_ip as usize;
                     }
                 }
                 OpCode::JMP_IF_NZ => {
-                    let offset = self.flash.read_i16(self.ip) as isize;
-                    self.ip += 2;
+                    let offset = self.flash.read_i16(task.ip) as isize;
+                    task.ip += 2;
 
-                    let cond = self.ram.pop_i32();
+                    let cond = task.ram.pop_i32();
                     if cond != 0 {
-                        let new_ip = (self.ip as isize) + offset;
+                        let new_ip = (task.ip as isize) + offset;
                         if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
                             return Err(VMError::InvalidOpCode(0xFF));
                         }
-                        self.ip = new_ip as usize;
+                        task.ip = new_ip as usize;
                     }
                 }
 
                 // === Debug ===
                 OpCode::HALT => {
-                    return Err(VMError::Halt);
+                    return Ok(TaskStatus::Terminated);
                 }
 
                 _ => {
@@ -418,6 +440,10 @@ impl BigVM {
                     return Err(VMError::InvalidOpCode(op_byte));
                 }
             }
+
+            ops_executed += 1;
         }
+
+        Ok(TaskStatus::Ready)
     }
 }

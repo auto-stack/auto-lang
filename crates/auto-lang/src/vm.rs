@@ -14,6 +14,7 @@ pub mod memory;
 pub mod native;
 pub mod opcode;
 pub mod storage;
+pub mod task;
 pub mod virt_memory;
 
 #[cfg(test)]
