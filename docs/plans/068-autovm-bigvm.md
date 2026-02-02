@@ -1,8 +1,15 @@
 # Plan 068: AutoVM (BigVM) Implementation
 
-**Status**: In Progress
+**Status**: 🟡 Active - Phase 6 Complete, Phase 7-9 Pending
 **Owner**: AutoLang Team
 **Related**: `docs/design/auto-vm-bigvm.md`, `docs/design/abc.md`
+
+**Recent Updates** (2025-02-03):
+- ✅ **Symbol Table Implementation**: Complete symbol table with scope tracking in Codegen
+- ✅ **Memory Corruption Fix**: Fixed critical bug where stack would overwrite local variables
+- ✅ **List Support**: Full List implementation with 9 native functions
+- ✅ **Native Function Registry**: Runtime native function mapping with automatic ID resolution
+- ✅ **Entry Point Resolution**: Automatic main/test/ address 0 lookup
 
 ## 1. Objective
 
@@ -14,7 +21,9 @@ BigVM is designed to be a "Digital Twin" of the MicroVM (embedded runtime), ensu
 - **ISA**: AutoByteCode (ABC) v1.0, a variable-length, stack-based instruction set.
 - **Memory Model**:
     - **VirtualFlash**: `Vec<u8>` - Read-only byte array for code and constants (XIP simulation).
-    - **VirtualRAM**: `Vec<Word>` - Read-write array for Stack and Heap.
+    - **VirtualRAM**: `Vec<i32>` - Read-write array for Stack and Heap.
+      - **Note**: Originally `Vec<Word>` union, simplified to `Vec<i32>` (2025-02-03) to eliminate memory corruption bugs
+      - **Memory Layout**: Local variables at `bp+0, bp+1, ...`, stack grows from `sp` (where `sp >= num_locals`)
 - **Execution**: `loop { match op { ... } }` dispatch.
 
 ## 3. Implementation Phases
@@ -43,13 +52,28 @@ BigVM is designed to be a "Digital Twin" of the MicroVM (embedded runtime), ensu
 - [x] **2.1 Stack Frames**:
     - Add `bp` (Base Pointer) to `BigVM`.
     - Implement `LOAD_LOCAL`, `STORE_LOCAL` relative to `bp`.
+    - **Memory Corruption Fix** (2025-02-03): Fixed critical bug where stack would overwrite local variables.
+      - **Root Cause**: Stack and locals shared same memory space starting at address 0
+      - **Solution**: Reserve stack space for locals at function entry by pushing dummy `CONST_0` values
+      - This ensures `sp` starts at `n_locals`, preventing stack operations from overwriting locals
 - [x] **2.2 Jumps**:
     - Implement `JMP`, `JMP_IF_Z`, `JMP_IF_NZ`.
     - Handle 16-bit relative offsets.
 - [x] **2.3 Compiler Backend (Basic)**:
-    - Create `crates/auto-lang/src/compile/codegen.rs`.
-    - Implement visiting `ast::Stmt` and `ast::Expr` to emit bytecode.
+    - Create `crates/auto-lang/src/vm/codegen.rs`.
+    - **Symbol Table Implementation** (2025-02-03):
+      - Added `locals: HashMap<String, usize>` to track variables in current scope
+      - Added `scope_stack: Vec<HashMap<String, usize>>` for nested scope support
+      - Implemented `lookup_var()` - searches all scopes from innermost to outermost
+      - Implemented `add_var()` - adds variable to current scope, returns index
+      - Implemented `push_scope()` and `pop_scope()` for scope management
+      - Updated `Stmt::Store` to use symbol table and emit correct `STORE_LOC_N` opcodes
+      - Updated `Expr::Ident` to use symbol table and emit correct `LOAD_LOC_N` opcodes
+      - Updated `Stmt::Fn` to push/pop scopes for each function
+      - Added `emit_store_loc()` and `emit_load_loc()` with fast-path opcodes for locals 0-2
+      - Implemented assignment (`Op::Asn`) with proper symbol table lookup
     - Handle `Expression`, `Block`, `IfStatement`.
+    - **Status**: ✅ Symbol table complete, multiple local variables per function working correctly
 
 ### Phase 3: Functions & Calls
 **Goal**: Support function calls, recursion, and parameter passing.
@@ -88,8 +112,24 @@ BigVM is designed to be a "Digital Twin" of the MicroVM (embedded runtime), ensu
 
 - [x] **6.1 Heap Model**: Implement `LinearAllocator` and RAII-style lifetime management (Auto-Free).
 - [x] **6.2 Strings**: Implement `String` support (constant pool, `LOAD_STR` opcode, `print_str`).
-- [ ] **6.3 Collections**: Implement `List` (dynamic array) and `Map` (objects).
-- [ ] **6.4 Stdlib Hooks**: Connect `List.new`, `push`, `len` to VM native functions.
+- [x] **6.3 Collections**: Implement `List` (dynamic array) and `Map` (objects).
+    - **List Native Functions** (2025-02-03):
+      - Created `BigVMNativeRegistry` for runtime native function mapping
+      - Implemented 9 List native shims: `new`, `push`, `pop`, `len`, `is_empty`, `clear`, `get`, `set`, `drop`
+      - Added List storage to BigVM using `DashMap<u64, Arc<RwLock<Vec<i32>>>>`
+      - Fixed RwLock panic by switching from `tokio::sync::RwLock` to `std::sync::RwLock`
+      - Changed from union to struct for `Word`, then to `Vec<i32>` for simpler memory management
+    - **Status**: ✅ All List operations working, comprehensive tests passing
+- [x] **6.4 Stdlib Hooks**: Connect `List.new`, `push`, `len` to VM native functions.
+    - **Native Function Registry** (2025-02-03):
+      - Implemented `BIGVM_NATIVES` lazy_static for runtime function name → ID mapping
+      - `register_builtin_natives()` registers List methods at startup
+      - Codegen emits `CALL_NAT` with resolved native ID (no relocation needed)
+      - Supports both static methods (`List.new`) and instance methods (`List.len(list)`)
+    - **Entry Point Resolution** (2025-02-03):
+      - Implemented automatic entry point lookup: `main()` → `test()` → address 0
+      - Fixed type mismatch (u32 vs usize) in task spawning
+    - **Status**: ✅ Complete, all List tests passing
 
 ### Phase 7: Advanced Features
 **Goal**: Support closures and iterators used in `list_tests.rs`.
@@ -146,3 +186,72 @@ Implement Linear Memory Manager, Strings, Lists, and Maps.
 
 ### Step 7: Migration
 Systematically port tests and verify parity.
+
+## 5. Critical Bug Fixes & Learnings
+
+### 5.1 Memory Corruption Bug (2025-02-03)
+
+**Problem**: When using multiple local variables in a function, the stack would overwrite the local variables.
+
+**Symptom**:
+```auto
+fn main() {
+    let a = 10
+    let b = 20
+    print(a)  // Printed 20 instead of 10!
+    print(b)  // Printed 20 (correct)
+}
+```
+
+**Root Cause**:
+- Stack and local variables shared the same memory space starting at address 0
+- `STORE_LOC_0`: writes to `raw[bp+0] = raw[0] = 10`, `sp` becomes 0
+- `CONST_I32 20`: pushes to `raw[sp=0] = 20`, overwriting `raw[0]`
+- `STORE_LOC_1`: writes to `raw[bp+1] = raw[1] = 20`, `sp` becomes 0
+- `LOAD_LOC_0`: reads `raw[0] = 20` (the value 10 was overwritten)
+
+**Solution**:
+At function entry, reserve stack space for local variables by pushing `n_locals` dummy `CONST_0` values. This ensures:
+- `sp` starts at `n_locals` (not 0)
+- Local variables occupy `raw[0..n_locals-1]`
+- Stack operations use `raw[sp..]` where `sp >= n_locals`
+- No overlap between locals and stack
+
+**Implementation**:
+```rust
+// In codegen.rs Stmt::Fn compilation:
+let n_locals = self.scope_stack.last().unwrap().len();
+
+// Emit stack reservation at FUNCTION START (right after entry point)
+if n_locals > 0 {
+    // Insert CONST_0 opcodes at entry_point to reserve stack space
+    for _ in 0..n_locals {
+        self.code.insert(entry_point as usize, OpCode::CONST_0 as u8);
+        self.code.insert(entry_point as usize + 1, 0u8);
+        self.code.insert(entry_point as usize + 2, 0u8);
+        self.code.insert(entry_point as usize + 3, 0u8);
+        self.code.insert(entry_point as usize + 4, 0u8);
+    }
+}
+```
+
+**Status**: ✅ Fixed and tested. Multiple local variables now work correctly.
+
+### 5.2 Word Union Memory Issues (2025-02-03)
+
+**Problem**: `Vec<Word>` with union fields caused mysterious memory corruption.
+
+**Symptoms**:
+- Writing to `raw[1]` would also overwrite `raw[0]`
+- Debug output showed values already written before actual write operations
+- Issue persisted even after changing from union to struct
+
+**Root Cause**:
+- Union's `debug_ptr: usize` field (8 bytes in debug builds) caused alignment issues
+- Compiler optimizations and unsafe code interactions caused unpredictable behavior
+
+**Solution**:
+- Phase 1: Changed from union to struct with single `i` field
+- Phase 2: Simplified to `Vec<i32>` directly, eliminating `Word` wrapper entirely
+
+**Status**: ✅ Resolved. VirtualRAM now uses `Vec<i32>` for clarity and correctness.

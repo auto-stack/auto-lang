@@ -1,6 +1,7 @@
 use auto_lang::parser::Parser as AutoParser;
 use auto_lang::vm::codegen::Codegen;
 use auto_lang::vm::engine::BigVM;
+use auto_lang::vm::native_registry::register_builtin_natives;
 use auto_lang::vm::virt_memory::VirtualFlash;
 use clap::Parser;
 use std::fs;
@@ -19,6 +20,9 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Register built-in native functions
+    register_builtin_natives();
+
     let args = Args::parse();
     let source = fs::read_to_string(&args.input)
         .map_err(|e| anyhow::anyhow!("Failed to read input file: {}", e))?;
@@ -67,8 +71,16 @@ async fn main() -> anyhow::Result<()> {
     let mut vm = BigVM::new(flash, args.memory);
     vm.load_strings(codegen.strings);
 
-    // 5. Run
-    vm.spawn_task(0, args.memory);
+    // 5. Find entry point and run
+    // Look for main() or test() function, otherwise use address 0 for top-level scripts
+    let entry_point = codegen
+        .exports
+        .get("main")
+        .or_else(|| codegen.exports.get("test"))
+        .copied()
+        .unwrap_or(0) as usize; // Default to address 0 for scripts without main/test
+
+    vm.spawn_task(entry_point, args.memory);
     vm.run_task_loop().await;
 
     Ok(())

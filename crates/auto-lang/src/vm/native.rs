@@ -1,7 +1,6 @@
 use crate::vm::engine::{BigVM, VMError};
 use crate::vm::task::AutoTask;
 use std::collections::HashMap;
-
 use std::sync::Arc;
 
 pub type ShimFunc = Arc<dyn Fn(&mut AutoTask, &BigVM) -> Result<(), VMError> + Send + Sync>;
@@ -29,15 +28,39 @@ impl NativeInterface {
     }
 
     pub fn register_std_shims(&mut self) {
+        // Print functions
         self.register(NATIVE_PRINT_I32, shim_print_i32);
         self.register(NATIVE_PRINT_F32, shim_print_f32);
         self.register(NATIVE_PRINT_STR, shim_print_str);
+
+        // List functions
+        self.register(NATIVE_LIST_NEW, shim_list_new);
+        self.register(NATIVE_LIST_PUSH, shim_list_push);
+        self.register(NATIVE_LIST_POP, shim_list_pop);
+        self.register(NATIVE_LIST_LEN, shim_list_len);
+        self.register(NATIVE_LIST_IS_EMPTY, shim_list_is_empty);
+        self.register(NATIVE_LIST_CLEAR, shim_list_clear);
+        self.register(NATIVE_LIST_GET, shim_list_get);
+        self.register(NATIVE_LIST_SET, shim_list_set);
+        self.register(NATIVE_LIST_DROP, shim_list_drop);
     }
 }
 
 pub const NATIVE_PRINT_I32: u16 = 1;
 pub const NATIVE_PRINT_F32: u16 = 2;
 pub const NATIVE_PRINT_STR: u16 = 3;
+
+// === List Native Function IDs (100+) ===
+
+pub const NATIVE_LIST_NEW: u16 = 100;
+pub const NATIVE_LIST_PUSH: u16 = 101;
+pub const NATIVE_LIST_POP: u16 = 102;
+pub const NATIVE_LIST_LEN: u16 = 103;
+pub const NATIVE_LIST_IS_EMPTY: u16 = 104;
+pub const NATIVE_LIST_CLEAR: u16 = 105;
+pub const NATIVE_LIST_GET: u16 = 106;
+pub const NATIVE_LIST_SET: u16 = 107;
+pub const NATIVE_LIST_DROP: u16 = 108;
 
 // === Standard Shims ===
 
@@ -74,6 +97,149 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
         println!("<invalid string index: {}>", str_index);
     }
     // Push Unit (0) as return value
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// ============================================================================
+// List Native Shims
+// ============================================================================
+
+/// Create a new empty list.
+/// Stack: -> list_id
+/// Returns: list_id (u64 as i32)
+pub fn shim_list_new(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use std::sync::atomic::Ordering;
+
+    let list_id = vm.list_id_gen.fetch_add(1, Ordering::Relaxed);
+    let list = Vec::new();
+    vm.lists.insert(list_id, Arc::new(std::sync::RwLock::new(list)));
+
+    // Return list_id
+    task.ram.push_i32(list_id as i32);
+    Ok(())
+}
+
+/// Push an element to the end of the list.
+/// Stack: list_id, elem -> result (0)
+pub fn shim_list_push(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    let elem = task.ram.pop_i32();
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(list) = vm.lists.get(&list_id) {
+        let mut list = list.write().unwrap();
+        list.push(elem);
+    }
+
+    // Return success (0)
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Pop an element from the end of the list.
+/// Stack: list_id -> elem
+pub fn shim_list_pop(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(list) = vm.lists.get(&list_id) {
+        let mut list = list.write().unwrap();
+        let elem = list.pop().unwrap_or(0);
+        task.ram.push_i32(elem);
+    } else {
+        task.ram.push_i32(0); // Invalid list_id
+    }
+
+    Ok(())
+}
+
+/// Get the length of the list.
+/// Stack: list_id -> len
+pub fn shim_list_len(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(list) = vm.lists.get(&list_id) {
+        let list = list.read().unwrap();
+        task.ram.push_i32(list.len() as i32);
+    } else {
+        task.ram.push_i32(0); // Invalid list_id
+    }
+
+    Ok(())
+}
+
+/// Check if the list is empty.
+/// Stack: list_id -> is_empty (1 if empty, 0 otherwise)
+pub fn shim_list_is_empty(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(list) = vm.lists.get(&list_id) {
+        let list = list.read().unwrap();
+        task.ram.push_i32(if list.is_empty() { 1 } else { 0 });
+    } else {
+        task.ram.push_i32(1); // Invalid list_id treated as empty
+    }
+
+    Ok(())
+}
+
+/// Clear all elements from the list.
+/// Stack: list_id -> result (0)
+pub fn shim_list_clear(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(list) = vm.lists.get(&list_id) {
+        let mut list = list.write().unwrap();
+        list.clear();
+    }
+
+    // Return success (0)
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get element at index.
+/// Stack: list_id, index -> elem
+pub fn shim_list_get(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    let index = task.ram.pop_i32() as usize;
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(list) = vm.lists.get(&list_id) {
+        let list = list.read().unwrap();
+        let elem = list.get(index).copied().unwrap_or(0);
+        task.ram.push_i32(elem);
+    } else {
+        task.ram.push_i32(0); // Invalid list_id
+    }
+
+    Ok(())
+}
+
+/// Set element at index.
+/// Stack: list_id, index, elem -> result (0)
+pub fn shim_list_set(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    let elem = task.ram.pop_i32();
+    let index = task.ram.pop_i32() as usize;
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(list) = vm.lists.get(&list_id) {
+        let mut list = list.write().unwrap();
+        if index < list.len() {
+            list[index] = elem;
+        }
+    }
+
+    // Return success (0)
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Drop/free the list.
+/// Stack: list_id -> result (0)
+pub fn shim_list_drop(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    let list_id = task.ram.pop_i32() as u64;
+    vm.lists.remove(&list_id);
+
+    // Return success (0)
     task.ram.push_i32(0);
     Ok(())
 }

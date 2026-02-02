@@ -6,27 +6,23 @@
 use std::collections::HashMap;
 
 /// A 32-bit word in the virtual machine
-/// Used for both data and implementation details in the stack
-#[derive(Clone, Copy)]
-pub union Word {
+/// Simplified to just i32 for now to avoid union issues
+#[derive(Clone, Copy, Default, Debug)]
+pub struct Word {
     pub i: i32,
-    pub u: u32,
-    pub f: f32,
-    // Helper for debugging, not used in logic
-    #[cfg(debug_assertions)]
-    pub debug_ptr: usize,
 }
 
-// Default implementation for initializing buffers
-impl Default for Word {
-    fn default() -> Self {
-        Word { i: 0 }
+impl Word {
+    pub fn with_i32(val: i32) -> Self {
+        Self { i: val }
     }
-}
 
-impl std::fmt::Debug for Word {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        unsafe { write!(f, "Word(i:{}, u:{:#x}, f:{})", self.i, self.u, self.f) }
+    pub fn with_u32(val: u32) -> Self {
+        Self { i: val as i32 }
+    }
+
+    pub fn with_f32(val: f32) -> Self {
+        Self { i: unsafe { std::mem::transmute(val) } }
     }
 }
 
@@ -94,7 +90,7 @@ impl VirtualFlash {
 /// Contains the Stack and Heap (though Heap is currently simulated via Rust heap for objects in Phase 1)
 /// Phase 1: Pure stack machine
 pub struct VirtualRAM {
-    pub raw: Vec<Word>,
+    pub raw: Vec<i32>,
     pub sp: usize, // Stack Pointer (Index of the next free slot)
     pub bp: usize, // Base Pointer (Index of the current frame)
 }
@@ -102,7 +98,7 @@ pub struct VirtualRAM {
 impl VirtualRAM {
     pub fn new(size: usize) -> Self {
         Self {
-            raw: vec![Word::default(); size],
+            raw: vec![0; size],
             sp: 0,
             bp: 0,
         }
@@ -113,7 +109,7 @@ impl VirtualRAM {
         if self.sp >= self.raw.len() {
             panic!("Stack Overflow"); // Todo: Return Result
         }
-        self.raw[self.sp] = Word { i: val };
+        self.raw[self.sp] = val;
         self.sp += 1;
     }
 
@@ -123,7 +119,7 @@ impl VirtualRAM {
             panic!("Stack Underflow");
         }
         self.sp -= 1;
-        unsafe { self.raw[self.sp].i }
+        self.raw[self.sp]
     }
 
     #[inline(always)]
@@ -131,7 +127,7 @@ impl VirtualRAM {
         if addr >= self.raw.len() {
             panic!("Memory Access Out of Bounds");
         }
-        unsafe { self.raw[addr].i }
+        self.raw[addr]
     }
 
     #[inline(always)]
@@ -139,7 +135,7 @@ impl VirtualRAM {
         if addr >= self.raw.len() {
             panic!("Memory Write Out of Bounds");
         }
-        self.raw[addr] = Word { i: val };
+        self.raw[addr] = val;
     }
 
     // For manual viewing
@@ -147,7 +143,7 @@ impl VirtualRAM {
         if self.sp == 0 {
             None
         } else {
-            unsafe { Some(self.raw[self.sp - 1].i) }
+            Some(self.raw[self.sp - 1])
         }
     }
 }

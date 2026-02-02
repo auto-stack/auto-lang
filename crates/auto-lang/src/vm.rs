@@ -13,6 +13,7 @@ pub mod list;
 pub mod loader;
 pub mod memory;
 pub mod native;
+pub mod native_registry;
 pub mod opcode;
 pub mod storage;
 pub mod task;

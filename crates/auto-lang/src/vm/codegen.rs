@@ -3,6 +3,7 @@ use crate::error::AutoResult;
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::native::{NATIVE_PRINT_F32, NATIVE_PRINT_I32, NATIVE_PRINT_STR};
+use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 use auto_val::Op;
 use std::collections::HashMap;
@@ -15,6 +16,14 @@ pub struct Codegen {
     pub intrinsics: HashMap<String, u16>,
     /// String constant pool
     pub strings: Vec<Vec<u8>>,
+
+    /// Symbol table: Maps variable name -> local index (bp+0, bp+1, bp+2, ...)
+    /// Used during compilation to emit LOAD_LOC_N and STORE_LOC_N
+    pub locals: HashMap<String, usize>,
+
+    /// Scope stack for nested scopes (functions, blocks)
+    /// Each scope has its own variable namespace
+    pub scope_stack: Vec<HashMap<String, usize>>,
 }
 
 impl Codegen {
@@ -26,12 +35,19 @@ impl Codegen {
         intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
         intrinsics.insert("print_str".to_string(), NATIVE_PRINT_STR);
 
+        // Create global scope
+        let locals = HashMap::new();
+        let mut scope_stack = Vec::new();
+        scope_stack.push(locals);
+
         Self {
             code: Vec::new(),
             exports: HashMap::new(),
             relocs: Vec::new(),
             intrinsics,
             strings: Vec::new(),
+            locals: HashMap::new(),
+            scope_stack,
         }
     }
 
@@ -92,31 +108,53 @@ impl Codegen {
 
                 // 2. Record function entry point (export)
                 // Entry point is HERE (after JMP instruction)
-                // But wait, JMP instruction is 3 bytes (Op + i16).
-                // Code len is currently at the END of the placeholder (which is where code *would* continue if we didn't jump).
-                // Actually, `emit_placeholder_i16` pushes bytes. `self.code.len()` is now updating.
-                // The entry point of the function is the *current* `self.code.len()`.
                 let entry_point = self.code.len() as u32;
                 self.exports.insert(fn_decl.name.to_string(), entry_point);
 
-                // 3. Compile body
+                // 3. Push new scope for function locals
+                self.push_scope();
+
+                // 4. Compile body
                 self.compile_stmt(&Stmt::Block(fn_decl.body.clone()))?;
 
-                // 4. Emit RET at end of body (if not present? BigVM requires explicit RET or implied?)
-                // If the last statement wasn't a return, we should emit one.
-                // To be safe, always emit RET implementation-wise?
-                // Or check if block naturally returns.
-                // For void functions or implicit return, stack balance matters.
-                // Simplest: Always emit RET 0 (return nil/void) if we fall off.
-                // But `RET` needs `n_args`. The `Fn` decl knows `params`.
-                // `RET n_args` pops args.
-                // NOTE: `RET` opcode implementation expects `n_args` byte.
+                // 5. Get number of locals and emit stack reservation at function entry
+                let n_locals = self.scope_stack.last().unwrap().len();
+
+                // Emit stack reservation at FUNCTION START (right after entry point)
+                // This ensures sp starts at n_locals, preventing stack from overwriting locals
+                if n_locals > 0 {
+                    // Insert CONST_0 opcodes at entry_point to reserve stack space
+                    // Each CONST_0 is 5 bytes (1 byte opcode + 4 bytes i32)
+                    for _ in 0..n_locals {
+                        self.code.insert(entry_point as usize, OpCode::CONST_0 as u8);
+                        self.code.insert(entry_point as usize + 1, 0u8);
+                        self.code.insert(entry_point as usize + 2, 0u8);
+                        self.code.insert(entry_point as usize + 3, 0u8);
+                        self.code.insert(entry_point as usize + 4, 0u8);
+                    }
+                }
+
+                // 6. Emit RET at end of body
                 let n_args = fn_decl.params.len() as u8;
                 self.emit(OpCode::RET);
                 self.code.push(n_args);
 
-                // 5. Patch jump to skip body
+                // 7. Pop function scope
+                self.pop_scope();
+
+                // 8. Patch jump to skip body
                 self.patch_jump(jump_over);
+            }
+            Stmt::Store(store) => {
+                // Variable declaration: let/mut/var name = expr
+                // Compile the RHS expression (pushes result on stack)
+                self.compile_expr(&store.expr)?;
+
+                // Add variable to symbol table and get its index
+                let var_index = self.add_var(&store.name);
+
+                // Store the value into the local variable
+                self.emit_store_loc(var_index);
             }
             Stmt::Return(expr) => {
                 // Compile expression to leave result on stack
@@ -157,21 +195,56 @@ impl Codegen {
                 self.emit(OpCode::LOAD_STR);
                 self.code.extend_from_slice(&idx.to_le_bytes());
             }
+            Expr::Ident(name) => {
+                // Look up variable in symbol table
+                if let Some(var_index) = self.lookup_var(name) {
+                    // Variable found - load it
+                    self.emit_load_loc(var_index);
+                } else {
+                    // Variable not found - this is an error
+                    // For now, emit LOAD_LOC_0 as a fallback (will be fixed later)
+                    // TODO: Proper error handling for undefined variables
+                    self.emit(OpCode::LOAD_LOC_0);
+                }
+            }
             Expr::Bina(lhs, op, rhs) => {
-                self.compile_expr(lhs)?;
-                self.compile_expr(rhs)?;
-                match op {
-                    Op::Add => self.emit(OpCode::ADD),
-                    Op::Sub => self.emit(OpCode::SUB),
-                    Op::Mul => self.emit(OpCode::MUL),
-                    Op::Div => self.emit(OpCode::DIV),
-                    Op::Eq => self.emit(OpCode::EQ),
-                    Op::Neq => self.emit(OpCode::NE),
-                    Op::Lt => self.emit(OpCode::LT),
-                    Op::Le => self.emit(OpCode::LE),
-                    Op::Gt => self.emit(OpCode::GT),
-                    Op::Ge => self.emit(OpCode::GE),
-                    _ => unimplemented!("Binary Op {:?}", op),
+                // Assignment is special: compile RHS first, then store to LHS
+                if *op == Op::Asn {
+                    // Compile RHS (value to store)
+                    self.compile_expr(rhs)?;
+
+                    // Check if LHS is an identifier (variable assignment)
+                    if let Expr::Ident(name) = lhs.as_ref() {
+                        // Look up variable in symbol table
+                        if let Some(var_index) = self.lookup_var(name) {
+                            // Variable found - store value to it
+                            self.emit_store_loc(var_index);
+                        } else {
+                            // Variable not found - this is an error
+                            // For now, emit STORE_LOC_0 as a fallback
+                            // TODO: Proper error handling for undefined variables
+                            self.emit(OpCode::STORE_LOC_0);
+                        }
+                    } else {
+                        unimplemented!("Assignment to non-identifier LHS not supported yet");
+                    }
+                } else {
+                    // Normal binary operation: compile both operands, then apply operator
+                    self.compile_expr(lhs)?;
+                    self.compile_expr(rhs)?;
+                    match op {
+                        Op::Add => self.emit(OpCode::ADD),
+                        Op::Sub => self.emit(OpCode::SUB),
+                        Op::Mul => self.emit(OpCode::MUL),
+                        Op::Div => self.emit(OpCode::DIV),
+                        Op::Eq => self.emit(OpCode::EQ),
+                        Op::Neq => self.emit(OpCode::NE),
+                        Op::Lt => self.emit(OpCode::LT),
+                        Op::Le => self.emit(OpCode::LE),
+                        Op::Gt => self.emit(OpCode::GT),
+                        Op::Ge => self.emit(OpCode::GE),
+                        _ => unimplemented!("Binary Op {:?}", op),
+                    }
                 }
             }
             Expr::Unary(op, rhs) => {
@@ -186,37 +259,78 @@ impl Codegen {
                 }
             }
             Expr::Call(call) => {
-                // Check for intrinsic
+                // Extract function name and check for native functions
                 let func_name = match call.name.as_ref() {
                     Expr::Ident(name) => Some(name.to_string()),
+                    Expr::Dot(obj, method) => {
+                        // Method call: Type.method or obj.method
+                        // For simplicity, we only support Type.method for native calls (e.g., List.new)
+                        match obj.as_ref() {
+                            Expr::Ident(type_name) => {
+                                // Static method call: Type.method
+                                Some(format!("{}.{}", type_name, method))
+                            }
+                            _ => None,
+                        }
+                    }
                     _ => None,
                 };
 
-                if let Some(name) = &func_name {
+                // Check if it's a native function (either intrinsic or BIGVM_NATIVE)
+                let native_id = if let Some(name) = &func_name {
+                    // Check intrinsics first (print, etc.)
                     if let Some(&id) = self.intrinsics.get(name) {
-                        // Compile arguments
-                        if !call.args.is_empty() {
-                            for arg in &call.args.args {
-                                match arg {
-                                    crate::ast::Arg::Pos(expr) => {
-                                        self.compile_expr(expr)?;
-                                    }
-                                    _ => {
-                                        unimplemented!("Named arguments not supported in BigVM yet")
-                                    }
+                        Some(id)
+                    }
+                    // Then check BIGVM_NATIVES (List methods, etc.)
+                    else if let Some(id) = BIGVM_NATIVES.lock().unwrap().get_id(name) {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(id) = native_id {
+                    // Native function call
+                    // Compile arguments (push to stack in reverse order?)
+                    // Actually, we push in forward order, left-to-right
+                    if !call.args.is_empty() {
+                        for arg in &call.args.args {
+                            match arg {
+                                crate::ast::Arg::Pos(expr) => {
+                                    self.compile_expr(expr)?;
+                                }
+                                _ => {
+                                    unimplemented!("Named arguments not supported in BigVM yet")
                                 }
                             }
                         }
-
-                        self.emit(OpCode::CALL_NAT);
-                        self.code.extend_from_slice(&id.to_le_bytes());
-                        return Ok(()).into();
                     }
+
+                    // For instance methods (Dot expressions), compile receiver (self)
+                    if let Expr::Dot(obj, _method) = call.name.as_ref() {
+                        // Check if it's a static method call (Type.method)
+                        // If obj is an Ident and not a lowercase local variable, it's static
+                        if let Expr::Ident(_) = obj.as_ref() {
+                            // Static method - no receiver needed
+                            // But we still need to check if it's a type name (capitalized)
+                            // For now, assume all Ident-based Dot calls are static methods
+                            // TODO: Better heuristic needed
+                        } else {
+                            // Instance method - compile receiver (self)
+                            self.compile_expr(obj)?;
+                        }
+                    }
+
+                    self.emit(OpCode::CALL_NAT);
+                    self.code.extend_from_slice(&id.to_le_bytes());
+                    return Ok(()).into();
                 }
 
-                // Normal Function Call
+                // Normal Function Call (user-defined)
                 // 1. Compile Arguments (pushes them to stack)
-                // Note: Call::args is wrapped in various structs
                 if !call.args.is_empty() {
                     for arg in &call.args.args {
                         match arg {
@@ -236,15 +350,16 @@ impl Codegen {
                 self.code.extend_from_slice(&0u32.to_le_bytes());
 
                 // 4. Create Relocation Entry
-                // Function name is in `call.name`
-                let func_name = match call.name.as_ref() {
-                    Expr::Ident(name) => name.to_string(),
-                    _ => unimplemented!("Dynamic call (computed function name) not supported yet"),
-                };
+                let reloc_name = func_name.unwrap_or_else(|| {
+                    match call.name.as_ref() {
+                        Expr::Ident(name) => name.to_string(),
+                        _ => unimplemented!("Dynamic call (computed function name) not supported yet"),
+                    }
+                });
 
                 self.relocs.push(RelocEntry {
                     offset: placeholder_idx as u32,
-                    symbol_name: func_name,
+                    symbol_name: reloc_name,
                     reloc_type: RelocType::FuncCall,
                 });
             }
@@ -354,6 +469,68 @@ impl Codegen {
         let bytes = (offset as i16).to_le_bytes();
         self.code[placeholder_idx] = bytes[0];
         self.code[placeholder_idx + 1] = bytes[1];
+    }
+
+    // === Symbol Table Helpers ===
+
+    /// Look up variable in symbol table (checks all scopes from innermost to outermost)
+    fn lookup_var(&self, name: &str) -> Option<usize> {
+        // Check innermost scope first (current function/block)
+        for scope in self.scope_stack.iter().rev() {
+            if let Some(&index) = scope.get(name) {
+                return Some(index);
+            }
+        }
+
+        // No variable found
+        None
+    }
+
+    /// Add variable to current scope and return its index
+    fn add_var(&mut self, name: &str) -> usize {
+        let scope = self.scope_stack.last_mut().expect("Scope stack should never be empty");
+        let index = scope.len();
+        scope.insert(name.to_string(), index);
+        index
+    }
+
+    /// Push a new scope (for function entry, blocks, etc.)
+    fn push_scope(&mut self) {
+        self.scope_stack.push(HashMap::new());
+    }
+
+    /// Pop the current scope
+    fn pop_scope(&mut self) {
+        if self.scope_stack.len() > 1 {
+            self.scope_stack.pop();
+        }
+    }
+
+    /// Emit STORE_LOCAL for a given local index
+    /// Uses dedicated opcodes for locals 0-1 for performance
+    fn emit_store_loc(&mut self, index: usize) {
+        match index {
+            0 => self.emit(OpCode::STORE_LOC_0),
+            1 => self.emit(OpCode::STORE_LOC_1),
+            _ => {
+                self.emit(OpCode::STORE_LOCAL);
+                self.code.push(index as u8);
+            }
+        }
+    }
+
+    /// Emit LOAD_LOCAL for a given local index
+    /// Uses dedicated opcodes for locals 0-2 for performance
+    fn emit_load_loc(&mut self, index: usize) {
+        match index {
+            0 => self.emit(OpCode::LOAD_LOC_0),
+            1 => self.emit(OpCode::LOAD_LOC_1),
+            2 => self.emit(OpCode::LOAD_LOC_2),
+            _ => {
+                self.emit(OpCode::LOAD_LOCAL);
+                self.code.push(index as u8);
+            }
+        }
     }
 }
 

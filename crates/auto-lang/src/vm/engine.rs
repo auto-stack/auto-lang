@@ -4,10 +4,10 @@ use crate::vm::native::NativeInterface;
 /// The core loop that executes AutoByteCode (ABC).
 use crate::vm::opcode::OpCode;
 use crate::vm::task::{AutoTask, TaskId, TaskStatus};
-use crate::vm::virt_memory::{VirtualFlash, VirtualRAM};
+use crate::vm::virt_memory::VirtualFlash;
 use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
@@ -35,6 +35,10 @@ pub struct BigVM {
     // Channel Registry
     pub channels: DashMap<ChannelId, Arc<AutoChannel>>,
     pub channel_id_gen: AtomicU64,
+
+    // List Registry
+    pub lists: DashMap<u64, Arc<RwLock<Vec<i32>>>>,
+    pub list_id_gen: AtomicU64,
 }
 
 impl BigVM {
@@ -49,6 +53,8 @@ impl BigVM {
             id_gen: AtomicU64::new(0),
             channels: DashMap::new(),
             channel_id_gen: AtomicU64::new(0),
+            lists: DashMap::new(),
+            list_id_gen: AtomicU64::new(0),
         }
     }
 
@@ -543,9 +549,6 @@ impl BigVM {
                 }
 
                 // === Stack ===
-                OpCode::POP => {
-                    task.ram.pop_i32();
-                }
                 OpCode::DROP => {
                     task.ram.pop_i32();
                 }
