@@ -1,0 +1,11 @@
+[package]
+name = "auto-vm"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+auto-lang = { path = "../auto-lang" }
+clap = { version = "4.5.17", features = ["derive"] }
+miette = { version = "7.2", features = ["fancy"] }
+thiserror = "2.0.12"

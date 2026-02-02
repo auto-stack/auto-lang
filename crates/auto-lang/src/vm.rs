@@ -10,6 +10,7 @@ pub mod io;
 pub mod list;
 pub mod loader;
 pub mod memory;
+pub mod native;
 pub mod opcode;
 pub mod storage;
 pub mod virt_memory;

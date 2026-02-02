@@ -2,6 +2,7 @@ use crate::ast::{self, Expr, Stmt};
 use crate::error::AutoResult;
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
+use crate::vm::native::{NATIVE_PRINT_F32, NATIVE_PRINT_I32};
 use crate::vm::opcode::OpCode;
 use auto_val::Op;
 use std::collections::HashMap;
@@ -11,14 +12,22 @@ pub struct Codegen {
     pub code: Vec<u8>,
     pub exports: HashMap<String, u32>,
     pub relocs: Vec<RelocEntry>,
+    pub intrinsics: HashMap<String, u16>,
 }
 
 impl Codegen {
     pub fn new() -> Self {
+        let mut intrinsics = HashMap::new();
+        // Register intrinsics
+        intrinsics.insert("print".to_string(), NATIVE_PRINT_I32);
+        intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
+        intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
+
         Self {
             code: Vec::new(),
             exports: HashMap::new(),
             relocs: Vec::new(),
+            intrinsics,
         }
     }
 
@@ -161,6 +170,35 @@ impl Codegen {
                 unimplemented!("Unary Op {:?}", op);
             }
             Expr::Call(call) => {
+                // Check for intrinsic
+                let func_name = match call.name.as_ref() {
+                    Expr::Ident(name) => Some(name.to_string()),
+                    _ => None,
+                };
+
+                if let Some(name) = &func_name {
+                    if let Some(&id) = self.intrinsics.get(name) {
+                        // Compile arguments
+                        if !call.args.is_empty() {
+                            for arg in &call.args.args {
+                                match arg {
+                                    crate::ast::Arg::Pos(expr) => {
+                                        self.compile_expr(expr)?;
+                                    }
+                                    _ => {
+                                        unimplemented!("Named arguments not supported in BigVM yet")
+                                    }
+                                }
+                            }
+                        }
+
+                        self.emit(OpCode::CALL_NAT);
+                        self.code.extend_from_slice(&id.to_le_bytes());
+                        return Ok(()).into();
+                    }
+                }
+
+                // Normal Function Call
                 // 1. Compile Arguments (pushes them to stack)
                 // Note: Call::args is wrapped in various structs
                 if !call.args.is_empty() {

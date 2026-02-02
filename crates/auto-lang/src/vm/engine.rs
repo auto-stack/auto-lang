@@ -1,3 +1,4 @@
+use crate::vm::native::NativeInterface;
 /// BigVM Execution Engine
 /// The core loop that executes AutoByteCode (ABC).
 use crate::vm::opcode::OpCode;
@@ -10,6 +11,7 @@ pub enum VMError {
     InvalidOpCode(u8),
     DivisionByZero,
     Halt,
+    MissingNative(u16),
 }
 
 pub struct BigVM {
@@ -17,15 +19,19 @@ pub struct BigVM {
     pub ram: VirtualRAM,
     pub ip: usize, // Instruction Pointer
     pub bp: usize, // Base Pointer (Start of current stack frame)
+    pub native_interface: NativeInterface,
 }
 
 impl BigVM {
     pub fn new(flash: VirtualFlash, ram_size: usize) -> Self {
+        let mut native_interface = NativeInterface::new();
+        native_interface.register_std_shims();
         Self {
             flash,
             ram: VirtualRAM::new(ram_size),
             ip: 0,
             bp: 0,
+            native_interface,
         }
     }
 
@@ -51,6 +57,11 @@ impl BigVM {
 
                 // === Constants ===
                 OpCode::CONST_I32 => {
+                    let val = self.flash.read_i32(self.ip);
+                    self.ip += 4;
+                    self.ram.push_i32(val);
+                }
+                OpCode::CONST_F32 => {
                     let val = self.flash.read_i32(self.ip);
                     self.ip += 4;
                     self.ram.push_i32(val);
@@ -103,6 +114,23 @@ impl BigVM {
 
                     // Jump
                     self.ip = target;
+                    // Jump
+                    self.ip = target;
+                }
+                OpCode::CALL_NAT => {
+                    let native_id = self.flash.read_u16(self.ip);
+                    self.ip += 2;
+
+                    // Execute Native Shim
+                    // We clone the Arc<ShimFunc> to release the borrow on self.native_interface
+                    // This allows passing &mut self to the shim
+                    let shim = self.native_interface.get(native_id).cloned();
+
+                    if let Some(shim) = shim {
+                        shim(self)?;
+                    } else {
+                        return Err(VMError::MissingNative(native_id));
+                    }
                 }
                 OpCode::RET => {
                     // Spec: RET n_args

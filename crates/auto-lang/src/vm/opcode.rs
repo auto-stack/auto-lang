@@ -64,7 +64,7 @@ pub enum OpCode {
     RET = 0x71,
     CALL_NAT = 0x72,
 
-    // === Debug & Misc ===
+    // === Debug ===
     PRINT = 0xF0,
     HALT = 0xFF,
 }

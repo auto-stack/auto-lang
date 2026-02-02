@@ -1,0 +1,34 @@
+// --- 声明区 (Declaration) ---
+
+// 1. C: 静态声明 (因为 C 是静态的)
+#[c] 
+fn read_sensor_data() -> List<f64>; 
+
+// 2. Python: 动态引入 (偷懒写法)
+// 也可以写成 static declaration 获得补全
+use.py "data_science_lib" as dsl;
+
+// 3. JS: 静态声明 (为了展示 async)
+#[js]
+async fn upload_result(url str, data any);
+
+
+// --- 逻辑区 (Logic) ---
+
+fn main() {
+    // Step 1: 调用 C (Auto 自动把 List<f64> 封装好返回)
+    let raw_data = read_sensor_data();
+    
+    // Step 2: 调用 Python (动态调用)
+    // Auto 自动把 List<f64> 转成 Python List
+    // process 返回一个 handle (PyObject)，Auto 把它当作 opaque value
+    let processed = dsl.process(raw_data);
+    
+    // Step 3: 调用 JS (异步)
+    // AutoVM 发现是 async，自动挂起当前 Task
+    // Auto 自动把 PyObject handle 转成 JS Object (如果支持) 
+    // 或者我们需要先转回 Auto 值:
+    let result_val = processed.to_auto(); 
+    
+    upload_result("https://api.mycloud.com", result_val);
+}
