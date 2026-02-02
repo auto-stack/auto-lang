@@ -159,28 +159,32 @@ fn extract_location_from_error(error: &AutoError, content: &str) -> Range {
 }
 
 /// Extract line number from error message
+///
+/// **Performance Fix**: Use lazy_static to compile regex patterns once at startup
+/// instead of compiling them on every error message (was causing 10%+ CPU usage)
 fn extract_line_number(error_msg: &str) -> Option<usize> {
     use regex::Regex;
+    use once_cell::sync::Lazy;
 
-    // Try various patterns for line numbers in error messages
-    let patterns = [
-        r"line (\d+)",
-        r"at line (\d+)",
-        r"\[(\d+):",
-        r"L(\d+)",
-        r"l\.(\d+)",
-        r"@ line (\d+)",
-        r"\[(\d+),",  // [line, column] format
-        r"@ \[(\d+),", // @ [line, column] format
-    ];
+    // Pre-compiled regex patterns (compiled once, reused forever)
+    static LINE_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
+        vec![
+            Regex::new(r"line (\d+)").unwrap(),
+            Regex::new(r"at line (\d+)").unwrap(),
+            Regex::new(r"\[(\d+):").unwrap(),
+            Regex::new(r"L(\d+)").unwrap(),
+            Regex::new(r"l\.(\d+)").unwrap(),
+            Regex::new(r"@ line (\d+)").unwrap(),
+            Regex::new(r"\[(\d+),").unwrap(),
+            Regex::new(r"@ \[(\d+),").unwrap(),
+        ]
+    });
 
-    for pattern in &patterns {
-        if let Ok(re) = Regex::new(pattern) {
-            if let Some(caps) = re.captures(error_msg) {
-                if let Some(match_str) = caps.get(1) {
-                    if let Ok(num) = match_str.as_str().parse::<usize>() {
-                        return Some(num);
-                    }
+    for re in LINE_PATTERNS.iter() {
+        if let Some(caps) = re.captures(error_msg) {
+            if let Some(match_str) = caps.get(1) {
+                if let Ok(num) = match_str.as_str().parse::<usize>() {
+                    return Some(num);
                 }
             }
         }

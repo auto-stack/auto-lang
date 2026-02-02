@@ -84,7 +84,7 @@ impl Evaler {
         // Initialize current_scope from Universe's cur_spot (for migration compatibility)
         let current_scope = universe.borrow().cur_spot.clone();
 
-        let mut evaluator = Evaler {
+        let evaluator = Evaler {
             // Phase 4.5: Initialize AIE architecture fields as None (will be set later)
             db: None,
             engine: None,

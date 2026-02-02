@@ -11,7 +11,6 @@
 
 use crate::ast::{Body, Expr, Fn, Stmt};
 use crate::database::{Database, FragId};
-use auto_val::AutoStr;
 use std::collections::HashSet;
 
 /// Dependency scanner for building fragment-level dependency graphs
@@ -267,6 +266,7 @@ mod tests {
     use super::*;
     use crate::ast::{Body, FnKind, Type};
     use crate::database::Database;
+    use auto_val::AutoStr;
 
     #[test]
     fn test_scanner_no_calls() {

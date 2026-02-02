@@ -83,6 +83,7 @@ impl RustTrans {
             // Old path: Universe
             match scope.borrow().lookup_type(type_name) {
                 Type::Enum(_) => true,
+                Type::Tag(_) => true,  // **Phase 1.3: Tags use enum syntax**
                 _ => false,
             }
         } else if let Some(_db) = &self.db {
@@ -180,11 +181,10 @@ impl RustTrans {
                 format!("&[{}]", self.rust_type_name(&slice.elem))
             }
             Type::Ptr(ptr) => {
-                // Check if we need reference or Box
-                match &*ptr.of.borrow() {
-                    Type::User(_) => format!("Box<{}>", self.rust_type_name(&*ptr.of.borrow())),
-                    _ => format!("&{}", self.rust_type_name(&*ptr.of.borrow())),
-                }
+                // **Phase 1.1: Pointer Types (test: 005_pointer)**
+                // AutoLang *T transpiles to Rust raw pointer *mut T
+                // This is for raw pointer operations like @ (address-of) and .* (dereference)
+                format!("*mut {}", self.rust_type_name(&*ptr.of.borrow()))
             }
             Type::Reference(inner) => {  // Plan 052: Reference transpiles to &T in Rust
                 format!("&{}", self.rust_type_name(inner))
@@ -261,6 +261,42 @@ impl RustTrans {
             Expr::Bina(lhs, op, rhs) => {
                 match op {
                     Op::Dot => {
+                        // **Phase 1.1 & 2: Special field names (@, *, view, mut, take)**
+                        if let Expr::Ident(field_name) = rhs.as_ref() {
+                            match field_name.as_str() {
+                                "@" => {
+                                    // x.@ -> raw pointer (address-of)
+                                    self.expr(lhs, out)?;
+                                    write!(out, " as *mut _")?;
+                                    return Ok(());
+                                }
+                                "*" => {
+                                    // y.* -> dereference
+                                    write!(out, "*")?;
+                                    self.expr(lhs, out)?;
+                                    return Ok(());
+                                }
+                                "view" => {
+                                    // x.view -> &x (immutable borrow)
+                                    write!(out, "&")?;
+                                    self.expr(lhs, out)?;
+                                    return Ok(());
+                                }
+                                "mut" => {
+                                    // x.mut -> &mut x (mutable borrow)
+                                    write!(out, "&mut ")?;
+                                    self.expr(lhs, out)?;
+                                    return Ok(());
+                                }
+                                "take" => {
+                                    // x.take -> x (move semantics)
+                                    self.expr(lhs, out)?;
+                                    return Ok(());
+                                }
+                                _ => {}
+                            }
+                        }
+
                         // Member access: expr.field or .field (shorthand for self.field)
                         match lhs.as_ref() {
                             Expr::Nil | Expr::Null => {
@@ -324,6 +360,27 @@ impl RustTrans {
                     _ => op.op(),
                 };
                 write!(out, "{}", op_str)?;
+                self.expr(expr, out)?;
+                Ok(())
+            }
+
+            // **Phase 2: Borrow Checking System**
+            Expr::View(expr) => {
+                // e.view -> &e (immutable borrow)
+                write!(out, "&")?;
+                self.expr(expr, out)?;
+                Ok(())
+            }
+
+            Expr::Mut(expr) => {
+                // e.mut -> &mut e (mutable borrow)
+                write!(out, "&mut ")?;
+                self.expr(expr, out)?;
+                Ok(())
+            }
+
+            Expr::Take(expr) => {
+                // e.take -> e (move semantics, default in Rust)
                 self.expr(expr, out)?;
                 Ok(())
             }
@@ -405,8 +462,9 @@ impl RustTrans {
                 // Cover expression for tagged unions
                 match cover {
                     crate::ast::Cover::Tag(tag_cover) => {
-                        write!(out, "/* TagCover: {} {} {} */",
-                               tag_cover.kind, tag_cover.tag, tag_cover.elem).map_err(Into::into)
+                        // **Phase 1.3: Tag Types**
+                        // Tag patterns: Atom.Int(i) -> Atom::Int(i)
+                        write!(out, "{}::{}({})", tag_cover.kind, tag_cover.tag, tag_cover.elem).map_err(Into::into)
                     }
                 }
             }
@@ -789,6 +847,46 @@ impl RustTrans {
 
             // Plan 056: Dot expression for field access
             Expr::Dot(object, field) => {
+                // **Phase 1.1: Pointer Operators (test: 005_pointer)**
+                // Handle @ (address-of) and * (dereference) as special field names
+                match field.as_str() {
+                    "@" => {
+                        // x.@ -> raw pointer to x (address-of operator)
+                        // In Rust, we need to cast reference to raw pointer
+                        // x as *mut T
+                        self.expr(object, out)?;
+                        write!(out, " as *mut _")?;  // Use _ for type inference
+                        return Ok(());
+                    }
+                    "*" => {
+                        // y.* -> *y (dereference operator)
+                        // In Rust, we use * for dereference
+                        write!(out, "*")?;
+                        self.expr(object, out)?;
+                        return Ok(());
+                    }
+                    // **Phase 2: Borrow Checking System**
+                    "view" => {
+                        // s.view -> &s (immutable borrow)
+                        write!(out, "&")?;
+                        self.expr(object, out)?;
+                        return Ok(());
+                    }
+                    "mut" => {
+                        // s.mut -> &mut s (mutable borrow)
+                        write!(out, "&mut ")?;
+                        self.expr(object, out)?;
+                        return Ok(());
+                    }
+                    "take" => {
+                        // s.take -> s (move semantics, default in Rust)
+                        // Just emit the object itself (no additional syntax needed)
+                        self.expr(object, out)?;
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+
                 // Check if this is an enum access: Enum.Value -> Enum::Value (Rust syntax)
                 if let Expr::Ident(type_name) = object.as_ref() {
                     // Check if type_name is an enum
@@ -814,6 +912,29 @@ impl RustTrans {
         if let Expr::Ident(name) = call.name.as_ref() {
             if name == "print" {
                 return self.print_call(call, out);
+            }
+        }
+
+        // **Phase 1.3: Tag Types**
+        // Check if this is a tag construction call: Tag.Variant(value)
+        // E.g., Atom.Int(11) should generate: Atom::Int(11)
+        if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
+            if matches!(op, Op::Dot) {
+                if let Expr::Ident(type_name) = lhs.as_ref() {
+                    if let Expr::Ident(variant_name) = rhs.as_ref() {
+                        let type_decl = self.lookup_type(type_name);
+                        if matches!(type_decl, Type::Tag(_)) {
+                            // Tag construction: TypeName::VariantName(arg)
+                            write!(out, "{}::{}", type_name, variant_name)?;
+                            write!(out, "(")?;
+                            if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                                self.expr(expr, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                    }
+                }
             }
         }
 
@@ -1052,6 +1173,11 @@ impl RustTrans {
                 Ok(true)
             }
 
+            Stmt::TypeAlias(type_alias) => {
+                self.type_alias_decl(type_alias, sink)?;
+                Ok(true)
+            }
+
             Stmt::SpecDecl(spec_decl) => {
                 self.spec_decl(spec_decl, sink)?;
                 Ok(true)
@@ -1059,6 +1185,16 @@ impl RustTrans {
 
             Stmt::EnumDecl(enum_decl) => {
                 self.enum_decl(enum_decl, sink)?;
+                Ok(true)
+            }
+
+            Stmt::Union(union) => {
+                self.union_decl(union, sink)?;
+                Ok(true)
+            }
+
+            Stmt::Tag(tag) => {
+                self.tag_decl(tag, sink)?;
                 Ok(true)
             }
 
@@ -1071,6 +1207,13 @@ impl RustTrans {
 
             Stmt::Break => {
                 sink.body.write(b"break;")?;
+                Ok(true)
+            }
+
+            Stmt::Return(expr) => {
+                sink.body.write(b"return ")?;
+                self.expr(expr, &mut sink.body)?;
+                sink.body.write(b";")?;
                 Ok(true)
             }
 
@@ -1861,6 +2004,49 @@ impl RustTrans {
         Ok(())
     }
 
+    // **Phase 6: Generic Programming**
+    // Type alias declaration
+    fn type_alias_decl(&mut self, type_alias: &TypeAlias, sink: &mut Sink) -> AutoResult<()> {
+        // Generate type alias: type List<T> = List<T, Heap>;
+        // In Rust: type List<T> = List<T, Heap>;
+        write!(sink.body, "type {}", type_alias.name)?;
+
+        // Type parameters
+        if !type_alias.params.is_empty() {
+            write!(sink.body, "<")?;
+            for (i, param) in type_alias.params.iter().enumerate() {
+                write!(sink.body, "{}", param)?;
+                if i < type_alias.params.len() - 1 {
+                    write!(sink.body, ", ")?;
+                }
+            }
+            write!(sink.body, ">")?;
+        }
+
+        // For the target type, if it's a GenericInstance with Unknown args,
+        // we need to use the type parameter names instead of "Unknown"
+        if let Type::GenericInstance(inst) = &type_alias.target {
+            write!(sink.body, " = {}<", inst.base_name)?;
+            // Use type parameters if available, otherwise use Unknown count
+            let args: Vec<String> = if !type_alias.params.is_empty() {
+                type_alias.params.iter().map(|p| p.to_string()).collect()
+            } else {
+                inst.args.iter().map(|t| {
+                    match t {
+                        Type::Unknown => "_".to_string(),
+                        _ => self.rust_type_name(t),
+                    }
+                }).collect()
+            };
+            write!(sink.body, "{}>;", args.join(", "))?;
+        } else {
+            write!(sink.body, " = {};", self.rust_type_name(&type_alias.target))?;
+        }
+        sink.body.write(b"\n")?;
+
+        Ok(())
+    }
+
     // Enum declaration
     fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
         // Generate enum definition
@@ -1915,6 +2101,61 @@ impl RustTrans {
         writeln!(sink.body, "}}")?;
         self.dedent();
         writeln!(sink.body, "}}")?;
+
+        Ok(())
+    }
+
+    // **Phase 1.2: Union Types (test: 013_union)**
+    fn union_decl(&mut self, union: &Union, sink: &mut Sink) -> AutoResult<()> {
+        // Generate union definition
+        // In Rust, unions are unsafe but supported
+        writeln!(sink.body, "union {} {{", union.name)?;
+        self.indent();
+
+        for field in &union.fields {
+            self.print_indent(&mut sink.body)?;
+            writeln!(
+                sink.body,
+                "{}: {},",
+                field.name,
+                self.rust_type_name(&field.ty)
+            )?;
+        }
+
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}}")?;
+
+        Ok(())
+    }
+
+    // **Phase 1.3: Tag Types (test: 014_tag)**
+    fn tag_decl(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
+        // Generate enum definition for tag
+        // AutoLang tags are algebraic data types that map to Rust enums
+        writeln!(sink.body, "enum {} {{", tag.name)?;
+        self.indent();
+
+        for field in &tag.fields {
+            self.print_indent(&mut sink.body)?;
+            writeln!(
+                sink.body,
+                "{}({}),",
+                field.name,
+                self.rust_type_name(&field.ty)
+            )?;
+        }
+
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        writeln!(sink.body, "}}")?;
+        sink.body.write(b"\n")?;
+
+        // TODO: Generate impl block for tag methods (if any)
+        for method in &tag.methods {
+            // Tag methods will be added here
+            let _ = method;
+        }
 
         Ok(())
     }
@@ -2284,6 +2525,11 @@ mod tests {
     }
 
     #[test]
+    fn test_005_pointer() {
+        test_a2r("005_pointer").unwrap();
+    }
+
+    #[test]
     fn test_006_struct() {
         test_a2r("006_struct").unwrap();
     }
@@ -2424,7 +2670,82 @@ mod tests {
     }
 
     #[test]
+    fn test_111_generic_alias() {
+        test_a2r("111_generic_alias").unwrap();
+    }
+
+    #[test]
+    fn test_126_generic_field() {
+        test_a2r("126_generic_field").unwrap();
+    }
+
+    #[test]
+    fn test_127_generic_ptr_field() {
+        test_a2r("127_generic_ptr_field").unwrap();
+    }
+
+    #[test]
+    fn test_110_const_generics() {
+        test_a2r("110_const_generics").unwrap();
+    }
+
+    #[test]
+    fn test_109_generic_tag() {
+        test_a2r("109_generic_tag").unwrap();
+    }
+
+    #[test]
     fn test_035_inheritance() {
         test_a2r("035_inheritance").unwrap();
+    }
+
+    #[test]
+    fn test_055_union() {
+        test_a2r("055_union").unwrap();
+    }
+
+    #[test]
+    fn test_014_tag() {
+        test_a2r("014_tag").unwrap();
+    }
+
+    #[test]
+    fn test_004_cstr() {
+        test_a2r("004_cstr").unwrap();
+    }
+
+    #[test]
+    fn test_023_borrow_view() {
+        test_a2r("023_borrow_view").unwrap();
+    }
+
+    #[test]
+    fn test_024_borrow_mut() {
+        test_a2r("024_borrow_mut").unwrap();
+    }
+
+    #[test]
+    fn test_025_borrow_take() {
+        test_a2r("025_borrow_take").unwrap();
+    }
+
+    #[test]
+    fn test_026_borrow_conflicts() {
+        test_a2r("026_borrow_conflicts").unwrap();
+    }
+
+    #[test]
+    fn test_016_basic_spec() {
+        test_a2r("016_basic_spec").unwrap();
+    }
+
+    #[test]
+    fn test_017_spec() {
+        test_a2r("017_spec").unwrap();
+    }
+
+    #[test]
+    fn test_117_list_storage() {
+        test_a2r("117_list_storage").unwrap();
     }
 }
