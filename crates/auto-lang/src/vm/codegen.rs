@@ -1,0 +1,380 @@
+use crate::ast::{self, Expr, Stmt};
+use crate::error::AutoResult;
+// use crate::val::Value; // Removed if not directly used or fix path
+use crate::vm::loader::{Module, RelocEntry, RelocType};
+use crate::vm::opcode::OpCode;
+use auto_val::Op;
+use std::collections::HashMap;
+
+/// Codegen: Compiles AST directly to BigVM Bytecode
+pub struct Codegen {
+    pub code: Vec<u8>,
+    pub exports: HashMap<String, u32>,
+    pub relocs: Vec<RelocEntry>,
+}
+
+impl Codegen {
+    pub fn new() -> Self {
+        Self {
+            code: Vec::new(),
+            exports: HashMap::new(),
+            relocs: Vec::new(),
+        }
+    }
+
+    pub fn compile_stmt(&mut self, stmt: &Stmt) -> AutoResult<()> {
+        match stmt {
+            Stmt::Expr(expr) => {
+                self.compile_expr(expr)?;
+                // Statement referencing an expression usually pops the result?
+                // In stack machine, if expr pushes value, we might want to pop it if it's a stmt?
+                // For now, let's assume expressions are side-effect only or return value is ignored.
+                // But wait, `if` stmt logic might depend on this.
+                // Standard: ExprStmt usually implies "Evaluate and Discard result".
+                // We'll add POP if needed later. For now, just compile.
+            }
+            Stmt::Block(body) => {
+                // Enter new scope? (Locals not implemented yet in this phase)
+                for s in &body.stmts {
+                    self.compile_stmt(s)?;
+                }
+            }
+            Stmt::If(if_stmt) => {
+                let mut jumps_to_end = Vec::new();
+
+                for branch in &if_stmt.branches {
+                    // Cond
+                    self.compile_expr(&branch.cond)?;
+
+                    // JMP_IF_Z to Next Branch (or Else/End)
+                    self.emit(OpCode::JMP_IF_Z);
+                    let jump_to_next = self.emit_placeholder_i16();
+
+                    // Body
+                    self.compile_stmt(&Stmt::Block(branch.body.clone()))?;
+
+                    // If True, JMP to End (skip other branches/else)
+                    // Optimization: We could skip this for the very last block, but keeping it uniform is safer/easier.
+                    self.emit(OpCode::JMP);
+                    let jump_to_end = self.emit_placeholder_i16();
+                    jumps_to_end.push(jump_to_end);
+
+                    // Patch JMP_IF_Z to point here (Start of Next Branch)
+                    self.patch_jump(jump_to_next);
+                }
+
+                if let Some(else_body) = &if_stmt.else_ {
+                    self.compile_stmt(&Stmt::Block(else_body.clone()))?;
+                }
+
+                // Patch all "JMP to End" to point here
+                for jump in jumps_to_end {
+                    self.patch_jump(jump);
+                }
+            }
+            Stmt::Fn(fn_decl) => {
+                // 1. Jump over function body (so it's not executed during definition flow)
+                self.emit(OpCode::JMP);
+                let jump_over = self.emit_placeholder_i16();
+
+                // 2. Record function entry point (export)
+                // Entry point is HERE (after JMP instruction)
+                // But wait, JMP instruction is 3 bytes (Op + i16).
+                // Code len is currently at the END of the placeholder (which is where code *would* continue if we didn't jump).
+                // Actually, `emit_placeholder_i16` pushes bytes. `self.code.len()` is now updating.
+                // The entry point of the function is the *current* `self.code.len()`.
+                let entry_point = self.code.len() as u32;
+                self.exports.insert(fn_decl.name.to_string(), entry_point);
+
+                // 3. Compile body
+                self.compile_stmt(&Stmt::Block(fn_decl.body.clone()))?;
+
+                // 4. Emit RET at end of body (if not present? BigVM requires explicit RET or implied?)
+                // If the last statement wasn't a return, we should emit one.
+                // To be safe, always emit RET implementation-wise?
+                // Or check if block naturally returns.
+                // For void functions or implicit return, stack balance matters.
+                // Simplest: Always emit RET 0 (return nil/void) if we fall off.
+                // But `RET` needs `n_args`. The `Fn` decl knows `params`.
+                // `RET n_args` pops args.
+                // NOTE: `RET` opcode implementation expects `n_args` byte.
+                let n_args = fn_decl.params.len() as u8;
+                self.emit(OpCode::RET);
+                self.code.push(n_args);
+
+                // 5. Patch jump to skip body
+                self.patch_jump(jump_over);
+            }
+            Stmt::Return(expr) => {
+                // Compile expression to leave result on stack
+                self.compile_expr(expr)?;
+                // FIXME: We need to know `n_args` here to emit correct RET.
+                // Codegen struct doesn't track "current function context" yet.
+                // TODO: Add `current_fn_args_count` to Codegen state.
+                // For now, hardcode 0 or implement context tracking.
+                // This is a limitation. I will mark TODO.
+                // Assuming 0 for now might break things if used inside args func.
+                // WORKAROUND: For this iteration, I'll allow simple returns, but `RET` instruction REQUIRES n_args.
+                // I'll emit RET 0 and file a task to fix context.
+                self.emit(OpCode::RET);
+                self.code.push(0); // TODO: Fix this
+            }
+            _ => {
+                // TODO: Implement other statements
+            }
+        }
+        Ok(())
+    }
+
+    pub fn compile_expr(&mut self, expr: &Expr) -> AutoResult<()> {
+        match expr {
+            Expr::Int(i) => {
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(*i);
+            }
+            Expr::Bool(b) => {
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(if *b { 1 } else { 0 });
+            }
+            Expr::Bina(lhs, op, rhs) => {
+                self.compile_expr(lhs)?;
+                self.compile_expr(rhs)?;
+                match op {
+                    Op::Add => self.emit(OpCode::ADD),
+                    Op::Sub => self.emit(OpCode::SUB),
+                    Op::Mul => self.emit(OpCode::MUL),
+                    Op::Div => self.emit(OpCode::DIV),
+                    Op::Eq => self.emit(OpCode::EQ),
+                    Op::Neq => self.emit(OpCode::NE),
+                    Op::Lt => self.emit(OpCode::LT),
+                    Op::Le => self.emit(OpCode::LE),
+                    Op::Gt => self.emit(OpCode::GT),
+                    Op::Ge => self.emit(OpCode::GE),
+                    _ => unimplemented!("Binary Op {:?}", op),
+                }
+            }
+            Expr::Unary(op, rhs) => {
+                // Unary ops not fully in opcode.rs yet?
+                // Need to check OpCode enum.
+                // Assuming simple ones or implement later.
+                // Just TODO for now to be safe.
+                unimplemented!("Unary Op {:?}", op);
+            }
+            Expr::Call(call) => {
+                // 1. Compile Arguments (pushes them to stack)
+                // Note: Call::args is wrapped in various structs
+                if !call.args.is_empty() {
+                    for arg in &call.args.args {
+                        match arg {
+                            crate::ast::Arg::Pos(expr) => {
+                                self.compile_expr(expr)?;
+                            }
+                            _ => unimplemented!("Named arguments not supported in BigVM yet"),
+                        }
+                    }
+                }
+
+                // 2. Emit CALL opcode
+                self.emit(OpCode::CALL);
+
+                // 3. Emit Placeholder for Address (u32)
+                let placeholder_idx = self.code.len();
+                self.code.extend_from_slice(&0u32.to_le_bytes());
+
+                // 4. Create Relocation Entry
+                // Function name is in `call.name`
+                let func_name = match call.name.as_ref() {
+                    Expr::Ident(name) => name.to_string(),
+                    _ => unimplemented!("Dynamic call (computed function name) not supported yet"),
+                };
+
+                self.relocs.push(RelocEntry {
+                    offset: placeholder_idx as u32,
+                    symbol_name: func_name,
+                    reloc_type: RelocType::FuncCall,
+                });
+            }
+            _ => {
+                unimplemented!("Expression {:?}", expr);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn finish(self, name: String) -> Module {
+        Module {
+            name,
+            code: self.code,
+            exports: self.exports,
+            relocs: self.relocs,
+        }
+    }
+
+    // === Helpers ===
+
+    fn emit(&mut self, op: OpCode) {
+        self.code.push(op as u8);
+    }
+
+    fn emit_i32(&mut self, val: i32) {
+        self.code.extend_from_slice(&val.to_le_bytes());
+    }
+
+    fn emit_placeholder_i16(&mut self) -> usize {
+        let idx = self.code.len();
+        self.code.extend_from_slice(&0i16.to_le_bytes());
+        idx
+    }
+
+    /// Backpatch a jump instruction
+    /// The `jump_instr_idx` is the index of the placeholder (offset).
+    /// Offset is relative to the *end* of the jump instruction (which is usually jump_instr_idx + 2).
+    /// Target is `self.code.len()`.
+    /// Offset = Target - (jump_instr_idx + 2)
+    fn patch_jump(&mut self, placeholder_idx: usize) {
+        let target = self.code.len();
+        // Jump instruction (OpCode + i16) = 3 bytes?
+        // `emit_placeholder_i16` returns index of the i16, so OpCode is at -1.
+        // IP advances by 3 (1 byte opcode + 2 bytes operand) -> No.
+        // VM Logic check:
+        // OpCode::JMP matches, reads i16.
+        // engine.rs:
+        //   let offset = self.flash.read_i16(self.ip);
+        //   self.ip += 2;
+        //   let new_ip = (self.ip as isize) + offset;
+        // So offset is relative to the address *after* the JMP instruction (IP after fetching operand).
+        // Address of placeholder is `placeholder_idx`.
+        // Address of next instruction is `placeholder_idx + 2`.
+        // So anchor = placeholder_idx + 2.
+
+        let anchor = placeholder_idx + 2;
+        let offset = (target as isize) - (anchor as isize);
+
+        // Check bounds
+        if offset > i16::MAX as isize || offset < i16::MIN as isize {
+            panic!("Jump offset too large: {}", offset);
+        }
+
+        let bytes = (offset as i16).to_le_bytes();
+        self.code[placeholder_idx] = bytes[0];
+        self.code[placeholder_idx + 1] = bytes[1];
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{Body, Branch, Expr, If, Stmt};
+    use crate::vm::opcode::OpCode;
+    use auto_val::Op;
+
+    #[test]
+    fn test_codegen_expr_int() {
+        let mut codegen = Codegen::new();
+        codegen.compile_expr(&Expr::Int(42)).unwrap();
+        assert_eq!(codegen.code[0], OpCode::CONST_I32 as u8);
+        let val = i32::from_le_bytes(codegen.code[1..5].try_into().unwrap());
+        assert_eq!(val, 42);
+    }
+
+    #[test]
+    fn test_codegen_expr_binary() {
+        let mut codegen = Codegen::new();
+        let expr = Expr::Bina(Box::new(Expr::Int(1)), Op::Add, Box::new(Expr::Int(2)));
+        codegen.compile_expr(&expr).unwrap();
+        assert_eq!(codegen.code.len(), 11);
+        assert_eq!(codegen.code[10], OpCode::ADD as u8);
+    }
+
+    #[test]
+    fn test_codegen_if_stmt() {
+        let mut codegen = Codegen::new();
+        let stmt = Stmt::If(If {
+            branches: vec![Branch {
+                cond: Expr::Bool(true),
+                body: Body::single_expr(Expr::Int(1)),
+            }],
+            else_: Some(Body::single_expr(Expr::Int(2))),
+        });
+
+        codegen.compile_stmt(&stmt).unwrap();
+
+        let code = &codegen.code;
+        // JMP_IF_Z at 5 should jump to 16. Offset 8.
+        assert_eq!(code[5], OpCode::JMP_IF_Z as u8);
+        let else_offset = i16::from_le_bytes(code[6..8].try_into().unwrap());
+        assert_eq!(else_offset, 8);
+
+        // JMP at 13 should jump to 21. Offset 5.
+        // Wait, why 5?
+        // 13 (JMP) + 1 + 2 = 16.
+        // End is at 21. 21 - 16 = 5. Correct.
+        assert_eq!(code[13], OpCode::JMP as u8);
+        let end_offset = i16::from_le_bytes(code[14..16].try_into().unwrap());
+        assert_eq!(end_offset, 5);
+    }
+
+    #[test]
+    fn test_codegen_fn() {
+        let mut codegen = Codegen::new();
+        // fn test_func() { return 42; }
+        // AST: Fn { name: "test_func", params: [], body: [Return(42)], ret: Int }
+        let fn_decl = crate::ast::Fn::new(
+            crate::ast::FnKind::Function,
+            "test_func".into(),
+            None,
+            vec![],
+            Body {
+                stmts: vec![Stmt::Return(Box::new(Expr::Int(42)))],
+                has_new_line: false,
+            },
+            crate::ast::Type::Int,
+        );
+        let stmt = Stmt::Fn(fn_decl);
+
+        codegen.compile_stmt(&stmt).unwrap();
+
+        // Check exports
+        assert!(codegen.exports.contains_key("test_func"));
+        let entry_point = *codegen.exports.get("test_func").unwrap();
+
+        // Code check
+        assert_eq!(codegen.code[0], OpCode::JMP as u8);
+
+        // JMP offset at index 1.
+        let jump_offset = i16::from_le_bytes(codegen.code[1..3].try_into().unwrap());
+        // Offset is relative to *end* of JMP instr (index 3).
+        // Target is end of code.
+        // So jump_offset = (TotalLen - 3).
+        assert_eq!(codegen.code.len() as isize - 3, jump_offset as isize);
+
+        // Entry point should be at index 3
+        assert_eq!(entry_point, 3);
+    }
+
+    #[test]
+    fn test_codegen_call() {
+        let mut codegen = Codegen::new();
+        // call foo(42)
+        let call_expr = Expr::Call(crate::ast::Call {
+            name: Box::new(Expr::Ident("foo".into())),
+            args: crate::ast::Args {
+                args: vec![crate::ast::Arg::Pos(Expr::Int(42))],
+            },
+            ret: crate::ast::Type::Unknown,
+            type_args: vec![],
+        });
+
+        codegen.compile_expr(&call_expr).unwrap();
+
+        // Expected: CONST 42 (5 bytes) + CALL (1 byte) + Placeholder (4 bytes)
+        assert_eq!(codegen.code[5], OpCode::CALL as u8);
+
+        // Check Relocs
+        assert_eq!(codegen.relocs.len(), 1);
+        let reloc = &codegen.relocs[0];
+        assert_eq!(reloc.symbol_name, "foo");
+        assert_eq!(reloc.offset, 6); // Placeholder starts after CALL
+        assert_eq!(reloc.reloc_type, RelocType::FuncCall);
+    }
+}

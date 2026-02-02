@@ -3,11 +3,21 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 pub mod builder;
+pub mod codegen;
 pub mod collections;
+pub mod engine;
 pub mod io;
 pub mod list;
+pub mod loader;
 pub mod memory;
+pub mod opcode;
 pub mod storage;
+pub mod virt_memory;
+
+#[cfg(test)]
+mod tests_bigvm;
+#[cfg(test)]
+mod tests_loader;
 
 /// Phase 4.6: VM function signature - now takes Evaler instead of Universe
 /// This allows VM functions to use bridge methods for Database/ExecutionEngine access
@@ -455,7 +465,7 @@ pub fn init_collections_module() {
         "realloc_array".into(),
         VmFunctionEntry {
             name: "realloc_array".into(),
-            func: memory::realloc_array_wrapped,  // Wrapper that accepts [array, new_size]
+            func: memory::realloc_array_wrapped, // Wrapper that accepts [array, new_size]
             is_method: false,
         },
     );
@@ -614,17 +624,21 @@ pub fn init_storage_module() {
     inline_int64_type
         .methods
         .insert("data".into(), storage::inline_int64_data as VmMethod);
-    inline_int64_type
-        .methods
-        .insert("capacity".into(), storage::inline_int64_capacity as VmMethod);
-    inline_int64_type
-        .methods
-        .insert("try_grow".into(), storage::inline_int64_try_grow as VmMethod);
+    inline_int64_type.methods.insert(
+        "capacity".into(),
+        storage::inline_int64_capacity as VmMethod,
+    );
+    inline_int64_type.methods.insert(
+        "try_grow".into(),
+        storage::inline_int64_try_grow as VmMethod,
+    );
     inline_int64_type
         .methods
         .insert("drop".into(), storage::inline_int64_drop as VmMethod);
 
-    storage_module.types.insert("InlineInt64".into(), inline_int64_type);
+    storage_module
+        .types
+        .insert("InlineInt64".into(), inline_int64_type);
 
     // Register the module
     VM_REGISTRY.lock().unwrap().register_module(storage_module);
