@@ -85,6 +85,11 @@ impl BigVMNativeRegistry {
     pub fn is_empty(&self) -> bool {
         self.registry.is_empty()
     }
+
+    /// Get all registered function names (for debugging).
+    pub fn get_function_names(&self) -> Vec<String> {
+        self.registry.keys().cloned().collect()
+    }
 }
 
 // Global native registry instance
@@ -110,6 +115,10 @@ pub fn register_builtin_natives() {
     registry.register("List.get");
     registry.register("List.set");
     registry.register("List.drop");
+
+    // Iterator functions
+    registry.register("List.iter");
+    registry.register("Iterator.next");
 }
 
 #[cfg(test)]

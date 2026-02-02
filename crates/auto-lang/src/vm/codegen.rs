@@ -28,6 +28,9 @@ pub struct Codegen {
 
 impl Codegen {
     pub fn new() -> Self {
+        // Initialize the global native registry
+        crate::vm::native_registry::register_builtin_natives();
+
         let mut intrinsics = HashMap::new();
         // Register intrinsics
         intrinsics.insert("print".to_string(), NATIVE_PRINT_I32);

@@ -1,16 +1,22 @@
 use crate::vm::channel::{AutoChannel, ChannelId};
 use crate::vm::native::NativeInterface;
-/// BigVM Execution Engine
-/// The core loop that executes AutoByteCode (ABC).
 use crate::vm::opcode::OpCode;
 use crate::vm::task::{AutoTask, TaskId, TaskStatus};
 use crate::vm::virt_memory::VirtualFlash;
 use dashmap::DashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
+
+/// List iterator state
+#[derive(Debug, Clone)]
+pub struct ListIterator {
+    pub list_id: u64,
+    pub current_index: u32,
+}
 
 #[derive(Debug)]
 pub enum VMError {
@@ -39,6 +45,10 @@ pub struct BigVM {
     // List Registry
     pub lists: DashMap<u64, Arc<RwLock<Vec<i32>>>>,
     pub list_id_gen: AtomicU64,
+
+    // Iterator Registry
+    pub iterators: DashMap<u32, ListIterator>,
+    pub iterator_id_gen: AtomicU32,
 }
 
 impl BigVM {
@@ -55,6 +65,8 @@ impl BigVM {
             channel_id_gen: AtomicU64::new(0),
             lists: DashMap::new(),
             list_id_gen: AtomicU64::new(0),
+            iterators: DashMap::new(),
+            iterator_id_gen: AtomicU32::new(0),
         }
     }
 

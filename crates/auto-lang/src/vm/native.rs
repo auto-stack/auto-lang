@@ -43,6 +43,10 @@ impl NativeInterface {
         self.register(NATIVE_LIST_GET, shim_list_get);
         self.register(NATIVE_LIST_SET, shim_list_set);
         self.register(NATIVE_LIST_DROP, shim_list_drop);
+
+        // Iterator functions
+        self.register(NATIVE_LIST_ITER, shim_list_iter);
+        self.register(NATIVE_ITERATOR_NEXT, shim_iterator_next);
     }
 }
 
@@ -61,6 +65,10 @@ pub const NATIVE_LIST_CLEAR: u16 = 105;
 pub const NATIVE_LIST_GET: u16 = 106;
 pub const NATIVE_LIST_SET: u16 = 107;
 pub const NATIVE_LIST_DROP: u16 = 108;
+
+// === Iterator Native Functions (109+) ===
+pub const NATIVE_LIST_ITER: u16 = 109;
+pub const NATIVE_ITERATOR_NEXT: u16 = 110;
 
 // === Standard Shims ===
 
@@ -241,5 +249,72 @@ pub fn shim_list_drop(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 
     // Return success (0)
     task.ram.push_i32(0);
+    Ok(())
+}
+
+// ============================================================================
+// Iterator Native Shims
+// ============================================================================
+
+/// Create an iterator for a list.
+/// Stack: list_id -> iterator_id
+/// Returns: iterator_id (u32 as i32)
+pub fn shim_list_iter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use std::sync::atomic::Ordering;
+
+    let list_id = task.ram.pop_i32() as u64;
+
+    // Allocate new iterator ID
+    let iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
+
+    // Create iterator state
+    let iterator = crate::vm::engine::ListIterator {
+        list_id,
+        current_index: 0,
+    };
+
+    // Store iterator
+    vm.iterators.insert(iterator_id, iterator);
+
+    // Return iterator_id
+    task.ram.push_i32(iterator_id as i32);
+    Ok(())
+}
+
+/// Get next element from iterator.
+/// Stack: iterator_id -> element (or -1 for nil)
+/// Returns: element value, or -1 if exhausted
+pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    let iterator_id = task.ram.pop_i32() as u32;
+
+    // Get the iterator (need to clone to update)
+    let result = if let Some(mut iter_mut) = vm.iterators.get_mut(&iterator_id) {
+        // Get the list
+        if let Some(list) = vm.lists.get(&iter_mut.list_id) {
+            let list = list.read().unwrap();
+
+            // Check if exhausted
+            if iter_mut.current_index >= list.len() as u32 {
+                // Iterator exhausted - return -1 (nil)
+                -1
+            } else {
+                // Get element at current_index
+                let elem = list[iter_mut.current_index as usize];
+
+                // Increment index for next call
+                iter_mut.current_index += 1;
+
+                elem
+            }
+        } else {
+            // Invalid list - return -1 (nil)
+            -1
+        }
+    } else {
+        // Invalid iterator - return -1 (nil)
+        -1
+    };
+
+    task.ram.push_i32(result);
     Ok(())
 }
