@@ -329,11 +329,39 @@ impl BigVM {
                     return Ok(TaskStatus::Ready);
                 }
                 OpCode::JOIN => {
-                    let _task_id = task.ram.pop_i32();
-                    // TODO: Implement JOIN logic (check if task terminated, get result)
-                    // For now, blocking wait or poll?
-                    // MVP: Just return 0
-                    task.ram.push_i32(0);
+                    let target_task_id = task.ram.pop_i32() as u64;
+
+                    // Get Arc first (must outlive the try_lock call)
+                    let target_task_opt: Option<Arc<Mutex<AutoTask>>> =
+                        self.tasks.get(&target_task_id).map(|r| r.value().clone());
+
+                    let join_result: Option<(bool, i32)> = match &target_task_opt {
+                        Some(target_task) => {
+                            match target_task.try_lock() {
+                                Ok(target) => {
+                                    if target.status == TaskStatus::Terminated {
+                                        Some((true, target.ram.top().unwrap_or(0)))
+                                    } else {
+                                        Some((false, 0))
+                                    }
+                                }
+                                Err(_) => None, // Couldn't lock
+                            }
+                        }
+                        None => Some((true, 0)), // Task not found, return 0
+                    };
+
+                    match join_result {
+                        Some((true, result)) => {
+                            task.ram.push_i32(result);
+                        }
+                        Some((false, _)) | None => {
+                            // Task still running or lock failed, yield and retry
+                            task.ip -= 1;
+                            task.ram.push_i32(target_task_id as i32);
+                            return Ok(TaskStatus::Ready);
+                        }
+                    }
                 }
                 OpCode::CHAN_NEW => {
                     let id = self.channel_id_gen.fetch_add(1, Ordering::Relaxed) as u32;
