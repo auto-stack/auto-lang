@@ -74,6 +74,7 @@ pub enum OpCode {
     CHAN_NEW = 0x85, // -> channel_id: u32
     SEND = 0x86,     // channel_id: u32, data: i32 -> void
     RECV = 0x87,     // channel_id: u32 -> data: i32
+    TRY_RECV = 0x88, // channel_id: u32 -> data: i32 | 0 (non-blocking)
 
     // === Debug ===
     PRINT = 0xF0,

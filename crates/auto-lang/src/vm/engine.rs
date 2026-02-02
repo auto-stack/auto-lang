@@ -8,6 +8,7 @@ use crate::vm::virt_memory::{VirtualFlash, VirtualRAM};
 use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
@@ -94,6 +95,18 @@ impl BigVM {
                 if task.status == TaskStatus::Terminated {
                     continue;
                 }
+
+                // Check if sleeping task should wake up
+                if let Some(wake_time) = task.wake_time {
+                    if Instant::now() >= wake_time {
+                        task.wake_time = None;
+                        task.status = TaskStatus::Ready;
+                    } else {
+                        alive_count += 1;
+                        continue; // Still sleeping
+                    }
+                }
+
                 alive_count += 1;
 
                 // Check if task is runnable
@@ -270,6 +283,12 @@ impl BigVM {
                     let n_args = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
+                    // Check if we're in the main task (bp == 0 means no caller)
+                    if task.bp == 0 {
+                        // Main task returning - just terminate
+                        return Ok(TaskStatus::Terminated);
+                    }
+
                     // Expect Result on Top of Stack
                     let result = task.ram.pop_i32();
 
@@ -327,6 +346,15 @@ impl BigVM {
                 }
                 OpCode::YIELD => {
                     return Ok(TaskStatus::Ready);
+                }
+                OpCode::SLEEP => {
+                    let ms = self.flash.read_u32(task.ip) as u64;
+                    task.ip += 4;
+
+                    // Set wake time
+                    task.wake_time = Some(Instant::now() + std::time::Duration::from_millis(ms));
+                    task.status = TaskStatus::Waiting(format!("sleep for {}ms", ms));
+                    return Ok(task.status.clone());
                 }
                 OpCode::JOIN => {
                     let target_task_id = task.ram.pop_i32() as u64;
@@ -438,6 +466,45 @@ impl BigVM {
                         task.ip -= 1;
                         task.ram.push_i32(chan_id as i32);
                         return Ok(TaskStatus::Ready);
+                    }
+                }
+                OpCode::TRY_RECV => {
+                    let chan_id = task.ram.pop_i32() as u32;
+                    let mut success = false;
+                    let mut val = 0;
+                    let mut closed = false;
+                    match self.channels.get(&chan_id) {
+                        Some(chan_ref) => {
+                            let chan = chan_ref.value().clone();
+                            drop(chan_ref);
+                            // Lock rx
+                            let mut rx = chan.rx.lock().unwrap();
+                            match rx.try_recv() {
+                                Ok(v) => {
+                                    val = v;
+                                    success = true;
+                                }
+                                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                                    // Empty - return 0 without blocking
+                                }
+                                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                                    closed = true;
+                                }
+                            }
+                        }
+                        None => {
+                            closed = true; // Invalid = closed
+                            val = -1; // Error code?
+                        }
+                    }
+
+                    if success {
+                        task.ram.push_i32(val);
+                    } else if closed {
+                        task.ram.push_i32(0); // TODO: Null/None
+                    } else {
+                        // Empty channel - return 0 immediately (non-blocking)
+                        task.ram.push_i32(0);
                     }
                 }
 

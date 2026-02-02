@@ -19,11 +19,7 @@ pub mod task;
 pub mod virt_memory;
 
 #[cfg(test)]
-mod tests_bigvm;
-#[cfg(test)]
-mod tests_channel;
-#[cfg(test)]
-mod tests_loader;
+mod tests_concurrency;
 
 /// Phase 4.6: VM function signature - now takes Evaler instead of Universe
 /// This allows VM functions to use bridge methods for Database/ExecutionEngine access

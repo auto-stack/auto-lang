@@ -1,4 +1,5 @@
 use crate::vm::virt_memory::VirtualRAM;
+use std::time::Instant;
 
 pub type TaskId = u64;
 
@@ -18,6 +19,7 @@ pub struct AutoTask {
     pub ip: usize,
     pub bp: usize, // Base Pointer
     pub status: TaskStatus,
+    pub wake_time: Option<Instant>, // For SLEEP opcode
 }
 
 impl AutoTask {
@@ -28,6 +30,7 @@ impl AutoTask {
             ip: start_ip,
             bp: 0,
             status: TaskStatus::Ready,
+            wake_time: None,
         }
     }
 }
