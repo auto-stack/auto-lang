@@ -914,6 +914,14 @@ pub enum RuntimeError {
         #[label("'break' statement not inside a loop")]
         span: SourceSpan,
     },
+
+    /// Out of memory (heap allocation failure)
+    #[error("out of memory")]
+    #[diagnostic(
+        code(auto_runtime_E0306),
+        help("The heap has run out of available memory")
+    )]
+    OutOfMemory,
 }
 
 // ============================================================================

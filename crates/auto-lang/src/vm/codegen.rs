@@ -1,8 +1,8 @@
-use crate::ast::{self, Expr, Stmt};
+use crate::ast::{Expr, Stmt};
 use crate::error::AutoResult;
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
-use crate::vm::native::{NATIVE_PRINT_F32, NATIVE_PRINT_I32};
+use crate::vm::native::{NATIVE_PRINT_F32, NATIVE_PRINT_I32, NATIVE_PRINT_STR};
 use crate::vm::opcode::OpCode;
 use auto_val::Op;
 use std::collections::HashMap;
@@ -13,6 +13,8 @@ pub struct Codegen {
     pub exports: HashMap<String, u32>,
     pub relocs: Vec<RelocEntry>,
     pub intrinsics: HashMap<String, u16>,
+    /// String constant pool
+    pub strings: Vec<Vec<u8>>,
 }
 
 impl Codegen {
@@ -22,12 +24,14 @@ impl Codegen {
         intrinsics.insert("print".to_string(), NATIVE_PRINT_I32);
         intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
         intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
+        intrinsics.insert("print_str".to_string(), NATIVE_PRINT_STR);
 
         Self {
             code: Vec::new(),
             exports: HashMap::new(),
             relocs: Vec::new(),
             intrinsics,
+            strings: Vec::new(),
         }
     }
 
@@ -145,6 +149,14 @@ impl Codegen {
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(if *b { 1 } else { 0 });
             }
+            Expr::Str(s) => {
+                // Add string to constant pool and emit LOAD_STR <index>
+                let bytes = s.as_bytes().to_vec();
+                let idx = self.strings.len() as u16;
+                self.strings.push(bytes);
+                self.emit(OpCode::LOAD_STR);
+                self.code.extend_from_slice(&idx.to_le_bytes());
+            }
             Expr::Bina(lhs, op, rhs) => {
                 self.compile_expr(lhs)?;
                 self.compile_expr(rhs)?;
@@ -163,11 +175,15 @@ impl Codegen {
                 }
             }
             Expr::Unary(op, rhs) => {
-                // Unary ops not fully in opcode.rs yet?
-                // Need to check OpCode enum.
-                // Assuming simple ones or implement later.
-                // Just TODO for now to be safe.
-                unimplemented!("Unary Op {:?}", op);
+                // Compile the operand first
+                self.compile_expr(rhs)?;
+
+                // Emit the appropriate unary opcode
+                match op {
+                    Op::Sub => self.emit(OpCode::NEG),
+                    Op::Not => self.emit(OpCode::NOT),
+                    _ => unimplemented!("Unary Op {:?}", op),
+                }
             }
             Expr::Call(call) => {
                 // Check for intrinsic
@@ -232,6 +248,47 @@ impl Codegen {
                     reloc_type: RelocType::FuncCall,
                 });
             }
+            Expr::If(if_expr) => {
+                // If expression: each branch must leave a value on the stack
+                let mut jumps_to_end = Vec::new();
+
+                for branch in &if_expr.branches {
+                    // Compile condition
+                    self.compile_expr(&branch.cond)?;
+
+                    // JMP_IF_Z to next branch
+                    self.emit(OpCode::JMP_IF_Z);
+                    let jump_to_next = self.emit_placeholder_i16();
+
+                    // Compile body (should push result)
+                    // Body is a Block, compile all statements
+                    for stmt in &branch.body.stmts {
+                        self.compile_stmt(stmt)?;
+                    }
+                    // The last expression in the block should be left on stack
+                    // For simplicity, we assume the last statement leaves a value
+
+                    // Jump to end
+                    self.emit(OpCode::JMP);
+                    let jump_to_end = self.emit_placeholder_i16();
+                    jumps_to_end.push(jump_to_end);
+
+                    // Patch jump to next branch
+                    self.patch_jump(jump_to_next);
+                }
+
+                // Else branch (if any)
+                if let Some(else_body) = &if_expr.else_ {
+                    for stmt in &else_body.stmts {
+                        self.compile_stmt(stmt)?;
+                    }
+                }
+
+                // Patch all jumps to end
+                for jump in jumps_to_end {
+                    self.patch_jump(jump);
+                }
+            }
             _ => {
                 unimplemented!("Expression {:?}", expr);
             }
@@ -245,6 +302,7 @@ impl Codegen {
             code: self.code,
             exports: self.exports,
             relocs: self.relocs,
+            strings: self.strings,
         }
     }
 

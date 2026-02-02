@@ -6,6 +6,7 @@ pub mod builder;
 pub mod codegen;
 pub mod collections;
 pub mod engine;
+pub mod heap;
 pub mod io;
 pub mod list;
 pub mod loader;

@@ -37,6 +37,8 @@ pub struct Module {
     // Exported symbols: Name -> Offset in *this* module's code
     pub exports: HashMap<String, u32>,
     pub relocs: Vec<RelocEntry>,
+    /// String constant pool: index -> string bytes
+    pub strings: Vec<Vec<u8>>,
 }
 
 pub struct Linker {

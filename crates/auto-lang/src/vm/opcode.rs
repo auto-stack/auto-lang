@@ -12,6 +12,7 @@ pub enum OpCode {
     POP_N = 0x02,
     DUP = 0x03,
     SWAP = 0x04,
+    DROP = 0x05, // RAII cleanup: pops and frees owned value
 
     // === Constants ===
     CONST_I32 = 0x10,

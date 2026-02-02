@@ -30,11 +30,13 @@ impl NativeInterface {
     pub fn register_std_shims(&mut self) {
         self.register(NATIVE_PRINT_I32, shim_print_i32);
         self.register(NATIVE_PRINT_F32, shim_print_f32);
+        self.register(NATIVE_PRINT_STR, shim_print_str);
     }
 }
 
 pub const NATIVE_PRINT_I32: u16 = 1;
 pub const NATIVE_PRINT_F32: u16 = 2;
+pub const NATIVE_PRINT_STR: u16 = 3;
 
 // === Standard Shims ===
 
@@ -55,6 +57,21 @@ pub fn shim_print_f32(vm: &mut BigVM) -> Result<(), VMError> {
     let val_bits = vm.ram.pop_i32() as u32;
     let val = f32::from_bits(val_bits);
     println!("{}", val);
+    // Push Unit (0) as return value
+    vm.ram.push_i32(0);
+    Ok(())
+}
+
+/// Print a string from the string constant pool.
+/// Expects string index (u16) on TOS as i32.
+pub fn shim_print_str(vm: &mut BigVM) -> Result<(), VMError> {
+    let str_index = vm.ram.pop_i32() as u16;
+    if let Some(bytes) = vm.get_string(str_index) {
+        let s = String::from_utf8_lossy(bytes);
+        println!("{}", s);
+    } else {
+        println!("<invalid string index: {}>", str_index);
+    }
     // Push Unit (0) as return value
     vm.ram.push_i32(0);
     Ok(())

@@ -20,6 +20,8 @@ pub struct BigVM {
     pub ip: usize, // Instruction Pointer
     pub bp: usize, // Base Pointer (Start of current stack frame)
     pub native_interface: NativeInterface,
+    /// String constant pool
+    pub strings: Vec<Vec<u8>>,
 }
 
 impl BigVM {
@@ -32,7 +34,18 @@ impl BigVM {
             ip: 0,
             bp: 0,
             native_interface,
+            strings: Vec::new(),
         }
+    }
+
+    /// Load strings from a module's string constant pool
+    pub fn load_strings(&mut self, strings: Vec<Vec<u8>>) {
+        self.strings = strings;
+    }
+
+    /// Get string by index from the constant pool
+    pub fn get_string(&self, index: u16) -> Option<&[u8]> {
+        self.strings.get(index as usize).map(|v| v.as_slice())
     }
 
     /// Run the VM until completion or error
@@ -72,7 +85,14 @@ impl BigVM {
                 OpCode::CONST_1 => {
                     self.ram.push_i32(1);
                 }
-
+                OpCode::LOAD_STR => {
+                    // Load string index as i32 onto stack
+                    // The index is a u16 in bytecode
+                    let str_idx = self.flash.read_u16(self.ip);
+                    self.ip += 2;
+                    // Push the string index as i32 (for use by print_str native)
+                    self.ram.push_i32(str_idx as i32);
+                }
                 // === Arithmetic ===
                 OpCode::ADD => {
                     let b = self.ram.pop_i32();
@@ -99,6 +119,15 @@ impl BigVM {
                 }
 
                 // === Control Flow ===
+                OpCode::NEG => {
+                    let a = self.ram.pop_i32();
+                    self.ram.push_i32(a.wrapping_neg());
+                }
+                OpCode::NOT => {
+                    let a = self.ram.pop_i32();
+                    // Bitwise NOT
+                    self.ram.push_i32(!a);
+                }
                 OpCode::CALL => {
                     let target = self.flash.read_u32(self.ip) as usize;
                     self.ip += 4;
@@ -263,6 +292,13 @@ impl BigVM {
 
                 // === Stack ===
                 OpCode::POP => {
+                    self.ram.pop_i32();
+                }
+                OpCode::DROP => {
+                    // RAII cleanup: pops value from stack.
+                    // For primitive types (i32), this is same as POP.
+                    // For heap pointers, this would trigger deallocation.
+                    // TODO: Once we have heap tracking, check if value is a heap ptr.
                     self.ram.pop_i32();
                 }
 
