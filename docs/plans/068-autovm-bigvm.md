@@ -10,6 +10,7 @@
 - ✅ **List Support**: Full List implementation with 9 native functions
 - ✅ **Native Function Registry**: Runtime native function mapping with automatic ID resolution
 - ✅ **Entry Point Resolution**: Automatic main/test/ address 0 lookup
+- ✅ **Iterator Support (Phase 7.1)**: Implemented `List.iter()` and `Iterator.next()` native functions
 
 ## 1. Objective
 
