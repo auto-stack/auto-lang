@@ -44,7 +44,7 @@ use crate::trans::c::CTrans;
 pub use crate::universe::{SymbolLocation, Universe};
 use crate::compile::CompileSession;
 use crate::{eval::EvalMode, trans::Sink, trans::Trans};
-use auto_val::{AutoPath, Obj};
+use auto_val::{shared, AutoPath, Obj, Shared};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -134,6 +134,41 @@ pub fn run_with_session(session: &mut CompileSession, code: &str) -> AutoResult<
     // Create a new Interpreter for this execution
     // Note: Each execution gets its own Evaler, but shares the Database
     let mut interpreter = interp::Interpreter::new_with_session(session);
+
+    // Interpret the code (this parses and executes)
+    // TODO: Phase 3 - Check Database cache before parsing
+    interpreter.interpret(code)?;
+
+    Ok(interpreter.result.repr().to_string())
+}
+
+/// Run code with incremental compilation and persistent scope support
+///
+/// **Phase 2**: Execute code with persistent CompileSession and Scope
+///
+/// This function takes a mutable CompileSession and a persistent scope,
+/// reusing both across multiple calls for REPL-style incremental execution.
+///
+/// # Arguments
+///
+/// * `session` - Mutable reference to persistent CompileSession
+/// * `scope` - Persistent scope for variable storage across calls
+/// * `code` - AutoLang source code to execute
+///
+/// # Returns
+///
+/// String representation of the result, or error message
+pub fn run_with_session_and_scope(
+    session: &mut CompileSession,
+    scope: Shared<Universe>,
+    code: &str,
+) -> AutoResult<String> {
+    // Note: For REPL usage, we skip compile_source() to avoid double-parsing
+    // The interpreter will parse and execute the code directly with the persistent scope
+    // This ensures variables are stored and retrieved from the same scope across REPL inputs
+
+    // Create a new Interpreter for this execution with the persistent scope
+    let mut interpreter = interp::Interpreter::new_with_session_and_scope(session, scope);
 
     // Interpret the code (this parses and executes)
     // TODO: Phase 3 - Check Database cache before parsing

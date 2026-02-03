@@ -3,7 +3,7 @@ use crate::error::{AutoError, AutoResult};
 use crate::interp;
 use crate::runtime::ExecutionEngine;
 use crate::universe::{Universe, VmRefData};
-use auto_val::{Shared, Type, Value};
+use auto_val::{shared, Shared, Type, Value};
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 use std::rc::Rc;
@@ -21,6 +21,9 @@ pub struct ReplSession {
 
     /// Runtime execution engine (recreated or cleared per input)
     pub engine: Rc<RefCell<ExecutionEngine>>,
+
+    /// Persistent scope for variables across REPL inputs
+    pub scope: Shared<Universe>,
 }
 
 impl ReplSession {
@@ -29,12 +32,18 @@ impl ReplSession {
     /// Initializes a new CompileSession with a fresh Database and
     /// creates a new ExecutionEngine for runtime execution.
     pub fn new() -> Self {
-        let session = CompileSession::new();
-        let engine = Rc::new(RefCell::new(ExecutionEngine::new()));
+        // Create a temporary interpreter to do all the stdlib initialization
+        let mut temp_interpreter = interp::Interpreter::new();
+
+        // Extract the components we need
+        let session = temp_interpreter.session.clone();
+        let engine = temp_interpreter.engine.clone();
+        let scope = temp_interpreter.scope.clone();
 
         Self {
             session,
             engine,
+            scope,
         }
     }
 
@@ -53,8 +62,8 @@ impl ReplSession {
     ///
     /// String representation of the result, or error message
     pub fn run(&mut self, code: &str) -> AutoResult<String> {
-        // Use the run_with_session function for incremental compilation
-        crate::run_with_session(&mut self.session, code)
+        // Use run_with_scope to preserve the session's scope across inputs
+        crate::run_with_session_and_scope(&mut self.session, self.scope.clone(), code)
     }
 
     /// Get session statistics
@@ -68,9 +77,10 @@ impl ReplSession {
         }
     }
 
-    /// Clear runtime state (keep compile-time data)
+    /// Clear runtime state (keep compile-time data and scope)
     pub fn reset_runtime(&mut self) {
         self.engine = Rc::new(RefCell::new(ExecutionEngine::new()));
+        // Note: We intentionally do NOT reset the scope, as it contains user-defined variables
     }
 }
 

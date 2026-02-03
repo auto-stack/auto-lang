@@ -389,6 +389,59 @@ impl Interpreter {
         interpreter
     }
 
+    /// Create a new Interpreter with an existing CompileSession and persistent scope
+    ///
+    /// **Phase 2 (Plan 065)**: Enables incremental compilation with scope persistence
+    ///
+    /// This creates an Interpreter that shares the provided CompileSession's Database
+    /// and uses a persistent scope across multiple executions (for REPL-style usage).
+    pub fn new_with_session_and_scope(session: &CompileSession, scope: Shared<Universe>) -> Self {
+        // Use the provided session instead of creating a new one
+        let session_clone = session.clone(); // CompileSession is cheap to clone (Rc wrapper)
+
+        let engine = Rc::new(RefCell::new(ExecutionEngine::new()));
+
+        // Get references for Evaler before moving into struct
+        let db_ref = session_clone.db();
+        let engine_ref = engine.clone();
+
+        let mut interpreter = Self {
+            session: session_clone,
+            engine,
+            evaler: Evaler::new(scope.clone()),
+            scope,
+            result: Value::Nil,
+            fstr_note: '$',
+            skip_check: false,
+            enable_error_recovery: false,
+        };
+
+        // Register the evaluator with the universe
+        interpreter.evaler.register_with_universe();
+
+        // Initialize Evaler's db and engine fields
+        interpreter.evaler.set_db(db_ref);
+        interpreter.evaler.set_engine(engine_ref.clone());
+
+        // Register evaluator with ExecutionEngine
+        engine_ref.borrow_mut().set_evaluator(&mut interpreter.evaler);
+
+        // Inject environment variables
+        let target = crate::target::Target::detect();
+        interpreter.scope.borrow_mut().inject_environment(target);
+
+        // Initialize VM modules
+        crate::vm::init_io_module();
+        crate::vm::init_collections_module();
+        crate::vm::init_builder_module();
+        crate::vm::init_storage_module();
+
+        // Note: We skip loading stdlib files here since they should already be loaded
+        // in the persistent scope from the first call to new_with_session()
+
+        interpreter
+    }
+
     pub fn with_eval_mode(mut self, mode: EvalMode) -> Self {
         self.evaler = self.evaler.with_mode(mode);
         self

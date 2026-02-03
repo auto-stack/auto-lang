@@ -130,7 +130,7 @@ impl CompileSession {
         let scope = Rc::new(RefCell::new(crate::universe::Universe::new()));
         let mut parser = Parser::new(source, scope.clone());
         let ast = parser.parse()
-            .map_err(|e| AutoError::Msg(format!("Parse error: {}", e)))?;
+            .map_err(|e| crate::error::attach_source(e, path.to_string(), source.to_string()))?;
 
         // Index AST into database
         let mut db = self.db.write().unwrap();
