@@ -28,7 +28,7 @@
 //! assert!(result.is_ok());
 //! ```
 
-use crate::ast::{Body, Expr, For, If, Stmt, Store, Type, ArrayType, Name, StoreKind};
+use crate::ast::{Body, Expr, For, If, Stmt, Store, Type};
 use crate::error::{AutoError, TypeError};
 use crate::infer::{check_fn, infer_expr, InferenceContext};
 use miette::SourceSpan;

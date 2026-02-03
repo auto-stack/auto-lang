@@ -30,9 +30,7 @@ use crate::ast::{Name, Type};
 use crate::database::Database;
 use crate::error::{AutoError, TypeError, Warning};
 use miette::SourceSpan;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 /// 类型推导上下文
 ///

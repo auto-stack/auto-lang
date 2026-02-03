@@ -3,7 +3,7 @@ use crate::error::{AutoError, AutoResult};
 use crate::interp;
 use crate::runtime::ExecutionEngine;
 use crate::universe::{Universe, VmRefData};
-use auto_val::{shared, Shared, Type, Value};
+use auto_val::{Shared, Type, Value};
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 use std::rc::Rc;

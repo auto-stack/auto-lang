@@ -44,7 +44,7 @@ use crate::trans::c::CTrans;
 pub use crate::universe::{SymbolLocation, Universe};
 use crate::compile::CompileSession;
 use crate::{eval::EvalMode, trans::Sink, trans::Trans};
-use auto_val::{shared, AutoPath, Obj, Shared};
+use auto_val::{AutoPath, Obj, Shared};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
