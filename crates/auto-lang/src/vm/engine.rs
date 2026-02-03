@@ -18,6 +18,28 @@ pub struct ListIterator {
     pub current_index: u32,
 }
 
+/// Map iterator state - wraps a source iterator and applies a function
+#[derive(Debug, Clone)]
+pub struct MapIterator {
+    pub source_iterator_id: u32,
+    pub func_addr: u32,  // Address of the function to call
+}
+
+/// Filter iterator state - wraps a source iterator and applies a predicate
+#[derive(Debug, Clone)]
+pub struct FilterIterator {
+    pub source_iterator_id: u32,
+    pub func_addr: u32,  // Address of the predicate function
+}
+
+/// Unified iterator type
+#[derive(Debug, Clone)]
+pub enum Iterator {
+    List(ListIterator),
+    Map(MapIterator),
+    Filter(FilterIterator),
+}
+
 #[derive(Debug)]
 pub enum VMError {
     StackOverflow,
@@ -47,7 +69,7 @@ pub struct BigVM {
     pub list_id_gen: AtomicU64,
 
     // Iterator Registry
-    pub iterators: DashMap<u32, ListIterator>,
+    pub iterators: DashMap<u32, Iterator>,
     pub iterator_id_gen: AtomicU32,
 }
 

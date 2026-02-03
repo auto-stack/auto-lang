@@ -47,6 +47,8 @@ impl NativeInterface {
         // Iterator functions
         self.register(NATIVE_LIST_ITER, shim_list_iter);
         self.register(NATIVE_ITERATOR_NEXT, shim_iterator_next);
+        self.register(NATIVE_ITERATOR_MAP, shim_iterator_map);
+        self.register(NATIVE_ITERATOR_FILTER, shim_iterator_filter);
     }
 }
 
@@ -69,6 +71,8 @@ pub const NATIVE_LIST_DROP: u16 = 108;
 // === Iterator Native Functions (109+) ===
 pub const NATIVE_LIST_ITER: u16 = 109;
 pub const NATIVE_ITERATOR_NEXT: u16 = 110;
+pub const NATIVE_ITERATOR_MAP: u16 = 111;
+pub const NATIVE_ITERATOR_FILTER: u16 = 112;
 
 // === Standard Shims ===
 
@@ -261,6 +265,7 @@ pub fn shim_list_drop(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Returns: iterator_id (u32 as i32)
 pub fn shim_list_iter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
     use std::sync::atomic::Ordering;
+    use crate::vm::engine::{Iterator, ListIterator};
 
     let list_id = task.ram.pop_i32() as u64;
 
@@ -268,10 +273,10 @@ pub fn shim_list_iter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
     let iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
 
     // Create iterator state
-    let iterator = crate::vm::engine::ListIterator {
+    let iterator = Iterator::List(ListIterator {
         list_id,
         current_index: 0,
-    };
+    });
 
     // Store iterator
     vm.iterators.insert(iterator_id, iterator);
@@ -285,30 +290,107 @@ pub fn shim_list_iter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Stack: iterator_id -> element (or -1 for nil)
 /// Returns: element value, or -1 if exhausted
 pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::vm::engine::Iterator;
+
     let iterator_id = task.ram.pop_i32() as u32;
 
     // Get the iterator (need to clone to update)
     let result = if let Some(mut iter_mut) = vm.iterators.get_mut(&iterator_id) {
-        // Get the list
-        if let Some(list) = vm.lists.get(&iter_mut.list_id) {
-            let list = list.read().unwrap();
+        match &mut *iter_mut {
+            Iterator::List(list_iter) => {
+                // Get the list
+                if let Some(list) = vm.lists.get(&list_iter.list_id) {
+                    let list = list.read().unwrap();
 
-            // Check if exhausted
-            if iter_mut.current_index >= list.len() as u32 {
-                // Iterator exhausted - return -1 (nil)
-                -1
-            } else {
-                // Get element at current_index
-                let elem = list[iter_mut.current_index as usize];
+                    // Check if exhausted
+                    if list_iter.current_index >= list.len() as u32 {
+                        // Iterator exhausted - return -1 (nil)
+                        -1
+                    } else {
+                        // Get element at current_index
+                        let elem = list[list_iter.current_index as usize];
 
-                // Increment index for next call
-                iter_mut.current_index += 1;
+                        // Increment index for next call
+                        list_iter.current_index += 1;
 
-                elem
+                        elem
+                    }
+                } else {
+                    // Invalid list - return -1 (nil)
+                    -1
+                }
             }
-        } else {
-            // Invalid list - return -1 (nil)
-            -1
+            Iterator::Map(map_iter) => {
+                // Recursively get next element from source iterator
+                // For MVP, we don't actually call the function yet
+                // We just return the source element as-is
+
+                // Call next() on source iterator
+                // We need to manually call the logic here since we can't recursively call shim_iterator_next
+                if let Some(mut source_iter) = vm.iterators.get_mut(&map_iter.source_iterator_id) {
+                    match &mut *source_iter {
+                        Iterator::List(list_iter) => {
+                            if let Some(list) = vm.lists.get(&list_iter.list_id) {
+                                let list = list.read().unwrap();
+
+                                if list_iter.current_index >= list.len() as u32 {
+                                    -1 // Source exhausted
+                                } else {
+                                    let elem = list[list_iter.current_index as usize];
+                                    list_iter.current_index += 1;
+
+                                    // TODO: Call the function at map_iter.func_addr with elem
+                                    // For MVP, just return the element without transformation
+                                    elem
+                                }
+                            } else {
+                                -1 // Invalid list
+                            }
+                        }
+                        _ => {
+                            // Nested adapters not yet supported
+                            return Err(VMError::RuntimeError("Nested adapters not yet implemented".to_string()));
+                        }
+                    }
+                } else {
+                    -1 // Invalid source iterator
+                }
+            }
+            Iterator::Filter(filter_iter) => {
+                // Recursively get next element from source iterator
+                // For MVP, we don't actually call the predicate yet
+                // We just return the source element as-is (no filtering)
+
+                // Call next() on source iterator
+                if let Some(mut source_iter) = vm.iterators.get_mut(&filter_iter.source_iterator_id) {
+                    match &mut *source_iter {
+                        Iterator::List(list_iter) => {
+                            if let Some(list) = vm.lists.get(&list_iter.list_id) {
+                                let list = list.read().unwrap();
+
+                                if list_iter.current_index >= list.len() as u32 {
+                                    -1 // Source exhausted
+                                } else {
+                                    let elem = list[list_iter.current_index as usize];
+                                    list_iter.current_index += 1;
+
+                                    // TODO: Call the predicate at filter_iter.func_addr with elem
+                                    // For MVP, just return the element without filtering
+                                    elem
+                                }
+                            } else {
+                                -1 // Invalid list
+                            }
+                        }
+                        _ => {
+                            // Nested adapters not yet supported
+                            return Err(VMError::RuntimeError("Nested adapters not yet implemented".to_string()));
+                        }
+                    }
+                } else {
+                    -1 // Invalid source iterator
+                }
+            }
         }
     } else {
         // Invalid iterator - return -1 (nil)
@@ -316,5 +398,83 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError
     };
 
     task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Create a map adapter iterator.
+/// Stack: func_addr, iterator_id -> new_iterator_id
+/// Returns: new iterator_id (u32 as i32)
+///
+/// NOTE: For MVP, this creates the MapIterator but the actual function
+/// calling during iteration is not yet implemented. The map iterator
+/// will currently return an error when next() is called.
+pub fn shim_iterator_map(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use std::sync::atomic::Ordering;
+    use crate::vm::engine::{Iterator, MapIterator};
+
+    // Stack: func_addr, iterator_id
+    // Pop in reverse order (stack is LIFO)
+    let func_addr = task.ram.pop_i32() as u32;
+    let source_iterator_id = task.ram.pop_i32() as u32;
+
+    // Verify source iterator exists
+    if !vm.iterators.contains_key(&source_iterator_id) {
+        task.ram.push_i32(-1); // Return -1 on error
+        return Ok(());
+    }
+
+    // Allocate new iterator ID for the map adapter
+    let new_iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
+
+    // Create map iterator
+    let iterator = Iterator::Map(MapIterator {
+        source_iterator_id,
+        func_addr,
+    });
+
+    // Store iterator
+    vm.iterators.insert(new_iterator_id, iterator);
+
+    // Return new iterator_id
+    task.ram.push_i32(new_iterator_id as i32);
+    Ok(())
+}
+
+/// Create a filter adapter iterator.
+/// Stack: func_addr, iterator_id -> new_iterator_id
+/// Returns: new iterator_id (u32 as i32)
+///
+/// NOTE: For MVP, this creates the FilterIterator but the actual predicate
+/// calling during iteration is not yet implemented. The filter iterator
+/// will currently return all elements without filtering.
+pub fn shim_iterator_filter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use std::sync::atomic::Ordering;
+    use crate::vm::engine::{Iterator, FilterIterator};
+
+    // Stack: func_addr, iterator_id
+    // Pop in reverse order (stack is LIFO)
+    let func_addr = task.ram.pop_i32() as u32;
+    let source_iterator_id = task.ram.pop_i32() as u32;
+
+    // Verify source iterator exists
+    if !vm.iterators.contains_key(&source_iterator_id) {
+        task.ram.push_i32(-1); // Return -1 on error
+        return Ok(());
+    }
+
+    // Allocate new iterator ID for the filter adapter
+    let new_iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
+
+    // Create filter iterator
+    let iterator = Iterator::Filter(FilterIterator {
+        source_iterator_id,
+        func_addr,
+    });
+
+    // Store iterator
+    vm.iterators.insert(new_iterator_id, iterator);
+
+    // Return new iterator_id
+    task.ram.push_i32(new_iterator_id as i32);
     Ok(())
 }

@@ -119,6 +119,8 @@ pub fn register_builtin_natives() {
     // Iterator functions
     registry.register("List.iter");
     registry.register("Iterator.next");
+    registry.register("Iterator.map");
+    registry.register("Iterator.filter");
 }
 
 #[cfg(test)]
