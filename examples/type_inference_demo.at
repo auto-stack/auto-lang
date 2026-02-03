@@ -1,0 +1,184 @@
+//! Type Inference System Demonstration
+//!
+//! This example demonstrates AutoLang's type inference subsystem,
+//! showing how the compiler can infer types for expressions,
+//! statements, and function signatures.
+
+// Example 1: Basic type inference for expressions
+fn demonstrate_expression_inference() {
+    // Integers
+    let x = 42              // Type inferred: int
+    let y = x + 10           // Type inferred: int
+
+    // Booleans
+    let flag = true          // Type inferred: bool
+    let is_positive = x > 0  // Type inferred: bool
+
+    // Strings
+    let greeting = "hello"  // Type inferred: str
+
+    // Arrays
+    let numbers = [1, 2, 3]  // Type inferred: [int; 3]
+    let first = numbers[0]      // Type inferred: int
+
+    // Print results
+    say("x = ")
+    say(x)
+    say("y = ")
+    say(y)
+    say("is_positive = ")
+    if is_positive {
+        say("true")
+    } else {
+        say("false")
+    }
+}
+
+// Example 2: Function with type inference
+fn add(a int, b int) int {
+    // Return type inferred from expression
+    a + b
+}
+
+// Example 3: Function with multiple parameters
+fn calculate(x int, y int, multiplier float) float {
+    // Mix of int and float - type checking applies
+    let result = x + y
+    result * multiplier
+}
+
+// Example 4: Function with inferred return type
+fn get_greeting() {
+    "hello, world!"  // Return type inferred: str
+}
+
+// Example 5: Array operations with type inference
+fn demonstrate_array_types() {
+    // Array of integers
+    let matrix = [1, 2, 3, 4]
+
+    // Indexing preserves type
+    let element = matrix[0]  // Type: int
+
+    say("First element: ")
+    say(element)
+}
+
+// Example 6: Type coercion (int <-> uint)
+fn demonstrate_coercion() {
+    let int_val = 42      // Type: int
+    let uint_val = 42u    // Type: uint
+
+    // Can mix int and uint (with implicit coercion)
+    let sum = int_val + uint_val  // Type: uint (promotes to uint)
+
+    say("Sum: ")
+    say(sum)
+}
+
+// Example 7: Recursive function with type checking
+fn factorial(n int) int {
+    if n <= 1 {
+        1
+    } else {
+        n * factorial(n - 1)
+    }
+}
+
+// Example 8: Function returning array
+fn create_matrix() {
+    [1, 2, 3, 4]
+}
+
+// Example 9: Multiple return paths
+fn abs_value(n int) int {
+    if n < 0 {
+        -n
+    } else {
+        n
+    }
+}
+
+// Example 10: Complex expression inference
+fn complex_expression() {
+    let x = 10
+    let y = 20
+    let z = x + y * 2  // Type: int (arithmetic)
+    let is_large = z > 50  // Type: bool (comparison)
+
+    say("z = ")
+    say(z)
+    if is_large {
+        say("is_large = true")
+    }
+}
+
+// Example 11: Nested scopes
+fn demonstrate_scopes() {
+    let outer = 100  // Outer scope
+
+    {
+        // Inner scope
+        let inner = 200  // Shadows outer
+        say("Inner: ")
+        say(inner)
+    }
+
+    say("Outer: ")
+    say(outer)
+}
+
+// Example 12: Type checking catches errors
+// This would normally cause a type error, but we'll demonstrate
+// the inference system
+fn type_check_demo() int {
+    let value = 42
+    // Uncommenting the next line would cause a type error:
+    // let result = value + "string"  // Error: can't add int and str
+    value
+}
+
+// Main entry point
+fn main() {
+    say("=== Type Inference Demo ===")
+    say("")
+
+    say("1. Expression Inference:")
+    demonstrate_expression_inference()
+    say("")
+
+    say("2. Function Type Inference:")
+    let result = add(10, 20)
+    say("add(10, 20) = ")
+    say(result)
+    say("")
+
+    say("3. Return Type Inference:")
+    let greeting = get_greeting()
+    say(greeting)
+    say("")
+
+    say("4. Array Types:")
+    demonstrate_array_types()
+    say("")
+
+    say("5. Type Coercion:")
+    demonstrate_coercion()
+    say("")
+
+    say("6. Recursive Function:")
+    let fact = factorial(5)
+    say("factorial(5) = ")
+    say(fact)
+    say("")
+
+    say("7. Complex Expressions:")
+    complex_expression()
+    say("")
+
+    say("8. Nested Scopes:")
+    demonstrate_scopes()
+    say("")
+
+    say("=== Demo Complete ===")
+}

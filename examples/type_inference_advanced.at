@@ -1,0 +1,270 @@
+//! Advanced Type Inference Features
+//!
+//! This example demonstrates advanced type inference features including:
+//! - Error recovery with multiple error reporting
+//! - Type suggestions for common mistakes
+//! - Scope management and variable shadowing
+//! - Function signature inference
+//! - Return type checking
+
+// Example 1: Variable shadowing
+fn demonstrate_shadowing() int {
+    let x = 10  // Outer x: int
+
+    {
+        let x = 20  // Inner x: int (shadows outer)
+        say("Inner x: ")
+        say(x)
+    }
+
+    say("Outer x: ")
+    say(x)  // Still refers to outer x
+    x
+}
+
+// Example 2: Type mismatch demonstration
+// Note: This would normally cause a compile error, but shows
+// how the type checker catches mismatches
+fn type_mismatch_demo() int {
+    let x int = 42
+
+    // Uncommenting the next line would cause a type error:
+    // x = "string"  // Error: can't assign str to int
+
+    x  // Return the int value
+}
+
+// Example 3: Function with complex signature
+fn process_data(id int, name str, active bool, score float) float {
+    mut result = 0.0
+
+    if active {
+        result = score
+    }
+
+    result
+}
+
+// Example 4: Array type inference with mixed elements
+fn array_demo() {
+    // Homogeneous array - type inferred
+    let numbers = [1, 2, 3, 4, 5]
+
+    // Index operation preserves element type
+    let first = numbers[0]
+    say("First element: ")
+    say(first)
+}
+
+// Example 5: Function returning array
+fn get_matrix() {
+    [1, 2, 3, 4]
+}
+
+// Example 6: Chained function calls with type checking
+fn double(x int) int {
+    x * 2
+}
+
+fn triple(x int) int {
+    x * 3
+}
+
+fn chained_calls() int {
+    let value = 10
+    let doubled = double(value)
+    let tripled = triple(doubled)  // Type: int
+
+    tripled
+}
+
+// Example 7: Overloaded operations with type checking
+fn operations_demo() int {
+    let x = 100
+    let y = 50
+
+    // Arithmetic operations
+    let sum = x + y       // Type: int
+    let diff = x - y      // Type: int
+    let product = x * y   // Type: int
+    let quotient = x / y  // Type: int
+
+    // Comparison operations
+    let greater = x > y   // Type: bool
+    let equal = x == y    // Type: bool
+    let less = x < y      // Type: bool
+
+    sum
+}
+
+// Example 8: Type inference with conditionals
+fn conditional_inference() int {
+    let flag = true
+    let result = if flag {
+        100  // int branch
+    } else {
+        200  // int branch
+    }
+
+    result
+}
+
+// Example 9: Function with inferred parameter types
+fn with_defaults(x int, y int, multiplier float) float {
+    // Parameters: int, int, float
+    let sum = x + y
+    sum * multiplier
+}
+
+// Example 10: Recursive function with complex logic
+fn fibonacci(n int) int {
+    if n <= 1 {
+        n
+    } else {
+        let prev = fibonacci(n - 1)
+        let prev2 = fibonacci(n - 2)
+        prev + prev2
+    }
+}
+
+// Example 11: Demonstrate error recovery
+// Note: This shows how the type system collects multiple errors
+fn error_recovery_demo() int {
+    let x int = 10
+    let y int = 20
+
+    // Uncommenting these would cause type errors:
+    // let bad1 int = "string"        // Error: str != int
+    // let bad2 bool = 100            // Error: int != bool
+    // let bad3 str = 42               // Error: int != str
+
+    // The type checker would collect all these errors
+    // and report them together, allowing you to fix multiple
+    // issues at once instead of one at a time
+
+    x + y
+}
+
+// Example 12: Complex nested scopes
+fn nested_scope_demo() int {
+    let level1 = 1
+
+    {
+        let level2 = level1 + 1
+
+        {
+            let level3 = level2 + 1
+            say("Level 3: ")
+            say(level3)
+        }
+
+        say("Level 2: ")
+        say(level2)
+    }
+
+    say("Level 1: ")
+    say(level1)
+
+    level1
+}
+
+// Helper function for coercion demo
+fn process_int(value int) int {
+    // int parameter
+    value
+}
+
+// Example 13: Type coercion in function calls
+fn coercion_demo() int {
+    let int_val = 42
+    process_int(int_val)  // Function call with int
+}
+
+// Example 14: Array with index expression
+fn array_index_demo() int {
+    let data = [10, 20, 30, 40, 50]
+    let index = 2
+
+    // Array indexing with inferred type
+    let element = data[index]
+    say("Element at index 2: ")
+    say(element)
+
+    element
+}
+
+// Helper functions for composition demo
+fn add_one(x int) int {
+    x + 1
+}
+
+fn compose_double(x int) int {
+    x * 2
+}
+
+// Example 15: Function composition
+fn function_composition() int {
+    let value = 5
+    let transformed = compose_double(add_one(value))
+    transformed
+}
+
+// Main entry point
+fn main() {
+    say("Advanced Type Inference Demo")
+    say("")
+
+    say("1. Variable Shadowing:")
+    let shadowed = demonstrate_shadowing()
+    say("Shadowed result: ")
+    say(shadowed)
+    say("")
+
+    say("2. Array Types:")
+    array_demo()
+    say("")
+
+    say("3. Function Signature Inference:")
+    let processed = process_data(1, "test", true, 95.5)
+    say("Processed value: ")
+    say(processed)
+    say("")
+
+    say("4. Chained Calls:")
+    let chained = chained_calls()
+    say("Chained result: ")
+    say(chained)
+    say("")
+
+    say("5. Conditional Inference:")
+    let cond_result = conditional_inference()
+    say("Conditional result: ")
+    say(cond_result)
+    say("")
+
+    say("6. Operations:")
+    let ops_result = operations_demo()
+    say("Operations result: ")
+    say(ops_result)
+    say("")
+
+    say("7. Nested Scopes:")
+    let nested = nested_scope_demo()
+    say("Nested result: ")
+    say(nested)
+    say("")
+
+    say("8. Array Indexing:")
+    let indexed = array_index_demo()
+    say("Indexed result: ")
+    say(indexed)
+    say("")
+
+    say("9. Function Composition:")
+    let composed = function_composition()
+    say("Composed result: ")
+    say(composed)
+    say("")
+
+    say("Advanced Demo Complete")
+}
