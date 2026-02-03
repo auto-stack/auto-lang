@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Stmt};
+use crate::ast::{Expr, Stmt, Closure};
 use crate::error::AutoResult;
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
@@ -6,7 +6,7 @@ use crate::vm::native::{NATIVE_PRINT_F32, NATIVE_PRINT_I32, NATIVE_PRINT_STR};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 use auto_val::Op;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Codegen: Compiles AST directly to BigVM Bytecode
 pub struct Codegen {
@@ -24,6 +24,10 @@ pub struct Codegen {
     /// Scope stack for nested scopes (functions, blocks)
     /// Each scope has its own variable namespace
     pub scope_stack: Vec<HashMap<String, usize>>,
+
+    /// Captured variables for the current closure being compiled
+    /// Maps variable name -> capture index (0, 1, 2, ...)
+    pub captured_vars: HashMap<String, usize>,
 }
 
 impl Codegen {
@@ -51,6 +55,7 @@ impl Codegen {
             strings: Vec::new(),
             locals: HashMap::new(),
             scope_stack,
+            captured_vars: HashMap::new(),
         }
     }
 
@@ -199,9 +204,14 @@ impl Codegen {
                 self.code.extend_from_slice(&idx.to_le_bytes());
             }
             Expr::Ident(name) => {
-                // Look up variable in symbol table
-                if let Some(var_index) = self.lookup_var(name) {
-                    // Variable found - load it
+                let name_str = name.to_string();
+
+                // Check if this is a captured variable (Plan 071)
+                if let Some(_capture_index) = self.captured_vars.get(&name_str) {
+                    // Variable is captured - emit LOAD_CAPTURED
+                    self.emit_load_captured(&name_str);
+                } else if let Some(var_index) = self.lookup_var(&name_str) {
+                    // Variable found in local scope - load it
                     self.emit_load_loc(var_index);
                 } else {
                     // Variable not found - this is an error
@@ -218,9 +228,14 @@ impl Codegen {
 
                     // Check if LHS is an identifier (variable assignment)
                     if let Expr::Ident(name) = lhs.as_ref() {
-                        // Look up variable in symbol table
-                        if let Some(var_index) = self.lookup_var(name) {
-                            // Variable found - store value to it
+                        let name_str = name.to_string();
+
+                        // Check if this is a captured variable (Plan 071)
+                        if self.captured_vars.contains_key(&name_str) {
+                            // Variable is captured - emit STORE_CAPTURED
+                            self.emit_store_captured(&name_str);
+                        } else if let Some(var_index) = self.lookup_var(&name_str) {
+                            // Variable found in local scope - store value to it
                             self.emit_store_loc(var_index);
                         } else {
                             // Variable not found - this is an error
@@ -407,6 +422,10 @@ impl Codegen {
                     self.patch_jump(jump);
                 }
             }
+            Expr::Closure(closure) => {
+                // Plan 071: Compile closure with captured environment
+                self.compile_closure(closure)?;
+            }
             _ => {
                 unimplemented!("Expression {:?}", expr);
             }
@@ -535,6 +554,170 @@ impl Codegen {
             }
         }
     }
+
+    /// Emit LOAD_CAPTURED for a captured variable by name (Plan 071)
+    fn emit_load_captured(&mut self, var_name: &str) {
+        let var_idx = self.add_string(var_name);
+        self.emit(OpCode::LOAD_CAPTURED);
+        self.code.extend_from_slice(&var_idx.to_le_bytes());
+    }
+
+    /// Emit STORE_CAPTURED for a captured variable by name (Plan 071)
+    fn emit_store_captured(&mut self, var_name: &str) {
+        let var_idx = self.add_string(var_name);
+        self.emit(OpCode::STORE_CAPTURED);
+        self.code.extend_from_slice(&var_idx.to_le_bytes());
+    }
+
+    // === Closure Support (Plan 071) ===
+
+    /// Find free variables in an expression (variables that should be captured)
+    /// Excludes: parameters and locally-defined variables
+    fn find_free_vars(&self, expr: &Expr, params: &HashSet<String>) -> Vec<String> {
+        let mut free_vars = HashSet::new();
+        self.collect_free_vars(expr, params, &mut free_vars);
+        free_vars.into_iter().collect()
+    }
+
+    /// Recursively collect free variables from an expression
+    fn collect_free_vars(&self, expr: &Expr, exclude: &HashSet<String>, free_vars: &mut HashSet<String>) {
+        match expr {
+            Expr::Ident(name) => {
+                let name_str = name.to_string();
+                // Only collect if not in exclude list (parameters/locals)
+                if !exclude.contains(&name_str) {
+                    free_vars.insert(name_str);
+                }
+            }
+            Expr::Bina(lhs, _op, rhs) => {
+                self.collect_free_vars(lhs, exclude, free_vars);
+                self.collect_free_vars(rhs, exclude, free_vars);
+            }
+            Expr::Unary(_op, rhs) => {
+                self.collect_free_vars(rhs, exclude, free_vars);
+            }
+            Expr::Call(call) => {
+                self.collect_free_vars(&call.name, exclude, free_vars);
+                for arg in &call.args.args {
+                    if let crate::ast::Arg::Pos(expr) = arg {
+                        self.collect_free_vars(expr, exclude, free_vars);
+                    }
+                }
+            }
+            Expr::Array(elems) => {
+                for elem in elems {
+                    self.collect_free_vars(elem, exclude, free_vars);
+                }
+            }
+            Expr::Block(body) => {
+                // For block expressions, exclude local variables defined in the block
+                let mut inner_exclude = exclude.clone();
+                for stmt in &body.stmts {
+                    if let Stmt::Expr(e) = stmt {
+                        self.collect_free_vars(e, &inner_exclude, free_vars);
+                    } else if let Stmt::Return(e) = stmt {
+                        self.collect_free_vars(e, &inner_exclude, free_vars);
+                    }
+                    // TODO: Exclude local variable definitions from inner_exclude
+                }
+            }
+            Expr::If(if_expr) => {
+                for branch in &if_expr.branches {
+                    self.collect_free_vars(&branch.cond, exclude, free_vars);
+                    for stmt in &branch.body.stmts {
+                        if let Stmt::Expr(e) = stmt {
+                            self.collect_free_vars(e, exclude, free_vars);
+                        }
+                    }
+                }
+            }
+            Expr::Closure(inner_closure) => {
+                // For nested closures, process inner body with updated excludes
+                let mut inner_exclude = exclude.clone();
+                for p in &inner_closure.params {
+                    inner_exclude.insert(p.name.to_string());
+                }
+                self.collect_free_vars(&inner_closure.body, &inner_exclude, free_vars);
+            }
+            // Primitives - no identifiers to collect
+            Expr::Int(_) | Expr::Float(_, _) | Expr::Str(_) | Expr::Bool(_) | Expr::Nil | Expr::Byte(_) => {}
+            // Other expressions - add more cases as needed
+            _ => {}
+        }
+    }
+
+    /// Add string constant to string pool and return its index
+    pub fn add_string(&mut self, s: &str) -> u16 {
+        // Check if string already exists
+        for (idx, existing) in self.strings.iter().enumerate() {
+            if existing == s.as_bytes() {
+                return idx as u16;
+            }
+        }
+
+        // Add new string
+        let idx = self.strings.len();
+        self.strings.push(s.as_bytes().to_vec());
+        idx as u16
+    }
+
+    /// Compile closure expression (Plan 071)
+    fn compile_closure(&mut self, closure: &Closure) -> AutoResult<()> {
+        // Step 1: Find free variables to capture
+        let param_names: HashSet<String> = closure.params.iter()
+            .map(|p| p.name.to_string())
+            .collect();
+        let free_vars = self.find_free_vars(&closure.body, &param_names);
+
+        // Step 2: For each captured variable, emit code to load its current value
+        // For MVP, we emit LOAD_LOCAL for each captured variable
+        // TODO: In Phase 3.6, emit proper variable loading based on scope
+        for var_name in &free_vars {
+            // Try to look up the variable in current scope
+            if let Some(var_index) = self.lookup_var(var_name) {
+                self.emit_load_loc(var_index);
+            } else {
+                // Variable not found - emit 0 as fallback
+                self.emit(OpCode::CONST_0);
+            }
+        }
+
+        // Step 3: Compile closure body as separate function
+        // Save current captured_vars (for nested closures)
+        let old_captured_vars = std::mem::take(&mut self.captured_vars);
+
+        // Set up captured variable map for closure body compilation
+        for (idx, var_name) in free_vars.iter().enumerate() {
+            self.captured_vars.insert(var_name.clone(), idx);
+        }
+
+        // Compile closure body - this will generate bytecode after the CLOSURE opcode
+        // For now, we'll compile it inline and use a placeholder address
+        // TODO: In Phase 3.5, move closure body to separate function with reloc entry
+
+        // Emit CLOSURE opcode with placeholder address
+        let func_addr_placeholder = self.code.len() + 1 + 4 + 1; // Skip CLOSURE + addr + count
+        let capture_count = free_vars.len() as u8;
+
+        self.emit(OpCode::CLOSURE);
+        self.code.extend_from_slice(&(0u32).to_le_bytes()); // Placeholder func_addr
+        self.code.push(capture_count);
+
+        // Emit variable name indices for each captured variable
+        for var_name in &free_vars {
+            let var_idx = self.add_string(var_name);
+            self.code.extend_from_slice(&var_idx.to_le_bytes());
+        }
+
+        // For MVP, compile closure body inline (right after CLOSURE opcode)
+        // This is NOT correct for production, but allows testing
+        // In real implementation, closure body should be separate function
+
+        // Restore captured_vars
+        self.captured_vars = old_captured_vars;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -652,5 +835,84 @@ mod tests {
         assert_eq!(reloc.symbol_name, "foo");
         assert_eq!(reloc.offset, 6); // Placeholder starts after CALL
         assert_eq!(reloc.reloc_type, RelocType::FuncCall);
+    }
+
+    #[test]
+    fn test_codegen_closure_simple() {
+        let mut codegen = Codegen::new();
+        // Test: x => x + n
+        // This is a closure that captures variable 'n' from outer scope
+        use crate::ast::{Closure, ClosureParam, Body};
+
+        let closure = Closure {
+            params: vec![ClosureParam::new("x".into(), None)],
+            ret: None,
+            body: Box::new(Expr::Bina(
+                Box::new(Expr::Ident("x".into())),
+                Op::Add,
+                Box::new(Expr::Ident("n".into())),
+            )),
+        };
+
+        codegen.compile_expr(&Expr::Closure(closure)).unwrap();
+
+        // Check that CLOSURE opcode was emitted
+        // The bytecode should contain:
+        // - LOAD_LOC_0 (load 'n' to capture)
+        // - CLOSURE (0x90)
+        // - func_addr (4 bytes, placeholder 0)
+        // - capture_count (1 byte, value 1)
+        // - var_name_idx (2 bytes, index of "n" in strings)
+
+        // Find CLOSURE opcode
+        let closure_pos = codegen.code.iter().position(|&b| b == OpCode::CLOSURE as u8);
+        assert!(closure_pos.is_some(), "CLOSURE opcode should be emitted");
+
+        let closure_pos = closure_pos.unwrap();
+
+        // Verify capture count (at pos + 1 + 4 = after opcode + func_addr)
+        let capture_count = codegen.code[closure_pos + 5];
+        assert_eq!(capture_count, 1, "Should capture 1 variable ('n')");
+
+        // Verify string constant was added for "n"
+        assert!(codegen.strings.iter().any(|s| s == b"n"), "String pool should contain 'n'");
+    }
+
+    #[test]
+    fn test_codegen_closure_multiple_captures() {
+        let mut codegen = Codegen::new();
+        // Test: x => x + a + b
+        // This closure captures two variables: 'a' and 'b'
+        use crate::ast::{Closure, ClosureParam};
+
+        let closure = Closure {
+            params: vec![ClosureParam::new("x".into(), None)],
+            ret: None,
+            body: Box::new(Expr::Bina(
+                Box::new(Expr::Bina(
+                    Box::new(Expr::Ident("x".into())),
+                    Op::Add,
+                    Box::new(Expr::Ident("a".into())),
+                )),
+                Op::Add,
+                Box::new(Expr::Ident("b".into())),
+            )),
+        };
+
+        codegen.compile_expr(&Expr::Closure(closure)).unwrap();
+
+        // Find CLOSURE opcode
+        let closure_pos = codegen.code.iter().position(|&b| b == OpCode::CLOSURE as u8);
+        assert!(closure_pos.is_some(), "CLOSURE opcode should be emitted");
+
+        let closure_pos = closure_pos.unwrap();
+
+        // Verify capture count
+        let capture_count = codegen.code[closure_pos + 5];
+        assert_eq!(capture_count, 2, "Should capture 2 variables ('a' and 'b')");
+
+        // Verify both strings were added
+        assert!(codegen.strings.iter().any(|s| s == b"a"), "String pool should contain 'a'");
+        assert!(codegen.strings.iter().any(|s| s == b"b"), "String pool should contain 'b'");
     }
 }

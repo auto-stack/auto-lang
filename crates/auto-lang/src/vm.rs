@@ -22,6 +22,9 @@ pub mod virt_memory;
 #[cfg(test)]
 mod tests_concurrency;
 
+#[cfg(test)]
+mod tests_closures;
+
 /// Phase 4.6: VM function signature - now takes Evaler instead of Universe
 /// This allows VM functions to use bridge methods for Database/ExecutionEngine access
 pub type VmFunction = fn(&mut crate::eval::Evaler, auto_val::Value) -> auto_val::Value;

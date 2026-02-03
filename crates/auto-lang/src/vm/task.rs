@@ -20,6 +20,7 @@ pub struct AutoTask {
     pub bp: usize, // Base Pointer
     pub status: TaskStatus,
     pub wake_time: Option<Instant>, // For SLEEP opcode
+    pub current_closure_id: Option<u32>, // Plan 071: Current closure being executed
 }
 
 impl AutoTask {
@@ -31,6 +32,7 @@ impl AutoTask {
             bp: 0,
             status: TaskStatus::Ready,
             wake_time: None,
+            current_closure_id: None,
         }
     }
 }

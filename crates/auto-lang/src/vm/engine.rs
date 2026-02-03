@@ -41,29 +41,16 @@ pub enum Iterator {
 }
 
 // ============================================================================
-// Upvalues and Closures
+// Closures (Plan 071: Direct Capture)
 // ============================================================================
 
-/// Upvalue location - either on the stack or in the heap
-#[derive(Debug, Clone)]
-pub enum UpvalLocation {
-    /// Direct stack access (if capturing function is still active)
-    Stack { task_id: TaskId, bp: usize, slot: usize },
-    /// Heap-allocated cell (if capturing function has returned)
-    Heap(Arc<RwLock<i32>>),
-}
+use auto_val::Value;
 
-/// Upvalue - represents a captured variable
-#[derive(Debug, Clone)]
-pub struct UpValue {
-    pub location: UpvalLocation,
-}
-
-/// Closure - a function value with captured variables
+/// Closure - a function value with directly captured environment (Plan 071: Direct Capture)
 #[derive(Debug, Clone)]
 pub struct Closure {
-    pub func_addr: u32,    // Entry point of the function
-    pub upvalues: Vec<u32>, // Upvalue IDs
+    pub func_addr: u32,                        // Bytecode address
+    pub env: HashMap<String, Value>,           // Direct captured values (no upvalues!)
 }
 
 
@@ -99,11 +86,7 @@ pub struct BigVM {
     pub iterators: DashMap<u32, Iterator>,
     pub iterator_id_gen: AtomicU32,
 
-    // Upvalue Registry
-    pub upvalues: DashMap<u32, UpValue>,
-    pub upvalue_id_gen: AtomicU32,
-
-    // Closure Registry
+    // Closure Registry (Plan 071: Direct Capture, no upvalues)
     pub closures: DashMap<u32, Closure>,
     pub closure_id_gen: AtomicU32,
 }
@@ -124,8 +107,6 @@ impl BigVM {
             list_id_gen: AtomicU64::new(0),
             iterators: DashMap::new(),
             iterator_id_gen: AtomicU32::new(0),
-            upvalues: DashMap::new(),
-            upvalue_id_gen: AtomicU32::new(0),
             closures: DashMap::new(),
             closure_id_gen: AtomicU32::new(0),
         }
@@ -374,6 +355,21 @@ impl BigVM {
                     let old_bp = task.ram.read_i32(task.bp) as usize;
                     let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
 
+                    // Plan 071 Phase 5: Restore previous closure (if any)
+                    // Stack layout: [..., old_closure_id, ret_ip, old_bp, args...]
+                    //               bp-2          bp-1    bp
+                    // Only restore if bp - 2 is valid (not in main task)
+                    let old_closure_id_val = if task.bp >= 2 {
+                        task.ram.read_i32(task.bp - 2)
+                    } else {
+                        0
+                    };
+                    task.current_closure_id = if old_closure_id_val == 0 {
+                        None
+                    } else {
+                        Some(old_closure_id_val as u32)
+                    };
+
                     let new_sp = task.bp - n_args;
 
                     // Safety check for underflow
@@ -391,74 +387,173 @@ impl BigVM {
                     task.ram.write_i32(new_sp - 1, result); // Write Result confirmed
                 }
 
-                // === Closures ===
+                // === Closures (Plan 071: Direct Capture) ===
                 OpCode::CLOSURE => {
-                    // Stack: func_addr -> closure_id
-                    let func_addr = task.ram.pop_i32() as u32;
+                    // Stack: capture_count × value -> closure_id
+                    // Immediate: func_addr (u32), capture_count (u8)
+                    let func_addr = self.flash.read_u32(task.ip);
+                    task.ip += 4;
+                    let capture_count = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
 
-                    // For MVP: Create closure with no upvalues
-                    // TODO: In full implementation, we'd capture variables from current scope
+                    // Pop captured values from stack and build environment
+                    let mut env = HashMap::new();
+                    for i in 0..capture_count {
+                        // Read variable name from string table (stored in reverse order)
+                        let var_name_idx = self.flash.read_u16(task.ip) as usize;
+                        task.ip += 2;
+
+                        // Pop value from stack (values pushed in order, popped in reverse)
+                        let value = task.ram.pop_i32();
+
+                        // Look up variable name from string table
+                        if let Some(var_name) = self.strings.get(var_name_idx) {
+                            let var_name_str = String::from_utf8_lossy(var_name);
+                            env.insert(var_name_str.to_string(), Value::Int(value));
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Invalid string index for captured variable: {}",
+                                var_name_idx
+                            )));
+                        }
+                    }
+
+                    // Create closure
                     let closure_id = self.closure_id_gen.fetch_add(1, Ordering::Relaxed);
-                    let closure = Closure {
-                        func_addr,
-                        upvalues: Vec::new(), // No upvalues for MVP
-                    };
+                    let closure = Closure { func_addr, env };
 
                     self.closures.insert(closure_id, closure);
                     task.ram.push_i32(closure_id as i32);
                 }
-                OpCode::GET_UPVAL => {
-                    // Stack: upval_id -> value
-                    let upval_id = task.ram.pop_i32() as u32;
+                OpCode::CAPTURE_VAR => {
+                    // Stack: -> value
+                    // Immediate: var_name_idx (u16)
+                    // Load variable by name from current scope and push value
+                    let var_name_idx = self.flash.read_u16(task.ip) as usize;
+                    task.ip += 2;
 
-                    if let Some(upval) = self.upvalues.get(&upval_id) {
-                        match &upval.location {
-                            UpvalLocation::Stack { task_id: _, bp, slot } => {
-                                // Load from stack location
-                                let addr = *bp + *slot;
-                                let val = task.ram.read_i32(addr);
-                                task.ram.push_i32(val);
-                            }
-                            UpvalLocation::Heap(cell) => {
-                                // Load from heap cell
-                                let val = *cell.read().unwrap();
-                                task.ram.push_i32(val);
-                            }
-                        }
+                    if let Some(var_name_bytes) = self.strings.get(var_name_idx) {
+                        let var_name = String::from_utf8_lossy(var_name_bytes);
+
+                        // Look up variable in local scope (from stack frame)
+                        // TODO: For MVP, we'll need to implement proper scope lookup
+                        // For now, push placeholder value
+                        task.ram.push_i32(0);
                     } else {
-                        return Err(VMError::RuntimeError(format!("Invalid upvalue ID: {}", upval_id)));
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid string index for variable: {}",
+                            var_name_idx
+                        )));
                     }
                 }
-                OpCode::SET_UPVAL => {
-                    // Stack: value, upval_id ->
-                    let upval_id = task.ram.pop_i32() as u32;
+                OpCode::LOAD_CAPTURED => {
+                    // Plan 071 Phase 5: Load captured variable from current closure
+                    // Stack: -> value (no longer pops closure_id)
+                    // Immediate: var_name_idx (u16)
+                    let var_name_idx = self.flash.read_u16(task.ip) as usize;
+                    task.ip += 2;
+
+                    // Use current_closure_id instead of popping from stack
+                    let closure_id = task.current_closure_id.ok_or_else(|| {
+                        VMError::RuntimeError("LOAD_CAPTURED called outside of closure context".to_string())
+                    })?;
+
+                    if let Some(var_name_bytes) = self.strings.get(var_name_idx) {
+                        let var_name = String::from_utf8_lossy(var_name_bytes);
+
+                        if let Some(closure) = self.closures.get(&closure_id) {
+                            if let Some(value) = closure.env.get(var_name.as_ref()) {
+                                // Push value to stack
+                                match value {
+                                    Value::Int(i) => task.ram.push_i32(*i),
+                                    // TODO: Handle other value types
+                                    _ => task.ram.push_i32(0),
+                                }
+                            } else {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Captured variable '{}' not found in closure {}",
+                                    var_name, closure_id
+                                )));
+                            }
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Invalid closure ID: {}",
+                                closure_id
+                            )));
+                        }
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid string index for variable: {}",
+                            var_name_idx
+                        )));
+                    }
+                }
+                OpCode::STORE_CAPTURED => {
+                    // Plan 071 Phase 5: Store to captured variable in current closure
+                    // Stack: value -> (no longer pops closure_id)
+                    // Immediate: var_name_idx (u16)
+                    let var_name_idx = self.flash.read_u16(task.ip) as usize;
+                    task.ip += 2;
+
                     let value = task.ram.pop_i32();
 
-                    if let Some(mut upval) = self.upvalues.get_mut(&upval_id) {
-                        match &mut upval.location {
-                            UpvalLocation::Stack { task_id: _, bp, slot } => {
-                                // Store to stack location
-                                let addr = *bp + *slot;
-                                task.ram.write_i32(addr, value);
-                            }
-                            UpvalLocation::Heap(cell) => {
-                                // Store to heap cell
-                                *cell.write().unwrap() = value;
-                            }
+                    // Use current_closure_id instead of popping from stack
+                    let closure_id = task.current_closure_id.ok_or_else(|| {
+                        VMError::RuntimeError("STORE_CAPTURED called outside of closure context".to_string())
+                    })?;
+
+                    if let Some(var_name_bytes) = self.strings.get(var_name_idx) {
+                        let var_name = String::from_utf8_lossy(var_name_bytes);
+
+                        if let Some(mut closure) = self.closures.get_mut(&closure_id) {
+                            closure.env.insert(var_name.to_string(), Value::Int(value));
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Invalid closure ID: {}",
+                                closure_id
+                            )));
                         }
                     } else {
-                        return Err(VMError::RuntimeError(format!("Invalid upvalue ID: {}", upval_id)));
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid string index for variable: {}",
+                            var_name_idx
+                        )));
                     }
                 }
-                OpCode::CLOSE_UPVALS => {
-                    // Stack: n -> (close n upvalues)
-                    let n = self.flash.read_u8(task.ip) as usize;
+                OpCode::CALL_CLOSURE => {
+                    // Stack: closure_id, [args...] -> result
+                    // Immediate: arg_count (u8)
+                    let arg_count = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
-                    // For MVP: Move upvalues from stack to heap
-                    // This is called when a function returns, to move captured variables to heap
-                    // TODO: Implement proper upvalue closing
-                    // For now, just skip (upvalues remain as stack references)
+                    let closure_id = task.ram.pop_i32() as u32;
+
+                    if let Some(_closure) = self.closures.get(&closure_id) {
+                        // Plan 071 Phase 5: Set current closure for LOAD_CAPTURED access
+                        let old_closure_id = task.current_closure_id;
+                        task.current_closure_id = Some(closure_id);
+
+                        // Push old closure ID to stack (to restore on RET)
+                        // We'll use a special marker value: -1 means "no closure"
+                        let old_closure_val = old_closure_id.unwrap_or(0);
+                        task.ram.push_i32(old_closure_val as i32);
+
+                        // Push Return Address (IP)
+                        task.ram.push_i32(task.ip as i32);
+                        // Push Old Stack Frame (BP)
+                        task.ram.push_i32(task.bp as i32);
+
+                        // New BP points to the saved BP location (SP - 1)
+                        task.bp = task.ram.sp - 1;
+
+                        // Jump to closure function
+                        task.ip = _closure.func_addr as usize;
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid closure ID: {}",
+                            closure_id
+                        )));
+                    }
                 }
 
                 // === Concurrency ===

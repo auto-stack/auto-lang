@@ -76,11 +76,12 @@ pub enum OpCode {
     RECV = 0x87,     // channel_id: u32 -> data: i32
     TRY_RECV = 0x88, // channel_id: u32 -> data: i32 | 0 (non-blocking)
 
-    // === Closures ===
-    CLOSURE = 0x90,      // func_addr -> closure_id: u32
-    GET_UPVAL = 0x91,    // upval_id -> value
-    SET_UPVAL = 0x92,    // value, upval_id ->
-    CLOSE_UPVALS = 0x93, // n: u8 -> Close n upvalues (move to heap)
+    // === Closures (Plan 071: Direct Capture) ===
+    CLOSURE = 0x90,         // func_addr, capture_count × value -> closure_id: u32
+    CAPTURE_VAR = 0x91,     // -> value (load variable by name)
+    LOAD_CAPTURED = 0x92,   // closure_id -> value (load captured var by name)
+    STORE_CAPTURED = 0x93,  // closure_id, value -> (store captured var by name)
+    CALL_CLOSURE = 0x94,    // closure_id -> (call closure with captured env)
 
     // === Debug ===
     PRINT = 0xF0,
