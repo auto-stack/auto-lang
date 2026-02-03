@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::error::{pos_to_span, AutoError, AutoResult, NameError, SyntaxError};
-use crate::infer::check_field_type;
+use crate::infer::{check_field_type, InferenceContext};
 use crate::lexer::Lexer;
 use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
@@ -166,6 +166,8 @@ pub struct Parser<'a> {
     /// Current const generic parameters being parsed (Plan 052)
     /// Maps const parameter name to its type (e.g., N -> u32)
     current_const_params: HashMap<Name, Type>,
+    /// Type inference context (Plan 010 Phase 5: Integration)
+    pub infer_ctx: InferenceContext,
 }
 
 impl<'a> Parser<'a> {
@@ -197,6 +199,7 @@ impl<'a> Parser<'a> {
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
+            infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
         };
         parser.skip_comments();
         parser
@@ -235,6 +238,7 @@ impl<'a> Parser<'a> {
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
+            infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
         };
         parser.skip_comments();
         parser
@@ -269,6 +273,7 @@ impl<'a> Parser<'a> {
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
+            infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
         };
         parser.skip_comments();
         parser
@@ -427,6 +432,12 @@ impl<'a> Parser<'a> {
     }
 
     fn define(&mut self, name: &str, meta: Meta) {
+        // Plan 010 Phase 5B: Bind variable in inference context if it's a Store (variable)
+        if let Meta::Store(ref store) = meta {
+            use crate::ast::Name;
+            let name_obj = Name::from(name);
+            self.infer_ctx.bind_var(name_obj, store.ty.clone());
+        }
         self.scope.borrow_mut().define(name, Rc::new(meta));
     }
 
@@ -435,6 +446,12 @@ impl<'a> Parser<'a> {
     }
 
     fn define_rc(&mut self, name: &str, meta: Rc<Meta>) {
+        // Plan 010 Phase 5B: Bind variable in inference context if it's a Store (variable)
+        if let Meta::Store(ref store) = meta.as_ref() {
+            use crate::ast::Name;
+            let name_obj = Name::from(name);
+            self.infer_ctx.bind_var(name_obj, store.ty.clone());
+        }
         self.scope.borrow_mut().define(name, meta);
     }
 
@@ -444,10 +461,14 @@ impl<'a> Parser<'a> {
 
     fn exit_scope(&mut self) {
         self.scope.borrow_mut().exit_scope();
+        // Plan 010 Phase 5B: Sync inference context scope
+        self.infer_ctx.pop_scope();
     }
 
     fn enter_scope(&mut self) {
         self.scope.borrow_mut().enter_scope();
+        // Plan 010 Phase 5B: Sync inference context scope
+        self.infer_ctx.push_scope();
     }
 
     fn lookup_meta(&mut self, name: &str) -> Option<Rc<Meta>> {
@@ -2743,6 +2764,8 @@ impl<'a> Parser<'a> {
 
         for path in scope_name.split(".").into_iter() {
             self.scope.borrow_mut().enter_mod(path.to_string());
+            // Plan 010 Phase 5B: Sync inference context scope
+            self.infer_ctx.push_scope();
         }
 
         // Load files in order (bottom layer first, then top layer)
@@ -2849,6 +2872,11 @@ impl<'a> Parser<'a> {
         );
 
         self.scope.borrow_mut().set_spot(cur_spot);
+        // Plan 010 Phase 5B: Pop module scopes from inference context
+        // We pushed one scope per path component in the loop above
+        for _ in scope_name.split(".").into_iter() {
+            self.infer_ctx.pop_scope();
+        }
         let mut items = uses.items.clone();
         // if item is empty, use last part of paths as an defined item in the scope
         if items.is_empty() && !uses.paths.is_empty() {
@@ -3382,7 +3410,13 @@ impl<'a> Parser<'a> {
     }
 
     fn infer_type_expr(&mut self, expr: &Expr) -> Type {
+        // Plan 010 Phase 5: Hybrid inference system
+        // Primary: Use old Universe-based lookup for backward compatibility
+        // Fallback: Use new inference system when old system returns Unknown
+
         let mut typ = Type::Unknown;
+
+        // Try Universe-based lookup first (for backward compatibility)
         match expr {
             Expr::I8(..) => typ = Type::Int,
             Expr::Int(..) => typ = Type::Int,
@@ -3392,48 +3426,27 @@ impl<'a> Parser<'a> {
             Expr::Str(n) => typ = Type::Str(n.len()),
             Expr::CStr(..) => typ = Type::CStr,
             Expr::FStr(..) => typ = Type::Str(0),
-            Expr::Bina(lhs, op, rhs) => {
-                let ltype = self.infer_type_expr(lhs);
-                let rtype = self.infer_type_expr(rhs);
-                match op {
-                    Op::Dot => {
-                        // TODO
-                        typ = rtype;
-                    }
-                    _ => {
-                        typ = ltype;
-                    }
-                }
-            }
             Expr::Ident(id) => {
-                // println!("Infering type for identifier: {}", id); // LSP: disabled
+                // Try Universe-based lookup first
                 let meta = self.lookup_meta(id);
                 if let Some(m) = meta {
-                    match m.as_ref() {
-                        Meta::Store(store) => {
-                            typ = store.ty.clone();
-                        }
-                        _ => {}
+                    if let Meta::Store(store) = m.as_ref() {
+                        typ = store.ty.clone();
                     }
                 } else {
-                    // try to lookup the id as a type name
+                    // Try type lookup
                     let ltyp = self.lookup_type(id);
-                    match *ltyp.borrow() {
-                        Type::Unknown => {}
-                        _ => {
-                            typ = ltyp.borrow().clone();
-                        }
-                    };
+                    if !matches!(*ltyp.borrow(), Type::Unknown) {
+                        typ = ltyp.borrow().clone();
+                    }
                 }
             }
             Expr::Node(nd) => {
                 typ = nd.typ.borrow().clone();
             }
             Expr::Array(arr) => {
-                // check first element
                 if arr.len() > 0 {
-                    let first = &arr[0];
-                    let elem_ty = self.infer_type_expr(first);
+                    let elem_ty = self.infer_type_expr(&arr[0]);
                     typ = Type::Array(ArrayType {
                         elem: Box::new(elem_ty),
                         len: arr.len(),
@@ -3446,19 +3459,14 @@ impl<'a> Parser<'a> {
                 }
             }
             Expr::Call(call) => {
-                // Check if this is a struct construction call: Type(args)
-                // If the callee name matches a type name, infer the type as the constructed type
                 if let Expr::Ident(type_name) = call.name.as_ref() {
                     let type_decl = self.lookup_type(type_name);
                     if !matches!(*type_decl.borrow(), Type::Unknown) {
-                        // This is a struct construction call - return the type being constructed
                         typ = type_decl.borrow().clone();
                     } else {
-                        // Regular function call - use the call's return type
                         typ = call.ret.clone();
                     }
                 } else {
-                    // Regular function call
                     typ = call.ret.clone();
                 }
             }
@@ -3474,8 +3482,25 @@ impl<'a> Parser<'a> {
                     _ => {}
                 };
             }
-            _ => {}
+            Expr::Bina(lhs, op, rhs) => {
+                let ltype = self.infer_type_expr(lhs);
+                let rtype = self.infer_type_expr(rhs);
+                match op {
+                    Op::Dot => {
+                        typ = rtype;
+                    }
+                    _ => {
+                        typ = ltype;
+                    }
+                }
+            }
+            _ => {
+                // For expressions not handled by old system, use new inference system
+                use crate::infer::infer_expr;
+                typ = infer_expr(&mut self.infer_ctx, expr);
+            }
         }
+
         typ
     }
 
@@ -3506,6 +3531,8 @@ impl<'a> Parser<'a> {
 
         // enter function scope
         self.scope.borrow_mut().enter_fn(name.clone());
+        // Plan 010 Phase 5B: Sync inference context scope
+        self.infer_ctx.push_scope();
 
         // parse function parameters
         self.expect(TokenKind::LParen)?;
@@ -3758,6 +3785,8 @@ impl<'a> Parser<'a> {
 
         // enter function scope
         self.scope.borrow_mut().enter_fn(name.clone());
+        // Plan 010 Phase 5B: Sync inference context scope
+        self.infer_ctx.push_scope();
 
         // parse function parameters
         self.expect(TokenKind::LParen)?;
@@ -3948,6 +3977,8 @@ impl<'a> Parser<'a> {
 
         // enter function scope
         self.scope.borrow_mut().enter_fn(name.clone());
+        // Plan 010 Phase 5B: Sync inference context scope
+        self.infer_ctx.push_scope();
 
         // parse function parameters
         self.expect(TokenKind::LParen)?;

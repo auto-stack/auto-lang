@@ -2,7 +2,7 @@
 
 int test_propagate(void) {
     int x = 10;
-    unknown y = x;
+    int y = x;
     return y;
 }
 

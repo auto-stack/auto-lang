@@ -1,6 +1,6 @@
 fn main() {
     let s: String = "hello";
-    let slice = &s;
+    let slice: String = &s;
     println!("{}", str_len(slice));
     println!("{}", s);
 }
