@@ -29,14 +29,14 @@
 //! assert!(matches!(ty, Type::Int));
 //! ```
 
-use crate::ast::{ArrayType, Arg, Call, Expr, If, Name, PtrType, Range, Type, TypeDecl};
+use crate::ast::{Arg, ArrayType, Call, Expr, If, Name, PtrType, Range, Type, TypeDecl};
 use crate::error::{AutoError, TypeError, Warning};
-use crate::infer::context::InferenceContext;
 use crate::infer::constraints::TypeConstraint;
-use miette::SourceSpan;
-use std::rc::Rc;
-use std::cell::RefCell;
+use crate::infer::context::InferenceContext;
 use auto_val::Op;
+use miette::SourceSpan;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// 推导表达式的类型
 ///
@@ -77,18 +77,14 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
 
         // ========== 标识符引用 ==========
         Expr::Ident(name) => {
-            ctx.lookup_type(name)
-                .unwrap_or_else(|| {
-                    // 未定义的变量,返回 Unknown (不记录错误,因为可能是运行时绑定的变量如hold表达式)
-                    Type::Unknown
-                })
+            ctx.lookup_type(name).unwrap_or_else(|| {
+                // 未定义的变量,返回 Unknown (不记录错误,因为可能是运行时绑定的变量如hold表达式)
+                Type::Unknown
+            })
         }
 
         // 生成的名称(内部使用)
-        Expr::GenName(name) => {
-            ctx.lookup_type(name)
-                .unwrap_or(Type::Unknown)
-        }
+        Expr::GenName(name) => ctx.lookup_type(name).unwrap_or(Type::Unknown),
 
         // ========== 一元运算 ==========
         Expr::Unary(op, operand) => {
@@ -103,25 +99,22 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
 
             // 添加相等性约束(操作数类型应该兼容)
             let span = SourceSpan::new(0.into(), 0);
-            ctx.add_constraint(TypeConstraint::Equal(
-                lhs_ty.clone(),
-                rhs_ty.clone(),
-                span,
-            ));
+            ctx.add_constraint(TypeConstraint::Equal(lhs_ty.clone(), rhs_ty.clone(), span));
 
             // 尝试统一操作数类型
-            let unified_operands = match ctx.unify_with_coercion(lhs_ty.clone(), rhs_ty.clone(), span) {
-                Ok(ty) => ty,
-                Err(_) => {
-                    // 无法统一,记录错误并返回 Unknown
-                    ctx.errors.push(AutoError::Type(TypeError::Mismatch {
-                        expected: lhs_ty.to_string(),
-                        found: rhs_ty.to_string(),
-                        span,
-                    }));
-                    Type::Unknown
-                }
-            };
+            let unified_operands =
+                match ctx.unify_with_coercion(lhs_ty.clone(), rhs_ty.clone(), span) {
+                    Ok(ty) => ty,
+                    Err(_) => {
+                        // 无法统一,记录错误并返回 Unknown
+                        ctx.errors.push(AutoError::Type(TypeError::Mismatch {
+                            expected: lhs_ty.to_string(),
+                            found: rhs_ty.to_string(),
+                            span,
+                        }));
+                        Type::Unknown
+                    }
+                };
 
             // 推导结果类型
             infer_binop_type(ctx, op, &unified_operands)
@@ -143,11 +136,7 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
                 let span = SourceSpan::new(0.into(), 0);
                 for elem in &elems[1..] {
                     let ty = infer_expr(ctx, elem);
-                    ctx.add_constraint(TypeConstraint::Equal(
-                        elem_ty.clone(),
-                        ty,
-                        span,
-                    ));
+                    ctx.add_constraint(TypeConstraint::Equal(elem_ty.clone(), ty, span));
                 }
 
                 Type::Array(ArrayType {
@@ -174,9 +163,7 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         Expr::Call(call) => infer_call_type(ctx, call),
 
         // ========== 索引表达式 ==========
-        Expr::Index(array_expr, index_expr) => {
-            infer_index_type(ctx, array_expr, index_expr)
-        }
+        Expr::Index(array_expr, index_expr) => infer_index_type(ctx, array_expr, index_expr),
 
         // ========== Lambda 表达式 ==========
         Expr::Lambda(_fn_decl) => {
@@ -204,7 +191,9 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
             };
 
             // 构造参数类型列表
-            let param_types: Vec<Type> = closure.params.iter()
+            let param_types: Vec<Type> = closure
+                .params
+                .iter()
                 .map(|param| {
                     if let Some(explicit_ty) = &param.ty {
                         explicit_ty.clone()
@@ -251,8 +240,7 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         // ========== Ref 表达式 ==========
         Expr::Ref(name) => {
             // 引用类型,创建指针
-            let inner_ty = ctx.lookup_type(name)
-                .unwrap_or(Type::Unknown);
+            let inner_ty = ctx.lookup_type(name).unwrap_or(Type::Unknown);
             Type::Ptr(PtrType {
                 of: Rc::new(RefCell::new(inner_ty)),
             })
@@ -304,7 +292,9 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
             match left_ty {
                 Type::Tag(tag) if tag.borrow().name.as_ref().starts_with("May_") => {
                     // Extract type from val field
-                    tag.borrow().fields.iter()
+                    tag.borrow()
+                        .fields
+                        .iter()
                         .find(|f| f.name.as_ref() == "val")
                         .map(|f| f.ty.clone())
                         .unwrap_or(Type::Unknown)
@@ -323,7 +313,9 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
             match expr_ty {
                 Type::Tag(tag) if tag.borrow().name.as_ref().starts_with("May_") => {
                     // Extract type from val field
-                    tag.borrow().fields.iter()
+                    tag.borrow()
+                        .fields
+                        .iter()
                         .find(|f| f.name.as_ref() == "val")
                         .map(|f| f.ty.clone())
                         .unwrap_or(Type::Unknown)
@@ -411,18 +403,22 @@ fn infer_call_type(ctx: &mut InferenceContext, call: &Call) -> Type {
     // 推导被调用者的类型
     let callee_ty = infer_expr(ctx, &call.name);
 
+    // TODO(Phase 070): Re-enable once Database has get_fn_decl() method
+    // Generic constraint validation temporarily disabled during Universe->Database migration
+    /*
     // Plan 061: Type argument inference and constraint validation
     // Check if this is a direct function call (identifier)
     if let Expr::Ident(fn_name) = &*call.name {
         // Try to get the function declaration and clone needed data
         let type_params_and_constraints = {
-            if let Some(fn_decl) = ctx.universe.borrow().get_fn_decl(fn_name.as_str()) {
-                if !fn_decl.type_params.is_empty() {
-                    // Clone the data we need to avoid holding the borrow
-                    Some((
-                        fn_decl.type_params.clone(),
-                        fn_decl.params.clone(),
-                    ))
+            if let Ok(db_lock) = ctx.database.read() {
+                if let Some(fn_decl) = db_lock.get_fn_decl(fn_name.as_str()) {
+                    if !fn_decl.type_params.is_empty() {
+                        // Clone the data we need to avoid holding the borrow
+                        Some((fn_decl.type_params.clone(), fn_decl.params.clone()))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -460,7 +456,8 @@ fn infer_call_type(ctx: &mut InferenceContext, call: &Call) -> Type {
                 if let Some(type_param) = type_params.iter().find(|tp| &tp.name == param_name) {
                     if let Some(constraint) = &type_param.constraint {
                         // Validate that concrete_type satisfies the constraint
-                        if let Err(error) = validate_spec_constraint(ctx, constraint, concrete_type) {
+                        if let Err(error) = validate_spec_constraint(ctx, constraint, concrete_type)
+                        {
                             ctx.errors.push(error.into());
                         }
                     }
@@ -479,6 +476,7 @@ fn infer_call_type(ctx: &mut InferenceContext, call: &Call) -> Type {
             }
         }
     }
+    */
 
     match callee_ty {
         Type::Unknown => Type::Unknown,
@@ -512,6 +510,7 @@ fn find_type_arg_for_param(_call: &Call, _param_name: &Name) -> Option<Type> {
 }
 
 /// Validate that a type satisfies a spec constraint
+#[allow(unused)]
 ///
 /// This function validates that a concrete type implements all required methods
 /// from a spec constraint. Uses the TraitChecker for validation.
@@ -535,17 +534,24 @@ fn validate_spec_constraint(
     use crate::error::TypeError;
     use miette::SourceSpan;
 
-    let span = SourceSpan::new(0.into(), 0);  // Placeholder span
+    let span = SourceSpan::new(0.into(), 0); // Placeholder span
 
     // Extract spec reference from constraint
     // When fully implemented, constraint will be Type::Spec(SpecRef)
     // For now, we skip validation as type argument tracking isn't implemented
 
+    // TODO(Phase 070): Re-enable once Database has get_spec() method
+    // Temporarily disabled during Universe->Database migration
+    /*
     match constraint {
         Type::User(type_decl) => {
             // This would be a Spec type when fully implemented
-            // Get spec declaration from universe
-            let spec_decl_opt = ctx.universe.borrow().get_spec(type_decl.name.as_str());
+            // Get spec declaration from database
+            let spec_decl_opt = if let Ok(db_lock) = ctx.database.read() {
+                db_lock.get_spec(type_decl.name.as_str())
+            } else {
+                None
+            };
 
             let spec_decl = match spec_decl_opt {
                 Some(decl) => decl,
@@ -563,7 +569,7 @@ fn validate_spec_constraint(
             // Use TraitChecker to validate conformance
             use crate::trait_checker::TraitChecker;
             match TraitChecker::check_conformance(&concrete_type_decl, &spec_decl) {
-                Ok(_) => Ok(()),
+             Ok(_) => Ok(()),
                 Err(_errors) => {
                     // Convert AutoError to TypeError
                     // For now, just return a generic constraint violation error
@@ -580,9 +586,12 @@ fn validate_spec_constraint(
             Ok(())
         }
     }
+    */
+    Ok(()) // Temporarily allow all constraints during migration
 }
 
 /// Extract TypeDecl from a Type
+#[allow(unused)]
 ///
 /// This helper function extracts the TypeDecl from various Type variants.
 /// For user-defined types, it returns the actual TypeDecl.
@@ -596,7 +605,7 @@ fn get_type_decl_from_type(
     use crate::error::TypeError;
     use miette::SourceSpan;
 
-    let span = SourceSpan::new(0.into(), 0);  // Placeholder span
+    let span = SourceSpan::new(0.into(), 0); // Placeholder span
 
     match ty {
         Type::User(type_decl) => Ok(type_decl.clone()),
@@ -642,7 +651,7 @@ fn infer_index_type(ctx: &mut InferenceContext, array_expr: &Expr, index_expr: &
     // 提取元素类型
     match container_ty {
         Type::Array(arr) => *arr.elem,
-        Type::RuntimeArray(rta) => *rta.elem,  // Plan 052
+        Type::RuntimeArray(rta) => *rta.elem, // Plan 052
         Type::Str(_) | Type::CStr => Type::Char,
         Type::Ptr(ptr) => {
             let inner_ty = ptr.of.borrow();
@@ -713,13 +722,13 @@ fn infer_if_type(ctx: &mut InferenceContext, if_expr: &If) -> Type {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auto_val::AutoStr;
     use crate::ast::{Body, Branch};
     use crate::universe::Universe;
+    use auto_val::AutoStr;
 
     fn make_test_context() -> InferenceContext {
-        let universe = Rc::new(RefCell::new(Universe::new()));
-        InferenceContext::with_universe(universe)
+        let db = std::sync::Arc::new(std::sync::RwLock::new(crate::database::Database::new()));
+        InferenceContext::with_database(db)
     }
 
     #[test]
@@ -757,11 +766,7 @@ mod tests {
     #[test]
     fn test_infer_array() {
         let mut ctx = make_test_context();
-        let expr = Expr::Array(vec![
-            Expr::Int(1),
-            Expr::Int(2),
-            Expr::Int(3),
-        ]);
+        let expr = Expr::Array(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)]);
         let ty = infer_expr(&mut ctx, &expr);
         match ty {
             Type::Array(arr) => {
@@ -783,11 +788,7 @@ mod tests {
     #[test]
     fn test_infer_binary_op_add() {
         let mut ctx = make_test_context();
-        let expr = Expr::Bina(
-            Box::new(Expr::Int(1)),
-            Op::Add,
-            Box::new(Expr::Int(2)),
-        );
+        let expr = Expr::Bina(Box::new(Expr::Int(1)), Op::Add, Box::new(Expr::Int(2)));
         let ty = infer_expr(&mut ctx, &expr);
         assert!(matches!(ty, Type::Int));
     }
@@ -795,11 +796,7 @@ mod tests {
     #[test]
     fn test_infer_binary_op_comparison() {
         let mut ctx = make_test_context();
-        let expr = Expr::Bina(
-            Box::new(Expr::Int(1)),
-            Op::Lt,
-            Box::new(Expr::Int(2)),
-        );
+        let expr = Expr::Bina(Box::new(Expr::Int(1)), Op::Lt, Box::new(Expr::Int(2)));
         let ty = infer_expr(&mut ctx, &expr);
         assert!(matches!(ty, Type::Bool));
     }
@@ -807,10 +804,7 @@ mod tests {
     #[test]
     fn test_infer_unary_op_not() {
         let mut ctx = make_test_context();
-        let expr = Expr::Unary(
-            Op::Not,
-            Box::new(Expr::Bool(true)),
-        );
+        let expr = Expr::Unary(Op::Not, Box::new(Expr::Bool(true)));
         let ty = infer_expr(&mut ctx, &expr);
         assert!(matches!(ty, Type::Bool));
     }
@@ -818,10 +812,7 @@ mod tests {
     #[test]
     fn test_infer_unary_op_neg() {
         let mut ctx = make_test_context();
-        let expr = Expr::Unary(
-            Op::Sub,
-            Box::new(Expr::Int(42)),
-        );
+        let expr = Expr::Unary(Op::Sub, Box::new(Expr::Int(42)));
         let ty = infer_expr(&mut ctx, &expr);
         assert!(matches!(ty, Type::Int));
     }
@@ -846,11 +837,7 @@ mod tests {
     #[test]
     fn test_infer_index_expr() {
         let mut ctx = make_test_context();
-        let array_expr = Expr::Array(vec![
-            Expr::Int(1),
-            Expr::Int(2),
-            Expr::Int(3),
-        ]);
+        let array_expr = Expr::Array(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)]);
         let index_expr = Expr::Int(0);
         let expr = Expr::Index(Box::new(array_expr), Box::new(index_expr));
         let ty = infer_expr(&mut ctx, &expr);
@@ -868,7 +855,11 @@ mod tests {
         let closure = Closure::new(
             vec![ClosureParam::new("x".into(), None)],
             None,
-            Expr::Bina(Box::new(Expr::Ident("x".into())), Op::Mul, Box::new(Expr::Int(2))),
+            Expr::Bina(
+                Box::new(Expr::Ident("x".into())),
+                Op::Mul,
+                Box::new(Expr::Int(2)),
+            ),
         );
 
         let ty = infer_expr(&mut ctx, &Expr::Closure(closure));
@@ -877,8 +868,8 @@ mod tests {
         match &ty {
             Type::Fn(params, ret) => {
                 assert_eq!(params.len(), 1);
-                assert!(matches!(params[0], Type::Unknown));  // x has no type annotation
-                assert!(matches!(&**ret, Type::Int));  // body is x * 2, so return type is int
+                assert!(matches!(params[0], Type::Unknown)); // x has no type annotation
+                assert!(matches!(&**ret, Type::Int)); // body is x * 2, so return type is int
             }
             _ => panic!("Expected Fn type, got {:?}", ty),
         }
@@ -893,7 +884,11 @@ mod tests {
         let closure = Closure::new(
             vec![ClosureParam::new("x".into(), Some(Type::Int))],
             Some(Type::Int),
-            Expr::Bina(Box::new(Expr::Ident("x".into())), Op::Add, Box::new(Expr::Int(1))),
+            Expr::Bina(
+                Box::new(Expr::Ident("x".into())),
+                Op::Add,
+                Box::new(Expr::Int(1)),
+            ),
         );
 
         let ty = infer_expr(&mut ctx, &Expr::Closure(closure));
@@ -902,8 +897,8 @@ mod tests {
         match &ty {
             Type::Fn(params, ret) => {
                 assert_eq!(params.len(), 1);
-                assert!(matches!(params[0], Type::Int));  // x has explicit type annotation
-                assert!(matches!(&**ret, Type::Int));  // return type is explicitly int
+                assert!(matches!(params[0], Type::Int)); // x has explicit type annotation
+                assert!(matches!(&**ret, Type::Int)); // return type is explicitly int
             }
             _ => panic!("Expected Fn type, got {:?}", ty),
         }
@@ -911,7 +906,7 @@ mod tests {
 
     #[test]
     fn test_type_args_stored_in_call() {
-        use crate::ast::{Args, Arg, Call};
+        use crate::ast::{Arg, Args, Call};
 
         // Create a call
         let mut args = Args::new();
@@ -940,8 +935,18 @@ mod tests {
         }
 
         // Verify that type_args were stored in the original Call
-        assert_eq!(call.type_args.len(), 1, "type_args should contain one entry");
-        assert_eq!(call.type_args[0].0, "T", "Generic parameter name should be T");
-        assert!(matches!(call.type_args[0].1, Type::Int), "Concrete type should be Int");
+        assert_eq!(
+            call.type_args.len(),
+            1,
+            "type_args should contain one entry"
+        );
+        assert_eq!(
+            call.type_args[0].0, "T",
+            "Generic parameter name should be T"
+        );
+        assert!(
+            matches!(call.type_args[0].1, Type::Int),
+            "Concrete type should be Int"
+        );
     }
 }

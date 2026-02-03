@@ -26,9 +26,9 @@
 //! assert!(matches!(ty, Some(Type::Int)));
 //! ```
 
-use crate::ast::{Type, Name};
+use crate::ast::{Name, Type};
+use crate::database::Database;
 use crate::error::{AutoError, TypeError, Warning};
-use crate::universe::Universe;
 use miette::SourceSpan;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -52,8 +52,9 @@ pub struct InferenceContext {
     /// 当前函数返回类型（用于检查返回语句）
     pub current_ret: Option<Type>,
 
-    /// Universe 引用（用于符号查找）
-    pub universe: Rc<RefCell<Universe>>,
+    /// Database 引用（用于符号查找）
+    /// Phase 070: Migrated from Universe to Database for compile-time data
+    pub database: std::sync::Arc<std::sync::RwLock<Database>>,
 
     /// 错误累加器
     pub errors: Vec<AutoError>,
@@ -70,20 +71,22 @@ impl InferenceContext {
             constraints: Vec::new(),
             scopes: Vec::new(),
             current_ret: None,
-            universe: Rc::new(RefCell::new(Universe::new())),
+            database: std::sync::Arc::new(std::sync::RwLock::new(Database::new())),
             errors: Vec::new(),
             warnings: Vec::new(),
         }
     }
 
-    /// 使用现有的 Universe 创建上下文
-    pub fn with_universe(universe: Rc<RefCell<Universe>>) -> Self {
+    /// 使用现有的 Database 创建上下文
+    ///
+    /// Phase 070: Migrated from with_universe to with_database
+    pub fn with_database(database: std::sync::Arc<std::sync::RwLock<Database>>) -> Self {
         Self {
             type_env: HashMap::new(),
             constraints: Vec::new(),
             scopes: Vec::new(),
             current_ret: None,
-            universe,
+            database,
             errors: Vec::new(),
             warnings: Vec::new(),
         }
@@ -215,11 +218,7 @@ impl InferenceContext {
     /// # 返回
     ///
     /// 统一后的类型，如果无法统一则返回错误
-    pub fn unify(
-        &mut self,
-        ty1: Type,
-        ty2: Type,
-    ) -> Result<Type, TypeError> {
+    pub fn unify(&mut self, ty1: Type, ty2: Type) -> Result<Type, TypeError> {
         match (ty1, ty2) {
             // Unknown 类型是通配符，可以与任何类型统一
             (Type::Unknown, ty) | (ty, Type::Unknown) => Ok(ty),
@@ -391,7 +390,10 @@ mod tests {
     fn test_unify_same_types() {
         let mut ctx = InferenceContext::new();
         assert!(matches!(ctx.unify(Type::Int, Type::Int), Ok(Type::Int)));
-        assert!(matches!(ctx.unify(Type::Float, Type::Float), Ok(Type::Float)));
+        assert!(matches!(
+            ctx.unify(Type::Float, Type::Float),
+            Ok(Type::Float)
+        ));
         assert!(matches!(ctx.unify(Type::Bool, Type::Bool), Ok(Type::Bool)));
     }
 
@@ -407,14 +409,8 @@ mod tests {
     #[test]
     fn test_unify_with_unknown() {
         let mut ctx = InferenceContext::new();
-        assert!(matches!(
-            ctx.unify(Type::Unknown, Type::Int),
-            Ok(Type::Int)
-        ));
-        assert!(matches!(
-            ctx.unify(Type::Int, Type::Unknown),
-            Ok(Type::Int)
-        ));
+        assert!(matches!(ctx.unify(Type::Unknown, Type::Int), Ok(Type::Int)));
+        assert!(matches!(ctx.unify(Type::Int, Type::Unknown), Ok(Type::Int)));
     }
 
     #[test]

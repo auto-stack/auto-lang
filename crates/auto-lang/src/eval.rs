@@ -240,7 +240,9 @@ impl Evaler {
 
             // Create SymbolTable in Database (compile-time)
             let symbol_table = SymbolTable::new(ScopeKind::Block, new_sid.clone());
-            db.write().unwrap().insert_symbol_table(new_sid.clone(), symbol_table);
+            db.write()
+                .unwrap()
+                .insert_symbol_table(new_sid.clone(), symbol_table);
 
             // Push StackFrame in ExecutionEngine if available
             if let Some(engine) = &self.engine {
@@ -660,7 +662,7 @@ impl Evaler {
     ///
     /// **Phase 4.5**: Bridge method that uses Universe during migration.
     pub fn get_spec(&self, name: &AutoStr) -> Option<std::rc::Rc<ast::SpecDecl>> {
-        self.universe.borrow().specs.get(name).cloned()
+        self.universe.borrow().get_spec(name)
     }
 
     // =========================================================================
@@ -679,7 +681,7 @@ impl Evaler {
 
                 // Automatically call main() if it's defined
                 // This allows test code to define fn main() {...} and have it execute
-                let main_fn = self.lookup_meta("main");  // Phase 4.5: Use bridge method
+                let main_fn = self.lookup_meta("main"); // Phase 4.5: Use bridge method
                 if let Some(main_meta) = main_fn {
                     if let scope::Meta::Fn(fn_decl) = main_meta.as_ref() {
                         // Call main() with no arguments
@@ -1017,7 +1019,7 @@ impl Evaler {
             self.define_type(
                 type_name.clone(),
                 std::rc::Rc::new(crate::scope::Meta::Type(ast::Type::User(type_decl))),
-            );  // Phase 4.5: Use bridge method
+            ); // Phase 4.5: Use bridge method
         }
         drop(registry);
 
@@ -1046,7 +1048,7 @@ impl Evaler {
                 self.define(
                     item_name.clone(),
                     std::rc::Rc::new(crate::scope::Meta::Fn(fn_decl)),
-                );  // Phase 4.5: Use bridge method
+                ); // Phase 4.5: Use bridge method
             } else {
                 // Check if it's a type (with short-lived lock)
                 let has_type = {
@@ -1075,7 +1077,7 @@ impl Evaler {
                     self.define(
                         item_name.clone(),
                         std::rc::Rc::new(crate::scope::Meta::Type(ast::Type::User(type_decl))),
-                    );  // Phase 4.5: Use bridge method
+                    ); // Phase 4.5: Use bridge method
                 }
             }
         }
@@ -1277,11 +1279,11 @@ impl Evaler {
     fn eval_iter(&mut self, iter: &Iter, idx: usize, item: Value) {
         match iter {
             Iter::Indexed(index, iter) => {
-                self.set_local_val(&index, Value::Int(idx as i32));  // Phase 4.5: Use bridge method
-                // println!("set index {}, iter: {}, item: {}", index.text, iter.text, item.clone());
-                self.set_local_val(&iter, item);  // Phase 4.5: Use bridge method
+                self.set_local_val(&index, Value::Int(idx as i32)); // Phase 4.5: Use bridge method
+                                                                    // println!("set index {}, iter: {}, item: {}", index.text, iter.text, item.clone());
+                self.set_local_val(&iter, item); // Phase 4.5: Use bridge method
             }
-            Iter::Named(iter) => self.set_local_val(&iter, item),  // Phase 4.5: Use bridge method
+            Iter::Named(iter) => self.set_local_val(&iter, item), // Phase 4.5: Use bridge method
             Iter::Call(_) => {
                 todo!()
             }
@@ -1312,13 +1314,13 @@ impl Evaler {
             // For simple conditionals like "for i < max { ... }", use outer scope
             let has_init = for_stmt.init.is_some();
             if has_init {
-                self.enter_scope();  // Phase 4.5: Use bridge method
+                self.enter_scope(); // Phase 4.5: Use bridge method
             }
 
             loop {
                 if max_loop <= 0 {
                     if has_init {
-                        self.exit_scope();  // Phase 4.5: Use bridge method
+                        self.exit_scope(); // Phase 4.5: Use bridge method
                     }
                     return Ok(Value::error("Max loop reached"));
                 }
@@ -1341,14 +1343,14 @@ impl Evaler {
                     }
                     Err(e) => {
                         if has_init {
-                            self.exit_scope();  // Phase 4.5: Use bridge method
+                            self.exit_scope(); // Phase 4.5: Use bridge method
                         }
                         return Err(e);
                     }
                 }
             }
             if has_init {
-                self.exit_scope();  // Phase 4.5: Use bridge method
+                self.exit_scope(); // Phase 4.5: Use bridge method
             }
 
             return Ok(match self.mode {
@@ -1394,7 +1396,7 @@ impl Evaler {
         let mut is_mid = true;
         let is_new_line = for_stmt.new_line;
         let sep = if for_stmt.new_line { "\n" } else { "" };
-        self.enter_scope();  // Phase 4.5: Use bridge method
+        self.enter_scope(); // Phase 4.5: Use bridge method
         match range_final {
             Value::Range(start, end) => {
                 let len = (end - start) as usize;
@@ -1412,7 +1414,7 @@ impl Evaler {
                             }
                         }
                         Err(e) => {
-                            self.exit_scope();  // Phase 4.5: Use bridge method
+                            self.exit_scope(); // Phase 4.5: Use bridge method
                             return Err(e);
                         }
                     }
@@ -1435,7 +1437,7 @@ impl Evaler {
                             }
                         }
                         Err(e) => {
-                            self.exit_scope();  // Phase 4.5: Use bridge method
+                            self.exit_scope(); // Phase 4.5: Use bridge method
                             return Err(e);
                         }
                     }
@@ -1458,7 +1460,7 @@ impl Evaler {
                             }
                         }
                         Err(e) => {
-                            self.exit_scope();  // Phase 4.5: Use bridge method
+                            self.exit_scope(); // Phase 4.5: Use bridge method
                             return Err(e);
                         }
                     }
@@ -1489,7 +1491,7 @@ impl Evaler {
                             let len = list_elems.len();
                             for (idx, item) in list_elems.iter().enumerate() {
                                 if max_loop <= 0 {
-                                    self.exit_scope();  // Phase 4.5: Use bridge method
+                                    self.exit_scope(); // Phase 4.5: Use bridge method
                                     return Ok(Value::error("Max loop reached"));
                                 }
 
@@ -1506,13 +1508,13 @@ impl Evaler {
                                         }
                                     }
                                     Err(e) => {
-                                        self.exit_scope();  // Phase 4.5: Use bridge method
+                                        self.exit_scope(); // Phase 4.5: Use bridge method
                                         return Err(e);
                                     }
                                 }
                                 max_loop -= 1;
                             }
-                            self.exit_scope();  // Phase 4.5: Use bridge method
+                            self.exit_scope(); // Phase 4.5: Use bridge method
                             return Ok(match self.mode {
                                 EvalMode::SCRIPT => Value::Void,
                                 EvalMode::CONFIG => Value::Array(res),
@@ -1541,7 +1543,7 @@ impl Evaler {
                 return Ok(Value::error(format!("Invalid range {}", range_final)));
             }
         }
-        self.exit_scope();  // Phase 4.5: Use bridge method
+        self.exit_scope(); // Phase 4.5: Use bridge method
         if max_loop <= 0 {
             Ok(Value::error("Max loop reached"))
         } else {
@@ -1665,19 +1667,20 @@ impl Evaler {
 
         // Move semantics: Check if this is a reassignment
         // If so, the old value is dropped here (its last use)
-        if self.has_local(&store.name) {  // Phase 4.5: Use bridge method
+        if self.has_local(&store.name) {
+            // Phase 4.5: Use bridge method
             // Remove old value - this will trigger cleanup if implemented
             // TODO: In Phase 2, we'll call drop_linear() here for linear types
-            self.remove_local(&store.name);  // Phase 4.5: Use bridge method
-            // Clear moved status since we're reassigning
-            self.clear_moved(&store.name);  // Phase 4.5: Use bridge method
+            self.remove_local(&store.name); // Phase 4.5: Use bridge method
+                                            // Clear moved status since we're reassigning
+            self.clear_moved(&store.name); // Phase 4.5: Use bridge method
         }
 
         self.define(
             store.name.as_str(),
             Rc::new(scope::Meta::Store(store.clone())),
-        );  // Phase 4.5: Use bridge method
-        self.set_local_val(&store.name, value);  // Phase 4.5: Use bridge method
+        ); // Phase 4.5: Use bridge method
+        self.set_local_val(&store.name, value); // Phase 4.5: Use bridge method
         Value::Void
     }
 
@@ -1805,11 +1808,12 @@ impl Evaler {
                 match left_val {
                     Value::Ref(target) => {
                         // println!("ref: {}", target); // LSP: disabled
-                        if self.exists(&target) {  // Phase 4.5: Use bridge method
-                            self.update_val(&target, val);  // Phase 4.5: Use bridge method
+                        if self.exists(&target) {
+                            // Phase 4.5: Use bridge method
+                            self.update_val(&target, val); // Phase 4.5: Use bridge method
                         } else {
                             // Variable not found - return error with suggestion
-                            let candidates = self.get_defined_names();  // Phase 4.5: Use bridge method
+                            let candidates = self.get_defined_names(); // Phase 4.5: Use bridge method
                             let suggestion = if let Some(s) =
                                 crate::error::find_best_match(&target, &candidates)
                             {
@@ -1827,11 +1831,12 @@ impl Evaler {
                         }
                     }
                     _ => {
-                        if self.exists(&name) {  // Phase 4.5: Use bridge method
-                            self.update_val(&name, val);  // Phase 4.5: Use bridge method
+                        if self.exists(&name) {
+                            // Phase 4.5: Use bridge method
+                            self.update_val(&name, val); // Phase 4.5: Use bridge method
                         } else {
                             // Variable not found - return error with suggestion
-                            let candidates = self.get_defined_names();  // Phase 4.5: Use bridge method
+                            let candidates = self.get_defined_names(); // Phase 4.5: Use bridge method
                             let suggestion = if let Some(s) =
                                 crate::error::find_best_match(&name, &candidates)
                             {
@@ -1954,8 +1959,7 @@ impl Evaler {
                                     );
 
                                     let right_data = val.into_data();
-                                    let right_vid =
-                                        self.alloc_value(right_data);
+                                    let right_vid = self.alloc_value(right_data);
 
                                     match self
                                         .universe
@@ -2875,14 +2879,13 @@ impl Evaler {
                 let qualified_method_name: AutoStr =
                     format!("{}.{}", type_name, method_name).into();
                 // Phase 4.5: Use bridge method for lookup
-                let fn_decl_opt = self.lookup_meta(&qualified_method_name)
-                    .and_then(|meta| {
-                        if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
-                            Some(fn_decl.clone())
-                        } else {
-                            None
-                        }
-                    });
+                let fn_decl_opt = self.lookup_meta(&qualified_method_name).and_then(|meta| {
+                    if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
+                        Some(fn_decl.clone())
+                    } else {
+                        None
+                    }
+                });
 
                 if let Some(fn_decl) = fn_decl_opt {
                     // Plan 035 Phase 4.3: Only bind self for instance methods
@@ -2947,7 +2950,7 @@ impl Evaler {
                 // Plan 038: Try to find VM function (e.g., str_split for str.split())
                 // VM function naming convention: {type}_{method}
                 let vm_function_name: AutoStr = format!("{}_{}", type_name, method_name).into();
-                let vm_fn = self.lookup_val(&vm_function_name);  // Phase 4.5: Use bridge method
+                let vm_fn = self.lookup_val(&vm_function_name); // Phase 4.5: Use bridge method
 
                 if let Some(Value::ExtFn(ext_fn)) = vm_fn {
                     // Call VM function with self as first argument
@@ -3045,8 +3048,8 @@ impl Evaler {
                         let qualified_method_name: AutoStr =
                             format!("{}.{}", type_name, method_name).into();
                         // Phase 4.5: Use bridge method for lookup
-                        let fn_decl_opt = self.lookup_meta(&qualified_method_name)
-                            .and_then(|meta| {
+                        let fn_decl_opt =
+                            self.lookup_meta(&qualified_method_name).and_then(|meta| {
                                 if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
                                     Some(fn_decl.clone())
                                 } else {
@@ -3060,7 +3063,7 @@ impl Evaler {
                             if !fn_decl.is_static {
                                 // Bind self to the instance value before calling the method
                                 // This allows the method body to access the instance via 'self'
-                                self.set_local_val("self", inst.clone());  // Phase 4.5: Use bridge method
+                                self.set_local_val("self", inst.clone()); // Phase 4.5: Use bridge method
                             }
 
                             // Call the method
@@ -3116,8 +3119,8 @@ impl Evaler {
                         let vm_function_name: AutoStr =
                             format!("{}_{}", type_name, method_name).into();
                         let vm_fn = {
-                        self.lookup_val(&vm_function_name)  // Phase 4.5: Use bridge method
-                    };
+                            self.lookup_val(&vm_function_name) // Phase 4.5: Use bridge method
+                        };
 
                         if let Some(Value::ExtFn(ext_fn)) = vm_fn {
                             // Call VM function with self as first argument
@@ -3276,7 +3279,7 @@ impl Evaler {
             }
             Value::Lambda(name) => {
                 // Try to lookup lambda in SymbolTable
-                let meta = self.lookup_meta(&name);  // Phase 4.5: Use bridge method
+                let meta = self.lookup_meta(&name); // Phase 4.5: Use bridge method
                 if let Some(meta) = meta {
                     match meta.as_ref() {
                         scope::Meta::Fn(fn_decl) => {
@@ -3307,7 +3310,7 @@ impl Evaler {
         }
 
         // Lookup Fn meta
-        let meta = self.lookup_meta(&call.get_name_text());  // Phase 4.5: Use bridge method
+        let meta = self.lookup_meta(&call.get_name_text()); // Phase 4.5: Use bridge method
         if let Some(meta) = meta {
             match meta.as_ref() {
                 scope::Meta::Fn(fn_decl) => {
@@ -3473,11 +3476,11 @@ impl Evaler {
 
                 // Plan 025 String Migration: Check for ext methods in universe
                 // name might already be qualified (e.g., "str::contains") or simple (e.g., "contains")
-                let ext_method = self.lookup_meta(name);  // Phase 4.5: Use bridge method
+                let ext_method = self.lookup_meta(name); // Phase 4.5: Use bridge method
                 if let Some(meta) = ext_method {
                     if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
                         // Bind self and call the ext method
-                        self.set_local_val("self", target.as_ref().clone());  // Phase 4.5: Use bridge method
+                        self.set_local_val("self", target.as_ref().clone()); // Phase 4.5: Use bridge method
                         return self.eval_fn_call(fn_decl, args);
                     }
                 }
@@ -3494,7 +3497,7 @@ impl Evaler {
                 }
 
                 // Plan 025 String Migration: Check for ext methods
-                let ext_method = self.lookup_meta(name);  // Phase 4.5: Use bridge method
+                let ext_method = self.lookup_meta(name); // Phase 4.5: Use bridge method
                 if let Some(meta) = ext_method {
                     if let scope::Meta::Fn(fn_decl) = meta.as_ref() {
                         self.universe
@@ -3506,7 +3509,7 @@ impl Evaler {
             }
             Value::Instance(inst) => {
                 // First, try to find the method directly in the type
-                let meth = self.lookup_meta(&method.name);  // Phase 4.5: Use bridge method
+                let meth = self.lookup_meta(&method.name); // Phase 4.5: Use bridge method
                 if let Some(meta) = meth {
                     match meta.as_ref() {
                         Meta::Fn(fn_decl) => {
@@ -3536,14 +3539,16 @@ impl Evaler {
                     auto_val::Type::User(type_name) => {
                         // Lookup the TypeDecl from universe
                         let type_name_clone = type_name.clone();
-                        if let Some(meta) = self.lookup_meta(&type_name_clone)  /* Phase 4.5: Use bridge method */ {
+                        if let Some(meta) = self.lookup_meta(&type_name_clone)
+                        /* Phase 4.5: Use bridge method */
+                        {
                             if let Meta::Type(ast::Type::User(type_decl)) = meta.as_ref() {
                                 for delegation in &type_decl.delegations {
                                     // Check if this delegation handles the method
                                     let spec_name = delegation.spec_name.clone();
                                     let member_name = delegation.member_name.clone();
-                                    if let Some(spec_meta) =
-                                        self.lookup_meta(&spec_name)  /* Phase 4.5: Use bridge method */
+                                    if let Some(spec_meta) = self.lookup_meta(&spec_name)
+                                    /* Phase 4.5: Use bridge method */
                                     {
                                         if let Meta::Spec(spec_decl) = spec_meta.as_ref() {
                                             // Check if the spec has this method
@@ -3712,7 +3717,7 @@ impl Evaler {
             Arg::Pair(name, expr) => {
                 let val = self.eval_expr(expr);
                 let name = &name;
-                self.set_local_val(&name, val.clone());  // Phase 4.5: Use bridge method
+                self.set_local_val(&name, val.clone()); // Phase 4.5: Use bridge method
                 val
             }
             Arg::Pos(expr) => {
@@ -3721,12 +3726,12 @@ impl Evaler {
                 // VM functions have empty params, so we skip setting local vars
                 if i < params.len() {
                     let name = &params[i].name;
-                    self.set_local_val(&name, val.clone());  // Phase 4.5: Use bridge method
+                    self.set_local_val(&name, val.clone()); // Phase 4.5: Use bridge method
                 }
                 val
             }
             Arg::Name(name) => {
-                self.set_local_val(name.as_str(), Value::Str(name.clone()));  // Phase 4.5: Use bridge method
+                self.set_local_val(name.as_str(), Value::Str(name.clone())); // Phase 4.5: Use bridge method
                 Value::Str(name.clone())
             }
         }
@@ -3791,7 +3796,7 @@ impl Evaler {
                         // Add self as the first argument
                         // Note: self was bound in eval_method, but we need to get it here
                         // Try to get self from current scope
-                        let self_val = self.lookup_val("self");  // Phase 4.5: Use bridge method
+                        let self_val = self.lookup_val("self"); // Phase 4.5: Use bridge method
 
                         match self_val {
                             Some(val) => {
@@ -4366,11 +4371,12 @@ impl Evaler {
                 };
 
                 // Bind the path value to the name (using Meta::Store)
-                self.define(  // Phase 4.5: Use bridge method
+                self.define(
+                    // Phase 4.5: Use bridge method
                     hold.name.clone(),
                     std::rc::Rc::new(crate::scope::Meta::Store(store)),
                 );
-                self.set_local_val(&hold.name, path_value);  // Phase 4.5: Use bridge method
+                self.set_local_val(&hold.name, path_value); // Phase 4.5: Use bridge method
 
                 // Evaluate the body
                 let result = match self.eval_body(&hold.body) {
@@ -4483,7 +4489,7 @@ impl Evaler {
                     return Value::Type(vty);
                 }
                 // Try meta (after types)
-                let meta = self.lookup_meta(&name);  // Phase 4.5: Use bridge method
+                let meta = self.lookup_meta(&name); // Phase 4.5: Use bridge method
                 if let Some(meta) = meta {
                     return Value::Meta(to_meta_id(&meta));
                 }
@@ -4541,7 +4547,8 @@ impl Evaler {
             // Only register methods that have bodies (interface-only methods are just declarations)
             if !method.body.stmts.is_empty() {
                 let method_name: AutoStr = format!("{}.{}", type_decl.name, method.name).into();
-                self.define(  /* Phase 4.5 */
+                self.define(
+                    /* Phase 4.5 */
                     method_name,
                     std::rc::Rc::new(scope::Meta::Fn(method.clone())),
                 );
@@ -4577,7 +4584,9 @@ impl Evaler {
             let method_name: AutoStr = format!("{}.{}", ext.target, method.name).into();
 
             // Plan 035 Phase 5: Check for duplicate method definitions
-            if let Some(existing_meta) = self.lookup_meta(&method_name)  /* Phase 4.5 */ {
+            if let Some(existing_meta) = self.lookup_meta(&method_name)
+            /* Phase 4.5 */
+            {
                 // Method already exists, issue a warning
                 if let scope::Meta::Fn(_existing_fn) = existing_meta.as_ref() {
                     eprintln!(
@@ -4594,7 +4603,8 @@ impl Evaler {
             registered_method.name = method_name.clone(); // Update name to qualified name (e.g., "str::contains")
 
             // Register in universe with qualified name
-            self.define(  /* Phase 4.5 */
+            self.define(
+                /* Phase 4.5 */
                 method_name,
                 std::rc::Rc::new(scope::Meta::Fn(registered_method)),
             );
@@ -4611,7 +4621,9 @@ impl Evaler {
             let method_name: AutoStr = format!("{}.{}", tag.name, method.name).into();
 
             // Check for duplicate method definitions
-            if let Some(existing_meta) = self.lookup_meta(&method_name)  /* Phase 4.5 */ {
+            if let Some(existing_meta) = self.lookup_meta(&method_name)
+            /* Phase 4.5 */
+            {
                 // Method already exists, issue a warning
                 if let scope::Meta::Fn(_existing_fn) = existing_meta.as_ref() {
                     eprintln!(
@@ -4627,7 +4639,8 @@ impl Evaler {
             registered_method.name = method_name.clone(); // Update name to qualified name
 
             // Register in universe with qualified name
-            self.define(  /* Phase 4.5 */
+            self.define(
+                /* Phase 4.5 */
                 method_name,
                 std::rc::Rc::new(scope::Meta::Fn(registered_method)),
             );
@@ -4648,7 +4661,12 @@ impl Evaler {
     /// Plan 019 Stage 8.5: Resolve spec methods with default implementations
     /// When a method is not found on a type, look through its spec implementations
     /// Returns Some(result) if found and executed, None if not found
-    fn resolve_spec_method(&mut self, instance: &Value, method_name: &AutoStr, args: &ast::Args) -> Option<Value> {
+    fn resolve_spec_method(
+        &mut self,
+        instance: &Value,
+        method_name: &AutoStr,
+        args: &ast::Args,
+    ) -> Option<Value> {
         // Get the type name
         let type_name = if let Value::Instance(ref inst_data) = instance {
             inst_data.ty.name().to_string()
@@ -4657,7 +4675,7 @@ impl Evaler {
         };
 
         // Get the TypeDecl for this type
-        let type_decl = self.lookup_type(&type_name);  // Phase 4.5: Use bridge method
+        let type_decl = self.lookup_type(&type_name); // Phase 4.5: Use bridge method
 
         let type_decl = match type_decl {
             ast::Type::User(decl) => decl,
@@ -4667,7 +4685,7 @@ impl Evaler {
         // Iterate through spec implementations
         for spec_impl in type_decl.spec_impls.iter() {
             // Look up the spec declaration from specs HashMap
-            let spec_decl = self.get_spec(&spec_impl.spec_name);  // Phase 4.5: Use bridge method
+            let spec_decl = self.get_spec(&spec_impl.spec_name); // Phase 4.5: Use bridge method
 
             let spec_decl = match spec_decl {
                 Some(decl) => decl,
@@ -4675,10 +4693,16 @@ impl Evaler {
             };
 
             // Check if this spec has the method
-            if let Some(spec_method) = spec_decl.get_method(&ast::Name::from(method_name.as_str())) {
+            if let Some(spec_method) = spec_decl.get_method(&ast::Name::from(method_name.as_str()))
+            {
                 // Check if it has a default implementation
                 if let Some(body) = &spec_method.body {
-                    return Some(self.eval_spec_method_body(instance, body, args, &spec_method.params));
+                    return Some(self.eval_spec_method_body(
+                        instance,
+                        body,
+                        args,
+                        &spec_method.params,
+                    ));
                 }
             }
         }
@@ -4687,7 +4711,13 @@ impl Evaler {
     }
 
     /// Evaluate a spec method body with `self` bound to the instance
-    fn eval_spec_method_body(&mut self, instance: &Value, body: &ast::Expr, args: &ast::Args, params: &[ast::Param]) -> Value {
+    fn eval_spec_method_body(
+        &mut self,
+        instance: &Value,
+        body: &ast::Expr,
+        args: &ast::Args,
+        params: &[ast::Param],
+    ) -> Value {
         // Create a new scope and bind `self` to the instance
         self.enter_fn(&AutoStr::from("<spec_method>"));
 
@@ -4702,7 +4732,7 @@ impl Evaler {
                 match arg_expr {
                     ast::Arg::Pos(expr) => {
                         let arg_val = self.eval_expr(expr);
-                        self.set_local_val(&param.name.to_string(), arg_val)  // Phase 4.5;
+                        self.set_local_val(&param.name.to_string(), arg_val) // Phase 4.5;
                     }
                     _ => {}
                 }
@@ -5398,7 +5428,7 @@ impl Evaler {
         let nd = Value::Node(nd);
         // save value to scope
         if !ndid.is_empty() {
-            self.set_global(ndid, nd.clone())  // Phase 4.5;
+            self.set_global(ndid, nd.clone()) // Phase 4.5;
         }
 
         Ok(nd)
@@ -5548,8 +5578,6 @@ impl Evaler {
 
     /// Evaluate closure expression and create closure value (Plan 060 Phase 3+4)
     fn closure(&mut self, closure: &Closure) -> Value {
-        
-
         // Generate unique closure ID
         let closure_id = self.next_closure_id;
         self.next_closure_id += 1;
@@ -5613,11 +5641,11 @@ impl Evaler {
         }
 
         // Push new scope for closure execution
-        self.enter_scope();  // Phase 4.5: Use bridge method
+        self.enter_scope(); // Phase 4.5: Use bridge method
 
         // Plan 060 Phase 4: Restore captured environment
         for (name, value) in &eval_closure.env {
-            self.set_local_val(name, value.clone());  // Phase 4.5: Use bridge method
+            self.set_local_val(name, value.clone()); // Phase 4.5: Use bridge method
         }
 
         // Bind parameters to arguments (after env, so params can shadow captured vars)
@@ -5625,14 +5653,14 @@ impl Evaler {
             let param_name = param.name.as_str();
             // Store the argument value in the current scope
             // This creates a ValueRef that can be resolved when the closure body references the parameter
-            self.set_local_val(param_name, arg_value.clone());  // Phase 4.5: Use bridge method
+            self.set_local_val(param_name, arg_value.clone()); // Phase 4.5: Use bridge method
         }
 
         // Execute closure body
         let result = self.eval_expr(&eval_closure.body);
 
         // Pop scope
-        self.exit_scope();  // Phase 4.5: Use bridge method
+        self.exit_scope(); // Phase 4.5: Use bridge method
 
         Ok(result)
     }
@@ -5743,7 +5771,7 @@ impl Evaler {
 
     fn create_default_instance(&mut self, type_name: &str) -> Value {
         // Look up the type declaration
-        let type_decl_opt = self.lookup_type(type_name);  // Phase 4.5: Use bridge method
+        let type_decl_opt = self.lookup_type(type_name); // Phase 4.5: Use bridge method
 
         if let ast::Type::User(decl) = type_decl_opt {
             let mut fields = auto_val::Obj::new();
