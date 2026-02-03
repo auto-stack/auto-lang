@@ -51,13 +51,13 @@ let len = str_len(s)  // 5
 Append text to a string.
 
 ```auto
-let mut s = str_new("hello")
-str_append(mut s, " world")
+var s = str_new("hello")
+str_append(s, " world")
 print(s)  // "hello world"
 ```
 
 **Parameters:**
-- `s` (mut str): The string to append to (must be mutable)
+- `s` (str): The string to append to (must be mutable)
 - `text` (str): Text to append
 
 **Returns:** Void
@@ -485,10 +485,10 @@ let cs = to_cstr(s)
 ```auto
 fn main() {
     // Create a new string
-    let mut s = str_new("hello")
+    var s = str_new("hello")
 
     // Append to it
-    str_append(mut s, " world")
+    str_append(s, " world")
 
     // Transform it
     let upper = str_upper(s)  // "HELLO WORLD"

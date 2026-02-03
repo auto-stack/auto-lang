@@ -13,8 +13,8 @@ fn main() {
     print("Length: " + str_from_int(len))
 
     // Append to string
-    let mut s2 = str_new("hello")
-    str_append(mut s2, " world")
+    var s2 = str_new("hello")
+    str_append(s2, " world")
     print("Appended: " + s2)
 
     // Uppercase and lowercase
@@ -137,7 +137,7 @@ fn str_from_int(n int) str {
     while n > 0 {
         let digit = n % 10
         let char = str_char_at("0123456789", digit)
-        str_append(mut result, char)
+        str_append(result, char)
         n = n / 10
     }
 

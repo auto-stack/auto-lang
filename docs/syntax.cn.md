@@ -8,9 +8,8 @@
 
 - [存量类型](#存量类型)
   - [定量 (let)](#定量-let)
-  - [变量 (mut)](#变量-mut)
+  - [变量 (var)](#变量-var)
   - [常量 (const)](#常量-const)
-  - [幻量 (var)](#幻量-var)
 - [基本类型](#基本类型)
   - [数值类型](#数值类型)
   - [数组](#数组)
@@ -64,19 +63,19 @@ let b = b * 2  // shadowing，类型仍是 int
 - 函数参数（默认情况）
 - 计算中间结果
 
-### 变量 (mut)
+### 变量 (var)
 
 **变量**的值可以任意改变，但类型一旦确定就不能再改变。这其实就是 C/C++ 中的普通变量。在 Rust 中，这样的变量用 `let mut` 声明。
 
 ```rust
 // 变量定义，编译器可以自动推导类型
-mut a = 1
+var a = 1
 
 // 变量的定义可以指定类型
-mut b bool = false
+var b bool = false
 
 // 声明多个变量
-mut c, d = 2, 3
+var c, d = 2, 3
 
 // 变量可以修改，也叫"赋值"
 a = 10
@@ -114,28 +113,6 @@ fn area(radius float) float {
 - 全局配置
 - 数学常量
 - 魔法数字的替代
-
-### 幻量 (var)
-
-**幻量**是最自由的量，可以任意改变值和类型，一般用于脚本环境，如配置文件、DSL、脚本代码等。
-
-```rust
-// 幻量：幻量是最自由的量，可以任意改变值和类型
-var x = 1
-println(x)  // 1
-
-x = "hello"
-println(x)  // "hello"
-
-x = [x+"1", x+"2", x+"3"]
-println(x)  // ["hello1", "hello2", "hello3"]
-```
-
-**适用场景**：
-- 动态配置文件
-- 脚本语言模式
-- DSL（领域特定语言）
-- 快速原型开发
 
 ---
 
@@ -196,7 +173,7 @@ let r1 = 0..=10  // 0 <= r <= 10（闭区间）
 
 **数组操作**：
 ```rust
-mut arr = [1, 2, 3, 4, 5]
+var arr = [1, 2, 3, 4, 5]
 
 // 修改元素
 arr[0] = 10
@@ -215,7 +192,7 @@ for i, n in arr {
 }
 
 // 修改数组的值（使用 ref）
-mut arr = [1, 2, 3, 4, 5]
+var arr = [1, 2, 3, 4, 5]
 for ref n in arr {
     n = n * n
 }
@@ -228,7 +205,7 @@ println(arr)  // [1, 4, 9, 16, 25]
 
 ```rust
 // 对象字面量
-mut obj = {
+var obj = {
     name: "John",
     age: 30,
     is_student: false
@@ -473,7 +450,7 @@ greet("Bob", "Hi")            // Hi, Bob!
 // 数值类型：默认拷贝传递
 let a = 1
 let b = a     // 这里 b 是 a 的一份拷贝
-mut c = a     // 这里 c 是 a 的一份拷贝，而且 c 可以修改
+var c =a     // 这里 c 是 a 的一份拷贝，而且 c 可以修改
 c = 2
 println(c)    // 2
 println(a)    // 1（a 没有变化）
@@ -494,10 +471,10 @@ let a = [1, 2, 3, 4, 5]  // 数组默认是引用类型
 let b = a  // 这里 b 是 a 的一个引用，在使用 b 的时候，就和使用 a 一样。内存中只存在一个数组。
 
 // Error! 由于 a 是不可修改的，所以可修改的 c 不能引用它
-mut c = a  // 编译错误
+var c =a  // 编译错误
 
 // 如果想进行修改，可以显式地复制它
-mut d = copy a
+var d = copy a
 d[0] = 9  // d = [9, 2, 3, 4, 5]
 println(a)  // a = [1, 2, 3, 4, 5]，a 数组没变
 ```
@@ -524,7 +501,7 @@ let b = move a  // 转移后，a 不能再使用
 // Error! a 已经不能再使用
 println(a)  // 编译错误
 
-mut c = move b  // b 转移给了 c，由于是转移，c 可以选择修改
+var c =move b  // b 转移给了 c，由于是转移，c 可以选择修改
 c[0] = 9  // c = [9, 2, 3, 4, 5]
 
 // Error! b 已经不能再使用
@@ -578,7 +555,7 @@ fn read_buffer(buf Buffer) {
 }
 
 // 可变引用：用来修改变量
-mut x = 1
+var x = 1
 fn inc(a mut ref int) {
     a += 1
 }
@@ -592,7 +569,7 @@ println(x)  // 2
 
 ```rust
 // 指针可以修改原始量
-mut x = 1
+var x = 1
 sys {
     mut p = ptr x
     p.target += 1  // 间接修改 x 的值，注意这里和 C 不一样，用的是 `.target`
@@ -601,7 +578,7 @@ println(x)  // 2
 
 // 函数参数中的指针
 // 在函数调用时，指针类型的参数，可以修改原始量
-mut m = 10
+var m = 10
 fn inc(a ptr int) {
     a += 10
 }
@@ -610,7 +587,7 @@ println(m)  // 20
 
 // 指针的地址运算
 sys {  // 注意：地址运算要放在 sys 块中
-    mut arr = [1, 2, 3, 4, 5]
+    var arr = [1, 2, 3, 4, 5]
     mut p = ptr arr  // p 的类型是 Ptr<[5]int>
     println(p)  // [1, 2, 3, 4, 5]
 
@@ -666,7 +643,7 @@ for n in [1, 2, 3] {
 }
 
 // for 循环：修改数组的值
-mut arr = [1, 2, 3, 4, 5]
+var arr = [1, 2, 3, 4, 5]
 for ref n in arr {
     n = n * n
 }
@@ -683,7 +660,7 @@ for i, n in arr {
 }
 
 // 无限循环
-mut i = 0
+var i = 0
 loop {
     println("loop")
     if i > 10 {
@@ -873,11 +850,11 @@ type Point {
 }
 
 // 默认构造函数
-mut myint = MyInt(10)
+var myint = MyInt(10)
 print(myint)
 
 // 命名构造函数
-mut p = Point(x: 1, y: 2)
+var p = Point(x: 1, y: 2)
 println(p.distance(Point(x: 4, y: 6)))
 
 // 自定义构造函数
@@ -894,8 +871,8 @@ Point {
 }
 
 // 使用自定义构造函数
-mut p1 = Point.new(1, 2)
-mut p2 = Point.stretch(p1, 2.0)
+var p1 = Point.new(1, 2)
+var p2 = Point.stretch(p1, 2.0)
 ```
 
 ### 扩展方法
@@ -1091,11 +1068,11 @@ let arr = [1, 2, 3, 4, 5]
 // OK，因为 arr 是一个 `[]int` 数组
 add_all(arr)
 
-mut my_arr = IntArray.new(1, 2, 3, 4, 5)
+var my_arr = IntArray.new(1, 2, 3, 4, 5)
 // OK，因为 my_arr 实现了 Indexer 接口
 add_all(my_arr)
 
-mut d = "hello"
+var d = "hello"
 // Error! d 既不是 []int 数组，也没有实现 Indexer 接口
 // add_all(d)
 ```
@@ -1132,7 +1109,7 @@ enum Scale {
 }
 
 // 枚举变量
-mut a = Scale.M
+var a = Scale.M
 
 // 访问枚举成员
 println(a.name)  // "Medium"
@@ -1157,7 +1134,7 @@ enum Shape union {
 }
 
 // 联合枚举匹配
-mut s = get_shape(/*...*/)
+var s = get_shape(/*...*/)
 is s as Shape {
     Shape.Point(x, y) => println(f"Point(${x}, ${y})")
     Shape.Rect(x, y, w, h) => println(f"Rect(${x}, ${y}, ${w}, ${h})")
@@ -1166,7 +1143,7 @@ is s as Shape {
 }
 
 // 获取联合枚举的数据
-mut p = s as Shape.Point
+var p = s as Shape.Point
 println(p.x)
 println(p.y)
 ```

@@ -91,7 +91,7 @@ type File {
 
     // Auto-implemented method
     fn read_all() str {
-        let mut result = ""
+        var result = ""
         loop {
             if .is_eof() {
                 break

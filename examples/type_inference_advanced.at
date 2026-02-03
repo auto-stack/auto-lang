@@ -36,7 +36,7 @@ fn type_mismatch_demo() int {
 
 // Example 3: Function with complex signature
 fn process_data(id int, name str, active bool, score float) float {
-    mut result = 0.0
+    var result = 0.0
 
     if active {
         result = score
