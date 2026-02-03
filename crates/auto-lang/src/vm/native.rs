@@ -49,6 +49,9 @@ impl NativeInterface {
         self.register(NATIVE_ITERATOR_NEXT, shim_iterator_next);
         self.register(NATIVE_ITERATOR_MAP, shim_iterator_map);
         self.register(NATIVE_ITERATOR_FILTER, shim_iterator_filter);
+        self.register(NATIVE_ITERATOR_COLLECT, shim_iterator_collect);
+        self.register(NATIVE_ITERATOR_REDUCE, shim_iterator_reduce);
+        self.register(NATIVE_ITERATOR_FIND, shim_iterator_find);
     }
 }
 
@@ -73,6 +76,9 @@ pub const NATIVE_LIST_ITER: u16 = 109;
 pub const NATIVE_ITERATOR_NEXT: u16 = 110;
 pub const NATIVE_ITERATOR_MAP: u16 = 111;
 pub const NATIVE_ITERATOR_FILTER: u16 = 112;
+pub const NATIVE_ITERATOR_COLLECT: u16 = 113;
+pub const NATIVE_ITERATOR_REDUCE: u16 = 114;
+pub const NATIVE_ITERATOR_FIND: u16 = 115;
 
 // === Standard Shims ===
 
@@ -476,5 +482,125 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMErr
 
     // Return new iterator_id
     task.ram.push_i32(new_iterator_id as i32);
+    Ok(())
+}
+
+// ============================================================================
+// Terminal Operations
+// ============================================================================
+
+/// Collect all elements from an iterator into a new list.
+/// Stack: iterator_id -> list_id
+/// Returns: new list_id (lower 32 bits of u64 as i32)
+pub fn shim_iterator_collect(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use std::sync::atomic::Ordering;
+    use crate::vm::engine::Iterator;
+
+    let iterator_id = task.ram.pop_i32() as u32;
+
+    // Collect all elements from the iterator
+    let mut elements = Vec::new();
+
+    // Get the iterator and consume all elements
+    if let Some(mut iter) = vm.iterators.get_mut(&iterator_id) {
+        match &mut *iter {
+            Iterator::List(list_iter) => {
+                if let Some(list) = vm.lists.get(&list_iter.list_id) {
+                    let list_ref = list.read().unwrap();
+                    // Collect all remaining elements
+                    while list_iter.current_index < list_ref.len() as u32 {
+                        elements.push(list_ref[list_iter.current_index as usize]);
+                        list_iter.current_index += 1;
+                    }
+                }
+            }
+            Iterator::Map(_) | Iterator::Filter(_) => {
+                // For adapters, we'd need to recursively call next()
+                // For MVP, only support direct list iteration
+                return Err(VMError::RuntimeError("Collect from adapters not yet implemented".to_string()));
+            }
+        }
+    }
+
+    // Create a new list with the collected elements
+    let list_id = vm.list_id_gen.fetch_add(1, Ordering::Relaxed);
+    vm.lists.insert(list_id, std::sync::Arc::new(std::sync::RwLock::new(elements)));
+
+    // Return list_id as i32 (lower 32 bits only for MVP)
+    task.ram.push_i32(list_id as i32);
+
+    Ok(())
+}
+
+/// Reduce all elements from an iterator using a function.
+/// Stack: initial, func_addr, iterator_id -> result
+/// Returns: final reduced value
+///
+/// NOTE: For MVP, this just sums all elements without calling the function.
+pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::vm::engine::Iterator;
+
+    let iterator_id = task.ram.pop_i32() as u32;
+    let _func_addr = task.ram.pop_i32() as u32; // Not used in MVP
+    let initial = task.ram.pop_i32();
+
+    let mut result = initial;
+
+    // Reduce all elements from the iterator
+    if let Some(mut iter) = vm.iterators.get_mut(&iterator_id) {
+        match &mut *iter {
+            Iterator::List(list_iter) => {
+                if let Some(list) = vm.lists.get(&list_iter.list_id) {
+                    let list_ref = list.read().unwrap();
+                    // Sum all remaining elements
+                    while list_iter.current_index < list_ref.len() as u32 {
+                        result += list_ref[list_iter.current_index as usize];
+                        list_iter.current_index += 1;
+                    }
+                }
+            }
+            Iterator::Map(_) | Iterator::Filter(_) => {
+                return Err(VMError::RuntimeError("Reduce from adapters not yet implemented".to_string()));
+            }
+        }
+    }
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Find the first element from an iterator that matches a predicate.
+/// Stack: func_addr, iterator_id -> element (or -1 if not found)
+/// Returns: first matching element, or -1 if none match
+///
+/// NOTE: For MVP, this just returns the first element without calling the predicate.
+pub fn shim_iterator_find(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::vm::engine::Iterator;
+
+    let iterator_id = task.ram.pop_i32() as u32;
+    let _func_addr = task.ram.pop_i32() as u32; // Not used in MVP
+
+    let mut result = -1; // Default: not found
+
+    // Find first element from the iterator
+    if let Some(mut iter) = vm.iterators.get_mut(&iterator_id) {
+        match &mut *iter {
+            Iterator::List(list_iter) => {
+                if let Some(list) = vm.lists.get(&list_iter.list_id) {
+                    let list_ref = list.read().unwrap();
+                    // Return first element
+                    if list_iter.current_index < list_ref.len() as u32 {
+                        result = list_ref[list_iter.current_index as usize];
+                        list_iter.current_index += 1;
+                    }
+                }
+            }
+            Iterator::Map(_) | Iterator::Filter(_) => {
+                return Err(VMError::RuntimeError("Find from adapters not yet implemented".to_string()));
+            }
+        }
+    }
+
+    task.ram.push_i32(result);
     Ok(())
 }
