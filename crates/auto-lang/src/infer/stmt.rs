@@ -28,7 +28,7 @@
 //! assert!(result.is_ok());
 //! ```
 
-use crate::ast::{Body, Expr, For, If, Stmt, Store, Type};
+use crate::ast::{Body, Expr, For, If, Stmt, Store, Type, ArrayType, Name, StoreKind};
 use crate::error::{AutoError, TypeError};
 use crate::infer::{check_fn, infer_expr, InferenceContext};
 use miette::SourceSpan;
@@ -476,5 +476,347 @@ mod tests {
         let result = check_body(&mut ctx, &body);
         assert!(result.is_ok());
         assert!(matches!(result.unwrap(), Type::Int));
+    }
+
+    // Phase 3 Extended Tests - Adding 16+ more test cases
+
+    #[test]
+    fn test_check_let_with_float() {
+        let mut ctx = InferenceContext::new();
+        let store = Store {
+            kind: StoreKind::Let,
+            name: Name::from("pi"),
+            ty: Type::Float,
+            expr: Expr::Float(3.14, "3.14".into()),
+        };
+
+        let result = check_store(&mut ctx, &store);
+        assert!(result.is_ok());
+        assert!(matches!(ctx.lookup_type(&Name::from("pi")), Some(Type::Float)));
+    }
+
+    #[test]
+    fn test_check_let_with_double() {
+        let mut ctx = InferenceContext::new();
+        let store = Store {
+            kind: StoreKind::Let,
+            name: Name::from("e"),
+            ty: Type::Double,
+            expr: Expr::Double(2.718, "2.718".into()),
+        };
+
+        let result = check_store(&mut ctx, &store);
+        assert!(result.is_ok());
+        assert!(matches!(ctx.lookup_type(&Name::from("e")), Some(Type::Double)));
+    }
+
+    #[test]
+    fn test_check_let_with_string() {
+        let mut ctx = InferenceContext::new();
+        let store = Store {
+            kind: StoreKind::Let,
+            name: Name::from("greeting"),
+            ty: Type::Str(5),  // Match actual string length
+            expr: Expr::Str("hello".into()),
+        };
+
+        let result = check_store(&mut ctx, &store);
+        assert!(result.is_ok());
+        if let Some(Type::Str(len)) = ctx.lookup_type(&Name::from("greeting")) {
+            assert_eq!(len, 5);
+        } else {
+            panic!("Expected Str type");
+        }
+    }
+
+    #[test]
+    fn test_check_let_with_char() {
+        let mut ctx = InferenceContext::new();
+        let store = Store {
+            kind: StoreKind::Let,
+            name: Name::from("letter"),
+            ty: Type::Char,
+            expr: Expr::Char('A'),
+        };
+
+        let result = check_store(&mut ctx, &store);
+        assert!(result.is_ok());
+        assert!(matches!(ctx.lookup_type(&Name::from("letter")), Some(Type::Char)));
+    }
+
+    #[test]
+    fn test_check_let_with_bool() {
+        let mut ctx = InferenceContext::new();
+        let store = Store {
+            kind: StoreKind::Let,
+            name: Name::from("flag"),
+            ty: Type::Bool,
+            expr: Expr::Bool(true),
+        };
+
+        let result = check_store(&mut ctx, &store);
+        assert!(result.is_ok());
+        assert!(matches!(ctx.lookup_type(&Name::from("flag")), Some(Type::Bool)));
+    }
+
+    #[test]
+    fn test_check_let_with_uint() {
+        let mut ctx = InferenceContext::new();
+        let store = Store {
+            kind: StoreKind::Let,
+            name: Name::from("count"),
+            ty: Type::Uint,
+            expr: Expr::Uint(42),
+        };
+
+        let result = check_store(&mut ctx, &store);
+        assert!(result.is_ok());
+        assert!(matches!(ctx.lookup_type(&Name::from("count")), Some(Type::Uint)));
+    }
+
+    #[test]
+    fn test_check_let_with_byte() {
+        let mut ctx = InferenceContext::new();
+        let store = Store {
+            kind: StoreKind::Let,
+            name: Name::from("byte_val"),
+            ty: Type::Byte,
+            expr: Expr::Byte(255),
+        };
+
+        let result = check_store(&mut ctx, &store);
+        assert!(result.is_ok());
+        assert!(matches!(ctx.lookup_type(&Name::from("byte_val")), Some(Type::Byte)));
+    }
+
+    #[test]
+    fn test_check_var_statement() {
+        let mut ctx = InferenceContext::new();
+        let store = Store {
+            kind: StoreKind::Var,
+            name: Name::from("dynamic"),
+            ty: Type::Unknown,
+            expr: Expr::Int(42),
+        };
+
+        let result = check_store(&mut ctx, &store);
+        assert!(result.is_ok());
+        assert!(matches!(ctx.lookup_type(&Name::from("dynamic")), Some(Type::Int)));
+    }
+
+    #[test]
+    fn test_check_cvar_statement() {
+        let mut ctx = InferenceContext::new();
+        let store = Store {
+            kind: StoreKind::CVar,
+            name: Name::from("c_var"),
+            ty: Type::Int,
+            expr: Expr::Int(100),
+        };
+
+        let result = check_store(&mut ctx, &store);
+        assert!(result.is_ok());
+        assert!(matches!(ctx.lookup_type(&Name::from("c_var")), Some(Type::Int)));
+    }
+
+    #[test]
+    fn test_check_array_inference() {
+        let mut ctx = InferenceContext::new();
+        let store = Store {
+            kind: StoreKind::Let,
+            name: Name::from("matrix"),
+            ty: Type::Unknown,
+            expr: Expr::Array(vec![
+                Expr::Int(1),
+                Expr::Int(2),
+                Expr::Int(3),
+                Expr::Int(4),
+            ]),
+        };
+
+        let result = check_store(&mut ctx, &store);
+        assert!(result.is_ok());
+        if let Some(Type::Array(arr_ty)) = ctx.lookup_type(&Name::from("matrix")) {
+            assert!(matches!(*arr_ty.elem, Type::Int));
+            assert_eq!(arr_ty.len, 4);
+        } else {
+            panic!("Expected Array type");
+        }
+    }
+
+    #[test]
+    fn test_check_array_type_mismatch() {
+        let mut ctx = InferenceContext::new();
+        // Declare array of int but provide float elements
+        let store = Store {
+            kind: StoreKind::Let,
+            name: Name::from("mixed"),
+            ty: Type::Array(ArrayType {
+                elem: Box::new(Type::Int),
+                len: 2,
+            }),
+            expr: Expr::Array(vec![Expr::Float(1.0, "1.0".into()), Expr::Float(2.0, "2.0".into())]),
+        };
+
+        let _result = check_store(&mut ctx, &store);
+        // Should add error to context (type mismatch)
+        assert!(!ctx.errors.is_empty());
+    }
+
+    #[test]
+    fn test_check_body_with_return() {
+        let mut ctx = InferenceContext::new();
+        ctx.current_ret = Some(Type::Int);
+
+        let mut body = Body::new();
+        body.stmts.push(Stmt::Return(Box::new(Expr::Int(42))));
+
+        let result = check_body(&mut ctx, &body);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_body_with_multiple_statements() {
+        let mut ctx = InferenceContext::new();
+        let mut body = Body::new();
+        body.stmts.push(Stmt::Expr(Expr::Int(1)));
+        body.stmts.push(Stmt::Expr(Expr::Int(2)));
+        body.stmts.push(Stmt::Expr(Expr::Int(3)));
+
+        let result = check_body(&mut ctx, &body);
+        assert!(result.is_ok());
+        // Body type should be type of last statement
+        assert!(matches!(result.unwrap(), Type::Int));
+    }
+
+    #[test]
+    fn test_check_return_without_context() {
+        let mut ctx = InferenceContext::new();
+        // No current_ret set - should still work
+        let result = check_return(&mut ctx, &Expr::Int(42));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_expr_stmt_with_ident() {
+        let mut ctx = InferenceContext::new();
+        // Bind a variable first
+        ctx.bind_var(Name::from("x"), Type::Int);
+
+        let stmt = Stmt::Expr(Expr::Ident(Name::from("x")));
+        let result = check_stmt(&mut ctx, &stmt);
+        assert!(result.is_ok());
+        assert!(matches!(result.unwrap(), Type::Int));
+    }
+
+    #[test]
+    fn test_check_expr_stmt_nil() {
+        let mut ctx = InferenceContext::new();
+        let stmt = Stmt::Expr(Expr::Nil);
+        let result = check_stmt(&mut ctx, &stmt);
+        assert!(result.is_ok());
+        assert!(matches!(result.unwrap(), Type::Unknown));
+    }
+
+    #[test]
+    fn test_check_break_statement() {
+        let mut ctx = InferenceContext::new();
+        let stmt = Stmt::Break;
+        let result = check_stmt(&mut ctx, &stmt);
+        assert!(result.is_ok());
+        assert!(matches!(result.unwrap(), Type::Void));
+    }
+
+    #[test]
+    fn test_check_scope_isolation() {
+        let mut ctx = InferenceContext::new();
+
+        // Create first scope with variable
+        ctx.push_scope();
+        ctx.bind_var(Name::from("x"), Type::Int);
+
+        // Verify variable exists in first scope
+        assert!(matches!(ctx.lookup_type(&Name::from("x")), Some(Type::Int)));
+
+        // Create second scope
+        ctx.push_scope();
+
+        // Variable should still be accessible (scopes chain)
+        assert!(matches!(ctx.lookup_type(&Name::from("x")), Some(Type::Int)));
+
+        // Add new variable with same name (shadowing)
+        ctx.bind_var(Name::from("x"), Type::Bool);
+
+        // Should now find Bool type
+        assert!(matches!(ctx.lookup_type(&Name::from("x")), Some(Type::Bool)));
+
+        // Pop second scope
+        ctx.pop_scope();
+
+        // Should find Int type again (shadowing removed)
+        assert!(matches!(ctx.lookup_type(&Name::from("x")), Some(Type::Int)));
+    }
+
+    #[test]
+    fn test_check_nested_scopes() {
+        let mut ctx = InferenceContext::new();
+
+        // Outer scope
+        ctx.push_scope();
+        ctx.bind_var(Name::from("outer"), Type::Int);
+
+        // Middle scope
+        ctx.push_scope();
+        ctx.bind_var(Name::from("middle"), Type::Float);
+
+        // Inner scope
+        ctx.push_scope();
+        ctx.bind_var(Name::from("inner"), Type::Bool);
+
+        // All variables should be accessible
+        assert!(matches!(ctx.lookup_type(&Name::from("outer")), Some(Type::Int)));
+        assert!(matches!(ctx.lookup_type(&Name::from("middle")), Some(Type::Float)));
+        assert!(matches!(ctx.lookup_type(&Name::from("inner")), Some(Type::Bool)));
+
+        // Pop inner scope
+        ctx.pop_scope();
+
+        // Inner variable should be gone
+        assert!(ctx.lookup_type(&Name::from("inner")).is_none());
+
+        // Middle and outer still accessible
+        assert!(matches!(ctx.lookup_type(&Name::from("middle")), Some(Type::Float)));
+        assert!(matches!(ctx.lookup_type(&Name::from("outer")), Some(Type::Int)));
+    }
+
+    #[test]
+    fn test_check_let_nil_value() {
+        let mut ctx = InferenceContext::new();
+        let store = Store {
+            kind: StoreKind::Let,
+            name: Name::from("nothing"),
+            ty: Type::Unknown,
+            expr: Expr::Nil,
+        };
+
+        let result = check_store(&mut ctx, &store);
+        assert!(result.is_ok());
+        assert!(matches!(ctx.lookup_type(&Name::from("nothing")), Some(Type::Unknown)));
+    }
+
+    #[test]
+    fn test_check_type_coercion_int_to_uint() {
+        let mut ctx = InferenceContext::new();
+        // int to uint coercion should work with warning
+        let store = Store {
+            kind: StoreKind::Let,
+            name: Name::from("coerced"),
+            ty: Type::Uint,
+            expr: Expr::Int(42),  // int expr, uint type
+        };
+
+        let result = check_store(&mut ctx, &store);
+        assert!(result.is_ok());
+        // Should succeed, may have warning in context
     }
 }

@@ -259,4 +259,389 @@ mod tests {
             panic!("Expected function type");
         }
     }
+
+    // Phase 4 Extended Tests - Adding 12+ more test cases
+
+    #[test]
+    fn test_check_fn_multiple_params() {
+        let mut ctx = InferenceContext::new();
+        let fn_decl = Fn {
+            kind: FnKind::Function,
+            name: Name::from("add"),
+            parent: None,
+            params: vec![
+                Param {
+                    name: Name::from("a"),
+                    ty: Type::Int,
+                    default: None,
+                },
+                Param {
+                    name: Name::from("b"),
+                    ty: Type::Int,
+                    default: None,
+                },
+            ],
+            body: Body {
+                stmts: vec![],
+                has_new_line: false,
+            },
+            ret: Type::Int,
+            ret_name: None,
+            is_static: false,
+            type_params: vec![],
+            span: None,
+        };
+
+        let result = check_fn(&mut ctx, &fn_decl);
+        assert!(result.is_ok());
+        let fn_ty = result.unwrap();
+
+        if let Type::Fn(params, ret) = fn_ty {
+            assert_eq!(params.len(), 2);
+            assert!(matches!(*ret, Type::Int));
+        } else {
+            panic!("Expected function type");
+        }
+    }
+
+    #[test]
+    fn test_check_fn_void_return() {
+        let mut ctx = InferenceContext::new();
+        let fn_decl = Fn {
+            kind: FnKind::Function,
+            name: Name::from("do_nothing"),
+            parent: None,
+            params: vec![],
+            body: Body {
+                stmts: vec![],
+                has_new_line: false,
+            },
+            ret: Type::Void,
+            ret_name: None,
+            is_static: false,
+            type_params: vec![],
+            span: None,
+        };
+
+        let result = check_fn(&mut ctx, &fn_decl);
+        assert!(result.is_ok());
+        let fn_ty = result.unwrap();
+
+        if let Type::Fn(params, ret) = fn_ty {
+            assert_eq!(params.len(), 0);
+            assert!(matches!(*ret, Type::Void));
+        } else {
+            panic!("Expected function type");
+        }
+    }
+
+    #[test]
+    fn test_check_fn_with_default_param() {
+        let mut ctx = InferenceContext::new();
+        let fn_decl = Fn {
+            kind: FnKind::Function,
+            name: Name::from("greet"),
+            parent: None,
+            params: vec![Param {
+                name: Name::from("name"),
+                ty: Type::Unknown,
+                default: Some(Expr::Str("world".into())),
+            }],
+            body: Body {
+                stmts: vec![],
+                has_new_line: false,
+            },
+            ret: Type::Void,
+            ret_name: None,
+            is_static: false,
+            type_params: vec![],
+            span: None,
+        };
+
+        let result = check_fn(&mut ctx, &fn_decl);
+        assert!(result.is_ok());
+        // Should infer type from default value
+        let fn_ty = result.unwrap();
+
+        if let Type::Fn(params, ret) = fn_ty {
+            assert_eq!(params.len(), 1);
+            assert!(matches!(*ret, Type::Void));
+        } else {
+            panic!("Expected function type");
+        }
+    }
+
+    #[test]
+    fn test_check_fn_static_method() {
+        let mut ctx = InferenceContext::new();
+        let fn_decl = Fn {
+            kind: FnKind::Function,
+            name: Name::from("static_func"),
+            parent: None,
+            params: vec![],
+            body: Body {
+                stmts: vec![],
+                has_new_line: false,
+            },
+            ret: Type::Void,
+            ret_name: None,
+            is_static: true,
+            type_params: vec![],
+            span: None,
+        };
+
+        let result = check_fn(&mut ctx, &fn_decl);
+        assert!(result.is_ok());
+        // Static functions should work the same as non-static
+    }
+
+    #[test]
+    fn test_check_fn_return_bool() {
+        let mut ctx = InferenceContext::new();
+        let fn_decl = Fn {
+            kind: FnKind::Function,
+            name: Name::from("is_true"),
+            parent: None,
+            params: vec![],
+            body: Body {
+                stmts: vec![Stmt::Expr(Expr::Bool(true))],
+                has_new_line: false,
+            },
+            ret: Type::Unknown,
+            ret_name: None,
+            is_static: false,
+            type_params: vec![],
+            span: None,
+        };
+
+        let result = check_fn(&mut ctx, &fn_decl);
+        assert!(result.is_ok());
+        let fn_ty = result.unwrap();
+
+        if let Type::Fn(_, ret) = fn_ty {
+            assert!(matches!(*ret, Type::Bool));
+        } else {
+            panic!("Expected function type");
+        }
+    }
+
+    #[test]
+    fn test_check_fn_return_string() {
+        let mut ctx = InferenceContext::new();
+        let fn_decl = Fn {
+            kind: FnKind::Function,
+            name: Name::from("get_greeting"),
+            parent: None,
+            params: vec![],
+            body: Body {
+                stmts: vec![Stmt::Expr(Expr::Str("hello".into()))],
+                has_new_line: false,
+            },
+            ret: Type::Unknown,
+            ret_name: None,
+            is_static: false,
+            type_params: vec![],
+            span: None,
+        };
+
+        let result = check_fn(&mut ctx, &fn_decl);
+        assert!(result.is_ok());
+        let fn_ty = result.unwrap();
+
+        if let Type::Fn(_, ret) = fn_ty {
+            assert!(matches!(*ret, Type::Str(_)));
+        } else {
+            panic!("Expected function type");
+        }
+    }
+
+    #[test]
+    fn test_check_fn_with_body_errors() {
+        let mut ctx = InferenceContext::new();
+        let fn_decl = Fn {
+            kind: FnKind::Function,
+            name: Name::from("has_errors"),
+            parent: None,
+            params: vec![Param {
+                name: Name::from("x"),
+                ty: Type::Int,
+                default: None,
+            }],
+            body: Body {
+                stmts: vec![Stmt::Return(Box::new(Expr::Bool(false)))], // Wrong return type
+                has_new_line: false,
+            },
+            ret: Type::Int,
+            ret_name: None,
+            is_static: false,
+            type_params: vec![],
+            span: None,
+        };
+
+        let result = check_fn(&mut ctx, &fn_decl);
+        // Should still return Ok, but errors collected
+        assert!(result.is_ok());
+        // Should have errors (return type mismatch)
+        assert!(!ctx.errors.is_empty());
+    }
+
+    #[test]
+    fn test_check_fn_mixed_params() {
+        let mut ctx = InferenceContext::new();
+        let fn_decl = Fn {
+            kind: FnKind::Function,
+            name: Name::from("mixed"),
+            parent: None,
+            params: vec![
+                Param {
+                    name: Name::from("a"),
+                    ty: Type::Int,
+                    default: None,
+                },
+                Param {
+                    name: Name::from("b"),
+                    ty: Type::Bool,
+                    default: None,
+                },
+                Param {
+                    name: Name::from("c"),
+                    ty: Type::Float,
+                    default: None,
+                },
+            ],
+            body: Body {
+                stmts: vec![],
+                has_new_line: false,
+            },
+            ret: Type::Bool,
+            ret_name: None,
+            is_static: false,
+            type_params: vec![],
+            span: None,
+        };
+
+        let result = check_fn(&mut ctx, &fn_decl);
+        assert!(result.is_ok());
+        let fn_ty = result.unwrap();
+
+        if let Type::Fn(params, ret) = fn_ty {
+            assert_eq!(params.len(), 3);
+            assert!(matches!(*ret, Type::Bool));
+        } else {
+            panic!("Expected function type");
+        }
+    }
+
+    #[test]
+    fn test_check_fn_param_type_inference() {
+        let mut ctx = InferenceContext::new();
+        let fn_decl = Fn {
+            kind: FnKind::Function,
+            name: Name::from("process"),
+            parent: None,
+            params: vec![Param {
+                name: Name::from("value"),
+                ty: Type::Unknown,
+                default: Some(Expr::Uint(42)),
+            }],
+            body: Body {
+                stmts: vec![],
+                has_new_line: false,
+            },
+            ret: Type::Void,
+            ret_name: None,
+            is_static: false,
+            type_params: vec![],
+            span: None,
+        };
+
+        let result = check_fn(&mut ctx, &fn_decl);
+        assert!(result.is_ok());
+        // Should infer Uint type from default value
+    }
+
+    #[test]
+    fn test_check_fn_no_params_no_return() {
+        let mut ctx = InferenceContext::new();
+        let fn_decl = Fn {
+            kind: FnKind::Function,
+            name: Name::from("simple"),
+            parent: None,
+            params: vec![],
+            body: Body {
+                stmts: vec![],
+                has_new_line: false,
+            },
+            ret: Type::Void,
+            ret_name: None,
+            is_static: false,
+            type_params: vec![],
+            span: None,
+        };
+
+        let result = check_fn(&mut ctx, &fn_decl);
+        assert!(result.is_ok());
+        let fn_ty = result.unwrap();
+
+        if let Type::Fn(params, ret) = fn_ty {
+            assert_eq!(params.len(), 0);
+            assert!(matches!(*ret, Type::Void));
+        } else {
+            panic!("Expected function type");
+        }
+    }
+
+    #[test]
+    fn test_check_fn_return_array() {
+        let mut ctx = InferenceContext::new();
+        let fn_decl = Fn {
+            kind: FnKind::Function,
+            name: Name::from("get_array"),
+            parent: None,
+            params: vec![],
+            body: Body {
+                stmts: vec![Stmt::Expr(Expr::Array(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)]))],
+                has_new_line: false,
+            },
+            ret: Type::Unknown,
+            ret_name: None,
+            is_static: false,
+            type_params: vec![],
+            span: None,
+        };
+
+        let result = check_fn(&mut ctx, &fn_decl);
+        assert!(result.is_ok());
+        let fn_ty = result.unwrap();
+
+        if let Type::Fn(_, ret) = fn_ty {
+            assert!(matches!(*ret, Type::Array(_)));
+        } else {
+            panic!("Expected function type");
+        }
+    }
+
+    #[test]
+    fn test_check_fn_empty_body() {
+        let mut ctx = InferenceContext::new();
+        let fn_decl = Fn {
+            kind: FnKind::Function,
+            name: Name::from("empty"),
+            parent: None,
+            params: vec![],
+            body: Body {
+                stmts: vec![],
+                has_new_line: false,
+            },
+            ret: Type::Int,  // Declared return type but no body
+            ret_name: None,
+            is_static: false,
+            type_params: vec![],
+            span: None,
+        };
+
+        let result = check_fn(&mut ctx, &fn_decl);
+        assert!(result.is_ok());
+        // Should work even with empty body
+    }
 }

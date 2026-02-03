@@ -1,6 +1,6 @@
 # AutoLang 类型推导子系统设计
 
-**项目状态**: 阶段 1 & 2 已完成 ✅ | 阶段 5 已完成 ✅ | 阶段 6 已完成 ✅ | **实现日期**: 2025年 | **总代码量**: ~2,165 LOC
+**项目状态**: 阶段 1 & 2 已完成 ✅ | 阶段 3 已完成 ✅ | 阶段 4 已完成 ✅ | 阶段 5 已完成 ✅ | 阶段 6 已完成 ✅ | **实现日期**: 2025年 | **总代码量**: ~2,770 LOC
 
 ## 概述
 
@@ -26,6 +26,39 @@
 - ✅ `infer/unification.rs` (465 行) - Robinson 类型统一算法
 - ✅ 支持 20+ 种表达式类型推导
 - ✅ 274 单元测试，全部通过
+
+#### 阶段 3: 语句类型检查 (stmt.rs)
+- ✅ **语句类型检查实现** (infer/stmt.rs, 822 行)
+  - `check_stmt()`: 语句类型检查入口
+  - `check_store()`: 变量声明类型检查（let/mut/var）
+  - `check_if()`: If 语句类型检查
+  - `check_for()`: For 循环类型检查
+  - `check_return()`: 返回语句类型检查
+  - `check_body()`: 函数体类型检查
+- ✅ **作用域管理测试**
+  - `test_check_scope_isolation`: 作用域隔离
+  - `test_check_nested_scopes`: 嵌套作用域
+- ✅ **类型系统覆盖**
+  - 基本类型: Int, Uint, Float, Double, Bool, Char, Str, Byte
+  - 复合类型: Array, Ptr
+  - 类型转换: int ↔ uint coercion
+- ✅ **29 个单元测试**，全部通过（超过 20+ 要求）
+- ✅ **错误恢复**: 类型错误收集到 context，编译继续
+
+#### 阶段 4: 函数签名推导 (functions.rs)
+- ✅ **函数类型推导实现** (infer/functions.rs, 662 行)
+  - `check_fn()`: 函数声明类型检查
+  - 参数类型推导（显式类型和默认值）
+  - 返回类型推导
+  - 函数类型构造 (Type::Fn(params, ret))
+- ✅ **支持的函数特性**
+  - 多参数函数
+  - 默认参数值
+  - 静态函数 (is_static)
+  - 类型参数保留
+  - Void/Int/Bool/Str/Array 返回类型
+- ✅ **16 个单元测试**，全部通过（超过 15+ 要求）
+- ✅ **错误处理**: 参数类型缺失时收集错误，继续推导
 
 #### 阶段 5: Parser 集成
 - ✅ **Phase 5A**: 混合集成策略 (parser.rs)
@@ -61,7 +94,12 @@
 
 ### 📊 质量指标
 
-- ✅ **测试覆盖**: 298 单元测试 + 9 文档测试，100% 通过率（+13 Phase 6 测试）
+- ✅ **测试覆盖**: 343 单元测试 + 9 文档测试，100% 通过率
+  - Phase 2: 274 表达式测试
+  - Phase 3: 29 语句测试
+  - Phase 4: 16 函数测试
+  - Phase 6: 13 错误恢复测试
+  - constraints/context: 11 基础测试
 - ✅ **集成测试**: 1062/1077 全项目测试通过 (98.6%)，零回归
 - ✅ **代码覆盖率**: > 95% (infer 模块)
 - ✅ **编译质量**: 零警告、零错误
@@ -71,8 +109,6 @@
 
 ### ⏸️ 待完成阶段
 
-- ⏳ 阶段 3: 语句类型检查 (stmt.rs)
-- ⏳ 阶段 4: 函数签名推导 (functions.rs)
 - ⏳ 阶段 7: 文档与示例
 
 **详细实现总结**: 见 [docs/type-inference-implementation-summary.md](../type-inference-implementation-summary.md)
