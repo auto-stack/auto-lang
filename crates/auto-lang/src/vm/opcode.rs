@@ -76,6 +76,12 @@ pub enum OpCode {
     RECV = 0x87,     // channel_id: u32 -> data: i32
     TRY_RECV = 0x88, // channel_id: u32 -> data: i32 | 0 (non-blocking)
 
+    // === Closures ===
+    CLOSURE = 0x90,      // func_addr -> closure_id: u32
+    GET_UPVAL = 0x91,    // upval_id -> value
+    SET_UPVAL = 0x92,    // value, upval_id ->
+    CLOSE_UPVALS = 0x93, // n: u8 -> Close n upvalues (move to heap)
+
     // === Debug ===
     PRINT = 0xF0,
     HALT = 0xFF,

@@ -40,6 +40,33 @@ pub enum Iterator {
     Filter(FilterIterator),
 }
 
+// ============================================================================
+// Upvalues and Closures
+// ============================================================================
+
+/// Upvalue location - either on the stack or in the heap
+#[derive(Debug, Clone)]
+pub enum UpvalLocation {
+    /// Direct stack access (if capturing function is still active)
+    Stack { task_id: TaskId, bp: usize, slot: usize },
+    /// Heap-allocated cell (if capturing function has returned)
+    Heap(Arc<RwLock<i32>>),
+}
+
+/// Upvalue - represents a captured variable
+#[derive(Debug, Clone)]
+pub struct UpValue {
+    pub location: UpvalLocation,
+}
+
+/// Closure - a function value with captured variables
+#[derive(Debug, Clone)]
+pub struct Closure {
+    pub func_addr: u32,    // Entry point of the function
+    pub upvalues: Vec<u32>, // Upvalue IDs
+}
+
+
 #[derive(Debug)]
 pub enum VMError {
     StackOverflow,
@@ -71,6 +98,14 @@ pub struct BigVM {
     // Iterator Registry
     pub iterators: DashMap<u32, Iterator>,
     pub iterator_id_gen: AtomicU32,
+
+    // Upvalue Registry
+    pub upvalues: DashMap<u32, UpValue>,
+    pub upvalue_id_gen: AtomicU32,
+
+    // Closure Registry
+    pub closures: DashMap<u32, Closure>,
+    pub closure_id_gen: AtomicU32,
 }
 
 impl BigVM {
@@ -89,6 +124,10 @@ impl BigVM {
             list_id_gen: AtomicU64::new(0),
             iterators: DashMap::new(),
             iterator_id_gen: AtomicU32::new(0),
+            upvalues: DashMap::new(),
+            upvalue_id_gen: AtomicU32::new(0),
+            closures: DashMap::new(),
+            closure_id_gen: AtomicU32::new(0),
         }
     }
 
@@ -350,6 +389,76 @@ impl BigVM {
                     task.ip = ret_ip;
                     task.ram.sp = new_sp;
                     task.ram.write_i32(new_sp - 1, result); // Write Result confirmed
+                }
+
+                // === Closures ===
+                OpCode::CLOSURE => {
+                    // Stack: func_addr -> closure_id
+                    let func_addr = task.ram.pop_i32() as u32;
+
+                    // For MVP: Create closure with no upvalues
+                    // TODO: In full implementation, we'd capture variables from current scope
+                    let closure_id = self.closure_id_gen.fetch_add(1, Ordering::Relaxed);
+                    let closure = Closure {
+                        func_addr,
+                        upvalues: Vec::new(), // No upvalues for MVP
+                    };
+
+                    self.closures.insert(closure_id, closure);
+                    task.ram.push_i32(closure_id as i32);
+                }
+                OpCode::GET_UPVAL => {
+                    // Stack: upval_id -> value
+                    let upval_id = task.ram.pop_i32() as u32;
+
+                    if let Some(upval) = self.upvalues.get(&upval_id) {
+                        match &upval.location {
+                            UpvalLocation::Stack { task_id: _, bp, slot } => {
+                                // Load from stack location
+                                let addr = *bp + *slot;
+                                let val = task.ram.read_i32(addr);
+                                task.ram.push_i32(val);
+                            }
+                            UpvalLocation::Heap(cell) => {
+                                // Load from heap cell
+                                let val = *cell.read().unwrap();
+                                task.ram.push_i32(val);
+                            }
+                        }
+                    } else {
+                        return Err(VMError::RuntimeError(format!("Invalid upvalue ID: {}", upval_id)));
+                    }
+                }
+                OpCode::SET_UPVAL => {
+                    // Stack: value, upval_id ->
+                    let upval_id = task.ram.pop_i32() as u32;
+                    let value = task.ram.pop_i32();
+
+                    if let Some(mut upval) = self.upvalues.get_mut(&upval_id) {
+                        match &mut upval.location {
+                            UpvalLocation::Stack { task_id: _, bp, slot } => {
+                                // Store to stack location
+                                let addr = *bp + *slot;
+                                task.ram.write_i32(addr, value);
+                            }
+                            UpvalLocation::Heap(cell) => {
+                                // Store to heap cell
+                                *cell.write().unwrap() = value;
+                            }
+                        }
+                    } else {
+                        return Err(VMError::RuntimeError(format!("Invalid upvalue ID: {}", upval_id)));
+                    }
+                }
+                OpCode::CLOSE_UPVALS => {
+                    // Stack: n -> (close n upvalues)
+                    let n = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+
+                    // For MVP: Move upvalues from stack to heap
+                    // This is called when a function returns, to move captured variables to heap
+                    // TODO: Implement proper upvalue closing
+                    // For now, just skip (upvalues remain as stack references)
                 }
 
                 // === Concurrency ===
