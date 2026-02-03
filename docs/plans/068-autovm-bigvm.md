@@ -1,6 +1,6 @@
 # Plan 068: AutoVM (BigVM) Implementation
 
-**Status**: 🟡 Active - Phase 6 Complete, Phase 7-9 Pending
+**Status**: 🟡 Active - Phase 6-7 Complete, Phase 8-9 Pending
 **Owner**: AutoLang Team
 **Related**: `docs/design/auto-vm-bigvm.md`, `docs/design/abc.md`
 
@@ -10,7 +10,11 @@
 - ✅ **List Support**: Full List implementation with 9 native functions
 - ✅ **Native Function Registry**: Runtime native function mapping with automatic ID resolution
 - ✅ **Entry Point Resolution**: Automatic main/test/ address 0 lookup
-- ✅ **Iterator Support (Phase 7.1)**: Implemented `List.iter()` and `Iterator.next()` native functions
+- ✅ **Iterator Support (Phase 7.2)**: Full iterator implementation (Plan 070)
+  - Basic iterators: `List.iter()`, `Iterator.next()`
+  - Lazy adapters: `Iterator.map()`, `Iterator.filter()`
+  - Terminal operations: `Iterator.collect()`, `Iterator.reduce()`, `Iterator.find()`
+  - See [Plan 070](070-bigvm-iterator.md) for complete details
 
 ## 1. Objective
 
@@ -136,7 +140,13 @@ BigVM is designed to be a "Digital Twin" of the MicroVM (embedded runtime), ensu
 **Goal**: Support closures and iterators used in `list_tests.rs`.
 
 - [ ] **7.1 Closures**: Implement `CLOSURE` opcode and Upvalues.
-- [ ] **7.2 Iterators**: Implement iterator protocol for `for` loops.
+- [x] **7.2 Iterators**: ✅ Complete - Implemented iterator protocol (see [Plan 070](070-bigvm-iterator.md))
+    - ✅ Basic iterators: `List.iter()`, `Iterator.next()`
+    - ✅ Lazy adapters: `Iterator.map()`, `Iterator.filter()`
+    - ✅ Terminal operations: `Iterator.collect()`, `Iterator.reduce()`, `Iterator.find()`
+    - ✅ Unified `Iterator` enum with List, Map, Filter variants
+    - ✅ All operations tested and working
+    - **Note**: Function/predicate calling not yet implemented (MVP limitation)
 
 ### Phase 8: Comprehensive Test Migration  
 **Goal**: Port ALL interpreter tests to BigVM.
