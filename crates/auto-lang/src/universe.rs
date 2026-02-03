@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use super::scope::*;
 use crate::ast::FnKind;
 use crate::ast::{self, SpecDecl, Type};
