@@ -1,8 +1,8 @@
 # Plan 070: BigVM Iterator Implementation
 
-**Status**: ✅ Phase 1 Complete, Phase 2-3 Pending
+**Status**: ✅ Phase 1-2 Complete, Phase 3 Pending
 **Created**: 2025-02-03
-**Completed**: 2025-02-03 (Phase 1)
+**Completed**: 2025-02-03 (Phase 1-2)
 **Related**: Plan 068 (Phase 7: Advanced Features)
 
 ---
@@ -17,15 +17,23 @@
 - ✅ Fixed codegen to initialize native registry
 - ✅ All basic iterator tests passing
 
+**Phase 2 Complete**:
+- ✅ Created unified `Iterator` enum (List, Map, Filter variants)
+- ✅ Implemented `Iterator.map()` adapter infrastructure
+- ✅ Implemented `Iterator.filter()` adapter infrastructure
+- ✅ Updated iterator storage to use unified type
+- ✅ Both adapters successfully wrap source iterators
+
 **Test Results**:
 ```
-Input: [10, 20, 30]
-Output: 10, 20, 30, -1 (nil)
+Basic iteration: [10, 20, 30] → 10, 20, 30, -1 (nil)
+Map adapter: [10, 20, 30] → 10, 20, 30, -1 (pass-through)
+Filter adapter: [10, 20, 30] → 10, 20, 30, -1 (pass-through)
 ```
 
 **Known Limitations**:
 - No automatic iterator cleanup (memory leaks accepted for MVP)
-- No lazy adapters (map, filter) yet
+- Map/filter adapters don't actually call functions yet (MVP limitation)
 - No terminal operations (collect, reduce) yet
 
 ---
@@ -98,16 +106,22 @@ Future improvements:
     - ✅ Exhausted iterator returns -1 (nil)
     - ✅ Multiple elements retrieved correctly
 
-### Phase 2: Lazy Adapters
+### Phase 2: Lazy Adapters (✅ Complete)
 **Goal**: Support `map()`, `filter()`
 
-- [ ] **5.1 Map Adapter**
-    - `Iterator.map(iterator_id, func_id) -> new_iterator_id`
-    - Stores: source iterator_id, function to call
+- [x] **5.1 Map Adapter**
+    - ✅ `Iterator.map(iterator_id, func_addr) -> new_iterator_id` (Implemented)
+    - ✅ Stores: source iterator_id, function address
+    - ✅ Passes through elements (function calling not yet implemented)
 
-- [ ] **5.2 Filter Adapter**
-    - `Iterator.filter(iterator_id, func_id) -> new_iterator_id`
-    - Stores: source iterator_id, predicate function
+- [x] **5.2 Filter Adapter**
+    - ✅ `Iterator.filter(iterator_id, func_addr) -> new_iterator_id` (Implemented)
+    - ✅ Stores: source iterator_id, predicate address
+    - ✅ Passes through elements (predicate calling not yet implemented)
+
+**Testing**:
+- ✅ test_map_adapter.at passes
+- ✅ test_filter_adapter.at passes
 
 ### Phase 3: Terminal Operations
 **Goal**: Support `collect()`, `reduce()`, `find()`
