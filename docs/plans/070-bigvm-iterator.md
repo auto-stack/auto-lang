@@ -1,4 +1,4 @@
-# Plan 073: BigVM Iterator Implementation
+# Plan 070: BigVM Iterator Implementation
 
 **Status**: ✅ Phase 1 Complete, Phase 2-3 Pending
 **Created**: 2025-02-03
