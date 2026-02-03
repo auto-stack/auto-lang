@@ -7,6 +7,7 @@
 
 pub mod constraints;
 pub mod context;
+pub mod errors;
 pub mod expr;
 pub mod functions;
 pub mod stmt;
@@ -15,6 +16,7 @@ pub mod unification;
 // Re-export public API
 pub use constraints::TypeConstraint;
 pub use context::InferenceContext;
+pub use errors::{suggest_primitive_type, suggest_type, suggest_type_mismatch_fix, suggest_variable, should_continue};
 pub use expr::infer_expr;
 pub use functions::check_fn;
 pub use stmt::check_stmt;
@@ -32,6 +34,12 @@ pub fn unify(
 }
 
 /// Check field type compatibility
+///
+/// # Phase 6 Enhancement
+///
+/// When types don't match, errors are automatically collected by the parser
+/// instead of aborting compilation, allowing multiple errors to be reported
+/// in a single pass.
 pub fn check_field_type(
     member: &Member,
     value_ty: &Type,

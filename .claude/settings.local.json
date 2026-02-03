@@ -105,7 +105,8 @@
       "Bash(done)",
       "Bash(xargs:*)",
       "Bash(python:*)",
-      "Bash(sort:*)"
+      "Bash(sort:*)",
+      "Bash(./target/release/auto-vm.exe:*)"
     ]
   }
 }
