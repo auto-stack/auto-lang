@@ -1963,6 +1963,840 @@ With Plan 064 **COMPLETE**, the following plans are now unblocked:
 
 ---
 
+## Appendix: Complete Scope → SymbolTable Migration Path
+
+**Status**: 📋 **DESIGNED** (Ready for future implementation)
+**Priority**: P1 (High - Enables full Plan 064 completion)
+**Estimated Time**: 2-3 weeks (incremental approach)
+**Dependencies**: Plan 064 Phase 4 ✅ (SymbolTable + StackFrame structures exist)
+
+### Overview
+
+The **Scope → SymbolTable migration** completes Plan 064 by fully migrating all components from the hybrid `Scope` structure to the clean `SymbolTable` (compile-time) + `StackFrame` (runtime) split.
+
+**Current State** (Phase 4 Complete):
+- ✅ `SymbolTable` struct exists ([scope.rs:157](crates/auto-lang/src/scope.rs#L157))
+- ✅ `StackFrame` struct exists ([runtime.rs](crates/auto-lang/src/runtime.rs))
+- ✅ Database has `symbol_tables: HashMap<Sid, SymbolTable>` ([database.rs:283](crates/auto-lang/src/database.rs#L283))
+- ✅ Database has `get_symbol_table()` methods ([database.rs:890](crates/auto-lang/src/database.rs#L890))
+- ✅ Migration helper `SymbolTable::from_scope()` exists ([scope.rs:230](crates/auto-lang/src/scope.rs#L230))
+- ⚠️ **Hybrid architecture**: Most components still use `Scope` directly
+
+**Target State** (Post-Migration):
+- Indexer builds `SymbolTable` instead of `Scope`
+- Parser queries `SymbolTable` from Database
+- Evaler uses `ExecutionEngine` for all runtime values
+- REPL persists state in `Database` + `ExecutionEngine`
+- `Universe` fully removed (or minimal legacy wrapper)
+
+---
+
+## ⚠️ CORRECTION (2025-02-04)
+
+**Previous Appendix Had Incorrect Assumptions**:
+
+The original appendix incorrectly assumed that **Indexer creates Scopes**. After code analysis:
+
+- ❌ **WRONG**: Indexer builds `Scope` structures
+- ✅ **CORRECT**: Indexer **does NOT create Scopes** - it only creates **Fragments**
+- ✅ **CORRECT**: **Parser** uses `Shared<Universe>` (which contains Scopes)
+- ✅ **CORRECT**: **Codegen** does NOT use Universe/Scope (has its own simple `scope_stack`)
+- ✅ **CORRECT**: **BigVM** does NOT use Universe/Scope (bytecode-only execution)
+
+**Impact**: The migration path must be **completely redesigned**.
+
+---
+
+### CORRECTED MIGRATION PATH (4 Phases, 2-3 weeks)
+
+### Phase A: Parser Migration (Week 1) **HIGH PRIORITY**
+
+**Goal**: Replace `Shared<Universe>` with `Database + cur_scope_sid`.
+
+**File**: [crates/auto-lang/src/parser.rs](crates/auto-lang/src/parser.rs)
+
+**Current State**:
+```rust
+pub struct Parser<'a> {
+    pub scope: Shared<Universe>,  // ❌ Uses Universe
+    lexer: Lexer<'a>,
+    pub cur: Token,
+    pub infer_ctx: InferenceContext,  // ✅ Plan 010
+    // ...
+}
+```
+
+**Target State**:
+```rust
+pub struct Parser<'a> {
+    // ✅ Use Database instead of Universe
+    pub db: Shared<Database>,
+    pub cur_scope_sid: Sid,  // Track current scope
+
+    lexer: Lexer<'a>,
+    pub cur: Token,
+    pub infer_ctx: InferenceContext,
+    // ...
+}
+```
+
+#### Task A.1: Add SymbolTable Lookup Methods
+
+```rust
+impl Parser<'_> {
+    /// Look up a symbol in the current scope hierarchy
+    fn lookup_symbol(&self, name: &str) -> Option<Rc<Meta>> {
+        let mut sid = self.cur_scope_sid.clone();
+
+        // Walk up scope hierarchy
+        loop {
+            if let Some(symtab) = self.db.get_symbol_table(&sid) {
+                if let Some(meta) = symtab.get_symbol(name) {
+                    return Some(meta.clone());
+                }
+            }
+
+            // Move to parent scope
+            match sid.parent() {
+                Some(parent_sid) => sid = parent_sid,
+                None => break,
+            }
+        }
+
+        None
+    }
+
+    /// Look up a type in the current scope hierarchy
+    fn lookup_type(&self, name: &str) -> Option<Rc<Meta>> {
+        let mut sid = self.cur_scope_sid.clone();
+
+        loop {
+            if let Some(symtab) = self.db.get_symbol_table(&sid) {
+                if let Some(meta) = symtab.get_type(name) {
+                    return Some(meta.clone());
+                }
+            }
+
+            match sid.parent() {
+                Some(parent_sid) => sid = parent_sid,
+                None => break,
+            }
+        }
+
+        None
+    }
+}
+```
+
+#### Task A.2: Update Scope Management
+
+```rust
+impl Parser<'_> {
+    /// Enter a new scope
+    fn enter_scope(&mut self, sid: Sid) {
+        self.cur_scope_sid = sid;
+        // Note: SymbolTable should already exist in Database
+        // (created during parsing or from previous compilation)
+    }
+
+    /// Exit current scope
+    fn exit_scope(&mut self) {
+        if let Some(sid) = self.cur_scope_sid.parent() {
+            self.cur_scope_sid = sid;
+        }
+    }
+}
+```
+
+#### Task A.3: Migrate Parser Call Sites (~50-100 locations)
+
+**Pattern**:
+```rust
+// OLD:
+if let Some(sym) = self.scope.borrow().lookup(name) {
+    let ty = sym.ty.clone();
+}
+
+// NEW:
+if let Some(meta) = self.lookup_symbol(name) {
+    let ty = meta.ty.clone();
+}
+```
+
+**Affected locations**:
+- Variable declaration: `parse_let()`, `parse_var()`
+- Function calls: `parse_call()`
+- Type expressions: `parse_type()`, `infer_type_expr()`
+- Import statements: `parse_import()`
+- Scope entry/exit: `enter_fn()`, `enter_scope()`, `exit_scope()`
+
+**Acceptance Criteria**:
+- [ ] Parser uses `Database` instead of `Shared<Universe>`
+- [ ] Parser queries `SymbolTable` via lookup methods
+- [ ] `cur_scope_sid` tracks current scope
+- [ ] All parser tests pass
+- [ ] Type inference still works (Plan 010 integration)
+
+---
+
+## ⚠️ CRITICAL CORRECTION (2025-02-04)
+
+**Phases B-E Below Are INCORRECT - Read This Before Continuing**
+
+The phases below (B through E) contain **outdated and incorrect information** based on the wrong assumption that "Indexer creates Scopes."
+
+**Actual Architecture Discovery**:
+- ✅ **Indexer**: Does NOT create Scopes - only creates Fragments
+- ✅ **Parser**: Uses `Shared<Universe>` (contains `HashMap<Sid, Scope>`)
+- ✅ **Codegen**: Does NOT use Universe/Scope - has own simple `scope_stack`
+- ✅ **BigVM**: Does NOT use Universe/Scope - bytecode-only execution
+
+**Implications**:
+1. **Phase A (above)**: ✅ CORRECT - Parser needs migration from `Shared<Universe>` to `Database`
+2. **Phase B (below)**: ❌ INCORRECT - Says "Parser Migration" but Parser is Phase A
+3. **Phase C-E (below)**: ⚠️ NEEDS UPDATING - Content may be partially wrong
+
+**Recommendation**:
+
+Before implementing Phases B-E, **re-read this entire appendix and create a corrected version**. The phases below should be:
+
+- **Phase B**: Evaler Migration (remove `universe: Rc<RefCell<Universe>>` field)
+- **Phase C**: REPL Migration (remove `scope: Shared<Universe>` from ReplSession)
+- **Phase D**: Final Cleanup (remove Universe from Interpreter)
+
+**For now**, refer to the "What Won't Change (Already Clean)" section below to see which components (Codegen, BigVM) are already independent and don't need migration.
+
+---
+
+### Phase B: Evaler Migration (Week 2) **HIGH PRIORITY** ⚠️ CONTENT BELOW NEEDS UPDATING
+
+**Current (Incorrect) Goal**: Parser queries `SymbolTable` from Database instead of using `Shared<Scope>`.
+
+**Correct Goal**: Evaler removes `universe: Rc<RefCell<Universe>>` and uses pure `Database + ExecutionEngine`.
+
+**File**: [crates/auto-lang/src/parser.rs](crates/auto-lang/src/parser.rs)
+
+#### Task B.1: Update Parser Structure
+
+```rust
+pub struct Parser {
+    // Existing:
+    lexer: Lexer,
+    cur: Token,
+    peek: Token,
+
+    // CHANGE: Replace scope with db + cur_scope_sid
+    // OLD: pub scope: Shared<Scope>,
+    pub db: Shared<Database>,
+    pub cur_scope_sid: Sid,
+
+    // Keep existing:
+    pub dest: CompileDest,
+    pub infer_ctx: InferenceContext,  // Already there from Plan 010
+}
+```
+
+#### Task B.2: Update Parser Constructors
+
+```rust
+impl Parser {
+    // OLD constructor:
+    // pub fn new(lexer: Lexer, scope: Shared<Scope>) -> Self { ... }
+
+    // NEW constructor:
+    pub fn new(lexer: Lexer, db: Shared<Database>) -> Self {
+        Parser {
+            lexer,
+            cur: Default::default(),
+            peek: Default::default(),
+            db,
+            cur_scope_sid: SID_PATH_GLOBAL.clone(),
+            dest: CompileDest::Script,
+            infer_ctx: InferenceContext::new(),
+            // ... other fields ...
+        }
+    }
+
+    // Update all 3 Parser constructors
+}
+```
+
+#### Task B.3: Add SymbolTable Lookup Methods
+
+```rust
+impl Parser {
+    /// Look up a symbol in the current scope hierarchy
+    fn lookup_symbol(&self, name: &str) -> Option<Rc<Meta>> {
+        let mut sid = self.cur_scope_sid.clone();
+
+        // Walk up scope hierarchy
+        loop {
+            if let Some(symtab) = self.db.get_symbol_table(&sid) {
+                if let Some(meta) = symtab.get_symbol(name) {
+                    return Some(meta.clone());
+                }
+            }
+
+            // Move to parent scope
+            match sid.parent() {
+                Some(parent_sid) => sid = parent_sid,
+                None => break,  // Reached global scope, not found
+            }
+        }
+
+        None
+    }
+
+    /// Look up a type in the current scope hierarchy
+    fn lookup_type(&self, name: &str) -> Option<Rc<Meta>> {
+        let mut sid = self.cur_scope_sid.clone();
+
+        loop {
+            if let Some(symtab) = self.db.get_symbol_table(&sid) {
+                if let Some(meta) = symtab.get_type(name) {
+                    return Some(meta.clone());
+                }
+            }
+
+            match sid.parent() {
+                Some(parent_sid) => sid = parent_sid,
+                None => break,
+            }
+        }
+
+        None
+    }
+}
+```
+
+#### Task B.4: Update Scope Management
+
+```rust
+impl Parser {
+    /// Enter a new scope
+    fn enter_scope(&mut self, sid: Sid) {
+        self.cur_scope_sid = sid;
+        // Note: SymbolTable should already exist in Database
+        // (created by Indexer during parsing phase)
+    }
+
+    /// Exit current scope
+    fn exit_scope(&mut self) {
+        if let Some(sid) = self.cur_scope_sid.parent() {
+            self.cur_scope_sid = sid;
+        }
+    }
+
+    /// Update existing enter_scope() and exit_scope() methods
+    /// to use cur_scope_sid instead of Shared<Scope>
+}
+```
+
+#### Task B.5: Migrate All Parser Call Sites
+
+**Pattern**:
+```rust
+// OLD:
+if let Some(sym) = self.scope.borrow().lookup(name) {
+    let ty = sym.ty.clone();
+}
+
+// NEW:
+if let Some(meta) = self.lookup_symbol(&name.to_string()) {
+    let ty = meta.ty.clone();
+}
+```
+
+**Affected call sites** (~50-100 locations):
+- Variable declaration: `parse_let()`, `parse_var()`
+- Function calls: `parse_call()`
+- Type expressions: `parse_type()`, `infer_type_expr()`
+- Import statements: `parse_import()`
+
+**Acceptance Criteria**:
+- [ ] Parser uses `Database` instead of `Shared<Scope>`
+- [ ] Parser queries `SymbolTable` via lookup methods
+- [ ] `cur_scope_sid` tracks current scope
+- [ ] All parser tests pass
+- [ ] Type inference still works (Plan 010 integration)
+
+---
+
+### Phase C: Evaler Migration (Week 2) **HIGH PRIORITY**
+
+**Goal**: Evaler uses `ExecutionEngine` for ALL runtime values (no more Universe fallbacks).
+
+**File**: [crates/auto-lang/src/eval.rs](crates/auto-lang/src/eval.rs)
+
+#### Task C.1: Remove Universe from Evaler (Final Step)
+
+```rust
+pub struct Evaler<'a> {
+    // COMPLETED (Phase 4.5):
+    pub db: Option<Arc<Database>>,
+    pub engine: Option<Rc<RefCell<ExecutionEngine>>>,
+
+    // REMOVE (Phase C):
+    // pub universe: Rc<RefCell<Universe>>,
+
+    // Keep existing:
+    pub source: AutoStr,
+    pub dest: CompileDest,
+    pub eval_mode: EvalMode,
+    pub marker: PhantomData<&'a ()>,
+}
+```
+
+#### Task C.2: Update All Bridge Methods
+
+**Remove Universe fallbacks**:
+
+```rust
+// OLD (Phase 4.5 hybrid):
+impl Evaler<'_> {
+    pub fn enter_scope(&mut self, name: Sid) {
+        if let Some(db) = &self.db {
+            // Use Database
+        } else {
+            // Fallback to Universe
+            self.universe.borrow_mut().scope_enter(name);
+        }
+    }
+}
+
+// NEW (Phase C - Database only):
+impl Evaler<'_> {
+    pub fn enter_scope(&mut self, sid: Sid) {
+        let db = self.db.as_ref().expect("Database must be set");
+
+        // Create SymbolTable if it doesn't exist
+        if db.get_symbol_table(&sid).is_none() {
+            let symtab = SymbolTable::new(ScopeKind::Block, sid.clone());
+            db.insert_symbol_table(sid.clone(), symtab);
+        }
+    }
+
+    pub fn exit_scope(&mut self) {
+        let db = self.db.as_ref().expect("Database must be set");
+        // Move to parent scope
+        if let Some(current) = db.get_symbol_table(&self.cur_scope_sid) {
+            if let Some(parent) = current.parent.clone() {
+                self.cur_scope_sid = parent;
+            }
+        }
+    }
+}
+```
+
+#### Task C.3: Use ExecutionEngine for All Runtime Values
+
+```rust
+impl Evaler<'_> {
+    /// Variable lookup (runtime only - no compile-time fallback)
+    fn lookup_var(&self, name: &str) -> EvalResult<Value> {
+        let engine = self.engine.as_ref().expect("ExecutionEngine must be set");
+
+        // Search call stack for variable
+        if let Some(value_id) = engine.borrow().lookup_var(name) {
+            // Resolve ValueID to actual Value
+            return self.resolve_value_id(value_id);
+        }
+
+        Err(EvalError::UndefinedVariable(name.to_string()))
+    }
+
+    /// Set variable value
+    fn set_var(&mut self, name: AutoStr, value: Value) -> EvalResult<()> {
+        let engine = self.engine.as_ref().expect("ExecutionEngine must be set");
+
+        // Get current frame
+        if let Some(frame) = engine.borrow().current_frame() {
+            // Allocate value storage
+            let value_id = self.alloc_value(value)?;
+
+            // Store in frame
+            frame.borrow_mut().set(name, value_id);
+            Ok(())
+        } else {
+            Err(EvalError::NoStackFrame)
+        }
+    }
+}
+```
+
+#### Task C.4: Update All Evaler Methods (~100 functions)
+
+**Pattern**:
+```rust
+// OLD (Phase 4.5):
+fn eval_let(&mut self, store: &Store) -> EvalResult<Value> {
+    self.universe.borrow_mut().define(...);
+}
+
+// NEW (Phase C):
+fn eval_let(&mut self, store: &Store) -> EvalResult<Value> {
+    // Add symbol to Database (compile-time)
+    let db = self.db.as_ref().expect("Database required");
+    let symtab = db.get_symbol_table_mut(&self.cur_scope_sid)
+        .expect("SymbolTable must exist");
+
+    symtab.insert_symbol(name.clone(), meta);
+
+    // Set value in ExecutionEngine (runtime)
+    self.set_var(name, value)?;
+}
+```
+
+**Affected methods** (~100 locations):
+- All `eval_*` functions
+- Scope operations
+- Variable operations
+- Type operations
+- VM operations (already done in Phase 4.6)
+
+**Acceptance Criteria**:
+- [ ] Evaler has no `universe` field
+- [ ] All methods use `Database` + `ExecutionEngine`
+- [ ] No Universe fallbacks in bridge methods
+- [ ] All evaluator tests pass
+- [ ] 100% Database + ExecutionEngine usage
+
+---
+
+### Phase D: REPL Migration (Week 2) **MEDIUM PRIORITY**
+
+**Goal**: REPL persists state in `Database` + `ExecutionEngine` instead of `Universe`.
+
+**File**: [crates/auto-lang/src/repl.rs](crates/auto-lang/src/repl.rs)
+
+#### Task D.1: Update ReplSession Structure
+
+```rust
+pub struct ReplSession {
+    /// Compile-time data (persistent across inputs)
+    pub session: CompileSession,
+
+    /// Runtime execution engine
+    pub engine: Rc<RefCell<ExecutionEngine>>,
+
+    // REMOVE:
+    // pub scope: Shared<Universe>,
+}
+```
+
+#### Task D.2: Update ReplSession::new()
+
+```rust
+impl ReplSession {
+    pub fn new() -> Self {
+        // Create compile session (AIE Database)
+        let mut session = CompileSession::new();
+
+        // Create execution engine (runtime)
+        let engine = Rc::new(RefCell::new(ExecutionEngine::new()));
+
+        // Initialize global SymbolTable in Database
+        let db = session.database().unwrap();
+        let global_symtab = SymbolTable::new(ScopeKind::Global, SID_PATH_GLOBAL.clone());
+        db.insert_symbol_table(SID_PATH_GLOBAL.clone(), global_symtab);
+
+        // Load stdlib
+        Self::load_stdlib(&mut session, &mut engine);
+
+        Self {
+            session,
+            engine,
+        }
+    }
+}
+```
+
+#### Task D.3: Update ReplSession::run()
+
+```rust
+impl ReplSession {
+    pub fn run(&mut self, code: &str) -> AutoResult<String> {
+        // OLD: Use Universe
+        // crate::run_with_session_and_scope(
+        //     &mut self.session,
+        //     self.scope.clone(),
+        //     code
+        // )
+
+        // NEW: Use Database + ExecutionEngine
+        crate::run_with_session(
+            &mut self.session,    // Has Database (SymbolTables)
+            self.engine.clone(),  // Has ExecutionEngine (StackFrames)
+            code
+        )
+    }
+}
+```
+
+#### Task D.4: Update lib.rs Entry Point
+
+```rust
+// lib.rs
+pub fn run_with_session(
+    session: &mut CompileSession,
+    engine: Rc<RefCell<ExecutionEngine>>,
+    code: &str,
+) -> AutoResult<String> {
+    // Create parser with Database
+    let db = session.database().unwrap();
+    let parser = Parser::new(Lexer::new(code, ScriptMode), db);
+
+    // Parse code
+    let ast = parser.parse()?;
+
+    // Create evaler with Database + ExecutionEngine
+    let mut evaler = Evaler::new_with_context(
+        session.database().clone(),
+        engine,
+        parser.dest,
+    );
+
+    // Evaluate
+    evaler.eval(&ast)?;
+
+    Ok(evaler.result.to_string())
+}
+```
+
+**Acceptance Criteria**:
+- [ ] ReplSession uses `Database` + `ExecutionEngine`
+- [ ] No `Universe` in REPL code path
+- [ ] REPL tests pass
+- [ ] Variable persistence works across inputs
+
+---
+
+### Phase E: Final Cleanup (Week 3) **MEDIUM PRIORITY**
+
+**Goal**: Remove `Universe` or mark as fully deprecated legacy wrapper.
+
+#### Task E.1: Remove Universe from Interpreter
+
+**File**: [crates/auto-lang/src/interp.rs](crates/auto-lang/src/interp.rs)
+
+```rust
+pub struct Interpreter {
+    // NEW AIE Architecture:
+    pub session: CompileSession,
+    pub engine: Rc<RefCell<ExecutionEngine>>,
+    pub evaler: Evaler,
+
+    // REMOVE:
+    // pub scope: Shared<Universe>,
+}
+
+impl Interpreter {
+    pub fn new() -> Self {
+        let session = CompileSession::new();
+        let engine = Rc::new(RefCell::new(ExecutionEngine::new()));
+
+        // Create global SymbolTable
+        let db = session.database().unwrap();
+        let global_symtab = SymbolTable::new(ScopeKind::Global, SID_PATH_GLOBAL.clone());
+        db.insert_symbol_table(SID_PATH_GLOBAL.clone(), global_symtab);
+
+        // Create evaler with Database + ExecutionEngine
+        let mut evaler = Evaler::new_with_context(
+            session.database().clone(),
+            engine.clone(),
+            CompileDest::Script,
+        );
+
+        // Register evaluator with engine (for VM callbacks)
+        engine.borrow_mut().set_evaluator(&mut evaler);
+
+        // Load stdlib
+        Self::load_stdlib(&mut session, &mut engine);
+
+        Self {
+            session,
+            engine,
+            evaler,
+        }
+    }
+}
+```
+
+#### Task E.2: Update All Call Sites
+
+**Files to update**:
+- [lib.rs](crates/auto-lang/src/lib.rs) - Entry points
+- [main.rs](crates/auto-lang/src/main.rs) - Binary entry point
+- All test files using `Interpreter::with_scope()`
+
+**Pattern**:
+```rust
+// OLD:
+let scope = Rc::new(RefCell::new(Universe::new()));
+let mut interp = Interpreter::with_scope(scope, mode);
+
+// NEW:
+let mut interp = Interpreter::new(mode);
+```
+
+#### Task E.3: Deprecate Universe (Final)
+
+```rust
+/// Universe: DEPRECATED - Use Database + ExecutionEngine instead
+///
+/// # Deprecated
+///
+/// This structure is deprecated and will be removed in a future version.
+/// All functionality has been migrated to:
+/// - `Database` (compile-time: SymbolTables, types, ASTs)
+/// - `ExecutionEngine` (runtime: StackFrames, values, VM refs)
+///
+/// # Migration Guide
+///
+/// See [Plan 064 Appendix](docs/plans/064-split-universe-compile-runtime.md#appendix-complete-scope--symboltable-migration-path)
+#[deprecated(since = "0.5.0", note = "Use Database + ExecutionEngine instead")]
+pub struct Universe {
+    // Minimal legacy wrapper (for extreme backward compatibility)
+    _db: Option<Arc<Database>>,
+    _engine: Option<Rc<RefCell<ExecutionEngine>>>,
+}
+
+impl Universe {
+    pub fn new() -> Self {
+        // Warning: This is deprecated!
+        // Use Database + ExecutionEngine instead
+        Self {
+            _db: None,
+            _engine: None,
+        }
+    }
+}
+```
+
+**Acceptance Criteria**:
+- [ ] `Interpreter` has no `Universe` field
+- [ ] `Universe` marked `#[deprecated]`
+- [ ] All entry points use new architecture
+- [ ] All tests pass (1000+ tests)
+- [ ] Documentation updated
+
+---
+
+### Implementation Strategy: Incremental Approach ✅
+
+**Week 1**: Phase A + B (Indexer + Parser)
+- Build SymbolTables in Indexer
+- Query SymbolTables in Parser
+- **Risk**: Moderate (parsing is critical path)
+- **Value**: Enables clean compile-time separation
+
+**Week 2**: Phase C + D (Evaler + REPL)
+- Migrate Evaler to pure Database + Engine
+- Update REPL to use new architecture
+- **Risk**: High (evaluator has complex logic)
+- **Value**: Completes runtime separation
+
+**Week 3**: Phase E (Final Cleanup)
+- Remove Universe from Interpreter
+- Update all call sites
+- Mark Universe deprecated
+- **Risk**: Low (mostly API changes)
+- **Value**: Clean final architecture
+
+---
+
+### Critical Success Factors
+
+1. **SymbolTable Must Contain** (Compile-time only):
+   - ✅ Symbol declarations (name, type, visibility)
+   - ✅ Type declarations (structs, enums, specs)
+   - ✅ Scope hierarchy (parent/child relationships)
+   - ❌ **NO runtime values** (these go in ExecutionEngine)
+
+2. **ExecutionEngine Must Handle** (Runtime only):
+   - ✅ Stack frames (function call stack)
+   - ✅ Variable values (current bindings)
+   - ✅ VM references (StringBuilder, List, HashMap)
+   - ✅ Moved variable tracking
+
+3. **Tests Must Pass**:
+   - Parser tests (symbol resolution)
+   - Evaluator tests (runtime variable access)
+   - REPL tests (persistent state)
+   - Transpiler tests (type lookups)
+
+---
+
+### Risk Assessment
+
+**Overall Risk**: **Medium-High**
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Breaking changes | High | Incremental migration, compatibility wrappers |
+| Test failures | High | Comprehensive test suite, run after each phase |
+| Type inference breakage | Medium | Plan 010 integration testing |
+| Performance regression | Low | Benchmark critical paths |
+| Missing edge cases | Medium | Extensive testing, fallback options |
+
+---
+
+### Rollback Plan
+
+Each phase can be rolled back independently:
+
+1. **Phase A/B**: Keep `Shared<Scope>` in parallel with `SymbolTable`
+2. **Phase C**: Use bridge methods with Universe fallback
+3. **Phase D/E**: Compatibility wrappers for old API
+
+---
+
+### Expected Results
+
+**Before Migration** (Hybrid Architecture):
+- 57 remaining `Universe` references
+- Mixed `Scope` usage (compile-time + runtime)
+- Parser uses `Shared<Scope>`
+- Evaler has bridge methods with Universe fallbacks
+
+**After Migration** (Clean Architecture):
+- 0 `Universe` references (or minimal legacy wrapper)
+- Clean `SymbolTable` (compile-time) + `StackFrame` (runtime) split
+- Parser queries `Database.symbol_tables`
+- Evaler uses pure `Database` + `ExecutionEngine`
+- REPL persists state in `Database` + `ExecutionEngine`
+
+---
+
+### Testing Strategy
+
+**Phase A Tests**:
+- Indexer creates SymbolTables
+- SymbolTable hierarchy is correct
+- Parent/child relationships preserved
+
+**Phase B Tests**:
+- Parser symbol resolution works
+- Type inference still functions (Plan 010)
+- All parser tests pass
+
+**Phase C Tests**:
+- All evaluator tests pass
+- Variable lookup/correct
+- Runtime execution correct
+
+**Phase D Tests**:
+- REPL tests pass
+- Variable persistence works
+- Multi-input sessions work
+
+**Phase E Tests**:
+- Full test suite (1000+ tests)
+- No regressions
+- Performance acceptable
+
+---
+
 ## Completion Details
 
 **Test Results** (Final):
