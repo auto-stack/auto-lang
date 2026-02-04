@@ -1,0 +1,30 @@
+spec Engine {
+    fn start()
+}
+
+spec Weapon {
+    fn fire()
+}
+
+type WarpDrive {
+    fn start() {
+        print("WarpDrive engaging")
+    }
+}
+
+type LaserCannon {
+    fn fire() {
+        print("Pew! Pew!")
+    }
+}
+
+type Starship {
+    has core WarpDrive for Engine
+    has weapon LaserCannon for Weapon
+}
+
+fn main() {
+    let ship = Starship()
+    ship.start()
+    ship.fire()
+}

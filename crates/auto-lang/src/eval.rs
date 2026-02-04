@@ -974,7 +974,7 @@ impl Evaler {
             Stmt::Union(_) => Ok(Value::Void),
             Stmt::Tag(tag) => Ok(self.eval_tag_decl(tag)),
             Stmt::SpecDecl(spec_decl) => Ok(self.spec_decl(spec_decl)),
-            Stmt::Break => Ok(Value::Void),
+            Stmt::Break => Ok(Value::error("BREAK")), // Special marker for loop break
             Stmt::Return(expr) => Ok(self.eval_expr(expr)),
             Stmt::Ext(ext) => Ok(self.eval_ext(ext)),
         }
@@ -1140,7 +1140,12 @@ impl Evaler {
         let mut res = Vec::new();
         let sep = if is_new_line { "\n" } else { "" };
         for stmt in body.stmts.iter() {
-            res.push(self.eval_stmt(stmt)?);
+            let val = self.eval_stmt(stmt)?;
+            // Check for break marker
+            if val.is_error() && val.to_string() == "<Error: BREAK>" {
+                return Ok(val); // Propagate break marker
+            }
+            res.push(val);
         }
         Ok(match self.mode {
             EvalMode::SCRIPT => res.last().unwrap_or(&Value::Nil).clone(),
@@ -1306,6 +1311,51 @@ impl Evaler {
             self.eval_stmt(init_stmt)?;
         }
 
+        // Handle infinite for loop: for { ... }
+        if matches!(iter, Iter::Ever) {
+            let mut res = Array::new();
+
+            loop {
+                if max_loop <= 0 {
+                    return Ok(Value::error("Max loop reached"));
+                }
+                max_loop -= 1;
+
+                match self.eval_loop_body(body, false, for_stmt.new_line) {
+                    Ok(val) => {
+                        // Check for break marker
+                        if val.is_error() && val.to_string() == "<Error: BREAK>" {
+                            break; // Exit loop on break
+                        }
+                        if let Value::Array(arr) = &val {
+                            res.extend(arr);
+                        } else {
+                            res.push(val);
+                        }
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                }
+            }
+
+            return Ok(match self.mode {
+                EvalMode::SCRIPT => Value::Void,
+                EvalMode::CONFIG => Value::Array(res),
+                EvalMode::TEMPLATE => Value::Str(
+                    res.iter()
+                        .filter(|v| match v {
+                            Value::Nil => false,
+                            _ => true,
+                        })
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join("")
+                        .into(),
+                ),
+            });
+        }
+
         // Handle conditional for loop: for condition { ... }
         if matches!(iter, Iter::Cond) {
             let mut res = Array::new();
@@ -1335,6 +1385,10 @@ impl Evaler {
 
                 match self.eval_loop_body(body, false, for_stmt.new_line) {
                     Ok(val) => {
+                        // Check for break marker
+                        if val.is_error() && val.to_string() == "<Error: BREAK>" {
+                            break; // Exit loop on break
+                        }
                         if let Value::Array(arr) = &val {
                             res.extend(arr);
                         } else {

@@ -1,0 +1,26 @@
+spec Calculator {
+    fn add(a int, b int) int
+    fn multiply(a int, b int) int
+}
+
+type MathEngine {
+    fn add(a int, b int) int {
+        a + b
+    }
+
+    fn multiply(a int, b int) int {
+        a * b
+    }
+}
+
+type Computer {
+    has engine MathEngine for Calculator
+}
+
+fn main() {
+    let comp = Computer()
+    let result1 = comp.add(5, 3)
+    let result2 = comp.multiply(4, 7)
+    print(result1)
+    print(result2)
+}
