@@ -77,6 +77,8 @@ pub struct Evaler {
     /// Plan 060 Phase 3+: Closure storage
     closures: HashMap<usize, EvalClosure>,
     next_closure_id: usize,
+    /// Library search paths for `use` statements
+    lib_paths: Vec<std::path::PathBuf>,
 }
 
 impl Evaler {
@@ -99,6 +101,7 @@ impl Evaler {
             lifetime_ctx: crate::ownership::lifetime::LifetimeContext::new(),
             closures: HashMap::new(),
             next_closure_id: 0,
+            lib_paths: Vec::new(),
         };
 
         // Note: We don't set the evaluator pointer here because the evaluator
@@ -134,6 +137,11 @@ impl Evaler {
 
     pub fn skip_check(&mut self) {
         self.skip_check = true;
+    }
+
+    /// Set library search paths for `use` statements
+    pub fn set_lib_paths(&mut self, paths: Vec<std::path::PathBuf>) {
+        self.lib_paths = paths;
     }
 
     // =========================================================================
@@ -989,12 +997,98 @@ impl Evaler {
     }
 
     fn eval_use_auto(&mut self, use_stmt: &ast::Use) -> Value {
-        // Construct module path from paths (e.g., ["auto", "io"] -> "auto.io")
-        let module_path = use_stmt.paths.join(".");
+        // Construct module path from paths (e.g., ["util"] -> "util")
+        let module_name = use_stmt.paths.join(".");
 
-        // Check if module exists in VM registry
+        // 1. First, try to find the module in VM registry (for pre-compiled modules)
         let registry = crate::vm::VM_REGISTRY.lock().unwrap();
-        let module = match registry.get_module(&module_path) {
+        let module_exists = registry.get_module(&module_name).is_some();
+        drop(registry);
+
+        if module_exists {
+            // Use existing VM registry logic
+            return self.eval_use_from_registry(use_stmt, &module_name);
+        }
+
+        // 2. If not in registry, try to load from .at file
+        // Search paths: stdlib/auto/ -> current directory -> parent directories
+        let at_file = self.find_at_file(&module_name);
+
+        match at_file {
+            Some(file_path) => {
+                // Load and parse the .at file
+                self.load_at_file(&file_path, use_stmt)
+            }
+            None => {
+                Value::Error(format!("Module '{}' not found in registry or as .at file", module_name).into())
+            }
+        }
+    }
+
+    /// Find an .at file by module name (Plan 074: Updated for multi-directory search)
+    /// Search order: lib_paths (from config) -> ~/.auto/libs/ -> /usr/local/lib/auto -> /usr/lib/auto -> current directory
+    fn find_at_file(&self, module_name: &str) -> Option<std::path::PathBuf> {
+        use std::path::{Path, PathBuf};
+
+        eprintln!("Searching for module '{}', lib_paths: {:?}", module_name, self.lib_paths);
+
+        // Convert module name with dots to path with slashes (Plan 074)
+        // e.g., "subdir.helpers" -> "subdir/helpers"
+        let module_path = module_name.replace(".", "/");
+
+        // 1. Search in configured lib_paths first
+        for lib_dir in &self.lib_paths {
+            let path = lib_dir.join(format!("{}.at", module_path));
+            eprintln!("  Checking path: {}", path.display());
+            if path.exists() {
+                eprintln!("  Found at: {}", path.display());
+                return Some(path);
+            }
+        }
+
+        // 2. Use new multi-directory search (Plan 074)
+        // Searches: ~/.auto/libs/, /usr/local/lib/auto, /usr/lib/auto, .
+        match crate::util::find_module_file(&module_path, &[".at"]) {
+            Ok(path) => {
+                eprintln!("  Found at: {}", path.display());
+                Some(path)
+            }
+            Err(_) => None,
+        }
+    }
+
+    /// Load and parse an .at file, then import specified items into current scope
+    fn load_at_file(&mut self, file_path: &std::path::Path, use_stmt: &ast::Use) -> Value {
+        use std::fs;
+        use crate::Parser;
+
+        // Read the .at file
+        let source_code = fs::read_to_string(file_path)
+            .map_err(|e| format!("Failed to read {}: {}", file_path.display(), e))
+            .unwrap();
+
+        // Parse the file using the same universe as current evaluator
+        let mut parser = Parser::new(&source_code, self.universe().clone());
+        let ast = match parser.parse() {
+            Ok(ast) => ast,
+            Err(e) => return Value::Error(format!("Failed to parse {}: {}", file_path.display(), e).into()),
+        };
+
+        // Evaluate the file to define functions in current scope
+        // This will execute all top-level statements (like pub fn check_on...)
+        let _result = self.eval(&ast);
+
+        // Now filter: only keep the specified items in use_stmt
+        // For now, we've already executed the whole file, so all items are in scope
+        // Future improvement: only parse and extract specified items
+
+        Value::Void
+    }
+
+    /// Import from VM registry (original logic)
+    fn eval_use_from_registry(&mut self, use_stmt: &ast::Use, module_path: &str) -> Value {
+        let registry = crate::vm::VM_REGISTRY.lock().unwrap();
+        let module = match registry.get_module(module_path) {
             Some(m) => m,
             None => {
                 return Value::Error(format!("Module '{}' not found", module_path).into());
@@ -1002,7 +1096,6 @@ impl Evaler {
         };
 
         // Register all types from this module in the universe
-        // (Types need to be available even if not explicitly imported)
         for (type_name, _type_entry) in module.types.iter() {
             let type_decl = ast::TypeDecl {
                 name: type_name.clone(),
@@ -1010,7 +1103,7 @@ impl Evaler {
                 parent: None,
                 has: vec![],
                 specs: vec![],
-                spec_impls: vec![], // Plan 057
+                spec_impls: vec![],
                 generic_params: vec![],
                 members: vec![],
                 delegations: vec![],
@@ -1019,15 +1112,13 @@ impl Evaler {
             self.define_type(
                 type_name.clone(),
                 std::rc::Rc::new(crate::scope::Meta::Type(ast::Type::User(type_decl))),
-            ); // Phase 4.5: Use bridge method
+            );
         }
         drop(registry);
 
         // Register each imported item in current scope
         for item_name in &use_stmt.items {
             // Check if it's a function or type
-            // IMPORTANT: Extract data with short-lived lock to avoid deadlock
-            // The lock must be released BEFORE calling universe.borrow_mut().define()
             let is_function = {
                 let registry = crate::vm::VM_REGISTRY.lock().unwrap();
                 registry.get_function(&module_path, item_name).is_some()
@@ -1048,7 +1139,7 @@ impl Evaler {
                 self.define(
                     item_name.clone(),
                     std::rc::Rc::new(crate::scope::Meta::Fn(fn_decl)),
-                ); // Phase 4.5: Use bridge method
+                );
             } else {
                 // Check if it's a type (with short-lived lock)
                 let has_type = {
@@ -1067,17 +1158,30 @@ impl Evaler {
                         parent: None,
                         has: vec![],
                         specs: vec![],
-                        spec_impls: vec![], // Plan 057
+                        spec_impls: vec![],
                         generic_params: vec![],
                         members: vec![],
                         delegations: vec![],
                         methods: vec![],
                     };
 
-                    self.define(
+                    self.define_type(
                         item_name.clone(),
                         std::rc::Rc::new(crate::scope::Meta::Type(ast::Type::User(type_decl))),
-                    ); // Phase 4.5: Use bridge method
+                    );
+                } else {
+                    // Try to get from current universe (defined in .at file)
+                    // This handles dynamically loaded functions
+                    if let Some(val) = self.lookup_val(item_name) {
+                        if val != Value::Nil {
+                            // Value exists, probably already loaded from .at file
+                            // No need to re-register
+                        } else {
+                            // Not found in registry or universe
+                            // Return error for better debugging
+                            return Value::Error(format!("Item '{}' not found in module '{}'", item_name, module_path).into());
+                        }
+                    }
                 }
             }
         }
@@ -4872,12 +4976,28 @@ impl Evaler {
         let Expr::Ident(name) = right else {
             return None;
         };
-        if name == "name" {
+
+        // 特殊处理：node_name 固定返回节点类型名称
+        if name == "node_name" {
             return Some(Value::Str(node.name.clone()));
         }
+
+        // 特殊处理：id 固定返回节点ID
         if name == "id" {
             return Some(Value::Str(node.id.clone()));
         }
+
+        // 处理 name 属性：优先返回 name 属性值，如果没有则返回节点类型名
+        if name == "name" {
+            // 先尝试从属性中获取 name
+            let name_prop = node.get_prop("name");
+            if !name_prop.is_nil() {
+                return Some(name_prop);
+            }
+            // 如果没有 name 属性，返回节点类型名
+            return Some(Value::Str(node.name.clone()));
+        }
+
         let mut name = name.clone();
         // 1. lookup in the props
         let v = node.get_prop(&name);

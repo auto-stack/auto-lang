@@ -2700,8 +2700,8 @@ impl<'a> Parser<'a> {
 
     /// Import a path from `use` statement
     /// Plan 036: Supports loading and merging multiple files (.vm.at + .at or .c.at + .at)
+    /// Plan 074: Multi-directory search for project-level modules
     // TODO: clean up code
-    // TODO: search path from System Env, Default Locations and etc.
     pub fn import(&mut self, uses: &Use) -> AutoResult<()> {
         // println!("Trying to import use library"); // LSP: disabled
         let path = uses.paths.join(".");
@@ -2713,13 +2713,154 @@ impl<'a> Parser<'a> {
         // 2. /usr/local/lib/auto
         // 3. /usr/lib/auto
 
+        // Plan 074: Check if this is a project-level module (not stdlib)
+        if !path.starts_with("auto.") && !path.starts_with("c.") {
+            // Project-level module - search in multiple directories
+            // Search order:
+            // 1. User's local libs: ~/.auto/libs/
+            // 2. System-wide libs: /usr/local/lib/auto, /usr/lib/auto
+            // 3. Current directory: .
+
+            // Save current scope spot
+            let cur_spot = self.scope.borrow().cur_spot.clone();
+            self.scope.borrow_mut().reset_spot();
+
+            for p in scope_name.split(".").into_iter() {
+                self.scope.borrow_mut().enter_mod(p.to_string());
+                // Plan 010 Phase 5B: Sync inference context scope
+                self.infer_ctx.push_scope();
+            }
+
+            let module_path = path.replace(".", "/");
+            let extensions = self.get_file_extensions();
+
+            // Try to find the module file in any of the search directories
+            let found_path = crate::util::find_module_file(&module_path, &extensions)
+                .map_err(|e| {
+                    AutoError::Syntax(SyntaxError::Generic {
+                        message: format!("Cannot find module '{}': {}", path, e),
+                        span: pos_to_span(self.cur.pos),
+                    })
+                })?;
+
+            // Read the found file directly
+            let content = std::fs::read_to_string(&found_path).map_err(|e| {
+                AutoError::Syntax(SyntaxError::Generic {
+                    message: format!(
+                        "Failed to read file {}: {}",
+                        found_path.display(),
+                        e
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                })
+            })?;
+
+            // Create file_contents and loaded_files with the single found file
+            let file_contents = vec![(content, AutoPath::new(found_path.to_str().unwrap()))];
+            let loaded_files = vec![AutoPath::new(found_path.to_str().unwrap())];
+
+            // Merge all file contents (just one file for project-level modules)
+            let merged_content: String = file_contents
+                .iter()
+                .map(|(content, _)| {
+                    content
+                        .lines()
+                        .filter(|line| {
+                            !line.trim().starts_with("# ") && !line.trim().starts_with("#\t")
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n");
+
+            // Parse the merged content as a single file
+            let mut new_parser = Parser::new(&merged_content, self.scope.clone());
+            new_parser.set_dest(self.compile_dest.clone());
+            let ast = new_parser.parse().map_err(|e| {
+                eprintln!("===== PARSER ERROR IN IMPORT =====");
+                eprintln!("Module: {}", scope_name);
+                eprintln!("Files loaded: {:?}", loaded_files);
+                eprintln!("Error: {:?}", e);
+                eprintln!("Error display: {}", e);
+                eprintln!("==================================");
+                e
+            })?;
+
+            // Extract spec declarations
+            let spec_decls: Vec<_> = ast
+                .stmts
+                .iter()
+                .filter_map(|stmt| {
+                    if let Stmt::SpecDecl(spec_decl) = stmt {
+                        Some(spec_decl.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Plan 019 Stage 8.5: Register all specs in universe's specs HashMap
+            for spec_decl in &spec_decls {
+                self.scope.borrow_mut().register_spec(std::rc::Rc::new(spec_decl.clone()));
+            }
+
+            // Import the merged AST into scope
+            let last_file_path = loaded_files.last().unwrap();
+            self.scope.borrow_mut().import(
+                scope_name.clone(),
+                ast,
+                last_file_path.to_astr(),
+                merged_content.into(),
+            );
+
+            self.scope.borrow_mut().set_spot(cur_spot);
+            // Plan 010 Phase 5B: Pop module scopes from inference context
+            for _ in scope_name.split(".").into_iter() {
+                self.infer_ctx.pop_scope();
+            }
+
+            let mut items = uses.items.clone();
+            if items.is_empty() && !uses.paths.is_empty() {
+                items.push(uses.paths.last().unwrap().clone());
+            }
+
+            // Import all spec declarations from this module
+            for spec_decl in spec_decls {
+                self.define_rc(
+                    spec_decl.name.clone().as_str(),
+                    std::rc::Rc::new(Meta::Spec(spec_decl)),
+                );
+            }
+
+            // Define items in scope
+            for item in items.iter() {
+                let meta = if let Some(found_meta) = self
+                    .scope
+                    .borrow()
+                    .lookup(item.as_str(), scope_name.clone())
+                {
+                    found_meta
+                } else {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Item '{}' not found in module '{}'", item, scope_name),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                };
+
+                self.define_rc(item.as_str(), meta);
+            }
+
+            return Ok(());
+        }
+
+        // For stdlib (auto.* and c.*), use the existing logic
         let file_path = if path.starts_with("auto.") {
             // stdlib/auto
             let std_path = crate::util::find_std_lib()?;
-            // println!("debug: std lib location: {}", std_path); // LSP: disabled
             let path = path.replace("auto.", "");
             AutoPath::new(std_path).join(path.clone())
-        } else if path.starts_with("c.") {
+        } else {
             // stdlib/c (C standard library layer)
             let std_path = crate::util::find_std_lib()?;
             // Get parent of stdlib/auto, which is stdlib, then join c/
@@ -2735,10 +2876,9 @@ impl<'a> Parser<'a> {
                 }
                 .into());
             }
-        } else {
-            // local lib
-            AutoPath::new(".").join(path.clone())
         };
+
+        // For stdlib (auto.* and c.*), use the existing file loading logic
         let dir = file_path.parent();
         let name = file_path.path().file_name().unwrap();
 
@@ -2750,10 +2890,17 @@ impl<'a> Parser<'a> {
             .into());
         }
 
-        // Plan 036: Load multiple files and merge their content
-        // Strategy: Merge file contents (bottom layer first, then top layer), then parse as one file
+        // Save current scope spot
+        let cur_spot = self.scope.borrow().cur_spot.clone();
+        self.scope.borrow_mut().reset_spot();
 
-        // For C stdlib layer, always load .c.at files regardless of compile destination
+        for p in scope_name.split(".").into_iter() {
+            self.scope.borrow_mut().enter_mod(p.to_string());
+            // Plan 010 Phase 5B: Sync inference context scope
+            self.infer_ctx.push_scope();
+        }
+
+        // Plan 036: Load multiple files and merge their content
         let extensions = if path.starts_with("c.") {
             vec![".c.at"]
         } else {
@@ -2763,16 +2910,6 @@ impl<'a> Parser<'a> {
         let name_str = name.to_str().unwrap();
         let mut file_contents = Vec::new();
         let mut loaded_files = Vec::new();
-
-        // Save current scope spot
-        let cur_spot = self.scope.borrow().cur_spot.clone();
-        self.scope.borrow_mut().reset_spot();
-
-        for path in scope_name.split(".").into_iter() {
-            self.scope.borrow_mut().enter_mod(path.to_string());
-            // Plan 010 Phase 5B: Sync inference context scope
-            self.infer_ctx.push_scope();
-        }
 
         // Load files in order (bottom layer first, then top layer)
         for ext in extensions.iter() {
@@ -2810,7 +2947,6 @@ impl<'a> Parser<'a> {
                 file_contents.push((content, file_path_str.clone()));
                 loaded_files.push(file_path_str);
             } else {
-                // No files found at all
                 return Err(SyntaxError::Generic {
                     message: format!("Cannot find file: {}{}", name_str, ".at"),
                     span: pos_to_span(self.cur.pos),

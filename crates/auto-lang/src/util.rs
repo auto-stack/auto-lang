@@ -49,6 +49,73 @@ pub fn find_std_lib() -> AutoResult<AutoStr> {
     return Err("stdlib not found".into());
 }
 
+/// Find a module file in multiple search directories (Plan 074)
+///
+/// Search order:
+/// 1. User's local libs: ~/.auto/libs/
+/// 2. System-wide libs: /usr/local/lib/auto, /usr/lib/auto
+/// 3. Current directory: .
+///
+/// # Arguments
+/// * `module_path` - Module path with dots converted to slashes (e.g., "myapp/utils/helpers")
+/// * `extensions` - List of file extensions to try (e.g., [".at", ".c.at"])
+///
+/// # Returns
+/// * `Ok(PathBuf)` - Full path to the first found module file
+/// * `Err(String)` - Error message if module not found in any directory
+///
+/// # Example
+/// ```rust
+/// // Finds first match: ~/.auto/libs/myapp/utils/helpers.at
+/// // or /usr/local/lib/auto/myapp/utils/helpers.at
+/// // or /usr/lib/auto/myapp/utils/helpers.at
+/// // or ./myapp/utils/helpers.at
+/// let path = find_module_file("myapp/utils/helpers", &[".at"])?;
+/// ```
+pub fn find_module_file(module_path: &str, extensions: &[&str]) -> AutoResult<PathBuf> {
+    let mut search_dirs = Vec::new();
+
+    // 1. User's local libs
+    if let Some(home_dir) = dirs::home_dir() {
+        search_dirs.push(home_dir.join(".auto/libs/"));
+    }
+
+    // 2. System-wide libs
+    search_dirs.push(PathBuf::from("/usr/local/lib/auto"));
+    search_dirs.push(PathBuf::from("/usr/lib/auto"));
+
+    // 3. Current directory
+    search_dirs.push(PathBuf::from("."));
+
+    // Try each directory with each extension
+    for base_dir in &search_dirs {
+        for ext in extensions {
+            let file_path = base_dir.join(format!("{}{}", module_path, ext));
+            if file_path.exists() {
+                return Ok(file_path);
+            }
+        }
+    }
+
+    // Module not found - construct helpful error message
+    let searched_paths: Vec<String> = search_dirs
+        .iter()
+        .flat_map(|dir| {
+            extensions.iter().map(move |ext| {
+                dir.join(format!("{}{}", module_path, ext))
+                    .to_string_lossy()
+                    .to_string()
+            })
+        })
+        .collect();
+
+    Err(format!(
+        "Module '{}' not found. Searched in:\n  {}",
+        module_path,
+        searched_paths.join("\n  ")
+    ).into())
+}
+
 /// Get the file name from a path.
 pub fn file_name(path: &str) -> &str {
     if let Some(pos) = path.rfind('/') {
