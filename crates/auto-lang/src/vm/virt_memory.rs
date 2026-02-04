@@ -33,6 +33,9 @@ pub struct VirtualFlash {
     // Map function IDs/Fragment IDs to addresses in memory
     // TODO: Use actual specific ID type later
     pub symbol_map: HashMap<u32, usize>,
+    // Plan 073: Object keys metadata for object literal creation
+    // Each entry is a Vec of keys for one object literal (indexed by key_index)
+    pub object_keys: Vec<Vec<auto_val::ValueKey>>,
 }
 
 impl VirtualFlash {
@@ -40,6 +43,7 @@ impl VirtualFlash {
         Self {
             memory: vec![0; size],
             symbol_map: HashMap::new(),
+            object_keys: Vec::new(),
         }
     }
 
@@ -47,6 +51,16 @@ impl VirtualFlash {
         Self {
             memory: code,
             symbol_map: HashMap::new(),
+            object_keys: Vec::new(),
+        }
+    }
+
+    // Plan 073: Create VirtualFlash with code and object_keys
+    pub fn new_with_code_and_keys(code: Vec<u8>, object_keys: Vec<Vec<auto_val::ValueKey>>) -> Self {
+        Self {
+            memory: code,
+            symbol_map: HashMap::new(),
+            object_keys,
         }
     }
 

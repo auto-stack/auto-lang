@@ -89,6 +89,10 @@ pub struct BigVM {
     // Closure Registry (Plan 071: Direct Capture, no upvalues)
     pub closures: DashMap<u32, Closure>,
     pub closure_id_gen: AtomicU32,
+
+    // Object Registry (Plan 073: Object literals)
+    pub objects: DashMap<u64, Arc<RwLock<crate::universe::ObjectData>>>,
+    pub object_id_gen: AtomicU64,
 }
 
 impl BigVM {
@@ -109,6 +113,8 @@ impl BigVM {
             iterator_id_gen: AtomicU32::new(0),
             closures: DashMap::new(),
             closure_id_gen: AtomicU32::new(0),
+            objects: DashMap::new(),
+            object_id_gen: AtomicU64::new(0),
         }
     }
 
@@ -293,6 +299,40 @@ impl BigVM {
                     let str_idx = self.flash.read_u16(task.ip);
                     task.ip += 2;
                     task.ram.push_i32(str_idx as i32);
+                }
+                // Plan 073: Object literal support
+                OpCode::CREATE_OBJ => {
+                    let key_index = self.flash.read_u16(task.ip);
+                    task.ip += 2;
+                    let field_count = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+
+                    // Get keys from flash metadata
+                    let keys = &self.flash.object_keys[key_index as usize];
+
+                    // Pop values from stack (in reverse order since last value is on top)
+                    let mut values = Vec::with_capacity(field_count as usize);
+                    for _ in 0..field_count {
+                        let val_bits = task.ram.pop_i32();
+                        // Convert i32 back to Value (assume all values are integers for now)
+                        // TODO: Support other value types
+                        values.push(auto_val::Value::Int(val_bits));
+                    }
+
+                    // Create object from key-value pairs
+                    let mut obj = crate::universe::ObjectData::new();
+                    for (i, key) in keys.iter().enumerate() {
+                        // Values were popped in reverse order, so reverse them back
+                        let val = &values[field_count as usize - 1 - i];
+                        obj.set(key.clone(), val.clone());
+                    }
+
+                    // Store object in objects registry and get ID
+                    let obj_id = self.object_id_gen.fetch_add(1, Ordering::SeqCst);
+                    self.objects.insert(obj_id, Arc::new(RwLock::new(obj)));
+
+                    // Push object ID onto stack
+                    task.ram.push_i32(obj_id as i32);
                 }
                 // === Arithmetic ===
                 OpCode::ADD => {

@@ -258,14 +258,23 @@ impl Codegen {
             }
             // Plan 073: Object literal support {key: val, ...}
             Expr::Object(pairs) => {
-                // For now, compile each value expression
-                // Full object creation requires VM runtime support
-                // This allows compilation to succeed for testing
+                // Evaluate each value expression (pushes values onto stack)
                 for pair in pairs {
                     self.compile_expr(&pair.value)?;
                 }
-                // TODO: Emit CREATE_OBJ opcode when runtime support is ready
-                // For now, just leave values on stack (will be cleaned up by caller)
+
+                // Store keys in the object_keys pool
+                let keys: Vec<auto_val::ValueKey> = pairs.iter().map(|pair| {
+                    self.ast_key_to_value_key(&pair.key)
+                }).collect();
+                let key_index = self.object_keys.len() as u16;
+                self.object_keys.push(keys);
+
+                // Emit CREATE_OBJ with key_index and field count
+                let field_count = pairs.len() as u8;
+                self.emit(OpCode::CREATE_OBJ);
+                self.code.extend_from_slice(&key_index.to_le_bytes());
+                self.code.push(field_count);
             }
             Expr::Str(s) => {
                 // Add string to constant pool and emit LOAD_STR <index>

@@ -21,6 +21,20 @@ fn compile_to_bytecode(source: &str) -> Vec<u8> {
     codegen.code
 }
 
+/// Plan 073: Helper function to compile with object_keys metadata
+fn compile_with_object_keys(source: &str) -> (Vec<u8>, Vec<Vec<auto_val::ValueKey>>) {
+    let mut parser = Parser::from(source);
+    let code = parser.parse().expect("Parse failed");
+
+    let mut codegen = Codegen::new();
+    for stmt in code.stmts {
+        codegen.compile_stmt(&stmt).expect("Codegen failed");
+    }
+
+    (codegen.code, codegen.object_keys)
+}
+
+
 #[test]
 fn test_float_literal_compiles() {
     let source = r#"
@@ -419,4 +433,60 @@ fn main() -> int {
     // Should contain CONST_I32 opcode
     assert!(bytecode.contains(&0x10), "Expected CONST_I32 opcode (0x10)");
 }
+
+// ============================================================================
+// Plan 073: Object Literal Tests
+// ============================================================================
+
+#[test]
+fn test_empty_object_compiles() {
+    let source = r#"
+fn main() -> int {
+    let obj = {}
+    0
+}
+"#;
+    let (bytecode, object_keys) = compile_with_object_keys(source);
+    // Should contain CREATE_OBJ opcode
+    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    // Should have one object with 0 fields
+    assert_eq!(object_keys.len(), 1, "Expected 1 object");
+    assert_eq!(object_keys[0].len(), 0, "Expected 0 fields");
+}
+
+#[test]
+fn test_simple_object_compiles() {
+    let source = r#"
+fn main() -> int {
+    let obj = {x: 1, y: 2}
+    0
+}
+"#;
+    let (bytecode, object_keys) = compile_with_object_keys(source);
+    // Should contain CREATE_OBJ opcode
+    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    // Should have one object with 2 fields
+    assert_eq!(object_keys.len(), 1, "Expected 1 object");
+    assert_eq!(object_keys[0].len(), 2, "Expected 2 fields");
+    // Should have CONST_I32 for the two integer values
+    let const_i32_count = bytecode.iter().filter(|&&x| x == 0x10).count();
+    assert!(const_i32_count >= 2, "Expected at least 2 CONST_I32 opcodes");
+}
+
+#[test]
+fn test_nested_object_compiles() {
+    let source = r#"
+fn main() -> int {
+    let outer = {name: "test", inner: {x: 10}}
+    0
+}
+"#;
+    let (bytecode, object_keys) = compile_with_object_keys(source);
+    // Should contain CREATE_OBJ opcode (at least 2 for nested objects)
+    let create_obj_count = bytecode.iter().filter(|&&x| x == 0x2E).count();
+    assert!(create_obj_count >= 2, "Expected at least 2 CREATE_OBJ opcodes");
+    // Should have 2 objects
+    assert_eq!(object_keys.len(), 2, "Expected 2 objects");
+}
+
 
