@@ -1,0 +1,21 @@
+// Test generic spec with ext block - Plan 057
+spec Storage<T> {
+    fn get() T
+}
+
+// Type with empty body - methods added via ext
+type Heap as Storage<int> {
+    ptr *int
+}
+
+ext Heap {
+    #[c]
+    fn get() *int {
+        return .ptr
+    }
+}
+
+fn main() {
+    let h = Heap()
+    let p = h.get()
+}
