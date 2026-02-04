@@ -1715,6 +1715,28 @@ impl Evaler {
                 // Assign the result back to the left side
                 self.eval_asn(left, result)
             }
+            // Logical AND with short-circuit evaluation (Plan 072)
+            Op::And => {
+                let left_value = self.eval_expr(left);
+                if Self::is_truthy(&left_value) {
+                    // Left is truthy, evaluate and return right
+                    self.eval_expr(right)
+                } else {
+                    // Left is falsy, short-circuit: don't evaluate right
+                    left_value
+                }
+            }
+            // Logical OR with short-circuit evaluation (Plan 072)
+            Op::Or => {
+                let left_value = self.eval_expr(left);
+                if Self::is_truthy(&left_value) {
+                    // Left is truthy, short-circuit: don't evaluate right
+                    left_value
+                } else {
+                    // Left is falsy, evaluate and return right
+                    self.eval_expr(right)
+                }
+            }
             _ => {
                 // Handle regular binary operators
                 let left_value = self.eval_expr(left);
@@ -2663,6 +2685,40 @@ impl Evaler {
                 .map(|cell| cell.borrow().clone())
                 .unwrap_or(auto_val::ValueData::Nil),
             _ => val.clone().into_data(),
+        }
+    }
+
+    /// Check if a value is truthy (Plan 072: used by and/or operators)
+    ///
+    /// Truthy values:
+    /// - true
+    /// - Non-zero numbers (int, uint, float, etc.)
+    /// - Non-empty strings
+    /// - Objects, arrays, functions, closures
+    ///
+    /// Falsy values:
+    /// - false
+    /// - nil
+    /// - void
+    /// - Zero (0, 0.0, etc.)
+    /// - Empty strings
+    fn is_truthy(value: &Value) -> bool {
+        match value {
+            Value::Bool(b) => *b,
+            Value::Int(n) => *n != 0,
+            Value::Uint(n) => *n != 0,
+            Value::I8(n) => *n != 0,
+            Value::U8(n) => *n != 0,
+            Value::I64(n) => *n != 0,
+            Value::Byte(n) => *n != 0,
+            Value::Float(n) => *n != 0.0,
+            Value::Double(n) => *n != 0.0,
+            Value::Str(s) => !s.is_empty(),
+            Value::OwnedStr(s) => !s.is_empty(),
+            Value::Nil => false,
+            Value::Void => false,
+            // Everything else is truthy (arrays, objects, functions, etc.)
+            _ => true,
         }
     }
 

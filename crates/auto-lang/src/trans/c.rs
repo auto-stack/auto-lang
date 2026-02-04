@@ -1248,7 +1248,13 @@ impl CTrans {
                         }
                         _ => {
                             self.expr(lhs, out)?;
-                            _ = out.write(format!(" {} ", op.op()).as_bytes()).to()?;
+                            // Plan 072: Convert and/or to C's &&/||
+                            let op_str = match op {
+                                Op::And => "&&",
+                                Op::Or => "||",
+                                _ => op.op(),
+                            };
+                            _ = out.write(format!(" {} ", op_str).as_bytes()).to()?;
                             self.expr(rhs, out)?
                         }
                     },

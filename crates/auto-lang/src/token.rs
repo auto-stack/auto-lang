@@ -108,6 +108,8 @@ pub enum TokenKind {
     Ext,   // ADDED: ext keyword for type extensions (Plan 035)
     Static, // ADDED: static keyword for static methods (Plan 035)
     Impl,   // ADDED: impl keyword for trait implementations (Plan 059)
+    And,    // ADDED: logical and keyword (Plan 066)
+    Or,     // ADDED: logical or keyword (Plan 066)
 
     // Property Keywords (Phase 3: postfix property syntax)
     DotView,  // .view
@@ -185,6 +187,8 @@ impl fmt::Display for Token {
             TokenKind::Tag => write!(f, "<tag>"),
             TokenKind::Alias => write!(f, "<alias>"),
             TokenKind::Node => write!(f, "<node>"),
+            TokenKind::And => write!(f, "<and>"),
+            TokenKind::Or => write!(f, "<or>"),
             TokenKind::FStrNote => write!(f, "<{}>", self.text),
             TokenKind::FStrStart => write!(f, "<fstrs>"),
             TokenKind::FStrEnd => write!(f, "<fstre>"),
@@ -304,6 +308,8 @@ impl Token {
             "static" => Some(TokenKind::Static),
             "impl" => Some(TokenKind::Impl),
             "const" => Some(TokenKind::Const),
+            "and" => Some(TokenKind::And),
+            "or" => Some(TokenKind::Or),
             _ => None,
         }
     }

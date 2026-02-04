@@ -59,8 +59,8 @@ const PREC_ASN: InfixPrec = infix_prec(1);
 const PREC_ADDEQ: InfixPrec = infix_prec(2);
 const PREC_MULEQ: InfixPrec = infix_prec(3);
 const PREC_PAIR: PostfixPrec = postfix_prec(4);
-const _PREC_OR: InfixPrec = infix_prec(5);
-const _PREC_AND: InfixPrec = infix_prec(6);
+const PREC_OR: InfixPrec = infix_prec(5);  // Logical or (Plan 072)
+const PREC_AND: InfixPrec = infix_prec(6); // Logical and (Plan 072)
 const PREC_EQ: InfixPrec = infix_prec(7);
 const PREC_CMP: InfixPrec = infix_prec(8);
 const PREC_RANGE: InfixPrec = infix_prec(9);
@@ -125,6 +125,9 @@ fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
         Op::DotView | Op::DotMut | Op::DotTake | Op::DotQuestion => Ok(PREC_DOT),
         // May type operators (Phase 1b.3)
         Op::QuestionQuestion => Ok(PREC_NULLCOALESCE),
+        // Logical operators (Plan 072)
+        Op::Or => Ok(PREC_OR),
+        Op::And => Ok(PREC_AND),
         _ => Err(SyntaxError::Generic {
             message: format!("Invalid infix operator: {}", op),
             span,
@@ -1166,6 +1169,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::Gt
                 | TokenKind::Le
                 | TokenKind::Ge => self.op(),
+                TokenKind::And | TokenKind::Or => self.op(),
                 TokenKind::QuestionQuestion => self.op(),
                 TokenKind::RSquare => break,
                 TokenKind::RParen => break,
@@ -1421,6 +1425,8 @@ impl<'a> Parser<'a> {
             TokenKind::DotTake => Op::DotTake,
             TokenKind::QuestionQuestion => Op::QuestionQuestion,
             TokenKind::DotQuestion => Op::DotQuestion,
+            TokenKind::And => Op::And,
+            TokenKind::Or => Op::Or,
             _ => {
                 // This should never happen if called from correct match branches
                 // Return a default operator to avoid panic

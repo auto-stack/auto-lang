@@ -345,7 +345,13 @@ impl RustTrans {
                     _ => {
                         // Binary operators: lhs OP rhs
                         self.expr(lhs, out)?;
-                        write!(out, " {} ", op.op())?;
+                        // Plan 072: Convert and/or to Rust's &&/||
+                        let op_str = match op {
+                            Op::And => "&&",
+                            Op::Or => "||",
+                            _ => op.op(),
+                        };
+                        write!(out, " {} ", op_str)?;
                         self.expr(rhs, out)?;
                     }
                 }

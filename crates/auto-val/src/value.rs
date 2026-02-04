@@ -450,6 +450,8 @@ pub enum Op {
     ModEq,
     Not,
     Bang,  // Postfix bang operator for eager collection (!)
+    And,   // Logical and (Plan 072)
+    Or,    // Logical or (Plan 072)
     LSquare,
     LParen,
     LBrace,
@@ -753,6 +755,8 @@ impl fmt::Display for Op {
             Op::ModEq => write!(f, "(op %=)"),
             Op::Not => write!(f, "(op !)"),
             Op::Bang => write!(f, "(op !)"),  // Bang operator (postfix)
+            Op::And => write!(f, "(op and)"),
+            Op::Or => write!(f, "(op or)"),
             Op::LSquare => write!(f, "(op [)"),
             Op::Asn => write!(f, "(op =)"),
             Op::Eq => write!(f, "(op ==)"),
@@ -797,6 +801,8 @@ impl Op {
             Op::ModEq => "%=",
             Op::Not => "!",
             Op::Bang => "!",  // Bang operator (postfix)
+            Op::And => "and",
+            Op::Or => "or",
             Op::LSquare => "[",
             Op::LParen => "(",
             Op::LBrace => "{",
