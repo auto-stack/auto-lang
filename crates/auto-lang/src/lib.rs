@@ -508,4 +508,7 @@ mod test_float_full;
 mod test_double_lexer;
 
 #[cfg(test)]
+mod vm_types_tests;
+
+#[cfg(test)]
 mod tests;
