@@ -1,0 +1,8 @@
+fn get_uint() ?uint {
+    let u = 100u
+    u
+}
+
+fn main() {
+    let a = get_uint()
+}

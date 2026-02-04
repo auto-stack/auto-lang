@@ -1,0 +1,8 @@
+fn get_letter() ?char {
+    let letter = 'Z'
+    letter
+}
+
+fn main() {
+    let ch = get_letter()
+}

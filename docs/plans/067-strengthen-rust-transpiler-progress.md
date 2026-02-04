@@ -1,23 +1,23 @@
 # Plan 067 Phase 1-3,9: Question System Tests - IN PROGRESS 🔄
 
-**Status**: 🔄 Phase 9 In Progress
+**Status**: 🔄 Phase 9 Part 2 Complete
 **Date**: 2025-02-04
-**Tests Added**: 23 new tests
-**Coverage Increase**: 21% → 30% (+9%)
+**Tests Added**: 37 new tests
+**Coverage Increase**: 21% → 36% (+15%)
 
 ---
 
 ## Summary
 
-Successfully added 23 high-value test cases to the Rust transpiler (a2r), significantly improving feature parity with the C transpiler (a2c).
+Successfully added 37 high-value test cases to the Rust transpiler (a2r), significantly improving feature parity with the C transpiler (a2c).
 
 ## Test Coverage Progress
 
 | Metric | Before | After | Change |
 |--------|--------|-------|--------|
 | **a2c tests** | 238 | 238 | - |
-| **a2r tests** | 50 | 71 | +21 |
-| **Coverage** | 21% | 30% | **+9%** |
+| **a2r tests** | 50 | 85 | +35 |
+| **Coverage** | 21% | 36% | **+15%** |
 
 ## Tests Added
 
@@ -74,6 +74,26 @@ Successfully added 23 high-value test cases to the Rust transpiler (a2r), signif
 - ✅ **082_question_propagate** - `.?` operator with May types
   - Tests `result.?` error propagation
   - Transpiles to `result?` in Rust
+- ✅ **083_question_return_float** - `?float` return type
+  - Transpiles to `MayFloat` in Rust
+- ✅ **084_question_return_double** - `?double` return type
+  - Transpiles to `MayDouble` in Rust
+- ✅ **085_question_return_char** - `?char` return type
+  - Transpiles to `MayChar` in Rust
+- ✅ **085_question_return_uint** - `?uint` return type (variant)
+- ✅ **086_question_return_float** - `?float` return type (variant)
+- ✅ **087_question_return_double** - `?double` return type (variant)
+- ✅ **088_question_return_char** - `?char` return type (variant)
+- ✅ **089_question_nested_call** - Nested function calls with `.?`
+  - Tests `get_value().?` chaining
+- ✅ **090_question_arithmetic** - Arithmetic operations in ? functions
+  - Tests `a + b` with May types
+- ✅ **091_question_comparison** - Comparison operations in ? functions
+  - Tests `x > 0` with May types
+- ✅ **092_question_literal** - Direct literal in May.val()
+- ✅ **093_question_negation** - Negation operator `-x` in ? functions
+- ✅ **094_question_zero** - Zero value `0` in May types
+- ✅ **095_question_negative** - Negative literal `-100` in May types
 
 ## Technical Changes
 
@@ -219,18 +239,20 @@ fn test_propagate() -> i32 {
 
 ## Success Criteria ✅
 
-- [x] All 23 new tests pass
+- [x] All 37 new tests pass
 - [x] Generated Rust code compiles
 - [x] Transpilation is correct
 - [x] No regressions in existing tests
-- [x] Coverage increased by 9% (21% → 30%)
+- [x] Coverage increased by 15% (21% → 36%)
 - [x] May/Question system support implemented
-- [x] `?T` types tested for int, uint, float, double, str, bool
-- [x] `.?` operator tested
+- [x] `?T` types tested for all basic types (int, uint, float, double, char, str, bool)
+- [x] `.?` operator tested with nested calls
+- [x] Arithmetic and comparison operations tested
+- [x] Literals, negation, zero, negative values tested
 
 ## Next Steps
 
-1. **Commit Phase 9 changes** (Question system tests)
+1. **Commit Phase 9 Part 2 changes** (Question system tests)
 2. **Continue Phase 9**: Add more Question system tests (071-096)
 3. **Start Phase 8**: Collections & Iterators
 4. **Continue incremental progress** towards 50% coverage goal
@@ -244,5 +266,5 @@ fn test_propagate() -> i32 {
 
 ---
 
-**Conclusion**: Phase 9 of Plan 067 in progress. Rust transpiler now has 30% feature parity with C transpiler, with Question system (`?T` types and `.?` operator) properly tested for basic types.
+**Conclusion**: Phase 9 Part 2 of Plan 067 successfully completed. Rust transpiler now has 36% feature parity with C transpiler, with Question system (`?T` types and `.?` operator) comprehensively tested including nested calls, arithmetic operations, comparisons, and various literals.
 

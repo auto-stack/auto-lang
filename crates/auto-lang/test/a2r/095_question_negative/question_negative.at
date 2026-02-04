@@ -1,0 +1,7 @@
+fn get_negative() ?int {
+    May.val(-100)
+}
+
+fn main() {
+    let neg = get_negative()
+}

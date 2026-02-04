@@ -1,0 +1,7 @@
+fn get_zero() ?int {
+    May.val(0)
+}
+
+fn main() {
+    let zero = get_zero()
+}

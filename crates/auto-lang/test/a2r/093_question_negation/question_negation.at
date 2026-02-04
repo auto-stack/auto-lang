@@ -1,0 +1,9 @@
+fn negate_value() ?int {
+    let x = 10
+    let neg = -x
+    May.val(neg)
+}
+
+fn main() {
+    let result = negate_value()
+}

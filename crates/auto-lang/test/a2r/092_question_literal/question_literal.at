@@ -1,0 +1,7 @@
+fn get_literal() ?int {
+    May.val(42)
+}
+
+fn main() {
+    let val = get_literal()
+}

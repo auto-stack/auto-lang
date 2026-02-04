@@ -1,0 +1,10 @@
+fn add_values() ?int {
+    let a = 10
+    let b = 20
+    let result = a + b
+    May.val(result)
+}
+
+fn main() {
+    let sum = add_values()
+}

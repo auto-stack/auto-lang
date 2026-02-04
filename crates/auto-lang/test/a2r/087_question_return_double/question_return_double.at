@@ -1,0 +1,8 @@
+fn precise_value() ?double {
+    let e = 2.718281828
+    e
+}
+
+fn main() {
+    let val = precise_value()
+}

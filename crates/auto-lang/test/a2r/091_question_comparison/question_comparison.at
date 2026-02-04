@@ -1,0 +1,9 @@
+fn check_value() ?bool {
+    let x = 42
+    let is_positive = x > 0
+    May.val(is_positive)
+}
+
+fn main() {
+    let result = check_value()
+}
