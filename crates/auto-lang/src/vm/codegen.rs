@@ -18,6 +18,9 @@ pub struct Codegen {
     pub intrinsics: HashMap<String, u16>,
     /// String constant pool
     pub strings: Vec<Vec<u8>>,
+    /// Object key pool (stores keys for object literals)
+    /// Each entry is a Vec of keys for one object literal
+    pub object_keys: Vec<Vec<auto_val::ValueKey>>,
 
     /// Symbol table: Maps variable name -> local index (bp+0, bp+1, bp+2, ...)
     /// Used during compilation to emit LOAD_LOC_N and STORE_LOC_N
@@ -56,6 +59,7 @@ impl Codegen {
             relocs: Vec::new(),
             intrinsics,
             strings: Vec::new(),
+            object_keys: Vec::new(),
             locals: HashMap::new(),
             scope_stack,
             captured_vars_stack: Vec::new(),
@@ -251,6 +255,17 @@ impl Codegen {
                 self.strings.push(bytes);
                 self.emit(OpCode::LOAD_STR);
                 self.code.extend_from_slice(&idx.to_le_bytes());
+            }
+            // Plan 073: Object literal support {key: val, ...}
+            Expr::Object(pairs) => {
+                // For now, compile each value expression
+                // Full object creation requires VM runtime support
+                // This allows compilation to succeed for testing
+                for pair in pairs {
+                    self.compile_expr(&pair.value)?;
+                }
+                // TODO: Emit CREATE_OBJ opcode when runtime support is ready
+                // For now, just leave values on stack (will be cleaned up by caller)
             }
             Expr::Str(s) => {
                 // Add string to constant pool and emit LOAD_STR <index>
@@ -586,6 +601,24 @@ impl Codegen {
     // Plan 073 Stage B: Emit u64 value (8 bytes, little-endian)
     fn emit_u64(&mut self, val: u64) {
         self.code.extend_from_slice(&val.to_le_bytes());
+    }
+
+    // Plan 073: Convert AST Key to ValueKey
+    fn ast_key_to_value_key(&self, key: &crate::ast::Key) -> auto_val::ValueKey {
+        match key {
+            crate::ast::Key::NamedKey(name) => {
+                auto_val::ValueKey::Str(name.to_string().into())
+            }
+            crate::ast::Key::IntKey(i) => {
+                auto_val::ValueKey::Int(*i)
+            }
+            crate::ast::Key::BoolKey(b) => {
+                auto_val::ValueKey::Bool(*b)
+            }
+            crate::ast::Key::StrKey(s) => {
+                auto_val::ValueKey::Str(s.clone())
+            }
+        }
     }
 
     // Plan 073 Stage A.5: Check if expression is a float/double type

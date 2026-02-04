@@ -8,7 +8,7 @@ use crate::vm::collections::{HashMapData, HashSetData};
 use crate::vm::builder::StringBuilderData;
 use auto_val::{
     shared, AccessError, AccessPath, Args, AutoStr, ExtFn, Obj, PathComponent, Sig, TypeInfoStore,
-    Value, ValueData, ValueID,
+    Value, ValueData, ValueID, ValueKey,
 };
 use std::any::Any; // Still needed for env_vals
 use std::cell::RefCell;
@@ -44,6 +44,7 @@ pub enum VmRefData {
     StringBuilder(StringBuilderData),
     File(BufReader<File>),
     List(ListData),
+    Object(ObjectData),  // Plan 073: Object literal support
 }
 
 /// Data for dynamic lists (similar to Rust's Vec<T>)
@@ -114,6 +115,54 @@ impl ListData {
         } else {
             None
         }
+    }
+}
+
+/// Data for objects (key-value maps)
+#[derive(Debug)]
+pub struct ObjectData {
+    pub fields: HashMap<ValueKey, Value>,
+}
+
+impl ObjectData {
+    pub fn new() -> Self {
+        Self {
+            fields: HashMap::new(),
+        }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            fields: HashMap::with_capacity(capacity),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.fields.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.fields.is_empty()
+    }
+
+    pub fn get(&self, key: &ValueKey) -> Option<&Value> {
+        self.fields.get(key)
+    }
+
+    pub fn set(&mut self, key: ValueKey, value: Value) {
+        self.fields.insert(key, value);
+    }
+
+    pub fn remove(&mut self, key: &ValueKey) -> Option<Value> {
+        self.fields.remove(key)
+    }
+
+    pub fn clear(&mut self) {
+        self.fields.clear();
+    }
+
+    pub fn contains_key(&self, key: &ValueKey) -> bool {
+        self.fields.contains_key(key)
     }
 }
 
