@@ -1,0 +1,13 @@
+fn check_value() ?bool {
+    let result = true
+    result
+}
+
+fn check_nil() ?bool {
+    nil
+}
+
+fn main() {
+    let a = check_value()
+    let b = check_nil()
+}

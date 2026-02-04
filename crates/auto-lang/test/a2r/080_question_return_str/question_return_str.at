@@ -1,0 +1,13 @@
+fn get_string() ?str {
+    let s = "hello"
+    s
+}
+
+fn get_nil_string() ?str {
+    nil
+}
+
+fn main() {
+    let a = get_string()
+    let b = get_nil_string()
+}

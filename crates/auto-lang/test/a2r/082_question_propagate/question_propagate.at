@@ -1,0 +1,13 @@
+fn get_value() ?int {
+    let x = 42
+    May.val(x)
+}
+
+fn use_value() ?int {
+    let result = get_value()
+    result.?
+}
+
+fn main() {
+    let a = use_value()
+}

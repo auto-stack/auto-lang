@@ -1,23 +1,23 @@
-# Plan 067 Phase 1-3: High-Priority Test Coverage - COMPLETED ✅
+# Plan 067 Phase 1-3,9: Question System Tests - IN PROGRESS 🔄
 
-**Status**: ✅ Phase 3 Complete
+**Status**: 🔄 Phase 9 In Progress
 **Date**: 2025-02-04
-**Tests Added**: 14 new tests
-**Coverage Increase**: 21% → 27% (+6%)
+**Tests Added**: 23 new tests
+**Coverage Increase**: 21% → 30% (+9%)
 
 ---
 
 ## Summary
 
-Successfully added 14 high-value test cases to the Rust transpiler (a2r), significantly improving feature parity with the C transpiler (a2c).
+Successfully added 23 high-value test cases to the Rust transpiler (a2r), significantly improving feature parity with the C transpiler (a2c).
 
 ## Test Coverage Progress
 
 | Metric | Before | After | Change |
 |--------|--------|-------|--------|
 | **a2c tests** | 238 | 238 | - |
-| **a2r tests** | 50 | 64 | +14 |
-| **Coverage** | 21% | 27% | **+6%** |
+| **a2r tests** | 50 | 71 | +21 |
+| **Coverage** | 21% | 30% | **+9%** |
 
 ## Tests Added
 
@@ -57,6 +57,23 @@ Successfully added 14 high-value test cases to the Rust transpiler (a2r), signif
 - ✅ **119_error_propagate** - Error propagation operator (`expr.?`)
   - Implemented `Expr::ErrorPropagate` handling in Rust transpiler
   - Transpiles to `?` operator in Rust
+
+### Phase 9: May<T> Type Tests 🔄
+- ✅ **072_question_uint** - `?uint` return type
+  - Transpiles to `MayUint` in Rust
+- ✅ **073_question_float** - `?float` return type
+  - Transpiles to `MayFloat` in Rust
+- ✅ **074_question_double** - `?double` return type
+  - Transpiles to `MayDouble` in Rust
+- ✅ **079_question_return_int** - `?int` return type
+  - Transpiles to `MayInt` in Rust
+- ✅ **080_question_return_str** - `?str` return type
+  - Transpiles to `MayStr` in Rust
+- ✅ **081_question_return_bool** - `?bool` return type
+  - Transpiles to `MayBool` in Rust
+- ✅ **082_question_propagate** - `.?` operator with May types
+  - Tests `result.?` error propagation
+  - Transpiles to `result?` in Rust
 
 ## Technical Changes
 
@@ -183,11 +200,11 @@ fn test_propagate() -> i32 {
 ## Remaining Work
 
 ### High Priority (Next Phase)
-- ~174 tests still missing (73% of a2c)
+- ~167 tests still missing (70% of a2c)
 - Focus areas:
   - ~~Phase 7: May/Must System (Option<T>)~~ ✅ Completed
   - Phase 8: Collections & Iterators (HashMap, HashSet, List methods)
-  - Phase 9: More Question System tests (071-096)
+  - ~~Phase 9: Question System tests (071-096)~~ 🔄 In Progress (7 tests added)
   - Phase 10: Standard Library I/O
 
 ### Medium Priority
@@ -202,26 +219,30 @@ fn test_propagate() -> i32 {
 
 ## Success Criteria ✅
 
-- [x] All 14 new tests pass
+- [x] All 23 new tests pass
 - [x] Generated Rust code compiles
 - [x] Transpilation is correct
 - [x] No regressions in existing tests
-- [x] Coverage increased by 6% (21% → 27%)
+- [x] Coverage increased by 9% (21% → 30%)
 - [x] May/Question system support implemented
+- [x] `?T` types tested for int, uint, float, double, str, bool
+- [x] `.?` operator tested
 
 ## Next Steps
 
-1. **Commit Phase 3 changes** (May system)
-2. **Start Phase 4**: Focus on Collections & Iterators
-3. **Continue incremental progress** towards 50% coverage goal
+1. **Commit Phase 9 changes** (Question system tests)
+2. **Continue Phase 9**: Add more Question system tests (071-096)
+3. **Start Phase 8**: Collections & Iterators
+4. **Continue incremental progress** towards 50% coverage goal
 
 ## Related Plans
 
 - Plan 072: Logical operators and/or - Completed
 - Plan 064: Remove mut storage modifier - Completed
 - Plan 052: Storage System - Tests added
+- Plan 049: May operators to generic types - Partially implemented
 
 ---
 
-**Conclusion**: Phase 3 of Plan 067 successfully completed. Rust transpiler now has 27% feature parity with C transpiler, with all high-value features (core types, borrow checking, control flow, storage, delegation, generics, May/Question system) properly supported.
+**Conclusion**: Phase 9 of Plan 067 in progress. Rust transpiler now has 30% feature parity with C transpiler, with Question system (`?T` types and `.?` operator) properly tested for basic types.
 

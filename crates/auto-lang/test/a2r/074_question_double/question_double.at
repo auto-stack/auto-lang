@@ -1,0 +1,8 @@
+fn get_double() ?double {
+    let x = 3.14
+    x
+}
+
+fn main() {
+    let a = get_double()
+}
