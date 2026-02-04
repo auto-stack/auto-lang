@@ -51,6 +51,11 @@ pub struct Codegen {
     /// Each level has its own captured variable map (name -> capture index)
     /// Stack allows proper nesting: inner closures can capture from outer closures
     pub captured_vars_stack: Vec<HashMap<String, usize>>,
+
+    /// Plan 073: Loop exit tracking for break/continue statements
+    /// Each nested loop has a Vec of jump placeholders that need to be patched
+    /// when the loop exits
+    pub loop_exits: Vec<Vec<usize>>,
 }
 
 impl Codegen {
@@ -81,6 +86,7 @@ impl Codegen {
             locals: HashMap::new(),
             scope_stack,
             captured_vars_stack: Vec::new(),
+            loop_exits: Vec::new(),
         }
     }
 
@@ -205,6 +211,9 @@ impl Codegen {
             }
             // Plan 073: For statement support
             Stmt::For(for_stmt) => {
+                // Push new loop exit tracking
+                self.loop_exits.push(Vec::new());
+
                 // Handle range-based for loops: for x in start..end { ... }
                 // Only support simple range iteration for now
                 match &for_stmt.iter {
@@ -256,18 +265,29 @@ impl Codegen {
                             let current_pos = self.code.len() as i16;
                             self.emit_i16(loop_start - current_pos);
 
-                            // Patch exit jump
+                            // This is the loop exit point - patch all break jumps here
+                            let loop_exit = self.code.len();
+
+                            // Patch exit jump (for loop condition)
                             self.patch_jump(jump_to_end);
 
                             // Pop loop scope
                             self.pop_scope();
+
+                            // Patch all break statements
+                            let exits = self.loop_exits.pop().unwrap();
+                            for exit_placeholder in exits {
+                                self.patch_jump(exit_placeholder);
+                            }
                         } else {
                             // For now, only support range expressions
+                            self.loop_exits.pop();
                             return Err(AutoError::Msg("For loops with non-range expressions not supported yet".to_string()));
                         }
                     }
                     Iter::Indexed(index_name, iter_name) => {
                         // TODO: Implement indexed iteration: for i, x in 0..10 { ... }
+                        self.loop_exits.pop();
                         return Err(AutoError::Msg("Indexed for loops not supported yet".to_string()));
                     }
                     Iter::Cond => {
@@ -290,8 +310,17 @@ impl Codegen {
                         let current_pos = self.code.len() as i16;
                         self.emit_i16(loop_start - current_pos);
 
-                        // Patch exit jump
+                        // This is the loop exit point - patch all break jumps here
+                        let loop_exit = self.code.len();
+
+                        // Patch exit jump (for loop condition)
                         self.patch_jump(jump_to_end);
+
+                        // Patch all break statements
+                        let exits = self.loop_exits.pop().unwrap();
+                        for exit_placeholder in exits {
+                            self.patch_jump(exit_placeholder);
+                        }
                     }
                     Iter::Ever => {
                         // Infinite loop: for ever { ... }
@@ -304,16 +333,34 @@ impl Codegen {
                         self.emit(OpCode::JMP);
                         let current_pos = self.code.len() as i16;
                         self.emit_i16(loop_start - current_pos);
+
+                        // This is the loop exit point - patch all break jumps here
+                        let loop_exit = self.code.len();
+
+                        // Patch all break statements
+                        let exits = self.loop_exits.pop().unwrap();
+                        for exit_placeholder in exits {
+                            self.patch_jump(exit_placeholder);
+                        }
                     }
                     Iter::Call(_) => {
+                        self.loop_exits.pop();
                         return Err(AutoError::Msg("For loops with Call expressions not supported yet".to_string()));
                     }
                 }
             }
             Stmt::Break => {
-                // TODO: Implement break statement
-                // Need to track loop exit points to jump to
-                return Err(AutoError::Msg("Break statement not supported yet".to_string()));
+                // Plan 073: Break statement support
+                // Check if we're inside a loop
+                if self.loop_exits.last().is_some() {
+                    // Emit JMP instruction
+                    self.emit(OpCode::JMP);
+                    // Add placeholder to current loop's exit list
+                    let exit_placeholder = self.emit_placeholder_i16();
+                    self.loop_exits.last_mut().unwrap().push(exit_placeholder);
+                } else {
+                    return Err(AutoError::Msg("Break statement outside of loop".to_string()));
+                }
             }
             _ => {
                 // TODO: Implement other statements

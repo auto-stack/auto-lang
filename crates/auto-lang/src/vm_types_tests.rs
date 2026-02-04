@@ -860,5 +860,99 @@ fn main() -> int {
     assert!(bytecode.contains(&0x2C), "Expected GET_ELEM opcode (0x2C)");
 }
 
+// Plan 073: Break statement tests
+
+#[test]
+fn test_break_in_range_loop_compiles() {
+    let source = r#"
+fn main() -> int {
+    for x in 0..10 {
+        break
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain JMP for break statement
+    let jmp_count = bytecode.iter().filter(|&&b| b == 0x60).count();
+    assert!(jmp_count >= 2, "Expected at least 2 JMP opcodes (0x60) - one for loop, one for break");
+}
+
+#[test]
+fn test_break_in_conditional_loop_compiles() {
+    let source = r#"
+fn main() -> int {
+    let mut i = 0
+    for i < 10 {
+        i = i + 1
+        if i > 5 {
+            break
+        }
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain JMP_IF_Z for condition and JMP for break
+    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61) for condition");
+    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60) for break");
+}
+
+#[test]
+fn test_break_in_infinite_loop_compiles() {
+    let source = r#"
+fn main() -> int {
+    for ever {
+        break
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain JMP for both loop and break
+    let jmp_count = bytecode.iter().filter(|&&b| b == 0x60).count();
+    assert!(jmp_count >= 2, "Expected at least 2 JMP opcodes (0x60)");
+}
+
+#[test]
+fn test_nested_loops_with_break_compiles() {
+    let source = r#"
+fn main() -> int {
+    for x in 0..10 {
+        for y in 0..10 {
+            break  // Breaks inner loop
+        }
+        break  // Breaks outer loop
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should have multiple JMPs for loops and breaks
+    let jmp_count = bytecode.iter().filter(|&&b| b == 0x60).count();
+    assert!(jmp_count >= 4, "Expected at least 4 JMP opcodes (0x60) for nested loops and breaks");
+}
+
+#[test]
+fn test_break_with_array_compiles() {
+    let source = r#"
+fn main() -> int {
+    let arr = [1, 2, 3, 4, 5]
+    for i in 0..5 {
+        let val = arr[i]
+        if val == 3 {
+            break
+        }
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain loop opcodes, array indexing, and break
+    assert!(bytecode.contains(&0x52), "Expected LT opcode (0x52)");
+    assert!(bytecode.contains(&0x2C), "Expected GET_ELEM opcode (0x2C)");
+    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60) for break");
+}
+
 
 
