@@ -109,7 +109,7 @@ pub fn shim_print_f32(task: &mut AutoTask, _vm: &BigVM) -> Result<(), VMError> {
 pub fn shim_print_str(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
     let str_index = task.ram.pop_i32() as u16;
     if let Some(bytes) = vm.get_string(str_index) {
-        let s = String::from_utf8_lossy(bytes);
+        let s = String::from_utf8_lossy(&bytes);
         println!("{}", s);
     } else {
         println!("<invalid string index: {}>", str_index);

@@ -10,6 +10,21 @@ use auto_val::Op;
 use std::collections::{HashMap, HashSet};
 use miette::{SourceSpan, ByteOffset};
 
+/// Plan 073: Type tags for object field values
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectType {
+    Int,
+    Uint,
+    Float,
+    Double,
+    String,
+    Bool,
+    Char,
+    // Plan 073: Nested types for object/array fields
+    NestedObject,
+    Array,
+}
+
 /// Codegen: Compiles AST directly to BigVM Bytecode
 pub struct Codegen {
     pub code: Vec<u8>,
@@ -21,6 +36,8 @@ pub struct Codegen {
     /// Object key pool (stores keys for object literals)
     /// Each entry is a Vec of keys for one object literal
     pub object_keys: Vec<Vec<auto_val::ValueKey>>,
+    /// Plan 073: Object field types (stores type of each field value)
+    pub object_types: Vec<Vec<ObjectType>>,
 
     /// Symbol table: Maps variable name -> local index (bp+0, bp+1, bp+2, ...)
     /// Used during compilation to emit LOAD_LOC_N and STORE_LOC_N
@@ -60,6 +77,7 @@ impl Codegen {
             intrinsics,
             strings: Vec::new(),
             object_keys: Vec::new(),
+            object_types: Vec::new(),
             locals: HashMap::new(),
             scope_stack,
             captured_vars_stack: Vec::new(),
@@ -268,6 +286,13 @@ impl Codegen {
                     self.ast_key_to_value_key(&pair.key)
                 }).collect();
                 let key_index = self.object_keys.len() as u16;
+
+                // Plan 073: Track field types for runtime conversion
+                let types: Vec<ObjectType> = pairs.iter().map(|pair| {
+                    self.infer_object_type(&pair.value)
+                }).collect();
+                self.object_types.push(types.clone());
+
                 self.object_keys.push(keys);
 
                 // Emit CREATE_OBJ with key_index and field count
@@ -275,6 +300,18 @@ impl Codegen {
                 self.emit(OpCode::CREATE_OBJ);
                 self.code.extend_from_slice(&key_index.to_le_bytes());
                 self.code.push(field_count);
+            }
+            // Plan 073: Array literal support [elem1, elem2, ...]
+            Expr::Array(elems) => {
+                // Evaluate each element expression (pushes values onto stack)
+                for elem in elems {
+                    self.compile_expr(elem)?;
+                }
+
+                // Emit CREATE_ARRAY with element count
+                let elem_count = elems.len() as u8;
+                self.emit(OpCode::CREATE_ARRAY);
+                self.code.push(elem_count);
             }
             Expr::Str(s) => {
                 // Add string to constant pool and emit LOAD_STR <index>
@@ -314,6 +351,15 @@ impl Codegen {
 
                 self.emit(OpCode::GET_FIELD);
                 self.code.extend_from_slice(&field_idx.to_le_bytes());
+            }
+            // Plan 073: Array indexing (arr[index])
+            Expr::Index(arr, idx) => {
+                // Compile array expression (should push array_id onto stack)
+                self.compile_expr(arr)?;
+                // Compile index expression (should push index onto stack)
+                self.compile_expr(idx)?;
+                // Emit GET_ELEM (pops array_id and index, pushes element value)
+                self.emit(OpCode::GET_ELEM);
             }
             Expr::Bina(lhs, op, rhs) => {
                 // Assignment is special: compile RHS first, then store to LHS
@@ -680,6 +726,24 @@ impl Codegen {
     fn is_double_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
         // If either operand is double, use double precision
         matches!(lhs, Expr::Double(_, _)) || matches!(rhs, Expr::Double(_, _))
+    }
+
+    // Plan 073: Convert expression to ObjectType for object field tracking
+    fn infer_object_type(&self, expr: &Expr) -> ObjectType {
+        match expr {
+            Expr::Float(_, _) => ObjectType::Float,
+            Expr::Double(_, _) => ObjectType::Double,
+            Expr::Int(_) | Expr::I8(_) | Expr::I64(_) => ObjectType::Int,
+            Expr::Uint(_) | Expr::U8(_) | Expr::U64(_) | Expr::Byte(_) => ObjectType::Uint,
+            Expr::Str(_) | Expr::CStr(_) => ObjectType::String,
+            Expr::Char(_) => ObjectType::Char,
+            Expr::Bool(_) => ObjectType::Bool,
+            // Plan 073: Nested object and array types
+            Expr::Object(_) => ObjectType::NestedObject,
+            Expr::Array(_) => ObjectType::Array,
+            // For complex expressions, default to Int (will be refined later with full type inference)
+            _ => ObjectType::Int,
+        }
     }
 
     fn emit_placeholder_i16(&mut self) -> usize {

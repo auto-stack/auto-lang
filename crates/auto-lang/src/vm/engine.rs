@@ -1,4 +1,5 @@
 use crate::vm::channel::{AutoChannel, ChannelId};
+use crate::vm::codegen::ObjectType;
 use crate::vm::native::NativeInterface;
 use crate::vm::opcode::OpCode;
 use crate::vm::task::{AutoTask, TaskId, TaskStatus};
@@ -68,8 +69,8 @@ pub enum VMError {
 pub struct BigVM {
     pub flash: Arc<VirtualFlash>,
     pub native_interface: Arc<NativeInterface>,
-    /// String constant pool
-    pub strings: Arc<Vec<Vec<u8>>>,
+    /// String constant pool (Plan 073: Made mutable for runtime string field access)
+    pub strings: Arc<RwLock<Vec<Vec<u8>>>>,
 
     pub tasks: DashMap<TaskId, Arc<Mutex<AutoTask>>>,
     pub id_gen: AtomicU64,
@@ -93,6 +94,10 @@ pub struct BigVM {
     // Object Registry (Plan 073: Object literals)
     pub objects: DashMap<u64, Arc<RwLock<crate::universe::ObjectData>>>,
     pub object_id_gen: AtomicU64,
+
+    // Array Registry (Plan 073: Array literals)
+    pub arrays: DashMap<u64, Arc<RwLock<Vec<auto_val::Value>>>>,
+    pub array_id_gen: AtomicU64,
 }
 
 impl BigVM {
@@ -102,7 +107,7 @@ impl BigVM {
         Self {
             flash: Arc::new(flash),
             native_interface: Arc::new(native_interface),
-            strings: Arc::new(Vec::new()),
+            strings: Arc::new(RwLock::new(Vec::new())),
             tasks: DashMap::new(),
             id_gen: AtomicU64::new(0),
             channels: DashMap::new(),
@@ -115,12 +120,15 @@ impl BigVM {
             closure_id_gen: AtomicU32::new(0),
             objects: DashMap::new(),
             object_id_gen: AtomicU64::new(0),
+            // Plan 073: Array registry
+            arrays: DashMap::new(),
+            array_id_gen: AtomicU64::new(0),
         }
     }
 
     /// Load strings from a module's string constant pool
     pub fn load_strings(&mut self, strings: Vec<Vec<u8>>) {
-        self.strings = Arc::new(strings);
+        self.strings = Arc::new(RwLock::new(strings));
     }
 
     /// Spawn a new task starting at the given instruction pointer
@@ -133,8 +141,9 @@ impl BigVM {
     }
 
     /// Get string by index from the constant pool
-    pub fn get_string(&self, index: u16) -> Option<&[u8]> {
-        self.strings.get(index as usize).map(|v| v.as_slice())
+    pub fn get_string(&self, index: u16) -> Option<Vec<u8>> {
+        let strings = self.strings.read().unwrap();
+        strings.get(index as usize).cloned()
     }
 
     /// The main async loop that schedules and runs tasks.
@@ -309,14 +318,67 @@ impl BigVM {
 
                     // Get keys from flash metadata
                     let keys = &self.flash.object_keys[key_index as usize];
+                    // Get types from flash metadata
+                    let types = &self.flash.object_types[key_index as usize];
 
                     // Pop values from stack (in reverse order since last value is on top)
+                    // Convert each value based on its type
                     let mut values = Vec::with_capacity(field_count as usize);
-                    for _ in 0..field_count {
-                        let val_bits = task.ram.pop_i32();
-                        // Convert i32 back to Value (assume all values are integers for now)
-                        // TODO: Support other value types
-                        values.push(auto_val::Value::Int(val_bits));
+                    for i in 0..field_count {
+                        let type_idx = (field_count - 1 - i) as usize;
+                        let obj_type = types.get(type_idx).copied().unwrap_or(ObjectType::Int);
+
+                        let value = match obj_type {
+                            ObjectType::Int => {
+                                let bits = task.ram.pop_i32();
+                                auto_val::Value::Int(bits)
+                            }
+                            ObjectType::Uint => {
+                                let bits = task.ram.pop_i32();
+                                auto_val::Value::Uint(bits as u32)
+                            }
+                            ObjectType::Float => {
+                                let bits = task.ram.pop_f32();
+                                auto_val::Value::Float(bits as f64)
+                            }
+                            ObjectType::Double => {
+                                let bits = task.ram.pop_f64();
+                                auto_val::Value::Double(bits)
+                            }
+                            ObjectType::String => {
+                                let str_idx = task.ram.pop_i32() as usize;
+                                let strings = self.strings.read().unwrap();
+                                if let Some(str_bytes) = strings.get(str_idx) {
+                                    let s = String::from_utf8_lossy(str_bytes).to_string();
+                                    auto_val::Value::Str(s.into())
+                                } else {
+                                    auto_val::Value::Nil
+                                }
+                            }
+                            ObjectType::Bool => {
+                                let bits = task.ram.pop_i32();
+                                auto_val::Value::Bool(bits != 0)
+                            }
+                            ObjectType::Char => {
+                                let bits = task.ram.pop_i32();
+                                if let Some(c) = char::from_u32(bits as u32) {
+                                    auto_val::Value::Char(c)
+                                } else {
+                                    auto_val::Value::Nil
+                                }
+                            }
+                            // Plan 073: Nested object field - store object ID as VmRef
+                            ObjectType::NestedObject => {
+                                let nested_id = task.ram.pop_i32() as usize;
+                                auto_val::Value::VmRef(auto_val::VmRef { id: nested_id })
+                            }
+                            // Plan 073: Array field - store as VmRef (for when arrays are implemented)
+                            ObjectType::Array => {
+                                let array_id = task.ram.pop_i32() as usize;
+                                auto_val::Value::VmRef(auto_val::VmRef { id: array_id })
+                            }
+                        };
+                        values.push(value);
                     }
 
                     // Create object from key-value pairs
@@ -334,6 +396,72 @@ impl BigVM {
                     // Push object ID onto stack
                     task.ram.push_i32(obj_id as i32);
                 }
+                // Plan 073: Array literal support
+                OpCode::CREATE_ARRAY => {
+                    let elem_count = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+
+                    // Pop elements from stack (in reverse order since last element is on top)
+                    let mut elems = Vec::with_capacity(elem_count as usize);
+                    for i in 0..elem_count {
+                        let idx = (elem_count - 1 - i) as usize;
+                        // Pop element and convert to Value
+                        let bits = task.ram.pop_i32();
+
+                        // For now, treat all elements as integers
+                        // TODO: Add type metadata for arrays to support mixed types
+                        elems.insert(idx, auto_val::Value::Int(bits));
+                    }
+
+                    // Store array in arrays registry and get ID
+                    let array_id = self.array_id_gen.fetch_add(1, Ordering::SeqCst);
+                    self.arrays.insert(array_id, Arc::new(RwLock::new(elems)));
+
+                    // Push array ID onto stack
+                    task.ram.push_i32(array_id as i32);
+                }
+                // Plan 073: Array element access (arr[index])
+                OpCode::GET_ELEM => {
+                    // Stack: array_id, index
+                    // Pop index first (top of stack)
+                    let index = task.ram.pop_i32() as usize;
+                    // Pop array_id
+                    let array_id = task.ram.pop_i32() as u64;
+
+                    // Get array from registry
+                    if let Some(array_ref) = self.arrays.get(&array_id) {
+                        let array = array_ref.read().unwrap();
+
+                        // Check bounds
+                        if index < array.len() {
+                            // Get element value
+                            let elem = &array[index];
+
+                            // Push element value onto stack based on type
+                            match elem {
+                                auto_val::Value::Int(i) => task.ram.push_i32(*i),
+                                auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
+                                auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
+                                auto_val::Value::Double(d) => task.ram.push_f64(*d),
+                                auto_val::Value::Bool(b) => task.ram.push_i32(if *b { 1 } else { 0 }),
+                                auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
+                                auto_val::Value::Nil => task.ram.push_i32(0),
+                                _ => {
+                                    // Unsupported type - push 0 as placeholder
+                                    task.ram.push_i32(0);
+                                }
+                            }
+                        } else {
+                            // Index out of bounds - push 0 as error sentinel
+                            // TODO: Proper error handling for out-of-bounds access
+                            task.ram.push_i32(0);
+                        }
+                    } else {
+                        // Array not found - push 0 as error sentinel
+                        // TODO: Proper error handling for invalid array IDs
+                        task.ram.push_i32(0);
+                    }
+                }
                 // Plan 073: Object field access (obj.field)
                 OpCode::GET_FIELD => {
                     let field_idx = self.flash.read_u16(task.ip);
@@ -342,9 +470,15 @@ impl BigVM {
                     // Pop object ID from stack
                     let obj_id = task.ram.pop_i32() as u64;
 
-                    // Get field name from strings pool
-                    let field_bytes = &self.strings[field_idx as usize];
-                    let field_name = String::from_utf8_lossy(field_bytes);
+                    // Get field name from strings pool (Plan 073: Now uses RwLock)
+                    let strings = self.strings.read().unwrap();
+                    let field_name = if let Some(field_bytes) = strings.get(field_idx as usize) {
+                        String::from_utf8_lossy(field_bytes).to_string()
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid string index: {}", field_idx)));
+                    };
+                    drop(strings); // Release lock before potentially writing below
 
                     // Get object from registry
                     if let Some(obj_ref) = self.objects.get(&obj_id) {
@@ -353,14 +487,30 @@ impl BigVM {
                         let key = auto_val::ValueKey::Str(field_name.into());
 
                         if let Some(value) = obj.get(&key) {
-                            // Push field value onto stack
-                            // For now, assume all values are integers
-                            // TODO: Support other value types
+                            // Push field value onto stack based on type
                             match value {
                                 auto_val::Value::Int(i) => task.ram.push_i32(*i),
+                                auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
+                                auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
+                                auto_val::Value::Double(d) => task.ram.push_f64(*d),
+                                auto_val::Value::Bool(b) => task.ram.push_i32(if *b { 1 } else { 0 }),
+                                auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
+                                auto_val::Value::Str(s) => {
+                                    // Plan 073: Add string to mutable pool and push index
+                                    let str_bytes = s.as_bytes().to_vec();
+                                    let mut strings = self.strings.write().unwrap();
+                                    let str_idx = strings.len() as u16;
+                                    strings.push(str_bytes);
+                                    drop(strings);
+                                    task.ram.push_i32(str_idx as i32);
+                                }
+                                auto_val::Value::Nil => task.ram.push_i32(0),
+                                // Plan 073: Nested objects/arrays - push their ID
+                                auto_val::Value::VmRef(vm_ref) => {
+                                    task.ram.push_i32(vm_ref.id as i32);
+                                }
                                 _ => {
-                                    // TODO: Support other value types
-                                    // For now, push 0 as placeholder
+                                    // Unsupported type - push 0 as placeholder
                                     task.ram.push_i32(0);
                                 }
                             }
@@ -565,16 +715,18 @@ impl BigVM {
                         // Pop value from stack (values pushed in order, popped in reverse)
                         let value = task.ram.pop_i32();
 
-                        // Look up variable name from string table
-                        if let Some(var_name) = self.strings.get(var_name_idx) {
-                            let var_name_str = String::from_utf8_lossy(var_name);
-                            env.insert(var_name_str.to_string(), Value::Int(value));
+                        // Look up variable name from string table (Plan 073: Now uses RwLock)
+                        let strings = self.strings.read().unwrap();
+                        let var_name_str = if let Some(var_name) = strings.get(var_name_idx) {
+                            String::from_utf8_lossy(var_name).to_string()
                         } else {
                             return Err(VMError::RuntimeError(format!(
                                 "Invalid string index for captured variable: {}",
                                 var_name_idx
                             )));
-                        }
+                        };
+                        drop(strings);
+                        env.insert(var_name_str, Value::Int(value));
                     }
 
                     // Create closure
@@ -591,19 +743,20 @@ impl BigVM {
                     let var_name_idx = self.flash.read_u16(task.ip) as usize;
                     task.ip += 2;
 
-                    if let Some(var_name_bytes) = self.strings.get(var_name_idx) {
-                        let var_name = String::from_utf8_lossy(var_name_bytes);
-
-                        // Look up variable in local scope (from stack frame)
-                        // TODO: For MVP, we'll need to implement proper scope lookup
-                        // For now, push placeholder value
-                        task.ram.push_i32(0);
+                    // Plan 073: Now uses RwLock for strings access
+                    let strings = self.strings.read().unwrap();
+                    let var_name = if let Some(var_name_bytes) = strings.get(var_name_idx) {
+                        String::from_utf8_lossy(var_name_bytes).to_string()
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid string index for variable: {}",
-                            var_name_idx
-                        )));
-                    }
+                            "Invalid string index: {}", var_name_idx)));
+                    };
+                    drop(strings);
+
+                    // Look up variable in local scope (from stack frame)
+                    // TODO: For MVP, we'll need to implement proper scope lookup
+                    // For now, push placeholder value
+                    task.ram.push_i32(0);
                 }
                 OpCode::LOAD_CAPTURED => {
                     // Plan 071 Phase 5: Load captured variable from current closure
@@ -617,33 +770,34 @@ impl BigVM {
                         VMError::RuntimeError("LOAD_CAPTURED called outside of closure context".to_string())
                     })?;
 
-                    if let Some(var_name_bytes) = self.strings.get(var_name_idx) {
-                        let var_name = String::from_utf8_lossy(var_name_bytes);
+                    // Plan 073: Now uses RwLock for strings access
+                    let strings = self.strings.read().unwrap();
+                    let var_name = if let Some(var_name_bytes) = strings.get(var_name_idx) {
+                        String::from_utf8_lossy(var_name_bytes).to_string()
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid string index: {}", var_name_idx)));
+                    };
+                    drop(strings);
 
-                        if let Some(closure) = self.closures.get(&closure_id) {
-                            if let Some(value) = closure.env.get(var_name.as_ref()) {
-                                // Push value to stack
-                                match value {
-                                    Value::Int(i) => task.ram.push_i32(*i),
-                                    // TODO: Handle other value types
-                                    _ => task.ram.push_i32(0),
-                                }
-                            } else {
-                                return Err(VMError::RuntimeError(format!(
-                                    "Captured variable '{}' not found in closure {}",
-                                    var_name, closure_id
-                                )));
+                    if let Some(closure) = self.closures.get(&closure_id) {
+                        if let Some(value) = closure.env.get(var_name.as_str()) {
+                            // Push value to stack
+                            match value {
+                                Value::Int(i) => task.ram.push_i32(*i),
+                                // TODO: Handle other value types
+                                _ => task.ram.push_i32(0),
                             }
                         } else {
                             return Err(VMError::RuntimeError(format!(
-                                "Invalid closure ID: {}",
-                                closure_id
+                                "Captured variable '{}' not found in closure {}",
+                                var_name, closure_id
                             )));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid string index for variable: {}",
-                            var_name_idx
+                            "Invalid closure ID: {}",
+                            closure_id
                         )));
                     }
                 }
@@ -661,21 +815,22 @@ impl BigVM {
                         VMError::RuntimeError("STORE_CAPTURED called outside of closure context".to_string())
                     })?;
 
-                    if let Some(var_name_bytes) = self.strings.get(var_name_idx) {
-                        let var_name = String::from_utf8_lossy(var_name_bytes);
-
-                        if let Some(mut closure) = self.closures.get_mut(&closure_id) {
-                            closure.env.insert(var_name.to_string(), Value::Int(value));
-                        } else {
-                            return Err(VMError::RuntimeError(format!(
-                                "Invalid closure ID: {}",
-                                closure_id
-                            )));
-                        }
+                    // Plan 073: Now uses RwLock for strings access
+                    let strings = self.strings.read().unwrap();
+                    let var_name = if let Some(var_name_bytes) = strings.get(var_name_idx) {
+                        String::from_utf8_lossy(var_name_bytes).to_string()
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid string index for variable: {}",
-                            var_name_idx
+                            "Invalid string index: {}", var_name_idx)));
+                    };
+                    drop(strings);
+
+                    if let Some(mut closure) = self.closures.get_mut(&closure_id) {
+                        closure.env.insert(var_name, Value::Int(value));
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid closure ID: {}",
+                            closure_id
                         )));
                     }
                 }

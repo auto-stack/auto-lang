@@ -3,6 +3,7 @@
 /// Implements the "Digital Twin" memory architecture:
 /// - VirtualFlash: Read-only code space
 /// - VirtualRAM: Read-write data space (Stack + Heap)
+use crate::vm::codegen::ObjectType;
 use std::collections::HashMap;
 
 /// A 32-bit word in the virtual machine
@@ -36,6 +37,8 @@ pub struct VirtualFlash {
     // Plan 073: Object keys metadata for object literal creation
     // Each entry is a Vec of keys for one object literal (indexed by key_index)
     pub object_keys: Vec<Vec<auto_val::ValueKey>>,
+    // Plan 073: Object field types for runtime value conversion
+    pub object_types: Vec<Vec<ObjectType>>,
 }
 
 impl VirtualFlash {
@@ -44,6 +47,7 @@ impl VirtualFlash {
             memory: vec![0; size],
             symbol_map: HashMap::new(),
             object_keys: Vec::new(),
+            object_types: Vec::new(),
         }
     }
 
@@ -52,15 +56,17 @@ impl VirtualFlash {
             memory: code,
             symbol_map: HashMap::new(),
             object_keys: Vec::new(),
+            object_types: Vec::new(),
         }
     }
 
-    // Plan 073: Create VirtualFlash with code and object_keys
+    // Plan 073: Create VirtualFlash with code, object_keys, and object_types
     pub fn new_with_code_and_keys(code: Vec<u8>, object_keys: Vec<Vec<auto_val::ValueKey>>) -> Self {
         Self {
             memory: code,
             symbol_map: HashMap::new(),
             object_keys,
+            object_types: Vec::new(), // Will be populated separately
         }
     }
 

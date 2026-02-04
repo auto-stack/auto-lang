@@ -24,8 +24,10 @@ pub enum OpCode {
     CONST_I64 = 0x16,     // Plan 073: 64-bit integer
     CONST_U64 = 0x17,     // Plan 073: 64-bit unsigned
     LOAD_STR = 0x1F,
+    GET_ELEM = 0x2C,      // Plan 073: Get element from array (array_id, index) -> value
+    GET_FIELD = 0x2D,     // Plan 073: Get field from object (obj_id, field_str_idx) -> value
     CREATE_OBJ = 0x2E,    // Plan 073: Create object from field_count -> object_id
-    GET_FIELD = 0x2F,     // Plan 073: Get field from object (obj_id, field_str_idx) -> value
+    CREATE_ARRAY = 0x2F,   // Plan 073: Create array from elem_count -> array_id
 
     // === Local Variables ===
     LOAD_LOCAL = 0x20,

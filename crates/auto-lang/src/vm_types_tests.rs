@@ -22,7 +22,7 @@ fn compile_to_bytecode(source: &str) -> Vec<u8> {
 }
 
 /// Plan 073: Helper function to compile with object_keys metadata
-fn compile_with_object_keys(source: &str) -> (Vec<u8>, Vec<Vec<auto_val::ValueKey>>) {
+fn compile_with_object_keys(source: &str) -> (Vec<u8>, Vec<Vec<auto_val::ValueKey>>, Vec<Vec<crate::vm::codegen::ObjectType>>) {
     let mut parser = Parser::from(source);
     let code = parser.parse().expect("Parse failed");
 
@@ -31,7 +31,7 @@ fn compile_with_object_keys(source: &str) -> (Vec<u8>, Vec<Vec<auto_val::ValueKe
         codegen.compile_stmt(&stmt).expect("Codegen failed");
     }
 
-    (codegen.code, codegen.object_keys)
+    (codegen.code, codegen.object_keys, codegen.object_types)
 }
 
 
@@ -446,12 +446,13 @@ fn main() -> int {
     0
 }
 "#;
-    let (bytecode, object_keys) = compile_with_object_keys(source);
+    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
     assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
     // Should have one object with 0 fields
     assert_eq!(object_keys.len(), 1, "Expected 1 object");
     assert_eq!(object_keys[0].len(), 0, "Expected 0 fields");
+    assert_eq!(object_types[0].len(), 0, "Expected 0 field types");
 }
 
 #[test]
@@ -462,12 +463,13 @@ fn main() -> int {
     0
 }
 "#;
-    let (bytecode, object_keys) = compile_with_object_keys(source);
+    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
     assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
     // Should have one object with 2 fields
     assert_eq!(object_keys.len(), 1, "Expected 1 object");
     assert_eq!(object_keys[0].len(), 2, "Expected 2 fields");
+    assert_eq!(object_types[0].len(), 2, "Expected 2 field types");
     // Should have CONST_I32 for the two integer values
     let const_i32_count = bytecode.iter().filter(|&&x| x == 0x10).count();
     assert!(const_i32_count >= 2, "Expected at least 2 CONST_I32 opcodes");
@@ -481,12 +483,14 @@ fn main() -> int {
     0
 }
 "#;
-    let (bytecode, object_keys) = compile_with_object_keys(source);
+    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode (at least 2 for nested objects)
     let create_obj_count = bytecode.iter().filter(|&&x| x == 0x2E).count();
     assert!(create_obj_count >= 2, "Expected at least 2 CREATE_OBJ opcodes");
     // Should have 2 objects
     assert_eq!(object_keys.len(), 2, "Expected 2 objects");
+    // Should have 2 type lists
+    assert_eq!(object_types.len(), 2, "Expected 2 type lists");
 }
 
 #[test]
@@ -502,7 +506,7 @@ fn main() -> int {
     // Should contain CREATE_OBJ opcode
     assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
     // Should contain GET_FIELD opcode
-    assert!(bytecode.contains(&0x2F), "Expected GET_FIELD opcode (0x2F)");
+    assert!(bytecode.contains(&0x2D), "Expected GET_FIELD opcode (0x2D)");
 }
 
 #[test]
@@ -519,8 +523,224 @@ fn main() -> int {
     let create_obj_count = bytecode.iter().filter(|&&x| x == 0x2E).count();
     assert!(create_obj_count >= 2, "Expected at least 2 CREATE_OBJ opcodes");
     // Should contain GET_FIELD opcodes (2 field accesses)
-    let get_field_count = bytecode.iter().filter(|&&x| x == 0x2F).count();
+    let get_field_count = bytecode.iter().filter(|&&x| x == 0x2D).count();
     assert!(get_field_count >= 2, "Expected at least 2 GET_FIELD opcodes");
+}
+
+// ============================================================================
+// Plan 073: Object Field Type Tests
+// ============================================================================
+
+#[test]
+fn test_object_with_float_field_compiles() {
+    let source = r#"
+fn main() -> int {
+    let obj = {x: 1.5, y: 2.5}
+    0
+}
+"#;
+    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    // Should contain CREATE_OBJ opcode
+    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    // Should have Float field types
+    assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::Float);
+    assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Float);
+}
+
+#[test]
+fn test_object_with_double_field_compiles() {
+    let source = r#"
+fn main() -> int {
+    let obj = {pi: 3.14159d, e: 2.71828d}
+    0
+}
+"#;
+    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    // Should contain CREATE_OBJ opcode
+    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    // Should have Double field types
+    assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::Double);
+    assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Double);
+}
+
+#[test]
+fn test_object_with_string_field_compiles() {
+    let source = r#"
+fn main() -> int {
+    let obj = {name: "Alice", city: "Boston"}
+    0
+}
+"#;
+    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    // Should contain CREATE_OBJ opcode
+    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    // Should have String field types
+    assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::String);
+    assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::String);
+}
+
+#[test]
+fn test_object_with_bool_field_compiles() {
+    let source = r#"
+fn main() -> int {
+    let obj = {active: true, verified: false}
+    0
+}
+"#;
+    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    // Should contain CREATE_OBJ opcode
+    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    // Should have Bool field types
+    assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::Bool);
+    assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Bool);
+}
+
+#[test]
+fn test_object_with_char_field_compiles() {
+    let source = r#"
+fn main() -> int {
+    let obj = {initial: 'A', grade: 'B'}
+    0
+}
+"#;
+    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    // Should contain CREATE_OBJ opcode
+    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    // Should have Char field types
+    assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::Char);
+    assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Char);
+}
+
+#[test]
+fn test_object_with_mixed_types_compiles() {
+    let source = r#"
+fn main() -> int {
+    let obj = {
+        name: "test",
+        count: 42,
+        price: 9.99,
+        active: true
+    }
+    0
+}
+"#;
+    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    // Should contain CREATE_OBJ opcode
+    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    // Should have mixed field types
+    assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::String);
+    assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Int);
+    assert_eq!(object_types[0][2], crate::vm::codegen::ObjectType::Float);
+    assert_eq!(object_types[0][3], crate::vm::codegen::ObjectType::Bool);
+}
+
+// ============================================================================
+// Plan 073: Nested Object and Array Field Tests
+// ============================================================================
+
+#[test]
+fn test_object_with_nested_object_compiles() {
+    let source = r#"
+fn main() -> int {
+    let obj = {
+        name: "test",
+        nested: {x: 1, y: 2}
+    }
+    0
+}
+"#;
+    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    // Should contain CREATE_OBJ opcode
+    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    // Should have 2 objects total (nested + outer)
+    assert_eq!(object_keys.len(), 2, "Expected 2 objects");
+    // Nested object is created first (index 0), outer object second (index 1)
+    // Nested object should have 2 Int fields
+    assert_eq!(object_types[0].len(), 2, "Expected 2 fields in nested object");
+    assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::Int);
+    assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Int);
+    // Outer object should have String and NestedObject fields
+    assert_eq!(object_types[1].len(), 2, "Expected 2 fields in outer object");
+    assert_eq!(object_types[1][0], crate::vm::codegen::ObjectType::String);
+    assert_eq!(object_types[1][1], crate::vm::codegen::ObjectType::NestedObject);
+}
+
+#[test]
+fn test_simple_array_compiles() {
+    let source = r#"
+fn main() -> int {
+    let arr = [1, 2, 3]
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CREATE_ARRAY opcode
+    assert!(bytecode.contains(&0x2F), "Expected CREATE_ARRAY opcode (0x2F)");
+}
+
+#[test]
+fn test_array_indexing_compiles() {
+    let source = r#"
+fn main() -> int {
+    let arr = [1, 2, 3]
+    let val = arr[0]
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CREATE_ARRAY opcode
+    assert!(bytecode.contains(&0x2F), "Expected CREATE_ARRAY opcode (0x2F)");
+    // Should contain GET_ELEM opcode
+    assert!(bytecode.contains(&0x2C), "Expected GET_ELEM opcode (0x2C)");
+}
+
+#[test]
+fn test_object_with_array_field_compiles() {
+    let source = r#"
+fn main() -> int {
+    let obj = {
+        name: "test",
+        items: [1, 2, 3]
+    }
+    0
+}
+"#;
+    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    // Should contain CREATE_OBJ opcode
+    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    // Should have String and Array field types
+    assert_eq!(object_types[0].len(), 2, "Expected 2 fields");
+    assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::String);
+    assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Array);
+}
+
+#[test]
+fn test_deeply_nested_objects_compiles() {
+    let source = r#"
+fn main() -> int {
+    let obj = {
+        level1: {
+            level2: {
+                value: 42
+            }
+        }
+    }
+    0
+}
+"#;
+    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    // Should contain 3 CREATE_OBJ opcodes
+    let create_obj_count = bytecode.iter().filter(|&&x| x == 0x2E).count();
+    assert!(create_obj_count >= 3, "Expected at least 3 CREATE_OBJ opcodes");
+    // Should have 3 objects total
+    assert_eq!(object_keys.len(), 3, "Expected 3 objects");
+    // Innermost object created first (index 0), then middle (index 1), then outer (index 2)
+    assert_eq!(object_types[0].len(), 1, "Expected 1 field in innermost object");
+    assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::Int);
+    assert_eq!(object_types[1].len(), 1, "Expected 1 field in middle object");
+    assert_eq!(object_types[1][0], crate::vm::codegen::ObjectType::NestedObject);
+    assert_eq!(object_types[2].len(), 1, "Expected 1 field in outer object");
+    assert_eq!(object_types[2][0], crate::vm::codegen::ObjectType::NestedObject);
 }
 
 

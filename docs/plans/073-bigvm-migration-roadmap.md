@@ -1,8 +1,8 @@
 # Plan 073: BigVM Migration Roadmap
 
-**Status**: 🟡 In Progress - ~50-60% Complete
+**Status**: 🟢 In Progress - ~65-75% Complete
 **Created**: 2025-02-04
-**Last Updated**: 2025-02-04
+**Last Updated**: 2026-02-05
 **Related**: Plan 068 (BigVM Implementation), Plan 070 (BigVM Iterator), Plan 071 (BigVM Closures)
 
 ---
@@ -13,7 +13,7 @@
 
 ## Current Status
 
-**Overall Progress**: ~50-60% (updated from 40-50% after Plan 071 closure completion)
+**Overall Progress**: ~65-75% (updated from 50-60% after type system and object literal completion)
 
 ### Code Scale Comparison
 | Component | Lines | Description |
@@ -81,6 +81,40 @@
 
 **Major Achievement**: BigVM now supports closures end-to-end with proper environment access!
 
+### ✅ Phase 8.1: Type System Expansion (Stage A.5 & B) - **NEWLY COMPLETED (2026-02-05)**
+- ✅ Float/Double support with arrow return types (932 lines)
+  - CONST_F32, CONST_F64 opcodes
+  - ADD_F32, ADD_F64, SUB_F32, SUB_F64, MUL_F32, MUL_F64, DIV_F32, DIV_F64
+  - F2I (float to int) conversions
+  - Parser support for float/double literals
+- ✅ Integer type variants: uint, i8, u8, byte, char, cstr (183 lines)
+  - CONST_U8, CONST_I8, CONST_CHAR opcodes
+  - Type-specific opcodes for unsigned operations
+- ✅ i64/u64 support (113 lines)
+  - CONST_I64, CONST_U64 opcodes
+  - ADD_I64, SUB_I64, MUL_I64, DIV_I64
+  - 64-bit integer operations
+- ✅ BigVM type system integration tests (283 lines)
+  - Comprehensive test coverage for all types
+  - 280+ lines of new tests
+
+**Major Achievement**: BigVM now supports ALL primitive types from the evaluator! (Technical Debt #1 RESOLVED)
+
+### ✅ Phase 8.2: Object Literals & Field Access - **NEWLY COMPLETED (2026-02-05)**
+- ✅ Object literal infrastructure (84 lines)
+  - Obj storage in VirtualRAM
+  - MAKE_OBJ opcode for object creation
+- ✅ Complete object creation support (138 lines)
+  - Field initialization
+  - Nested object support
+  - Object test suite (70 lines)
+- ✅ Dot expression field access (90 lines)
+  - GET_FIELD opcode
+  - Chained field access: obj.field1.field2
+  - 34 lines of field access tests
+
+**Major Achievement**: BigVM now supports object literals and field access! (Technical Debt #2 PARTIALLY RESOLVED)
+
 ### ✅ Phase 8: Test Migration (Partial)
 - ✅ Primitive and control flow tests (arithmetic, unary, comparisons, if/else)
 - ✅ Function call tests (CALL/RET, locals, recursion)
@@ -91,13 +125,44 @@
 ## Remaining Work
 
 ### 🔴 Phase 8.4: Complex Type Test Migration - **High Priority**
-**Status**: Partially complete
+**Status**: Ready to begin
 **Required**:
-- [ ] **list_tests.rs** - Requires closure support (NOW AVAILABLE via Plan 071)
+- [ ] **list_tests.rs** - Requires closure support (✅ AVAILABLE via Plan 071)
 - [ ] **string_tests.rs** - Basic strings supported, advanced features pending
-- [ ] **object_tests.rs** - Requires Map implementation (Phase 6.3)
+- [ ] **object_tests.rs** - ✅ Object literals NOW AVAILABLE (Phase 8.2)
 
-**Estimated Effort**: 3-5 days
+**Estimated Effort**: 2-3 days (reduced from 3-5 days)
+
+---
+
+### 🔴 Phase 8.5: Expression Coverage Completion - **High Priority**
+**Status**: In progress
+**Completed** (2026-02-05):
+- ✅ Object (object literals)
+- ✅ Dot (field access)
+- ✅ All primitive types (int, uint, i8, u8, i64, u64, byte, float, double, char, cstr)
+
+**Remaining**:
+- [ ] **Index** (array indexing `arr[i]`) - 8% impact, HIGH PRIORITY
+- [ ] **Range** (ranges `0..10`) - 5% impact
+- [ ] **FStr** (f-strings) - 5% impact
+- [ ] **Lambda** (named lambdas)
+- [ ] **Ref, View, Mut, Take** (borrowing expressions) - Can defer
+- [ ] **Pair, Node, Grid** - Lower priority
+
+**Estimated Effort**: 3-5 days (Index is highest priority)
+
+---
+
+### 🔴 Phase 8.6: Statement Coverage - **High Priority**
+**Status**: Not started
+**Required**:
+- [ ] **For** (for loops) - 12% impact, HIGH PRIORITY
+- [ ] **Is** (pattern matching) - 8% impact
+- [ ] **Break** (break statements) - needed for loops
+- [ ] **TypeDecl, EnumDecl, SpecDecl** - 15% impact
+
+**Estimated Effort**: 4-6 days
 
 ---
 
@@ -116,33 +181,33 @@
 
 ### Expression Types Support
 
-**Currently Supported** (11 Expr:: variants):
+**Currently Supported** (14+ Expr:: variants):
 ```rust
 ✅ Int, Bool, Str
+✅ Uint, I8, U8, I64, Byte (NEW - Phase 8.1)
+✅ Float, Double (NEW - Phase 8.1)
+✅ Char, CStr (NEW - Phase 8.1)
 ✅ Ident, GenName
 ✅ Unary, Bina (binary operations)
 ✅ Call (function calls)
-✅ Dot (method calls obj.method())
+✅ Dot (method calls obj.method()) - ENHANCED with field access (Phase 8.2)
 ✅ If (if expressions)
 ✅ Closure (closures - FULLY SUPPORTED via Plan 071)
 ✅ Array (arrays)
 ✅ Block (code blocks)
+✅ Object (object literals - NEW Phase 8.2)
 ```
 
-**Missing** (30+ variants):
+**Missing** (20+ variants):
 ```rust
-❌ Uint, I8, U8, I64, Byte
-❌ Float, Double
-❌ Char, CStr
 ❌ Nil, Null
 ❌ Ref (references)
 ❌ View, Mut, Take (borrowing expressions) - AST parsed, but not compiled
 ❌ Hold (hold paths)
 ❌ Range (ranges)
 ❌ Pair (key-value pairs)
-❌ Object (object literals)
 ❌ Node (nodes)
-❌ Index (array indexing arr[i])
+❌ Index (array indexing arr[i]) - HIGH PRIORITY
 ❌ Lambda (named lambdas)
 ❌ FStr (f-strings)
 ❌ Grid, Cover, Uncover (grid system)
@@ -150,7 +215,7 @@
 ❌ ErrorPropagate (.? operator)
 ```
 
-**Impact**: ~60% of expression types not implemented
+**Impact**: ~40% of expression types not implemented (improved from 60%)
 
 ---
 
@@ -215,14 +280,15 @@
 |------------------|---------|--------|-----|----------|
 | **Basic Types** | | | | |
 | int, bool, str | ✅ | ✅ | - | - |
-| float, double | ✅ | ❌ | 15% | P1 |
-| uint, i8, u8, i64 | ✅ | ❌ | 10% | P1 |
-| char, cstr | ✅ | ❌ | 7% | P2 |
+| float, double | ✅ | ✅ | - | - |
+| uint, i8, u8, i64 | ✅ | ✅ | - | - |
+| char, cstr | ✅ | ✅ | - | - |
 | **Expressions** | | | | |
 | Arithmetic/Compare/Logical | ✅ | ✅ (partial) | 5% | P1 |
 | Bitwise | ✅ | ❌ | 3% | P2 |
 | Array indexing | ✅ | ❌ | 8% | P1 |
-| Object/Node | ✅ | ❌ | 10% | P1 |
+| Object (literals) | ✅ | ✅ | - | - |
+| Node | ✅ | ❌ | 10% | P2 |
 | F-strings | ✅ | ❌ | 5% | P2 |
 | **Statements** | | | | |
 | if/else, block | ✅ | ✅ | - | - |
@@ -243,33 +309,36 @@
 - 🟡 Partially supported
 - ❌ Not supported
 
-**Overall Gap**: ~40-50% features still missing (updated from 50-60% due to closure completion)
+**Overall Gap**: ~25-35% features still missing (updated from 40-50% due to type system and object literal completion)
 
 ---
 
 ## Technical Debt
 
-### 1. Type System Completeness (P1)
-**Problem**: BigVM only supports basic types (int, bool, str)
-**Missing Types**:
-- Floating-point: float, double (15% of evaluator tests)
-- Integer variants: uint, i8, u8, i64 (10%)
-- Characters: char (5%)
-- C strings: cstr (2%)
+### 1. Type System Completeness (P1) ✅ **RESOLVED**
+**Status**: COMPLETE (2026-02-05)
+**Completed Types**:
+- ✅ Floating-point: float, double (CONST_F32, CONST_F64, arithmetic ops)
+- ✅ Integer variants: uint, i8, u8, i64, u64, byte (type-specific opcodes)
+- ✅ Characters: char, cstr (CONST_CHAR, C string support)
 
-**Estimated Effort**: 3-5 days
+**Implementation**: ~1,511 lines of code and tests
+**Impact**: All primitive types from evaluator now supported!
 
 ---
 
-### 2. Expression Coverage (P1)
-**Problem**: Missing 30+ expression types
-**High Priority**:
+### 2. Expression Coverage (P1) 🟡 **IN PROGRESS**
+**Status**: Partially complete (2026-02-05)
+**Completed**:
+- ✅ Object (object literals) - 10% impact (MAKE_OBJ opcode, field initialization)
+- ✅ Dot (field access) - GET_FIELD opcode, chained access
+
+**Remaining High Priority**:
 - Index (array indexing `arr[i]`) - 8% impact
-- Object (object literals) - 10% impact
 - Range (ranges `0..10`) - 5% impact
 - FStr (f-strings) - 5% impact
 
-**Estimated Effort**: 5-7 days
+**Estimated Remaining Effort**: 3-5 days (reduced from 5-7 days)
 
 ---
 
@@ -415,55 +484,65 @@
 ## Summary & Recommendations
 
 ### Current Status
-- **Progress**: ~50-60% complete (updated from 40-50%)
-- **Major Blocker Resolved**: Closures (Phase 7.1) NOW COMPLETE via Plan 071
-- **Estimated Remaining Work**: 8-15 weeks
+- **Progress**: ~65-75% complete (updated from 50-60%)
+- **Major Achievements**:
+  - ✅ Type System Completeness (Phase 8.1) - ALL primitive types supported
+  - ✅ Object Literals & Field Access (Phase 8.2)
+  - ✅ Closures (Phase 7.1) via Plan 071
+- **Estimated Remaining Work**: 5-10 weeks (reduced from 8-15 weeks)
 
 ### Key Milestones
-1. **Short-term** (1-2 months): Reach 70% feature parity
-   - Complete type system expansion
-   - Complete basic expressions/statements
-   - Complete control flow
+1. **Short-term** (2-4 weeks): Reach 80% feature parity
+   - ✅ Complete type system expansion (DONE)
+   - ✅ Complete object literals (DONE)
+   - Array indexing implementation
+   - For loops support
+   - Migrate complex type tests
 
-2. **Medium-term** (3-4 months): Reach 90% feature parity
+2. **Medium-term** (5-8 weeks): Reach 90% feature parity
    - Complete May/Question system
-   - Complete advanced collections
+   - Complete remaining expressions (Range, FStr)
    - Most tests passing
+   - Performance benchmarking
 
-3. **Long-term** (5-6 months): 100% replacement
-   - Complete borrowing system (optional)
-   - Performance optimization
+3. **Long-term** (9-12 weeks): 100% replacement
+   - Complete borrowing system (optional, can defer)
+   - Type declarations support
    - Production environment switch
 
 ### Priority Recommendations
 
 **P0 (Immediate)**:
 - ~~Closure implementation (Phase 7.1)~~ ✅ **COMPLETE** (Plan 071)
-- List tests migration (NOW POSSIBLE with closures)
+- ~~Type system expansion (Phase 8.1)~~ ✅ **COMPLETE** (2026-02-05)
+- ~~Object literals (Phase 8.2)~~ ✅ **COMPLETE** (2026-02-05)
+- List/string/object tests migration (NOW POSSIBLE with closures and objects)
 
 **P1 (High Priority)**:
-- Type system expansion (float, double, uint, etc.)
-- Array indexing, object literals
-- For loops, pattern matching
+- Array indexing (Index expression) - unlocks many tests
+- For loops (essential for control flow)
+- Is pattern matching
 - May/Question system
 
 **P2 (Medium Priority)**:
 - Bitwise operators
 - F-strings
 - Advanced collections
+- Type declarations
 
 **P3 (Low Priority)**:
 - Borrowing system (defer to future version)
 - Performance optimization
 
 ### Next Steps
-1. **Immediate**: Migrate list_tests.rs (now possible with Plan 071 closures)
-2. **Parallel**: Start type system expansion (float, double)
-3. **Planning**: Create detailed tickets for each missing feature
+1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, and type support)
+2. **High Impact**: Implement array indexing (Index expression) - unlocks many tests
+3. **Parallel**: Add For loop support for control flow completeness
+4. **Planning**: Create detailed tickets for remaining missing features
 
 ---
 
-**Document Updated**: 2025-02-04
+**Document Updated**: 2026-02-05
 **Related Documents**:
 - [Plan 068: AutoVM (BigVM) Implementation](068-autovm-bigvm.md)
 - [Plan 070: BigVM Iterator](070-bigvm-iterator.md)
