@@ -27,9 +27,10 @@ pub struct Codegen {
     /// Each scope has its own variable namespace
     pub scope_stack: Vec<HashMap<String, usize>>,
 
-    /// Captured variables for the current closure being compiled
-    /// Maps variable name -> capture index (0, 1, 2, ...)
-    pub captured_vars: HashMap<String, usize>,
+    /// Captured variables stack for nested closures (Plan 071 Phase 6.2)
+    /// Each level has its own captured variable map (name -> capture index)
+    /// Stack allows proper nesting: inner closures can capture from outer closures
+    pub captured_vars_stack: Vec<HashMap<String, usize>>,
 }
 
 impl Codegen {
@@ -57,7 +58,7 @@ impl Codegen {
             strings: Vec::new(),
             locals: HashMap::new(),
             scope_stack,
-            captured_vars: HashMap::new(),
+            captured_vars_stack: Vec::new(),
         }
     }
 
@@ -209,7 +210,7 @@ impl Codegen {
                 let name_str = name.to_string();
 
                 // Check if this is a captured variable (Plan 071)
-                if let Some(_capture_index) = self.captured_vars.get(&name_str) {
+                if let Some(_capture_index) = self.current_captured_vars().get(&name_str) {
                     // Variable is captured - emit LOAD_CAPTURED
                     self.emit_load_captured(&name_str);
                 } else if let Some(var_index) = self.lookup_var(&name_str) {
@@ -233,7 +234,7 @@ impl Codegen {
                         let name_str = name.to_string();
 
                         // Check if this is a captured variable (Plan 071)
-                        if self.captured_vars.contains_key(&name_str) {
+                        if self.current_captured_vars().contains_key(&name_str) {
                             // Variable is captured - emit STORE_CAPTURED
                             self.emit_store_captured(&name_str);
                         } else if let Some(var_index) = self.lookup_var(&name_str) {
@@ -428,6 +429,12 @@ impl Codegen {
                 // Plan 071: Compile closure with captured environment
                 self.compile_closure(closure)?;
             }
+            Expr::View(inner) | Expr::Mut(inner) | Expr::Take(inner) => {
+                // Plan 060: Ownership operators (.view, .mut, .take)
+                // For MVP, just compile the inner expression
+                // TODO: In future, implement proper borrow checking and ownership semantics
+                self.compile_expr(inner)?;
+            }
             _ => {
                 unimplemented!("Expression {:?}", expr);
             }
@@ -572,6 +579,43 @@ impl Codegen {
     }
 
     // === Closure Support (Plan 071) ===
+
+    /// Get the current captured_vars map (top of stack)
+    /// Plan 071 Phase 6.2: Helper for accessing captured variables
+    fn current_captured_vars(&self) -> &HashMap<String, usize> {
+        self.captured_vars_stack.last()
+            .unwrap_or_else(|| {
+                // If stack is empty, return empty map (not in a closure)
+                static EMPTY_MAP: std::sync::OnceLock<std::collections::HashMap<String, usize>> = std::sync::OnceLock::new();
+                EMPTY_MAP.get_or_init(|| HashMap::new())
+            })
+    }
+
+    /// Get mutable reference to current captured_vars map (top of stack)
+    /// Plan 071 Phase 6.2: Helper for modifying captured variables
+    fn current_captured_vars_mut(&mut self) -> &mut HashMap<String, usize> {
+        if self.captured_vars_stack.is_empty() {
+            // If stack is empty, push a new map
+            self.captured_vars_stack.push(HashMap::new());
+        }
+        self.captured_vars_stack.last_mut().unwrap()
+    }
+
+    /// Push a new captured_vars level (for compiling a closure body)
+    /// Plan 071 Phase 6.2: Support nested closures
+    fn push_captured_vars(&mut self, vars: HashMap<String, usize>) {
+        self.captured_vars_stack.push(vars);
+    }
+
+    /// Pop the current captured_vars level (after compiling a closure body)
+    /// Plan 071 Phase 6.2: Support nested closures
+    fn pop_captured_vars(&mut self) -> Option<HashMap<String, usize>> {
+        if self.captured_vars_stack.is_empty() {
+            None
+        } else {
+            self.captured_vars_stack.pop()
+        }
+    }
 
     /// Find free variables in an expression (variables that should be captured)
     /// Excludes: parameters and locally-defined variables
@@ -884,26 +928,18 @@ impl Codegen {
             }
         }
 
-        // Step 3: Compile closure body as separate function
-        // Save current captured_vars (for nested closures)
-        let old_captured_vars = std::mem::take(&mut self.captured_vars);
+        // Step 3: Emit CLOSURE opcode at current position (Plan 071 Phase 6.2)
+        // Save position for reloc entry
+        let closure_opcode_offset = self.code.len();
 
-        // Set up captured variable map for closure body compilation
-        for (idx, var_name) in free_vars.iter().enumerate() {
-            self.captured_vars.insert(var_name.clone(), idx);
-        }
-
-        // Compile closure body - this will generate bytecode after the CLOSURE opcode
-        // For now, we'll compile it inline and use a placeholder address
-        // TODO: In Phase 3.5, move closure body to separate function with reloc entry
+        // Create unique symbol name for this closure
+        let closure_symbol = format!("closure_{}", closure_opcode_offset);
 
         // Emit CLOSURE opcode with placeholder address
-        let func_addr_placeholder = self.code.len() + 1 + 4 + 1; // Skip CLOSURE + addr + count
-        let capture_count = free_vars.len() as u8;
-
         self.emit(OpCode::CLOSURE);
-        self.code.extend_from_slice(&(0u32).to_le_bytes()); // Placeholder func_addr
-        self.code.push(capture_count);
+        let func_addr_offset = self.code.len() as u32; // Position where func_addr will be
+        self.code.extend_from_slice(&(0u32).to_le_bytes()); // Placeholder - will be filled later
+        self.code.push(free_vars.len() as u8); // capture_count
 
         // Emit variable name indices for each captured variable
         for var_name in &free_vars {
@@ -911,12 +947,56 @@ impl Codegen {
             self.code.extend_from_slice(&var_idx.to_le_bytes());
         }
 
-        // For MVP, compile closure body inline (right after CLOSURE opcode)
-        // This is NOT correct for production, but allows testing
-        // In real implementation, closure body should be separate function
+        // Step 4: Compile closure body as separate function (Plan 071 Phase 6.2)
+        // Closure body is compiled AFTER the CLOSURE opcode (at the end of current code)
 
-        // Restore captured_vars
-        self.captured_vars = old_captured_vars;
+        // Create captured variable map for this closure
+        let mut new_captured_vars = HashMap::new();
+        for (idx, var_name) in free_vars.iter().enumerate() {
+            new_captured_vars.insert(var_name.clone(), idx);
+        }
+
+        // Push new captured_vars level for nested closures
+        self.push_captured_vars(new_captured_vars);
+
+        // Compile closure body at the END of current code
+        let func_addr = self.code.len() as u32;
+
+        // Enter new scope for closure parameters
+        self.push_scope();
+        for param in &closure.params {
+            self.add_var(&param.name);
+        }
+
+        // Compile closure body expression
+        self.compile_expr(&closure.body)?;
+
+        // Emit RET for closure
+        self.emit(OpCode::RET);
+        self.code.push(closure.params.len() as u8);
+
+        // Exit closure scope
+        self.pop_scope();
+
+        // Pop captured_vars (restore outer closure's captured vars)
+        self.pop_captured_vars();
+
+        // Step 5: Back-fill the func_addr in the CLOSURE opcode
+        // Now we know the actual function address, so we can fill it in
+        let func_addr_bytes = func_addr.to_le_bytes();
+        for (i, byte) in func_addr_bytes.iter().enumerate() {
+            self.code[func_addr_offset as usize + i] = *byte;
+        }
+
+        // Step 6: Create reloc entry for this closure (Plan 071 Phase 6.2)
+        self.relocs.push(crate::vm::loader::RelocEntry {
+            offset: func_addr_offset,
+            symbol_name: closure_symbol.clone(),
+            reloc_type: crate::vm::loader::RelocType::FuncCall,
+        });
+
+        // Export the closure function address
+        self.exports.insert(closure_symbol, func_addr);
 
         Ok(())
     }
