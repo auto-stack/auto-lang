@@ -1046,5 +1046,116 @@ fn main() -> int {
     assert!(lt_count >= 2, "Expected at least 2 LT opcodes for nested loops");
 }
 
+// ============================================================================
+// Plan 073: Iterator-based For Loop Tests
+// ============================================================================
+
+#[test]
+fn test_iterator_for_loop_basic_compiles() {
+    let source = r#"
+fn main() -> int {
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+    for x in list.iter() {
+        // Iterate over list elements
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CALL_NAT opcode for Iterator.next
+    assert!(bytecode.contains(&0x72), "Expected CALL_NAT opcode (0x72)");
+    // Should contain loop control opcodes
+    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60)");
+    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61)");
+}
+
+#[test]
+fn test_iterator_for_loop_with_break_compiles() {
+    let source = r#"
+fn main() -> int {
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+    for x in list.iter() {
+        if x == 2 {
+            break
+        }
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CALL_NAT for Iterator.next
+    assert!(bytecode.contains(&0x72), "Expected CALL_NAT opcode (0x72)");
+    // Should contain break opcodes
+    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61)");
+    // Multiple JMPs: one for loop, one for break
+    let jmp_count = bytecode.iter().filter(|&&b| b == 0x60).count();
+    assert!(jmp_count >= 2, "Expected at least 2 JMP opcodes");
+}
+
+#[test]
+fn test_iterator_for_loop_nested_compiles() {
+    let source = r#"
+fn main() -> int {
+    let list1 = List.new()
+    let list2 = List.new()
+    for x in list1.iter() {
+        for y in list2.iter() {
+            // Nested iterator-based loops
+        }
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain multiple CALL_NAT opcodes (one for each iterator)
+    let call_nat_count = bytecode.iter().filter(|&&b| b == 0x72).count();
+    assert!(call_nat_count >= 2, "Expected at least 2 CALL_NAT opcodes for nested iterators");
+}
+
+#[test]
+fn test_iterator_for_loop_with_body_compiles() {
+    let source = r#"
+fn main() -> int {
+    let list = List.new()
+    list.push(10)
+    list.push(20)
+    list.push(30)
+    let mut sum = 0
+    for x in list.iter() {
+        sum = sum + x
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CALL_NAT for Iterator.next
+    assert!(bytecode.contains(&0x72), "Expected CALL_NAT opcode (0x72)");
+    // Should contain arithmetic opcodes
+    assert!(bytecode.contains(&0x30), "Expected ADD opcode (0x30)");
+}
+
+#[test]
+fn test_iterator_for_loop_collect_compiles() {
+    let source = r#"
+fn main() -> int {
+    let list = List.new()
+    list.push(1)
+    list.push(2)
+    list.push(3)
+    let iter = list.iter()
+    let new_list = iter.collect()
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CALL_NAT for List.iter and Iterator.collect
+    assert!(bytecode.contains(&0x72), "Expected CALL_NAT opcode (0x72)");
+}
 
 

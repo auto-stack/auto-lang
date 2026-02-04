@@ -218,7 +218,7 @@ impl Codegen {
                 // Only support simple range iteration for now
                 match &for_stmt.iter {
                     Iter::Named(var_name) => {
-                        // Check if range is a Range expression
+                        // Check if range is a Range expression (for x in 0..10)
                         if let Expr::Range(range) = &for_stmt.range {
                             // Compile start expression and initialize loop variable
                             self.compile_expr(&range.start)?;
@@ -279,10 +279,74 @@ impl Codegen {
                             for exit_placeholder in exits {
                                 self.patch_jump(exit_placeholder);
                             }
+                        } else if let Expr::Call(call) = &for_stmt.range {
+                            // Plan 073: Iterator-based for loop: for x in list.iter() { ... }
+                            // Compile the iterator call to get the iterator object
+                            self.compile_expr(&for_stmt.range)?;
+
+                            // Store iterator in a local variable
+                            self.push_scope(); // New scope for loop variable and iterator
+                            let iter_index = self.scope_stack.last_mut().unwrap().len();
+                            self.scope_stack.last_mut().unwrap().insert("_iterator".to_string(), iter_index);
+                            self.emit_store_loc(iter_index);
+
+                            // Loop start label
+                            let loop_start = self.code.len() as i16;
+
+                            // Call iter.next() to get next element
+                            self.emit_load_loc(iter_index); // Load iterator
+
+                            // Emit CALL_NAT for Iterator.next
+                            // Look up the native function ID
+                            let native_id = if let Some(id) = BIGVM_NATIVES.lock().unwrap().get_id("Iterator.next") {
+                                id
+                            } else {
+                                self.loop_exits.pop();
+                                return Err(AutoError::Msg("Iterator.next native function not found".to_string()));
+                            };
+                            self.emit(OpCode::CALL_NAT);
+                            self.code.extend_from_slice(&native_id.to_le_bytes());
+
+                            // Check if result is nil (end of iteration)
+                            // Nil is represented as -1 in our VM
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(-1);
+                            self.emit(OpCode::EQ);
+                            self.emit(OpCode::JMP_IF_Z);
+                            let jump_to_end = self.emit_placeholder_i16();
+
+                            // Store the element to the loop variable
+                            let var_str = var_name.to_string();
+                            let var_index = self.scope_stack.last_mut().unwrap().len();
+                            self.scope_stack.last_mut().unwrap().insert(var_str.clone(), var_index);
+                            self.emit_store_loc(var_index);
+
+                            // Compile loop body
+                            self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+
+                            // JMP back to loop start
+                            self.emit(OpCode::JMP);
+                            let current_pos = self.code.len() as i16;
+                            self.emit_i16(loop_start - current_pos);
+
+                            // This is the loop exit point - patch all break jumps here
+                            let loop_exit = self.code.len();
+
+                            // Patch exit jump (for loop condition)
+                            self.patch_jump(jump_to_end);
+
+                            // Pop loop scope
+                            self.pop_scope();
+
+                            // Patch all break statements
+                            let exits = self.loop_exits.pop().unwrap();
+                            for exit_placeholder in exits {
+                                self.patch_jump(exit_placeholder);
+                            }
                         } else {
-                            // For now, only support range expressions
+                            // For now, only support range and iterator expressions
                             self.loop_exits.pop();
-                            return Err(AutoError::Msg("For loops with non-range expressions not supported yet".to_string()));
+                            return Err(AutoError::Msg("For loops with non-range/non-iterator expressions not supported yet".to_string()));
                         }
                     }
                     Iter::Indexed(index_name, iter_name) => {
@@ -419,9 +483,77 @@ impl Codegen {
                             self.patch_jump(exit_placeholder);
                         }
                     }
-                    Iter::Call(_) => {
-                        self.loop_exits.pop();
-                        return Err(AutoError::Msg("For loops with Call expressions not supported yet".to_string()));
+                    Iter::Call(call) => {
+                        // Plan 073: Iterator-based for loop: for x in list.iter() { ... }
+                        // Compile the iterator call to get the iterator object
+                        self.compile_expr(&Expr::Call(call.clone()))?;
+
+                        // Store iterator in a local variable
+                        self.push_scope(); // New scope for loop variable and iterator
+                        let iter_index = self.scope_stack.last_mut().unwrap().len();
+                        self.scope_stack.last_mut().unwrap().insert("_iterator".to_string(), iter_index);
+                        self.emit_store_loc(iter_index);
+
+                        // Loop start label
+                        let loop_start = self.code.len() as i16;
+
+                        // Call iter.next() to get next element
+                        self.emit_load_loc(iter_index); // Load iterator
+
+                        // Call next() method - this is a method call on the iterator
+                        // For BigVM, we need to call this as a native function
+                        // iterator.next() should be compiled as a method call
+                        // For now, we'll emit a CALL_NAT instruction for "Iterator.next"
+
+                        // Get the variable name from the call
+                        // The call should be like: list.iter() or iterator.next()
+                        // For for x in list.iter(), the variable name should be extracted from context
+                        // Since we don't have easy access to the variable name here, we'll use a placeholder
+                        // The user should have: for x in list.iter()
+
+                        // Emit CALL_NAT for Iterator.next
+                        self.emit(OpCode::CALL_NAT);
+                        // TODO: Get the native function ID for Iterator.next
+                        // For now, use a placeholder ID
+                        self.code.extend_from_slice(&0u32.to_le_bytes()); // Placeholder for native function ID
+
+                        // Check if result is nil (end of iteration)
+                        // Nil is represented as -1 in our VM
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(-1);
+                        self.emit(OpCode::EQ);
+                        self.emit(OpCode::JMP_IF_Z);
+                        let jump_to_end = self.emit_placeholder_i16();
+
+                        // Store the element to the loop variable
+                        // Get variable name from context - for now, use "x" as default
+                        let var_str = "x"; // TODO: Extract actual variable name from AST
+                        let var_index = self.scope_stack.last_mut().unwrap().len();
+                        self.scope_stack.last_mut().unwrap().insert(var_str.to_string(), var_index);
+                        self.emit_store_loc(var_index);
+
+                        // Compile loop body
+                        self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+
+                        // JMP back to loop start
+                        self.emit(OpCode::JMP);
+                        let current_pos = self.code.len() as i16;
+                        self.emit_i16(loop_start - current_pos);
+
+                        // This is the loop exit point - patch all break jumps here
+                        let loop_exit = self.code.len();
+
+                        // Patch exit jump (for loop condition)
+                        self.patch_jump(jump_to_end);
+
+                        // Pop loop scope
+                        self.pop_scope();
+
+                        // Patch all break statements
+                        let exits = self.loop_exits.pop().unwrap();
+                        for exit_placeholder in exits {
+                            self.patch_jump(exit_placeholder);
+                        }
                     }
                 }
             }
