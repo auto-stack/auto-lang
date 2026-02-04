@@ -322,14 +322,14 @@ widget counter {
         cols {
             button("➕") {
                 // callback function that works with data in the model
-                on_click: || count += 1
+                on_click: => count += 1
             }
             text(f"Count: {count}")
             button("➖") {
-                on_click: || count -= 1
+                on_click: => count -= 1
             }
             icon("🔄") {
-                on_click: || reset()
+                on_click: => reset()
             }
             style {gap-2 w-full}
         }
@@ -995,7 +995,7 @@ node button(id) {
 button("btn1") {
     text: "Click me"
     scale: Scale.M
-    onclick: || println("button clicked")
+    onclick: => println("button clicked")
 }
 
 // 多层节点
@@ -1020,7 +1020,7 @@ ul {
         label("Item 1: ")
         button("btn1") {
             text: "Click me"
-            onclick: || println("button clicked")
+            onclick: => println("button clicked")
         }
         div { label("div1")}
     }

@@ -30,6 +30,13 @@ impl Default for GeneratorConfig {
 pub struct GenerationSpec {
     pub data_source: DataSource,
     pub templates: Vec<TemplateSpec>,
+    /// Library files (.at files) to load before processing templates
+    /// These files can contain utility functions used by templates
+    pub lib_files: Vec<PathBuf>,
+    /// Library search paths for `use` statements
+    /// When a template uses `use util: check_on`, the interpreter will
+    /// search for `util.at` in these directories
+    pub lib_paths: Vec<PathBuf>,
 }
 
 /// Specification for a single template
@@ -73,8 +80,19 @@ impl CodeGenerator {
     pub fn generate(&mut self, spec: &GenerationSpec) -> GenResult<GenReport> {
         let start = std::time::Instant::now();
 
+        // Set library search paths for data loader (for use statements in data files)
+        self.data_loader.set_lib_paths(spec.lib_paths.clone());
+
         // Load data
-        let loaded_data = self.data_loader.load(spec.data_source.clone())?;
+        let mut loaded_data = self.data_loader.load(spec.data_source.clone())?;
+
+        // Set library search paths for template engine (for use statements in templates)
+        self.template_engine.set_lib_paths(spec.lib_paths.clone());
+
+        // Load library files (.at files) and merge their definitions into the universe
+        for lib_path in &spec.lib_files {
+            self.load_lib_file(lib_path, &mut loaded_data)?;
+        }
 
         let mut files_generated = Vec::new();
         let mut errors = Vec::new();
@@ -153,6 +171,29 @@ impl CodeGenerator {
 
         Ok(self.config.output_dir.join(&output_name))
     }
+
+    /// Load a library file (.at) and merge its definitions into the universe
+    fn load_lib_file(&self, lib_path: &PathBuf, loaded_data: &mut LoadedData) -> GenResult<()> {
+        use auto_lang::interp::Interpreter;
+
+        // Read the library file
+        let lib_code = std::fs::read_to_string(lib_path).map_err(|e| GenError::TemplateLoadError {
+            path: lib_path.clone(),
+            reason: e.to_string(),
+        })?;
+
+        // Create an interpreter with the current scope
+        let mut inter = Interpreter::with_univ(loaded_data.scope.clone());
+
+        // Evaluate the library code to load function definitions
+        // Note: eval() returns Value, not Result - errors are stored in the interpreter
+        let _result = inter.eval(&lib_code);
+
+        // The functions defined in the library are now in the shared universe/scope
+        // No need to explicitly merge - the interpreter uses the shared universe
+
+        Ok(())
+    }
 }
 
 /// Builder for CodeGenerator
@@ -160,6 +201,7 @@ pub struct CodeGeneratorBuilder {
     config: GeneratorConfig,
     data_source: Option<DataSource>,
     templates: Vec<TemplateSpec>,
+    lib_paths: Vec<PathBuf>,
 }
 
 impl CodeGeneratorBuilder {
@@ -168,6 +210,7 @@ impl CodeGeneratorBuilder {
             config: GeneratorConfig::default(),
             data_source: None,
             templates: Vec::new(),
+            lib_paths: Vec::new(),
         }
     }
 
@@ -191,6 +234,34 @@ impl CodeGeneratorBuilder {
         self
     }
 
+    /// Set library search paths for `use` statements
+    ///
+    /// # Example
+    /// ```
+    /// let builder = CodeGenerator::builder()
+    ///     .lib_paths(vec![
+    ///         PathBuf::from("./generator/utils"),
+    ///         PathBuf::from("./shared/templates")
+    ///     ]);
+    /// ```
+    pub fn lib_paths(mut self, paths: Vec<PathBuf>) -> Self {
+        self.lib_paths = paths;
+        self
+    }
+
+    /// Add a single library search path for `use` statements
+    ///
+    /// # Example
+    /// ```
+    /// let builder = CodeGenerator::builder()
+    ///     .add_lib_path("./generator/utils")
+    ///     .add_lib_path("/usr/local/my_modules");
+    /// ```
+    pub fn add_lib_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.lib_paths.push(path.into());
+        self
+    }
+
     pub fn data_source(mut self, source: DataSource) -> Self {
         self.data_source = Some(source);
         self
@@ -211,6 +282,36 @@ impl CodeGeneratorBuilder {
 
     pub fn build(self) -> GenResult<CodeGenerator> {
         Ok(CodeGenerator::new(self.config))
+    }
+
+    /// Create a GenerationSpec from the builder configuration
+    ///
+    /// This is a convenience method that combines all the builder settings
+    /// into a GenerationSpec that can be passed to CodeGenerator::generate().
+    ///
+    /// # Example
+    /// ```
+    /// let spec = CodeGenerator::builder()
+    ///     .data_source(DataSource::AutoCode("...".to_string()))
+    ///     .add_template("template.at", "output.txt")
+    ///     .add_lib_path("./utils")
+    ///     .create_spec()
+    ///     .unwrap();
+    ///
+    /// let mut generator = CodeGenerator::new(GeneratorConfig::default());
+    /// generator.generate(&spec)?;
+    /// ```
+    pub fn create_spec(self) -> GenResult<GenerationSpec> {
+        let data_source = self.data_source.ok_or_else(|| {
+            GenError::Other("data_source is required to create a GenerationSpec".to_string())
+        })?;
+
+        Ok(GenerationSpec {
+            data_source,
+            templates: self.templates,
+            lib_files: Vec::new(),
+            lib_paths: self.lib_paths,
+        })
     }
 }
 

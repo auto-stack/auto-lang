@@ -48,6 +48,10 @@ pub struct Interpreter {
     skip_check: bool,
     /// Enable error recovery to collect multiple errors
     enable_error_recovery: bool,
+    /// Library search paths for `use` statements
+    /// When executing `use util: check_on`, the interpreter will search for
+    /// `util.at` in these directories
+    lib_paths: Vec<std::path::PathBuf>,
 }
 
 impl Interpreter {
@@ -72,6 +76,7 @@ impl Interpreter {
             fstr_note: '$',
             skip_check: false,
             enable_error_recovery: false,
+            lib_paths: Vec::new(),
         };
 
         // Register the evaluator with the universe so VM functions can call back
@@ -270,6 +275,7 @@ impl Interpreter {
             result: Value::Nil,
             skip_check: false,
             enable_error_recovery: false,
+            lib_paths: Vec::new(),
         };
 
         // Register the evaluator with the universe so VM functions can call back
@@ -321,6 +327,7 @@ impl Interpreter {
             fstr_note: '$',
             skip_check: false,
             enable_error_recovery: false,
+            lib_paths: Vec::new(),
         };
 
         // Register the evaluator with the universe
@@ -414,6 +421,7 @@ impl Interpreter {
             fstr_note: '$',
             skip_check: false,
             enable_error_recovery: false,
+            lib_paths: Vec::new(),
         };
 
         // Register the evaluator with the universe
@@ -466,6 +474,35 @@ impl Interpreter {
         self.enable_error_recovery = true;
     }
 
+    /// Set library search paths for `use` statements
+    ///
+    /// When executing `use util: check_on`, the interpreter will search for
+    /// `util.at` in these directories. This allows templates to use utility
+    /// functions from library files without specifying the full path.
+    pub fn set_lib_paths(&mut self, paths: Vec<std::path::PathBuf>) {
+        // Clone paths for evaler
+        self.evaler.set_lib_paths(paths.clone());
+        self.lib_paths = paths;
+    }
+
+    /// Add a single library search path for `use` statements
+    ///
+    /// # Example
+    /// ```
+    /// inter.add_lib_path("./project/utils");
+    /// inter.add_lib_path("/usr/local/my_modules");
+    /// ```
+    pub fn add_lib_path(&mut self, path: impl Into<std::path::PathBuf>) {
+        let path = path.into();
+        self.lib_paths.push(path.clone());
+        self.evaler.add_lib_path(path);
+    }
+
+    /// Get current library search paths
+    pub fn lib_paths(&self) -> &[std::path::PathBuf] {
+        &self.lib_paths
+    }
+
     pub fn interpret(&mut self, code: &str) -> AutoResult<()> {
         // Create a lexer first to check for errors before creating parser
         let mut lexer = crate::lexer::Lexer::new(code);
@@ -510,8 +547,22 @@ impl Interpreter {
         self.evaler.set_mode(EvalMode::TEMPLATE);
         let code = code.into();
         let flipped = flip_template(code.as_str(), note);
+        eprintln!("DEBUG eval_template_with_note: flipped template:\n{}", flipped);
         let mut parser = Parser::new_with_note(flipped.as_str(), self.scope.clone(), note);
-        let ast = parser.parse()?;
+        let ast = match parser.parse() {
+            Ok(ast) => ast,
+            Err(e) => {
+                eprintln!("DEBUG eval_template_with_note: parse error: {}", e);
+                // Check if this is a MultipleErrors, and print all inner errors
+                if let crate::error::AutoError::MultipleErrors { count, plural, errors } = &e {
+                    eprintln!("DEBUG: MultipleErrors detected:");
+                    for (i, err) in errors.iter().enumerate() {
+                        eprintln!("  Inner error #{}: {}", i + 1, err);
+                    }
+                }
+                return Err(e);
+            }
+        };
         let result = self.evaler.eval(&ast)?;
         Ok(result)
     }

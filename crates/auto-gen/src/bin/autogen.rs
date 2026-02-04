@@ -119,6 +119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let spec = GenerationSpec {
                 data_source: DataSource::AutoFile(data),
                 templates,
+                lib_files: Vec::new(),  // No library files by default
             };
 
             match generator.generate(&spec) {

@@ -1,0 +1,80 @@
+// Test Plan 052: Storage-based list with generic Storage<T> spec
+
+spec Storage<T> {
+    fn data() *T
+    fn capacity() u32
+    fn try_grow(min_cap u32) bool
+}
+
+// Heap storage for PC systems
+type Heap<T> as Storage<T> {
+    ptr *T
+    cap u32
+}
+
+// Inline storage for embedded systems
+type InlineInt64 as Storage<int> {
+    buffer [64]int
+}
+
+// Storage-agnostic list
+type List<T, S> {
+    len u32
+    store S
+}
+
+ext Heap {
+    #[c]
+    static fn new() Heap {
+        return Heap(ptr: 0 as *void, cap: 0)
+    }
+
+    #[c]
+    fn data() *void {
+        return .ptr
+    }
+
+    #[c]
+    fn capacity() u32 {
+        return .cap
+    }
+
+    #[c]
+    fn try_grow(min_cap u32) bool {
+        return false
+    }
+}
+
+ext InlineInt64 {
+    #[c]
+    static fn new() InlineInt64 {
+        return InlineInt64(buffer: [0])
+    }
+
+    #[c]
+    fn data() *int {
+        return .buffer.ptr
+    }
+
+    #[c]
+    fn capacity() u32 {
+        return 64
+    }
+
+    #[c]
+    fn try_grow(min_cap u32) bool {
+        return min_cap <= 64
+    }
+}
+
+fn main() {
+    // Use heap-based list (PC)
+    let heap_list = List<int, Heap>.new()
+    let heap_cap = heap_list.capacity()
+
+    // Use inline-based list (MCU)
+    let inline_list = List<int, InlineInt64>.new()
+    let inline_cap = inline_list.capacity()
+
+    return 0
+}

@@ -144,6 +144,22 @@ impl Evaler {
         self.lib_paths = paths;
     }
 
+    /// Add a single library search path for `use` statements
+    ///
+    /// # Example
+    /// ```
+    /// evaler.add_lib_path("./my_libs");
+    /// evaler.add_lib_path("/usr/local/my_modules");
+    /// ```
+    pub fn add_lib_path(&mut self, path: std::path::PathBuf) {
+        self.lib_paths.push(path);
+    }
+
+    /// Get current library search paths
+    pub fn lib_paths(&self) -> &[std::path::PathBuf] {
+        &self.lib_paths
+    }
+
     // =========================================================================
     // Bridge Methods (Phase 4.5 Plan 064)
     // =========================================================================

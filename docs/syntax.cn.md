@@ -1323,11 +1323,11 @@ widget Counter {
     view {
         col {
             button("➕") {
-                on_click: || count += 1
+                on_click: => count += 1
             }
             text(f"Count: ${count}")
             button("➖") {
-                on_click: || count -= 1
+                on_click: => count -= 1
             }
         }
     }

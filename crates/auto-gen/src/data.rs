@@ -19,11 +19,36 @@ pub struct LoadedData {
 }
 
 /// Loads data from various sources
-pub struct DataLoader;
+pub struct DataLoader {
+    /// Library search paths for `use` statements
+    lib_paths: Vec<PathBuf>,
+}
 
 impl DataLoader {
     pub fn new() -> Self {
-        Self
+        Self {
+            lib_paths: Vec::new(),
+        }
+    }
+
+    pub fn set_lib_paths(&mut self, paths: Vec<PathBuf>) {
+        self.lib_paths = paths;
+    }
+
+    /// Add a single library search path for `use` statements
+    ///
+    /// # Example
+    /// ```
+    /// loader.add_lib_path("./data/libs");
+    /// loader.add_lib_path("/usr/local/my_modules");
+    /// ```
+    pub fn add_lib_path(&mut self, path: impl Into<PathBuf>) {
+        self.lib_paths.push(path.into());
+    }
+
+    /// Get current library search paths
+    pub fn lib_paths(&self) -> &[PathBuf] {
+        &self.lib_paths
     }
 
     pub fn load(&self, source: DataSource) -> GenResult<LoadedData> {
@@ -48,9 +73,20 @@ impl DataLoader {
     }
 
     fn parse_auto_to_data(&self, code: &str, _path: PathBuf) -> GenResult<LoadedData> {
+        eprintln!("DEBUG DataLoader: lib_paths = {:?}", self.lib_paths);
+        eprintln!("DEBUG DataLoader: code starts with: {}", &code.chars().take(50).collect::<String>());
+
         // Evaluate the Auto code
         let mut inter = Interpreter::new();
+
+        // Set library search paths for `use` statements
+        if !self.lib_paths.is_empty() {
+            inter.set_lib_paths(self.lib_paths.clone());
+        }
+
         let value = inter.eval(code);
+
+        eprintln!("DEBUG DataLoader: eval result is_error = {}", value.is_error());
 
         // Try to convert to Atom if it's a Node or Array
         let atom = match value {

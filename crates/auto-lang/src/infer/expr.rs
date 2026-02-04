@@ -35,6 +35,8 @@ use crate::infer::constraints::TypeConstraint;
 use crate::infer::context::InferenceContext;
 use auto_val::Op;
 use miette::SourceSpan;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// 推导表达式的类型
 ///
