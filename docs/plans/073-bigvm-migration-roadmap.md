@@ -1,6 +1,6 @@
 # Plan 073: BigVM Migration Roadmap
 
-**Status**: 🟢 In Progress - ~65-75% Complete
+**Status**: 🟢 In Progress - ~70-80% Complete
 **Created**: 2025-02-04
 **Last Updated**: 2026-02-05
 **Related**: Plan 068 (BigVM Implementation), Plan 070 (BigVM Iterator), Plan 071 (BigVM Closures)
@@ -13,7 +13,7 @@
 
 ## Current Status
 
-**Overall Progress**: ~65-75% (updated from 50-60% after type system and object literal completion)
+**Overall Progress**: ~70-80% (updated from 65-75% after for loop completion)
 
 ### Code Scale Comparison
 | Component | Lines | Description |
@@ -100,7 +100,7 @@
 
 **Major Achievement**: BigVM now supports ALL primitive types from the evaluator! (Technical Debt #1 RESOLVED)
 
-### ✅ Phase 8.2: Object Literals & Field Access - **NEWLY COMPLETED (2026-02-05)**
+### ✅ Phase 8.2: Object Literals & Field Access - **COMPLETED (2026-02-05)**
 - ✅ Object literal infrastructure (84 lines)
   - Obj storage in VirtualRAM
   - MAKE_OBJ opcode for object creation
@@ -114,6 +114,22 @@
   - 34 lines of field access tests
 
 **Major Achievement**: BigVM now supports object literals and field access! (Technical Debt #2 PARTIALLY RESOLVED)
+
+### ✅ Phase 8.3: Iterator-Based For Loops - **NEWLY COMPLETED (2026-02-05)**
+- ✅ Iterator-based for loop support (125 lines)
+  - Extended Iter::Named to handle Call expressions (list.iter())
+  - Compile iterator call and store in local variable
+  - Emit CALL_NAT for Iterator.next to get elements
+  - Check for nil (-1) to detect end of iteration
+  - Support break statements in iterator loops
+- ✅ Test suite (5 tests, all passing)
+  - Basic iterator loop
+  - Iterator loop with break
+  - Nested iterator loops
+  - Iterator loop with body statements
+  - Iterator loop with collect()
+
+**Major Achievement**: BigVM now supports iterator-based for loops! Unlocks list iteration patterns from Plan 070.
 
 ### ✅ Phase 8: Test Migration (Partial)
 - ✅ Primitive and control flow tests (arithmetic, unary, comparisons, if/else)
@@ -155,14 +171,20 @@
 ---
 
 ### 🔴 Phase 8.6: Statement Coverage - **High Priority**
-**Status**: Not started
-**Required**:
-- [ ] **For** (for loops) - 12% impact, HIGH PRIORITY
+**Status**: In progress
+**Completed** (2026-02-05):
+- ✅ For (for loops) - Range-based (0..10, 0..=10)
+- ✅ For (for loops) - Iterator-based (list.iter())
+- ✅ For (for loops) - Indexed (for i, x in 0..10)
+- ✅ For (for loops) - Conditional (for condition)
+- ✅ For (for loops) - Infinite (for ever)
+- ✅ Break (break statements) - works with all for loop variants
+
+**Remaining**:
 - [ ] **Is** (pattern matching) - 8% impact
-- [ ] **Break** (break statements) - needed for loops
 - [ ] **TypeDecl, EnumDecl, SpecDecl** - 15% impact
 
-**Estimated Effort**: 4-6 days
+**Estimated Effort**: 3-5 days (reduced from 4-6 days)
 
 ---
 
@@ -221,7 +243,7 @@
 
 ### Statement Types Support
 
-**Currently Supported** (6 Stmt:: variants):
+**Currently Supported** (8 Stmt:: variants):
 ```rust
 ✅ Expr (expression statements)
 ✅ Block (code blocks)
@@ -229,11 +251,12 @@
 ✅ Fn (function definitions)
 ✅ Store (variable declarations let x = ...)
 ✅ Return (return statements)
+✅ For (for loops - range, iterator, indexed, conditional, infinite)
+✅ Break (break statements)
 ```
 
-**Missing** (15+ variants):
+**Missing** (13+ variants):
 ```rust
-❌ For (for loops)
 ❌ Is (pattern matching is statements)
 ❌ EnumDecl (enum declarations)
 ❌ TypeDecl (type declarations)
@@ -247,11 +270,10 @@
 ❌ Alias (aliases)
 ❌ TypeAlias (type aliases)
 ❌ EmptyLine (empty lines)
-❌ Break (break statements)
 ❌ Ext (type extensions impl)
 ```
 
-**Impact**: ~65% of statement types not implemented
+**Impact**: ~60% of statement types not implemented (improved from 65%)
 
 ---
 
@@ -293,7 +315,7 @@
 | **Statements** | | | | |
 | if/else, block | ✅ | ✅ | - | - |
 | Function def/call | ✅ | ✅ | - | - |
-| for loops | ✅ | ❌ | 12% | P1 |
+| for loops | ✅ | ✅ | - | - |
 | Pattern matching (is) | ✅ | ❌ | 8% | P2 |
 | Type declarations | ✅ | ❌ | 15% | P1 |
 | **Advanced Features** | | | | |
@@ -484,12 +506,14 @@
 ## Summary & Recommendations
 
 ### Current Status
-- **Progress**: ~65-75% complete (updated from 50-60%)
+- **Progress**: ~70-80% complete (updated from 65-75%)
 - **Major Achievements**:
   - ✅ Type System Completeness (Phase 8.1) - ALL primitive types supported
   - ✅ Object Literals & Field Access (Phase 8.2)
+  - ✅ For Loops (Phase 8.3) - All variants: range, iterator, indexed, conditional, infinite
+  - ✅ Break Statements (Phase 8.3) - Works with all for loop variants
   - ✅ Closures (Phase 7.1) via Plan 071
-- **Estimated Remaining Work**: 5-10 weeks (reduced from 8-15 weeks)
+- **Estimated Remaining Work**: 4-8 weeks (reduced from 5-10 weeks)
 
 ### Key Milestones
 1. **Short-term** (2-4 weeks): Reach 80% feature parity
@@ -519,8 +543,8 @@
 - List/string/object tests migration (NOW POSSIBLE with closures and objects)
 
 **P1 (High Priority)**:
-- Array indexing (Index expression) - unlocks many tests
-- For loops (essential for control flow)
+- ~~Array indexing (Index expression)~~ ✅ **COMPLETE** (2026-02-05)
+- ~~For loops (essential for control flow)~~ ✅ **COMPLETE** (2026-02-05)
 - Is pattern matching
 - May/Question system
 
@@ -535,9 +559,9 @@
 - Performance optimization
 
 ### Next Steps
-1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, and type support)
-2. **High Impact**: Implement array indexing (Index expression) - unlocks many tests
-3. **Parallel**: Add For loop support for control flow completeness
+1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, type support, and for loops)
+2. **High Impact**: Implement remaining high-priority expressions (Index is done, next is Range/FStr)
+3. **Parallel**: Add Is pattern matching for control flow completeness
 4. **Planning**: Create detailed tickets for remaining missing features
 
 ---
