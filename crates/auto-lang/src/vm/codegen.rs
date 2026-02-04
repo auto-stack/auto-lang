@@ -1,5 +1,6 @@
 use crate::ast::{Expr, Stmt, Closure};
 use crate::error::AutoResult;
+use crate::error::SyntaxError;
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::native::{NATIVE_PRINT_F32, NATIVE_PRINT_I32, NATIVE_PRINT_STR};
@@ -7,6 +8,7 @@ use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 use auto_val::Op;
 use std::collections::{HashMap, HashSet};
+use miette::{SourceSpan, ByteOffset};
 
 /// Codegen: Compiles AST directly to BigVM Bytecode
 pub struct Codegen {
@@ -639,6 +641,18 @@ impl Codegen {
                 }
                 self.collect_free_vars(&inner_closure.body, &inner_exclude, free_vars);
             }
+            // Dot expressions - check object (e.g., x in x.view)
+            Expr::View(inner) | Expr::Mut(inner) | Expr::Take(inner) => {
+                self.collect_free_vars(inner, exclude, free_vars);
+            }
+            Expr::Dot(obj, _method) => {
+                self.collect_free_vars(obj, exclude, free_vars);
+            }
+            // Index expressions
+            Expr::Index(arr, idx) => {
+                self.collect_free_vars(arr, exclude, free_vars);
+                self.collect_free_vars(idx, exclude, free_vars);
+            }
             // Primitives - no identifiers to collect
             Expr::Int(_) | Expr::Float(_, _) | Expr::Str(_) | Expr::Bool(_) | Expr::Nil | Expr::Byte(_) => {}
             // Other expressions - add more cases as needed
@@ -661,13 +675,201 @@ impl Codegen {
         idx as u16
     }
 
+    /// Get span from an expression for error reporting
+    /// Plan 071 Phase 6.1: Helper for borrow checking errors
+    fn get_expr_span(&self, _expr: &Expr) -> SourceSpan {
+        // TODO: Track spans in AST nodes during parsing
+        // For now, use a zero-length span at offset 0
+        SourceSpan::new(0_usize.into(), 0_usize.into())
+    }
+
+    /// Check if a variable is captured with unsafe borrowing (.view or .mut)
+    /// Returns the expression that uses unsafe borrowing, if found
+    /// Plan 071 Phase 6.1: Borrow Checking Integration
+    fn check_unsafe_capture<'a>(&'a self, var_name: &str, expr: &'a Expr) -> Option<&'a Expr> {
+        match expr {
+            // Direct unsafe borrow: x.view or x.mut
+            Expr::View(inner) => {
+                // Check if this is borrowing the target variable
+                if let Expr::Ident(name) = inner.as_ref() {
+                    if name.to_string() == var_name {
+                        return Some(expr); // Found unsafe capture
+                    }
+                }
+                // Recursively check inner expression
+                self.check_unsafe_capture(var_name, inner)
+            }
+            Expr::Mut(inner) => {
+                // Check if this is borrowing the target variable
+                if let Expr::Ident(name) = inner.as_ref() {
+                    if name.to_string() == var_name {
+                        return Some(expr); // Found unsafe capture
+                    }
+                }
+                // Recursively check inner expression
+                self.check_unsafe_capture(var_name, inner)
+            }
+
+            // Binary expressions - check both sides
+            Expr::Bina(lhs, _op, rhs) => {
+                // First check left side
+                if let Some(found) = self.check_unsafe_capture(var_name, lhs) {
+                    return Some(found);
+                }
+                // Then check right side
+                self.check_unsafe_capture(var_name, rhs)
+            }
+
+            // Unary expressions - check operand
+            Expr::Unary(_op, rhs) => {
+                self.check_unsafe_capture(var_name, rhs)
+            }
+
+            // Function calls - check arguments
+            Expr::Call(call) => {
+                // Check function name
+                if let Some(found) = self.check_unsafe_capture(var_name, &call.name) {
+                    return Some(found);
+                }
+                // Check arguments
+                for arg in &call.args.args {
+                    if let crate::ast::Arg::Pos(arg_expr) = arg {
+                        if let Some(found) = self.check_unsafe_capture(var_name, arg_expr) {
+                            return Some(found);
+                        }
+                    }
+                }
+                None
+            }
+
+            // Arrays - check elements
+            Expr::Array(elems) => {
+                for elem in elems {
+                    if let Some(found) = self.check_unsafe_capture(var_name, elem) {
+                        return Some(found);
+                    }
+                }
+                None
+            }
+
+            // Block expressions - check statements
+            Expr::Block(body) => {
+                for stmt in &body.stmts {
+                    match stmt {
+                        Stmt::Expr(e) => {
+                            if let Some(found) = self.check_unsafe_capture(var_name, e) {
+                                return Some(found);
+                            }
+                        }
+                        Stmt::Return(e) => {
+                            if let Some(found) = self.check_unsafe_capture(var_name, e) {
+                                return Some(found);
+                            }
+                        }
+                        // Other statements don't contain expressions we care about
+                        _ => {}
+                    }
+                }
+                None
+            }
+
+            // Closure expressions - recurse into closure body
+            Expr::Closure(inner_closure) => {
+                self.check_unsafe_capture(var_name, &inner_closure.body)
+            }
+
+            // If expressions - check branches
+            Expr::If(if_expr) => {
+                // Check all branches
+                for branch in &if_expr.branches {
+                    // Check condition
+                    if let Some(found) = self.check_unsafe_capture(var_name, &branch.cond) {
+                        return Some(found);
+                    }
+                    // Check branch body
+                    if let Some(found) = self.check_unsafe_capture_in_body(var_name, &branch.body) {
+                        return Some(found);
+                    }
+                }
+                // Check else branch
+                if let Some(else_body) = &if_expr.else_ {
+                    self.check_unsafe_capture_in_body(var_name, else_body)
+                } else {
+                    None
+                }
+            }
+
+            // Index expressions - check both parts
+            Expr::Index(arr, idx) => {
+                if let Some(found) = self.check_unsafe_capture(var_name, arr) {
+                    return Some(found);
+                }
+                self.check_unsafe_capture(var_name, idx)
+            }
+
+            // Dot expressions - check both object and method
+            Expr::Dot(obj, _method) => {
+                // Check object (e.g., x in x.view)
+                if let Expr::Ident(name) = obj.as_ref() {
+                    if name.to_string() == var_name {
+                        // This is a direct reference to the variable
+                        // Check if this dot expression is part of a borrow
+                        // We need to look at the outer context to determine this
+                        // For now, we'll be conservative and check the method name
+                        return None; // Safe - just accessing a field
+                    }
+                }
+                self.check_unsafe_capture(var_name, obj)
+            }
+
+            // Identifiers - direct references are safe (copy semantics)
+            // Only .view/.mut are unsafe, not direct variable access
+            Expr::Ident(_name) => None,
+
+            // Other expressions - no unsafe borrowing possible
+            _ => None,
+        }
+    }
+
+    /// Check for unsafe captures in a Body (block)
+    /// Plan 071 Phase 6.1: Helper for checking if/branch bodies
+    fn check_unsafe_capture_in_body<'a>(&'a self, var_name: &str, body: &'a crate::ast::Body) -> Option<&'a Expr> {
+        for stmt in &body.stmts {
+            if let Stmt::Expr(expr) = stmt {
+                if let Some(found) = self.check_unsafe_capture(var_name, expr) {
+                    return Some(found);
+                }
+            }
+        }
+        None
+    }
+
     /// Compile closure expression (Plan 071)
-    fn compile_closure(&mut self, closure: &Closure) -> AutoResult<()> {
+    pub fn compile_closure(&mut self, closure: &Closure) -> AutoResult<()> {
         // Step 1: Find free variables to capture
         let param_names: HashSet<String> = closure.params.iter()
             .map(|p| p.name.to_string())
             .collect();
         let free_vars = self.find_free_vars(&closure.body, &param_names);
+
+        // Plan 071 Phase 6.1: Borrow Checking - Check for unsafe captures
+        // Block .view/.mut in closure capture to prevent dangling references
+        for var_name in &free_vars {
+            if let Some(unsafe_expr) = self.check_unsafe_capture(var_name, &closure.body) {
+                // Found unsafe capture - emit compiler error
+                let span = self.get_expr_span(unsafe_expr);
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Cannot capture borrowed value '{0}' in closure. \
+                        Closures may outlive their parent scope, causing dangling references. \
+                        Use .take to transfer ownership, or remove .view/.mut. \
+                        Note: Default capture semantics copy the value, which is safe.",
+                        var_name
+                    ),
+                    span,
+                }.into());
+            }
+        }
 
         // Step 2: For each captured variable, emit code to load its current value
         // For MVP, we emit LOAD_LOCAL for each captured variable

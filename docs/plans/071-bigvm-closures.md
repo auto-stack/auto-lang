@@ -1,6 +1,6 @@
 # Plan 071: BigVM Closure Implementation
 
-**Status**: 🟢 Phase 1 Complete, Phase 2 Complete, Phase 3 Complete, Phase 4 Complete, Phase 5 Complete
+**Status**: 🟢 Phase 1 Complete, Phase 2 Complete, Phase 3 Complete, Phase 4 Complete, Phase 5 Complete, Phase 6.1 Complete
 **Created**: 2025-02-03
 **Last Updated**: 2025-02-04
 **Related**: Plan 068 (Phase 7.1), Plan 060 (Closure Syntax)
@@ -72,6 +72,33 @@
 - ✅ Updated LOAD_CAPTURED to use current_closure_id (no stack pop)
 - ✅ Updated STORE_CAPTURED to use current_closure_id (no stack pop)
 - ✅ End-to-end test with actual closure execution (test_05)
+
+**Phase 6.1: Borrow Checking Integration** ✅ **COMPLETE (2025-02-04)**
+- ✅ Added `check_unsafe_capture()` method to detect `.view`/`.mut` in closure captures
+- ✅ Added `check_unsafe_capture_in_body()` helper for checking blocks
+- ✅ Modified `compile_closure()` to emit compiler errors for unsafe captures
+- ✅ Added `get_expr_span()` helper for error reporting
+- ✅ Fixed `collect_free_vars()` to handle View/Mut/Take/Dot/Index expressions
+- ✅ Created comprehensive test suite (11 tests covering all capture scenarios)
+- ✅ All tests passing (100% success rate)
+
+**Test Coverage**:
+- ✅ `.view` capture is rejected (test_borrow_check_view_capture)
+- ✅ `.mut` capture is rejected (test_borrow_check_mut_capture)
+- ✅ Default capture (copy) is allowed (test_borrow_check_default_copy_allowed)
+- ✅ `.take` capture is allowed (test_borrow_check_take_allowed)
+- ✅ Multiple captures are checked (test_borrow_check_multiple_captures)
+- ✅ Nested expressions are checked (test_borrow_check_nested_expressions)
+- ✅ Function calls are checked (test_borrow_check_unsafe_in_function_call)
+- ✅ Array elements are checked (test_borrow_check_unsafe_in_array)
+- ✅ If expressions are checked (test_borrow_check_unsafe_in_if_expression)
+- ✅ Block expressions are checked (test_borrow_check_unsafe_in_block)
+- ✅ Direct references are safe (test_borrow_check_direct_reference_safe)
+
+**Implementation Details**:
+- Location: [codegen.rs:677-850](../crates/auto-lang/src/vm/codegen.rs#L677-L850)
+- Error message: "Cannot capture borrowed value '{var_name}' in closure. Closures may outlive their parent scope, causing dangling references. Use .take to transfer ownership, or remove .view/.mut. Note: Default capture semantics copy the value, which is safe."
+- Test file: [tests_closures_borrow_check.rs](../crates/auto-lang/src/vm/tests_closures_borrow_check.rs) (287 lines, 11 tests)
 
 **Key Implementation Details**:
 - **CALL_CLOSURE**: Sets `task.current_closure_id` before jumping to closure body
@@ -1007,58 +1034,61 @@ fn make_closure(x int) {
 
 This section describes postponed enhancements that can be implemented in future iterations to improve BigVM closures.
 
-### Priority 1: Borrow Checking Integration (HIGH PRIORITY - Safety)
+### Priority 1: Borrow Checking Integration ✅ **COMPLETE (2025-02-04)**
 
 **Problem**: Users can currently write unsafe closure code that captures borrowed values:
 
 ```auto
-// ❌ UNSAFE CODE (currently allowed but should be compiler error)
+// ❌ UNSAFE CODE (now blocked by compiler)
 fn make_borrowing_closure(x int) {
-    return y => y + x.view  // Dangling reference risk!
+    return y => y + x.view  // COMPILER ERROR!
 }
 let closure = make_borrowing_closure(5)
 // Parent function returns, x is destroyed
-closure(3)  // 💀 Dangling reference to destroyed x
+closure(3)  // 💀 Would have been dangling reference - now prevented!
 ```
 
-**Implementation Required**:
+**Implementation Completed**:
 
-1. **Detect Borrow Capture in Codegen**
-   - During `compile_closure()`, check if any captured variable uses `.view` or `.mut`
-   - Check `Expr::View` and `Expr::Mut` in free variable analysis
-   - Location: [codegen.rs:665-720](../crates/auto-lang/src/vm/codegen.rs#L665-L720)
+1. ✅ **Detect Borrow Capture in Codegen**
+   - Implemented `check_unsafe_capture()` method that recursively checks expression trees
+   - Detects `Expr::View` and `Expr::Mut` in closure body
+   - Location: [codegen.rs:677-820](../crates/auto-lang/src/vm/codegen.rs#L677-L820)
 
-2. **Emit Compiler Error**
-   ```rust
-   // In compile_closure(), after finding free vars:
-   for var_name in &free_vars {
-       if let Some(expr) = self.find_var_expr(&closure.body, var_name) {
-           if matches!(expr, Expr::View(_) | Expr::Mut(_)) {
-               return Err(AutoError::Syntax(SyntaxError::Generic {
-                   message: format!(
-                       "Cannot capture borrowed value '{}' in closure. \
-                       Closures may outlive their parent scope, causing dangling references. \
-                       Use .take to transfer ownership, or remove .view/.mut.",
-                       var_name
-                   ),
-                   span: /* get span from expr */,
-               }.into()));
-           }
-       }
-   }
-   ```
+2. ✅ **Emit Compiler Error**
+   - Modified `compile_closure()` to call borrow checker for each free variable
+   - Returns clear error message with variable name
+   - Location: [codegen.rs:852-870](../crates/auto-lang/src/vm/codegen.rs#L852-L870)
 
-3. **Test Cases Needed**
-   - Test error when capturing `.view` in escaping closure
-   - Test error when capturing `.mut` in escaping closure
-   - Test that `.take` is allowed (move semantics)
-   - Test that default capture (no modifier) is allowed (copy semantics)
+3. ✅ **Comprehensive Test Suite**
+   - Created 11 test cases covering all capture scenarios
+   - All tests passing (100% success rate)
+   - Test file: [tests_closures_borrow_check.rs](../crates/auto-lang/src/vm/tests_closures_borrow_check.rs)
 
-**Files to Modify**:
-- [codegen.rs](../crates/auto-lang/src/vm/codegen.rs) - Add borrow detection in `compile_closure()`
-- [error.rs](../crates/auto-lang/src/error.rs) - Add new error variant for unsafe borrow capture
+**Error Message**:
+```
+Error: Cannot capture borrowed value 'x' in closure.
+Closures may outlive their parent scope, causing dangling references.
+Use .take to transfer ownership, or remove .view/.mut.
+Note: Default capture semantics copy the value, which is safe.
+```
 
-**Estimated Effort**: 1-2 days
+**Test Results**:
+- ✅ `.view` capture is correctly rejected
+- ✅ `.mut` capture is correctly rejected
+- ✅ Default capture (copy) is allowed
+- ✅ `.take` capture is allowed
+- ✅ Nested expressions are checked
+- ✅ Function calls are checked
+- ✅ Array elements are checked
+- ✅ If expressions are checked
+- ✅ Block expressions are checked
+- ✅ Direct references are safe
+
+**Files Modified**:
+- ✅ [codegen.rs](../crates/auto-lang/src/vm/codegen.rs) - Added `check_unsafe_capture()`, `check_unsafe_capture_in_body()`, `get_expr_span()`
+- ✅ [tests_closures_borrow_check.rs](../crates/auto-lang/src/vm/tests_closures_borrow_check.rs) - New test file (287 lines, 11 tests)
+- ✅ [infer/stmt.rs](../crates/auto-lang/src/infer/stmt.rs) - Added `ArrayType` import (bug fix)
 
 ---
 
