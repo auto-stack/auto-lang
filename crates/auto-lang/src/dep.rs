@@ -192,6 +192,7 @@ impl<'db> DepScanner<'db> {
             | Expr::I8(_)
             | Expr::U8(_)
             | Expr::I64(_)
+            | Expr::U64(_)
             | Expr::Byte(_)
             | Expr::Float(_, _)
             | Expr::Double(_, _)

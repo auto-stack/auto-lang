@@ -10,6 +10,8 @@ pub enum Type {
     Int,
     Uint,
     USize,
+    I64,
+    U64,
     Float,
     Double,
     Bool,
@@ -45,6 +47,8 @@ impl Type {
             Type::Int => "int".into(),
             Type::Uint => "uint".into(),
             Type::USize => "usize".into(),
+            Type::I64 => "i64".into(),
+            Type::U64 => "u64".into(),
             Type::Float => "float".into(),
             Type::Double => "double".into(),
             Type::Bool => "bool".into(),
@@ -201,7 +205,7 @@ impl Type {
 
             // Complex types: clone as-is (no substitution in metadata)
             Type::Enum(_) | Type::Spec(_) | Type::Tag(_) | Type::Union(_) |
-            Type::CStruct(_) | Type::Storage(_) => self.clone(),  // Storage types are not generic
+            Type::CStruct(_) | Type::Storage(_) | Type::I64 | Type::U64 => self.clone(),  // Storage types are not generic
         }
     }
 }
@@ -364,6 +368,8 @@ impl fmt::Display for Type {
             Type::Int => write!(f, "int"),
             Type::Uint => write!(f, "uint"),
             Type::USize => write!(f, "usize"),
+            Type::I64 => write!(f, "i64"),
+            Type::U64 => write!(f, "u64"),
             Type::Float => write!(f, "float"),
             Type::Double => write!(f, "double"),
             Type::Bool => write!(f, "bool"),
@@ -409,6 +415,8 @@ impl From<Type> for auto_val::Type {
             Type::Int => auto_val::Type::Int,
             Type::Uint => auto_val::Type::Uint,
             Type::USize => auto_val::Type::Uint,
+            Type::I64 => auto_val::Type::Int,  // i64 transpiles to Int for now
+            Type::U64 => auto_val::Type::Uint,  // u64 transpiles to Uint for now
             Type::Float => auto_val::Type::Float,
             Type::Double => auto_val::Type::Double,
             Type::Bool => auto_val::Type::Bool,
@@ -690,6 +698,8 @@ impl AtomWriter for Type {
             Type::Int => write!(f, "int")?,
             Type::Uint => write!(f, "uint")?,
             Type::USize => write!(f, "usize")?,
+            Type::I64 => write!(f, "i64")?,
+            Type::U64 => write!(f, "u64")?,
             Type::Float => write!(f, "float")?,
             Type::Double => write!(f, "double")?,
             Type::Bool => write!(f, "bool")?,

@@ -1697,18 +1697,37 @@ impl<'a> Parser<'a> {
         if self.cur.text.starts_with("0x") {
             // trim 0x
             let trim = &self.cur.text[2..];
-            let val = i64::from_str_radix(trim, 16).unwrap();
-            if val > i32::MAX as i64 {
-                Ok(Expr::I64(val))
-            } else {
-                Ok(Expr::Int(val as i32))
+            // Try parsing as i64 first, fall back to u64 if it overflows
+            match i64::from_str_radix(trim, 16) {
+                Ok(val) => {
+                    if val > i32::MAX as i64 {
+                        Ok(Expr::I64(val))
+                    } else {
+                        Ok(Expr::Int(val as i32))
+                    }
+                }
+                Err(_) => {
+                    // Value too large for i64, parse as u64
+                    let val = u64::from_str_radix(trim, 16).unwrap();
+                    Ok(Expr::U64(val))
+                }
             }
         } else {
-            let val = self.cur.text.as_str().parse::<i64>().unwrap();
-            if val > i32::MAX as i64 {
-                Ok(Expr::I64(val))
-            } else {
-                Ok(Expr::Int(val as i32))
+            // Try parsing as i64 first, fall back to u64 if it overflows
+            let text = self.cur.text.as_str();
+            match text.parse::<i64>() {
+                Ok(val) => {
+                    if val > i32::MAX as i64 {
+                        Ok(Expr::I64(val))
+                    } else {
+                        Ok(Expr::Int(val as i32))
+                    }
+                }
+                Err(_) => {
+                    // Value too large for i64 (e.g., u64::MAX), parse as u64
+                    let val = text.parse::<u64>().unwrap();
+                    Ok(Expr::U64(val))
+                }
             }
         }
     }
@@ -1717,11 +1736,26 @@ impl<'a> Parser<'a> {
         if self.cur.text.starts_with("0x") {
             // trim 0x
             let trim = &self.cur.text[2..];
-            let val = u32::from_str_radix(trim, 16).unwrap();
-            Ok(Expr::Uint(val))
+            // Try parsing as u32 first, fall back to u64 if it overflows
+            match u32::from_str_radix(trim, 16) {
+                Ok(val) => Ok(Expr::Uint(val)),
+                Err(_) => {
+                    // Value too large for u32, parse as u64
+                    let val = u64::from_str_radix(trim, 16).unwrap();
+                    Ok(Expr::U64(val))
+                }
+            }
         } else {
-            let val = self.cur.text.as_str().parse::<u32>().unwrap();
-            Ok(Expr::Uint(val))
+            // Try parsing as u32 first, fall back to u64 if it overflows
+            let text = self.cur.text.as_str();
+            match text.parse::<u32>() {
+                Ok(val) => Ok(Expr::Uint(val)),
+                Err(_) => {
+                    // Value too large for u32, parse as u64
+                    let val = text.parse::<u64>().unwrap();
+                    Ok(Expr::U64(val))
+                }
+            }
         }
     }
 
@@ -1734,6 +1768,18 @@ impl<'a> Parser<'a> {
         } else {
             let val = self.cur.text.as_str().parse::<u8>().unwrap();
             Ok(Expr::U8(val as u8))
+        }
+    }
+
+    fn parse_u64(&mut self) -> AutoResult<Expr> {
+        if self.cur.text.starts_with("0x") {
+            // trim 0x
+            let trim = &self.cur.text[2..];
+            let val = u64::from_str_radix(trim, 16).unwrap();
+            Ok(Expr::U64(val))
+        } else {
+            let val = self.cur.text.as_str().parse::<u64>().unwrap();
+            Ok(Expr::U64(val))
         }
     }
 

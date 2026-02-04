@@ -222,6 +222,8 @@ impl RustTrans {
                 // Storage types are marker types, just use the name
                 format!("{}", storage)
             }
+            Type::I64 => "i64".to_string(),
+            Type::U64 => "u64".to_string(),
         }
     }
 
@@ -236,6 +238,7 @@ impl RustTrans {
             Expr::I8(i) => write!(out, "{}", i).map_err(Into::into),
             Expr::U8(u) => write!(out, "{}", u).map_err(Into::into),
             Expr::I64(i) => write!(out, "{}", i).map_err(Into::into),
+            Expr::U64(u) => write!(out, "{}", u).map_err(Into::into),
             Expr::Byte(b) => write!(out, "{}", b).map_err(Into::into),
             Expr::Float(f, _) => write!(out, "{}", f).map_err(Into::into),
             Expr::Double(d, _) => write!(out, "{}", d).map_err(Into::into),

@@ -64,7 +64,7 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         // ========== 字面量表达式 ==========
         Expr::Int(_) | Expr::I64(_) => Type::Int,
         Expr::I8(_) => Type::Int,
-        Expr::Uint(_) | Expr::Byte(_) | Expr::U8(_) => Type::Uint,
+        Expr::Uint(_) | Expr::U64(_) | Expr::Byte(_) | Expr::U8(_) => Type::Uint,
         Expr::Float(_, _) => Type::Float,
         Expr::Double(_, _) => Type::Double,
         Expr::Bool(_) => Type::Bool,

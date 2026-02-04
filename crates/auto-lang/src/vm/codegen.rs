@@ -208,6 +208,16 @@ impl Codegen {
                 self.emit(OpCode::CONST_F64);
                 self.emit_f64(*d);
             }
+            // Plan 073 Stage B: I64 literal support
+            Expr::I64(i) => {
+                self.emit(OpCode::CONST_I64);
+                self.emit_i64(*i);
+            }
+            // Plan 073 Stage B: U64 literal support
+            Expr::U64(u) => {
+                self.emit(OpCode::CONST_U64);
+                self.emit_u64(*u);
+            }
             Expr::Str(s) => {
                 // Add string to constant pool and emit LOAD_STR <index>
                 let bytes = s.as_bytes().to_vec();
@@ -534,6 +544,16 @@ impl Codegen {
         self.code.extend_from_slice(&val.to_le_bytes());
     }
 
+    // Plan 073 Stage B: Emit i64 value (8 bytes, little-endian)
+    fn emit_i64(&mut self, val: i64) {
+        self.code.extend_from_slice(&val.to_le_bytes());
+    }
+
+    // Plan 073 Stage B: Emit u64 value (8 bytes, little-endian)
+    fn emit_u64(&mut self, val: u64) {
+        self.code.extend_from_slice(&val.to_le_bytes());
+    }
+
     // Plan 073 Stage A.5: Check if expression is a float/double type
     // Returns: Some(Type) if the type is known, None otherwise
     fn infer_expr_type(&self, expr: &Expr) -> Option<crate::ast::Type> {
@@ -542,6 +562,8 @@ impl Codegen {
             Expr::Float(_, _) => Some(crate::ast::Type::Float),
             Expr::Double(_, _) => Some(crate::ast::Type::Double),
             Expr::Int(_) => Some(crate::ast::Type::Int),
+            Expr::I64(_) => Some(crate::ast::Type::I64),
+            Expr::U64(_) => Some(crate::ast::Type::U64),
             Expr::Bool(_) => Some(crate::ast::Type::Bool),
             // For now, we can't infer types from identifiers or complex expressions
             // This would require full type inference integration

@@ -137,6 +137,8 @@ fn hash_type_no_rc(hasher: &mut blake3::Hasher, ty: &Type) {
         Type::Byte => hasher.update(b"Byte"),
         Type::Int => hasher.update(b"Int"),
         Type::Uint => hasher.update(b"Uint"),
+        Type::I64 => hasher.update(b"I64"),
+        Type::U64 => hasher.update(b"U64"),
         Type::USize => hasher.update(b"USize"),
         Type::Float => hasher.update(b"Float"),
         Type::Double => hasher.update(b"Double"),

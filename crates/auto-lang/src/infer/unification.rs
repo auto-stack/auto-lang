@@ -126,7 +126,7 @@ impl From<UnificationError> for TypeError {
 pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
     match ty {
         // 基础类型不包含类型变量
-        Type::Byte | Type::Int | Type::Uint | Type::USize |
+        Type::Byte | Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::USize |
         Type::Float | Type::Double | Type::Bool | Type::Char |
         Type::Void => false,
 

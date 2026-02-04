@@ -4370,6 +4370,8 @@ impl Evaler {
             Expr::Byte(value) => Value::Byte(*value),
             Expr::Uint(value) => Value::Uint(*value),
             Expr::Int(value) => Value::Int(*value),
+            Expr::I64(value) => Value::Int(*value as i32),  // i64 transpiles to Int for now
+            Expr::U64(value) => Value::Uint(*value as u32), // u64 transpiles to Uint for now
             Expr::Dot(object, field) => {
                 // First, evaluate the object expression
                 let obj_val = self.eval_expr(object);
@@ -6132,6 +6134,8 @@ fn to_value_type(ty: &ast::Type) -> auto_val::Type {
         ast::Type::Byte => auto_val::Type::Byte,
         ast::Type::Int => auto_val::Type::Int,
         ast::Type::Uint => auto_val::Type::Uint,
+        ast::Type::I64 => auto_val::Type::Int,
+        ast::Type::U64 => auto_val::Type::Uint,
         ast::Type::USize => auto_val::Type::Uint, // TODO: should be U64?
         ast::Type::Float => auto_val::Type::Float,
         ast::Type::Double => auto_val::Type::Double,

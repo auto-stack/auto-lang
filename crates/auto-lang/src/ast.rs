@@ -246,6 +246,7 @@ pub enum Expr {
     I8(i8),
     U8(u8),
     I64(i64),
+    U64(u64),
     Byte(u8),
     Float(f64, AutoStr),
     Double(f64, AutoStr),
@@ -329,6 +330,7 @@ impl fmt::Display for Expr {
             Expr::I8(i) => write!(f, "(i8 {})", i),
             Expr::U8(u) => write!(f, "(u8 {})", u),
             Expr::I64(i) => write!(f, "(i64 {})", i),
+            Expr::U64(u) => write!(f, "(u64 {})", u),
             Expr::Float(v, _) => write!(f, "(float {})", v),
             Expr::Double(v, _) => write!(f, "(double {})", v),
             Expr::Bool(b) => write!(f, "({})", b),
@@ -653,6 +655,12 @@ impl ToNode for Expr {
             Expr::I64(i) => {
                 let mut node = AutoNode::new("i64");
                 node.add_arg(auto_val::Arg::Pos(Value::Int(*i as i32)));
+                node
+            }
+            Expr::U64(u) => {
+                let mut node = AutoNode::new("u64");
+                // For u64 values that don't fit in i32, we need to handle them specially
+                node.add_arg(auto_val::Arg::Pos(Value::Uint(*u as u32)));
                 node
             }
             Expr::Float(v, _) => {
