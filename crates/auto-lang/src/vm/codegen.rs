@@ -1,5 +1,5 @@
-use crate::ast::{Expr, Stmt, Closure};
-use crate::error::AutoResult;
+use crate::ast::{Expr, Stmt, Closure, For, Iter};
+use crate::error::{AutoResult, AutoError};
 use crate::error::SyntaxError;
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
@@ -202,6 +202,118 @@ impl Codegen {
                 // I'll emit RET 0 and file a task to fix context.
                 self.emit(OpCode::RET);
                 self.code.push(0); // TODO: Fix this
+            }
+            // Plan 073: For statement support
+            Stmt::For(for_stmt) => {
+                // Handle range-based for loops: for x in start..end { ... }
+                // Only support simple range iteration for now
+                match &for_stmt.iter {
+                    Iter::Named(var_name) => {
+                        // Check if range is a Range expression
+                        if let Expr::Range(range) = &for_stmt.range {
+                            // Compile start expression and initialize loop variable
+                            self.compile_expr(&range.start)?;
+
+                            // Store to loop variable
+                            let var_str = var_name.to_string();
+                            self.push_scope(); // New scope for loop variable
+                            let var_index = self.scope_stack.last_mut().unwrap().len();
+                            self.scope_stack.last_mut().unwrap().insert(var_str.clone(), var_index);
+                            self.emit_store_loc(var_index);
+
+                            // Loop start label
+                            let loop_start = self.code.len() as i16;
+
+                            // Load loop variable
+                            self.emit_load_loc(var_index);
+
+                            // Compile end expression
+                            self.compile_expr(&range.end)?;
+
+                            // Compare: if range.eq is true, use LE (<=), else use LT (<)
+                            if range.eq {
+                                self.emit(OpCode::LE); // Inclusive range: start..=end
+                            } else {
+                                self.emit(OpCode::LT); // Exclusive range: start..end
+                            }
+
+                            // JMP_IF_Z to end (exit loop if condition false)
+                            self.emit(OpCode::JMP_IF_Z);
+                            let jump_to_end = self.emit_placeholder_i16();
+
+                            // Compile loop body
+                            self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+
+                            // Increment loop variable
+                            self.emit_load_loc(var_index);
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(1);
+                            self.emit(OpCode::ADD);
+                            self.emit_store_loc(var_index);
+
+                            // JMP back to loop start
+                            self.emit(OpCode::JMP);
+                            let current_pos = self.code.len() as i16;
+                            self.emit_i16(loop_start - current_pos);
+
+                            // Patch exit jump
+                            self.patch_jump(jump_to_end);
+
+                            // Pop loop scope
+                            self.pop_scope();
+                        } else {
+                            // For now, only support range expressions
+                            return Err(AutoError::Msg("For loops with non-range expressions not supported yet".to_string()));
+                        }
+                    }
+                    Iter::Indexed(index_name, iter_name) => {
+                        // TODO: Implement indexed iteration: for i, x in 0..10 { ... }
+                        return Err(AutoError::Msg("Indexed for loops not supported yet".to_string()));
+                    }
+                    Iter::Cond => {
+                        // Conditional for loop: for condition { ... } (like while)
+                        // Loop start label
+                        let loop_start = self.code.len() as i16;
+
+                        // Compile condition
+                        self.compile_expr(&for_stmt.range)?;
+
+                        // JMP_IF_Z to end (exit loop if condition false)
+                        self.emit(OpCode::JMP_IF_Z);
+                        let jump_to_end = self.emit_placeholder_i16();
+
+                        // Compile loop body
+                        self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+
+                        // JMP back to loop start
+                        self.emit(OpCode::JMP);
+                        let current_pos = self.code.len() as i16;
+                        self.emit_i16(loop_start - current_pos);
+
+                        // Patch exit jump
+                        self.patch_jump(jump_to_end);
+                    }
+                    Iter::Ever => {
+                        // Infinite loop: for ever { ... }
+                        let loop_start = self.code.len() as i16;
+
+                        // Compile loop body
+                        self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+
+                        // JMP back to loop start
+                        self.emit(OpCode::JMP);
+                        let current_pos = self.code.len() as i16;
+                        self.emit_i16(loop_start - current_pos);
+                    }
+                    Iter::Call(_) => {
+                        return Err(AutoError::Msg("For loops with Call expressions not supported yet".to_string()));
+                    }
+                }
+            }
+            Stmt::Break => {
+                // TODO: Implement break statement
+                // Need to track loop exit points to jump to
+                return Err(AutoError::Msg("Break statement not supported yet".to_string()));
             }
             _ => {
                 // TODO: Implement other statements
@@ -727,6 +839,11 @@ impl Codegen {
     }
 
     fn emit_i32(&mut self, val: i32) {
+        self.code.extend_from_slice(&val.to_le_bytes());
+    }
+
+    // Plan 073: Emit i16 value (2 bytes, little-endian) for jump offsets
+    fn emit_i16(&mut self, val: i16) {
         self.code.extend_from_slice(&val.to_le_bytes());
     }
 

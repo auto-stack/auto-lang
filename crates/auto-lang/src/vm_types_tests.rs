@@ -776,5 +776,89 @@ fn main() -> int {
     assert!(bytecode.contains(&0x2B), "Expected SET_ELEM opcode (0x2B)");
 }
 
+// Plan 073: For loop tests
+
+#[test]
+fn test_for_loop_range_compiles() {
+    let source = r#"
+fn main() -> int {
+    let sum = 0
+    for x in 0..10 {
+        // Loop body
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain LT (for range comparison)
+    assert!(bytecode.contains(&0x52), "Expected LT opcode (0x52) for range check");
+    // Should contain JMP (for loop control)
+    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60) for loop");
+}
+
+#[test]
+fn test_for_loop_inclusive_range_compiles() {
+    let source = r#"
+fn main() -> int {
+    for x in 0..=10 {
+        // Loop body
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain LE (for inclusive range comparison)
+    assert!(bytecode.contains(&0x54), "Expected LE opcode (0x54) for inclusive range");
+}
+
+#[test]
+fn test_for_loop_conditional_compiles() {
+    let source = r#"
+fn main() -> int {
+    let mut i = 0
+    for i < 10 {
+        i = i + 1
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain JMP_IF_Z (for condition check)
+    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61) for condition");
+}
+
+#[test]
+fn test_for_loop_infinite_compiles() {
+    let source = r#"
+fn main() -> int {
+    for ever {
+        // Infinite loop body (will need break statement support in future)
+        let x = 1
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain JMP (for infinite loop)
+    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60) for infinite loop");
+}
+
+#[test]
+fn test_for_loop_with_array_compiles() {
+    let source = r#"
+fn main() -> int {
+    let arr = [1, 2, 3]
+    for i in 0..3 {
+        let val = arr[i]
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain both for loop opcodes and array indexing
+    assert!(bytecode.contains(&0x52), "Expected LT opcode (0x52)");
+    assert!(bytecode.contains(&0x2C), "Expected GET_ELEM opcode (0x2C)");
+}
+
 
 
