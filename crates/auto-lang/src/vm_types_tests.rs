@@ -743,4 +743,38 @@ fn main() -> int {
     assert_eq!(object_types[2][0], crate::vm::codegen::ObjectType::NestedObject);
 }
 
+#[test]
+fn test_array_index_assignment_compiles() {
+    let source = r#"
+fn main() -> int {
+    let arr = [1, 2, 3]
+    arr[0] = 10
+    arr[1] = 20
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CREATE_ARRAY opcode
+    assert!(bytecode.contains(&0x2F), "Expected CREATE_ARRAY opcode (0x2F)");
+    // Should contain SET_ELEM opcode (Plan 073)
+    assert!(bytecode.contains(&0x2B), "Expected SET_ELEM opcode (0x2B)");
+}
+
+#[test]
+fn test_array_index_read_and_write_compiles() {
+    let source = r#"
+fn main() -> int {
+    let arr = [1, 2, 3]
+    let val = arr[0]
+    arr[1] = val + 5
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain both GET_ELEM and SET_ELEM opcodes
+    assert!(bytecode.contains(&0x2C), "Expected GET_ELEM opcode (0x2C)");
+    assert!(bytecode.contains(&0x2B), "Expected SET_ELEM opcode (0x2B)");
+}
+
+
 

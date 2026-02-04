@@ -25,6 +25,7 @@ pub enum OpCode {
     CONST_U64 = 0x17,     // Plan 073: 64-bit unsigned
     LOAD_STR = 0x1F,
     GET_ELEM = 0x2C,      // Plan 073: Get element from array (array_id, index) -> value
+    SET_ELEM = 0x2B,      // Plan 073: Set element in array (array_id, index, value) -> void
     GET_FIELD = 0x2D,     // Plan 073: Get field from object (obj_id, field_str_idx) -> value
     CREATE_OBJ = 0x2E,    // Plan 073: Create object from field_count -> object_id
     CREATE_ARRAY = 0x2F,   // Plan 073: Create array from elem_count -> array_id

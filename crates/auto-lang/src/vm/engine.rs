@@ -462,6 +462,35 @@ impl BigVM {
                         task.ram.push_i32(0);
                     }
                 }
+                // Plan 073: Array element assignment (arr[index] = value)
+                OpCode::SET_ELEM => {
+                    // Stack: value, array_id, index (compiled in this order by codegen)
+                    // Pop index first (top of stack)
+                    let index = task.ram.pop_i32() as usize;
+                    // Pop array_id
+                    let array_id = task.ram.pop_i32() as u64;
+                    // Pop value (bottom of stack)
+                    let value = task.ram.pop_i32();
+
+                    // Get array from registry
+                    if let Some(array_ref) = self.arrays.get(&array_id) {
+                        let mut array = array_ref.write().unwrap();
+
+                        // Check bounds
+                        if index < array.len() {
+                            // Update element value
+                            // Convert i32 value to appropriate Value type
+                            // For now, store as Int (we can enhance this later with type tracking)
+                            array[index] = auto_val::Value::Int(value);
+                        } else {
+                            // Index out of bounds - silent fail for now
+                            // TODO: Proper error handling for out-of-bounds assignment
+                        }
+                    } else {
+                        // Array not found - silent fail for now
+                        // TODO: Proper error handling for invalid array IDs
+                    }
+                }
                 // Plan 073: Object field access (obj.field)
                 OpCode::GET_FIELD => {
                     let field_idx = self.flash.read_u16(task.ip);

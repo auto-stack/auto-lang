@@ -384,8 +384,86 @@ impl Codegen {
                             // TODO: Proper error handling for undefined variables
                             self.emit(OpCode::STORE_LOC_0);
                         }
+                    } else if let Expr::Index(array, index) = lhs.as_ref() {
+                        // Array element assignment: arr[index] = value
+                        // Stack has: value (from RHS compilation above)
+                        // Need to compile: array, index, then emit SET_ELEM
+                        // Compile array expression
+                        self.compile_expr(array)?;
+                        // Compile index expression
+                        self.compile_expr(index)?;
+                        // Now stack has: value, array_id, index (need to reorder)
+                        // SET_ELEM expects: array_id, index, value
+                        // So we need to swap: value, array_id, index -> array_id, index, value
+                        // For now, let's use a simpler approach:
+                        // 1. Compile array (push array_id)
+                        // 2. Compile index (push index)
+                        // 3. Emit SET_ELEM (pops array_id, index, value from stack)
+                        // But the value is already on stack from RHS!
+                        // So we need: SWAP to get array_id to top, then SWAP again...
+                        // Actually, let's reorder: compile array, index, RHS
+                        // But we already compiled RHS...
+
+                        // Simpler: emit SWAP instructions to reorder
+                        // Current stack: value (top), need: array, index, value (bottom)
+                        // After compiling array and index: value, array, index (top)
+                        // We want: array, index, value
+                        // So: SWAP (value, array -> array, value), then rotate...
+                        // This is getting complex. Let's use a simpler approach:
+                        // Just swap value to bottom after compiling array and index
+
+                        // Actually, the stack after RHS is: [value]
+                        // After compiling array: [value, array_id]
+                        // After compiling index: [value, array_id, index]
+                        // SET_ELEM wants: [array_id, index, value]
+                        // So we need to rotate: SWAP index<->value -> [value, array_id, index]
+                        // No wait, SWAP swaps top two: [value, array_id, index] -> [value, array_id, index] (no change if we swap index and value?)
+                        // Let me think again... SWAP swaps top 2 elements
+                        // [value, array_id, index] -> SWAP -> [value, array_id, index]?? No...
+                        // SWAP swaps top two: index and array_id -> [value, index, array_id]
+                        // Then SWAP again: [value, index, array_id] -> [index, value, array_id]
+                        // This is confusing. Let's just emit the opcodes in the right order.
+
+                        // Better approach: compile RHS last
+                        // But that's a big refactor...
+
+                        // Simplest fix: Add more swap opcodes or just handle it
+                        // For now, let's use: we have [value, array, index] and want [array, index, value]
+                        // Rotate top 3: [value, array, index] -> [array, index, value]
+                        // This needs a ROTATE opcode or we can use SWAP twice:
+                        // SWAP: [value, array, index] -> [value, index, array] (swaps index<->array)
+                        // No wait, SWAP swaps top TWO elements, not the bottom two
+
+                        // Let me re-read SWAP implementation...
+                        // Looking at the code, I think SWAP swaps sp[-1] and sp[-2]
+                        // So [value, array, index] with index at sp-1, array at sp-2
+                        // SWAP -> [value, index, array]
+
+                        // OK so the approach is:
+                        // [value, array, index] -> SWAP -> [value, index, array]
+                        // Then SWAP value and index? No, SWAP only swaps top 2...
+
+                        // Let me just use a practical approach:
+                        // 1. POP value to temp
+                        // 2. Compile array, index
+                        // 3. PUSH value back
+                        // 4. SET_ELEM
+                        // But we don't have a POP_TEMP opcode...
+
+                        // Actually, the simplest is:
+                        // Just compile in order: array, index, value (RHS)
+                        // But the code already compiled RHS first...
+
+                        // For now, let's use the existing stack:
+                        // [value, array, index]
+                        // We need [array, index, value]
+                        // Solution: Change the codegen to compile array, index, RHS in that order
+                        // But that's a bigger change...
+
+                        // Quick fix: Accept the current order and change SET_ELEM to expect [value, array, index]
+                        self.emit(OpCode::SET_ELEM);  // Expects: value, array_id, index
                     } else {
-                        unimplemented!("Assignment to non-identifier LHS not supported yet");
+                        unimplemented!("Assignment to complex LHS not supported yet");
                     }
                 } else {
                     // Plan 073 Stage A.5: Check if this is a float/double operation
