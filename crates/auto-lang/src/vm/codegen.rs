@@ -218,6 +218,40 @@ impl Codegen {
                 self.emit(OpCode::CONST_U64);
                 self.emit_u64(*u);
             }
+            // Plan 073 Stage B: Uint literal support (use CONST_I32)
+            Expr::Uint(u) => {
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(*u as i32);
+            }
+            // Plan 073 Stage B: I8 literal support (use CONST_I32)
+            Expr::I8(i) => {
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(*i as i32);
+            }
+            // Plan 073 Stage B: U8 literal support (use CONST_I32)
+            Expr::U8(u) => {
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(*u as i32);
+            }
+            // Plan 073 Stage B: Byte literal support (use CONST_I32)
+            Expr::Byte(b) => {
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(*b as i32);
+            }
+            // Plan 073 Stage B: Char literal support (use CONST_I32 for UTF-32 codepoint)
+            Expr::Char(c) => {
+                self.emit(OpCode::CONST_I32);
+                self.emit_i32(*c as i32);
+            }
+            // Plan 073 Stage B: CStr literal support (use LOAD_STR like regular strings)
+            Expr::CStr(s) => {
+                // Add C string to constant pool and emit LOAD_STR <index>
+                let bytes = s.as_bytes().to_vec();
+                let idx = self.strings.len() as u16;
+                self.strings.push(bytes);
+                self.emit(OpCode::LOAD_STR);
+                self.code.extend_from_slice(&idx.to_le_bytes());
+            }
             Expr::Str(s) => {
                 // Add string to constant pool and emit LOAD_STR <index>
                 let bytes = s.as_bytes().to_vec();
@@ -564,6 +598,13 @@ impl Codegen {
             Expr::Int(_) => Some(crate::ast::Type::Int),
             Expr::I64(_) => Some(crate::ast::Type::I64),
             Expr::U64(_) => Some(crate::ast::Type::U64),
+            Expr::Uint(_) => Some(crate::ast::Type::Uint),
+            Expr::I8(_) => Some(crate::ast::Type::Int),
+            Expr::U8(_) => Some(crate::ast::Type::Uint),
+            Expr::Byte(_) => Some(crate::ast::Type::Byte),
+            Expr::Char(_) => Some(crate::ast::Type::Char),
+            Expr::Str(_) => Some(crate::ast::Type::Str(0)),
+            Expr::CStr(_) => Some(crate::ast::Type::CStr),
             Expr::Bool(_) => Some(crate::ast::Type::Bool),
             // For now, we can't infer types from identifiers or complex expressions
             // This would require full type inference integration

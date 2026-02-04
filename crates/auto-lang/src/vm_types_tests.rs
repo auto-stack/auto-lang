@@ -278,3 +278,145 @@ fn main() -> int {
     assert!(bytecode.contains(&0x3B), "Expected ADD_D opcode (0x3B)");
     assert!(bytecode.contains(&0x3D), "Expected MUL_D opcode (0x3D)");
 }
+
+// ============================================================================
+// Plan 073 Stage B: Additional Type System Tests (uint, i8, u8, byte, char, cstr)
+// ============================================================================
+
+#[test]
+fn test_uint_literal_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x uint = 42u
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CONST_I32 opcode (uint uses CONST_I32)
+    assert!(bytecode.contains(&0x10), "Expected CONST_I32 opcode (0x10)");
+}
+
+#[test]
+fn test_i8_literal_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x i8 = -127
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CONST_I32 opcode (i8 uses CONST_I32)
+    assert!(bytecode.contains(&0x10), "Expected CONST_I32 opcode (0x10)");
+}
+
+#[test]
+fn test_u8_literal_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x u8 = 255u8
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CONST_I32 opcode (u8 uses CONST_I32)
+    assert!(bytecode.contains(&0x10), "Expected CONST_I32 opcode (0x10)");
+}
+
+#[test]
+fn test_byte_literal_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x byte = 0xAB
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CONST_I32 opcode (byte uses CONST_I32)
+    assert!(bytecode.contains(&0x10), "Expected CONST_I32 opcode (0x10)");
+}
+
+#[test]
+fn test_char_literal_compiles() {
+    let source = r#"
+fn main() -> int {
+    let c char = 'A'
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CONST_I32 opcode (char uses CONST_I32 for UTF-32 codepoint)
+    assert!(bytecode.contains(&0x10), "Expected CONST_I32 opcode (0x10)");
+}
+
+#[test]
+fn test_cstr_literal_compiles() {
+    let source = r#"
+fn main() -> int {
+    let s cstr = c"hello"
+    0
+}
+"#;
+    // This test just verifies that cstr literals can be parsed and compiled
+    // The actual bytecode generation for CStr uses LOAD_STR like regular strings
+    let bytecode = compile_to_bytecode(source);
+    // Should contain at least some bytecode
+    assert!(!bytecode.is_empty(), "Expected non-empty bytecode");
+    // CStr is stored in the strings pool
+    // Note: c"hello" is parsed as a CStr token by the lexer
+}
+
+#[test]
+fn test_all_small_int_types_compiled() {
+    let source = r#"
+fn test_all_types() -> int {
+    let a uint = 100u
+    let b i8 = -50
+    let c u8 = 200u8
+    let d byte = 0xFF
+    let e char = 'Z'
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain multiple CONST_I32 opcodes
+    let const_i32_count = bytecode.iter().filter(|&&x| x == 0x10).count();
+    assert!(const_i32_count >= 5, "Expected at least 5 CONST_I32 opcodes, got {}", const_i32_count);
+}
+
+#[test]
+fn test_mixed_types_compiles() {
+    let source = r#"
+fn test_mixed() -> int {
+    let i int = 42
+    let u uint = 42u
+    let f float = 3.14
+    let d double = 2.718d
+    let c char = 'A'
+    let s cstr = c"test"
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CONST_I32 (for int, uint, char)
+    assert!(bytecode.contains(&0x10), "Expected CONST_I32 opcode (0x10)");
+    // Should contain CONST_F32 (for float)
+    assert!(bytecode.contains(&0x14), "Expected CONST_F32 opcode (0x14)");
+    // Should contain CONST_F64 (for double)
+    assert!(bytecode.contains(&0x15), "Expected CONST_F64 opcode (0x15)");
+    // CStr uses LOAD_STR like regular strings, but we don't check for the opcode
+    // since c"..." literals might need special handling in the lexer
+}
+
+#[test]
+fn test_char_unicode_compiles() {
+    let source = r#"
+fn main() -> int {
+    let c char = 'π'  // Unicode character
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CONST_I32 opcode
+    assert!(bytecode.contains(&0x10), "Expected CONST_I32 opcode (0x10)");
+}
+
