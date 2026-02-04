@@ -1,0 +1,4 @@
+fn main() {
+    // Test basic list creation
+    let list = List.new()
+}

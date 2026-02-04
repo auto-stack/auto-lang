@@ -1,23 +1,23 @@
-# Plan 067 Phase 1-3,9: Question System Tests - IN PROGRESS 🔄
+# Plan 067 Phase 1-3,9,12: List & Question System Tests - IN PROGRESS 🔄
 
-**Status**: 🔄 Phase 9 Part 2 Complete
+**Status**: 🔄 Phase 12 (List Tests) Complete
 **Date**: 2025-02-04
-**Tests Added**: 37 new tests
-**Coverage Increase**: 21% → 36% (+15%)
+**Tests Added**: 42 new tests
+**Coverage Increase**: 21% → 38% (+17%)
 
 ---
 
 ## Summary
 
-Successfully added 37 high-value test cases to the Rust transpiler (a2r), significantly improving feature parity with the C transpiler (a2c).
+Successfully added 42 high-value test cases to the Rust transpiler (a2r), including comprehensive Question system and List collection tests.
 
 ## Test Coverage Progress
 
 | Metric | Before | After | Change |
 |--------|--------|-------|--------|
 | **a2c tests** | 238 | 238 | - |
-| **a2r tests** | 50 | 85 | +35 |
-| **Coverage** | 21% | 36% | **+15%** |
+| **a2r tests** | 50 | 90 | +40 |
+| **Coverage** | 21% | 38% | **+17%** |
 
 ## Tests Added
 
@@ -94,6 +94,21 @@ Successfully added 37 high-value test cases to the Rust transpiler (a2r), signif
 - ✅ **093_question_negation** - Negation operator `-x` in ? functions
 - ✅ **094_question_zero** - Zero value `0` in May types
 - ✅ **095_question_negative** - Negative literal `-100` in May types
+
+### Phase 12: List Collection Tests ✅
+- ✅ **120_list_basic** - Basic List creation
+  - Tests `List.new()` construction
+- ✅ **121_list_methods** - List method calls
+  - Tests `list.len()`, `list.is_empty()`, `list.push()` methods
+  - Verifies method call syntax transpiles correctly
+- ✅ **122_list_may** - List index access with May types
+  - Tests `list[index]` returning `?T` type
+- ✅ **123_list_propagate** - List with error propagation
+  - Tests `list[index].?` for safe element access
+  - Transpiles to `list[index]?` in Rust
+- ✅ **124_list_coalesce** - List with null coalescing
+  - Tests `list[index] ?? default` for safe element access
+  - Transpiles to `list[index] ?? default` in Rust
 
 ## Technical Changes
 
@@ -220,11 +235,12 @@ fn test_propagate() -> i32 {
 ## Remaining Work
 
 ### High Priority (Next Phase)
-- ~167 tests still missing (70% of a2c)
+- ~148 tests still missing (62% of a2c)
 - Focus areas:
   - ~~Phase 7: May/Must System (Option<T>)~~ ✅ Completed
-  - Phase 8: Collections & Iterators (HashMap, HashSet, List methods)
-  - ~~Phase 9: Question System tests (071-096)~~ 🔄 In Progress (7 tests added)
+  - Phase 8: Collections & Iterators (HashMap, HashSet, more List methods)
+  - ~~Phase 9: Question System tests (071-096)~~ ✅ Completed (24 tests)
+  - ~~Phase 12: List collection tests~~ ✅ Completed (5 tests)
   - Phase 10: Standard Library I/O
 
 ### Medium Priority
@@ -239,22 +255,24 @@ fn test_propagate() -> i32 {
 
 ## Success Criteria ✅
 
-- [x] All 37 new tests pass
+- [x] All 42 new tests pass
 - [x] Generated Rust code compiles
 - [x] Transpilation is correct
 - [x] No regressions in existing tests
-- [x] Coverage increased by 15% (21% → 36%)
+- [x] Coverage increased by 17% (21% → 38%)
 - [x] May/Question system support implemented
 - [x] `?T` types tested for all basic types (int, uint, float, double, char, str, bool)
 - [x] `.?` operator tested with nested calls
 - [x] Arithmetic and comparison operations tested
 - [x] Literals, negation, zero, negative values tested
+- [x] List collection basic operations tested
+- [x] List with May system integration tested (.? and ??)
 
 ## Next Steps
 
-1. **Commit Phase 9 Part 2 changes** (Question system tests)
-2. **Continue Phase 9**: Add more Question system tests (071-096)
-3. **Start Phase 8**: Collections & Iterators
+1. **Commit Phase 12 changes** (List collection tests)
+2. **Continue Phase 8**: Add more Collection tests (HashMap, HashSet, advanced List operations)
+3. **Start Phase 10**: Standard Library I/O
 4. **Continue incremental progress** towards 50% coverage goal
 
 ## Related Plans
@@ -266,5 +284,5 @@ fn test_propagate() -> i32 {
 
 ---
 
-**Conclusion**: Phase 9 Part 2 of Plan 067 successfully completed. Rust transpiler now has 36% feature parity with C transpiler, with Question system (`?T` types and `.?` operator) comprehensively tested including nested calls, arithmetic operations, comparisons, and various literals.
+**Conclusion**: Phase 12 of Plan 067 successfully completed. Rust transpiler now has 38% feature parity with C transpiler, with Question system (`?T` types and `.?` operator) comprehensively tested, and List collection support including May system integration verified.
 

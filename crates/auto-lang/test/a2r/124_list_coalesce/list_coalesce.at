@@ -1,0 +1,9 @@
+fn main() {
+    let list = List.new()
+    list.push(100)
+    list.push(200)
+
+    // Test null coalescing with ??
+    let val1 = list[0] ?? 0
+    let val2 = list[5] ?? 999  // Out of bounds, use default
+}
