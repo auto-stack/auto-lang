@@ -25,6 +25,7 @@ pub enum OpCode {
     CONST_U64 = 0x17,     // Plan 073: 64-bit unsigned
     LOAD_STR = 0x1F,
     CREATE_OBJ = 0x2E,    // Plan 073: Create object from field_count -> object_id
+    GET_FIELD = 0x2F,     // Plan 073: Get field from object (obj_id, field_str_idx) -> value
 
     // === Local Variables ===
     LOAD_LOCAL = 0x20,

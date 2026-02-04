@@ -301,6 +301,20 @@ impl Codegen {
                     self.emit(OpCode::LOAD_LOC_0);
                 }
             }
+            // Plan 073: Dot expression field access (obj.field)
+            Expr::Dot(obj, field) => {
+                // Compile object expression (should push object_id onto stack)
+                self.compile_expr(obj)?;
+
+                // Add field name to string pool and emit GET_FIELD <field_idx>
+                let field_str = field.to_string();
+                let field_bytes = field_str.as_bytes().to_vec();
+                let field_idx = self.strings.len() as u16;
+                self.strings.push(field_bytes);
+
+                self.emit(OpCode::GET_FIELD);
+                self.code.extend_from_slice(&field_idx.to_le_bytes());
+            }
             Expr::Bina(lhs, op, rhs) => {
                 // Assignment is special: compile RHS first, then store to LHS
                 if *op == Op::Asn {

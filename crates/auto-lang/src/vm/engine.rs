@@ -334,6 +334,47 @@ impl BigVM {
                     // Push object ID onto stack
                     task.ram.push_i32(obj_id as i32);
                 }
+                // Plan 073: Object field access (obj.field)
+                OpCode::GET_FIELD => {
+                    let field_idx = self.flash.read_u16(task.ip);
+                    task.ip += 2;
+
+                    // Pop object ID from stack
+                    let obj_id = task.ram.pop_i32() as u64;
+
+                    // Get field name from strings pool
+                    let field_bytes = &self.strings[field_idx as usize];
+                    let field_name = String::from_utf8_lossy(field_bytes);
+
+                    // Get object from registry
+                    if let Some(obj_ref) = self.objects.get(&obj_id) {
+                        let obj = obj_ref.read().unwrap();
+                        // Look up field by name (convert to ValueKey)
+                        let key = auto_val::ValueKey::Str(field_name.into());
+
+                        if let Some(value) = obj.get(&key) {
+                            // Push field value onto stack
+                            // For now, assume all values are integers
+                            // TODO: Support other value types
+                            match value {
+                                auto_val::Value::Int(i) => task.ram.push_i32(*i),
+                                _ => {
+                                    // TODO: Support other value types
+                                    // For now, push 0 as placeholder
+                                    task.ram.push_i32(0);
+                                }
+                            }
+                        } else {
+                            // Field not found - push 0 as error sentinel
+                            // TODO: Proper error handling for missing fields
+                            task.ram.push_i32(0);
+                        }
+                    } else {
+                        // Object not found - push 0 as error sentinel
+                        // TODO: Proper error handling for invalid object IDs
+                        task.ram.push_i32(0);
+                    }
+                }
                 // === Arithmetic ===
                 OpCode::ADD => {
                     let b = task.ram.pop_i32();

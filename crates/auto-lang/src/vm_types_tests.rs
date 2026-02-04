@@ -489,4 +489,38 @@ fn main() -> int {
     assert_eq!(object_keys.len(), 2, "Expected 2 objects");
 }
 
+#[test]
+fn test_object_field_access_compiles() {
+    let source = r#"
+fn main() -> int {
+    let obj = {x: 1, y: 2}
+    let val = obj.x
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CREATE_OBJ opcode
+    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    // Should contain GET_FIELD opcode
+    assert!(bytecode.contains(&0x2F), "Expected GET_FIELD opcode (0x2F)");
+}
+
+#[test]
+fn test_chained_field_access_compiles() {
+    let source = r#"
+fn main() -> int {
+    let outer = {inner: {value: 42}}
+    let val = outer.inner.value
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CREATE_OBJ opcodes (2 objects)
+    let create_obj_count = bytecode.iter().filter(|&&x| x == 0x2E).count();
+    assert!(create_obj_count >= 2, "Expected at least 2 CREATE_OBJ opcodes");
+    // Should contain GET_FIELD opcodes (2 field accesses)
+    let get_field_count = bytecode.iter().filter(|&&x| x == 0x2F).count();
+    assert!(get_field_count >= 2, "Expected at least 2 GET_FIELD opcodes");
+}
+
 
