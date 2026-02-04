@@ -260,9 +260,28 @@ impl BigVM {
                     task.ram.push_i32(val);
                 }
                 OpCode::CONST_F32 => {
-                    let val = self.flash.read_i32(task.ip);
+                    // Plan 073: Fixed to use push_f32 instead of push_i32
+                    let val = self.flash.read_f32(task.ip);
                     task.ip += 4;
-                    task.ram.push_i32(val);
+                    task.ram.push_f32(val);
+                }
+                OpCode::CONST_F64 => {
+                    // Plan 073: Double precision constant
+                    let val = self.flash.read_f64(task.ip);
+                    task.ip += 8;
+                    task.ram.push_f64(val);
+                }
+                OpCode::CONST_I64 => {
+                    // Plan 073: 64-bit integer constant
+                    let val = self.flash.read_i64(task.ip);
+                    task.ip += 8;
+                    task.ram.push_i64(val);
+                }
+                OpCode::CONST_U64 => {
+                    // Plan 073: 64-bit unsigned integer constant
+                    let val = self.flash.read_u64(task.ip);
+                    task.ip += 8;
+                    task.ram.push_u64(val);
                 }
                 OpCode::CONST_0 => {
                     task.ram.push_i32(0);
@@ -305,6 +324,65 @@ impl BigVM {
                     let a = task.ram.pop_i32();
                     task.ram.push_i32(a.wrapping_neg());
                 }
+
+                // Plan 073 Stage A: Floating-point arithmetic (f32)
+                OpCode::ADD_F => {
+                    let b = task.ram.pop_f32();
+                    let a = task.ram.pop_f32();
+                    task.ram.push_f32(a + b);
+                }
+                OpCode::SUB_F => {
+                    let b = task.ram.pop_f32();
+                    let a = task.ram.pop_f32();
+                    task.ram.push_f32(a - b);
+                }
+                OpCode::MUL_F => {
+                    let b = task.ram.pop_f32();
+                    let a = task.ram.pop_f32();
+                    task.ram.push_f32(a * b);
+                }
+                OpCode::DIV_F => {
+                    let b = task.ram.pop_f32();
+                    let a = task.ram.pop_f32();
+                    if b == 0.0 {
+                        return Err(VMError::DivisionByZero);
+                    }
+                    task.ram.push_f32(a / b);
+                }
+                OpCode::NEG_F => {
+                    let a = task.ram.pop_f32();
+                    task.ram.push_f32(-a);
+                }
+
+                // Plan 073 Stage A: Double precision arithmetic (f64)
+                OpCode::ADD_D => {
+                    let b = task.ram.pop_f64();
+                    let a = task.ram.pop_f64();
+                    task.ram.push_f64(a + b);
+                }
+                OpCode::SUB_D => {
+                    let b = task.ram.pop_f64();
+                    let a = task.ram.pop_f64();
+                    task.ram.push_f64(a - b);
+                }
+                OpCode::MUL_D => {
+                    let b = task.ram.pop_f64();
+                    let a = task.ram.pop_f64();
+                    task.ram.push_f64(a * b);
+                }
+                OpCode::DIV_D => {
+                    let b = task.ram.pop_f64();
+                    let a = task.ram.pop_f64();
+                    if b == 0.0 {
+                        return Err(VMError::DivisionByZero);
+                    }
+                    task.ram.push_f64(a / b);
+                }
+                OpCode::NEG_D => {
+                    let a = task.ram.pop_f64();
+                    task.ram.push_f64(-a);
+                }
+
                 OpCode::NOT => {
                     let a = task.ram.pop_i32();
                     task.ram.push_i32(!a);

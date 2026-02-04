@@ -3681,12 +3681,18 @@ impl<'a> Parser<'a> {
         let params = self.fn_params()?;
         self.expect(TokenKind::RParen)?;
 
-        // parse return type
+        // Plan 073 Stage A.5: Parse return type annotation -> type
+        // Support: fn foo() -> float { ... }
         let mut ret_type = Type::Unknown;
-        // TODO: determine return type with last stmt if it's not specified
-        if self.is_type_name() {
+        if self.is_kind(TokenKind::Arrow) {
+            // Explicit return type annotation with ->
+            self.next(); // consume ->
+            ret_type = self.parse_type()?;
+        } else if self.is_type_name() {
+            // Type without -> (older syntax or inferred)
             ret_type = self.parse_type()?;
         }
+        // TODO: determine return type with last stmt if it's not specified
 
         // exit function scope
         self.exit_scope();
@@ -3940,9 +3946,19 @@ impl<'a> Parser<'a> {
         // parse return type
         let mut ret_type = Type::Unknown;
         let mut ret_type_name: Option<AutoStr> = None;
+        // Plan 073 Stage A.5: Support -> type return type annotation
+        if self.is_kind(TokenKind::Arrow) {
+            // Explicit return type annotation with ->
+            self.next(); // consume ->
+            ret_type = self.parse_type()?;
+            if self.is_kind(TokenKind::Ident) {
+                ret_type_name = Some(self.cur.text.clone());
+            }
+            self.skip_empty_lines();
+        }
         // TODO: determine return type with last stmt if it's not specified
         // Support: Ident (int, str), LSquare ([]int), Star (*int)
-        if self.is_kind(TokenKind::Ident)
+        else if self.is_kind(TokenKind::Ident)
             || self.is_kind(TokenKind::LSquare)
             || self.is_kind(TokenKind::Star)
             || self.is_kind(TokenKind::Question)
@@ -4132,9 +4148,19 @@ impl<'a> Parser<'a> {
         // parse return type
         let mut ret_type = Type::Unknown;
         let mut ret_type_name: Option<AutoStr> = None;
+        // Plan 073 Stage A.5: Support -> type return type annotation
+        if self.is_kind(TokenKind::Arrow) {
+            // Explicit return type annotation with ->
+            self.next(); // consume ->
+            ret_type = self.parse_type()?;
+            if self.is_kind(TokenKind::Ident) {
+                ret_type_name = Some(self.cur.text.clone());
+            }
+            self.skip_empty_lines();
+        }
         // TODO: determine return type with last stmt if it's not specified
         // Support: Ident (int, str), LSquare ([]int), Star (*int)
-        if self.is_kind(TokenKind::Ident)
+        else if self.is_kind(TokenKind::Ident)
             || self.is_kind(TokenKind::LSquare)
             || self.is_kind(TokenKind::Star)
             || self.is_kind(TokenKind::Question)

@@ -198,6 +198,16 @@ impl Codegen {
                 self.emit(OpCode::CONST_I32);
                 self.emit_i32(if *b { 1 } else { 0 });
             }
+            // Plan 073 Stage A.5: Float literal support
+            Expr::Float(f, _) => {
+                self.emit(OpCode::CONST_F32);
+                self.emit_f32(*f as f32);
+            }
+            // Plan 073 Stage A.5: Double literal support
+            Expr::Double(d, _) => {
+                self.emit(OpCode::CONST_F64);
+                self.emit_f64(*d);
+            }
             Expr::Str(s) => {
                 // Add string to constant pool and emit LOAD_STR <index>
                 let bytes = s.as_bytes().to_vec();
@@ -250,14 +260,54 @@ impl Codegen {
                         unimplemented!("Assignment to non-identifier LHS not supported yet");
                     }
                 } else {
+                    // Plan 073 Stage A.5: Check if this is a float/double operation
+                    let is_float = self.is_float_operation(lhs, rhs);
+                    let is_double = self.is_double_operation(lhs, rhs);
+
                     // Normal binary operation: compile both operands, then apply operator
                     self.compile_expr(lhs)?;
                     self.compile_expr(rhs)?;
+
+                    // For arithmetic operations, use float/double opcodes if operands are floats
                     match op {
-                        Op::Add => self.emit(OpCode::ADD),
-                        Op::Sub => self.emit(OpCode::SUB),
-                        Op::Mul => self.emit(OpCode::MUL),
-                        Op::Div => self.emit(OpCode::DIV),
+                        Op::Add => {
+                            if is_double {
+                                self.emit(OpCode::ADD_D);
+                            } else if is_float {
+                                self.emit(OpCode::ADD_F);
+                            } else {
+                                self.emit(OpCode::ADD);
+                            }
+                        }
+                        Op::Sub => {
+                            if is_double {
+                                self.emit(OpCode::SUB_D);
+                            } else if is_float {
+                                self.emit(OpCode::SUB_F);
+                            } else {
+                                self.emit(OpCode::SUB);
+                            }
+                        }
+                        Op::Mul => {
+                            if is_double {
+                                self.emit(OpCode::MUL_D);
+                            } else if is_float {
+                                self.emit(OpCode::MUL_F);
+                            } else {
+                                self.emit(OpCode::MUL);
+                            }
+                        }
+                        Op::Div => {
+                            if is_double {
+                                self.emit(OpCode::DIV_D);
+                            } else if is_float {
+                                self.emit(OpCode::DIV_F);
+                            } else {
+                                self.emit(OpCode::DIV);
+                            }
+                        }
+                        // Comparison operators currently use integer opcodes for all types
+                        // TODO: Add float/double comparison opcodes if needed
                         Op::Eq => self.emit(OpCode::EQ),
                         Op::Neq => self.emit(OpCode::NE),
                         Op::Lt => self.emit(OpCode::LT),
@@ -269,12 +319,24 @@ impl Codegen {
                 }
             }
             Expr::Unary(op, rhs) => {
+                // Plan 073 Stage A.5: Check if this is a float/double operation
+                let is_float = matches!(rhs.as_ref(), Expr::Float(_, _));
+                let is_double = matches!(rhs.as_ref(), Expr::Double(_, _));
+
                 // Compile the operand first
                 self.compile_expr(rhs)?;
 
                 // Emit the appropriate unary opcode
                 match op {
-                    Op::Sub => self.emit(OpCode::NEG),
+                    Op::Sub => {
+                        if is_double {
+                            self.emit(OpCode::NEG_D);
+                        } else if is_float {
+                            self.emit(OpCode::NEG_F);
+                        } else {
+                            self.emit(OpCode::NEG);
+                        }
+                    }
                     Op::Not => self.emit(OpCode::NOT),
                     _ => unimplemented!("Unary Op {:?}", op),
                 }
@@ -460,6 +522,45 @@ impl Codegen {
 
     fn emit_i32(&mut self, val: i32) {
         self.code.extend_from_slice(&val.to_le_bytes());
+    }
+
+    // Plan 073 Stage A.5: Emit f32 value (4 bytes, little-endian)
+    fn emit_f32(&mut self, val: f32) {
+        self.code.extend_from_slice(&val.to_le_bytes());
+    }
+
+    // Plan 073 Stage A.5: Emit f64 value (8 bytes, little-endian)
+    fn emit_f64(&mut self, val: f64) {
+        self.code.extend_from_slice(&val.to_le_bytes());
+    }
+
+    // Plan 073 Stage A.5: Check if expression is a float/double type
+    // Returns: Some(Type) if the type is known, None otherwise
+    fn infer_expr_type(&self, expr: &Expr) -> Option<crate::ast::Type> {
+        match expr {
+            // Literals with known types
+            Expr::Float(_, _) => Some(crate::ast::Type::Float),
+            Expr::Double(_, _) => Some(crate::ast::Type::Double),
+            Expr::Int(_) => Some(crate::ast::Type::Int),
+            Expr::Bool(_) => Some(crate::ast::Type::Bool),
+            // For now, we can't infer types from identifiers or complex expressions
+            // This would require full type inference integration
+            _ => None,
+        }
+    }
+
+    // Plan 073 Stage A.5: Check if we should use float/double arithmetic
+    // Returns true if either operand is a float/double
+    fn is_float_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
+        // Check if either operand is a float/double literal
+        matches!(lhs, Expr::Float(_, _) | Expr::Double(_, _))
+            || matches!(rhs, Expr::Float(_, _) | Expr::Double(_, _))
+    }
+
+    // Plan 073 Stage A.5: Check if we should use double precision (f64) vs float (f32)
+    fn is_double_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
+        // If either operand is double, use double precision
+        matches!(lhs, Expr::Double(_, _)) || matches!(rhs, Expr::Double(_, _))
     }
 
     fn emit_placeholder_i16(&mut self) -> usize {
@@ -1197,4 +1298,177 @@ mod tests {
         assert!(codegen.strings.iter().any(|s| s == b"a"), "String pool should contain 'a'");
         assert!(codegen.strings.iter().any(|s| s == b"b"), "String pool should contain 'b'");
     }
+
+    // Plan 073 Stage A: Type System Expansion Tests
+    // These tests verify the new opcodes for float, double, and i64 support
+
+    #[test]
+    fn test_opcodes_f32_arithmetic() {
+        use crate::vm::opcode::OpCode;
+
+        // Verify f32 arithmetic opcodes exist and have correct values
+        assert_eq!(OpCode::ADD_F as u8, 0x36);
+        assert_eq!(OpCode::SUB_F as u8, 0x37);
+        assert_eq!(OpCode::MUL_F as u8, 0x38);
+        assert_eq!(OpCode::DIV_F as u8, 0x39);
+        assert_eq!(OpCode::NEG_F as u8, 0x3A);
+    }
+
+    #[test]
+    fn test_opcodes_f64_arithmetic() {
+        use crate::vm::opcode::OpCode;
+
+        // Verify f64 arithmetic opcodes exist and have correct values
+        assert_eq!(OpCode::ADD_D as u8, 0x3B);
+        assert_eq!(OpCode::SUB_D as u8, 0x3C);
+        assert_eq!(OpCode::MUL_D as u8, 0x3D);
+        assert_eq!(OpCode::DIV_D as u8, 0x3E);
+        assert_eq!(OpCode::NEG_D as u8, 0x3F);
+    }
+
+    #[test]
+    fn test_opcodes_f32_constant() {
+        use crate::vm::opcode::OpCode;
+
+        // Verify f32 constant opcode exists
+        assert_eq!(OpCode::CONST_F32 as u8, 0x14);
+    }
+
+    #[test]
+    fn test_opcodes_f64_constant() {
+        use crate::vm::opcode::OpCode;
+
+        // Verify f64 constant opcode exists
+        assert_eq!(OpCode::CONST_F64 as u8, 0x15);
+    }
+
+    #[test]
+    fn test_opcodes_i64_constant() {
+        use crate::vm::opcode::OpCode;
+
+        // Verify i64/u64 constant opcodes exist
+        assert_eq!(OpCode::CONST_I64 as u8, 0x16);
+        assert_eq!(OpCode::CONST_U64 as u8, 0x17);
+    }
+
+    // Plan 073 Stage A.5: Float/Double Codegen Tests
+
+    #[test]
+    fn test_codegen_float_literal() {
+        let mut codegen = Codegen::new();
+        codegen.compile_expr(&Expr::Float(3.14, "3.14".into())).unwrap();
+
+        // Should emit CONST_F32 (0x14) followed by 4 bytes
+        assert_eq!(codegen.code[0], OpCode::CONST_F32 as u8);
+        assert_eq!(codegen.code.len(), 5); // 1 opcode + 4 bytes for f32
+    }
+
+    #[test]
+    fn test_codegen_double_literal() {
+        let mut codegen = Codegen::new();
+        codegen.compile_expr(&Expr::Double(2.718281828, "2.718281828".into())).unwrap();
+
+        // Should emit CONST_F64 (0x15) followed by 8 bytes
+        assert_eq!(codegen.code[0], OpCode::CONST_F64 as u8);
+        assert_eq!(codegen.code.len(), 9); // 1 opcode + 8 bytes for f64
+    }
+
+    #[test]
+    fn test_codegen_float_addition() {
+        let mut codegen = Codegen::new();
+        // 1.5 + 2.5
+        let expr = Expr::Bina(
+            Box::new(Expr::Float(1.5, "1.5".into())),
+            Op::Add,
+            Box::new(Expr::Float(2.5, "2.5".into())),
+        );
+
+        codegen.compile_expr(&expr).unwrap();
+
+        // Expected bytecode:
+        // CONST_F32 (1 byte) + 1.5 (4 bytes) = 5 bytes
+        // CONST_F32 (1 byte) + 2.5 (4 bytes) = 5 bytes
+        // ADD_F (1 byte)
+        // Total: 11 bytes
+        assert_eq!(codegen.code.len(), 11);
+        assert_eq!(codegen.code[0], OpCode::CONST_F32 as u8);
+        assert_eq!(codegen.code[5], OpCode::CONST_F32 as u8);
+        assert_eq!(codegen.code[10], OpCode::ADD_F as u8);
+    }
+
+    #[test]
+    fn test_codegen_double_multiplication() {
+        let mut codegen = Codegen::new();
+        // 3.14 * 2.0
+        let expr = Expr::Bina(
+            Box::new(Expr::Double(3.14, "3.14".into())),
+            Op::Mul,
+            Box::new(Expr::Double(2.0, "2.0".into())),
+        );
+
+        codegen.compile_expr(&expr).unwrap();
+
+        // Expected bytecode:
+        // CONST_F64 (1 byte) + 3.14 (8 bytes) = 9 bytes
+        // CONST_F64 (1 byte) + 2.0 (8 bytes) = 9 bytes
+        // MUL_D (1 byte)
+        // Total: 19 bytes
+        assert_eq!(codegen.code.len(), 19);
+        assert_eq!(codegen.code[0], OpCode::CONST_F64 as u8);
+        assert_eq!(codegen.code[9], OpCode::CONST_F64 as u8);
+        assert_eq!(codegen.code[18], OpCode::MUL_D as u8);
+    }
+
+    #[test]
+    fn test_codegen_float_unary_negation() {
+        let mut codegen = Codegen::new();
+        // -3.14
+        let expr = Expr::Unary(Op::Sub, Box::new(Expr::Float(3.14, "3.14".into())));
+
+        codegen.compile_expr(&expr).unwrap();
+
+        // Expected bytecode:
+        // CONST_F32 (1 byte) + 3.14 (4 bytes) = 5 bytes
+        // NEG_F (1 byte)
+        // Total: 6 bytes
+        assert_eq!(codegen.code.len(), 6);
+        assert_eq!(codegen.code[0], OpCode::CONST_F32 as u8);
+        assert_eq!(codegen.code[5], OpCode::NEG_F as u8);
+    }
+
+    #[test]
+    fn test_codegen_double_unary_negation() {
+        let mut codegen = Codegen::new();
+        // -2.718
+        let expr = Expr::Unary(Op::Sub, Box::new(Expr::Double(2.718, "2.718".into())));
+
+        codegen.compile_expr(&expr).unwrap();
+
+        // Expected bytecode:
+        // CONST_F64 (1 byte) + 2.718 (8 bytes) = 9 bytes
+        // NEG_D (1 byte)
+        // Total: 10 bytes
+        assert_eq!(codegen.code.len(), 10);
+        assert_eq!(codegen.code[0], OpCode::CONST_F64 as u8);
+        assert_eq!(codegen.code[9], OpCode::NEG_D as u8);
+    }
+
+    #[test]
+    fn test_codegen_mixed_float_double_uses_double() {
+        let mut codegen = Codegen::new();
+        // 3.14 (f32) + 2.718 (f64)
+        let expr = Expr::Bina(
+            Box::new(Expr::Float(3.14, "3.14".into())),
+            Op::Add,
+            Box::new(Expr::Double(2.718, "2.718".into())),
+        );
+
+        codegen.compile_expr(&expr).unwrap();
+
+        // Should use double precision when either operand is double
+        assert_eq!(codegen.code[0], OpCode::CONST_F32 as u8);
+        assert_eq!(codegen.code[5], OpCode::CONST_F64 as u8);
+        assert_eq!(codegen.code[14], OpCode::ADD_D as u8);
+    }
 }
+

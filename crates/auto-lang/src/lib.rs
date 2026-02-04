@@ -499,4 +499,13 @@ pub fn trans_javascript(path: &str) -> AutoResult<String> {
     Ok(format!("[trans] {} -> {}", path, jsname))
 }
 #[cfg(test)]
+mod test_parser_arrow;
+
+#[cfg(test)]
+mod test_float_full;
+
+#[cfg(test)]
+mod test_double_lexer;
+
+#[cfg(test)]
 mod tests;

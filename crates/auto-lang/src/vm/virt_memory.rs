@@ -84,6 +84,26 @@ impl VirtualFlash {
         let bytes = &self.memory[addr..addr + 4];
         f32::from_le_bytes(bytes.try_into().unwrap())
     }
+
+    // Plan 073 Stage A: Double precision support
+    #[inline(always)]
+    pub fn read_f64(&self, addr: usize) -> f64 {
+        let bytes = &self.memory[addr..addr + 8];
+        f64::from_le_bytes(bytes.try_into().unwrap())
+    }
+
+    // Plan 073 Stage A: 64-bit integer support
+    #[inline(always)]
+    pub fn read_i64(&self, addr: usize) -> i64 {
+        let bytes = &self.memory[addr..addr + 8];
+        i64::from_le_bytes(bytes.try_into().unwrap())
+    }
+
+    #[inline(always)]
+    pub fn read_u64(&self, addr: usize) -> u64 {
+        let bytes = &self.memory[addr..addr + 8];
+        u64::from_le_bytes(bytes.try_into().unwrap())
+    }
 }
 
 /// Simulates MCU SRAM (Data Space)
@@ -120,6 +140,84 @@ impl VirtualRAM {
         }
         self.sp -= 1;
         self.raw[self.sp]
+    }
+
+    // Plan 073 Stage A: Float support
+    #[inline(always)]
+    pub fn push_f32(&mut self, val: f32) {
+        // Use bit transmute to store f32 in i32 slot
+        let bits: i32 = unsafe { std::mem::transmute(val) };
+        self.push_i32(bits);
+    }
+
+    #[inline(always)]
+    pub fn pop_f32(&mut self) -> f32 {
+        let bits = self.pop_i32();
+        unsafe { std::mem::transmute(bits) }
+    }
+
+    // Plan 073 Stage A: Double (f64) support
+    // Note: f64 takes 2 slots in our 32-bit VM
+    #[inline(always)]
+    pub fn push_f64(&mut self, val: f64) {
+        // Use bit transmute to split f64 into two i32 slots
+        let bits: u64 = unsafe { std::mem::transmute(val) };
+        let low = (bits & 0xFFFFFFFF) as i32;
+        let high = ((bits >> 32) & 0xFFFFFFFF) as i32;
+        self.push_i32(low);  // Push low part first
+        self.push_i32(high); // Then high part
+    }
+
+    #[inline(always)]
+    pub fn pop_f64(&mut self) -> f64 {
+        let high = self.pop_i32() as u64;
+        let low = self.pop_i32() as u64;
+        let bits = (high << 32) | low;
+        unsafe { std::mem::transmute(bits) }
+    }
+
+    // Plan 073 Stage A: Unsigned integer support
+    #[inline(always)]
+    pub fn push_u32(&mut self, val: u32) {
+        self.push_i32(val as i32);
+    }
+
+    #[inline(always)]
+    pub fn pop_u32(&mut self) -> u32 {
+        self.pop_i32() as u32
+    }
+
+    // Plan 073 Stage A: 64-bit integer support
+    // Note: i64 takes 2 slots in our 32-bit VM
+    #[inline(always)]
+    pub fn push_i64(&mut self, val: i64) {
+        let low = (val & 0xFFFFFFFF) as i32;
+        let high = ((val >> 32) & 0xFFFFFFFF) as i32;
+        self.push_i32(low);
+        self.push_i32(high);
+    }
+
+    #[inline(always)]
+    pub fn pop_i64(&mut self) -> i64 {
+        let high = self.pop_i32() as i64;
+        let low = self.pop_i32() as i64;
+        (high << 32) | (low & 0xFFFFFFFF)
+    }
+
+    // Plan 073 Stage A: u64 support
+    #[inline(always)]
+    pub fn push_u64(&mut self, val: u64) {
+        let low = (val & 0xFFFFFFFF) as i32;
+        let high = ((val >> 32) & 0xFFFFFFFF) as i32;
+        self.push_i32(low);
+        self.push_i32(high);
+    }
+
+    #[inline(always)]
+    pub fn pop_u64(&mut self) -> u64 {
+        let high = self.pop_u32() as u64;
+        let low = self.pop_u32() as u64;
+        (high << 32) | low
     }
 
     #[inline(always)]

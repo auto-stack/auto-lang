@@ -20,6 +20,9 @@ pub enum OpCode {
     CONST_0 = 0x12,
     CONST_1 = 0x13,
     CONST_F32 = 0x14,
+    CONST_F64 = 0x15,     // Plan 073: Double precision
+    CONST_I64 = 0x16,     // Plan 073: 64-bit integer
+    CONST_U64 = 0x17,     // Plan 073: 64-bit unsigned
     LOAD_STR = 0x1F,
 
     // === Local Variables ===
@@ -38,6 +41,20 @@ pub enum OpCode {
     DIV = 0x33,
     MOD = 0x34,
     NEG = 0x35,
+
+    // Plan 073: Floating-point arithmetic
+    ADD_F = 0x36,     // f32 + f32 -> f32
+    SUB_F = 0x37,     // f32 - f32 -> f32
+    MUL_F = 0x38,     // f32 * f32 -> f32
+    DIV_F = 0x39,     // f32 / f32 -> f32
+    NEG_F = 0x3A,     // -f32 -> f32
+
+    // Plan 073: Double precision arithmetic
+    ADD_D = 0x3B,     // f64 + f64 -> f64
+    SUB_D = 0x3C,     // f64 - f64 -> f64
+    MUL_D = 0x3D,     // f64 * f64 -> f64
+    DIV_D = 0x3E,     // f64 / f64 -> f64
+    NEG_D = 0x3F,     // -f64 -> f64
 
     AND = 0x40,
     OR = 0x41,

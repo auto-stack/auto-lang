@@ -4,10 +4,10 @@ members = [
     "auto-gen",
     "auto-lang",
     "auto-lang-macros",
-    "auto-lsp",
+    # "auto-lsp",  # Temporarily disabled due to Cargo.toml issues
     "auto-val",
     "auto-vm",
-    "auto-xml",
+    # "auto-xml",  # Temporarily disabled due to Cargo.toml issues
 ]
 resolver = "2"
 
