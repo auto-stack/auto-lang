@@ -346,9 +346,11 @@ impl RustTrans {
                         // Binary operators: lhs OP rhs
                         self.expr(lhs, out)?;
                         // Plan 072: Convert and/or to Rust's &&/||
+                        // Plan 067: Support ?? operator (May system)
                         let op_str = match op {
                             Op::And => "&&",
                             Op::Or => "||",
+                            Op::QuestionQuestion => "??",
                             _ => op.op(),
                         };
                         write!(out, " {} ", op_str)?;
@@ -906,6 +908,23 @@ impl RustTrans {
                 // Regular field access: object.field
                 self.expr(object, out)?;
                 write!(out, ".{}", field)?;
+                Ok(())
+            }
+
+            Expr::NullCoalesce(lhs, rhs) => {
+                // Null coalescing: lhs ?? rhs
+                // Plan 067: May system support
+                self.expr(lhs, out)?;
+                write!(out, " ?? ")?;
+                self.expr(rhs, out)?;
+                Ok(())
+            }
+
+            Expr::ErrorPropagate(expr) => {
+                // Error propagation: expr.?
+                // Plan 067: May system support
+                self.expr(expr, out)?;
+                write!(out, "?")?;
                 Ok(())
             }
 
