@@ -286,9 +286,85 @@ impl Codegen {
                         }
                     }
                     Iter::Indexed(index_name, iter_name) => {
-                        // TODO: Implement indexed iteration: for i, x in 0..10 { ... }
-                        self.loop_exits.pop();
-                        return Err(AutoError::Msg("Indexed for loops not supported yet".to_string()));
+                        // Plan 073: Indexed iteration: for i, x in 0..10 { ... }
+                        // Check if range is a Range expression
+                        if let Expr::Range(range) = &for_stmt.range {
+                            // Compile start expression and initialize loop variables
+                            self.compile_expr(&range.start)?;
+
+                            // Store to both index and value variables
+                            let index_str = index_name.to_string();
+                            let iter_str = iter_name.to_string();
+                            self.push_scope(); // New scope for loop variables
+
+                            // Store to index variable
+                            let index_index = self.scope_stack.last_mut().unwrap().len();
+                            self.scope_stack.last_mut().unwrap().insert(index_str.clone(), index_index);
+                            self.emit_store_loc(index_index);
+
+                            // Store same value to iter variable
+                            let iter_index = self.scope_stack.last_mut().unwrap().len();
+                            self.scope_stack.last_mut().unwrap().insert(iter_str.clone(), iter_index);
+                            self.emit_store_loc(iter_index);
+
+                            // Loop start label
+                            let loop_start = self.code.len() as i16;
+
+                            // Load index variable for comparison
+                            self.emit_load_loc(index_index);
+
+                            // Compile end expression
+                            self.compile_expr(&range.end)?;
+
+                            // Compare: if range.eq is true, use LE (<=), else use LT (<)
+                            if range.eq {
+                                self.emit(OpCode::LE); // Inclusive range: start..=end
+                            } else {
+                                self.emit(OpCode::LT); // Exclusive range: start..end
+                            }
+
+                            // JMP_IF_Z to end (exit loop if condition false)
+                            self.emit(OpCode::JMP_IF_Z);
+                            let jump_to_end = self.emit_placeholder_i16();
+
+                            // Compile loop body
+                            self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+
+                            // Increment both loop variables
+                            self.emit_load_loc(index_index);
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(1);
+                            self.emit(OpCode::ADD);
+                            self.emit_store_loc(index_index);
+
+                            // Update iter variable to match index
+                            self.emit_load_loc(index_index);
+                            self.emit_store_loc(iter_index);
+
+                            // JMP back to loop start
+                            self.emit(OpCode::JMP);
+                            let current_pos = self.code.len() as i16;
+                            self.emit_i16(loop_start - current_pos);
+
+                            // This is the loop exit point - patch all break jumps here
+                            let loop_exit = self.code.len();
+
+                            // Patch exit jump (for loop condition)
+                            self.patch_jump(jump_to_end);
+
+                            // Pop loop scope
+                            self.pop_scope();
+
+                            // Patch all break statements
+                            let exits = self.loop_exits.pop().unwrap();
+                            for exit_placeholder in exits {
+                                self.patch_jump(exit_placeholder);
+                            }
+                        } else {
+                            // For now, only support range expressions
+                            self.loop_exits.pop();
+                            return Err(AutoError::Msg("Indexed for loops with non-range expressions not supported yet".to_string()));
+                        }
                     }
                     Iter::Cond => {
                         // Conditional for loop: for condition { ... } (like while)

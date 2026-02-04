@@ -954,5 +954,97 @@ fn main() -> int {
     assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60) for break");
 }
 
+// Plan 073: Indexed iteration tests
+
+#[test]
+fn test_indexed_iteration_range_compiles() {
+    let source = r#"
+fn main() -> int {
+    for i, x in 0..10 {
+        // i and x both go from 0 to 9
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain LT (for range comparison) and multiple STORE_LOC
+    assert!(bytecode.contains(&0x52), "Expected LT opcode (0x52)");
+
+    // Count the number of STORE_LOCAL opcodes (should be at least 2 for i and x initialization)
+    let store_count = bytecode.iter().filter(|&&b| b == 0x21 || b == 0x25 || b == 0x26).count();
+    assert!(store_count >= 2, "Expected at least 2 STORE opcodes for i and x variables");
+}
+
+#[test]
+fn test_indexed_iteration_inclusive_range_compiles() {
+    let source = r#"
+fn main() -> int {
+    for i, val in 0..=5 {
+        // i and val both go from 0 to 5
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain LE (for inclusive range comparison)
+    assert!(bytecode.contains(&0x54), "Expected LE opcode (0x54) for inclusive range");
+}
+
+#[test]
+fn test_indexed_iteration_with_operations_compiles() {
+    let source = r#"
+fn main() -> int {
+    let sum = 0
+    for i, x in 0..10 {
+        // Use both index and value
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain loop control opcodes
+    assert!(bytecode.contains(&0x52), "Expected LT opcode (0x52)");
+    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60)");
+}
+
+#[test]
+fn test_indexed_iteration_with_break_compiles() {
+    let source = r#"
+fn main() -> int {
+    for i, x in 0..10 {
+        if i == 5 {
+            break
+        }
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain loop control and break opcodes
+    assert!(bytecode.contains(&0x52), "Expected LT opcode (0x52)");
+    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61)");
+    // Multiple JMPs: one for loop, one for break
+    let jmp_count = bytecode.iter().filter(|&&b| b == 0x60).count();
+    assert!(jmp_count >= 2, "Expected at least 2 JMP opcodes");
+}
+
+#[test]
+fn test_indexed_iteration_nested_compiles() {
+    let source = r#"
+fn main() -> int {
+    for i, x in 0..5 {
+        for j, y in 0..3 {
+            // Nested indexed iteration
+        }
+    }
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain multiple loop structures
+    let lt_count = bytecode.iter().filter(|&&b| b == 0x52).count();
+    assert!(lt_count >= 2, "Expected at least 2 LT opcodes for nested loops");
+}
+
 
 
