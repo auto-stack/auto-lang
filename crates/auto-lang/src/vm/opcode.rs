@@ -29,7 +29,7 @@ pub enum OpCode {
     GET_FIELD = 0x2D,     // Plan 073: Get field from object (obj_id, field_str_idx) -> value
     CREATE_OBJ = 0x2E,    // Plan 073: Create object from field_count -> object_id
     CREATE_ARRAY = 0x2F,   // Plan 073: Create array from elem_count -> array_id
-    CREATE_NODE = 0x30,   // Plan 073: Create node from name_str_idx, arg_count -> node_id
+    CREATE_NODE = 0x74,   // Plan 073: Create node from name_str_idx, arg_count -> node_id (changed from 0x30 to avoid conflict with ADD)
 
     // === Local Variables ===
     LOAD_LOCAL = 0x20,
@@ -87,7 +87,6 @@ pub enum OpCode {
     CALL = 0x70,
     RET = 0x71,
     CALL_NAT = 0x72,
-    CALL_METHOD = 0x73,  // Phase 2: Call instance method (obj.method())
 
     // === Concurrency ===
     SPAWN = 0x80,    // func_id: u32, arg_count: u8 -> task_id: u32
