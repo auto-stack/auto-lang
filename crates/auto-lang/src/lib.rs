@@ -498,6 +498,168 @@ pub fn trans_javascript(path: &str) -> AutoResult<String> {
 
     Ok(format!("[trans] {} -> {}", path, jsname))
 }
+
+// ============================================================================
+// Plan 075: Unified Compilation API for Multiple Execution Modes
+// ============================================================================
+
+/// Compilation mode for AutoLang source files
+///
+/// AutoLang supports three execution modes:
+/// - **Script**: Normal program execution (default)
+/// - **Config**: Configuration file compilation (returns unified object)
+/// - **Template**: Template file compilation (returns concatenated string)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompileMode {
+    Script,
+    Config,
+    Template,
+}
+
+/// Run AutoLang source code with specified compilation mode
+///
+/// This is the unified entry point for all three execution modes.
+/// The mode determines how the source code is compiled.
+///
+/// # Arguments
+/// * `source` - AutoLang source code
+/// * `mode` - Compilation mode (Script, Config, or Template)
+///
+/// # Returns
+/// * String representation of the compiled bytecode module
+///
+/// # Example
+/// ```no_run
+/// use auto_lang::{run_with_mode, CompileMode};
+///
+/// // Script mode (default)
+/// let result = run_with_mode("1 + 2", CompileMode::Script).unwrap();
+///
+/// // Config mode
+/// let config = r#"
+/// server.host = "localhost"
+/// server.port = 8080
+/// "#;
+/// let result = run_with_mode(config, CompileMode::Config).unwrap();
+///
+/// // Template mode
+/// let template = r#""Hello, "
+/// "World!""#;
+/// let result = run_with_mode(template, CompileMode::Template).unwrap();
+/// ```
+pub fn run_with_mode(source: &str, mode: CompileMode) -> AutoResult<String> {
+    use crate::vm::codegen::Codegen;
+    use crate::vm::config_codegen::ConfigCodegen;
+    use crate::vm::template_codegen::TemplateCodegen;
+    use crate::vm::loader::Module;
+
+    let mut parser = Parser::from(source);
+    let code = parser.parse()?;
+
+    let module: Module = match mode {
+        CompileMode::Script => {
+            let mut codegen = Codegen::new();
+            // Compile each statement
+            for stmt in &code.stmts {
+                codegen.compile_stmt(stmt)?;
+            }
+            codegen.finish("script".to_string())
+        }
+        CompileMode::Config => {
+            let mut configgen = ConfigCodegen::new();
+            configgen.compile_config(&code)?;
+            configgen.finish("config".to_string())
+        }
+        CompileMode::Template => {
+            let mut tgen = TemplateCodegen::new();
+            tgen.compile_template(&code)?;
+            tgen.finish("template".to_string())
+        }
+    };
+
+    // Return bytecode module info
+    Ok(format!(
+        "Module: {} bytecode={}, strings={}, exports={}, relocs={}",
+        module.name,
+        module.code.len(),
+        module.strings.len(),
+        module.exports.len(),
+        module.relocs.len()
+    ))
+}
+
+/// Detect compilation mode from file extension
+///
+/// # Arguments
+/// * `path` - File path to examine
+///
+/// # Returns
+/// * Detected compilation mode
+///
+/// # File Extension Mapping
+/// - `.config.at` → Config mode
+/// - `.template.at` → Template mode
+/// - `.at` or other → Script mode (default)
+///
+/// # Example
+/// ```no_run
+/// use auto_lang::detect_mode_from_extension;
+/// use std::path::Path;
+///
+/// let mode = detect_mode_from_extension(Path::new("database.config.at")).unwrap();
+/// assert_eq!(mode, CompileMode::Config);
+/// ```
+pub fn detect_mode_from_extension(path: &Path) -> AutoResult<CompileMode> {
+    let filename = path.file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+
+    // Check for special suffixes before extension
+    if filename.ends_with(".config.at") {
+        return Ok(CompileMode::Config);
+    }
+    if filename.ends_with(".template.at") {
+        return Ok(CompileMode::Template);
+    }
+
+    // Default to script mode
+    Ok(CompileMode::Script)
+}
+
+/// Run AutoLang file with automatic mode detection from file extension
+///
+/// This is a convenience function that:
+/// 1. Reads the file
+/// 2. Detects mode from extension (.config.at, .template.at, or default)
+/// 3. Compiles and executes with appropriate mode
+///
+/// # Arguments
+/// * `path` - Path to AutoLang source file
+///
+/// # Returns
+/// * String representation of the execution result
+///
+/// # Example
+/// ```no_run
+/// use auto_lang::run_file_with_auto_mode;
+///
+/// // Automatically uses Config mode
+/// let result = run_file_with_auto_mode(std::path::Path::new("database.config.at")).unwrap();
+///
+/// // Automatically uses Template mode
+/// let result = run_file_with_auto_mode(std::path::Path::new("email.template.at")).unwrap();
+///
+/// // Automatically uses Script mode (default)
+/// let result = run_file_with_auto_mode(std::path::Path::new("script.at")).unwrap();
+/// ```
+pub fn run_file_with_auto_mode(path: &Path) -> AutoResult<String> {
+    let source = std::fs::read_to_string(path)
+        .map_err(|e| crate::error::AutoError::Msg(format!("Failed to read file {}: {}", path.display(), e)))?;
+
+    let mode = detect_mode_from_extension(path)?;
+    run_with_mode(&source, mode)
+}
+
 #[cfg(test)]
 mod test_parser_arrow;
 

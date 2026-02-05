@@ -7,6 +7,8 @@ pub mod channel;
 pub mod codegen;
 // Plan 075: ConfigCodegen for config file compilation
 pub mod config_codegen;
+// Plan 075: TemplateCodegen for template file compilation
+pub mod template_codegen;
 pub mod collections;
 pub mod engine;
 pub mod heap;

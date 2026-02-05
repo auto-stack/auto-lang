@@ -1,5 +1,7 @@
 mod a2c_tests;
 mod atom_tests;
+// Plan 075: Unified API tests
+mod unified_api_tests;
 mod config_tests;
 mod const_generic_integration_tests; // Plan 052: Const generic integration tests
 mod const_generic_tests; // Plan 052: Const generic parameter tests

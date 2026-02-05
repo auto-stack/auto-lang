@@ -527,6 +527,70 @@ impl BigVM {
                         task.ram.push_i32(may_bits);
                     }
                 }
+                // Plan 075: Convert any value to string
+                OpCode::TO_STR => {
+                    // Pop value from stack
+                    let value_bits = task.ram.pop_i32();
+
+                    // Convert to string based on type
+                    // For now, we'll treat all values as their string representation
+                    // TODO: Proper type-based conversion
+                    let string_value = format!("{}", value_bits);
+
+                    // Add to strings pool and push index
+                    let mut strings = self.strings.write().unwrap();
+                    let str_idx = strings.len() as u16;
+                    strings.push(string_value.into_bytes());
+                    drop(strings);
+
+                    task.ram.push_i32(str_idx as i32);
+                }
+                // Plan 075: Check if value is nil
+                OpCode::IS_NIL => {
+                    // Pop value from stack
+                    let value_bits = task.ram.pop_i32();
+
+                    // Check if nil (-1 represents nil in May<T> implementation)
+                    let is_nil = if value_bits == -1 { 1 } else { 0 };
+
+                    task.ram.push_i32(is_nil);
+                }
+                // Plan 075: Concatenate two strings
+                OpCode::STR_CAT => {
+                    // Pop right string index first (top of stack)
+                    let right_idx = task.ram.pop_i32() as usize;
+                    // Pop left string index
+                    let left_idx = task.ram.pop_i32() as usize;
+
+                    // Get strings from pool
+                    let strings = self.strings.read().unwrap();
+
+                    let left_str = if let Some(bytes) = strings.get(left_idx) {
+                        String::from_utf8_lossy(bytes).to_string()
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid string index: {}", left_idx)));
+                    };
+
+                    let right_str = if let Some(bytes) = strings.get(right_idx) {
+                        String::from_utf8_lossy(bytes).to_string()
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid string index: {}", right_idx)));
+                    };
+                    drop(strings);
+
+                    // Concatenate strings
+                    let result = format!("{}{}", left_str, right_str);
+
+                    // Add result to strings pool and push index
+                    let mut strings = self.strings.write().unwrap();
+                    let result_idx = strings.len() as u16;
+                    strings.push(result.into_bytes());
+                    drop(strings);
+
+                    task.ram.push_i32(result_idx as i32);
+                }
                 // Plan 073: Node creation (for type instances and tree structures)
                 OpCode::CREATE_NODE => {
                     // Format: CREATE_NODE <name_str_idx:u16> <arg_count:u8>

@@ -37,6 +37,10 @@ pub enum OpCode {
     NULL_COALESCE = 0x78, // Plan 073: May<T> null coalesce: ?? operator (left ?? right) -> value
     ERROR_PROPAGATE = 0x79, // Plan 073: May<T> error propagate: .? operator (expr.?) -> unwrapped_value
     CREATE_NODE = 0x74,   // Plan 073: Create node from name_str_idx, arg_count -> node_id (changed from 0x30 to avoid conflict with ADD)
+    // Plan 075: Template string opcodes
+    TO_STR = 0x7A,        // Convert any value to string
+    IS_NIL = 0x7B,        // Check if value is nil (returns 1 if nil, 0 otherwise)
+    STR_CAT = 0x7C,       // Concatenate two strings (optimized string joining)
 
     // === Local Variables ===
     LOAD_LOCAL = 0x20,
