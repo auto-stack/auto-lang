@@ -1326,4 +1326,84 @@ fn main() -> int {
     assert!(fstr_count >= 2, "Expected at least 2 BUILD_FSTR opcodes");
 }
 
+// ============================================================================
+// Plan 073: Is Pattern Matching Tests
+// ============================================================================
 
+#[test]
+fn test_is_simple_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x = 10
+    is x {
+        10 => 0
+        20 => 1
+        else => 2
+    }
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain EQ for pattern matching
+    assert!(bytecode.contains(&0x50), "Expected EQ opcode (0x50)");
+    // Should contain JMP_IF_Z for conditional branching
+    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61)");
+    // Should contain JMP for branching
+    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60)");
+}
+
+#[test]
+fn test_is_single_match_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x = 10
+    is x {
+        10 => 0
+        else => 1
+    }
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain control flow opcodes
+    assert!(bytecode.contains(&0x50), "Expected EQ opcode (0x50)");
+    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61)");
+}
+
+#[test]
+fn test_is_nested_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x = 1
+    is x {
+        1 => {
+            let y = 2
+            y
+        }
+        else => 0
+    }
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain EQ opcode
+    assert!(bytecode.contains(&0x50), "Expected EQ opcode (0x50)");
+}
+
+#[test]
+fn test_is_multiple_branches_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x = 10
+    is x {
+        1 => 0
+        2 => 1
+        3 => 2
+        4 => 3
+        5 => 4
+        else => 99
+    }
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain multiple EQ opcodes (one per branch)
+    let eq_count = bytecode.iter().filter(|&&b| b == 0x50).count();
+    assert!(eq_count >= 5, "Expected at least 5 EQ opcodes for 5 branches");
+}

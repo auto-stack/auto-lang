@@ -590,6 +590,66 @@ impl Codegen {
                     return Err(AutoError::Msg("Break statement outside of loop".to_string()));
                 }
             }
+            // Plan 073: Is pattern matching statement
+            Stmt::Is(is_stmt) => {
+                // Evaluate target expression once and keep on stack
+                self.compile_expr(&is_stmt.target)?;
+
+                let mut branch_jumps = Vec::new();
+
+                // Process each branch
+                for branch in &is_stmt.branches {
+                    match branch {
+                        crate::ast::IsBranch::EqBranch(pattern, body) => {
+                            // Duplicate target for comparison
+                            self.emit(OpCode::DUP);
+
+                            // Evaluate pattern expression
+                            self.compile_expr(pattern)?;
+
+                            // Compare target with pattern
+                            self.emit(OpCode::EQ);
+
+                            // Jump to next branch if not equal
+                            self.emit(OpCode::JMP_IF_Z);
+                            let jump_to_next = self.emit_placeholder_i16();
+                            branch_jumps.push(jump_to_next);
+
+                            // Compile branch body
+                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                            // Jump to end of is statement
+                            self.emit(OpCode::JMP);
+                            let jump_to_end = self.emit_placeholder_i16();
+                            branch_jumps.push(jump_to_end);
+
+                            // Patch jump to next branch
+                            self.patch_jump(jump_to_next);
+                        }
+                        crate::ast::IsBranch::IfBranch(_condition, _body) => {
+                            // TODO: Implement IfBranch (conditional matching)
+                            return Err(AutoError::Msg("Is IfBranch not supported yet".to_string()));
+                        }
+                        crate::ast::IsBranch::ElseBranch(body) => {
+                            // This is the default case - just compile body
+                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                            // Jump to end (in case there are more branches after else)
+                            self.emit(OpCode::JMP);
+                            let jump_to_end = self.emit_placeholder_i16();
+                            branch_jumps.push(jump_to_end);
+                        }
+                    }
+                }
+
+                // Pop the target value from stack
+                self.emit(OpCode::POP);
+
+                // Patch all jump_to_end placeholders
+                for jump_to_end in branch_jumps {
+                    self.patch_jump(jump_to_end);
+                }
+            }
             _ => {
                 // TODO: Implement other statements
             }
