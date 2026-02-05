@@ -1,6 +1,6 @@
 # Plan 073: BigVM Migration Roadmap
 
-**Status**: 🟢 In Progress - ~80-90% Complete
+**Status**: 🟢 In Progress - ~82-92% Complete
 **Created**: 2025-02-04
 **Last Updated**: 2026-02-05
 **Related**: Plan 068 (BigVM Implementation), Plan 070 (BigVM Iterator), Plan 071 (BigVM Closures)
@@ -13,7 +13,7 @@
 
 ## Current Status
 
-**Overall Progress**: ~80-90% (updated from 75-85% after method call implementation)
+**Overall Progress**: ~82-92% (updated from 80-90% after range expression implementation)
 
 ### Code Scale Comparison
 | Component | Lines | Description |
@@ -131,6 +131,21 @@
 
 **Major Achievement**: BigVM now supports iterator-based for loops! Unlocks list iteration patterns from Plan 070.
 
+### ✅ Phase 8.3.4: Range Expressions - **NEWLY COMPLETED (2026-02-05)**
+- ✅ Range expression support (48 lines)
+  - CREATE_RANGE opcode (0x75) for exclusive ranges (0..10)
+  - CREATE_RANGE_EQ opcode (0x76) for inclusive ranges (0..=10)
+  - Compile Range expressions in codegen.rs
+  - Execute CREATE_RANGE/CREATE_RANGE_EQ in engine.rs
+- ✅ Test suite (5 tests, all passing)
+  - Exclusive range compilation
+  - Inclusive range compilation
+  - Range with variables
+  - Range in for loops
+  - Nested ranges
+
+**Major Achievement**: BigVM now supports range expressions! Enables for loop iteration and range-based operations.
+
 ### ✅ Phase 8.3.5: Node Support & TypeDecl - **IN PROGRESS (2026-02-05)**
 - ✅ Phase 0: CREATE_NODE opcode definition
   - Node registry in BigVM (nodes: DashMap)
@@ -210,7 +225,6 @@
 **Major Achievement**: BigVM now supports array indexing! Unlocks list manipulation patterns.
 
 **Remaining**:
-- [ ] **Range** (ranges `0..10`) - 5% impact
 - [ ] **FStr** (f-strings) - 5% impact
 - [ ] **Lambda** (named lambdas)
 - [ ] **Ref, View, Mut, Take** (borrowing expressions) - Can defer
@@ -253,7 +267,7 @@
 
 ### Expression Types Support
 
-**Currently Supported** (16+ Expr:: variants):
+**Currently Supported** (17+ Expr:: variants):
 ```rust
 ✅ Int, Bool, Str
 ✅ Uint, I8, U8, I64, Byte (NEW - Phase 8.1)
@@ -269,16 +283,16 @@
 ✅ Index (array indexing arr[i] - NEW Phase 8.5)
 ✅ Block (code blocks)
 ✅ Object (object literals - NEW Phase 8.2)
+✅ Range (ranges 0..10, 0..=10 - NEW Phase 8.3.4)
 ✅ Node (type instances Point(10, 20) - NEW Phase 8.3.5)
 ```
 
-**Missing** (17+ variants):
+**Missing** (16+ variants):
 ```rust
 ❌ Nil, Null
 ❌ Ref (references)
 ❌ View, Mut, Take (borrowing expressions) - AST parsed, but not compiled
 ❌ Hold (hold paths)
-❌ Range (ranges)
 ❌ Pair (key-value pairs)
 ❌ Lambda (named lambdas)
 ❌ FStr (f-strings)
@@ -287,7 +301,7 @@
 ❌ ErrorPropagate (.? operator)
 ```
 
-**Impact**: ~30% of expression types not implemented (improved from 32% after method calls)
+**Impact**: ~28% of expression types not implemented (improved from 30% after range expressions)
 
 ---
 
@@ -575,16 +589,17 @@
 ## Summary & Recommendations
 
 ### Current Status
-- **Progress**: ~78-88% complete (updated from 75-85%)
+- **Progress**: ~80-90% complete (updated from 78-88%)
 - **Major Achievements**:
   - ✅ Type System Completeness (Phase 8.1) - ALL primitive types supported
   - ✅ Object Literals & Field Access (Phase 8.2)
   - ✅ For Loops (Phase 8.3) - All variants: range, iterator, indexed, conditional, infinite
   - ✅ Break Statements (Phase 8.3) - Works with all for loop variants
+  - ✅ Range Expressions (Phase 8.3.4) - Exclusive (0..10) and inclusive (0..=10) ranges
   - ✅ Array Indexing (Phase 8.5) - Array element access and assignment
-  - ✅ Node Support & Type Instances (Phase 8.3.5) - NEW: Type declarations and instances!
+  - ✅ Node Support & Type Instances (Phase 8.3.5) - Type declarations and instances!
   - ✅ Closures (Phase 7.1) via Plan 071
-- **Estimated Remaining Work**: 2-5 weeks (reduced from 3-6 weeks)
+- **Estimated Remaining Work**: 2-4 weeks (reduced from 2-5 weeks)
 
 ### Key Milestones
 1. **Short-term** (2-4 weeks): Reach 85% feature parity
@@ -616,6 +631,7 @@
 **P1 (High Priority)**:
 - ~~Array indexing (Index expression)~~ ✅ **COMPLETE** (2026-02-05)
 - ~~For loops (essential for control flow)~~ ✅ **COMPLETE** (2026-02-05)
+- ~~Range expressions~~ ✅ **COMPLETE** (2026-02-05)
 - Is pattern matching
 - May/Question system
 
@@ -631,7 +647,7 @@
 
 ### Next Steps
 1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, types, for loops, AND arrays)
-2. **High Impact**: Implement remaining medium-priority expressions (Range, FStr)
+2. **High Impact**: Implement remaining medium-priority expressions (FStr)
 3. **Parallel**: Add Is pattern matching for control flow completeness
 4. **Planning**: Create detailed tickets for remaining missing features
 
