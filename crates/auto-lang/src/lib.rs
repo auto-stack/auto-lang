@@ -6,6 +6,8 @@ pub mod config;
 pub mod database;
 pub mod dep;
 pub mod error;
+// Plan 073 Phase 9.3: Execution engine selection (BigVM vs Evaluator)
+pub mod execution_engine;
 pub mod eval;
 pub mod hash;
 pub mod infer;
@@ -69,9 +71,22 @@ pub fn get_error_limit() -> usize {
 }
 
 pub fn run(code: &str) -> AutoResult<String> {
-    let mut interpreter = interp::Interpreter::new();
+    // Plan 073 Phase 9.3: Use execution engine selector
+    // Default is BigVM (faster), with Evaluator as fallback
+    let engine = execution_engine::ExecutionEngine::get();
 
-    // Try to interpret, and attach source code if we get a syntax error
+    #[cfg(feature = "use-bigvm")]
+    if matches!(engine, execution_engine::ExecutionEngine::BigVM) {
+        return execution_engine::execute_with_engine(engine, code);
+    }
+
+    #[cfg(not(feature = "use-bigvm"))]
+    if matches!(engine, execution_engine::ExecutionEngine::Evaluator) {
+        return execution_engine::execute_with_engine(engine, code);
+    }
+
+    // Fallback to original evaluator implementation
+    let mut interpreter = interp::Interpreter::new();
     interpreter.interpret(code)?;
     Ok(interpreter.result.repr().to_string())
 }

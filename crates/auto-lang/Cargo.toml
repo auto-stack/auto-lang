@@ -10,8 +10,12 @@ license = "MIT"
 keywords = ["automation", "language", "scripting"]
 
 [features]
-default = ["with-file-history"]
+default = ["with-file-history", "use-bigvm"]
 with-file-history = []
+# Plan 073 Phase 9.3: Use BigVM bytecode VM as default execution engine
+use-bigvm = []
+# Fallback to TreeWalker evaluator (for debugging/comparison)
+use-evaluator = []
 
 [dependencies]
 auto-val = { path = "../auto-val" }
