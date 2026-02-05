@@ -1,6 +1,6 @@
 # Plan 075: ConfigCodegen and TemplateCodegen Implementation
 
-**Status**: � planning
+**Status**: WIP (Phase 1 complete, Phase 2 pending)
 **Created**: 2026-02-05
 **Related**: Plan 073 (BigVM Migration), Plan 068 (BigVM Implementation)
 
@@ -724,24 +724,35 @@ auto run script.at             // Uses Codegen
 
 ## Phase 4: Implementation Roadmap
 
-### Week 1: ConfigCodegen (3-4 days)
-- [ ] Day 1: Create `config_codegen.rs`, basic structure
-- [ ] Day 2: Implement field path parsing and nested object creation
-- [ ] Day 3: Implement expression evaluation and field assignment
-- [ ] Day 4: Testing and debugging
+### Week 1: ConfigCodegen (3-4 days) ✅ COMPLETED (2026-02-06)
+- [x] Day 1: Create `config_codegen.rs`, basic structure
+- [x] Day 2: Implement field path parsing and nested object creation
+- [x] Day 3: Implement expression evaluation and field assignment
+- [x] Day 4: Testing and debugging
 
-### Week 2: TemplateCodegen (3-4 days)
+**Implementation Summary**:
+- Created `crates/auto-lang/src/vm/config_codegen.rs` with ConfigCodegen struct
+- Collects all field assignments and creates single object using CREATE_OBJ
+- Added SET_FIELD opcode (0x2A) to opcode.rs for future use
+- 4 unit tests passing (simple_fields, nested_fields, with_expressions, empty_config)
+- **Known Limitation**: Dotted identifiers like `server.host = "localhost"` not supported yet
+  - Parser treats `server.host` as binary expression with `.` operator
+  - Workaround: Use underscored names (`server_host = "localhost"`) or object literals
+  - TODO: Either modify parser or add custom config file parser for dotted paths
+
+### Week 2: TemplateCodegen (3-4 days) ⏸️ NOT STARTED
 - [ ] Day 1: Add TO_STR, IS_NIL, STR_CAT opcodes to VM
 - [ ] Day 2: Create `template_codegen.rs`, basic structure
 - [ ] Day 3: Implement string concatenation and nil filtering
 - [ ] Day 4: Testing and debugging
 
-### Week 3: Integration & Testing (3-4 days)
+### Week 3: Integration & Testing (3-4 days) ⏸️ NOT STARTED
 - [ ] Day 1: Unified compilation API, mode detection
 - [ ] Day 2: Shell integration, auto-detection
 - [ ] Day 3-4: Comprehensive testing, documentation
 
 **Total Effort**: 9-12 days (2-3 weeks)
+**Progress**: Phase 1 complete (~33% done)
 
 ---
 
