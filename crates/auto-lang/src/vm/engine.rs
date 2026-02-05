@@ -98,6 +98,10 @@ pub struct BigVM {
     // Array Registry (Plan 073: Array literals)
     pub arrays: DashMap<u64, Arc<RwLock<Vec<auto_val::Value>>>>,
     pub array_id_gen: AtomicU64,
+
+    // Node Registry (Plan 073: Node instances for type construction)
+    pub nodes: DashMap<u64, Arc<RwLock<auto_val::Node>>>,
+    pub node_id_gen: AtomicU64,
 }
 
 impl BigVM {
@@ -123,6 +127,9 @@ impl BigVM {
             // Plan 073: Array registry
             arrays: DashMap::new(),
             array_id_gen: AtomicU64::new(0),
+            // Plan 073: Node registry
+            nodes: DashMap::new(),
+            node_id_gen: AtomicU64::new(0),
         }
     }
 
@@ -419,6 +426,46 @@ impl BigVM {
 
                     // Push array ID onto stack
                     task.ram.push_i32(array_id as i32);
+                }
+                // Plan 073: Node creation (for type instances and tree structures)
+                OpCode::CREATE_NODE => {
+                    // Format: CREATE_NODE <name_str_idx:u16> <arg_count:u8>
+                    let name_str_idx = self.flash.read_u16(task.ip);
+                    task.ip += 2;
+                    let arg_count = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+
+                    // Get node name from string pool
+                    let name = if let Some(bytes) = self.strings.read().get(name_str_idx as usize) {
+                        String::from_utf8(bytes.clone()).unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+
+                    // Pop arguments from stack (in reverse order)
+                    let mut args = Vec::with_capacity(arg_count as usize);
+                    for i in 0..arg_count {
+                        let idx = (arg_count - 1 - i) as usize;
+                        let bits = task.ram.pop_i32();
+                        args.insert(idx, auto_val::Value::Int(bits));
+                    }
+
+                    // Create node
+                    let mut node = auto_val::Node::new(&name);
+
+                    // Add arguments as properties
+                    for (i, arg) in args.iter().enumerate() {
+                        // Use positional keys: 0, 1, 2, ...
+                        let key = auto_val::ValueKey::IntKey(i as i64);
+                        node.set_prop(key, arg.clone());
+                    }
+
+                    // Store node in nodes registry and get ID
+                    let node_id = self.node_id_gen.fetch_add(1, Ordering::SeqCst);
+                    self.nodes.insert(node_id, Arc::new(RwLock::new(node)));
+
+                    // Push node ID onto stack
+                    task.ram.push_i32(node_id as i32);
                 }
                 // Plan 073: Array element access (arr[index])
                 OpCode::GET_ELEM => {

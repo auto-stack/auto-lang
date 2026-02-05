@@ -1,6 +1,6 @@
 # Plan 073: BigVM Migration Roadmap
 
-**Status**: 🟢 In Progress - ~70-80% Complete
+**Status**: 🟢 In Progress - ~75-85% Complete
 **Created**: 2025-02-04
 **Last Updated**: 2026-02-05
 **Related**: Plan 068 (BigVM Implementation), Plan 070 (BigVM Iterator), Plan 071 (BigVM Closures)
@@ -13,7 +13,7 @@
 
 ## Current Status
 
-**Overall Progress**: ~70-80% (updated from 65-75% after for loop completion)
+**Overall Progress**: ~75-85% (updated from 70-80% after array indexing completion)
 
 ### Code Scale Comparison
 | Component | Lines | Description |
@@ -131,6 +131,32 @@
 
 **Major Achievement**: BigVM now supports iterator-based for loops! Unlocks list iteration patterns from Plan 070.
 
+### ✅ Phase 8.3.5: Node Support - **IN PROGRESS (2026-02-05)**
+- ✅ Phase 0: CREATE_NODE opcode definition
+  - Node registry in BigVM (nodes: DashMap)
+  - CREATE_NODE execution in engine.rs
+  - Basic Node test cases (3 tests)
+- ✅ Phase 1: Type Instance Detection
+  - Type registry in codegen (types: HashMap<String, TypeInfo>)
+  - TypeInfo struct (stores type name and member names)
+  - register_type() helper method
+  - Stmt::TypeDecl compilation (registers type metadata)
+  - Modified Expr::Node compilation to detect types
+  - Type instance test cases (5 tests)
+
+**Implementation Details**:
+- CREATE_NODE opcode format: `<0x30> <name_str_idx:u16> <arg_count:u8>`
+- Node storage: DashMap<u64, Arc<RwLock<auto_val::Node>>>
+- Type detection at compile-time: Checks if name is in types registry
+- Type instances generate CREATE_OBJ instead of CREATE_NODE
+- Positional args map to type members in order
+
+**Major Achievement**: BigVM can now create type instances! `Point(10, 20)` creates an object with x: 10, y: 20.
+
+**Remaining**:
+- ⏸️ Phase 2: Method calls (obj.method())
+- ⏸️ Phase 3: Type inheritance and composition (is, has)
+
 ### ✅ Phase 8: Test Migration (Partial)
 - ✅ Primitive and control flow tests (arithmetic, unary, comparisons, if/else)
 - ✅ Function call tests (CALL/RET, locals, recursion)
@@ -157,16 +183,22 @@
 - ✅ Object (object literals)
 - ✅ Dot (field access)
 - ✅ All primitive types (int, uint, i8, u8, i64, u64, byte, float, double, char, cstr)
+- ✅ **Index (array indexing `arr[i]`)** - NEWLY COMPLETED (2026-02-05)
+  - CREATE_ARRAY opcode - array literal creation
+  - GET_ELEM opcode - array element access
+  - SET_ELEM opcode - array element assignment
+  - Test suite (5 tests covering basic access, assignment, expression indexing, nested assignment, functions)
+
+**Major Achievement**: BigVM now supports array indexing! Unlocks list manipulation patterns.
 
 **Remaining**:
-- [ ] **Index** (array indexing `arr[i]`) - 8% impact, HIGH PRIORITY
 - [ ] **Range** (ranges `0..10`) - 5% impact
 - [ ] **FStr** (f-strings) - 5% impact
 - [ ] **Lambda** (named lambdas)
 - [ ] **Ref, View, Mut, Take** (borrowing expressions) - Can defer
 - [ ] **Pair, Node, Grid** - Lower priority
 
-**Estimated Effort**: 3-5 days (Index is highest priority)
+**Estimated Effort**: 2-3 days (reduced from 3-5 days)
 
 ---
 
@@ -203,7 +235,7 @@
 
 ### Expression Types Support
 
-**Currently Supported** (14+ Expr:: variants):
+**Currently Supported** (16+ Expr:: variants):
 ```rust
 ✅ Int, Bool, Str
 ✅ Uint, I8, U8, I64, Byte (NEW - Phase 8.1)
@@ -216,11 +248,13 @@
 ✅ If (if expressions)
 ✅ Closure (closures - FULLY SUPPORTED via Plan 071)
 ✅ Array (arrays)
+✅ Index (array indexing arr[i] - NEW Phase 8.5)
 ✅ Block (code blocks)
 ✅ Object (object literals - NEW Phase 8.2)
+✅ Node (type instances Point(10, 20) - NEW Phase 8.3.5)
 ```
 
-**Missing** (20+ variants):
+**Missing** (17+ variants):
 ```rust
 ❌ Nil, Null
 ❌ Ref (references)
@@ -228,8 +262,6 @@
 ❌ Hold (hold paths)
 ❌ Range (ranges)
 ❌ Pair (key-value pairs)
-❌ Node (nodes)
-❌ Index (array indexing arr[i]) - HIGH PRIORITY
 ❌ Lambda (named lambdas)
 ❌ FStr (f-strings)
 ❌ Grid, Cover, Uncover (grid system)
@@ -237,7 +269,7 @@
 ❌ ErrorPropagate (.? operator)
 ```
 
-**Impact**: ~40% of expression types not implemented (improved from 60%)
+**Impact**: ~32% of expression types not implemented (improved from 35%)
 
 ---
 
@@ -308,9 +340,9 @@
 | **Expressions** | | | | |
 | Arithmetic/Compare/Logical | ✅ | ✅ (partial) | 5% | P1 |
 | Bitwise | ✅ | ❌ | 3% | P2 |
-| Array indexing | ✅ | ❌ | 8% | P1 |
+| Array indexing | ✅ | ✅ | - | - |
 | Object (literals) | ✅ | ✅ | - | - |
-| Node | ✅ | ❌ | 10% | P2 |
+| Node (type instances) | ✅ | 🟡 | 10% | P2 |
 | F-strings | ✅ | ❌ | 5% | P2 |
 | **Statements** | | | | |
 | if/else, block | ✅ | ✅ | - | - |
@@ -331,7 +363,7 @@
 - 🟡 Partially supported
 - ❌ Not supported
 
-**Overall Gap**: ~25-35% features still missing (updated from 40-50% due to type system and object literal completion)
+**Overall Gap**: ~20-30% features still missing (updated from 25-35% due to array indexing completion)
 
 ---
 
@@ -349,18 +381,37 @@
 
 ---
 
-### 2. Expression Coverage (P1) 🟡 **IN PROGRESS**
-**Status**: Partially complete (2026-02-05)
+### 2. Expression Coverage (P1) ✅ **SUBSTANTIALLY COMPLETE**
+**Status**: Substantially complete (2026-02-05)
 **Completed**:
 - ✅ Object (object literals) - 10% impact (MAKE_OBJ opcode, field initialization)
 - ✅ Dot (field access) - GET_FIELD opcode, chained access
+- ✅ Index (array indexing `arr[i]`) - 8% impact (CREATE_ARRAY, GET_ELEM, SET_ELEM opcodes)
 
-**Remaining High Priority**:
-- Index (array indexing `arr[i]`) - 8% impact
+**Remaining Medium Priority**:
 - Range (ranges `0..10`) - 5% impact
 - FStr (f-strings) - 5% impact
 
-**Estimated Remaining Effort**: 3-5 days (reduced from 5-7 days)
+**Estimated Remaining Effort**: 1-2 days (reduced from 3-5 days)
+
+---
+
+### 2.5. TypeDecl and Type Instances (P1) 🟡 **IN PROGRESS**
+**Status**: Basic implementation complete (2026-02-05)
+**Completed**:
+- ✅ Type registry in codegen (HashMap<String, TypeInfo>)
+- ✅ Stmt::TypeDecl compilation (registers type metadata)
+- ✅ Type instance detection (Expr::Node checks types registry)
+- ✅ Object creation from type instances `Point(10, 20)`
+- ✅ Field access on type instances (uses existing GET_FIELD)
+
+**Remaining**:
+- Method calls on type instances (obj.method())
+- Type inheritance (is Parent)
+- Type composition (has Component)
+
+**Implementation**: ~200 lines of code
+**Impact**: Type declarations now work! Enables user-defined types.
 
 ---
 
@@ -506,26 +557,28 @@
 ## Summary & Recommendations
 
 ### Current Status
-- **Progress**: ~70-80% complete (updated from 65-75%)
+- **Progress**: ~78-88% complete (updated from 75-85%)
 - **Major Achievements**:
   - ✅ Type System Completeness (Phase 8.1) - ALL primitive types supported
   - ✅ Object Literals & Field Access (Phase 8.2)
   - ✅ For Loops (Phase 8.3) - All variants: range, iterator, indexed, conditional, infinite
   - ✅ Break Statements (Phase 8.3) - Works with all for loop variants
+  - ✅ Array Indexing (Phase 8.5) - Array element access and assignment
+  - ✅ Node Support & Type Instances (Phase 8.3.5) - NEW: Type declarations and instances!
   - ✅ Closures (Phase 7.1) via Plan 071
-- **Estimated Remaining Work**: 4-8 weeks (reduced from 5-10 weeks)
+- **Estimated Remaining Work**: 2-5 weeks (reduced from 3-6 weeks)
 
 ### Key Milestones
-1. **Short-term** (2-4 weeks): Reach 80% feature parity
+1. **Short-term** (2-4 weeks): Reach 85% feature parity
    - ✅ Complete type system expansion (DONE)
    - ✅ Complete object literals (DONE)
-   - Array indexing implementation
-   - For loops support
-   - Migrate complex type tests
+   - ✅ Array indexing implementation (DONE)
+   - For loops support (DONE)
+   - Migrate complex type tests (READY - closures, objects, types, for loops, arrays all available)
 
-2. **Medium-term** (5-8 weeks): Reach 90% feature parity
-   - Complete May/Question system
+2. **Medium-term** (3-6 weeks): Reach 90% feature parity
    - Complete remaining expressions (Range, FStr)
+   - Is pattern matching
    - Most tests passing
    - Performance benchmarking
 
@@ -559,8 +612,8 @@
 - Performance optimization
 
 ### Next Steps
-1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, type support, and for loops)
-2. **High Impact**: Implement remaining high-priority expressions (Index is done, next is Range/FStr)
+1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, types, for loops, AND arrays)
+2. **High Impact**: Implement remaining medium-priority expressions (Range, FStr)
 3. **Parallel**: Add Is pattern matching for control flow completeness
 4. **Planning**: Create detailed tickets for remaining missing features
 

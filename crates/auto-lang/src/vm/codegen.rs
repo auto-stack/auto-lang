@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Stmt, Closure, For, Iter};
+use crate::ast::{Expr, Stmt, Closure, For, Iter, TypeDecl, Member};
 use crate::error::{AutoResult, AutoError};
 use crate::error::SyntaxError;
 // use crate::val::Value; // Removed if not directly used or fix path
@@ -23,6 +23,14 @@ pub enum ObjectType {
     // Plan 073: Nested types for object/array fields
     NestedObject,
     Array,
+}
+
+/// Plan 073: Type information for TypeDecl
+/// Stores type metadata needed for instance construction
+#[derive(Debug, Clone)]
+struct TypeInfo {
+    pub name: String,
+    pub member_names: Vec<String>,  // Member names in order
 }
 
 /// Codegen: Compiles AST directly to BigVM Bytecode
@@ -56,6 +64,10 @@ pub struct Codegen {
     /// Each nested loop has a Vec of jump placeholders that need to be patched
     /// when the loop exits
     pub loop_exits: Vec<Vec<usize>>,
+
+    /// Plan 073: Type registry for TypeDecl support
+    /// Maps type name -> TypeInfo (member names, etc.)
+    pub types: HashMap<String, TypeInfo>,
 }
 
 impl Codegen {
@@ -87,6 +99,7 @@ impl Codegen {
             scope_stack,
             captured_vars_stack: Vec::new(),
             loop_exits: Vec::new(),
+            types: HashMap::new(),
         }
     }
 
@@ -208,6 +221,13 @@ impl Codegen {
                 // I'll emit RET 0 and file a task to fix context.
                 self.emit(OpCode::RET);
                 self.code.push(0); // TODO: Fix this
+            }
+            // Plan 073: TypeDecl support - register type metadata
+            Stmt::TypeDecl(type_decl) => {
+                // Register the type in the type registry
+                self.register_type(type_decl);
+                // Type declarations don't generate any bytecode at compile time
+                // They just register metadata for use in instance construction
             }
             // Plan 073: For statement support
             Stmt::For(for_stmt) => {
@@ -679,6 +699,79 @@ impl Codegen {
                 let elem_count = elems.len() as u8;
                 self.emit(OpCode::CREATE_ARRAY);
                 self.code.push(elem_count);
+            }
+            // Plan 073: Node support (for type instances like Point(10, 20))
+            Expr::Node(node) => {
+                // Check if this is a type instance
+                let type_name = node.name.to_string();
+
+                if let Some(type_info) = self.get_type(&type_name) {
+                    // This is a type instance! Generate object creation instead of node
+                    // Example: Point(10, 20) -> object with x: 10, y: 20
+
+                    // Compile each argument expression (pushes values onto stack)
+                    let arg_count = node.num_args as u8;
+                    for arg in &node.args.args {
+                        match arg {
+                            crate::ast::Arg::Pos(expr) => {
+                                self.compile_expr(expr)?;
+                            }
+                            crate::ast::Arg::Pair(key, expr) => {
+                                // For named args, compile the value
+                                self.compile_expr(expr)?;
+                            }
+                            crate::ast::Arg::Name(_) => {
+                                // Name-only arg (placeholder for future)
+                            }
+                        }
+                    }
+
+                    // Create object keys using type member names
+                    // Positional args map to type members in order
+                    let keys: Vec<auto_val::ValueKey> = type_info.member_names
+                        .iter()
+                        .take(arg_count as usize)  // Only take as many as we have args
+                        .map(|name| auto_val::ValueKey::NamedKey(name.clone().into()))
+                        .collect();
+
+                    // Register keys in object_keys pool
+                    let key_index = self.object_keys.len() as u16;
+                    self.object_keys.push(keys);
+
+                    // Emit CREATE_OBJ instead of CREATE_NODE
+                    let field_count = arg_count.min(type_info.member_names.len() as u8);
+                    self.emit(OpCode::CREATE_OBJ);
+                    self.code.extend_from_slice(&key_index.to_le_bytes());
+                    self.code.push(field_count);
+                } else {
+                    // Not a type - create generic Node
+                    // Compile node name as string
+                    let name_bytes = node.name.as_bytes().to_vec();
+                    let name_idx = self.strings.len() as u16;
+                    self.strings.push(name_bytes);
+
+                    // Compile each argument expression (pushes values onto stack)
+                    let arg_count = node.num_args as u8;
+                    for arg in &node.args.args {
+                        match arg {
+                            crate::ast::Arg::Pos(expr) => {
+                                self.compile_expr(expr)?;
+                            }
+                            crate::ast::Arg::Pair(key, expr) => {
+                                // For named args, compile the value
+                                self.compile_expr(expr)?;
+                            }
+                            crate::ast::Arg::Name(_) => {
+                                // Name-only arg (placeholder for future)
+                            }
+                        }
+                    }
+
+                    // Emit CREATE_NODE with name index and arg count
+                    self.emit(OpCode::CREATE_NODE);
+                    self.code.extend_from_slice(&name_idx.to_le_bytes());
+                    self.code.push(arg_count);
+                }
             }
             Expr::Str(s) => {
                 // Add string to constant pool and emit LOAD_STR <index>
@@ -1982,6 +2075,33 @@ mod tests {
         // Verify i64/u64 constant opcodes exist
         assert_eq!(OpCode::CONST_I64 as u8, 0x16);
         assert_eq!(OpCode::CONST_U64 as u8, 0x17);
+    }
+
+    // ========== Plan 073: Type Registry Helper Methods ==========
+
+    /// Register a type declaration in the type registry
+    pub fn register_type(&mut self, type_decl: &TypeDecl) {
+        let member_names: Vec<String> = type_decl.members
+            .iter()
+            .map(|m| m.name.to_string())
+            .collect();
+
+        let type_info = TypeInfo {
+            name: type_decl.name.to_string(),
+            member_names,
+        };
+
+        self.types.insert(type_decl.name.to_string(), type_info);
+    }
+
+    /// Check if a name is a registered type
+    pub fn is_type(&self, name: &str) -> bool {
+        self.types.contains_key(name)
+    }
+
+    /// Get type information by name
+    pub fn get_type(&self, name: &str) -> Option<&TypeInfo> {
+        self.types.get(name)
     }
 
     // Plan 073 Stage A.5: Float/Double Codegen Tests

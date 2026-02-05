@@ -29,6 +29,7 @@ pub enum OpCode {
     GET_FIELD = 0x2D,     // Plan 073: Get field from object (obj_id, field_str_idx) -> value
     CREATE_OBJ = 0x2E,    // Plan 073: Create object from field_count -> object_id
     CREATE_ARRAY = 0x2F,   // Plan 073: Create array from elem_count -> array_id
+    CREATE_NODE = 0x30,   // Plan 073: Create node from name_str_idx, arg_count -> node_id
 
     // === Local Variables ===
     LOAD_LOCAL = 0x20,
