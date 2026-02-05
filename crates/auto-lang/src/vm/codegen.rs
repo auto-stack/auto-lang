@@ -1343,6 +1343,22 @@ impl Codegen {
                 // TODO: In future, implement proper borrow checking and ownership semantics
                 self.compile_expr(inner)?;
             }
+            // Plan 073: May<T> null coalesce operator: left ?? right
+            Expr::NullCoalesce(left, right) => {
+                // Compile left expression (pushes May<T> value onto stack)
+                self.compile_expr(left)?;
+                // Compile right expression (pushes default value onto stack)
+                self.compile_expr(right)?;
+                // Emit NULL_COALESCE (pops May<T> and default, pushes unwrapped value or default)
+                self.emit(OpCode::NULL_COALESCE);
+            }
+            // Plan 073: May<T> error propagate operator: expression.?
+            Expr::ErrorPropagate(expr) => {
+                // Compile expression (pushes May<T> value onto stack)
+                self.compile_expr(expr)?;
+                // Emit ERROR_PROPAGATE (pops May<T>, pushes unwrapped value or early returns)
+                self.emit(OpCode::ERROR_PROPAGATE);
+            }
             _ => {
                 unimplemented!("Expression {:?}", expr);
             }

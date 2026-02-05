@@ -491,6 +491,42 @@ impl BigVM {
                     // TODO: Add proper string support when stack supports Value types
                     task.ram.push_i32(result.len() as i32);
                 }
+                // Plan 073: May<T> null coalesce operator: left ?? right
+                OpCode::NULL_COALESCE => {
+                    // Pop right expression (default value)
+                    let default_bits = task.ram.pop_i32();
+                    // Pop left expression (May<T> value)
+                    let may_bits = task.ram.pop_i32();
+
+                    // Check if May<T> is Nil (represented as -1)
+                    // If May value is Nil (-1), push default value
+                    // Otherwise, push the May value itself
+                    if may_bits == -1 {
+                        // Nil case: return default value
+                        task.ram.push_i32(default_bits);
+                    } else {
+                        // Val case: return the unwrapped value
+                        // TODO: When stack supports proper May<T> types, extract the actual value
+                        task.ram.push_i32(may_bits);
+                    }
+                }
+                // Plan 073: May<T> error propagate operator: expression.?
+                OpCode::ERROR_PROPAGATE => {
+                    // Pop May<T> value from stack
+                    let may_bits = task.ram.pop_i32();
+
+                    // Check if May<T> is Nil
+                    if may_bits == -1 {
+                        // Nil case: early return (error propagation)
+                        // For now, we just return Nil as the function result
+                        // TODO: Implement proper early return mechanism
+                        task.ram.push_i32(-1);
+                    } else {
+                        // Val case: push the unwrapped value
+                        // TODO: When stack supports proper May<T> types, extract the actual value
+                        task.ram.push_i32(may_bits);
+                    }
+                }
                 // Plan 073: Node creation (for type instances and tree structures)
                 OpCode::CREATE_NODE => {
                     // Format: CREATE_NODE <name_str_idx:u16> <arg_count:u8>

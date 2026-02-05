@@ -1503,3 +1503,79 @@ fn main() -> int {
     // Should contain JMP for branching
     assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60)");
 }
+
+// Plan 073 Phase 8.4: May<T> Question Operators (?? and .?)
+#[test]
+fn test_null_coalesce_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x = 10
+    let y = x ?? 0
+    y
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain NULL_COALESCE opcode (0x78)
+    assert!(bytecode.contains(&0x78), "Expected NULL_COALESCE opcode (0x78)");
+}
+
+#[test]
+fn test_null_coalesce_with_variable() {
+    let source = r#"
+fn main() -> int {
+    let x = 42
+    let result = x ?? 100
+    result
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain NULL_COALESCE opcode
+    assert!(bytecode.contains(&0x78), "Expected NULL_COALESCE opcode (0x78)");
+}
+
+#[test]
+fn test_null_coalesce_nested() {
+    let source = r#"
+fn main() -> int {
+    let x = 10
+    let y = 20
+    let z = x ?? y
+    z
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain NULL_COALESCE opcode
+    assert!(bytecode.contains(&0x78), "Expected NULL_COALESCE opcode (0x78)");
+}
+
+#[test]
+fn test_error_propagate_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x = 10
+    let y = x.?
+    y
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain ERROR_PROPAGATE opcode (0x79)
+    assert!(bytecode.contains(&0x79), "Expected ERROR_PROPAGATE opcode (0x79)");
+}
+
+#[test]
+fn test_error_propagate_with_function_call() {
+    let source = r#"
+fn get_value() -> int {
+    42
+}
+
+fn main() -> int {
+    let x = get_value()
+    let y = x.?
+    y
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain ERROR_PROPAGATE opcode
+    assert!(bytecode.contains(&0x79), "Expected ERROR_PROPAGATE opcode (0x79)");
+}
