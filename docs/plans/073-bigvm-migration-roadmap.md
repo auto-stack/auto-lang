@@ -1,6 +1,6 @@
 # Plan 073: BigVM Migration Roadmap
 
-**Status**: 🟢 In Progress - ~82-92% Complete
+**Status**: 🟢 In Progress - ~85-95% Complete
 **Created**: 2025-02-04
 **Last Updated**: 2026-02-05
 **Related**: Plan 068 (BigVM Implementation), Plan 070 (BigVM Iterator), Plan 071 (BigVM Closures)
@@ -13,7 +13,7 @@
 
 ## Current Status
 
-**Overall Progress**: ~82-92% (updated from 80-90% after range expression implementation)
+**Overall Progress**: ~85-95% (updated from 82-92% after f-string implementation)
 
 ### Code Scale Comparison
 | Component | Lines | Description |
@@ -146,7 +146,22 @@
 
 **Major Achievement**: BigVM now supports range expressions! Enables for loop iteration and range-based operations.
 
-### ✅ Phase 8.3.5: Node Support & TypeDecl - **IN PROGRESS (2026-02-05)**
+### ✅ Phase 8.3.5: F-Strings (String Interpolation) - **NEWLY COMPLETED (2026-02-05)**
+- ✅ F-string support (43 lines)
+  - BUILD_FSTR opcode (0x77) for string interpolation
+  - Compile FStr expressions in codegen.rs
+  - Execute BUILD_FSTR in engine.rs
+  - Joins multiple parts into single string
+- ✅ Test suite (5 tests, all passing)
+  - Simple f-string: f"hello world"
+  - F-string with variable: f"hello $name"
+  - F-string with expression: f"sum: ${x + y}"
+  - F-string with multiple parts
+  - Nested f-strings
+
+**Major Achievement**: BigVM now supports f-strings! Enables string interpolation for templating and formatting.
+
+### ✅ Phase 8.3.6: Node Support & TypeDecl - **IN PROGRESS (2026-02-05)**
 - ✅ Phase 0: CREATE_NODE opcode definition
   - Node registry in BigVM (nodes: DashMap)
   - CREATE_NODE execution in engine.rs
@@ -225,12 +240,11 @@
 **Major Achievement**: BigVM now supports array indexing! Unlocks list manipulation patterns.
 
 **Remaining**:
-- [ ] **FStr** (f-strings) - 5% impact
 - [ ] **Lambda** (named lambdas)
 - [ ] **Ref, View, Mut, Take** (borrowing expressions) - Can defer
 - [ ] **Pair, Node, Grid** - Lower priority
 
-**Estimated Effort**: 2-3 days (reduced from 3-5 days)
+**Estimated Effort**: 1-2 days (reduced from 2-3 days)
 
 ---
 
@@ -267,7 +281,7 @@
 
 ### Expression Types Support
 
-**Currently Supported** (17+ Expr:: variants):
+**Currently Supported** (18+ Expr:: variants):
 ```rust
 ✅ Int, Bool, Str
 ✅ Uint, I8, U8, I64, Byte (NEW - Phase 8.1)
@@ -284,10 +298,11 @@
 ✅ Block (code blocks)
 ✅ Object (object literals - NEW Phase 8.2)
 ✅ Range (ranges 0..10, 0..=10 - NEW Phase 8.3.4)
-✅ Node (type instances Point(10, 20) - NEW Phase 8.3.5)
+✅ FStr (f-strings f"hello $name" - NEW Phase 8.3.5)
+✅ Node (type instances Point(10, 20) - NEW Phase 8.3.6)
 ```
 
-**Missing** (16+ variants):
+**Missing** (15+ variants):
 ```rust
 ❌ Nil, Null
 ❌ Ref (references)
@@ -295,13 +310,12 @@
 ❌ Hold (hold paths)
 ❌ Pair (key-value pairs)
 ❌ Lambda (named lambdas)
-❌ FStr (f-strings)
 ❌ Grid, Cover, Uncover (grid system)
 ❌ NullCoalesce (?? operator)
 ❌ ErrorPropagate (.? operator)
 ```
 
-**Impact**: ~28% of expression types not implemented (improved from 30% after range expressions)
+**Impact**: ~26% of expression types not implemented (improved from 28% after f-strings)
 
 ---
 
@@ -589,17 +603,18 @@
 ## Summary & Recommendations
 
 ### Current Status
-- **Progress**: ~80-90% complete (updated from 78-88%)
+- **Progress**: ~82-92% complete (updated from 80-90%)
 - **Major Achievements**:
   - ✅ Type System Completeness (Phase 8.1) - ALL primitive types supported
   - ✅ Object Literals & Field Access (Phase 8.2)
   - ✅ For Loops (Phase 8.3) - All variants: range, iterator, indexed, conditional, infinite
   - ✅ Break Statements (Phase 8.3) - Works with all for loop variants
   - ✅ Range Expressions (Phase 8.3.4) - Exclusive (0..10) and inclusive (0..=10) ranges
+  - ✅ F-Strings (Phase 8.3.5) - String interpolation (f"hello $name")
   - ✅ Array Indexing (Phase 8.5) - Array element access and assignment
-  - ✅ Node Support & Type Instances (Phase 8.3.5) - Type declarations and instances!
+  - ✅ Node Support & Type Instances (Phase 8.3.6) - Type declarations and instances!
   - ✅ Closures (Phase 7.1) via Plan 071
-- **Estimated Remaining Work**: 2-4 weeks (reduced from 2-5 weeks)
+- **Estimated Remaining Work**: 1-3 weeks (reduced from 2-4 weeks)
 
 ### Key Milestones
 1. **Short-term** (2-4 weeks): Reach 85% feature parity
@@ -637,7 +652,6 @@
 
 **P2 (Medium Priority)**:
 - Bitwise operators
-- F-strings
 - Advanced collections
 - Type declarations
 
@@ -646,9 +660,9 @@
 - Performance optimization
 
 ### Next Steps
-1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, types, for loops, AND arrays)
-2. **High Impact**: Implement remaining medium-priority expressions (FStr)
-3. **Parallel**: Add Is pattern matching for control flow completeness
+1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, types, for loops, arrays, AND f-strings)
+2. **High Impact**: Add Is pattern matching for control flow completeness
+3. **Parallel**: Implement remaining medium-priority expressions (Lambda, etc.)
 4. **Planning**: Create detailed tickets for remaining missing features
 
 ---
