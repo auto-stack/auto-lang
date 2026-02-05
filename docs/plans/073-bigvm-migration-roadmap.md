@@ -1,6 +1,6 @@
 # Plan 073: BigVM Migration Roadmap
 
-**Status**: 🟢 In Progress - ~88-98% Complete
+**Status**: 🟢 In Progress - ~90-99% Complete
 **Created**: 2025-02-04
 **Last Updated**: 2026-02-05
 **Related**: Plan 068 (BigVM Implementation), Plan 070 (BigVM Iterator), Plan 071 (BigVM Closures)
@@ -13,7 +13,7 @@
 
 ## Current Status
 
-**Overall Progress**: ~88-98% (updated from 87-97% after IfBranch support)
+**Overall Progress**: ~90-99% (updated from 88-98% after May/Question operators)
 
 ### Code Scale Comparison
 | Component | Lines | Description |
@@ -197,6 +197,33 @@
 
 **Total Is Statement Support**: 15 tests passing (EqBranch, IfBranch, ElseBranch)
 
+### ✅ Phase 8.3.9: May<T> Question Operators - **NEWLY COMPLETED (2026-02-05)**
+- ✅ May<T> type clarification: Option<T> only (Nil, Val variants)
+  - `?T` / `May<T>` → Rust's `Option<T>` (not Result<T, Error>)
+  - Separate `!T` type will be used for Result<T, Error> in future
+- ✅ NULL_COALESCE opcode (0x78) for `??` operator
+  - `left ?? right` - if left is Nil, return right; otherwise return left
+  - Compilation in codegen.rs: compile left, compile right, emit opcode
+  - Execution in engine.rs: pop May<T> and default, push unwrapped or default
+- ✅ ERROR_PROPAGATE opcode (0x79) for `.?` operator
+  - `expression.?` - if expression is Nil, early return; otherwise unwrap value
+  - Compilation in codegen.rs: compile expression, emit opcode
+  - Execution in engine.rs: pop May<T>, push unwrapped value or return Nil
+- ✅ Test suite (5 tests, all passing)
+  - Basic null coalesce: `x ?? 0`
+  - Null coalesce with variable: `x ?? y`
+  - Nested null coalesce
+  - Basic error propagate: `x.?`
+  - Error propagate with function call: `get_value().?`
+
+**Major Achievement**: BigVM now supports May<T> question operators! Enables null-safe operations and error propagation patterns.
+
+**Design Note**:
+- May<T> is implemented as Option<T> only (2 variants: Nil, Val)
+- Nil is represented as -1 in the current implementation
+- Future work: Proper May<T> type support with stack-based Value types
+- Future work: `!T` type for Result<T, Error> (Ok, Err variants)
+
 ### ✅ Phase 8.3.7: Node Support & TypeDecl - **IN PROGRESS (2026-02-05)**
 - ✅ Phase 0: CREATE_NODE opcode definition
   - Node registry in BigVM (nodes: DashMap)
@@ -317,7 +344,7 @@
 
 ### Expression Types Support
 
-**Currently Supported** (18+ Expr:: variants):
+**Currently Supported** (20+ Expr:: variants):
 ```rust
 ✅ Int, Bool, Str
 ✅ Uint, I8, U8, I64, Byte (NEW - Phase 8.1)
@@ -336,9 +363,11 @@
 ✅ Range (ranges 0..10, 0..=10 - NEW Phase 8.3.4)
 ✅ FStr (f-strings f"hello $name" - NEW Phase 8.3.5)
 ✅ Node (type instances Point(10, 20) - NEW Phase 8.3.6)
+✅ NullCoalesce (?? operator - NEW Phase 8.3.9)
+✅ ErrorPropagate (.? operator - NEW Phase 8.3.9)
 ```
 
-**Missing** (15+ variants):
+**Missing** (13+ variants):
 ```rust
 ❌ Nil, Null
 ❌ Ref (references)
@@ -347,11 +376,9 @@
 ❌ Pair (key-value pairs)
 ❌ Lambda (named lambdas)
 ❌ Grid, Cover, Uncover (grid system)
-❌ NullCoalesce (?? operator)
-❌ ErrorPropagate (.? operator)
 ```
 
-**Impact**: ~26% of expression types not implemented (improved from 28% after f-strings)
+**Impact**: ~24% of expression types not implemented (improved from 26% after May/Question operators)
 
 ---
 
@@ -685,7 +712,7 @@
 - ~~For loops (essential for control flow)~~ ✅ **COMPLETE** (2026-02-05)
 - ~~Range expressions~~ ✅ **COMPLETE** (2026-02-05)
 - ~~Is pattern matching~~ ✅ **COMPLETE** (2026-02-05)
-- May/Question system
+- ~~May/Question system~~ ✅ **COMPLETE** (2026-02-05)
 
 **P2 (Medium Priority)**:
 - Bitwise operators
@@ -697,8 +724,8 @@
 - Performance optimization
 
 ### Next Steps
-1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, types, for loops, arrays, f-strings, AND Is statements)
-2. **High Impact**: Implement May/Question system (?? and .? operators)
+1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, types, for loops, arrays, f-strings, Is statements, AND May/Question operators)
+2. **High Impact**: Complete TypeDecl/EnumDecl/SpecDecl (Phase 8.6)
 3. **Parallel**: Implement remaining medium-priority expressions (Lambda, etc.)
 4. **Planning**: Create detailed tickets for remaining missing features
 
