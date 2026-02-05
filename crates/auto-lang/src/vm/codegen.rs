@@ -1042,6 +1042,22 @@ impl Codegen {
 
                         // Quick fix: Accept the current order and change SET_ELEM to expect [value, array, index]
                         self.emit(OpCode::SET_ELEM);  // Expects: value, array_id, index
+                    } else if let Expr::Dot(obj, field) = lhs.as_ref() {
+                        // Plan 075: Field assignment: obj.field = value
+                        // Stack has: value (from RHS compilation above)
+                        // Compile object expression
+                        self.compile_expr(obj)?;
+                        // Now stack has: value, object_id
+                        // Load field name
+                        let field_str = field.to_string();
+                        let field_bytes = field_str.as_bytes().to_vec();
+                        let field_idx = self.strings.len() as u16;
+                        self.strings.push(field_bytes);
+
+                        self.emit(OpCode::LOAD_STR);
+                        self.code.extend_from_slice(&field_idx.to_le_bytes());
+                        // Emit SET_FIELD: expects value, object_id, field_name_idx
+                        self.emit(OpCode::SET_FIELD);
                     } else {
                         unimplemented!("Assignment to complex LHS not supported yet");
                     }

@@ -199,23 +199,14 @@ debug = true
 
     #[test]
     fn test_config_codegen_nested_fields() {
-        // Note: Dotted identifiers like "server.host = value" are not supported yet
-        // because the parser creates: Binary(Dot(Ident("server"), Name("host")), Asn, value)
-        // and codegen doesn't support assignment to Dot expressions (only Index for arrays).
-        //
-        // This test uses simple field names as a workaround.
-        //
-        // TODO: Add support for assignment to Dot expressions in codegen:
-        // - Check if LHS is Dot expression in Op::Asn handler
-        // - Emit field assignment opcodes (SET_FIELD or similar)
-        //
-        // Alternative: Use object literal syntax:
-        // server = {host = "localhost", port = 5432}
+        // Plan 075: Dotted identifiers are now supported!
+        // The parser creates: Binary(Dot(Ident("server"), Name("host")), Asn, value)
+        // And codegen now handles Dot expressions in Op::Asn handler (using SET_FIELD opcode).
 
         let source = r#"
-server_host = "localhost"
-server_port = 5432
-database_name = "mydb"
+server.host = "localhost"
+server.port = 5432
+database.name = "mydb"
 "#;
 
         let code = parse_source(source);
@@ -227,6 +218,7 @@ database_name = "mydb"
         // Verify bytecode contains expected opcodes
         let bytecode = &module.code;
         assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+        assert!(bytecode.contains(&0x2A), "Expected SET_FIELD opcode (0x2A)");
 
         // Should have one CREATE_OBJ call with 3 fields
         let create_obj_count = bytecode.iter().filter(|&&x| x == 0x2E).count();
@@ -237,6 +229,10 @@ database_name = "mydb"
             let field_count = bytecode[idx + 3];
             assert_eq!(field_count, 3, "Expected 3 fields in object");
         }
+
+        // Should have 3 SET_FIELD calls (one for each dotted assignment)
+        let set_field_count = bytecode.iter().filter(|&&x| x == 0x2A).count();
+        assert_eq!(set_field_count, 3, "Expected 3 SET_FIELD opcodes");
     }
 
     #[test]

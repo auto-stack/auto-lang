@@ -1701,3 +1701,85 @@ fn main() -> int {
     // All three declarations should coexist
     assert!(bytecode.len() > 0, "Bytecode should be generated");
 }
+
+// Plan 075: Tests for Dot expression assignment support
+#[test]
+fn test_dot_expression_simple_assignment() {
+    let source = r#"
+fn main() -> int {
+    let obj = {x: 0}
+    obj.x = 42
+    obj.x
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain SET_FIELD opcode (0x2A)
+    assert!(bytecode.contains(&0x2A), "Expected SET_FIELD opcode (0x2A)");
+}
+
+#[test]
+fn test_dot_expression_nested_assignment() {
+    let source = r#"
+fn main() -> int {
+    let server = {host: "localhost", port: 0}
+    server.host = "example.com"
+    server.port = 8080
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain SET_FIELD opcode (0x2A) for both assignments
+    let set_field_count = bytecode.iter().filter(|&&x| x == 0x2A).count();
+    assert_eq!(set_field_count, 2, "Expected 2 SET_FIELD opcodes");
+}
+
+#[test]
+fn test_dot_expression_with_expressions() {
+    let source = r#"
+fn main() -> int {
+    let obj = {value: 0}
+    obj.value = 10 * 5
+    obj.value
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain SET_FIELD opcode
+    assert!(bytecode.contains(&0x2A), "Expected SET_FIELD opcode (0x2A)");
+}
+
+#[test]
+fn test_dot_expression_multiple_fields() {
+    let source = r#"
+fn main() -> int {
+    let config = {
+        host: "localhost"
+        port: 8080
+        debug: true
+    }
+    config.host = "example.com"
+    config.port = 9090
+    config.debug = false
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain SET_FIELD opcode (0x2A) for three assignments
+    let set_field_count = bytecode.iter().filter(|&&x| x == 0x2A).count();
+    assert_eq!(set_field_count, 3, "Expected 3 SET_FIELD opcodes");
+}
+
+#[test]
+fn test_dot_expression_assignment_and_access() {
+    let source = r#"
+fn main() -> int {
+    let obj = {x: 0, y: 0}
+    obj.x = 10
+    obj.y = obj.x + 5
+    obj.y
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain both SET_FIELD (0x2A) and GET_FIELD (0x2D)
+    assert!(bytecode.contains(&0x2A), "Expected SET_FIELD opcode (0x2A)");
+    assert!(bytecode.contains(&0x2D), "Expected GET_FIELD opcode (0x2D)");
+}

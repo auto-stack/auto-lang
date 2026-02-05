@@ -642,6 +642,37 @@ impl BigVM {
                         // TODO: Proper error handling for invalid array IDs
                     }
                 }
+                // Plan 075: Object field assignment (obj.field = value)
+                OpCode::SET_FIELD => {
+                    // Stack: value, object_id, field_name_idx (compiled in this order by codegen)
+                    // Pop field_name_idx first (top of stack)
+                    let field_idx = task.ram.pop_i32() as usize;
+                    // Pop object_id
+                    let obj_id = task.ram.pop_i32() as u64;
+                    // Pop value (bottom of stack)
+                    let value = task.ram.pop_i32();
+
+                    // Get field name from strings pool
+                    let strings = self.strings.read().unwrap();
+                    let field_name = if let Some(field_bytes) = strings.get(field_idx) {
+                        String::from_utf8_lossy(field_bytes).to_string()
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid string index: {}", field_idx)));
+                    };
+                    drop(strings); // Release lock before writing
+
+                    // Get object from registry
+                    if let Some(obj_ref) = self.objects.get(&obj_id) {
+                        let mut obj = obj_ref.write().unwrap();
+                        // Set field value (convert i32 to Value)
+                        let key = auto_val::ValueKey::Str(field_name.into());
+                        obj.set(key, auto_val::Value::Int(value));
+                    } else {
+                        // Object not found - silent fail for now
+                        // TODO: Proper error handling for invalid object IDs
+                    }
+                }
                 // Plan 073: Object field access (obj.field)
                 OpCode::GET_FIELD => {
                     let field_idx = self.flash.read_u16(task.ip);
