@@ -229,6 +229,20 @@ impl Codegen {
                 // Type declarations don't generate any bytecode at compile time
                 // They just register metadata for use in instance construction
             }
+            Stmt::EnumDecl(enum_decl) => {
+                // Plan 073 Phase 8.6: Enum declaration support
+                // Enum declarations don't generate bytecode at compile time
+                // They register metadata for use in pattern matching and type checking
+                // TODO: Register enum in type registry for future use
+                // For now, enums are handled by the Tag system (Plan 073 Phase 8.3.7)
+            }
+            Stmt::SpecDecl(spec_decl) => {
+                // Plan 073 Phase 8.6: Spec declaration support
+                // Spec declarations (traits) don't generate bytecode at compile time
+                // They register method signatures for type checking and constraint validation
+                // TODO: Register spec in type registry for future use
+                // For now, specs are metadata-only and used during type checking
+            }
             // Plan 073: For statement support
             Stmt::For(for_stmt) => {
                 // Push new loop exit tracking

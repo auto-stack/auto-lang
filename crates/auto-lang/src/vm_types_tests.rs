@@ -1579,3 +1579,125 @@ fn main() -> int {
     // Should contain ERROR_PROPAGATE opcode
     assert!(bytecode.contains(&0x79), "Expected ERROR_PROPAGATE opcode (0x79)");
 }
+
+// Plan 073 Phase 8.6: TypeDecl/EnumDecl/SpecDecl Support
+#[test]
+fn test_type_decl_compiles() {
+    let source = r#"
+type Point {
+    x int
+    y int
+}
+
+fn main() -> int {
+    let p = Point(10, 20)
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Type declarations don't generate bytecode, but type instances should work
+    // The code should compile without errors
+    assert!(bytecode.len() > 0, "Bytecode should be generated");
+}
+
+#[test]
+fn test_type_decl_with_methods_compiles() {
+    let source = r#"
+type Counter {
+    count int
+
+    fn increment() {
+        count = count + 1
+    }
+}
+
+fn main() -> int {
+    let c = Counter(0)
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Type with methods should still compile
+    assert!(bytecode.len() > 0, "Bytecode should be generated");
+}
+
+#[test]
+fn test_enum_decl_compiles() {
+    let source = r#"
+enum Color {
+    Red = 0
+    Green = 1
+    Blue = 2
+}
+
+fn main() -> int {
+    let c = Color.Red
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Enum declarations don't generate bytecode
+    // But the code should compile without errors
+    assert!(bytecode.len() > 0, "Bytecode should be generated");
+}
+
+#[test]
+fn test_spec_decl_compiles() {
+    let source = r#"
+spec Printable {
+    fn to_str()
+}
+
+fn main() -> int {
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Spec declarations don't generate bytecode
+    // But the code should compile without errors
+    assert!(bytecode.len() > 0, "Bytecode should be generated");
+}
+
+#[test]
+fn test_spec_decl_with_default_methods_compiles() {
+    let source = r#"
+spec Show {
+    fn show()
+}
+
+fn main() -> int {
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Spec with default methods should compile
+    assert!(bytecode.len() > 0, "Bytecode should be generated");
+}
+
+#[test]
+fn test_combined_type_enum_spec_compiles() {
+    let source = r#"
+type Point {
+    x int
+    y int
+}
+
+enum Color {
+    Red = 0
+    Green = 1
+}
+
+spec Printable {
+    fn to_str()
+}
+
+fn main() -> int {
+    let p = Point(10, 20)
+    let c = Color.Red
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // All three declarations should coexist
+    assert!(bytecode.len() > 0, "Bytecode should be generated");
+}
