@@ -2,6 +2,8 @@ mod a2c_tests;
 mod atom_tests;
 // Plan 075: Unified API tests
 mod unified_api_tests;
+// Plan 073 Phase 9.1: Performance benchmarking
+mod perf_benchmark_tests;
 mod config_tests;
 mod const_generic_integration_tests; // Plan 052: Const generic integration tests
 mod const_generic_tests; // Plan 052: Const generic parameter tests
