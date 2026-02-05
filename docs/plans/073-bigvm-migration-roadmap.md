@@ -1,6 +1,6 @@
 # Plan 073: BigVM Migration Roadmap
 
-**Status**: 🟢 In Progress - ~87-97% Complete
+**Status**: 🟢 In Progress - ~88-98% Complete
 **Created**: 2025-02-04
 **Last Updated**: 2026-02-05
 **Related**: Plan 068 (BigVM Implementation), Plan 070 (BigVM Iterator), Plan 071 (BigVM Closures)
@@ -13,7 +13,7 @@
 
 ## Current Status
 
-**Overall Progress**: ~87-97% (updated from 85-95% after Is pattern matching)
+**Overall Progress**: ~88-98% (updated from 87-97% after IfBranch support)
 
 ### Code Scale Comparison
 | Component | Lines | Description |
@@ -179,7 +179,23 @@
 - Uses EQ, JMP_IF_Z, JMP, POP opcodes (no new opcodes required)
 - Efficient jump-based control flow similar to switch statements
 - Target evaluated once and reused for all comparisons
-- TODO: IfBranch (conditional matching) and sum type deconstruction can be added later
+
+### ✅ Phase 8.3.8: Is IfBranch (Conditional Pattern Matching) - **NEWLY COMPLETED (2026-02-05)**
+- ✅ IfBranch support (20 lines)
+  - Evaluate condition expression for each if branch
+  - Jump to next branch if condition is false (using JMP_IF_Z)
+  - Compile branch body if condition is true
+  - Jump to end after executing body
+- ✅ Test suite (5 tests, all passing)
+  - Simple IfBranch: `is x { if x > 5 => ... }`
+  - IfBranch with else: `is x { if x > 10 => ..., else => ... }`
+  - Multiple IfBranches: `is x { if x > 10 => ..., if x < 10 => ..., else => ... }`
+  - IfBranch with complex condition: `is x { if x > 20 => ... }`
+  - Mixed branches: `is x { 5 => ..., if x > 10 => ..., else => ... }`
+
+**Major Achievement**: BigVM now supports conditional pattern matching guards! Enables complex pattern matching with conditions.
+
+**Total Is Statement Support**: 15 tests passing (EqBranch, IfBranch, ElseBranch)
 
 ### ✅ Phase 8.3.7: Node Support & TypeDecl - **IN PROGRESS (2026-02-05)**
 - ✅ Phase 0: CREATE_NODE opcode definition
@@ -277,7 +293,7 @@
 - ✅ For (for loops) - Conditional (for condition)
 - ✅ For (for loops) - Infinite (for ever)
 - ✅ Break (break statements) - works with all for loop variants
-- ✅ Is (pattern matching) - EqBranch and ElseBranch support
+- ✅ Is (pattern matching) - EqBranch, IfBranch, and ElseBranch support
 
 **Remaining**:
 - [ ] **TypeDecl, EnumDecl, SpecDecl** - 15% impact
