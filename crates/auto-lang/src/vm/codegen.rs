@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Stmt, Closure, For, Iter, TypeDecl, Member};
+use crate::ast::{Expr, Stmt, Closure, Iter, TypeDecl};
 use crate::error::{AutoResult, AutoError};
 use crate::error::SyntaxError;
 // use crate::val::Value; // Removed if not directly used or fix path
@@ -8,7 +8,7 @@ use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 use auto_val::Op;
 use std::collections::{HashMap, HashSet};
-use miette::{SourceSpan, ByteOffset};
+use miette::SourceSpan;
 
 /// Plan 073: Type tags for object field values
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

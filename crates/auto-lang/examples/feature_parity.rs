@@ -3,52 +3,6 @@
 //
 // Run with: cargo run --example feature_parity
 
-/// Test result category
-#[derive(Debug, Clone, PartialEq)]
-enum TestCategory {
-    /// Test uses Evaluator (run(), eval.rs)
-    Evaluator,
-    /// Test uses BigVM (vm/engine.rs, tests_bigvm.rs)
-    BigVM,
-    /// Test is compiler/transpiler only (doesn't run code)
-    Compiler,
-    /// Unknown/other
-    Unknown,
-}
-
-/// Feature parity analysis result
-struct FeatureParityReport {
-    total_tests: usize,
-    passed_tests: usize,
-    failed_tests: usize,
-    ignored_tests: usize,
-    evaluator_only_features: Vec<String>,
-    bigvm_only_features: Vec<String>,
-    both_support: Vec<String>,
-    test_coverage_gaps: Vec<String>,
-}
-
-fn analyze_test_file(content: &str) -> TestCategory {
-    // Check for Evaluator usage
-    if content.contains("run(") || content.contains("interp::") || content.contains("Interpreter") {
-        return TestCategory::Evaluator;
-    }
-
-    // Check for BigVM usage
-    if content.contains("BigVM") || content.contains("engine::")
-        || content.contains("VirtualFlash") || content.contains("tests_bigvm") {
-        return TestCategory::BigVM;
-    }
-
-    // Check for compiler/transpiler tests (no execution)
-    if content.contains("transpile") || content.contains("codegen")
-        || content.contains("parse(") || content.contains("Parser::") {
-        return TestCategory::Compiler;
-    }
-
-    TestCategory::Unknown
-}
-
 fn check_test_status() -> (usize, usize, usize) {
     // This would typically run cargo test and parse output
     // For now, return known values from last test run

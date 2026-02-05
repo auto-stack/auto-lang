@@ -1044,7 +1044,6 @@ impl Evaler {
     /// Find an .at file by module name (Plan 074: Updated for multi-directory search)
     /// Search order: lib_paths (from config) -> ~/.auto/libs/ -> /usr/local/lib/auto -> /usr/lib/auto -> current directory
     fn find_at_file(&self, module_name: &str) -> Option<std::path::PathBuf> {
-        use std::path::{Path, PathBuf};
 
         eprintln!("Searching for module '{}', lib_paths: {:?}", module_name, self.lib_paths);
 

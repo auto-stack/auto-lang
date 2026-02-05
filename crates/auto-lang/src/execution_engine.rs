@@ -1,7 +1,7 @@
 // Plan 073 Phase 9.3: Execution Engine Selection
 // Provides configuration to choose between BigVM and Evaluator
 
-use crate::error::{AutoResult, AutoError};
+use crate::error::AutoResult;
 
 /// Execution engine selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
