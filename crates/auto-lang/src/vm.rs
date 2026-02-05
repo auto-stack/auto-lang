@@ -5,6 +5,8 @@ use std::sync::Mutex;
 pub mod builder;
 pub mod channel;
 pub mod codegen;
+// Plan 075: ConfigCodegen for config file compilation
+pub mod config_codegen;
 pub mod collections;
 pub mod engine;
 pub mod heap;
