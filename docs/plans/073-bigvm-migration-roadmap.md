@@ -1,6 +1,6 @@
 # Plan 073: BigVM Migration Roadmap
 
-**Status**: 🟢 In Progress - ~85-95% Complete
+**Status**: 🟢 In Progress - ~87-97% Complete
 **Created**: 2025-02-04
 **Last Updated**: 2026-02-05
 **Related**: Plan 068 (BigVM Implementation), Plan 070 (BigVM Iterator), Plan 071 (BigVM Closures)
@@ -13,7 +13,7 @@
 
 ## Current Status
 
-**Overall Progress**: ~85-95% (updated from 82-92% after f-string implementation)
+**Overall Progress**: ~87-97% (updated from 85-95% after Is pattern matching)
 
 ### Code Scale Comparison
 | Component | Lines | Description |
@@ -161,7 +161,27 @@
 
 **Major Achievement**: BigVM now supports f-strings! Enables string interpolation for templating and formatting.
 
-### ✅ Phase 8.3.6: Node Support & TypeDecl - **IN PROGRESS (2026-02-05)**
+### ✅ Phase 8.3.6: Is Pattern Matching - **NEWLY COMPLETED (2026-02-05)**
+- ✅ Is statement support (75 lines)
+  - Compile Is statements using existing opcodes (no new opcodes needed!)
+  - Support EqBranch (pattern matching with `=>`)
+  - Support ElseBranch (default case with `else =>`)
+  - Target expression evaluated once, kept on stack during matching
+- ✅ Test suite (4 tests, all passing)
+  - Simple pattern matching: `is x { 10 => ... }`
+  - Multiple branches: `is x { 1 => ..., 2 => ..., else => ... }`
+  - Nested Is statements
+  - Multiple branches (5+ patterns)
+
+**Major Achievement**: BigVM now supports Is pattern matching! Enables switch-like pattern matching for control flow.
+
+**Implementation Note**:
+- Uses EQ, JMP_IF_Z, JMP, POP opcodes (no new opcodes required)
+- Efficient jump-based control flow similar to switch statements
+- Target evaluated once and reused for all comparisons
+- TODO: IfBranch (conditional matching) and sum type deconstruction can be added later
+
+### ✅ Phase 8.3.7: Node Support & TypeDecl - **IN PROGRESS (2026-02-05)**
 - ✅ Phase 0: CREATE_NODE opcode definition
   - Node registry in BigVM (nodes: DashMap)
   - CREATE_NODE execution in engine.rs
@@ -257,12 +277,12 @@
 - ✅ For (for loops) - Conditional (for condition)
 - ✅ For (for loops) - Infinite (for ever)
 - ✅ Break (break statements) - works with all for loop variants
+- ✅ Is (pattern matching) - EqBranch and ElseBranch support
 
 **Remaining**:
-- [ ] **Is** (pattern matching) - 8% impact
 - [ ] **TypeDecl, EnumDecl, SpecDecl** - 15% impact
 
-**Estimated Effort**: 3-5 days (reduced from 4-6 days)
+**Estimated Effort**: 2-3 days (reduced from 3-5 days)
 
 ---
 
@@ -603,7 +623,7 @@
 ## Summary & Recommendations
 
 ### Current Status
-- **Progress**: ~82-92% complete (updated from 80-90%)
+- **Progress**: ~85-95% complete (updated from 82-92%)
 - **Major Achievements**:
   - ✅ Type System Completeness (Phase 8.1) - ALL primitive types supported
   - ✅ Object Literals & Field Access (Phase 8.2)
@@ -611,10 +631,11 @@
   - ✅ Break Statements (Phase 8.3) - Works with all for loop variants
   - ✅ Range Expressions (Phase 8.3.4) - Exclusive (0..10) and inclusive (0..=10) ranges
   - ✅ F-Strings (Phase 8.3.5) - String interpolation (f"hello $name")
+  - ✅ Is Pattern Matching (Phase 8.3.6) - Switch-like pattern matching with is/else
   - ✅ Array Indexing (Phase 8.5) - Array element access and assignment
-  - ✅ Node Support & Type Instances (Phase 8.3.6) - Type declarations and instances!
+  - ✅ Node Support & Type Instances (Phase 8.3.7) - Type declarations and instances!
   - ✅ Closures (Phase 7.1) via Plan 071
-- **Estimated Remaining Work**: 1-3 weeks (reduced from 2-4 weeks)
+- **Estimated Remaining Work**: 1-2 weeks (reduced from 1-3 weeks)
 
 ### Key Milestones
 1. **Short-term** (2-4 weeks): Reach 85% feature parity
@@ -647,7 +668,7 @@
 - ~~Array indexing (Index expression)~~ ✅ **COMPLETE** (2026-02-05)
 - ~~For loops (essential for control flow)~~ ✅ **COMPLETE** (2026-02-05)
 - ~~Range expressions~~ ✅ **COMPLETE** (2026-02-05)
-- Is pattern matching
+- ~~Is pattern matching~~ ✅ **COMPLETE** (2026-02-05)
 - May/Question system
 
 **P2 (Medium Priority)**:
@@ -660,8 +681,8 @@
 - Performance optimization
 
 ### Next Steps
-1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, types, for loops, arrays, AND f-strings)
-2. **High Impact**: Add Is pattern matching for control flow completeness
+1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, types, for loops, arrays, f-strings, AND Is statements)
+2. **High Impact**: Implement May/Question system (?? and .? operators)
 3. **Parallel**: Implement remaining medium-priority expressions (Lambda, etc.)
 4. **Planning**: Create detailed tickets for remaining missing features
 
