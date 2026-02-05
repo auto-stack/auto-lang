@@ -1,13 +1,13 @@
 [workspace]
 members = [
-    "auto",
-    "auto-gen",
-    "auto-lang",
-    "auto-lang-macros",
-    # "auto-lsp",  # Temporarily disabled due to Cargo.toml issues
-    "auto-val",
-    "auto-vm",
-    # "auto-xml",  # Temporarily disabled due to Cargo.toml issues
+    "crates/auto",
+    "crates/auto-gen",
+    "crates/auto-lang",
+    "crates/auto-lang-macros",
+    # "crates/auto-lsp",  # Temporarily disabled due to Cargo.toml issues
+    "crates/auto-val",
+    "crates/auto-vm",
+    # "crates/auto-xml",  # Temporarily disabled due to Cargo.toml issues
 ]
 resolver = "2"
 
