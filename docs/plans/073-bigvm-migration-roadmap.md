@@ -1,6 +1,6 @@
 # Plan 073: BigVM Migration Roadmap
 
-**Status**: 🟢 In Progress - ~90-99% Complete
+**Status**: 🟢 In Progress - ~93-99% Complete
 **Created**: 2025-02-04
 **Last Updated**: 2026-02-05
 **Related**: Plan 068 (BigVM Implementation), Plan 070 (BigVM Iterator), Plan 071 (BigVM Closures)
@@ -13,7 +13,7 @@
 
 ## Current Status
 
-**Overall Progress**: ~90-99% (updated from 88-98% after May/Question operators)
+**Overall Progress**: ~93-99% (updated from 90-99% after TypeDecl/EnumDecl/SpecDecl)
 
 ### Code Scale Comparison
 | Component | Lines | Description |
@@ -311,9 +311,9 @@
 
 ---
 
-### 🔴 Phase 8.6: Statement Coverage - **High Priority**
-**Status**: In progress
-**Completed** (2026-02-05):
+### ✅ Phase 8.6: Statement Coverage - **NEWLY COMPLETED (2026-02-05)**
+**Status**: Complete
+**Completed**:
 - ✅ For (for loops) - Range-based (0..10, 0..=10)
 - ✅ For (for loops) - Iterator-based (list.iter())
 - ✅ For (for loops) - Indexed (for i, x in 0..10)
@@ -321,11 +321,20 @@
 - ✅ For (for loops) - Infinite (for ever)
 - ✅ Break (break statements) - works with all for loop variants
 - ✅ Is (pattern matching) - EqBranch, IfBranch, and ElseBranch support
+- ✅ **TypeDecl, EnumDecl, SpecDecl** - **NEWLY COMPLETED** (2026-02-05)
+  - TypeDecl: Registers type metadata in type registry (already implemented)
+  - EnumDecl: Compilation handler added (metadata-only, handled by Tag system)
+  - SpecDecl: Compilation handler added (metadata-only, used for type checking)
+  - Test suite (7 tests, all passing)
+    - TypeDecl with members
+    - TypeDecl with methods
+    - EnumDecl with items
+    - SpecDecl with methods
+    - Combined type/enum/spec declarations
 
-**Remaining**:
-- [ ] **TypeDecl, EnumDecl, SpecDecl** - 15% impact
+**Major Achievement**: BigVM now supports all major statement types! Type, enum, and spec declarations compile successfully.
 
-**Estimated Effort**: 2-3 days (reduced from 3-5 days)
+**Estimated Effort**: Complete (originally estimated 2-3 days)
 
 ---
 
@@ -715,18 +724,18 @@
 - ~~May/Question system~~ ✅ **COMPLETE** (2026-02-05)
 
 **P2 (Medium Priority)**:
+- ~~Type declarations~~ ✅ **COMPLETE** (2026-02-05)
 - Bitwise operators
 - Advanced collections
-- Type declarations
 
 **P3 (Low Priority)**:
 - Borrowing system (defer to future version)
 - Performance optimization
 
 ### Next Steps
-1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, types, for loops, arrays, f-strings, Is statements, AND May/Question operators)
-2. **High Impact**: Complete TypeDecl/EnumDecl/SpecDecl (Phase 8.6)
-3. **Parallel**: Implement remaining medium-priority expressions (Lambda, etc.)
+1. **Immediate**: Migrate list/string/object tests (now possible with closures, objects, types, for loops, arrays, f-strings, Is statements, May/Question operators, AND TypeDecl/EnumDecl/SpecDecl)
+2. **High Impact**: Implement remaining medium-priority expressions (Lambda, etc.)
+3. **Parallel**: Start performance benchmarking (Phase 9)
 4. **Planning**: Create detailed tickets for remaining missing features
 
 ---
