@@ -87,6 +87,7 @@ pub enum OpCode {
     CALL = 0x70,
     RET = 0x71,
     CALL_NAT = 0x72,
+    CALL_METHOD = 0x73,  // Phase 2: Call instance method (obj.method())
 
     // === Concurrency ===
     SPAWN = 0x80,    // func_id: u32, arg_count: u8 -> task_id: u32

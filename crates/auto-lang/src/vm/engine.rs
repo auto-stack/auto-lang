@@ -723,6 +723,80 @@ impl BigVM {
                         return Err(VMError::MissingNative(native_id));
                     }
                 }
+                // Phase 2: CALL_METHOD - Instance method call (obj.method())
+                // Stack layout before: [..., object_id, arg1, arg2, ...]
+                // Opcode format: <method_str_idx:u16> <arg_count:u8>
+                OpCode::CALL_METHOD => {
+                    let method_str_idx = self.flash.read_u16(task.ip);
+                    task.ip += 2;
+
+                    let arg_count = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+
+                    // Pop arguments from stack
+                    let mut args = Vec::with_capacity(arg_count as usize);
+                    for _ in 0..arg_count {
+                        args.push(task.ram.pop_i32());
+                    }
+                    args.reverse(); // Reverse to get correct order (left-to-right)
+
+                    // Pop object_id from stack
+                    let obj_id = task.ram.pop_u32();
+
+                    // Get method name from string pool
+                    let method_name = if let Some(name_bytes) = self.loader.get_string(method_str_idx) {
+                        String::from_utf8_lossy(name_bytes).to_string()
+                    } else {
+                        return Err(VMError::Message(format!("Method string index {} not found", method_str_idx)));
+                    };
+
+                    // Get object from object registry
+                    let obj = if let Some(obj_guard) = self.objects.get(&obj_id) {
+                        obj_guard.value().clone()
+                    } else {
+                        return Err(VMError::Message(format!("Object ID {} not found", obj_id)));
+                    };
+
+                    // Get object type name
+                    let type_name = if let auto_val::Value::Object(ref obj_data) = obj {
+                        obj_data.ty.name().to_string()
+                    } else {
+                        return Err(VMError::Message("Method call on non-object value".to_string()));
+                    };
+
+                    // Phase 2: Look up method in module exports
+                    // Methods are exported as "TypeName.method_name"
+                    let qualified_method_name = format!("{}.{}", type_name, method_name);
+
+                    // Find the method in the current module
+                    let method_addr = if let Some(module) = self.modules.get(&task.module_id) {
+                        if let Some(&addr) = module.exports.get(&qualified_method_name) {
+                            addr as usize
+                        } else {
+                            return Err(VMError::Message(format!("Method {} not found in type {}", method_name, type_name)));
+                        }
+                    } else {
+                        return Err(VMError::Message(format!("Module {} not found", task.module_id)));
+                    };
+
+                    // Push arguments back to stack for the method call
+                    // Method expects: [self, arg1, arg2, ...]
+                    // We need to push obj_id as self first
+                    task.ram.push_u32(obj_id); // Push self (object_id)
+                    for arg in args {
+                        task.ram.push_i32(arg);
+                    }
+
+                    // Push return address and old stack frame
+                    task.ram.push_i32(task.ip as i32); // Return address
+                    task.ram.push_i32(task.bp as i32); // Old BP
+
+                    // New BP points to saved BP
+                    task.bp = task.ram.sp - 1;
+
+                    // Jump to method
+                    task.ip = method_addr;
+                }
                 OpCode::RET => {
                     // Spec: RET n_args
                     let n_args = self.flash.read_u8(task.ip) as usize;

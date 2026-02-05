@@ -1,6 +1,6 @@
 # Plan 073: BigVM Migration Roadmap
 
-**Status**: 🟢 In Progress - ~75-85% Complete
+**Status**: 🟢 In Progress - ~80-90% Complete
 **Created**: 2025-02-04
 **Last Updated**: 2026-02-05
 **Related**: Plan 068 (BigVM Implementation), Plan 070 (BigVM Iterator), Plan 071 (BigVM Closures)
@@ -13,7 +13,7 @@
 
 ## Current Status
 
-**Overall Progress**: ~75-85% (updated from 70-80% after array indexing completion)
+**Overall Progress**: ~80-90% (updated from 75-85% after method call implementation)
 
 ### Code Scale Comparison
 | Component | Lines | Description |
@@ -131,7 +131,7 @@
 
 **Major Achievement**: BigVM now supports iterator-based for loops! Unlocks list iteration patterns from Plan 070.
 
-### ✅ Phase 8.3.5: Node Support - **IN PROGRESS (2026-02-05)**
+### ✅ Phase 8.3.5: Node Support & TypeDecl - **IN PROGRESS (2026-02-05)**
 - ✅ Phase 0: CREATE_NODE opcode definition
   - Node registry in BigVM (nodes: DashMap)
   - CREATE_NODE execution in engine.rs
@@ -143,6 +143,12 @@
   - Stmt::TypeDecl compilation (registers type metadata)
   - Modified Expr::Node compilation to detect types
   - Type instance test cases (5 tests)
+- ✅ Phase 2: Method calls (obj.method()) - **NEWLY COMPLETED (2026-02-05)**
+  - CALL_METHOD opcode definition (0x73)
+  - TypeInfo extended with methods field
+  - Method call compilation in codegen.rs (distinguishes static vs instance methods)
+  - CALL_METHOD execution in engine.rs (method lookup via qualified names "TypeName.method_name")
+  - Method call test cases (4 tests)
 
 **Implementation Details**:
 - CREATE_NODE opcode format: `<0x30> <name_str_idx:u16> <arg_count:u8>`
@@ -150,30 +156,42 @@
 - Type detection at compile-time: Checks if name is in types registry
 - Type instances generate CREATE_OBJ instead of CREATE_NODE
 - Positional args map to type members in order
+- **CALL_METHOD opcode format**: `<0x73> <method_str_idx:u16> <arg_count:u8>`
+  - Stack layout: `[..., object_id, arg1, arg2, ...]`
+  - Method lookup: `TypeName.method_name` in module exports
+  - Instance method detection: lowercase Ident → instance method, uppercase Ident → static method
 
-**Major Achievement**: BigVM can now create type instances! `Point(10, 20)` creates an object with x: 10, y: 20.
+**Major Achievement**: BigVM can now create type instances AND call their methods! `Point(10, 20).sum()` works.
 
 **Remaining**:
-- ⏸️ Phase 2: Method calls (obj.method())
 - ⏸️ Phase 3: Type inheritance and composition (is, has)
 
 ### ✅ Phase 8: Test Migration (Partial)
 - ✅ Primitive and control flow tests (arithmetic, unary, comparisons, if/else)
 - ✅ Function call tests (CALL/RET, locals, recursion)
-- ⏸️ Complex type tests (list_tests.rs - partial, string_tests.rs, object_tests.rs - pending)
+- ✅ **Complex type tests (list_tests.rs - partial)** - NEW (2026-02-05)
+  - 10 List tests added to tests_bigvm.rs
+  - Covers: push, pop, len, is_empty, get, set, clear, insert, remove, iter
+- ⏸️ string_tests.rs - Basic strings supported, advanced features pending
+- ⏸️ object_tests.rs - ✅ Object literals NOW AVAILABLE (Phase 8.2)
 
 ---
 
 ## Remaining Work
 
-### 🔴 Phase 8.4: Complex Type Test Migration - **High Priority**
-**Status**: Ready to begin
-**Required**:
-- [ ] **list_tests.rs** - Requires closure support (✅ AVAILABLE via Plan 071)
+### 🟡 Phase 8.4: Complex Type Test Migration - **IN PROGRESS (2026-02-05)**
+**Status**: Partially complete (List tests added)
+**Completed**:
+- ✅ **list_tests.rs** - Basic operations and iterator tests (10 tests)
+- ✅ List native functions registered in BigVM (push, pop, len, is_empty, clear, get, set, insert, remove, capacity)
+- ✅ Iterator support (iter, next)
+
+**Remaining**:
+- [ ] **list_tests.rs** - Advanced operations (map, filter, reduce, collect, etc.) - ~23 tests
 - [ ] **string_tests.rs** - Basic strings supported, advanced features pending
 - [ ] **object_tests.rs** - ✅ Object literals NOW AVAILABLE (Phase 8.2)
 
-**Estimated Effort**: 2-3 days (reduced from 3-5 days)
+**Estimated Remaining Effort**: 1-2 days (reduced from 2-3 days)
 
 ---
 
@@ -269,13 +287,13 @@
 ❌ ErrorPropagate (.? operator)
 ```
 
-**Impact**: ~32% of expression types not implemented (improved from 35%)
+**Impact**: ~30% of expression types not implemented (improved from 32% after method calls)
 
 ---
 
 ### Statement Types Support
 
-**Currently Supported** (8 Stmt:: variants):
+**Currently Supported** (9 Stmt:: variants):
 ```rust
 ✅ Expr (expression statements)
 ✅ Block (code blocks)
@@ -285,13 +303,13 @@
 ✅ Return (return statements)
 ✅ For (for loops - range, iterator, indexed, conditional, infinite)
 ✅ Break (break statements)
+✅ TypeDecl (type declarations - Phase 8.3.5: type registration)
 ```
 
-**Missing** (13+ variants):
+**Missing** (12+ variants):
 ```rust
 ❌ Is (pattern matching is statements)
 ❌ EnumDecl (enum declarations)
-❌ TypeDecl (type declarations)
 ❌ Union (union types)
 ❌ Tag (tag types)
 ❌ SpecDecl (spec declarations)
@@ -305,7 +323,7 @@
 ❌ Ext (type extensions impl)
 ```
 
-**Impact**: ~60% of statement types not implemented (improved from 65%)
+**Impact**: ~55% of statement types not implemented (improved from 60% after TypeDecl support)
 
 ---
 
