@@ -626,9 +626,25 @@ impl Codegen {
                             // Patch jump to next branch
                             self.patch_jump(jump_to_next);
                         }
-                        crate::ast::IsBranch::IfBranch(_condition, _body) => {
-                            // TODO: Implement IfBranch (conditional matching)
-                            return Err(AutoError::Msg("Is IfBranch not supported yet".to_string()));
+                        crate::ast::IsBranch::IfBranch(condition, body) => {
+                            // Plan 073: Evaluate condition expression
+                            self.compile_expr(condition)?;
+
+                            // Jump to next branch if condition is false (zero)
+                            self.emit(OpCode::JMP_IF_Z);
+                            let jump_to_next = self.emit_placeholder_i16();
+                            branch_jumps.push(jump_to_next);
+
+                            // Compile branch body
+                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+
+                            // Jump to end of is statement
+                            self.emit(OpCode::JMP);
+                            let jump_to_end = self.emit_placeholder_i16();
+                            branch_jumps.push(jump_to_end);
+
+                            // Patch jump to next branch
+                            self.patch_jump(jump_to_next);
                         }
                         crate::ast::IsBranch::ElseBranch(body) => {
                             // This is the default case - just compile body

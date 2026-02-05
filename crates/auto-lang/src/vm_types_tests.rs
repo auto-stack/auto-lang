@@ -1407,3 +1407,99 @@ fn main() -> int {
     let eq_count = bytecode.iter().filter(|&&b| b == 0x50).count();
     assert!(eq_count >= 5, "Expected at least 5 EQ opcodes for 5 branches");
 }
+
+// Plan 073 Phase 8.3.7: Is IfBranch (Conditional Pattern Matching)
+#[test]
+fn test_is_if_branch_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x = 10
+    is x {
+        if x > 5 => 100
+        else => 0
+    }
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain JMP_IF_Z for condition check
+    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61)");
+    // Should contain JMP for branching
+    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60)");
+}
+
+#[test]
+fn test_is_if_branch_with_comparison() {
+    let source = r#"
+fn main() -> int {
+    let x = 15
+    is x {
+        if x > 10 => 1
+        if x < 10 => 2
+        else => 0
+    }
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain JMP_IF_Z for each condition
+    let jz_count = bytecode.iter().filter(|&&b| b == 0x61).count();
+    assert!(jz_count >= 2, "Expected at least 2 JMP_IF_Z opcodes for 2 if branches");
+    // Should contain JMP opcodes
+    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60)");
+}
+
+#[test]
+fn test_is_if_branch_complex_condition() {
+    let source = r#"
+fn main() -> int {
+    let x = 25
+    is x {
+        if x > 20 => 100
+        else => 0
+    }
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain conditional jump opcodes
+    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61)");
+}
+
+#[test]
+fn test_is_if_branch_with_block_body() {
+    let source = r#"
+fn main() -> int {
+    let x = 10
+    is x {
+        if x > 5 => {
+            let y = x * 2
+            y
+        }
+        else => 0
+    }
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain control flow opcodes
+    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61)");
+    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60)");
+}
+
+#[test]
+fn test_is_mixed_branches() {
+    let source = r#"
+fn main() -> int {
+    let x = 10
+    is x {
+        5 => 1
+        if x > 10 => 2
+        else => 0
+    }
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain EQ for EqBranch
+    assert!(bytecode.contains(&0x50), "Expected EQ opcode (0x50)");
+    // Should contain JMP_IF_Z for IfBranch
+    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61)");
+    // Should contain JMP for branching
+    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60)");
+}
