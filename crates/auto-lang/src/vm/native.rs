@@ -42,6 +42,8 @@ impl NativeInterface {
         self.register(NATIVE_LIST_CLEAR, shim_list_clear);
         self.register(NATIVE_LIST_GET, shim_list_get);
         self.register(NATIVE_LIST_SET, shim_list_set);
+        self.register(NATIVE_LIST_INSERT, shim_list_insert);
+        self.register(NATIVE_LIST_REMOVE, shim_list_remove);
         self.register(NATIVE_LIST_DROP, shim_list_drop);
 
         // Iterator functions
@@ -69,16 +71,18 @@ pub const NATIVE_LIST_IS_EMPTY: u16 = 104;
 pub const NATIVE_LIST_CLEAR: u16 = 105;
 pub const NATIVE_LIST_GET: u16 = 106;
 pub const NATIVE_LIST_SET: u16 = 107;
-pub const NATIVE_LIST_DROP: u16 = 108;
+pub const NATIVE_LIST_INSERT: u16 = 108;
+pub const NATIVE_LIST_REMOVE: u16 = 109;
+pub const NATIVE_LIST_DROP: u16 = 110;
 
-// === Iterator Native Functions (109+) ===
-pub const NATIVE_LIST_ITER: u16 = 109;
-pub const NATIVE_ITERATOR_NEXT: u16 = 110;
-pub const NATIVE_ITERATOR_MAP: u16 = 111;
-pub const NATIVE_ITERATOR_FILTER: u16 = 112;
-pub const NATIVE_ITERATOR_COLLECT: u16 = 113;
-pub const NATIVE_ITERATOR_REDUCE: u16 = 114;
-pub const NATIVE_ITERATOR_FIND: u16 = 115;
+// === Iterator Native Functions (111+) ===
+pub const NATIVE_LIST_ITER: u16 = 111;
+pub const NATIVE_ITERATOR_NEXT: u16 = 112;
+pub const NATIVE_ITERATOR_MAP: u16 = 113;
+pub const NATIVE_ITERATOR_FILTER: u16 = 114;
+pub const NATIVE_ITERATOR_COLLECT: u16 = 115;
+pub const NATIVE_ITERATOR_REDUCE: u16 = 116;
+pub const NATIVE_ITERATOR_FIND: u16 = 117;
 
 // === Standard Shims ===
 
@@ -247,6 +251,45 @@ pub fn shim_list_set(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
     }
 
     // Return success (0)
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Insert element at index.
+/// Stack: list_id, index, elem -> result (0)
+pub fn shim_list_insert(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    let elem = task.ram.pop_i32();
+    let index = task.ram.pop_i32() as usize;
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(list) = vm.lists.get(&list_id) {
+        let mut list = list.write().unwrap();
+        if index <= list.len() {
+            list.insert(index, elem);
+        }
+    }
+
+    // Return success (0)
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Remove element at index and return it.
+/// Stack: list_id, index -> elem
+pub fn shim_list_remove(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    let index = task.ram.pop_i32() as usize;
+    let list_id = task.ram.pop_i32() as u64;
+
+    if let Some(list) = vm.lists.get(&list_id) {
+        let mut list = list.write().unwrap();
+        if index < list.len() {
+            let elem = list.remove(index);
+            task.ram.push_i32(elem);
+            return Ok(());
+        }
+    }
+
+    // Return default value if index out of bounds
     task.ram.push_i32(0);
     Ok(())
 }

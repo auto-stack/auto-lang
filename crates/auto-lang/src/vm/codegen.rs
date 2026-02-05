@@ -1011,18 +1011,35 @@ impl Codegen {
                 }
             }
             Expr::Call(call) => {
-                // Extract function name and check for native functions
-                let func_name = match call.name.as_ref() {
+                // Extract function name and determine if it's a method call
+                // Plan 073: Support both static methods (Type.method) and instance methods (obj.method)
+                let mut func_name = match call.name.as_ref() {
                     Expr::Ident(name) => Some(name.to_string()),
                     Expr::Dot(obj, method) => {
-                        // Method call: Type.method or obj.method
-                        // For simplicity, we only support Type.method for native calls (e.g., List.new)
+                        // Method call: Type.method (static) or obj.method (instance)
                         match obj.as_ref() {
-                            Expr::Ident(type_name) => {
-                                // Static method call: Type.method
-                                Some(format!("{}.{}", type_name, method))
+                            Expr::Ident(obj_name) => {
+                                // Check if it's a static method call (Type.method with capital T)
+                                if self.is_type_name_heuristic(obj_name) || self.is_type(obj_name) {
+                                    // Static method call: Type.method
+                                    Some(format!("{}.{}", obj_name, method))
+                                } else {
+                                    // Instance method call: obj.method
+                                    // Infer type from variable name and generate: TypeName.method
+                                    if let Some(type_name) = self.infer_type_from_var(obj_name) {
+                                        Some(format!("{}.{}", type_name, method))
+                                    } else {
+                                        // Fallback: generate obj.method (may fail at link time)
+                                        Some(format!("{}.{}", obj_name, method))
+                                    }
+                                }
                             }
-                            _ => None,
+                            _ => {
+                                // Complex expression (e.g., arr[0].push, foo().method)
+                                // We cannot determine the type at compile time without type inference
+                                // For now, generate a generic name that may fail at link time
+                                Some(format!("Unknown_{}", method))
+                            }
                         }
                     }
                     _ => None,
@@ -1046,8 +1063,44 @@ impl Codegen {
 
                 if let Some(id) = native_id {
                     // Native function call
-                    // Compile arguments (push to stack in reverse order?)
-                    // Actually, we push in forward order, left-to-right
+                    // For instance methods, compile receiver (self) FIRST, then arguments
+                    // This ensures stack order: [self, arg1, arg2, ...]
+                    if let Expr::Dot(obj, _method) = call.name.as_ref() {
+                        // Check if it's a static method call (Type.method with capital T)
+                        let is_static_method = match obj.as_ref() {
+                            Expr::Ident(obj_name) => {
+                                self.is_type_name_heuristic(obj_name) || self.is_type(obj_name)
+                            }
+                            _ => false,
+                        };
+
+                        // Compile receiver for instance methods
+                        if !is_static_method {
+                            // Check if this method needs 'id' field extraction
+                            if let Some(ref method_name) = func_name {
+                                if self.needs_id_extraction(method_name) {
+                                    // Compile object expression
+                                    self.compile_expr(obj)?;
+
+                                    // Extract 'id' field using GET_FIELD
+                                    let field_str = "id".to_string();
+                                    let field_bytes = field_str.as_bytes().to_vec();
+                                    let field_idx = self.strings.len() as u16;
+                                    self.strings.push(field_bytes);
+
+                                    self.emit(OpCode::GET_FIELD);
+                                    self.code.extend_from_slice(&field_idx.to_le_bytes());
+                                } else {
+                                    // Compile full instance (for user-defined types)
+                                    self.compile_expr(obj)?;
+                                }
+                            } else {
+                                self.compile_expr(obj)?;
+                            }
+                        }
+                    }
+
+                    // Compile arguments (left-to-right)
                     if !call.args.is_empty() {
                         for arg in &call.args.args {
                             match arg {
@@ -1061,28 +1114,49 @@ impl Codegen {
                         }
                     }
 
-                    // For instance methods (Dot expressions), compile receiver (self)
-                    if let Expr::Dot(obj, _method) = call.name.as_ref() {
-                        // Check if it's a static method call (Type.method)
-                        // If obj is an Ident and not a lowercase local variable, it's static
-                        if let Expr::Ident(_) = obj.as_ref() {
-                            // Static method - no receiver needed
-                            // But we still need to check if it's a type name (capitalized)
-                            // For now, assume all Ident-based Dot calls are static methods
-                            // TODO: Better heuristic needed
-                        } else {
-                            // Instance method - compile receiver (self)
-                            self.compile_expr(obj)?;
-                        }
-                    }
-
                     self.emit(OpCode::CALL_NAT);
                     self.code.extend_from_slice(&id.to_le_bytes());
                     return Ok(()).into();
                 }
 
                 // Normal Function Call (user-defined)
-                // 1. Compile Arguments (pushes them to stack)
+                // Plan 073: For instance methods, compile receiver (self) FIRST, then arguments
+                if let Expr::Dot(obj, _method) = call.name.as_ref() {
+                    // Check if it's a static method call (Type.method with capital T)
+                    let is_static_method = match obj.as_ref() {
+                        Expr::Ident(obj_name) => {
+                            self.is_type_name_heuristic(obj_name) || self.is_type(obj_name)
+                        }
+                        _ => false,
+                    };
+
+                    // Compile receiver for instance methods
+                    if !is_static_method {
+                        // Check if this method needs 'id' field extraction
+                        if let Some(ref method_name) = func_name {
+                            if self.needs_id_extraction(method_name) {
+                                // Compile object expression
+                                self.compile_expr(obj)?;
+
+                                // Extract 'id' field using GET_FIELD
+                                let field_str = "id".to_string();
+                                let field_bytes = field_str.as_bytes().to_vec();
+                                let field_idx = self.strings.len() as u16;
+                                self.strings.push(field_bytes);
+
+                                self.emit(OpCode::GET_FIELD);
+                                self.code.extend_from_slice(&field_idx.to_le_bytes());
+                            } else {
+                                // Compile full instance (for user-defined types)
+                                self.compile_expr(obj)?;
+                            }
+                        } else {
+                            self.compile_expr(obj)?;
+                        }
+                    }
+                }
+
+                // Compile Arguments (pushes them to stack)
                 if !call.args.is_empty() {
                     for arg in &call.args.args {
                         match arg {
@@ -1829,6 +1903,123 @@ impl Codegen {
         self.exports.insert(closure_symbol, func_addr);
 
         Ok(())
+    }
+
+    // ========== Plan 073: Instance Method Call Support ==========
+
+    /// Check if a name is likely a type name (capitalized first letter)
+    /// This is a heuristic following Rust/AutoLang naming conventions:
+    /// - Type names: Capitalized (List, Point, MyType)
+    /// - Variables/Functions: lowercase (list, foo, my_var)
+    fn is_type_name_heuristic(&self, name: &str) -> bool {
+        name.chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+    }
+
+    /// Infer type name from a variable name (heuristic)
+    /// For standard library types, we can map variable names to types:
+    /// - "list", "arr" -> "List"
+    /// - "str", "s" -> "String"
+    /// - "map", "dict" -> "Map"
+    /// This is a fallback for when type information is not available
+    fn infer_type_from_var(&self, var_name: &str) -> Option<String> {
+        match var_name {
+            "list" | "arr" | "array" | "vec" => Some("List".to_string()),
+            "str" | "string" | "s" => Some("String".to_string()),
+            "map" | "dict" | " hashmap" => Some("Map".to_string()),
+            "set" => Some("Set".to_string()),
+            "opt" | "option" => Some("Option".to_string()),
+            "file" => Some("File".to_string()),
+            _ => None,
+        }
+    }
+
+    /// Check if a method requires extracting the 'id' field from the instance
+    /// instead of passing the full instance.
+    ///
+    /// This is needed for built-in types (List, HashMap, etc.) that use shim functions
+    /// expecting raw IDs (u64) rather than full Value::Instance objects.
+    ///
+    /// Examples:
+    /// - `List.push` → extract `id` field
+    /// - `List.len` → extract `id` field
+    /// - `HashMap.insert` → extract `id` field
+    /// - `ListIter.next` → extract `id` field (iterator methods)
+    fn needs_id_extraction(&self, method_name: &str) -> bool {
+        // List methods that use shim
+        if method_name.starts_with("List.") {
+            return matches!(
+                method_name,
+                "List.push" | "List.pop" | "List.len" | "List.is_empty"
+                    | "List.clear" | "List.get" | "List.set" | "List.insert"
+                    | "List.remove" | "List.drop" | "List.capacity"
+            );
+        }
+
+        // HashMap methods that use shim
+        if method_name.starts_with("HashMap.") {
+            return matches!(
+                method_name,
+                "HashMap.insert_str" | "HashMap.insert_int"
+                    | "HashMap.get_str" | "HashMap.get_int"
+                    | "HashMap.contains" | "HashMap.remove"
+                    | "HashMap.size" | "HashMap.clear" | "HashMap.drop"
+            );
+        }
+
+        // HashSet methods that use shim
+        if method_name.starts_with("HashSet.") {
+            return matches!(
+                method_name,
+                "HashSet.insert" | "HashSet.contains"
+                    | "HashSet.remove" | "HashSet.size"
+                    | "HashSet.clear" | "HashSet.drop"
+            );
+        }
+
+        // StringBuilder methods that use shim
+        if method_name.starts_with("StringBuilder.") {
+            return matches!(
+                method_name,
+                "StringBuilder.append" | "StringBuilder.append_char"
+                    | "StringBuilder.append_int" | "StringBuilder.build"
+                    | "StringBuilder.clear" | "StringBuilder.len"
+                    | "StringBuilder.drop"
+            );
+        }
+
+        // Heap/InlineInt64 storage methods
+        if method_name.starts_with("Heap.") || method_name.starts_with("InlineInt64.") {
+            return matches!(
+                method_name,
+                "Heap.data" | "Heap.capacity" | "Heap.try_grow" | "Heap.drop"
+                    | "InlineInt64.data" | "InlineInt64.capacity"
+                    | "InlineInt64.try_grow" | "InlineInt64.drop"
+            );
+        }
+
+        // Iterator methods (ListIter, MapIter, FilterIter)
+        if method_name.starts_with("ListIter.") || method_name.starts_with("MapIter.")
+            || method_name.starts_with("FilterIter.")
+        {
+            return matches!(
+                method_name,
+                "ListIter.next" | "ListIter.map" | "ListIter.filter"
+                    | "ListIter.reduce" | "ListIter.count" | "ListIter.for_each"
+                    | "ListIter.collect" | "ListIter.any" | "ListIter.all"
+                    | "ListIter.find" | "MapIter.next" | "MapIter.filter"
+                    | "MapIter.reduce" | "MapIter.count" | "MapIter.for_each"
+                    | "MapIter.collect" | "MapIter.any" | "MapIter.all"
+                    | "MapIter.find" | "FilterIter.next" | "FilterIter.map"
+                    | "FilterIter.reduce" | "FilterIter.count" | "FilterIter.for_each"
+                    | "FilterIter.collect" | "FilterIter.any" | "FilterIter.all"
+                    | "FilterIter.find"
+            );
+        }
+
+        false
     }
 
     // ========== Plan 073: Type Registry Helper Methods ==========
