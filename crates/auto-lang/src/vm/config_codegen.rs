@@ -199,14 +199,18 @@ debug = true
 
     #[test]
     fn test_config_codegen_nested_fields() {
-        // Note: Dotted identifiers like "server.host" are not supported yet
-        // because the parser treats them as binary expressions (server . host),
-        // not as single identifiers. This test uses simple field names instead.
+        // Note: Dotted identifiers like "server.host = value" are not supported yet
+        // because the parser creates: Binary(Dot(Ident("server"), Name("host")), Asn, value)
+        // and codegen doesn't support assignment to Dot expressions (only Index for arrays).
         //
-        // TODO: Future work - either:
-        // 1. Modify parser to treat dotted LHS of = as single identifier
-        // 2. Add a custom config parser that handles dotted paths
-        // 3. Use object literal syntax: server = {host = "localhost", port = 5432}
+        // This test uses simple field names as a workaround.
+        //
+        // TODO: Add support for assignment to Dot expressions in codegen:
+        // - Check if LHS is Dot expression in Op::Asn handler
+        // - Emit field assignment opcodes (SET_FIELD or similar)
+        //
+        // Alternative: Use object literal syntax:
+        // server = {host = "localhost", port = 5432}
 
         let source = r#"
 server_host = "localhost"
