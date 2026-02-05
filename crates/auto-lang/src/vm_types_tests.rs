@@ -1242,4 +1242,88 @@ fn main() -> int {
     assert!(bytecode.contains(&0x76), "Expected CREATE_RANGE_EQ opcode (0x76)");
 }
 
+// ============================================================================
+// Plan 073: F-String Tests
+// ============================================================================
+
+#[test]
+fn test_fstr_simple_compiles() {
+    let source = r#"
+fn main() -> int {
+    let s = f"hello world"
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain BUILD_FSTR opcode (0x77)
+    assert!(bytecode.contains(&0x77), "Expected BUILD_FSTR opcode (0x77)");
+    // Should contain LOAD_STR for string literal
+    assert!(bytecode.contains(&0x1F), "Expected LOAD_STR opcode (0x1F)");
+}
+
+#[test]
+fn test_fstr_with_variable_compiles() {
+    let source = r#"
+fn main() -> int {
+    let name = "World"
+    let s = f"hello $name"
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain BUILD_FSTR opcode
+    assert!(bytecode.contains(&0x77), "Expected BUILD_FSTR opcode (0x77)");
+    // Should contain LOAD_STR for string literal part
+    assert!(bytecode.contains(&0x1F), "Expected LOAD_STR opcode (0x1F)");
+}
+
+#[test]
+fn test_fstr_with_expression_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x = 10
+    let y = 20
+    let s = f"sum: ${x + y}"
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain BUILD_FSTR opcode
+    assert!(bytecode.contains(&0x77), "Expected BUILD_FSTR opcode (0x77)");
+    // Should contain ADD opcode for expression
+    assert!(bytecode.contains(&0x30), "Expected ADD opcode (0x30)");
+}
+
+#[test]
+fn test_fstr_multiple_parts_compiles() {
+    let source = r#"
+fn main() -> int {
+    let name = "World"
+    let count = 42
+    let s = f"hello $name, you have ${count} messages"
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain BUILD_FSTR opcode
+    assert!(bytecode.contains(&0x77), "Expected BUILD_FSTR opcode (0x77)");
+}
+
+#[test]
+fn test_fstr_nested_compiles() {
+    let source = r#"
+fn main() -> int {
+    let x = 10
+    let s1 = f"value: $x"
+    let s2 = f"result: ${s1}"
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain BUILD_FSTR opcode
+    // Count occurrences to verify we have 2 f-strings
+    let fstr_count = bytecode.iter().filter(|&&b| b == 0x77).count();
+    assert!(fstr_count >= 2, "Expected at least 2 BUILD_FSTR opcodes");
+}
+
 

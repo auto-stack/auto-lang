@@ -715,6 +715,18 @@ impl Codegen {
                     self.emit(OpCode::CREATE_RANGE); // Exclusive range: 0..10
                 }
             }
+            // Plan 073: F-string support (f"hello $name")
+            Expr::FStr(fstr) => {
+                // Compile each part expression (pushes values onto stack)
+                for part in &fstr.parts {
+                    self.compile_expr(part)?;
+                }
+
+                // Emit BUILD_FSTR with part count
+                let part_count = fstr.parts.len() as u8;
+                self.emit(OpCode::BUILD_FSTR);
+                self.code.push(part_count);
+            }
             // Plan 073: Node support (for type instances like Point(10, 20))
             Expr::Node(node) => {
                 // Check if this is a type instance

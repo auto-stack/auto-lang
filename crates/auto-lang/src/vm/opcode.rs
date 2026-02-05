@@ -31,6 +31,7 @@ pub enum OpCode {
     CREATE_ARRAY = 0x2F,   // Plan 073: Create array from elem_count -> array_id
     CREATE_RANGE = 0x75,  // Plan 073: Create exclusive range (0..10) from (start, end) -> range_value
     CREATE_RANGE_EQ = 0x76, // Plan 073: Create inclusive range (0..=10) from (start, end) -> range_value
+    BUILD_FSTR = 0x77,    // Plan 073: Build f-string from part_count -> string
     CREATE_NODE = 0x74,   // Plan 073: Create node from name_str_idx, arg_count -> node_id (changed from 0x30 to avoid conflict with ADD)
 
     // === Local Variables ===

@@ -464,6 +464,33 @@ impl BigVM {
                     // See CREATE_RANGE note above for proper implementation
                     task.ram.push_i32(start);
                 }
+                // Plan 073: F-string support (f"hello $name")
+                OpCode::BUILD_FSTR => {
+                    let part_count = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+
+                    // Pop parts from stack (in reverse order)
+                    let mut parts = Vec::with_capacity(part_count as usize);
+                    for i in 0..part_count {
+                        let idx = (part_count - 1 - i) as usize;
+                        let bits = task.ram.pop_i32();
+
+                        // Convert each part to Value and then to string
+                        // For now, we treat all parts as integers
+                        // TODO: Support proper Value types when stack supports them
+                        let value = auto_val::Value::Int(bits);
+                        parts.insert(idx, value.to_astr().to_string());
+                    }
+
+                    // Join all parts into a single string
+                    let result = parts.join("");
+
+                    // For now, we can't push a full string onto the stack
+                    // Push the string length as a placeholder
+                    // The f-string semantics are encoded in the bytecode itself
+                    // TODO: Add proper string support when stack supports Value types
+                    task.ram.push_i32(result.len() as i32);
+                }
                 // Plan 073: Node creation (for type instances and tree structures)
                 OpCode::CREATE_NODE => {
                     // Format: CREATE_NODE <name_str_idx:u16> <arg_count:u8>
