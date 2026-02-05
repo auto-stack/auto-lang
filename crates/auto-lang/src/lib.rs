@@ -703,5 +703,17 @@ mod storage_strategy_tests;
 #[cfg(test)]
 mod bigvm_generic_integration_tests;
 
+// Plan 077 Phase 2: Generic ListData<T> tests
+#[cfg(test)]
+mod generic_list_data_tests;
+
+// Plan 077 Phase 3: HeapObject implementation tests
+#[cfg(test)]
+mod listdata_heap_object_tests;
+
+// Plan 077 Phase 4: Unified object registry tests
+#[cfg(test)]
+mod unified_registry_tests;
+
 #[cfg(test)]
 mod tests;

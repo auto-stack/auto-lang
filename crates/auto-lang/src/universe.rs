@@ -49,9 +49,10 @@ pub enum VmRefData {
 
 /// Data for dynamic lists (similar to Rust's Vec<T>)
 /// Plan 076 Phase 4: Extended to support storage strategies
+/// Plan 077 Phase 2: Made generic for zero-overhead primitive storage
 #[derive(Debug)]
-pub struct ListData {
-    pub elems: Vec<Value>,
+pub struct ListData<T = Value> {
+    pub elems: Vec<T>,
     /// Storage strategy (None = default Heap storage)
     /// Plan 076 Phase 4: Some(Heap) or Some(InlineInt64)
     pub storage: Option<ListStorage>,
@@ -66,7 +67,7 @@ pub enum ListStorage {
     InlineInt64,
 }
 
-impl ListData {
+impl<T> ListData<T> {
     pub fn new() -> Self {
         Self {
             elems: Vec::new(),
@@ -119,7 +120,7 @@ impl ListData {
         }
     }
 
-    pub fn push(&mut self, elem: Value) -> bool {
+    pub fn push(&mut self, elem: T) -> bool {
         // Plan 076 Phase 4: Check capacity for InlineInt64
         if let ListStorage::InlineInt64 = self.get_storage() {
             if self.elems.len() >= 64 {
@@ -130,7 +131,7 @@ impl ListData {
         true
     }
 
-    pub fn pop(&mut self) -> Option<Value> {
+    pub fn pop(&mut self) -> Option<T> {
         self.elems.pop()
     }
 
@@ -145,11 +146,11 @@ impl ListData {
         }
     }
 
-    pub fn get(&self, index: usize) -> Option<&Value> {
+    pub fn get(&self, index: usize) -> Option<&T> {
         self.elems.get(index)
     }
 
-    pub fn set(&mut self, index: usize, elem: Value) -> bool {
+    pub fn set(&mut self, index: usize, elem: T) -> bool {
         if index < self.elems.len() {
             self.elems[index] = elem;
             true
@@ -158,7 +159,7 @@ impl ListData {
         }
     }
 
-    pub fn insert(&mut self, index: usize, elem: Value) -> bool {
+    pub fn insert(&mut self, index: usize, elem: T) -> bool {
         // Plan 076 Phase 4: Check capacity for InlineInt64
         if let ListStorage::InlineInt64 = self.get_storage() {
             if self.elems.len() >= 64 {
@@ -173,7 +174,7 @@ impl ListData {
         }
     }
 
-    pub fn remove(&mut self, index: usize) -> Option<Value> {
+    pub fn remove(&mut self, index: usize) -> Option<T> {
         if index < self.elems.len() {
             Some(self.elems.remove(index))
         } else {
@@ -200,6 +201,106 @@ impl ListData {
                 min_cap <= 64
             }
         }
+    }
+}
+
+// Plan 077 Phase 2: Default implementation for generic ListData
+impl<T: Default> Default for ListData<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// Plan 077 Phase 2: Clone implementation for generic ListData
+impl<T: Clone> Clone for ListData<T> {
+    fn clone(&self) -> Self {
+        Self {
+            elems: self.elems.clone(),
+            storage: self.storage,
+        }
+    }
+}
+
+// Plan 077 Phase 2: PartialEq implementation for generic ListData
+impl<T: PartialEq> PartialEq for ListData<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.elems == other.elems && self.storage == other.storage
+    }
+}
+
+// ============================================================================
+// Plan 077 Phase 3: HeapObject Implementations for ListData
+// ============================================================================
+
+use crate::vm::heap_object::{HeapObject, TypeTag};
+
+impl HeapObject for ListData<i32> {
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::ListInt
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl HeapObject for ListData<char> {
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::ListChar
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl HeapObject for ListData<bool> {
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::ListBool
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl HeapObject for ListData<String> {
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::ListString
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl HeapObject for ListData<Value> {
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::ListValue
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 

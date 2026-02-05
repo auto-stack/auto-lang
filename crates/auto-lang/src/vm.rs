@@ -18,6 +18,8 @@ pub mod monomorphize;
 // Plan 076 Phase 4: Storage strategy runtime for BigVM
 pub mod list_data;
 pub mod list_storage;
+// Plan 077 Phase 1: HeapObject trait for unified object registry
+pub mod heap_object;
 pub mod heap;
 pub mod io;
 pub mod list;

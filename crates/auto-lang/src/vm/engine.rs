@@ -1,5 +1,6 @@
 use crate::vm::channel::{AutoChannel, ChannelId};
 use crate::vm::codegen::ObjectType;
+use crate::vm::heap_object::HeapObject;
 use crate::vm::native::NativeInterface;
 use crate::vm::opcode::OpCode;
 use crate::vm::task::{AutoTask, TaskId, TaskStatus};
@@ -103,6 +104,11 @@ pub struct BigVM {
     // Node Registry (Plan 073: Node instances for type construction)
     pub nodes: DashMap<u64, Arc<RwLock<auto_val::Node>>>,
     pub node_id_gen: AtomicU64,
+
+    // Plan 077 Phase 4: Unified Object Registry
+    // Single registry for all heap-allocated objects (lists, maps, sets, etc.)
+    pub heap_objects: DashMap<u64, Arc<RwLock<dyn HeapObject>>>,
+    pub heap_object_id_gen: AtomicU64,
 }
 
 impl BigVM {
@@ -132,6 +138,9 @@ impl BigVM {
             // Plan 073: Node registry
             nodes: DashMap::new(),
             node_id_gen: AtomicU64::new(0),
+            // Plan 077 Phase 4: Unified object registry
+            heap_objects: DashMap::new(),
+            heap_object_id_gen: AtomicU64::new(0),
         }
     }
 
@@ -139,6 +148,86 @@ impl BigVM {
     pub fn load_strings(&mut self, strings: Vec<Vec<u8>>) {
         self.strings = Arc::new(RwLock::new(strings));
     }
+
+    // ============================================================================
+    // Plan 077 Phase 4: Unified Object Registry Helper Methods
+    // ============================================================================
+
+    /// Insert a heap-allocated object into the unified registry
+    ///
+    /// Returns the object ID assigned to this object.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use auto_lang::universe::ListData;
+    /// use auto_lang::vm::engine::BigVM;
+    ///
+    /// let mut list: ListData<i32> = ListData::new();
+    /// list.push(1);
+    /// list.push(2);
+    ///
+    /// let id = vm.insert_heap_object(list);
+    /// ```
+    pub fn insert_heap_object<T: HeapObject + Send + Sync + 'static>(&self, obj: T) -> u64 {
+        let id = self.heap_object_id_gen.fetch_add(1, Ordering::Relaxed);
+        self.heap_objects.insert(id, Arc::new(RwLock::new(obj)));
+        id
+    }
+
+    /// Get a heap object by ID, returning a read guard
+    ///
+    /// Returns `None` if the object doesn't exist.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use auto_lang::vm::heap_object::downcast;
+    /// use auto_lang::universe::ListData;
+    ///
+    /// if let Some(obj) = vm.get_heap_object(id) {
+    ///     let guard = obj.read().unwrap();
+    ///     if let Some(list) = downcast::<ListData<i32>>(&*guard) {
+    ///         println!("Got list with {} elements", list.len());
+    ///     }
+    /// }
+    /// ```
+    pub fn get_heap_object(&self, id: u64) -> Option<Arc<RwLock<dyn HeapObject>>> {
+        self.heap_objects.get(&id).map(|v| v.clone())
+    }
+
+    /// Get a heap object by ID with mutable access
+    ///
+    /// Returns `None` if the object doesn't exist.
+    pub fn get_heap_object_mut(&self, id: u64) -> Option<Arc<RwLock<dyn HeapObject>>> {
+        self.heap_objects.get(&id).map(|v| v.clone())
+    }
+
+    /// Remove a heap object from the registry
+    ///
+    /// Returns `None` if the object doesn't exist.
+    pub fn remove_heap_object(&self, id: u64) -> Option<Arc<RwLock<dyn HeapObject>>> {
+        self.heap_objects.remove(&id).map(|(_, v)| v)
+    }
+
+    /// Get the number of heap objects in the registry
+    pub fn heap_object_count(&self) -> usize {
+        self.heap_objects.len()
+    }
+
+    /// Check if a heap object exists in the registry
+    pub fn contains_heap_object(&self, id: u64) -> bool {
+        self.heap_objects.contains_key(&id)
+    }
+
+    /// Clear all heap objects from the registry
+    pub fn clear_heap_objects(&self) {
+        self.heap_objects.clear();
+    }
+
+    // ============================================================================
+    // End Plan 077 Phase 4
+    // ============================================================================
 
     /// Spawn a new task starting at the given instruction pointer
     /// Returns the TaskId
