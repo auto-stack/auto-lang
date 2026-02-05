@@ -1158,4 +1158,88 @@ fn main() -> int {
     assert!(bytecode.contains(&0x72), "Expected CALL_NAT opcode (0x72)");
 }
 
+// ============================================================================
+// Plan 073: Range Expression Tests
+// ============================================================================
+
+#[test]
+fn test_range_exclusive_compiles() {
+    let source = r#"
+fn main() -> int {
+    let r = 0..10
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CREATE_RANGE opcode (0x75)
+    assert!(bytecode.contains(&0x75), "Expected CREATE_RANGE opcode (0x75)");
+    // Should contain CONST_I32 for start and end values
+    assert!(bytecode.contains(&0x10), "Expected CONST_I32 opcode (0x10)");
+}
+
+#[test]
+fn test_range_inclusive_compiles() {
+    let source = r#"
+fn main() -> int {
+    let r = 0..=10
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CREATE_RANGE_EQ opcode (0x76)
+    assert!(bytecode.contains(&0x76), "Expected CREATE_RANGE_EQ opcode (0x76)");
+    // Should contain CONST_I32 for start and end values
+    assert!(bytecode.contains(&0x10), "Expected CONST_I32 opcode (0x10)");
+}
+
+#[test]
+fn test_range_with_variables_compiles() {
+    let source = r#"
+fn main() -> int {
+    let start int = 0
+    let end int = 100
+    let r = start..end
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain CREATE_RANGE opcode
+    assert!(bytecode.contains(&0x75), "Expected CREATE_RANGE opcode (0x75)");
+    // Variables should be stored and loaded (check for STORE_LOCAL)
+    assert!(bytecode.contains(&0x21), "Expected STORE_LOCAL opcode (0x21)");
+}
+
+#[test]
+fn test_range_in_for_loop_compiles() {
+    let source = r#"
+fn main() -> int {
+    var sum = 0
+    for x in 0..10 {
+        sum = sum + x
+    }
+    sum
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // For loops use range expressions internally
+    // Should contain loop control opcodes
+    assert!(bytecode.contains(&0x52), "Expected LT opcode (0x52)");
+    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60)");
+}
+
+#[test]
+fn test_range_nested_compiles() {
+    let source = r#"
+fn main() -> int {
+    let r1 = 0..10
+    let r2 = 5..=15
+    0
+}
+"#;
+    let bytecode = compile_to_bytecode(source);
+    // Should contain both CREATE_RANGE and CREATE_RANGE_EQ
+    assert!(bytecode.contains(&0x75), "Expected CREATE_RANGE opcode (0x75)");
+    assert!(bytecode.contains(&0x76), "Expected CREATE_RANGE_EQ opcode (0x76)");
+}
+
 

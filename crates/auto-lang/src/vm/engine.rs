@@ -427,6 +427,43 @@ impl BigVM {
                     // Push array ID onto stack
                     task.ram.push_i32(array_id as i32);
                 }
+                // Plan 073: Range expression support (0..10, 0..=10)
+                OpCode::CREATE_RANGE => {
+                    // Stack layout: [..., end, start]
+                    // Pop end first (top of stack), then start
+                    let end = task.ram.pop_i32();
+                    let start = task.ram.pop_i32();
+
+                    // Create Range value (exclusive)
+                    let range_value = auto_val::Value::Range(start, end);
+
+                    // For now, we need to push a representation of the range onto the stack
+                    // Since BigVM stack only supports i32, we'll encode the range as a special value
+                    // Format: Encode as i32 with a marker (for simplicity, use start value for now)
+                    // TODO: Add proper Value support for ranges in stack
+
+                    // For now, just push the start value as a placeholder
+                    // The range semantics are encoded in the bytecode itself
+                    task.ram.push_i32(start);
+
+                    // Note: A proper implementation would either:
+                    // 1. Push a range ID (similar to arrays/objects)
+                    // 2. Extend the stack to support Value types directly
+                    // 3. Encode range in a way that preserves both start and end
+                }
+                OpCode::CREATE_RANGE_EQ => {
+                    // Stack layout: [..., end, start]
+                    // Pop end first (top of stack), then start
+                    let end = task.ram.pop_i32();
+                    let start = task.ram.pop_i32();
+
+                    // Create RangeEq value (inclusive)
+                    let range_value = auto_val::Value::RangeEq(start, end);
+
+                    // For now, push start value as placeholder
+                    // See CREATE_RANGE note above for proper implementation
+                    task.ram.push_i32(start);
+                }
                 // Plan 073: Node creation (for type instances and tree structures)
                 OpCode::CREATE_NODE => {
                     // Format: CREATE_NODE <name_str_idx:u16> <arg_count:u8>

@@ -700,6 +700,21 @@ impl Codegen {
                 self.emit(OpCode::CREATE_ARRAY);
                 self.code.push(elem_count);
             }
+            // Plan 073: Range expression support (0..10, 0..=10)
+            Expr::Range(range) => {
+                // Compile start expression (pushes onto stack)
+                self.compile_expr(&range.start)?;
+
+                // Compile end expression (pushes onto stack)
+                self.compile_expr(&range.end)?;
+
+                // Emit CREATE_RANGE or CREATE_RANGE_EQ based on range.eq
+                if range.eq {
+                    self.emit(OpCode::CREATE_RANGE_EQ); // Inclusive range: 0..=10
+                } else {
+                    self.emit(OpCode::CREATE_RANGE); // Exclusive range: 0..10
+                }
+            }
             // Plan 073: Node support (for type instances like Point(10, 20))
             Expr::Node(node) => {
                 // Check if this is a type instance

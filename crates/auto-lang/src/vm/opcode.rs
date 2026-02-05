@@ -29,6 +29,8 @@ pub enum OpCode {
     GET_FIELD = 0x2D,     // Plan 073: Get field from object (obj_id, field_str_idx) -> value
     CREATE_OBJ = 0x2E,    // Plan 073: Create object from field_count -> object_id
     CREATE_ARRAY = 0x2F,   // Plan 073: Create array from elem_count -> array_id
+    CREATE_RANGE = 0x75,  // Plan 073: Create exclusive range (0..10) from (start, end) -> range_value
+    CREATE_RANGE_EQ = 0x76, // Plan 073: Create inclusive range (0..=10) from (start, end) -> range_value
     CREATE_NODE = 0x74,   // Plan 073: Create node from name_str_idx, arg_count -> node_id (changed from 0x30 to avoid conflict with ADD)
 
     // === Local Variables ===

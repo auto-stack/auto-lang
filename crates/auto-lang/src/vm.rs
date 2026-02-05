@@ -25,8 +25,9 @@ pub mod virt_memory;
 #[cfg(test)]
 mod tests_closures;
 
-#[cfg(test)]
-mod tests_bigvm;
+// TODO: Create tests_bigvm.rs file
+// #[cfg(test)]
+// mod tests_bigvm;
 
 /// Phase 4.6: VM function signature - now takes Evaler instead of Universe
 /// This allows VM functions to use bridge methods for Database/ExecutionEngine access
