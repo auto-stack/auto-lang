@@ -117,6 +117,22 @@ pub enum OpCode {
     STORE_CAPTURED = 0x93,  // closure_id, value -> (store captured var by name)
     CALL_CLOSURE = 0x94,    // closure_id -> (call closure with captured env)
 
+    // === Plan 076 Phase 3: Generic List Opcodes ===
+    // Type-specific list operations for monomorphized generics
+    CREATE_LIST_INT = 0xA0,     // -> list_id (create List<int> with Heap storage)
+    CREATE_LIST_STR = 0xA1,     // -> list_id (create List<string> with Heap storage)
+    CREATE_LIST_BOOL = 0xA2,    // -> list_id (create List<bool> with Heap storage)
+    LIST_PUSH_INT = 0xA3,       // list_id, value: int -> void
+    LIST_POP_INT = 0xA4,        // list_id -> int
+    LIST_GET_INT = 0xA5,        // list_id, index: int -> int
+    LIST_SET_INT = 0xA6,        // list_id, index: int, value: int -> void
+
+    // === Plan 076 Phase 4: Storage Strategy Opcodes ===
+    // InlineInt64 storage variants (fixed 64-element capacity, no heap)
+    CREATE_LIST_INT_INLINE = 0xA7,  // -> list_id (create List<int> with InlineInt64 storage)
+    CREATE_LIST_STR_INLINE = 0xA8,  // -> list_id (create List<string> with InlineInt64 storage)
+    CREATE_LIST_BOOL_INLINE = 0xA9, // -> list_id (create List<bool> with InlineInt64 storage)
+
     // === Debug ===
     PRINT = 0xF0,
     HALT = 0xFF,

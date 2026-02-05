@@ -134,7 +134,9 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
     use std::sync::atomic::Ordering;
 
     let list_id = vm.list_id_gen.fetch_add(1, Ordering::Relaxed);
-    let list = Vec::new();
+    // Plan 076 Phase 3: Use ListData instead of Vec<i32>
+    // Plan 076 Phase 4: Use ListData::new() constructor
+    let list = crate::universe::ListData::new();
     vm.lists.insert(list_id, Arc::new(std::sync::RwLock::new(list)));
 
     // Return list_id
@@ -150,7 +152,8 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 
     if let Some(list) = vm.lists.get(&list_id) {
         let mut list = list.write().unwrap();
-        list.push(elem);
+        // Plan 076 Phase 3: Store as Value::Int
+        list.elems.push(auto_val::Value::Int(elem));
     }
 
     // Return success (0)
@@ -165,8 +168,13 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 
     if let Some(list) = vm.lists.get(&list_id) {
         let mut list = list.write().unwrap();
-        let elem = list.pop().unwrap_or(0);
-        task.ram.push_i32(elem);
+        let elem = list.elems.pop().unwrap_or(auto_val::Value::Nil);
+        // Plan 076 Phase 3: Extract Int value, default to 0
+        let int_val = match elem {
+            auto_val::Value::Int(i) => i,
+            _ => 0,
+        };
+        task.ram.push_i32(int_val);
     } else {
         task.ram.push_i32(0); // Invalid list_id
     }
@@ -227,8 +235,13 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 
     if let Some(list) = vm.lists.get(&list_id) {
         let list = list.read().unwrap();
-        let elem = list.get(index).copied().unwrap_or(0);
-        task.ram.push_i32(elem);
+        // Plan 076 Phase 3: Get Value and extract Int
+        let elem = list.elems.get(index).cloned().unwrap_or(auto_val::Value::Nil);
+        let int_val = match elem {
+            auto_val::Value::Int(i) => i,
+            _ => 0,
+        };
+        task.ram.push_i32(int_val);
     } else {
         task.ram.push_i32(0); // Invalid list_id
     }
@@ -245,8 +258,13 @@ pub fn shim_list_set(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 
     if let Some(list) = vm.lists.get(&list_id) {
         let mut list = list.write().unwrap();
-        if index < list.len() {
-            list[index] = elem;
+        // Plan 076 Phase 3: Set Value in ListData
+        if index < list.elems.len() {
+            list.elems[index] = auto_val::Value::Int(elem);
+        } else {
+            // Index out of bounds - extend list
+            list.elems.resize(index + 1, auto_val::Value::Int(0));
+            list.elems[index] = auto_val::Value::Int(elem);
         }
     }
 
@@ -264,8 +282,9 @@ pub fn shim_list_insert(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> 
 
     if let Some(list) = vm.lists.get(&list_id) {
         let mut list = list.write().unwrap();
-        if index <= list.len() {
-            list.insert(index, elem);
+        if index <= list.elems.len() {
+            // Plan 076 Phase 3: Store as Value::Int
+            list.elems.insert(index, auto_val::Value::Int(elem));
         }
     }
 
@@ -282,9 +301,14 @@ pub fn shim_list_remove(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> 
 
     if let Some(list) = vm.lists.get(&list_id) {
         let mut list = list.write().unwrap();
-        if index < list.len() {
-            let elem = list.remove(index);
-            task.ram.push_i32(elem);
+        if index < list.elems.len() {
+            let elem = list.elems.remove(index);
+            // Plan 076 Phase 3: Extract Int from Value
+            let int_val = match elem {
+                auto_val::Value::Int(i) => i,
+                _ => 0,
+            };
+            task.ram.push_i32(int_val);
             return Ok(());
         }
     }
@@ -343,6 +367,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError
 
     let iterator_id = task.ram.pop_i32() as u32;
 
+    // Plan 076 Phase 3: Always return i32 by extracting Int from Value
     // Get the iterator (need to clone to update)
     let result = if let Some(mut iter_mut) = vm.iterators.get_mut(&iterator_id) {
         match &mut *iter_mut {
@@ -352,17 +377,21 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError
                     let list = list.read().unwrap();
 
                     // Check if exhausted
-                    if list_iter.current_index >= list.len() as u32 {
+                    if list_iter.current_index >= list.elems.len() as u32 {
                         // Iterator exhausted - return -1 (nil)
                         -1
                     } else {
                         // Get element at current_index
-                        let elem = list[list_iter.current_index as usize];
+                        let elem = &list.elems[list_iter.current_index as usize];
 
                         // Increment index for next call
                         list_iter.current_index += 1;
 
-                        elem
+                        // Plan 076 Phase 3: Extract Int from Value
+                        match elem {
+                            auto_val::Value::Int(i) => *i,
+                            _ => 0,
+                        }
                     }
                 } else {
                     // Invalid list - return -1 (nil)
@@ -382,15 +411,19 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError
                             if let Some(list) = vm.lists.get(&list_iter.list_id) {
                                 let list = list.read().unwrap();
 
-                                if list_iter.current_index >= list.len() as u32 {
+                                if list_iter.current_index >= list.elems.len() as u32 {
                                     -1 // Source exhausted
                                 } else {
-                                    let elem = list[list_iter.current_index as usize];
+                                    let elem = &list.elems[list_iter.current_index as usize];
                                     list_iter.current_index += 1;
 
                                     // TODO: Call the function at map_iter.func_addr with elem
                                     // For MVP, just return the element without transformation
-                                    elem
+                                    // Plan 076 Phase 3: Extract Int from Value
+                                    match elem {
+                                        auto_val::Value::Int(i) => *i,
+                                        _ => 0,
+                                    }
                                 }
                             } else {
                                 -1 // Invalid list
@@ -417,15 +450,19 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError
                             if let Some(list) = vm.lists.get(&list_iter.list_id) {
                                 let list = list.read().unwrap();
 
-                                if list_iter.current_index >= list.len() as u32 {
+                                if list_iter.current_index >= list.elems.len() as u32 {
                                     -1 // Source exhausted
                                 } else {
-                                    let elem = list[list_iter.current_index as usize];
+                                    let elem = &list.elems[list_iter.current_index as usize];
                                     list_iter.current_index += 1;
 
                                     // TODO: Call the predicate at filter_iter.func_addr with elem
                                     // For MVP, just return the element without filtering
-                                    elem
+                                    // Plan 076 Phase 3: Extract Int from Value
+                                    match elem {
+                                        auto_val::Value::Int(i) => *i,
+                                        _ => 0,
+                                    }
                                 }
                             } else {
                                 -1 // Invalid list
@@ -538,6 +575,7 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMErr
 pub fn shim_iterator_collect(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
     use std::sync::atomic::Ordering;
     use crate::vm::engine::Iterator;
+    use crate::universe::ListData;
 
     let iterator_id = task.ram.pop_i32() as u32;
 
@@ -550,9 +588,10 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMEr
             Iterator::List(list_iter) => {
                 if let Some(list) = vm.lists.get(&list_iter.list_id) {
                     let list_ref = list.read().unwrap();
+                    // Plan 076 Phase 3: Clone values to create owned Vec<Value>
                     // Collect all remaining elements
-                    while list_iter.current_index < list_ref.len() as u32 {
-                        elements.push(list_ref[list_iter.current_index as usize]);
+                    while list_iter.current_index < list_ref.elems.len() as u32 {
+                        elements.push(list_ref.elems[list_iter.current_index as usize].clone());
                         list_iter.current_index += 1;
                     }
                 }
@@ -567,7 +606,10 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMEr
 
     // Create a new list with the collected elements
     let list_id = vm.list_id_gen.fetch_add(1, Ordering::Relaxed);
-    vm.lists.insert(list_id, std::sync::Arc::new(std::sync::RwLock::new(elements)));
+    // Plan 076 Phase 4: Use ListData constructor
+    let mut list_data = ListData::new();
+    list_data.elems = elements;
+    vm.lists.insert(list_id, std::sync::Arc::new(std::sync::RwLock::new(list_data)));
 
     // Return list_id as i32 (lower 32 bits only for MVP)
     task.ram.push_i32(list_id as i32);
@@ -597,7 +639,10 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMErr
                     let list_ref = list.read().unwrap();
                     // Sum all remaining elements
                     while list_iter.current_index < list_ref.len() as u32 {
-                        result += list_ref[list_iter.current_index as usize];
+                        // Plan 076 Phase 3: Extract Int from Value
+                        if let auto_val::Value::Int(i) = list_ref.elems[list_iter.current_index as usize] {
+                            result += i;
+                        }
                         list_iter.current_index += 1;
                     }
                 }
@@ -633,7 +678,10 @@ pub fn shim_iterator_find(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError
                     let list_ref = list.read().unwrap();
                     // Return first element
                     if list_iter.current_index < list_ref.len() as u32 {
-                        result = list_ref[list_iter.current_index as usize];
+                        // Plan 076 Phase 3: Extract Int from Value
+                        if let auto_val::Value::Int(i) = list_ref.elems[list_iter.current_index as usize] {
+                            result = i;
+                        }
                         list_iter.current_index += 1;
                     }
                 }

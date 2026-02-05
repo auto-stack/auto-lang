@@ -37,7 +37,14 @@ pub fn list_new(_evaler: &mut Evaler, initial: Value) -> Value {
             // If initial is Nil, create empty list
             // Otherwise, single element initialization
 
-            let list_data = ListData { elems };
+            // Plan 076 Phase 4: Use ListData constructor instead of struct literal
+            let list_data = if elems.is_empty() {
+                ListData::new()
+            } else {
+                let mut ld = ListData::new();
+                ld.elems = elems;
+                ld
+            };
             let id = _evaler.universe().borrow_mut().add_vmref(crate::universe::VmRefData::List(list_data));
 
             let mut fields = Obj::new();
@@ -984,7 +991,7 @@ pub fn list_iter_collect(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<
                 _ => (0, 0),
             };
 
-            let mut new_list_data = ListData { elems: Vec::new() };
+            let mut new_list_data = ListData::new();
 
             // Collect elements
             {
@@ -1019,7 +1026,7 @@ pub fn list_iter_collect(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<
 
     // For MapIter and FilterIter, we need to iterate by calling next()
     if ref_name == "MapIter" || ref_name == "FilterIter" {
-        let mut new_list_data = ListData { elems: Vec::new() };
+        let mut new_list_data = ListData::new();
 
         // Collect elements by calling next() until exhausted
         loop {

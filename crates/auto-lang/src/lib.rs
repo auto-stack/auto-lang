@@ -687,5 +687,21 @@ mod test_double_lexer;
 #[cfg(test)]
 mod vm_types_tests;
 
+// Plan 076 Phase 1: Generic type support tests
+#[cfg(test)]
+mod generic_tests;
+
+// Plan 076 Phase 2: Monomorphization tests
+#[cfg(test)]
+mod monomorphize_tests;
+
+// Plan 076 Phase 4: Storage strategy tests
+#[cfg(test)]
+mod storage_strategy_tests;
+
+// Plan 076 Phase 5: Integration tests
+#[cfg(test)]
+mod bigvm_generic_integration_tests;
+
 #[cfg(test)]
 mod tests;

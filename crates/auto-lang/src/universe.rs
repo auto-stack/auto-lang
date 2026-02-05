@@ -48,21 +48,44 @@ pub enum VmRefData {
 }
 
 /// Data for dynamic lists (similar to Rust's Vec<T>)
+/// Plan 076 Phase 4: Extended to support storage strategies
 #[derive(Debug)]
 pub struct ListData {
     pub elems: Vec<Value>,
+    /// Storage strategy (None = default Heap storage)
+    /// Plan 076 Phase 4: Some(Heap) or Some(InlineInt64)
+    pub storage: Option<ListStorage>,
+}
+
+/// Storage strategy for lists (Plan 076 Phase 4)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListStorage {
+    /// Heap-allocated dynamic storage (unlimited capacity)
+    Heap,
+    /// Inline storage with fixed 64-element capacity (no heap)
+    InlineInt64,
 }
 
 impl ListData {
     pub fn new() -> Self {
         Self {
             elems: Vec::new(),
+            storage: None,  // Default to Heap
+        }
+    }
+
+    /// Create a new list with the specified storage strategy
+    pub fn with_storage(storage: ListStorage) -> Self {
+        Self {
+            elems: Vec::new(),
+            storage: Some(storage),
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             elems: Vec::with_capacity(capacity),
+            storage: None,  // Default to Heap
         }
     }
 
@@ -74,8 +97,37 @@ impl ListData {
         self.elems.is_empty()
     }
 
-    pub fn push(&mut self, elem: Value) {
+    /// Get the storage strategy (returns Heap if not set)
+    pub fn get_storage(&self) -> ListStorage {
+        self.storage.unwrap_or(ListStorage::Heap)
+    }
+
+    /// Check if this list can grow beyond its current capacity
+    pub fn can_grow(&self) -> bool {
+        match self.get_storage() {
+            ListStorage::Heap => true,
+            ListStorage::InlineInt64 => false,
+        }
+    }
+
+    /// Get the maximum capacity for this storage type
+    /// Returns None for unbounded Heap storage
+    pub fn max_capacity(&self) -> Option<usize> {
+        match self.get_storage() {
+            ListStorage::Heap => None,
+            ListStorage::InlineInt64 => Some(64),
+        }
+    }
+
+    pub fn push(&mut self, elem: Value) -> bool {
+        // Plan 076 Phase 4: Check capacity for InlineInt64
+        if let ListStorage::InlineInt64 = self.get_storage() {
+            if self.elems.len() >= 64 {
+                return false;  // Capacity exceeded
+            }
+        }
         self.elems.push(elem);
+        true
     }
 
     pub fn pop(&mut self) -> Option<Value> {
@@ -87,7 +139,10 @@ impl ListData {
     }
 
     pub fn reserve(&mut self, additional: usize) {
-        self.elems.reserve(additional);
+        // Plan 076 Phase 4: Only Heap storage can reserve
+        if let ListStorage::Heap = self.get_storage() {
+            self.elems.reserve(additional);
+        }
     }
 
     pub fn get(&self, index: usize) -> Option<&Value> {
@@ -103,9 +158,18 @@ impl ListData {
         }
     }
 
-    pub fn insert(&mut self, index: usize, elem: Value) {
+    pub fn insert(&mut self, index: usize, elem: Value) -> bool {
+        // Plan 076 Phase 4: Check capacity for InlineInt64
+        if let ListStorage::InlineInt64 = self.get_storage() {
+            if self.elems.len() >= 64 {
+                return false;  // Capacity exceeded
+            }
+        }
         if index <= self.elems.len() {
             self.elems.insert(index, elem);
+            true
+        } else {
+            false
         }
     }
 
@@ -114,6 +178,27 @@ impl ListData {
             Some(self.elems.remove(index))
         } else {
             None
+        }
+    }
+
+    /// Plan 076 Phase 4: Try to grow to at least min_cap capacity
+    /// Returns true if successful
+    pub fn try_grow(&mut self, min_cap: usize) -> bool {
+        match self.get_storage() {
+            ListStorage::Heap => {
+                // Heap storage can always grow
+                let new_cap = if self.elems.capacity() == 0 {
+                    std::cmp::max(8, min_cap)
+                } else {
+                    std::cmp::max(self.elems.capacity() * 2, min_cap)
+                };
+                self.elems.reserve(new_cap - self.elems.len());
+                true
+            }
+            ListStorage::InlineInt64 => {
+                // Inline storage cannot grow beyond 64
+                min_cap <= 64
+            }
         }
     }
 }

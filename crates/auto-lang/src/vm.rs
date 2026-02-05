@@ -11,6 +11,13 @@ pub mod config_codegen;
 pub mod template_codegen;
 pub mod collections;
 pub mod engine;
+// Plan 076 Phase 1: Generic type support for BigVM
+pub mod generic;
+// Plan 076 Phase 2: Monomorphization pass
+pub mod monomorphize;
+// Plan 076 Phase 4: Storage strategy runtime for BigVM
+pub mod list_data;
+pub mod list_storage;
 pub mod heap;
 pub mod io;
 pub mod list;

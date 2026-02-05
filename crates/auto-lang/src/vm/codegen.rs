@@ -6,6 +6,10 @@ use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::native::{NATIVE_PRINT_F32, NATIVE_PRINT_I32, NATIVE_PRINT_STR};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
+// Plan 076 Phase 1: Generic type support
+use crate::vm::generic::{GenericTable, extract_generic_instance};
+// Plan 076 Phase 2: Monomorphization support
+use crate::vm::monomorphize::{Monomorphizer, MonomorphizedModule};
 use auto_val::Op;
 use std::collections::{HashMap, HashSet};
 use miette::SourceSpan;
@@ -68,6 +72,10 @@ pub struct Codegen {
     /// Plan 073: Type registry for TypeDecl support
     /// Maps type name -> TypeInfo (member names, etc.)
     pub types: HashMap<String, TypeInfo>,
+
+    /// Plan 076 Phase 1: Generic instantiation table
+    /// Tracks all generic type instantiations (e.g., List<int>, List<string>)
+    pub generics: GenericTable,
 }
 
 impl Codegen {
@@ -100,6 +108,76 @@ impl Codegen {
             captured_vars_stack: Vec::new(),
             loop_exits: Vec::new(),
             types: HashMap::new(),
+            generics: GenericTable::new(), // Plan 076 Phase 1
+        }
+    }
+
+    // Plan 076 Phase 1: Generic type tracking methods
+
+    /// Track a generic type instantiation during compilation
+    /// Returns the monomorphic name for this instantiation
+    ///
+    /// Example:
+    /// ```ignore
+    /// let list_type = Type::List(Box::new(Type::Int));
+    /// let mono_name = codegen.track_generic(&list_type);
+    /// assert_eq!(mono_name, "List_int");
+    /// ```
+    pub fn track_generic(&mut self, ty: &crate::ast::Type) -> Option<String> {
+        if let Some(instance) = extract_generic_instance(ty) {
+            let mono_name = self.generics.register(instance);
+            Some(mono_name)
+        } else {
+            None
+        }
+    }
+
+    /// Check if a type is a generic instantiation and get its monomorphic name
+    pub fn get_monomorphic_name(&self, ty: &crate::ast::Type) -> Option<String> {
+        if let Some(instance) = extract_generic_instance(ty) {
+            Some(instance.monomorphic_name())
+        } else {
+            None
+        }
+    }
+
+    /// Get all tracked generic instantiations
+    pub fn get_generic_instantiations(&self) -> Vec<crate::vm::generic::GenericInstance> {
+        self.generics.all().into_iter().cloned().collect()
+    }
+
+    /// Get all List instantiations (e.g., List<int>, List<string>)
+    pub fn get_list_instantiations(&self) -> Vec<crate::vm::generic::GenericInstance> {
+        self.generics.list_instantiations().into_iter().cloned().collect()
+    }
+
+    // Plan 076 Phase 2: Monomorphization methods
+
+    /// Perform monomorphization pass on all tracked generics
+    /// Generates specialized bytecode for each generic instantiation
+    pub fn monomorphize(&mut self) -> Vec<MonomorphizedModule> {
+        let mut monomorphizer = Monomorphizer::new();
+
+        // Transfer all tracked generics to the monomorphizer
+        for instance in self.generics.all() {
+            monomorphizer.register_generic(instance.clone());
+        }
+
+        // Generate specialized bytecode
+        monomorphizer.monomorphize()
+    }
+
+    /// Check if a monomorphic module exists for a given name
+    pub fn has_monomorphic_module(&self, name: &str) -> bool {
+        self.generics.contains(name)
+    }
+
+    /// Get monomorphic name for a type if it's a generic instantiation
+    pub fn get_monomorphic_name_checked(&self, ty: &crate::ast::Type) -> Option<String> {
+        if let Some(instance) = extract_generic_instance(ty) {
+            Some(instance.monomorphic_name())
+        } else {
+            None
         }
     }
 
