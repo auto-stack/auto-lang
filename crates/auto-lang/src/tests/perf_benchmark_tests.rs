@@ -297,3 +297,126 @@ fn main() -> int {
         println!("⚠️  BigVM is slower than Evaluator (needs optimization)");
     }
 }
+
+// ============================================================================
+// Plan 077 Phase 7: Downcast Performance Benchmarks
+// ============================================================================
+
+#[test]
+fn benchmark_downcast_performance() {
+    use crate::vm::heap_object::{try_downcast_checked, try_downcast_checked_mut, TypeTag};
+    use crate::universe::ListData;
+    use std::time::Instant;
+
+    println!("\n=== Plan 077 Phase 7: Downcast Performance Benchmark ===\n");
+
+    // Create test list
+    let list: ListData<i32> = ListData::new();
+    let list_obj: &dyn crate::vm::heap_object::HeapObject = &list;
+
+    // Benchmark 1: Type tag check only (baseline)
+    let iterations = 1_000_000;
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let _tag = list_obj.type_tag();
+    }
+    let baseline_ns = start.elapsed().as_nanos() / iterations as u128;
+    println!("Type tag check:      {} ns/op", baseline_ns);
+
+    // Benchmark 2: Optimized downcast (with type check)
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let _ = try_downcast_checked::<ListData<i32>>(list_obj, TypeTag::ListInt);
+    }
+    let optimized_ns = start.elapsed().as_nanos() / iterations as u128;
+    println!("Optimized downcast:  {} ns/op", optimized_ns);
+
+    // Benchmark 3: Direct downcast (without type check)
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let _ = list_obj.as_any().downcast_ref::<ListData<i32>>();
+    }
+    let direct_ns = start.elapsed().as_nanos() / iterations as u128;
+    println!("Direct downcast:     {} ns/op", direct_ns);
+
+    // Analysis
+    println!("\n📊 Analysis:");
+    println!("  Optimized overhead: {} ns", optimized_ns.saturating_sub(direct_ns));
+    println!("  Type check overhead: {} ns", baseline_ns);
+
+    // Verify target met
+    if optimized_ns < 10 {
+        println!("  ✅ TARGET MET: Optimized downcast < 10ns (actual: {}ns)", optimized_ns);
+    } else {
+        println!("  ⚠️  TARGET NOT MET: Optimized downcast > 10ns (actual: {}ns)", optimized_ns);
+    }
+
+    // Assert optimized is not slower than direct by more than 2x (or both are 0)
+    if direct_ns > 0 {
+        assert!(optimized_ns < direct_ns * 2, "Optimized downcast is too slow");
+    } else {
+        // In release mode, both might be 0 due to optimization
+        println!("  ℹ️  Note: Results are 0ns due to compiler optimization (expected in release mode)");
+    }
+}
+
+#[test]
+fn benchmark_unified_registry_operations() {
+    use crate::vm::heap_object::{try_downcast_checked, try_downcast_checked_mut, TypeTag};
+    use crate::universe::ListData;
+    use std::sync::{Arc, RwLock};
+    use std::time::Instant;
+
+    println!("\n=== Plan 077 Phase 7: Unified Registry Operations Benchmark ===\n");
+
+    // Create unified registry (simplified version)
+    let mut registry = std::collections::HashMap::new();
+    let list_id: u64 = 1;
+
+    // Insert list into registry
+    let list: ListData<i32> = ListData::new();
+    registry.insert(list_id, Arc::new(RwLock::new(list)));
+
+    // Benchmark list operations
+    let iterations = 100_000;
+
+    // Benchmark 1: Read + downcast
+    let start = Instant::now();
+    for _ in 0..iterations {
+        if let Some(obj) = registry.get(&list_id) {
+            let guard = obj.read().unwrap();
+            let _ = try_downcast_checked::<ListData<i32>>(&*guard, TypeTag::ListInt);
+        }
+    }
+    let read_ns = start.elapsed().as_nanos() / iterations as u128;
+    println!("Read + downcast:          {} ns/op", read_ns);
+
+    // Benchmark 2: Write + downcast
+    let start = Instant::now();
+    for i in 0..iterations {
+        if let Some(obj) = registry.get(&list_id) {
+            let mut guard = obj.write().unwrap();
+            if let Some(list) = try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt) {
+                list.push(i);
+            }
+        }
+    }
+    let write_ns = start.elapsed().as_nanos() / iterations as u128;
+    println!("Write + downcast:         {} ns/op", write_ns);
+
+    // Verify list was updated correctly
+    if let Some(obj) = registry.get(&list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = try_downcast_checked::<ListData<i32>>(&*guard, TypeTag::ListInt) {
+            println!("  ✅ Final list length: {}", list.len());
+        }
+    }
+
+    // Performance target: read + downcast < 20ns
+    if read_ns < 20 {
+        println!("  ✅ TARGET MET: Read + downcast < 20ns (actual: {}ns)", read_ns);
+    } else {
+        println!("  ⚠️  TARGET NOT MET: Read + downcast > 20ns (actual: {}ns)", read_ns);
+    }
+}
+

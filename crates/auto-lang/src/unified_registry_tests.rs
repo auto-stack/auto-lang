@@ -336,11 +336,11 @@ fn test_engine_large_list() {
 }
 
 // ============================================================================
-// Multiple Registry Types Coexistence Tests
+// Multiple Lists Coexistence Tests
 // ============================================================================
 
 #[test]
-fn test_engine_unified_registry_coexists_with_old_registries() {
+fn test_engine_multiple_lists_coexist() {
     let flash = VirtualFlash::new(1024);
     let vm = BigVM::new(flash, 1024);
 
@@ -350,28 +350,28 @@ fn test_engine_unified_registry_coexists_with_old_registries() {
     new_list.push(2);
     let new_id = vm.insert_heap_object(new_list);
 
-    // Insert into old lists registry (legacy way)
-    use crate::universe::ListData as OldListData;
-    let mut old_list = OldListData::new();
-    old_list.elems.push(Value::Int(3));
-    old_list.elems.push(Value::Int(4));
-    let old_id = vm.list_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    vm.lists.insert(old_id, std::sync::Arc::new(std::sync::RwLock::new(old_list)));
+    // Plan 077 Phase 6: Old lists registry removed, all lists now use unified registry
+    // Insert another list into unified registry (simulating what old code did)
+    let mut another_list: ListData<i32> = ListData::new();
+    another_list.push(3);
+    another_list.push(4);
+    let another_id = vm.insert_heap_object(another_list);
 
-    // Verify both coexist
+    // Verify both lists coexist in unified registry
     assert!(vm.contains_heap_object(new_id));
-    assert!(vm.lists.contains_key(&old_id));
+    assert!(vm.contains_heap_object(another_id));
 
-    // Verify unified registry object
+    // Verify first list
     let new_obj = vm.get_heap_object(new_id).unwrap();
     let new_guard = new_obj.read().unwrap();
     let new_list_ref = downcast::<ListData<i32>>(&*new_guard).unwrap();
     assert_eq!(new_list_ref.elems, vec![1, 2]);
 
-    // Verify old registry object
-    let old_obj = vm.lists.get(&old_id).unwrap();
-    let old_guard = old_obj.read().unwrap();
-    assert_eq!(old_guard.elems.len(), 2);
+    // Verify second list
+    let another_obj = vm.get_heap_object(another_id).unwrap();
+    let another_guard = another_obj.read().unwrap();
+    let another_list_ref = downcast::<ListData<i32>>(&*another_guard).unwrap();
+    assert_eq!(another_list_ref.elems, vec![3, 4]);
 }
 
 // ============================================================================

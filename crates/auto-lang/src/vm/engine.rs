@@ -80,10 +80,7 @@ pub struct BigVM {
     pub channels: DashMap<ChannelId, Arc<AutoChannel>>,
     pub channel_id_gen: AtomicU64,
 
-    // List Registry
-    // Plan 076 Phase 3: Updated to use ListData for proper Value storage
-    pub lists: DashMap<u64, Arc<RwLock<crate::universe::ListData>>>,
-    pub list_id_gen: AtomicU64,
+    // Plan 077 Phase 6: Legacy list registry removed - all lists now use unified heap_objects registry
 
     // Iterator Registry
     pub iterators: DashMap<u32, Iterator>,
@@ -123,9 +120,7 @@ impl BigVM {
             id_gen: AtomicU64::new(0),
             channels: DashMap::new(),
             channel_id_gen: AtomicU64::new(0),
-            // Plan 076 Phase 3: Updated to use ListData
-            lists: DashMap::new(),
-            list_id_gen: AtomicU64::new(0),
+            // Plan 077 Phase 6: Legacy list registry removed
             iterators: DashMap::new(),
             iterator_id_gen: AtomicU32::new(0),
             closures: DashMap::new(),
@@ -684,79 +679,86 @@ impl BigVM {
                 }
                 // Plan 076 Phase 3 & 4: Generic List opcodes with storage strategies
                 OpCode::CREATE_LIST_INT => {
-                    // Create a new List<int> with Heap storage (default)
-                    let list_id = self.list_id_gen.fetch_add(1, Ordering::SeqCst);
-                    let list_data = crate::universe::ListData::new();  // Heap storage
-                    self.lists.insert(list_id, Arc::new(RwLock::new(list_data)));
+                    // Plan 077 Phase 5: Create List<int> in unified registry
+                    use crate::universe::ListData;
+                    let list_data: ListData<i32> = ListData::new();  // Heap storage (default)
+                    let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
                     task.ram.push_i32(list_id as i32);
                 }
                 OpCode::CREATE_LIST_STR => {
-                    // Create a new List<string> with Heap storage (default)
-                    let list_id = self.list_id_gen.fetch_add(1, Ordering::SeqCst);
-                    let list_data = crate::universe::ListData::new();  // Heap storage
-                    self.lists.insert(list_id, Arc::new(RwLock::new(list_data)));
+                    // Plan 077 Phase 5: Create List<String> in unified registry
+                    use crate::universe::ListData;
+                    let list_data: ListData<String> = ListData::new();  // Heap storage (default)
+                    let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
                     task.ram.push_i32(list_id as i32);
                 }
                 OpCode::CREATE_LIST_BOOL => {
-                    // Create a new List<bool> with Heap storage (default)
-                    let list_id = self.list_id_gen.fetch_add(1, Ordering::SeqCst);
-                    let list_data = crate::universe::ListData::new();  // Heap storage
-                    self.lists.insert(list_id, Arc::new(RwLock::new(list_data)));
+                    // Plan 077 Phase 5: Create List<bool> in unified registry
+                    use crate::universe::ListData;
+                    let list_data: ListData<bool> = ListData::new();  // Heap storage (default)
+                    let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
                     task.ram.push_i32(list_id as i32);
                 }
                 // Plan 076 Phase 4: InlineInt64 storage variants
                 OpCode::CREATE_LIST_INT_INLINE => {
-                    // Create a new List<int> with InlineInt64 storage (fixed 64-element capacity)
-                    let list_id = self.list_id_gen.fetch_add(1, Ordering::SeqCst);
-                    let list_data = crate::universe::ListData::with_storage(
-                        crate::universe::ListStorage::InlineInt64
-                    );
-                    self.lists.insert(list_id, Arc::new(RwLock::new(list_data)));
+                    // Plan 077 Phase 5: Create List<int> with InlineInt64 storage in unified registry
+                    use crate::universe::{ListData, ListStorage};
+                    let mut list_data: ListData<i32> = ListData::new();
+                    list_data.storage = Some(ListStorage::InlineInt64);
+                    let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
                     task.ram.push_i32(list_id as i32);
                 }
                 OpCode::CREATE_LIST_STR_INLINE => {
-                    // Create a new List<string> with InlineInt64 storage
-                    let list_id = self.list_id_gen.fetch_add(1, Ordering::SeqCst);
-                    let list_data = crate::universe::ListData::with_storage(
-                        crate::universe::ListStorage::InlineInt64
-                    );
-                    self.lists.insert(list_id, Arc::new(RwLock::new(list_data)));
+                    // Plan 077 Phase 5: Create List<String> with InlineInt64 storage in unified registry
+                    use crate::universe::{ListData, ListStorage};
+                    let mut list_data: ListData<String> = ListData::new();
+                    list_data.storage = Some(ListStorage::InlineInt64);
+                    let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
                     task.ram.push_i32(list_id as i32);
                 }
                 OpCode::CREATE_LIST_BOOL_INLINE => {
-                    // Create a new List<bool> with InlineInt64 storage
-                    let list_id = self.list_id_gen.fetch_add(1, Ordering::SeqCst);
-                    let list_data = crate::universe::ListData::with_storage(
-                        crate::universe::ListStorage::InlineInt64
-                    );
-                    self.lists.insert(list_id, Arc::new(RwLock::new(list_data)));
+                    // Plan 077 Phase 5: Create List<bool> with InlineInt64 storage in unified registry
+                    use crate::universe::{ListData, ListStorage};
+                    let mut list_data: ListData<bool> = ListData::new();
+                    list_data.storage = Some(ListStorage::InlineInt64);
+                    let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
                     task.ram.push_i32(list_id as i32);
                 }
                 OpCode::LIST_PUSH_INT => {
+                    // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id, value:int]
                     // Pop value first (top of stack), then list_id
                     let value = task.ram.pop_i32();
                     let list_id = task.ram.pop_i32() as u64;
 
-                    // Get list and push element
-                    // Plan 076 Phase 4: Use push() which returns bool for capacity checking
-                    if let Some(list) = self.lists.get(&list_id) {
-                        let mut list = list.write().unwrap();
-                        if !list.push(auto_val::Value::Int(value)) {
+                    // Get list from unified registry and downcast to ListData<i32>
+                    use crate::universe::ListData;
+                    use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+
+                    if let Some(obj) = self.get_heap_object(list_id) {
+                        let mut guard = obj.write().unwrap();
+
+                        // Optimized: single type check + downcast (inline)
+                        if let Some(list) = try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt) {
+                            if !list.push(value) {
+                                return Err(VMError::RuntimeError(format!(
+                                    "List capacity exceeded (InlineInt64 limit: 64)")));
+                            }
+                        } else {
                             return Err(VMError::RuntimeError(format!(
-                                "List capacity exceeded (InlineInt64 limit: 64)")));
+                                "Type error: LIST_PUSH_INT expected ListInt")));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(
@@ -764,63 +766,82 @@ impl BigVM {
                     }
                 }
                 OpCode::LIST_POP_INT => {
+                    // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id]
                     // Pop list_id, get list, pop element, push result
                     let list_id = task.ram.pop_i32() as u64;
 
-                    if let Some(list) = self.lists.get(&list_id) {
-                        let mut list = list.write().unwrap();
-                        let value = list.elems.pop().unwrap_or(auto_val::Value::Nil);
+                    // Get list from unified registry and downcast to ListData<i32>
+                    use crate::universe::ListData;
+                    use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
 
-                        // Extract int value or default to 0
-                        let int_val = match value {
-                            auto_val::Value::Int(i) => i,
-                            _ => 0,
-                        };
-                        task.ram.push_i32(int_val);
+                    if let Some(obj) = self.get_heap_object(list_id) {
+                        let mut guard = obj.write().unwrap();
+
+                        // Optimized: single type check + downcast (inline)
+                        if let Some(list) = try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt) {
+                            let value = list.pop().unwrap_or(0);
+                            task.ram.push_i32(value);
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Type error: LIST_POP_INT expected ListInt")));
+                        }
                     } else {
                         return Err(VMError::RuntimeError(format!(
                             "Invalid list ID: {}", list_id)));
                     }
                 }
                 OpCode::LIST_GET_INT => {
+                    // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id, index:int]
                     // Pop index first (top of stack), then list_id
                     let index = task.ram.pop_i32() as usize;
                     let list_id = task.ram.pop_i32() as u64;
 
-                    // Get list and get element at index
-                    if let Some(list) = self.lists.get(&list_id) {
-                        let list = list.read().unwrap();
-                        let value = list.elems.get(index).cloned().unwrap_or(auto_val::Value::Nil);
+                    // Get list from unified registry and downcast to ListData<i32>
+                    use crate::universe::ListData;
+                    use crate::vm::heap_object::{try_downcast_checked, TypeTag};
 
-                        // Extract int value or default to 0
-                        let int_val = match value {
-                            auto_val::Value::Int(i) => i,
-                            _ => 0,
-                        };
-                        task.ram.push_i32(int_val);
+                    if let Some(obj) = self.get_heap_object(list_id) {
+                        let guard = obj.read().unwrap();
+
+                        // Optimized: single type check + downcast (inline)
+                        if let Some(list) = try_downcast_checked::<ListData<i32>>(&*guard, TypeTag::ListInt) {
+                            let value = list.get(index).copied().unwrap_or(0);
+                            task.ram.push_i32(value);
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Type error: LIST_GET_INT expected ListInt")));
+                        }
                     } else {
                         return Err(VMError::RuntimeError(format!(
                             "Invalid list ID: {}", list_id)));
                     }
                 }
                 OpCode::LIST_SET_INT => {
+                    // Plan 077 Phase 7: Optimized with inline helper
                     // Stack layout: [..., list_id, index:int, value:int]
                     // Pop value first, then index, then list_id
                     let value = task.ram.pop_i32();
                     let index = task.ram.pop_i32() as usize;
                     let list_id = task.ram.pop_i32() as u64;
 
-                    // Get list and set element at index
-                    if let Some(list) = self.lists.get(&list_id) {
-                        let mut list = list.write().unwrap();
-                        if index < list.elems.len() {
-                            list.elems[index] = auto_val::Value::Int(value);
+                    // Get list from unified registry and downcast to ListData<i32>
+                    use crate::universe::ListData;
+                    use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+
+                    if let Some(obj) = self.get_heap_object(list_id) {
+                        let mut guard = obj.write().unwrap();
+
+                        // Optimized: single type check + downcast (inline)
+                        if let Some(list) = try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt) {
+                            if !list.set(index, value) {
+                                return Err(VMError::RuntimeError(format!(
+                                    "List index out of bounds: {}", index)));
+                            }
                         } else {
-                            // Index out of bounds - extend list
-                            list.elems.resize(index + 1, auto_val::Value::Int(0));
-                            list.elems[index] = auto_val::Value::Int(value);
+                            return Err(VMError::RuntimeError(format!(
+                                "Type error: LIST_SET_INT expected ListInt")));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(

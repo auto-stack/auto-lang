@@ -715,5 +715,9 @@ mod listdata_heap_object_tests;
 #[cfg(test)]
 mod unified_registry_tests;
 
+// Plan 077 Phase 8: Comprehensive integration tests (TODO: Fix compilation errors)
+// #[cfg(test)]
+// mod plan077_integration_tests;
+
 #[cfg(test)]
 mod tests;

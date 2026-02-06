@@ -133,11 +133,10 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 pub fn shim_list_new(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
     use std::sync::atomic::Ordering;
 
-    let list_id = vm.list_id_gen.fetch_add(1, Ordering::Relaxed);
-    // Plan 076 Phase 3: Use ListData instead of Vec<i32>
-    // Plan 076 Phase 4: Use ListData::new() constructor
-    let list = crate::universe::ListData::new();
-    vm.lists.insert(list_id, Arc::new(std::sync::RwLock::new(list)));
+    // Plan 077 Phase 5: Create List<int> in unified registry
+    use crate::universe::ListData;
+    let list: ListData<i32> = ListData::new();
+    let list_id = vm.insert_heap_object(list);
 
     // Return list_id
     task.ram.push_i32(list_id as i32);
@@ -146,14 +145,19 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 
 /// Push an element to the end of the list.
 /// Stack: list_id, elem -> result (0)
+// Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_push(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::universe::ListData;
+    use crate::vm::heap_object::HeapObject;
+
     let elem = task.ram.pop_i32();
     let list_id = task.ram.pop_i32() as u64;
 
-    if let Some(list) = vm.lists.get(&list_id) {
-        let mut list = list.write().unwrap();
-        // Plan 076 Phase 3: Store as Value::Int
-        list.elems.push(auto_val::Value::Int(elem));
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            list.push(elem);
+        }
     }
 
     // Return success (0)
@@ -163,63 +167,85 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 
 /// Pop an element from the end of the list.
 /// Stack: list_id -> elem
+// Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_pop(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::universe::ListData;
+    use crate::vm::heap_object::HeapObject;
+
     let list_id = task.ram.pop_i32() as u64;
 
-    if let Some(list) = vm.lists.get(&list_id) {
-        let mut list = list.write().unwrap();
-        let elem = list.elems.pop().unwrap_or(auto_val::Value::Nil);
-        // Plan 076 Phase 3: Extract Int value, default to 0
-        let int_val = match elem {
-            auto_val::Value::Int(i) => i,
-            _ => 0,
-        };
-        task.ram.push_i32(int_val);
-    } else {
-        task.ram.push_i32(0); // Invalid list_id
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            let elem = list.pop().unwrap_or(0);
+            task.ram.push_i32(elem);
+            return Ok(());
+        }
     }
 
+    // Invalid list_id
+    task.ram.push_i32(0);
     Ok(())
 }
 
 /// Get the length of the list.
 /// Stack: list_id -> len
+// Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_len(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::universe::ListData;
+    use crate::vm::heap_object::HeapObject;
+
     let list_id = task.ram.pop_i32() as u64;
 
-    if let Some(list) = vm.lists.get(&list_id) {
-        let list = list.read().unwrap();
-        task.ram.push_i32(list.len() as i32);
-    } else {
-        task.ram.push_i32(0); // Invalid list_id
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            task.ram.push_i32(list.len() as i32);
+            return Ok(());
+        }
     }
 
+    // Invalid list_id
+    task.ram.push_i32(0);
     Ok(())
 }
 
 /// Check if the list is empty.
 /// Stack: list_id -> is_empty (1 if empty, 0 otherwise)
+// Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_is_empty(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::universe::ListData;
+    use crate::vm::heap_object::HeapObject;
+
     let list_id = task.ram.pop_i32() as u64;
 
-    if let Some(list) = vm.lists.get(&list_id) {
-        let list = list.read().unwrap();
-        task.ram.push_i32(if list.is_empty() { 1 } else { 0 });
-    } else {
-        task.ram.push_i32(1); // Invalid list_id treated as empty
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            task.ram.push_i32(if list.is_empty() { 1 } else { 0 });
+            return Ok(());
+        }
     }
 
+    // Invalid list_id treated as empty
+    task.ram.push_i32(1);
     Ok(())
 }
 
 /// Clear all elements from the list.
 /// Stack: list_id -> result (0)
+// Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_clear(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::universe::ListData;
+    use crate::vm::heap_object::HeapObject;
+
     let list_id = task.ram.pop_i32() as u64;
 
-    if let Some(list) = vm.lists.get(&list_id) {
-        let mut list = list.write().unwrap();
-        list.clear();
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            list.clear();
+        }
     }
 
     // Return success (0)
@@ -229,42 +255,43 @@ pub fn shim_list_clear(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 
 /// Get element at index.
 /// Stack: list_id, index -> elem
+// Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_get(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::universe::ListData;
+    use crate::vm::heap_object::HeapObject;
+
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
 
-    if let Some(list) = vm.lists.get(&list_id) {
-        let list = list.read().unwrap();
-        // Plan 076 Phase 3: Get Value and extract Int
-        let elem = list.elems.get(index).cloned().unwrap_or(auto_val::Value::Nil);
-        let int_val = match elem {
-            auto_val::Value::Int(i) => i,
-            _ => 0,
-        };
-        task.ram.push_i32(int_val);
-    } else {
-        task.ram.push_i32(0); // Invalid list_id
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            let value = list.get(index).copied().unwrap_or(0);
+            task.ram.push_i32(value);
+            return Ok(());
+        }
     }
 
+    // Invalid list_id
+    task.ram.push_i32(0);
     Ok(())
 }
 
 /// Set element at index.
 /// Stack: list_id, index, elem -> result (0)
+// Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_set(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::universe::ListData;
+    use crate::vm::heap_object::HeapObject;
+
     let elem = task.ram.pop_i32();
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
 
-    if let Some(list) = vm.lists.get(&list_id) {
-        let mut list = list.write().unwrap();
-        // Plan 076 Phase 3: Set Value in ListData
-        if index < list.elems.len() {
-            list.elems[index] = auto_val::Value::Int(elem);
-        } else {
-            // Index out of bounds - extend list
-            list.elems.resize(index + 1, auto_val::Value::Int(0));
-            list.elems[index] = auto_val::Value::Int(elem);
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            list.set(index, elem);
         }
     }
 
@@ -275,16 +302,19 @@ pub fn shim_list_set(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 
 /// Insert element at index.
 /// Stack: list_id, index, elem -> result (0)
+// Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_insert(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::universe::ListData;
+    use crate::vm::heap_object::HeapObject;
+
     let elem = task.ram.pop_i32();
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
 
-    if let Some(list) = vm.lists.get(&list_id) {
-        let mut list = list.write().unwrap();
-        if index <= list.elems.len() {
-            // Plan 076 Phase 3: Store as Value::Int
-            list.elems.insert(index, auto_val::Value::Int(elem));
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            list.insert(index, elem);
         }
     }
 
@@ -295,21 +325,21 @@ pub fn shim_list_insert(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> 
 
 /// Remove element at index and return it.
 /// Stack: list_id, index -> elem
+// Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_remove(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::universe::ListData;
+    use crate::vm::heap_object::HeapObject;
+
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
 
-    if let Some(list) = vm.lists.get(&list_id) {
-        let mut list = list.write().unwrap();
-        if index < list.elems.len() {
-            let elem = list.elems.remove(index);
-            // Plan 076 Phase 3: Extract Int from Value
-            let int_val = match elem {
-                auto_val::Value::Int(i) => i,
-                _ => 0,
-            };
-            task.ram.push_i32(int_val);
-            return Ok(());
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            if let Some(elem) = list.remove(index) {
+                task.ram.push_i32(elem);
+                return Ok(());
+            }
         }
     }
 
@@ -320,9 +350,10 @@ pub fn shim_list_remove(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> 
 
 /// Drop/free the list.
 /// Stack: list_id -> result (0)
+// Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_drop(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
     let list_id = task.ram.pop_i32() as u64;
-    vm.lists.remove(&list_id);
+    vm.remove_heap_object(list_id);
 
     // Return success (0)
     task.ram.push_i32(0);
@@ -362,8 +393,11 @@ pub fn shim_list_iter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Get next element from iterator.
 /// Stack: iterator_id -> element (or -1 for nil)
 /// Returns: element value, or -1 if exhausted
+// Plan 077 Phase 6: Updated to use unified registry
 pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+    use crate::universe::ListData;
     use crate::vm::engine::Iterator;
+    use crate::vm::heap_object::HeapObject;
 
     let iterator_id = task.ram.pop_i32() as u32;
 
@@ -372,26 +406,29 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError
     let result = if let Some(mut iter_mut) = vm.iterators.get_mut(&iterator_id) {
         match &mut *iter_mut {
             Iterator::List(list_iter) => {
-                // Get the list
-                if let Some(list) = vm.lists.get(&list_iter.list_id) {
-                    let list = list.read().unwrap();
+                // Plan 077 Phase 6: Get list from unified registry
+                if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                    let list = obj.read().unwrap();
 
-                    // Check if exhausted
-                    if list_iter.current_index >= list.elems.len() as u32 {
-                        // Iterator exhausted - return -1 (nil)
-                        -1
-                    } else {
-                        // Get element at current_index
-                        let elem = &list.elems[list_iter.current_index as usize];
+                    // Check type tag
+                    if list.type_tag() != crate::vm::heap_object::TypeTag::ListInt {
+                        -1 // Wrong type - return nil
+                    } else if let Some(list_data) = list.as_any().downcast_ref::<ListData<i32>>() {
+                        // Check if exhausted
+                        if list_iter.current_index >= list_data.len() as u32 {
+                            // Iterator exhausted - return -1 (nil)
+                            -1
+                        } else {
+                            // Get element at current_index
+                            let elem = list_data.get(list_iter.current_index as usize).copied().unwrap_or(0);
 
-                        // Increment index for next call
-                        list_iter.current_index += 1;
+                            // Increment index for next call
+                            list_iter.current_index += 1;
 
-                        // Plan 076 Phase 3: Extract Int from Value
-                        match elem {
-                            auto_val::Value::Int(i) => *i,
-                            _ => 0,
+                            elem
                         }
+                    } else {
+                        -1 // Downcast failed
                     }
                 } else {
                     // Invalid list - return -1 (nil)
@@ -408,34 +445,41 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError
                 if let Some(mut source_iter) = vm.iterators.get_mut(&map_iter.source_iterator_id) {
                     match &mut *source_iter {
                         Iterator::List(list_iter) => {
-                            if let Some(list) = vm.lists.get(&list_iter.list_id) {
-                                let list = list.read().unwrap();
+                            // Plan 077 Phase 6: Get list from unified registry
+                            if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                                let list = obj.read().unwrap();
 
-                                if list_iter.current_index >= list.elems.len() as u32 {
-                                    -1 // Source exhausted
-                                } else {
-                                    let elem = &list.elems[list_iter.current_index as usize];
-                                    list_iter.current_index += 1;
+                                if list.type_tag() != crate::vm::heap_object::TypeTag::ListInt {
+                                    -1 // Wrong type
+                                } else if let Some(list_data) = list.as_any().downcast_ref::<ListData<i32>>() {
+                                    if list_iter.current_index >= list_data.len() as u32 {
+                                        -1 // Source exhausted
+                                    } else {
+                                        let elem = list_data.get(list_iter.current_index as usize).copied().unwrap_or(0);
+                                        list_iter.current_index += 1;
 
-                                    // TODO: Call the function at map_iter.func_addr with elem
-                                    // For MVP, just return the element without transformation
-                                    // Plan 076 Phase 3: Extract Int from Value
-                                    match elem {
-                                        auto_val::Value::Int(i) => *i,
-                                        _ => 0,
+                                        // TODO: Call the function at map_iter.func_addr with elem
+                                        // For MVP, just return the element without transformation
+                                        elem
                                     }
+                                } else {
+                                    -1 // Downcast failed
                                 }
                             } else {
                                 -1 // Invalid list
                             }
                         }
-                        _ => {
-                            // Nested adapters not yet supported
-                            return Err(VMError::RuntimeError("Nested adapters not yet implemented".to_string()));
+                        Iterator::Map(_) => {
+                            // Nested Map not supported yet
+                            -1
+                        }
+                        Iterator::Filter(_) => {
+                            // Filter source not supported yet
+                            -1
                         }
                     }
                 } else {
-                    -1 // Invalid source iterator
+                    -1 // Source iterator not found
                 }
             }
             Iterator::Filter(filter_iter) => {
@@ -447,22 +491,25 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError
                 if let Some(mut source_iter) = vm.iterators.get_mut(&filter_iter.source_iterator_id) {
                     match &mut *source_iter {
                         Iterator::List(list_iter) => {
-                            if let Some(list) = vm.lists.get(&list_iter.list_id) {
-                                let list = list.read().unwrap();
+                            // Plan 077 Phase 6: Get list from unified registry
+                            if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                                let list = obj.read().unwrap();
 
-                                if list_iter.current_index >= list.elems.len() as u32 {
-                                    -1 // Source exhausted
-                                } else {
-                                    let elem = &list.elems[list_iter.current_index as usize];
-                                    list_iter.current_index += 1;
+                                if list.type_tag() != crate::vm::heap_object::TypeTag::ListInt {
+                                    -1 // Wrong type
+                                } else if let Some(list_data) = list.as_any().downcast_ref::<ListData<i32>>() {
+                                    if list_iter.current_index >= list_data.len() as u32 {
+                                        -1 // Source exhausted
+                                    } else {
+                                        let elem = list_data.get(list_iter.current_index as usize).copied().unwrap_or(0);
+                                        list_iter.current_index += 1;
 
-                                    // TODO: Call the predicate at filter_iter.func_addr with elem
-                                    // For MVP, just return the element without filtering
-                                    // Plan 076 Phase 3: Extract Int from Value
-                                    match elem {
-                                        auto_val::Value::Int(i) => *i,
-                                        _ => 0,
+                                        // TODO: Call the predicate at filter_iter.func_addr with elem
+                                        // For MVP, just return the element without filtering
+                                        elem
                                     }
+                                } else {
+                                    -1 // Downcast failed
                                 }
                             } else {
                                 -1 // Invalid list
@@ -572,9 +619,11 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMErr
 /// Collect all elements from an iterator into a new list.
 /// Stack: iterator_id -> list_id
 /// Returns: new list_id (lower 32 bits of u64 as i32)
+// Plan 077 Phase 6: Updated to use unified registry
 pub fn shim_iterator_collect(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
     use std::sync::atomic::Ordering;
     use crate::vm::engine::Iterator;
+    use crate::vm::heap_object::HeapObject;
     use crate::universe::ListData;
 
     let iterator_id = task.ram.pop_i32() as u32;
@@ -586,13 +635,20 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMEr
     if let Some(mut iter) = vm.iterators.get_mut(&iterator_id) {
         match &mut *iter {
             Iterator::List(list_iter) => {
-                if let Some(list) = vm.lists.get(&list_iter.list_id) {
-                    let list_ref = list.read().unwrap();
-                    // Plan 076 Phase 3: Clone values to create owned Vec<Value>
-                    // Collect all remaining elements
-                    while list_iter.current_index < list_ref.elems.len() as u32 {
-                        elements.push(list_ref.elems[list_iter.current_index as usize].clone());
-                        list_iter.current_index += 1;
+                // Plan 077 Phase 6: Get list from unified registry
+                if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                    let list_ref = obj.read().unwrap();
+
+                    if list_ref.type_tag() == crate::vm::heap_object::TypeTag::ListInt {
+                        if let Some(list_data) = list_ref.as_any().downcast_ref::<ListData<i32>>() {
+                            // Collect all remaining elements
+                            while list_iter.current_index < list_data.len() as u32 {
+                                if let Some(&elem) = list_data.get(list_iter.current_index as usize) {
+                                    elements.push(elem);
+                                }
+                                list_iter.current_index += 1;
+                            }
+                        }
                     }
                 }
             }
@@ -604,12 +660,12 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMEr
         }
     }
 
-    // Create a new list with the collected elements
-    let list_id = vm.list_id_gen.fetch_add(1, Ordering::Relaxed);
-    // Plan 076 Phase 4: Use ListData constructor
-    let mut list_data = ListData::new();
-    list_data.elems = elements;
-    vm.lists.insert(list_id, std::sync::Arc::new(std::sync::RwLock::new(list_data)));
+    // Plan 077 Phase 6: Create a new list in unified registry
+    let mut list_data: ListData<i32> = ListData::new();
+    for elem in elements {
+        list_data.push(elem);
+    }
+    let list_id = vm.insert_heap_object(list_data);
 
     // Return list_id as i32 (lower 32 bits only for MVP)
     task.ram.push_i32(list_id as i32);
@@ -624,6 +680,8 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMEr
 /// NOTE: For MVP, this just sums all elements without calling the function.
 pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
     use crate::vm::engine::Iterator;
+    use crate::vm::heap_object::HeapObject;
+    use crate::universe::ListData;
 
     let iterator_id = task.ram.pop_i32() as u32;
     let _func_addr = task.ram.pop_i32() as u32; // Not used in MVP
@@ -631,19 +689,24 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMErr
 
     let mut result = initial;
 
-    // Reduce all elements from the iterator
+    // Plan 077 Phase 6: Reduce all elements from the iterator
     if let Some(mut iter) = vm.iterators.get_mut(&iterator_id) {
         match &mut *iter {
             Iterator::List(list_iter) => {
-                if let Some(list) = vm.lists.get(&list_iter.list_id) {
-                    let list_ref = list.read().unwrap();
-                    // Sum all remaining elements
-                    while list_iter.current_index < list_ref.len() as u32 {
-                        // Plan 076 Phase 3: Extract Int from Value
-                        if let auto_val::Value::Int(i) = list_ref.elems[list_iter.current_index as usize] {
-                            result += i;
+                // Plan 077 Phase 6: Get list from unified registry
+                if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                    let list_ref = obj.read().unwrap();
+
+                    if list_ref.type_tag() == crate::vm::heap_object::TypeTag::ListInt {
+                        if let Some(list_data) = list_ref.as_any().downcast_ref::<ListData<i32>>() {
+                            // Sum all remaining elements
+                            while list_iter.current_index < list_data.len() as u32 {
+                                if let Some(&elem) = list_data.get(list_iter.current_index as usize) {
+                                    result += elem;
+                                }
+                                list_iter.current_index += 1;
+                            }
                         }
-                        list_iter.current_index += 1;
                     }
                 }
             }
@@ -662,27 +725,35 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMErr
 /// Returns: first matching element, or -1 if none match
 ///
 /// NOTE: For MVP, this just returns the first element without calling the predicate.
+// Plan 077 Phase 6: Updated to use unified registry
 pub fn shim_iterator_find(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
     use crate::vm::engine::Iterator;
+    use crate::vm::heap_object::HeapObject;
+    use crate::universe::ListData;
 
     let iterator_id = task.ram.pop_i32() as u32;
     let _func_addr = task.ram.pop_i32() as u32; // Not used in MVP
 
     let mut result = -1; // Default: not found
 
-    // Find first element from the iterator
+    // Plan 077 Phase 6: Find first element from the iterator
     if let Some(mut iter) = vm.iterators.get_mut(&iterator_id) {
         match &mut *iter {
             Iterator::List(list_iter) => {
-                if let Some(list) = vm.lists.get(&list_iter.list_id) {
-                    let list_ref = list.read().unwrap();
-                    // Return first element
-                    if list_iter.current_index < list_ref.len() as u32 {
-                        // Plan 076 Phase 3: Extract Int from Value
-                        if let auto_val::Value::Int(i) = list_ref.elems[list_iter.current_index as usize] {
-                            result = i;
+                // Plan 077 Phase 6: Get list from unified registry
+                if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                    let list_ref = obj.read().unwrap();
+
+                    if list_ref.type_tag() == crate::vm::heap_object::TypeTag::ListInt {
+                        if let Some(list_data) = list_ref.as_any().downcast_ref::<ListData<i32>>() {
+                            // Return first element
+                            if list_iter.current_index < list_data.len() as u32 {
+                                if let Some(&elem) = list_data.get(list_iter.current_index as usize) {
+                                    result = elem;
+                                }
+                                list_iter.current_index += 1;
+                            }
                         }
-                        list_iter.current_index += 1;
                     }
                 }
             }

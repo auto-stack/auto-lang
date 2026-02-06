@@ -219,6 +219,76 @@ pub fn type_name(obj: &dyn HeapObject) -> &'static str {
 }
 
 // ============================================================================
+// Plan 077 Phase 7: Optimized Downcast Helpers
+// ============================================================================
+
+/// Optimized checked downcast with type tag verification
+///
+/// This function combines type tag checking and downcasting into a single
+/// operation to reduce overhead in hot paths. It's designed to be inlined
+/// for maximum performance.
+///
+/// Returns `None` if:
+/// - The type tag doesn't match the expected tag
+/// - The downcast fails (shouldn't happen if tags match)
+///
+/// # Performance
+///
+/// - Inline-able for zero function call overhead
+/// - Single type tag check before downcast
+/// - Optimized for hot paths (e.g., LIST_PUSH_INT, LIST_GET_INT)
+///
+/// # Example
+///
+/// ```rust
+/// use crate::vm::heap_object::{try_downcast_checked, TypeTag};
+/// use crate::universe::ListData;
+///
+/// let obj: Arc<RwLock<dyn HeapObject>> = registry.get(&id).unwrap();
+/// let guard = obj.read().unwrap();
+///
+/// if let Some(list) = try_downcast_checked::<ListData<i32>>(&*guard, TypeTag::ListInt) {
+///     // Use list...
+/// }
+/// ```
+#[inline]
+pub fn try_downcast_checked<T: Any>(obj: &dyn HeapObject, expected_tag: TypeTag) -> Option<&T> {
+    // Fast path: type tag matches (most common case)
+    if obj.type_tag() == expected_tag {
+        obj.as_any().downcast_ref::<T>()
+    } else {
+        None
+    }
+}
+
+/// Mutable version of optimized checked downcast
+///
+/// Same as `try_downcast_checked` but for mutable access.
+///
+/// # Example
+///
+/// ```rust
+/// use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+/// use crate::universe::ListData;
+///
+/// let obj: Arc<RwLock<dyn HeapObject>> = registry.get(&id).unwrap();
+/// let mut guard = obj.write().unwrap();
+///
+/// if let Some(list) = try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt) {
+///     list.push(42);
+/// }
+/// ```
+#[inline]
+pub fn try_downcast_checked_mut<T: Any>(obj: &mut dyn HeapObject, expected_tag: TypeTag) -> Option<&mut T> {
+    // Fast path: type tag matches (most common case)
+    if obj.type_tag() == expected_tag {
+        obj.as_any_mut().downcast_mut::<T>()
+    } else {
+        None
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -476,5 +546,64 @@ mod tests {
         let tag = TypeTag::HashMap;
         let copied = tag;
         assert_eq!(tag, copied);
+    }
+
+    // Plan 077 Phase 7: Tests for optimized downcast helpers
+    #[test]
+    fn test_try_downcast_checked_success() {
+        let list = MockIntList { elems: vec![1, 2, 3] };
+
+        // Correct type tag should succeed
+        let result = crate::vm::heap_object::try_downcast_checked::<MockIntList>(&list, TypeTag::ListInt);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().elems, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_try_downcast_checked_wrong_type() {
+        let list = MockIntList { elems: vec![1, 2, 3] };
+
+        // Wrong type tag should fail
+        let result = crate::vm::heap_object::try_downcast_checked::<MockIntList>(&list, TypeTag::ListChar);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_try_downcast_checked_mut_success() {
+        let mut list = MockIntList { elems: vec![1, 2, 3] };
+
+        // Correct type tag should succeed
+        let result = crate::vm::heap_object::try_downcast_checked_mut::<MockIntList>(&mut list, TypeTag::ListInt);
+        assert!(result.is_some());
+        result.unwrap().elems.push(4);
+        assert_eq!(list.elems, vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_try_downcast_checked_mut_wrong_type() {
+        let mut list = MockIntList { elems: vec![1, 2, 3] };
+
+        // Wrong type tag should fail
+        let result = crate::vm::heap_object::try_downcast_checked_mut::<MockIntList>(&mut list, TypeTag::ListChar);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_optimized_downcast_performance() {
+        // This test verifies the optimized helpers work correctly
+        use crate::vm::heap_object::{try_downcast_checked, try_downcast_checked_mut};
+
+        let list = MockIntList { elems: vec![1, 2, 3] };
+
+        // Read path
+        let read_result = try_downcast_checked::<MockIntList>(&list, TypeTag::ListInt);
+        assert!(read_result.is_some());
+
+        // Write path
+        let mut list2 = MockIntList { elems: vec![4, 5, 6] };
+        let write_result = try_downcast_checked_mut::<MockIntList>(&mut list2, TypeTag::ListInt);
+        assert!(write_result.is_some());
+        write_result.unwrap().elems.push(7);
+        assert_eq!(list2.elems, vec![4, 5, 6, 7]);
     }
 }
