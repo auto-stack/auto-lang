@@ -1,6 +1,6 @@
 use auto_lang::parser::Parser as AutoParser;
 use auto_lang::vm::codegen::Codegen;
-use auto_lang::vm::engine::BigVM;
+use auto_lang::vm::engine::AutoVM;
 use auto_lang::vm::native_registry::register_builtin_natives;
 use auto_lang::vm::virt_memory::VirtualFlash;
 use clap::Parser;
@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
         .parse()
         .map_err(|e| anyhow::anyhow!("Parse error: {:?}", e))?;
 
-    // 2. Compile to BigVM Bytecode
+    // 2. Compile to AutoVM Bytecode
     let mut codegen = Codegen::new();
     for stmt in code.stmts {
         codegen
@@ -68,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
 
     // 4. Initialize VM
     let flash = VirtualFlash::new_with_code(codegen.code);
-    let mut vm = BigVM::new(flash, args.memory);
+    let mut vm = AutoVM::new(flash, args.memory);
     vm.load_strings(codegen.strings);
 
     // 5. Find entry point and run

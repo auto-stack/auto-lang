@@ -96,8 +96,8 @@ enum OutputFormat {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    #[command(about = "AutoLang REPL")]
-    Repl,
+    #[command(about = "AutoLang REPL (deprecated - uses TreeWalker Interpreter)")]
+    OldRepl,
     #[command(about = "Parse Auto to JSON")]
     Parse { code: String },
     #[command(about = "Run Auto Script")]
@@ -184,7 +184,7 @@ fn main() -> Result<()> {
             })?;
             println!("{}", result);
         }
-        Some(Commands::Repl) => {
+        Some(Commands::OldRepl) => {
             repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
         }
         Some(Commands::Config { path }) => {
@@ -249,7 +249,8 @@ fn main() -> Result<()> {
             cmd_a2c_stdlib::run()?;
         }
         None => {
-            repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
+            // Default: Use BigVM REPL (Plan 068 Phase 9.5)
+            auto_lang::autovm_repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
         }
     }
 

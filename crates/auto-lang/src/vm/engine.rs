@@ -67,7 +67,7 @@ pub enum VMError {
     RuntimeError(String),
 }
 
-pub struct BigVM {
+pub struct AutoVM {
     pub flash: Arc<VirtualFlash>,
     pub native_interface: Arc<NativeInterface>,
     /// String constant pool (Plan 073: Made mutable for runtime string field access)
@@ -108,7 +108,7 @@ pub struct BigVM {
     pub heap_object_id_gen: AtomicU64,
 }
 
-impl BigVM {
+impl AutoVM {
     pub fn new(flash: VirtualFlash, _ram_size: usize) -> Self {
         let mut native_interface = NativeInterface::new();
         native_interface.register_std_shims();
@@ -156,7 +156,7 @@ impl BigVM {
     ///
     /// ```no_run
     /// use auto_lang::universe::ListData;
-    /// use auto_lang::vm::engine::BigVM;
+    /// use auto_lang::vm::engine::AutoVM;
     ///
     /// let mut list: ListData<i32> = ListData::new();
     /// list.push(1);
@@ -524,7 +524,7 @@ impl BigVM {
                     let range_value = auto_val::Value::Range(start, end);
 
                     // For now, we need to push a representation of the range onto the stack
-                    // Since BigVM stack only supports i32, we'll encode the range as a special value
+                    // Since AutoVM stack only supports i32, we'll encode the range as a special value
                     // Format: Encode as i32 with a marker (for simplicity, use start value for now)
                     // TODO: Add proper Value support for ranges in stack
 
@@ -1599,37 +1599,54 @@ impl BigVM {
                 }
 
                 // === Local Variables ===
+                //
+                // Stack frame layout (Plan 080):
+                //   [..., ret_ip, old_bp, local0, local1, ..., temps...]
+                //                     bp
+                //   Local variables are at bp+1, bp+2, ... (not bp+0!)
+                //
+                // For main task (bp=1):
+                //   [unused, local0, local1, ..., temps...]
+                //      bp-1     bp     bp+1
+                //
                 OpCode::LOAD_LOCAL => {
                     let idx = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
-                    let val = task.ram.read_i32(task.bp + idx);
+                    // Load from bp+1+idx (bp+1 is first local variable)
+                    let val = task.ram.read_i32(task.bp + 1 + idx);
                     task.ram.push_i32(val);
                 }
                 OpCode::STORE_LOCAL => {
                     let idx = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
                     let val = task.ram.pop_i32();
-                    task.ram.write_i32(task.bp + idx, val);
+                    // Store to bp+1+idx (bp+1 is first local variable)
+                    task.ram.write_i32(task.bp + 1 + idx, val);
                 }
                 OpCode::LOAD_LOC_0 => {
-                    let val = task.ram.read_i32(task.bp + 0);
-                    task.ram.push_i32(val);
-                }
-                OpCode::LOAD_LOC_1 => {
+                    // Load from bp+1 (first local variable)
                     let val = task.ram.read_i32(task.bp + 1);
                     task.ram.push_i32(val);
                 }
-                OpCode::LOAD_LOC_2 => {
+                OpCode::LOAD_LOC_1 => {
+                    // Load from bp+2 (second local variable)
                     let val = task.ram.read_i32(task.bp + 2);
                     task.ram.push_i32(val);
                 }
-                OpCode::STORE_LOC_0 => {
-                    let val = task.ram.pop_i32();
-                    task.ram.write_i32(task.bp + 0, val);
+                OpCode::LOAD_LOC_2 => {
+                    // Load from bp+3 (third local variable)
+                    let val = task.ram.read_i32(task.bp + 3);
+                    task.ram.push_i32(val);
                 }
-                OpCode::STORE_LOC_1 => {
+                OpCode::STORE_LOC_0 => {
+                    // Store to bp+1 (first local variable)
                     let val = task.ram.pop_i32();
                     task.ram.write_i32(task.bp + 1, val);
+                }
+                OpCode::STORE_LOC_1 => {
+                    // Store to bp+2 (second local variable)
+                    let val = task.ram.pop_i32();
+                    task.ram.write_i32(task.bp + 2, val);
                 }
 
                 // === Stack ===

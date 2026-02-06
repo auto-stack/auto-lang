@@ -37,7 +37,7 @@ struct TypeInfo {
     pub member_names: Vec<String>,  // Member names in order
 }
 
-/// Codegen: Compiles AST directly to BigVM Bytecode
+/// Codegen: Compiles AST directly to AutoVM Bytecode
 pub struct Codegen {
     pub code: Vec<u8>,
     pub exports: HashMap<String, u32>,
@@ -285,6 +285,10 @@ impl Codegen {
 
                 // Store the value into the local variable
                 self.emit_store_loc(var_index);
+
+                // Plan 080: DON'T load the value back to stack
+                // This avoids overlapping variable storage and stack
+                // REPL will display the value from the expression result on stack
             }
             Stmt::Return(expr) => {
                 // Compile expression to leave result on stack
@@ -613,7 +617,7 @@ impl Codegen {
                         self.emit_load_loc(iter_index); // Load iterator
 
                         // Call next() method - this is a method call on the iterator
-                        // For BigVM, we need to call this as a native function
+                        // For AutoVM, we need to call this as a native function
                         // iterator.next() should be compiled as a method call
                         // For now, we'll emit a CALL_NAT instruction for "Iterator.next"
 
@@ -1319,7 +1323,7 @@ impl Codegen {
                                     self.compile_expr(expr)?;
                                 }
                                 _ => {
-                                    unimplemented!("Named arguments not supported in BigVM yet")
+                                    unimplemented!("Named arguments not supported in AutoVM yet")
                                 }
                             }
                         }
@@ -1374,7 +1378,7 @@ impl Codegen {
                             crate::ast::Arg::Pos(expr) => {
                                 self.compile_expr(expr)?;
                             }
-                            _ => unimplemented!("Named arguments not supported in BigVM yet"),
+                            _ => unimplemented!("Named arguments not supported in AutoVM yet"),
                         }
                     }
                 }
@@ -2643,6 +2647,48 @@ mod tests {
         assert_eq!(codegen.code[0], OpCode::CONST_F32 as u8);
         assert_eq!(codegen.code[5], OpCode::CONST_F64 as u8);
         assert_eq!(codegen.code[14], OpCode::ADD_D as u8);
+    }
+
+    #[test]
+    fn test_codegen_variable_lookup_persists_after_code_clear() {
+        use crate::ast::{Name, Type, StoreKind};
+
+        let mut codegen = Codegen::new();
+
+        // Compile: let x = 5
+        let stmt = Stmt::Store(crate::ast::Store {
+            kind: StoreKind::Let,
+            name: Name::from("x"),
+            ty: Type::Unknown,
+            expr: Expr::Int(5),
+        });
+        codegen.compile_stmt(&stmt).unwrap();
+
+        // Verify variable is in scope
+        assert_eq!(codegen.lookup_var("x"), Some(0));
+        assert_eq!(codegen.scope_stack.last().unwrap().len(), 1);
+
+        // Clear code (simulate REPL behavior)
+        codegen.code.clear();
+
+        // Verify variable lookup still works after clear
+        assert_eq!(codegen.lookup_var("x"), Some(0));
+        assert_eq!(codegen.scope_stack.last().unwrap().len(), 1);
+
+        // Compile: x + 1
+        let expr = Expr::Bina(
+            Box::new(Expr::Ident(Name::from("x"))),
+            Op::Add,
+            Box::new(Expr::Int(1)),
+        );
+        codegen.compile_expr(&expr).unwrap();
+
+        // Verify bytecode contains:
+        // LOAD_LOC_0 (0x10) - load x
+        // CONST_I32 1 (0x01 + 4 bytes)
+        // ADD_I (0x30)
+        assert_eq!(codegen.code[0], OpCode::LOAD_LOC_0 as u8);
+        assert_eq!(codegen.code[1], OpCode::CONST_I32 as u8);
     }
 }
 

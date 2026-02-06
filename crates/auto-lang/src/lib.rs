@@ -1,12 +1,13 @@
 pub mod ast;
 pub mod atom;
 pub mod atom_error;
+pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
 pub mod compile;
 pub mod config;
 pub mod database;
 pub mod dep;
 pub mod error;
-// Plan 073 Phase 9.3: Execution engine selection (BigVM vs Evaluator)
+// Plan 073 Phase 9.3: Execution engine selection (AutoVM vs Evaluator)
 pub mod execution_engine;
 pub mod eval;
 pub mod hash;
@@ -22,6 +23,7 @@ pub mod ownership;
 pub mod parser;
 pub use parser::Parser;
 pub mod patch;
+pub mod autovm_repl;
 pub mod repl;
 pub mod runtime;
 pub mod scope;
@@ -70,13 +72,25 @@ pub fn get_error_limit() -> usize {
     ERROR_LIMIT.load(Ordering::SeqCst)
 }
 
+/// Run AutoLang code using the default execution engine
+///
+/// **Plan 073 Phase 9.3**: Default engine is AutoVM (faster bytecode VM)
+/// Falls back to Evaluator (TreeWalker) if AutoVM is not available
+///
+/// # Environment Variable
+/// Set `AUTO_EXECUTION_ENGINE=bigvm` or `=evaluator` to override
+///
+/// # Examples
+/// ```ignore
+/// let result = run("1 + 2").unwrap();  // Returns "3"
+/// ```
 pub fn run(code: &str) -> AutoResult<String> {
     // Plan 073 Phase 9.3: Use execution engine selector
-    // Default is BigVM (faster), with Evaluator as fallback
+    // Default is AutoVM (faster), with Evaluator as fallback
     let engine = execution_engine::ExecutionEngine::get();
 
     #[cfg(feature = "use-bigvm")]
-    if matches!(engine, execution_engine::ExecutionEngine::BigVM) {
+    if matches!(engine, execution_engine::ExecutionEngine::AutoVM) {
         return execution_engine::execute_with_engine(engine, code);
     }
 
@@ -91,10 +105,98 @@ pub fn run(code: &str) -> AutoResult<String> {
     Ok(interpreter.result.repr().to_string())
 }
 
+/// Run AutoLang code using AutoVM (bytecode VM)
+///
+/// **Plan 068 Phase 9**: Primary execution engine for AutoLang
+///
+/// This function compiles AutoLang code to ABC bytecode and executes it
+/// on the AutoVM virtual machine. AutoVM is faster than the evaluator and
+/// provides consistent behavior across PC and MCU environments.
+///
+/// # Examples
+/// ```ignore
+/// let result = run_autovm("1 + 2").unwrap();  // Returns "3"
+/// ```
+pub fn run_autovm(code: &str) -> AutoResult<String> {
+    // Create tokio runtime for async execution
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        execute_autovm(code).await
+    })
+}
+
+/// Internal AutoVM execution function (async)
+async fn execute_autovm(code: &str) -> AutoResult<String> {
+    use crate::vm::codegen::Codegen;
+    use crate::vm::engine::AutoVM;
+    use crate::vm::opcode::OpCode;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    // 1. Parse the code
+    let mut parser = Parser::from(code);
+    let ast = parser.parse()?;
+
+    // 2. Compile to bytecode
+    let mut codegen = Codegen::new();
+    for stmt in ast.stmts {
+        codegen.compile_stmt(&stmt)?;
+    }
+
+    // Add explicit HALT at the end
+    codegen.code.push(OpCode::HALT as u8);
+
+    // 3. Perform linking (resolve function calls)
+    let strings = codegen.strings.clone();
+    for reloc in &codegen.relocs {
+        if let Some(&addr) = codegen.exports.get(&reloc.symbol_name) {
+            let bytes = addr.to_le_bytes();
+            let offset = reloc.offset as usize;
+            for (i, b) in bytes.iter().enumerate() {
+                codegen.code[offset + i] = *b;
+            }
+        } else {
+            return Err(crate::error::AutoError::Msg(format!(
+                "Undefined symbol: {}", reloc.symbol_name
+            )));
+        }
+    }
+
+    // 4. Load into VM
+    let flash = VirtualFlash::new_with_code(codegen.code);
+    let mut vm = AutoVM::new(flash, 1024); // 1KB RAM
+    vm.load_strings(strings);
+
+    // 5. Execute
+    let task_id = vm.spawn_task(0, 1024);
+    vm.run_task_loop().await;
+
+    // 6. Get result from stack
+    if let Some(task_arc) = vm.tasks.get(&task_id).map(|r| r.value().clone()) {
+        let mut task = task_arc.lock().await;
+
+        if task.ram.sp == 0 {
+            return Ok("".to_string());
+        }
+
+        let result = task.ram.pop_i32();
+        Ok(format!("{}", result))
+    } else {
+        Err(crate::error::AutoError::Msg(
+            "Task not found after execution".to_string()
+        ))
+    }
+}
+
 /// Run code and collect all errors during parsing
+///
+/// **Deprecated**: This function uses the TreeWalker evaluator, which is slower than AutoVM.
+/// Use `run()` or `run_autovm()` instead for better performance.
+///
+/// **Plan 068 Phase 9**: Evaluator is deprecated in favor of AutoVM
 ///
 /// This function enables error recovery to collect multiple syntax errors
 /// instead of aborting on the first error.
+#[deprecated(since = "0.9.0", note = "Use run() or run_autovm() instead (Plan 068 Phase 9)")]
 pub fn run_with_errors(code: &str) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::new();
     // Enable error recovery
@@ -103,6 +205,17 @@ pub fn run_with_errors(code: &str) -> AutoResult<String> {
     Ok(interpreter.result.repr().to_string())
 }
 
+/// Run code with a custom scope
+///
+/// **Deprecated**: This function uses the TreeWalker evaluator with Universe, which is deprecated.
+/// Use CompileSession + Database instead (see Plan 064).
+///
+/// **Plan 064**: Universe is split into Database + ExecutionEngine
+/// **Plan 068 Phase 9**: Evaluator is deprecated in favor of AutoVM
+#[deprecated(
+    since = "0.9.0",
+    note = "Use run_with_session() with CompileSession instead (Plan 064 + Plan 068 Phase 9)"
+)]
 pub fn run_with_scope(code: &str, scope: Universe) -> AutoResult<String> {
     let mut interpreter = interp::Interpreter::with_scope(scope);
     interpreter.interpret(code)?;
