@@ -1,12 +1,12 @@
-// Plan 073 Stage B: BigVM Type System Integration Tests
+// Plan 073 Stage B: AutoVM Type System Integration Tests
 //
-// Comprehensive tests for float, double, i64, u64 types in BigVM
+// Comprehensive tests for float, double, i64, u64 types in AutoVM
 // These tests verify that code with these types compiles correctly to bytecode
 
 use crate::vm::codegen::Codegen;
 use crate::Parser;
 
-/// Helper function to compile AutoLang code to BigVM bytecode
+/// Helper function to compile AutoLang code to AutoVM bytecode
 fn compile_to_bytecode(source: &str) -> Vec<u8> {
     // Parse the source code
     let mut parser = Parser::from(source);

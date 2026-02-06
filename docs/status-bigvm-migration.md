@@ -1,7 +1,7 @@
-# BigVM (AutoVM) 迁移进度报告
+# AutoVM (AutoVM) 迁移进度报告
 
 **生成时间**: 2025-02-04
-**目标**: 用 BigVM 完全替代 evaluator (eval.rs)
+**目标**: 用 AutoVM 完全替代 evaluator (eval.rs)
 **当前状态**: 🟡 进展中 - 约 40-50% 完成
 
 ---
@@ -12,8 +12,8 @@
 | 组件 | 行数 | 说明 |
 |------|------|------|
 | **eval.rs** | 6,143 行 | TreeWalker 解释器（待替代） |
-| **BigVM engine.rs** | 882 行 | 字节码 VM 执行引擎 |
-| **BigVM codegen.rs** | 918 行 | 字节码生成器 |
+| **AutoVM engine.rs** | 882 行 | 字节码 VM 执行引擎 |
+| **AutoVM codegen.rs** | 918 行 | 字节码生成器 |
 | **总计** | 7,943 行 | - |
 
 **完成度**: 约 40-50% (基于功能支持对比)
@@ -48,7 +48,7 @@
 
 ### ✅ Phase 5: 集成
 - ✅ auto-vm 可执行文件
-- ✅ 测试基础设施 (tests_bigvm.rs)
+- ✅ 测试基础设施 (tests_autovm.rs)
 
 ### ✅ Phase 6: 数据结构与堆
 - ✅ LinearAllocator (RAII 风格内存管理)
@@ -100,16 +100,16 @@
 ### 🟡 Phase 9: 弃用与替换 - 高优先级
 **状态**: 未开始
 **需要**:
-- [ ] **9.1 性能基准测试**: BigVM vs Evaler 性能对比
+- [ ] **9.1 性能基准测试**: AutoVM vs Evaler 性能对比
 - [ ] **9.2 功能对等检查**: 确保所有测试通过
-- [ ] **9.3 切换**: 更新 auto-shell 和 auto-run 默认使用 BigVM
+- [ ] **9.3 切换**: 更新 auto-shell 和 auto-run 默认使用 AutoVM
 
 **估计工作量**: 2-3 天
 
 ---
 
 ### 🟡 表达式类型支持差距
-**当前 BigVM codegen.rs 支持** (44 个 Expr:: 匹配):
+**当前 AutoVM codegen.rs 支持** (44 个 Expr:: 匹配):
 ```rust
 ✅ Int, Bool, Str
 ✅ Ident, GenName
@@ -122,7 +122,7 @@
 ✅ Block (代码块)
 ```
 
-**eval.rs 支持但 BigVM 不支持** (估计 30+ 个):
+**eval.rs 支持但 AutoVM 不支持** (估计 30+ 个):
 ```rust
 ❌ Uint, I8, U8, I64, Byte
 ❌ Float, Double
@@ -148,7 +148,7 @@
 ---
 
 ### 🟡 语句类型支持差距
-**当前 BigVM codegen.rs 支持** (7 个 Stmt:: 匹配):
+**当前 AutoVM codegen.rs 支持** (7 个 Stmt:: 匹配):
 ```rust
 ✅ Expr (表达式语句)
 ✅ Block (代码块)
@@ -158,7 +158,7 @@
 ✅ Return (返回语句)
 ```
 
-**eval.rs 支持但 BigVM 不支持** (11 个):
+**eval.rs 支持但 AutoVM 不支持** (11 个):
 ```rust
 ❌ For (for 循环)
 ❌ Is (模式匹配 is 语句)
@@ -183,7 +183,7 @@
 ---
 
 ### 🟡 操作符支持差距
-**BigVM engine.rs 支持的操作符**:
+**AutoVM engine.rs 支持的操作符**:
 ```rust
 ✅ 算术: Add, Sub, Mul, Div, Mod
 ✅ 比较: Eq, Ne, Lt, Gt, Le, Ge
@@ -191,9 +191,9 @@
 ✅ 位运算: (未明确列出，可能部分支持)
 ```
 
-**eval.rs 支持但 BigVM 不支持**:
+**eval.rs 支持但 AutoVM 不支持**:
 ```rust
-❌ 逻辑: And, Or (Plan 072 已实现，但 BigVM 未迁移)
+❌ 逻辑: And, Or (Plan 072 已实现，但 AutoVM 未迁移)
 ❌ 位运算: BitAnd, BitOr, BitXor, Shl, Shr
 ❌ 其他: Range, RangeEq, QuestionMark, QuestionQuestion
 ```
@@ -203,7 +203,7 @@
 ## 四、关键技术债务
 
 ### 1. 闭包与 Upvalues (Phase 7.1)
-**问题**: evaluator 支持闭包变量捕获，BigVM 不支持
+**问题**: evaluator 支持闭包变量捕获，AutoVM 不支持
 **影响**:
 - 阻塞 list.map(), list.filter() 等高级功能
 - 阻闭函数式编程测试通过
@@ -219,7 +219,7 @@
 ---
 
 ### 2. 类型系统完整性
-**问题**: BigVM 只支持部分基础类型 (int, bool, str)
+**问题**: AutoVM 只支持部分基础类型 (int, bool, str)
 **缺失类型**:
 - 浮点数: float, double (占 evaluator 测试约 15%)
 - 整数变体: uint, i8, u8, i64 (占约 10%)
@@ -231,7 +231,7 @@
 ---
 
 ### 3. 借用系统 (Plan 052)
-**问题**: BigVM 不支持引用、借用、移动语义
+**问题**: AutoVM 不支持引用、借用、移动语义
 **缺失功能**:
 - `&T` (View) - 不可变借用
 - `&mut T` (Mut) - 可变借用
@@ -244,7 +244,7 @@
 ---
 
 ### 4. May/Question 系统
-**问题**: BigVM 不支持 `??` 和 `.?` 操作符
+**问题**: AutoVM 不支持 `??` 和 `.?` 操作符
 **缺失功能**:
 - `??` (NullCoalesce) - 空值合并
 - `.?` (ErrorPropagate) - 错误传播
@@ -256,7 +256,7 @@
 ---
 
 ### 5. 高级数据结构
-**问题**: BigVM List 支持有限，缺少其他集合
+**问题**: AutoVM List 支持有限，缺少其他集合
 **缺失**:
 - HashMap/KV 存储
 - HashSet
@@ -267,7 +267,7 @@
 ---
 
 ### 6. 控制流完整性
-**问题**: BigVM 缺少循环和模式匹配
+**问题**: AutoVM 缺少循环和模式匹配
 **缺失**:
 - For 循环 (For 语句)
 - Is 模式匹配 (Is 语句)
@@ -279,7 +279,7 @@
 
 ## 五、功能支持对比矩阵
 
-| 功能类别 | eval.rs | BigVM | 差距 | 优先级 |
+| 功能类别 | eval.rs | AutoVM | 差距 | 优先级 |
 |---------|---------|--------|------|--------|
 | **基础类型** | | | | |
 | int, bool, str | ✅ | ✅ | - | - |
@@ -450,7 +450,7 @@
 
 **报告生成**: 2025-02-04
 **相关文档**:
-- Plan 068: AutoVM (BigVM) Implementation
-- Plan 070: BigVM Iterator
-- Plan 071: BigVM Closures
+- Plan 068: AutoVM (AutoVM) Implementation
+- Plan 070: AutoVM Iterator
+- Plan 071: AutoVM Closures
 - Plan 064: Split Universe

@@ -1,6 +1,6 @@
-// Plan 071: BigVM Closure Tests
+// Plan 071: AutoVM Closure Tests
 //
-// This module contains integration tests for BigVM closure support.
+// This module contains integration tests for AutoVM closure support.
 
 #[cfg(test)]
 mod tests {

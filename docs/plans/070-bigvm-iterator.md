@@ -1,4 +1,4 @@
-# Plan 070: BigVM Iterator Implementation
+# Plan 070: AutoVM Iterator Implementation
 
 **Status**: ✅ Complete (All Phases)
 **Created**: 2025-02-03
@@ -12,7 +12,7 @@
 **Phase 1 Complete**:
 - ✅ Implemented `List.iter()` native function
 - ✅ Implemented `Iterator.next()` native function
-- ✅ Added iterator storage to BigVM engine
+- ✅ Added iterator storage to AutoVM engine
 - ✅ Registered functions in native registry
 - ✅ Fixed codegen to initialize native registry
 - ✅ All basic iterator tests passing
@@ -50,7 +50,7 @@ Find: [10, 20, 30] → 10 (first element)
 
 ## 1. Objective
 
-Implement iterator support for BigVM to enable list iteration, map, filter, and other functional programming patterns.
+Implement iterator support for AutoVM to enable list iteration, map, filter, and other functional programming patterns.
 
 ## 2. Requirements
 
@@ -88,7 +88,7 @@ struct ListIterator {
 ### 3.3 Memory Management
 
 For MVP (Phase 1):
-- Iterators stored in `HashMap<u64, ListIterator>` in BigVM
+- Iterators stored in `HashMap<u64, ListIterator>` in AutoVM
 - Iterator IDs allocated sequentially
 - **No automatic cleanup** (leaks accepted for now)
 
@@ -103,7 +103,7 @@ Future improvements:
 **Goal**: Support `iter()` and `next()`
 
 - [x] **4.1 Iterator Storage**
-    - Add `iterators: DashMap<u32, ListIterator>` to BigVM
+    - Add `iterators: DashMap<u32, ListIterator>` to AutoVM
     - Add `iterator_id_gen: AtomicU32` for ID generation
 
 - [x] **4.2 Native Functions**
@@ -232,7 +232,7 @@ STORE_LOC_1              // Store in 'first'
 4. Multiple iterators on same list (concurrent iteration)
 
 ### Success Criteria
-- [x] `test_list_iter` passes with BigVM
+- [x] `test_list_iter` passes with AutoVM
 - [ ] `test_list_map_double` passes
 - [ ] `test_list_map_square` passes
 - [ ] No memory leaks (or acceptable for MVP)

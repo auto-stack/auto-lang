@@ -1,5 +1,5 @@
 // Plan 073 Phase 9.1: Performance Benchmarking
-// Compares BigVM vs Evaluator performance
+// Compares AutoVM vs Evaluator performance
 //
 // Run with: cargo run --example perf_benchmark
 
@@ -9,11 +9,11 @@ use std::time::Instant;
 struct BenchmarkResult {
     name: String,
     evaluator_time_us: u128,
-    bigvm_time_us: u128,
+    autovm_time_us: u128,
     speedup: f64,
 }
 
-/// Run a benchmark comparing evaluator vs BigVM
+/// Run a benchmark comparing evaluator vs AutoVM
 fn run_benchmark(name: &str, source: &str) -> BenchmarkResult {
     use auto_lang::{run, CompileMode, run_with_mode};
 
@@ -30,7 +30,7 @@ fn run_benchmark(name: &str, source: &str) -> BenchmarkResult {
     }
     let eval_avg = eval_times.iter().sum::<u128>() / eval_times.len() as u128;
 
-    // Benchmark BigVM (average of 5 runs)
+    // Benchmark AutoVM (average of 5 runs)
     let mut vm_times = Vec::new();
     for _ in 0..5 {
         let start = Instant::now();
@@ -49,7 +49,7 @@ fn run_benchmark(name: &str, source: &str) -> BenchmarkResult {
     BenchmarkResult {
         name: name.to_string(),
         evaluator_time_us: eval_avg,
-        bigvm_time_us: vm_avg,
+        autovm_time_us: vm_avg,
         speedup,
     }
 }
@@ -58,7 +58,7 @@ fn main() {
     println!();
     println!("╔════════════════════════════════════════════════════════════════╗");
     println!("║         Plan 073 Phase 9.1: Performance Benchmarking          ║");
-    println!("║              BigVM vs Evaluator Performance                   ║");
+    println!("║              AutoVM vs Evaluator Performance                   ║");
     println!("╚════════════════════════════════════════════════════════════════╝");
     println!();
 
@@ -149,7 +149,7 @@ fn main() -> int {
 
     println!();
     println!("┌────────────────────────────────┬──────────────┬──────────────┬──────────┐");
-    println!("│ Benchmark                     │ Evaluator    │ BigVM        │ Speedup  │");
+    println!("│ Benchmark                     │ Evaluator    │ AutoVM        │ Speedup  │");
     println!("│                               │ (μs)         │ (μs)         │ (x)      │");
     println!("├────────────────────────────────┼──────────────┼──────────────┼──────────┤");
 
@@ -157,7 +157,7 @@ fn main() -> int {
         println!("│ {:30}│ {:12} │ {:12} │ {:8.2} │",
             result.name,
             result.evaluator_time_us,
-            result.bigvm_time_us,
+            result.autovm_time_us,
             result.speedup
         );
     }
@@ -200,20 +200,20 @@ fn main() -> int {
     println!();
 
     if avg_speedup >= 1.0 {
-        println!("✅ RESULT: BigVM is faster than or equal to Evaluator");
+        println!("✅ RESULT: AutoVM is faster than or equal to Evaluator");
         println!("   The bytecode VM is performing well!");
     } else if avg_speedup >= 0.5 {
-        println!("⚠️  RESULT: BigVM is moderately slower than Evaluator");
+        println!("⚠️  RESULT: AutoVM is moderately slower than Evaluator");
         println!("   Consider optimization opportunities.");
     } else {
-        println!("❌ RESULT: BigVM is significantly slower than Evaluator");
+        println!("❌ RESULT: AutoVM is significantly slower than Evaluator");
         println!("   Optimization is needed before deprecating evaluator.");
     }
 
     println!();
     println!("💡 Memory Usage:");
     println!("   Evaluator: TreeWalker interpreter (high memory overhead)");
-    println!("   BigVM:     Bytecode VM (lower memory footprint)");
+    println!("   AutoVM:     Bytecode VM (lower memory footprint)");
     println!("   Note: Actual memory profiling requires external tools");
     println!();
 }

@@ -1,15 +1,15 @@
-# Plan 076: BigVM Generic Type Support
+# Plan 076: AutoVM Generic Type Support
 
 **Status**: ✅ **COMPLETE** - All 5 Phases Complete (100%)
 **Created**: 2026-02-06
-**Priority**: **MEDIUM** - Completes BigVM parity with Evaluator
+**Priority**: **MEDIUM** - Completes AutoVM parity with Evaluator
 **Dependencies**: Plan 052 ✅, Plan 057 ✅, Plan 073 ✅
 
 ---
 
 ## Objective
 
-Add full generic type support to BigVM bytecode compiler and runtime, enabling:
+Add full generic type support to AutoVM bytecode compiler and runtime, enabling:
 - Type parameter parsing and compilation
 - Monomorphization (generate specialized bytecode for each type)
 - Generic `List<T>` and `List<T, S>` support in bytecode
@@ -31,9 +31,9 @@ let heap_list List<int, Heap> = List.new()
 let inline_list List<int, InlineInt64> = List.new()
 ```
 
-### ❌ What Doesn't Work (BigVM)
+### ❌ What Doesn't Work (AutoVM)
 ```auto
-// BigVM codegen doesn't parse type parameters
+// AutoVM codegen doesn't parse type parameters
 let list List<int> = List.new()  // ❌ Syntax error
 
 // No monomorphization
@@ -44,7 +44,7 @@ let str_list List<string> = List.new() // Can't generate string-specialized byte
 let list List<int, Heap> = List.new()  // ❌ Not implemented
 ```
 
-### ⚠️ Current BigVM Limitations
+### ⚠️ Current AutoVM Limitations
 1. **No Type Parameter Parsing**: Codegen doesn't handle `List<T>` syntax
 2. **No Monomorphization Pass**: Can't generate specialized bytecode
 3. **No Generic Opcodes**: Only native function shims (CALL_NAT)
@@ -77,7 +77,7 @@ let list List<int, Heap> = List.new()  // ❌ Not implemented
 │   - LIST_PUSH_INT                                           │
 │   - LIST_POP_INT                                            │
 ├─────────────────────────────────────────────────────────────┤
-│ BigVM Runtime (extended)                                     │
+│ AutoVM Runtime (extended)                                     │
 │ → Execute typed opcodes                                     │
 │ → Type-specific storage (inline ints, heap strings)         │
 └─────────────────────────────────────────────────────────────┘
@@ -89,7 +89,7 @@ let list List<int, Heap> = List.new()  // ❌ Not implemented
 
 ### Phase 1: Type Parameter Parsing (Week 1)
 
-**Goal**: Extend BigVM codegen to parse and track type parameters
+**Goal**: Extend AutoVM codegen to parse and track type parameters
 
 **Tasks**:
 1. **Add Type Parameter Tracking**
@@ -159,7 +159,7 @@ let str_list List<string> = List.new()  // → CREATE_LIST_STR
 
 ### Phase 3: Generic Bytecode Opcodes (Week 3)
 
-**Goal**: Add type-specific opcodes to BigVM
+**Goal**: Add type-specific opcodes to AutoVM
 
 **Tasks**:
 1. **List Creation Opcodes**
@@ -197,7 +197,7 @@ assert!(module.code.contains(&0x83)); // LIST_PUSH_INT
 
 ### Phase 4: Storage Strategy Runtime (Week 4)
 
-**Goal**: Support `List<T, S>` storage strategies in BigVM
+**Goal**: Support `List<T, S>` storage strategies in AutoVM
 
 **Tasks**:
 1. **Storage Strategy VM Objects**
@@ -214,7 +214,7 @@ assert!(module.code.contains(&0x83)); // LIST_PUSH_INT
 3. **Capacity Management**
    - `try_grow()` for heap storage
    - Capacity check for inline storage
-   - File: `src/vm/list.rs` (extend to BigVM)
+   - File: `src/vm/list.rs` (extend to AutoVM)
 
 **Deliverables**:
 - Storage strategy runtime objects
@@ -235,7 +235,7 @@ inline_list.push(100) // Works if capacity < 64
 
 ### Phase 5: Integration & Testing (Week 5)
 
-**Goal**: Full integration with existing BigVM infrastructure
+**Goal**: Full integration with existing AutoVM infrastructure
 
 **Tasks**:
 1. **Codegen Integration**
@@ -244,12 +244,12 @@ inline_list.push(100) // Works if capacity < 64
    - File: `src/lib.rs`
 
 2. **Feature Parity Tests**
-   - Port Evaluator list tests to BigVM
+   - Port Evaluator list tests to AutoVM
    - Test monomorphization (multiple instantiations)
-   - File: `src/tests/bigvm_generic_tests.rs` (new)
+   - File: `src/tests/autovm_generic_tests.rs` (new)
 
 3. **Performance Benchmarks**
-   - Compare BigVM `List<int>` vs Evaluator `List`
+   - Compare AutoVM `List<int>` vs Evaluator `List`
    - Measure monomorphization overhead
    - Verify 10-20x speedup maintained
    - File: `examples/generic_perf_benchmark.rs`
@@ -260,8 +260,8 @@ inline_list.push(100) // Works if capacity < 64
 - Documentation updates
 
 **Success Criteria**:
-- All Evaluator `List<T>` tests pass in BigVM
-- Performance: BigVM ≥ 10x faster than Evaluator
+- All Evaluator `List<T>` tests pass in AutoVM
+- Performance: AutoVM ≥ 10x faster than Evaluator
 - Zero regressions in existing tests
 
 ---
@@ -309,7 +309,7 @@ inline_list.push(100)
 |------|--------|------------|
 | **Monomorphization code bloat** | High | Cache specialized bytecode, reuse when possible |
 | **Type explosion** (many instantiations) | Medium | Limit to used types, lazy specialization |
-| **Breaking existing code** | High | Feature flag: `bigvm-generics` (off by default) |
+| **Breaking existing code** | High | Feature flag: `autovm-generics` (off by default) |
 | **Complexity in codegen** | Medium | Separate monomorphization pass, clear API |
 
 ---
@@ -330,14 +330,14 @@ inline_list.push(100)
 ## Success Metrics
 
 **Functional**:
-- ✅ All Evaluator `List<T>` tests pass in BigVM
+- ✅ All Evaluator `List<T>` tests pass in AutoVM
 - ✅ Monomorphization generates correct bytecode
-- ✅ Storage strategies work in BigVM runtime
+- ✅ Storage strategies work in AutoVM runtime
 
 **Performance**:
-- ✅ BigVM `List<int>` ≥ 10x faster than Evaluator
+- ✅ AutoVM `List<int>` ≥ 10x faster than Evaluator
 - ✅ Monomorphization overhead < 5%
-- ✅ Zero regression in existing BigVM performance
+- ✅ Zero regression in existing AutoVM performance
 
 **Coverage**:
 - ✅ 20+ unit tests for monomorphization
@@ -358,11 +358,11 @@ inline_list.push(100)
 
 ### Alternative 3: Use Box<dyn Any> ❌
 - **Reason**: Dynamic dispatch would defeat performance goals
-- **Issue**: BigVM would lose 10-20x speedup advantage
+- **Issue**: AutoVM would lose 10-20x speedup advantage
 
 ### Alternative 4: Delegate to Evaluator ❌
 - **Reason**: Current approach (CALL_NAT shims)
-- **Issue**: No performance benefit, defeats purpose of BigVM
+- **Issue**: No performance benefit, defeats purpose of AutoVM
 
 ---
 
@@ -370,7 +370,7 @@ inline_list.push(100)
 
 - ✅ **Plan 052**: Storage-Based List (language feature) - COMPLETE
 - ✅ **Plan 057**: Generic Specs (type system) - COMPLETE
-- ✅ **Plan 073**: BigVM Migration (VM infrastructure) - COMPLETE
+- ✅ **Plan 073**: AutoVM Migration (VM infrastructure) - COMPLETE
 - ✅ **Plan 075**: Config/Template Modes (compilation modes) - COMPLETE
 
 ---
@@ -378,7 +378,7 @@ inline_list.push(100)
 ## Next Steps
 
 1. **Review and approve** this plan
-2. **Create feature flag**: `bigvm-generics` (disabled by default)
+2. **Create feature flag**: `autovm-generics` (disabled by default)
 3. **Start Phase 1**: Type parameter parsing
 4. **Weekly progress updates** in plan status
 
@@ -460,7 +460,7 @@ LIST_SET_INT = 0xA6,        // list_id, index: int, value: int -> void
 **Status**: ✅ COMPLETE
 **Files Created**:
 - `src/vm/list_storage.rs` (390 lines) - HeapStorage and InlineInt64Storage implementations
-- `src/vm/list_data.rs` (355 lines) - BigVMListStorage unified wrapper
+- `src/vm/list_data.rs` (355 lines) - AutoVMListStorage unified wrapper
 - `src/storage_strategy_tests.rs` (280 lines) - 26 unit tests
 
 **Files Modified**:
@@ -507,14 +507,14 @@ assert!(!inline_list.push(Value::Int(64)));    // Fails - capacity exceeded
 **Known Limitations**:
 - Evaluator tests for storage strategies need updating (14 tests failing)
 - These tests use old struct literal syntax, need migration to constructors
-- BigVM storage strategies are fully functional
+- AutoVM storage strategies are fully functional
 
 ---
 
 ### ✅ Phase 5: Integration & Testing (COMPLETE)
 **Status**: ✅ COMPLETE
 **Files Created**:
-- `src/bigvm_generic_integration_tests.rs` (370 lines) - 34 comprehensive integration tests
+- `src/autovm_generic_integration_tests.rs` (370 lines) - 34 comprehensive integration tests
 
 **Files Modified**:
 - `src/vm/monomorphize.rs` - Fixed `collect_monomorphizable_types()` to recursively collect from nested Lists
@@ -522,7 +522,7 @@ assert!(!inline_list.push(Value::Int(64)));    // Fails - capacity exceeded
 
 **Test Results**:
 - All 34 integration tests passing ✅
-- All 43 BigVM tests passing ✅
+- All 43 AutoVM tests passing ✅
 - Total: 93 generic-related tests passing
 - Zero compilation errors (126 warnings, 0 errors)
 
@@ -601,8 +601,8 @@ assert_eq!(mono.get_module("List_int").unwrap().bytecode[0], OpCode::CREATE_LIST
 
 **Known Limitations**:
 - 14 Evaluator tests for storage strategies need updating (use old struct literal syntax)
-- These are pre-existing tests unrelated to BigVM implementation
-- BigVM generic support is fully functional with 93 tests passing
+- These are pre-existing tests unrelated to AutoVM implementation
+- AutoVM generic support is fully functional with 93 tests passing
 
 ---
 
@@ -626,4 +626,4 @@ All 5 phases have been successfully implemented:
 - Storage strategies: Heap (unlimited) and InlineInt64 (64-element fixed)
 - Zero compilation errors, fully tested and documented
 
-**BigVM now has generic type support matching Evaluator functionality!**
+**AutoVM now has generic type support matching Evaluator functionality!**

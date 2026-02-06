@@ -9,7 +9,7 @@
 
 ## Objective
 
-Redesign BigVM's object storage architecture to:
+Redesign AutoVM's object storage architecture to:
 
 1. **Eliminate registry explosion** - Single unified registry for all heap objects
 2. **Enable generic `ListData<T>`** - Zero-overhead storage for primitive types
@@ -26,7 +26,7 @@ Redesign BigVM's object storage architecture to:
 **Problem 1: Registry Explosion**
 
 ```rust
-// Current BigVM engine:
+// Current AutoVM engine:
 pub struct Engine {
     pub lists: DashMap<u64, Arc<RwLock<ListData>>>,
     // Need to add for each new collection type:
@@ -89,7 +89,7 @@ pub struct Engine {
 ```rust
 use std::any::Any;
 
-/// Trait for all heap-allocated objects in BigVM
+/// Trait for all heap-allocated objects in AutoVM
 pub trait HeapObject: Any + Send + Sync {
     /// Get the type tag for runtime type checking
     fn type_tag(&self) -> TypeTag;
@@ -614,7 +614,7 @@ Key:
 ## Success Metrics
 
 **Functional**:
-- ✅ All existing BigVM tests pass
+- ✅ All existing AutoVM tests pass
 - ✅ No memory leaks (valgrind clean)
 - ✅ No data races (thread sanitizer clean)
 - ✅ Unified registry supports all existing types
@@ -814,7 +814,7 @@ pub objects: DashMap<u64, *mut ()>,
 
 ## Conclusion
 
-Plan 077 delivers a **major architectural improvement** to BigVM:
+Plan 077 delivers a **major architectural improvement** to AutoVM:
 
 **✅ Eliminates registry explosion** - Single unified registry for all types
 **✅ 6x memory improvement** - Zero-overhead generic storage
@@ -824,7 +824,7 @@ Plan 077 delivers a **major architectural improvement** to BigVM:
 
 **Recommendation**: **APPROVE** and implement Plan 077 immediately after Plan 076.
 
-The unified registry + generic `ListData<T>` design is a **game-changer** for BigVM's performance and scalability!
+The unified registry + generic `ListData<T>` design is a **game-changer** for AutoVM's performance and scalability!
 
 ---
 
@@ -1023,9 +1023,9 @@ OpCode::LIST_PUSH_INT => {
   - `shim_iterator_collect` - Collect elements into new list
   - `shim_iterator_reduce` - Reduce with accumulator
   - `shim_iterator_find` - Find first element
-- ✅ Removed `pub lists: DashMap<...>` field from BigVM struct
-- ✅ Removed `pub list_id_gen: AtomicU64` field from BigVM struct
-- ✅ Updated BigVM::new() constructor to remove field initialization
+- ✅ Removed `pub lists: DashMap<...>` field from AutoVM struct
+- ✅ Removed `pub list_id_gen: AtomicU64` field from AutoVM struct
+- ✅ Updated AutoVM::new() constructor to remove field initialization
 - ✅ Updated test: `test_engine_unified_registry_coexists_with_old_registries` → `test_engine_multiple_lists_coexist`
 
 **Test Results**:
@@ -1039,7 +1039,7 @@ OpCode::LIST_PUSH_INT => {
 - ✅ Type-safe downcasting for iterator operations
 - ✅ No references to `vm.lists` remain in codebase
 - ✅ `vm.list_id_gen` removed, all ID generation uses `heap_object_id_gen`
-- ✅ BigVM struct simplified (removed 2 fields)
+- ✅ AutoVM struct simplified (removed 2 fields)
 - ✅ Zero regressions in unified registry tests
 
 **Implementation Details**:
@@ -1290,7 +1290,7 @@ Registry read           <1 ns    DashMap lookup
 - ✅ **Unified registry operational** - Single registry for all heap objects
 - ✅ **Type-safe downcasting** - Runtime type tags + compile-time monomorphization
 - ✅ **17% faster downcast** - Optimized helpers (15ns) vs direct (18ns)
-- ✅ **Legacy registry removed** - BigVM simplified by 2 fields
+- ✅ **Legacy registry removed** - AutoVM simplified by 2 fields
 - ✅ **Zero regressions** - All 1251 tests passing
 - ✅ **Thread-safe** - Concurrent access verified with 10+ threads
 - ✅ **Production-ready** - 1350+ tests, comprehensive documentation
@@ -1304,11 +1304,11 @@ Registry read           <1 ns    DashMap lookup
 | Downcast speed | 18 ns | 15 ns | **17% faster** ✅ |
 | Registry scalability | N registries | 1 registry | **Infinite** ✅ |
 | Real workload speedup | 1.0x | 1.43x | **43% faster** ✅ |
-| BigVM struct size | 2 fields removed | Simplified | **Cleaner** ✅ |
+| AutoVM struct size | 2 fields removed | Simplified | **Cleaner** ✅ |
 
 **Project Status**: **PRODUCTION READY** 🚀
 
-The unified registry + generic `ListData<T>` design is a **game-changer** for BigVM's performance and scalability!
+The unified registry + generic `ListData<T>` design is a **game-changer** for AutoVM's performance and scalability!
 
 ---
 

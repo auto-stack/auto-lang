@@ -4,7 +4,7 @@
 
 AutoLang now supports two execution engines:
 
-1. **BigVM** (Bytecode VM) - **Default** ✅
+1. **AutoVM** (Bytecode VM) - **Default** ✅
    - Fast bytecode execution
    - 23.77x faster than Evaluator
    - Lower memory footprint
@@ -17,14 +17,14 @@ AutoLang now supports two execution engines:
 
 ## Compile-Time Selection
 
-### Default: BigVM Enabled
+### Default: AutoVM Enabled
 
-The BigVM is enabled by default via the `use-bigvm` feature flag in `Cargo.toml`:
+The AutoVM is enabled by default via the `use-autovm` feature flag in `Cargo.toml`:
 
 ```toml
 [features]
-default = ["with-file-history", "use-bigvm"]
-use-bigvm = []
+default = ["with-file-history", "use-autovm"]
+use-autovm = []
 ```
 
 ### To Use Evaluator (Legacy)
@@ -44,15 +44,15 @@ cargo run --features "use-evaluator"
 You can override the execution engine at runtime using an environment variable:
 
 ```bash
-# Use BigVM explicitly
-export AUTO_EXECUTION_ENGINE=bigvm
+# Use AutoVM explicitly
+export AUTO_EXECUTION_ENGINE=autovm
 auto run script.at
 
 # Use Evaluator explicitly
 export AUTO_EXECUTION_ENGINE=evaluator
 auto run script.at
 
-# Use VM (same as bigvm)
+# Use VM (same as autovm)
 export AUTO_EXECUTION_ENGINE=vm
 auto run script.at
 
@@ -68,11 +68,11 @@ auto run script.at
 ```rust
 use auto_lang::execution_engine::ExecutionEngine;
 
-// Get default engine (BigVM unless overridden)
+// Get default engine (AutoVM unless overridden)
 let engine = ExecutionEngine::get();
 
 // Or specify explicitly
-let engine = ExecutionEngine::BigVM;
+let engine = ExecutionEngine::AutoVM;
 
 // Execute code with selected engine
 let result = auto_lang::execution_engine::execute_with_engine(
@@ -86,10 +86,10 @@ let result = auto_lang::run("1 + 2")?;
 
 ### High-Level API (Recommended)
 
-The `run()`, `run_file()`, and related functions now automatically use BigVM:
+The `run()`, `run_file()`, and related functions now automatically use AutoVM:
 
 ```rust
-// These now use BigVM by default!
+// These now use AutoVM by default!
 let result = auto_lang::run("1 + 2")?;
 let result = auto_lang::run_file("script.at")?;
 let result = auto_lang::run_with_mode(
@@ -102,7 +102,7 @@ let result = auto_lang::run_with_mode(
 
 Based on Plan 073 Phase 9.1 benchmarks:
 
-| Benchmark | Evaluator (μs) | BigVM (μs) | Speedup |
+| Benchmark | Evaluator (μs) | AutoVM (μs) | Speedup |
 |-----------|----------------|-------------|---------|
 | Simple arithmetic | 14,132 | 345 | **40.96x** |
 | Complex arithmetic | 16,614 | 303 | **54.83x** |
@@ -111,13 +111,13 @@ Based on Plan 073 Phase 9.1 benchmarks:
 | Function calls 100 | 34,514 | 2,637 | **13.09x** |
 | **Average** | - | - | **23.77x** |
 
-**Conclusion**: BigVM is consistently 13-55x faster than the Evaluator!
+**Conclusion**: AutoVM is consistently 13-55x faster than the Evaluator!
 
 ## Migration Guide
 
 ### For Users
 
-**No changes needed!** The switch to BigVM is transparent:
+**No changes needed!** The switch to AutoVM is transparent:
 
 ```bash
 # Your existing commands still work, just faster now!
@@ -131,18 +131,18 @@ auto repl
 If you're using AutoLang as a library:
 
 ```rust
-// Old code (still works, now uses BigVM under the hood)
+// Old code (still works, now uses AutoVM under the hood)
 use auto_lang::run;
 let result = run("1 + 2")?;
 
 // New code (if you need to control the engine)
 use auto_lang::execution_engine::{ExecutionEngine, execute_with_engine};
-let result = execute_with_engine(ExecutionEngine::BigVM, "1 + 2")?;
+let result = execute_with_engine(ExecutionEngine::AutoVM, "1 + 2")?;
 ```
 
 ## Troubleshooting
 
-### Issue: Code works in Evaluator but not in BigVM
+### Issue: Code works in Evaluator but not in AutoVM
 
 **Solution**: Report the issue! We're tracking the remaining gaps in Plan 073.
 
@@ -164,7 +164,7 @@ auto run script.at
 
 ## Status
 
-- ✅ BigVM is default execution engine (2026-02-06)
+- ✅ AutoVM is default execution engine (2026-02-06)
 - ✅ 97.4% test pass rate (1254/1288 tests)
 - ✅ 23.77x performance improvement
 - ✅ Evaluator available as fallback
@@ -172,7 +172,7 @@ auto run script.at
 
 ## See Also
 
-- Plan 073: BigVM Migration Roadmap
-- Plan 068: BigVM Implementation
-- Plan 070: BigVM Iterator
-- Plan 071: BigVM Closures
+- Plan 073: AutoVM Migration Roadmap
+- Plan 068: AutoVM Implementation
+- Plan 070: AutoVM Iterator
+- Plan 071: AutoVM Closures

@@ -1,16 +1,16 @@
-# Plan 073: BigVM Migration Roadmap
+# Plan 073: AutoVM Migration Roadmap
 
-**Status**: ✅ **COMPLETE (100%)** - BigVM is Now Default! 🎉
+**Status**: ✅ **COMPLETE (100%)** - AutoVM is Now Default! 🎉
 **Created**: 2025-02-04
 **Completed**: 2026-02-06
 **Last Updated**: 2026-02-06
-**Related**: Plan 068 (BigVM Implementation), Plan 070 (BigVM Iterator), Plan 071 (BigVM Closures)
+**Related**: Plan 068 (AutoVM Implementation), Plan 070 (AutoVM Iterator), Plan 071 (AutoVM Closures)
 
 ---
 
 ## Objective
 
-用 BigVM (字节码 VM) 完全替代现有的 evaluator (TreeWalker 解释器 eval.rs),实现性能提升和架构优化。
+用 AutoVM (字节码 VM) 完全替代现有的 evaluator (TreeWalker 解释器 eval.rs),实现性能提升和架构优化。
 
 ## Current Status
 
@@ -20,8 +20,8 @@
 | Component | Lines | Description |
 |-----------|-------|-------------|
 | **eval.rs** | 6,143 | TreeWalker interpreter (to be replaced) |
-| **BigVM engine.rs** | 882 | Bytecode VM execution engine |
-| **BigVM codegen.rs** | 918 | Bytecode generator |
+| **AutoVM engine.rs** | 882 | Bytecode VM execution engine |
+| **AutoVM codegen.rs** | 918 | Bytecode generator |
 | **Total** | 7,943 | - |
 
 ---
@@ -54,7 +54,7 @@
 
 ### ✅ Phase 5: Integration (Plan 068)
 - ✅ auto-vm executable
-- ✅ Test infrastructure (tests_bigvm.rs)
+- ✅ Test infrastructure (tests_autovm.rs)
 
 ### ✅ Phase 6: Data Structures & Heap (Plan 068)
 - ✅ LinearAllocator (RAII-style memory management)
@@ -80,7 +80,7 @@
 - ✅ Full compiler integration (Phase 6.2)
 - ✅ Closure test suite (18 tests passing)
 
-**Major Achievement**: BigVM now supports closures end-to-end with proper environment access!
+**Major Achievement**: AutoVM now supports closures end-to-end with proper environment access!
 
 ### ✅ Phase 8.1: Type System Expansion (Stage A.5 & B) - **NEWLY COMPLETED (2026-02-05)**
 - ✅ Float/Double support with arrow return types (932 lines)
@@ -95,11 +95,11 @@
   - CONST_I64, CONST_U64 opcodes
   - ADD_I64, SUB_I64, MUL_I64, DIV_I64
   - 64-bit integer operations
-- ✅ BigVM type system integration tests (283 lines)
+- ✅ AutoVM type system integration tests (283 lines)
   - Comprehensive test coverage for all types
   - 280+ lines of new tests
 
-**Major Achievement**: BigVM now supports ALL primitive types from the evaluator! (Technical Debt #1 RESOLVED)
+**Major Achievement**: AutoVM now supports ALL primitive types from the evaluator! (Technical Debt #1 RESOLVED)
 
 ### ✅ Phase 8.2: Object Literals & Field Access - **COMPLETED (2026-02-05)**
 - ✅ Object literal infrastructure (84 lines)
@@ -114,7 +114,7 @@
   - Chained field access: obj.field1.field2
   - 34 lines of field access tests
 
-**Major Achievement**: BigVM now supports object literals and field access! (Technical Debt #2 PARTIALLY RESOLVED)
+**Major Achievement**: AutoVM now supports object literals and field access! (Technical Debt #2 PARTIALLY RESOLVED)
 
 ### ✅ Phase 8.3: Iterator-Based For Loops - **NEWLY COMPLETED (2026-02-05)**
 - ✅ Iterator-based for loop support (125 lines)
@@ -130,7 +130,7 @@
   - Iterator loop with body statements
   - Iterator loop with collect()
 
-**Major Achievement**: BigVM now supports iterator-based for loops! Unlocks list iteration patterns from Plan 070.
+**Major Achievement**: AutoVM now supports iterator-based for loops! Unlocks list iteration patterns from Plan 070.
 
 ### ✅ Phase 8.3.4: Range Expressions - **NEWLY COMPLETED (2026-02-05)**
 - ✅ Range expression support (48 lines)
@@ -145,7 +145,7 @@
   - Range in for loops
   - Nested ranges
 
-**Major Achievement**: BigVM now supports range expressions! Enables for loop iteration and range-based operations.
+**Major Achievement**: AutoVM now supports range expressions! Enables for loop iteration and range-based operations.
 
 ### ✅ Phase 8.3.5: F-Strings (String Interpolation) - **NEWLY COMPLETED (2026-02-05)**
 - ✅ F-string support (43 lines)
@@ -160,7 +160,7 @@
   - F-string with multiple parts
   - Nested f-strings
 
-**Major Achievement**: BigVM now supports f-strings! Enables string interpolation for templating and formatting.
+**Major Achievement**: AutoVM now supports f-strings! Enables string interpolation for templating and formatting.
 
 ### ✅ Phase 8.3.6: Is Pattern Matching - **NEWLY COMPLETED (2026-02-05)**
 - ✅ Is statement support (75 lines)
@@ -174,7 +174,7 @@
   - Nested Is statements
   - Multiple branches (5+ patterns)
 
-**Major Achievement**: BigVM now supports Is pattern matching! Enables switch-like pattern matching for control flow.
+**Major Achievement**: AutoVM now supports Is pattern matching! Enables switch-like pattern matching for control flow.
 
 **Implementation Note**:
 - Uses EQ, JMP_IF_Z, JMP, POP opcodes (no new opcodes required)
@@ -194,7 +194,7 @@
   - IfBranch with complex condition: `is x { if x > 20 => ... }`
   - Mixed branches: `is x { 5 => ..., if x > 10 => ..., else => ... }`
 
-**Major Achievement**: BigVM now supports conditional pattern matching guards! Enables complex pattern matching with conditions.
+**Major Achievement**: AutoVM now supports conditional pattern matching guards! Enables complex pattern matching with conditions.
 
 **Total Is Statement Support**: 15 tests passing (EqBranch, IfBranch, ElseBranch)
 
@@ -217,7 +217,7 @@
   - Basic error propagate: `x.?`
   - Error propagate with function call: `get_value().?`
 
-**Major Achievement**: BigVM now supports May<T> question operators! Enables null-safe operations and error propagation patterns.
+**Major Achievement**: AutoVM now supports May<T> question operators! Enables null-safe operations and error propagation patterns.
 
 **Design Note**:
 - May<T> is implemented as Option<T> only (2 variants: Nil, Val)
@@ -227,7 +227,7 @@
 
 ### ✅ Phase 8.3.7: Node Support & TypeDecl - **IN PROGRESS (2026-02-05)**
 - ✅ Phase 0: CREATE_NODE opcode definition
-  - Node registry in BigVM (nodes: DashMap)
+  - Node registry in AutoVM (nodes: DashMap)
   - CREATE_NODE execution in engine.rs
   - Basic Node test cases (3 tests)
 - ✅ Phase 1: Type Instance Detection
@@ -255,7 +255,7 @@
   - Method lookup: `TypeName.method_name` in module exports
   - Instance method detection: lowercase Ident → instance method, uppercase Ident → static method
 
-**Major Achievement**: BigVM can now create type instances AND call their methods! `Point(10, 20).sum()` works.
+**Major Achievement**: AutoVM can now create type instances AND call their methods! `Point(10, 20).sum()` works.
 
 **Remaining**:
 - ⏸️ Phase 3: Type inheritance and composition (is, has)
@@ -264,7 +264,7 @@
 - ✅ Primitive and control flow tests (arithmetic, unary, comparisons, if/else)
 - ✅ Function call tests (CALL/RET, locals, recursion)
 - ✅ **Complex type tests (list_tests.rs - partial)** - NEW (2026-02-05)
-  - 10 List tests added to tests_bigvm.rs
+  - 10 List tests added to tests_autovm.rs
   - Covers: push, pop, len, is_empty, get, set, clear, insert, remove, iter
 - ⏸️ string_tests.rs - Basic strings supported, advanced features pending
 - ⏸️ object_tests.rs - ✅ Object literals NOW AVAILABLE (Phase 8.2)
@@ -277,7 +277,7 @@
 **Status**: Partially complete (List tests added)
 **Completed**:
 - ✅ **list_tests.rs** - Basic operations and iterator tests (10 tests)
-- ✅ List native functions registered in BigVM (push, pop, len, is_empty, clear, get, set, insert, remove, capacity)
+- ✅ List native functions registered in AutoVM (push, pop, len, is_empty, clear, get, set, insert, remove, capacity)
 - ✅ Iterator support (iter, next)
 
 **Remaining**:
@@ -301,7 +301,7 @@
   - SET_ELEM opcode - array element assignment
   - Test suite (5 tests covering basic access, assignment, expression indexing, nested assignment, functions)
 
-**Major Achievement**: BigVM now supports array indexing! Unlocks list manipulation patterns.
+**Major Achievement**: AutoVM now supports array indexing! Unlocks list manipulation patterns.
 
 **Remaining**:
 - [ ] **Lambda** (named lambdas)
@@ -333,7 +333,7 @@
     - SpecDecl with methods
     - Combined type/enum/spec declarations
 
-**Major Achievement**: BigVM now supports all major statement types! Type, enum, and spec declarations compile successfully.
+**Major Achievement**: AutoVM now supports all major statement types! Type, enum, and spec declarations compile successfully.
 
 **Estimated Effort**: Complete (originally estimated 2-3 days)
 
@@ -344,46 +344,46 @@
 **Completed**:
 
 - [x] **9.1 Performance Benchmarking** ✅ (2026-02-06)
-  - **Results: BigVM is 23.77x faster than Evaluator on average!** 🚀
-  - All 10 benchmarks show BigVM is faster (11.92x to 54.83x speedup)
-  - Memory usage: BigVM has lower memory footprint
+  - **Results: AutoVM is 23.77x faster than Evaluator on average!** 🚀
+  - All 10 benchmarks show AutoVM is faster (11.92x to 54.83x speedup)
+  - Memory usage: AutoVM has lower memory footprint
 
 - [x] **9.2 Feature Parity Check** ✅ (2026-02-06)
   - **Test Results: 1254/1288 passing (97.4% pass rate)** ✅
-  - Only 0.23% BigVM-specific failures (3 non-critical tests)
+  - Only 0.23% AutoVM-specific failures (3 non-critical tests)
   - All core features fully supported
-  - Conclusion: BigVM is **PRODUCTION-READY**
+  - Conclusion: AutoVM is **PRODUCTION-READY**
 
-- [x] **9.3 Switch to BigVM as Default** ✅ (2026-02-06)
-  - Added `use-bigvm` feature flag to Cargo.toml (enabled by default)
+- [x] **9.3 Switch to AutoVM as Default** ✅ (2026-02-06)
+  - Added `use-autovm` feature flag to Cargo.toml (enabled by default)
   - Created `execution_engine.rs` module for engine selection
-  - Updated `run()` to use BigVM by default
+  - Updated `run()` to use AutoVM by default
   - Environment variable override: `AUTO_EXECUTION_ENGINE`
   - Documentation: [execution-engine-selection.md](../execution-engine-selection.md)
 
 **Implementation Details**:
 ```toml
-# Cargo.toml - BigVM is now default!
+# Cargo.toml - AutoVM is now default!
 [features]
-default = ["with-file-history", "use-bigvm"]
-use-bigvm = []
+default = ["with-file-history", "use-autovm"]
+use-autovm = []
 use-evaluator = []  # Fallback for debugging
 ```
 
 ```rust
 // Runtime engine selection
-let engine = ExecutionEngine::get();  // BigVM by default
+let engine = ExecutionEngine::get();  // AutoVM by default
 let result = execute_with_engine(engine, code)?;
 ```
 
 **Migration Impact**:
 - ✅ **Users**: No changes needed! Existing commands just got faster
-- ✅ **Developers**: `run()`, `run_file()`, etc. now use BigVM automatically
+- ✅ **Developers**: `run()`, `run_file()`, etc. now use AutoVM automatically
 - ✅ **Compatibility**: Evaluator still available via environment variable or feature flag
 - ✅ **Performance**: All AutoLang code now runs 23.77x faster on average!
 
 **Total Effort**: 3 days (estimated 2-3 days)
-**Result**: BigVM is now the default execution engine! 🎉
+**Result**: AutoVM is now the default execution engine! 🎉
 
 ---
 
@@ -477,7 +477,7 @@ let result = execute_with_engine(engine, code)?;
 
 **Missing**:
 ```rust
-❌ Logical: And, Or (Plan 072 implemented, but not migrated to BigVM)
+❌ Logical: And, Or (Plan 072 implemented, but not migrated to AutoVM)
 ❌ Bitwise: BitAnd, BitOr, BitXor, Shl, Shr
 ❌ Other: Range, RangeEq, QuestionMark, QuestionQuestion
 ```
@@ -486,7 +486,7 @@ let result = execute_with_engine(engine, code)?;
 
 ## Feature Comparison Matrix
 
-| Feature Category | eval.rs | BigVM | Gap | Priority |
+| Feature Category | eval.rs | AutoVM | Gap | Priority |
 |------------------|---------|--------|-----|----------|
 | **Basic Types** | | | | |
 | int, bool, str | ✅ | ✅ | - | - |
@@ -572,7 +572,7 @@ let result = execute_with_engine(engine, code)?;
 ---
 
 ### 3. May/Question System (P1)
-**Problem**: BigVM does not support `??` and `.?` operators
+**Problem**: AutoVM does not support `??` and `.?` operators
 **Missing Features**:
 - `??` (NullCoalesce) - null coalescing
 - `.?` (ErrorPropagate) - error propagation
@@ -595,7 +595,7 @@ let result = execute_with_engine(engine, code)?;
 ---
 
 ### 5. Borrowing System (Plan 052) (P2)
-**Problem**: BigVM does not support references, borrowing, move semantics
+**Problem**: AutoVM does not support references, borrowing, move semantics
 **Missing Features**:
 - `&T` (View) - immutable borrowing
 - `&mut T` (Mut) - mutable borrowing
@@ -609,7 +609,7 @@ let result = execute_with_engine(engine, code)?;
 ---
 
 ### 6. Advanced Data Structures (P2)
-**Problem**: BigVM List support is limited, missing other collections
+**Problem**: AutoVM List support is limited, missing other collections
 **Missing**:
 - HashMap/KV storage
 - HashSet
@@ -713,7 +713,7 @@ let result = execute_with_engine(engine, code)?;
 ## Summary & Recommendations
 
 ### Current Status (2026-02-05)
-- **Progress**: **93-99% complete** - BigVM is production-ready! 🎉
+- **Progress**: **93-99% complete** - AutoVM is production-ready! 🎉
 - **All P1 (High Priority) items**: ✅ **COMPLETE**
 - **Major Achievements**:
   - ✅ Type System Completeness (Phase 8.1) - ALL primitive types supported
@@ -798,8 +798,8 @@ let result = execute_with_engine(engine, code)?;
 
 **Document Updated**: 2026-02-05
 **Related Documents**:
-- [Plan 068: AutoVM (BigVM) Implementation](068-autovm-bigvm.md)
-- [Plan 070: BigVM Iterator](070-bigvm-iterator.md)
-- [Plan 071: BigVM Closures](071-bigvm-closures.md)
+- [Plan 068: AutoVM (AutoVM) Implementation](068-autovm-autovm.md)
+- [Plan 070: AutoVM Iterator](070-autovm-iterator.md)
+- [Plan 071: AutoVM Closures](071-autovm-closures.md)
 - [Plan 064: Split Universe](064-split-universe.md)
-- [Status Report](../status-bigvm-migration.md)
+- [Status Report](../status-autovm-migration.md)

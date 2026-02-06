@@ -1,5 +1,5 @@
 // Plan 076 Phase 1: Generic Type Support Tests
-// Tests for type parameter parsing and tracking in BigVM codegen
+// Tests for type parameter parsing and tracking in AutoVM codegen
 
 use crate::vm::codegen::Codegen;
 use crate::vm::generic::{GenericTable, GenericInstance, extract_generic_instance};

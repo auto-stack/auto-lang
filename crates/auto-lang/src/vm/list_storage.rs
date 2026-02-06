@@ -1,9 +1,9 @@
-// Plan 076 Phase 4: BigVM Storage Strategy Runtime
-// Provides native Rust storage strategies for BigVM lists
+// Plan 076 Phase 4: AutoVM Storage Strategy Runtime
+// Provides native Rust storage strategies for AutoVM lists
 
 use auto_val::Value;
 
-/// Storage strategy for BigVM lists
+/// Storage strategy for AutoVM lists
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListStorage {
     /// Heap-allocated dynamic storage (growable)

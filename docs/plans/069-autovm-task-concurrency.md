@@ -7,7 +7,7 @@
 
 ## 1. Objective
 
-Integrate **Tokio-based Task/Msg async concurrency** into BigVM **before** expanding feature implementations. This ensures the VM architecture supports M:N green thread scheduling from the start, avoiding costly future rewrites.
+Integrate **Tokio-based Task/Msg async concurrency** into AutoVM **before** expanding feature implementations. This ensures the VM architecture supports M:N green thread scheduling from the start, avoiding costly future rewrites.
 
 **Core Principle**: "架构先行，特性填充" - Architecture first, features follow.
 
@@ -37,7 +37,7 @@ As documented in `autovm-task-msg.md`:
 ### 3.2 Key Structs
 
 ```rust
-// Per-task execution context (extracted from current BigVM)
+// Per-task execution context (extracted from current AutoVM)
 struct AutoTask {
     id: TaskId,
     stack: Vec<i32>,      // Virtual stack (task-local)
@@ -48,7 +48,7 @@ struct AutoTask {
 }
 
 // VM Runtime (shared across tasks)
-struct BigVM {
+struct AutoVM {
     tasks: DashMap<TaskId, Arc<Mutex<AutoTask>>>,
     id_gen: AtomicU64,
     flash: Arc<VirtualFlash>,     // Shared bytecode (read-only)
@@ -60,7 +60,7 @@ struct BigVM {
 ## 4. Implementation Phases
 
 ### Phase 1: Tokio Integration & Struct Refactoring
-**Goal**: Split monolithic `BigVM` into `BigVM` (runtime) + `AutoTask` (state)
+**Goal**: Split monolithic `AutoVM` into `AutoVM` (runtime) + `AutoTask` (state)
 
 - [x] **1.1 Add Tokio Dependency**
     - Add `tokio = { version = "1", features = ["full"] }` to `crates/auto-lang/Cargo.toml`
@@ -69,10 +69,10 @@ struct BigVM {
 - [x] **1.2 Create Task Module**
     - Create `crates/auto-lang/src/vm/task.rs`
     - Define `TaskId`, `TaskStatus`, `AutoTask` structs
-    - Move per-task state (stack, frames, ip, bp) from `BigVM` to `AutoTask`
+    - Move per-task state (stack, frames, ip, bp) from `AutoVM` to `AutoTask`
 
-- [x] **1.3 Refactor BigVM**
-    - Modify `engine.rs`: `BigVM` holds shared resources only
+- [x] **1.3 Refactor AutoVM**
+    - Modify `engine.rs`: `AutoVM` holds shared resources only
     - Add `tasks: DashMap<TaskId, Arc<Mutex<AutoTask>>>`
     - Add `id_gen: AtomicU64` for task ID generation
 
@@ -104,7 +104,7 @@ struct BigVM {
 - [x] **3.1 Channel Data Structure**
     - Create `crates/auto-lang/src/vm/channel.rs`
     - Define `AutoChannel` wrapping `tokio::sync::mpsc`
-    - Channel registry in `BigVM`
+    - Channel registry in `AutoVM`
 
 - [x] **3.2 Channel Opcodes**
     - `OP_CHAN_NEW = 0x85`: Create new channel (capacity on stack)
@@ -143,7 +143,7 @@ struct BigVM {
     - Ensure all existing tests pass on new architecture
     
 - [x] **5.3 Update Test Infrastructure**
-    - Modify `run_bigvm()` to use async runtime
+    - Modify `run_autovm()` to use async runtime
     - Add concurrency-specific tests
 
 ---
@@ -237,13 +237,13 @@ struct BigVM {
 - `crates/auto-lang/src/vm/engine.rs` - Major refactor
 - `crates/auto-lang/src/vm/opcode.rs` - New task/channel opcodes
 - `crates/auto-vm/src/main.rs` - Async main
-- `crates/auto-lang/src/vm/tests_bigvm.rs` - Async test harness
+- `crates/auto-lang/src/vm/tests_autovm.rs` - Async test harness
 
 ## 7. MicroVM Compatibility Note
 
 The Task abstraction is **ISA-compatible** with MicroVM (FreeRTOS):
 
-| BigVM (Tokio) | MicroVM (FreeRTOS) |
+| AutoVM (Tokio) | MicroVM (FreeRTOS) |
 |---------------|-------------------|
 | `tokio::spawn()` | `xTaskCreate()` |
 | `mpsc::recv().await` | `xQueueReceive()` |

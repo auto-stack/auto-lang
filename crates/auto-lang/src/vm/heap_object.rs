@@ -1,9 +1,9 @@
 // Plan 077 Phase 1: HeapObject Trait
-// Unified object registry infrastructure for BigVM
+// Unified object registry infrastructure for AutoVM
 
 use std::any::Any;
 
-/// Trait for all heap-allocated objects in BigVM
+/// Trait for all heap-allocated objects in AutoVM
 ///
 /// This trait enables the unified object registry design where a single
 /// DashMap<u64, Arc<RwLock<dyn HeapObject>>> can store objects of any type.
@@ -57,7 +57,7 @@ pub trait HeapObject: Any + Send + Sync {
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
-/// Type tags for all heap-allocated objects in BigVM
+/// Type tags for all heap-allocated objects in AutoVM
 ///
 /// Each variant corresponds to a concrete type that implements `HeapObject`.
 /// Used for runtime type checking and debugging.
@@ -88,7 +88,7 @@ pub enum TypeTag {
     TreeSet,
 
     // String types
-    /// BigVM string object
+    /// AutoVM string object
     String,
     /// Byte string / bytes object
     Bytes,

@@ -1,4 +1,4 @@
-// Plan 076 Phase 1: Generic Type Support for BigVM
+// Plan 076 Phase 1: Generic Type Support for AutoVM
 // Provides type parameter tracking and generic instantiation tables
 
 use crate::ast::Type;

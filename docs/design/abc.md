@@ -1,6 +1,6 @@
 这是一份 **AutoByteCode (ABC) 指令集架构 (ISA) 详细设计文档 v1.0**。
 
-这份文档是连接 **AIE (编译器后端)** 和 **AutoVM (BigVM/MicroVM)** 的契约。它的设计原则是：**紧凑 (Compact)**、**XIP 友好 (XIP-Friendly)**、**易于生成 (Easy to Codegen)**。
+这份文档是连接 **AIE (编译器后端)** 和 **AutoVM (AutoVM/MicroVM)** 的契约。它的设计原则是：**紧凑 (Compact)**、**XIP 友好 (XIP-Friendly)**、**易于生成 (Easy to Codegen)**。
 
 ---
 
@@ -200,4 +200,4 @@ struct RelocEntry {
 
 ---
 
-这是 ABC 指令集的 v1.0 版。您可以基于此文档开始编写 BigVM 的 `decode` 循环。
+这是 ABC 指令集的 v1.0 版。您可以基于此文档开始编写 AutoVM 的 `decode` 循环。

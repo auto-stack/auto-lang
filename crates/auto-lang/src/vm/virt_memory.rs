@@ -1,4 +1,4 @@
-/// Virtual Memory Model for BigVM
+/// Virtual Memory Model for AutoVM
 ///
 /// Implements the "Digital Twin" memory architecture:
 /// - VirtualFlash: Read-only code space

@@ -1,5 +1,5 @@
 // Plan 076 Phase 4: Storage Strategy Runtime Tests
-// Tests for List<T, S> storage strategies in BigVM
+// Tests for List<T, S> storage strategies in AutoVM
 
 use crate::vm::list_storage::{ListStorage, HeapStorage, InlineInt64Storage};
 use crate::universe::{ListData, ListStorage as UnivListStorage};

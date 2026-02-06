@@ -2001,7 +2001,7 @@ The original appendix incorrectly assumed that **Indexer creates Scopes**. After
 - ✅ **CORRECT**: Indexer **does NOT create Scopes** - it only creates **Fragments**
 - ✅ **CORRECT**: **Parser** uses `Shared<Universe>` (which contains Scopes)
 - ✅ **CORRECT**: **Codegen** does NOT use Universe/Scope (has its own simple `scope_stack`)
-- ✅ **CORRECT**: **BigVM** does NOT use Universe/Scope (bytecode-only execution)
+- ✅ **CORRECT**: **AutoVM** does NOT use Universe/Scope (bytecode-only execution)
 
 **Impact**: The migration path must be **completely redesigned**.
 
@@ -2149,7 +2149,7 @@ The phases below (B through E) contain **outdated and incorrect information** ba
 - ✅ **Indexer**: Does NOT create Scopes - only creates Fragments
 - ✅ **Parser**: Uses `Shared<Universe>` (contains `HashMap<Sid, Scope>`)
 - ✅ **Codegen**: Does NOT use Universe/Scope - has own simple `scope_stack`
-- ✅ **BigVM**: Does NOT use Universe/Scope - bytecode-only execution
+- ✅ **AutoVM**: Does NOT use Universe/Scope - bytecode-only execution
 
 **Implications**:
 1. **Phase A (above)**: ✅ CORRECT - Parser needs migration from `Shared<Universe>` to `Database`
@@ -2164,7 +2164,7 @@ Before implementing Phases B-E, **re-read this entire appendix and create a corr
 - **Phase C**: REPL Migration (remove `scope: Shared<Universe>` from ReplSession)
 - **Phase D**: Final Cleanup (remove Universe from Interpreter)
 
-**For now**, refer to the "What Won't Change (Already Clean)" section below to see which components (Codegen, BigVM) are already independent and don't need migration.
+**For now**, refer to the "What Won't Change (Already Clean)" section below to see which components (Codegen, AutoVM) are already independent and don't need migration.
 
 ---
 

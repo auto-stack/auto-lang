@@ -1,57 +1,57 @@
-// Plan 076 Phase 4: BigVM List Storage with Strategy Support
+// Plan 076 Phase 4: AutoVM List Storage with Strategy Support
 // Unified list storage that supports both Heap and InlineInt64 strategies
 
 use auto_val::Value;
 use crate::vm::list_storage::{ListStorage, HeapStorage, InlineInt64Storage};
 
-/// BigVM list storage with pluggable storage strategy
-/// This replaces `crate::universe::ListData` for BigVM-specific lists
+/// AutoVM list storage with pluggable storage strategy
+/// This replaces `crate::universe::ListData` for AutoVM-specific lists
 #[derive(Debug)]
-pub enum BigVMListStorage {
+pub enum AutoVMListStorage {
     /// Heap-allocated dynamic storage (unlimited capacity)
     Heap(HeapStorage),
     /// Inline storage with fixed 64-element capacity
     InlineInt64(InlineInt64Storage),
 }
 
-impl BigVMListStorage {
+impl AutoVMListStorage {
     /// Create a new list with the specified storage strategy
     pub fn new(storage: ListStorage) -> Self {
         match storage {
-            ListStorage::Heap => BigVMListStorage::Heap(HeapStorage::new()),
-            ListStorage::InlineInt64 => BigVMListStorage::InlineInt64(InlineInt64Storage::new()),
+            ListStorage::Heap => AutoVMListStorage::Heap(HeapStorage::new()),
+            ListStorage::InlineInt64 => AutoVMListStorage::InlineInt64(InlineInt64Storage::new()),
         }
     }
 
     /// Create a new list with initial capacity (only for Heap storage)
     pub fn with_capacity(storage: ListStorage, capacity: usize) -> Self {
         match storage {
-            ListStorage::Heap => BigVMListStorage::Heap(HeapStorage::with_capacity(capacity)),
-            ListStorage::InlineInt64 => BigVMListStorage::InlineInt64(InlineInt64Storage::new()),
+            ListStorage::Heap => AutoVMListStorage::Heap(HeapStorage::with_capacity(capacity)),
+            ListStorage::InlineInt64 => AutoVMListStorage::InlineInt64(InlineInt64Storage::new()),
         }
     }
 
     /// Get the storage strategy type
     pub fn storage_type(&self) -> ListStorage {
         match self {
-            BigVMListStorage::Heap(_) => ListStorage::Heap,
-            BigVMListStorage::InlineInt64(_) => ListStorage::InlineInt64,
+            AutoVMListStorage::Heap(_) => ListStorage::Heap,
+            AutoVMListStorage::InlineInt64(_) => ListStorage::InlineInt64,
         }
     }
 
     /// Get the number of elements in the list
     pub fn len(&self) -> usize {
         match self {
-            BigVMListStorage::Heap(storage) => storage.len(),
-            BigVMListStorage::InlineInt64(storage) => storage.len(),
+            AutoVMListStorage::Heap(storage) => storage.len(),
+            AutoVMListStorage::InlineInt64(storage) => storage.len(),
         }
     }
 
     /// Check if the list is empty
     pub fn is_empty(&self) -> bool {
         match self {
-            BigVMListStorage::Heap(storage) => storage.is_empty(),
-            BigVMListStorage::InlineInt64(storage) => storage.is_empty(),
+            AutoVMListStorage::Heap(storage) => storage.is_empty(),
+            AutoVMListStorage::InlineInt64(storage) => storage.is_empty(),
         }
     }
 
@@ -59,8 +59,8 @@ impl BigVMListStorage {
     /// Returns None for unbounded Heap storage
     pub fn capacity(&self) -> Option<usize> {
         match self {
-            BigVMListStorage::Heap(storage) => Some(storage.capacity()),
-            BigVMListStorage::InlineInt64(storage) => Some(storage.capacity()),
+            AutoVMListStorage::Heap(storage) => Some(storage.capacity()),
+            AutoVMListStorage::InlineInt64(storage) => Some(storage.capacity()),
         }
     }
 
@@ -68,11 +68,11 @@ impl BigVMListStorage {
     /// Returns true if successful, false if capacity exceeded (InlineInt64 only)
     pub fn push(&mut self, elem: Value) -> bool {
         match self {
-            BigVMListStorage::Heap(storage) => {
+            AutoVMListStorage::Heap(storage) => {
                 storage.push(elem);
                 true
             }
-            BigVMListStorage::InlineInt64(storage) => storage.push(elem),
+            AutoVMListStorage::InlineInt64(storage) => storage.push(elem),
         }
     }
 
@@ -80,8 +80,8 @@ impl BigVMListStorage {
     /// Returns None if the list is empty
     pub fn pop(&mut self) -> Option<Value> {
         match self {
-            BigVMListStorage::Heap(storage) => storage.pop(),
-            BigVMListStorage::InlineInt64(storage) => storage.pop(),
+            AutoVMListStorage::Heap(storage) => storage.pop(),
+            AutoVMListStorage::InlineInt64(storage) => storage.pop(),
         }
     }
 
@@ -89,8 +89,8 @@ impl BigVMListStorage {
     /// Returns None if the index is out of bounds
     pub fn get(&self, index: usize) -> Option<&Value> {
         match self {
-            BigVMListStorage::Heap(storage) => storage.get(index),
-            BigVMListStorage::InlineInt64(storage) => storage.get(index),
+            AutoVMListStorage::Heap(storage) => storage.get(index),
+            AutoVMListStorage::InlineInt64(storage) => storage.get(index),
         }
     }
 
@@ -98,8 +98,8 @@ impl BigVMListStorage {
     /// Returns true if successful, false if index is out of bounds
     pub fn set(&mut self, index: usize, elem: Value) -> bool {
         match self {
-            BigVMListStorage::Heap(storage) => storage.set(index, elem),
-            BigVMListStorage::InlineInt64(storage) => storage.set(index, elem),
+            AutoVMListStorage::Heap(storage) => storage.set(index, elem),
+            AutoVMListStorage::InlineInt64(storage) => storage.set(index, elem),
         }
     }
 
@@ -107,11 +107,11 @@ impl BigVMListStorage {
     /// Returns true if successful, false if index is invalid or capacity exceeded
     pub fn insert(&mut self, index: usize, elem: Value) -> bool {
         match self {
-            BigVMListStorage::Heap(storage) => {
+            AutoVMListStorage::Heap(storage) => {
                 storage.insert(index, elem);
                 true
             }
-            BigVMListStorage::InlineInt64(storage) => storage.insert(index, elem),
+            AutoVMListStorage::InlineInt64(storage) => storage.insert(index, elem),
         }
     }
 
@@ -119,24 +119,24 @@ impl BigVMListStorage {
     /// Returns None if the index is out of bounds
     pub fn remove(&mut self, index: usize) -> Option<Value> {
         match self {
-            BigVMListStorage::Heap(storage) => storage.remove(index),
-            BigVMListStorage::InlineInt64(storage) => storage.remove(index),
+            AutoVMListStorage::Heap(storage) => storage.remove(index),
+            AutoVMListStorage::InlineInt64(storage) => storage.remove(index),
         }
     }
 
     /// Clear all elements from the list
     pub fn clear(&mut self) {
         match self {
-            BigVMListStorage::Heap(storage) => storage.clear(),
-            BigVMListStorage::InlineInt64(storage) => storage.clear(),
+            AutoVMListStorage::Heap(storage) => storage.clear(),
+            AutoVMListStorage::InlineInt64(storage) => storage.clear(),
         }
     }
 
     /// Reserve additional capacity (only for Heap storage)
     pub fn reserve(&mut self, additional: usize) {
         match self {
-            BigVMListStorage::Heap(storage) => storage.reserve(additional),
-            BigVMListStorage::InlineInt64(_) => {
+            AutoVMListStorage::Heap(storage) => storage.reserve(additional),
+            AutoVMListStorage::InlineInt64(_) => {
                 // Inline storage has fixed capacity, do nothing
             }
         }
@@ -146,8 +146,8 @@ impl BigVMListStorage {
     /// Returns true if successful
     pub fn try_grow(&mut self, min_cap: usize) -> bool {
         match self {
-            BigVMListStorage::Heap(storage) => storage.try_grow(min_cap),
-            BigVMListStorage::InlineInt64(storage) => storage.try_grow(min_cap),
+            AutoVMListStorage::Heap(storage) => storage.try_grow(min_cap),
+            AutoVMListStorage::InlineInt64(storage) => storage.try_grow(min_cap),
         }
     }
 
@@ -155,8 +155,8 @@ impl BigVMListStorage {
     /// Useful for interoperability with existing code
     pub fn to_vec(&self) -> Vec<Value> {
         match self {
-            BigVMListStorage::Heap(storage) => storage.elems.clone(),
-            BigVMListStorage::InlineInt64(storage) => {
+            AutoVMListStorage::Heap(storage) => storage.elems.clone(),
+            AutoVMListStorage::InlineInt64(storage) => {
                 storage.buffer[..storage.len].to_vec()
             }
         }
@@ -166,8 +166,8 @@ impl BigVMListStorage {
     /// Returns empty slice for unsupported operations
     pub fn as_slice(&self) -> &[Value] {
         match self {
-            BigVMListStorage::Heap(storage) => &storage.elems,
-            BigVMListStorage::InlineInt64(storage) => &storage.buffer[..storage.len],
+            AutoVMListStorage::Heap(storage) => &storage.elems,
+            AutoVMListStorage::InlineInt64(storage) => &storage.buffer[..storage.len],
         }
     }
 
@@ -176,8 +176,8 @@ impl BigVMListStorage {
     #[deprecated(note = "Use typed methods instead")]
     pub fn elems_mut(&mut self) -> &mut Vec<Value> {
         match self {
-            BigVMListStorage::Heap(storage) => &mut storage.elems,
-            BigVMListStorage::InlineInt64(_) => {
+            AutoVMListStorage::Heap(storage) => &mut storage.elems,
+            AutoVMListStorage::InlineInt64(_) => {
                 // This is a limitation - InlineInt64 can't return &mut Vec<Value>
                 // Callers should use the typed methods instead
                 static mut DUMMY: Vec<Value> = Vec::new();
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn test_bigvm_list_storage_heap() {
-        let mut list = BigVMListStorage::new(ListStorage::Heap);
+        let mut list = AutoVMListStorage::new(ListStorage::Heap);
 
         assert_eq!(list.len(), 0);
         assert!(list.is_empty());
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn test_bigvm_list_storage_inline() {
-        let mut list = BigVMListStorage::new(ListStorage::InlineInt64);
+        let mut list = AutoVMListStorage::new(ListStorage::InlineInt64);
 
         assert_eq!(list.len(), 0);
         assert!(list.is_empty());
@@ -226,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_bigvm_list_storage_inline_capacity_limit() {
-        let mut list = BigVMListStorage::new(ListStorage::InlineInt64);
+        let mut list = AutoVMListStorage::new(ListStorage::InlineInt64);
 
         // Fill to capacity
         for i in 0..64 {
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn test_bigvm_list_storage_pop() {
-        let mut heap_list = BigVMListStorage::new(ListStorage::Heap);
+        let mut heap_list = AutoVMListStorage::new(ListStorage::Heap);
         heap_list.push(Value::Int(42));
         heap_list.push(Value::Int(100));
 
@@ -248,7 +248,7 @@ mod tests {
         assert_eq!(heap_list.pop(), Some(Value::Int(42)));
         assert_eq!(heap_list.pop(), None);
 
-        let mut inline_list = BigVMListStorage::new(ListStorage::InlineInt64);
+        let mut inline_list = AutoVMListStorage::new(ListStorage::InlineInt64);
         inline_list.push(Value::Int(42));
         inline_list.push(Value::Int(100));
 
@@ -259,14 +259,14 @@ mod tests {
 
     #[test]
     fn test_bigvm_list_storage_set_get() {
-        let mut heap_list = BigVMListStorage::new(ListStorage::Heap);
+        let mut heap_list = AutoVMListStorage::new(ListStorage::Heap);
         heap_list.push(Value::Int(1));
         heap_list.push(Value::Int(2));
 
         assert!(heap_list.set(0, Value::Int(10)));
         assert_eq!(heap_list.get(0), Some(&Value::Int(10)));
 
-        let mut inline_list = BigVMListStorage::new(ListStorage::InlineInt64);
+        let mut inline_list = AutoVMListStorage::new(ListStorage::InlineInt64);
         inline_list.push(Value::Int(1));
         inline_list.push(Value::Int(2));
 
@@ -276,7 +276,7 @@ mod tests {
 
     #[test]
     fn test_bigvm_list_storage_insert_remove() {
-        let mut heap_list = BigVMListStorage::new(ListStorage::Heap);
+        let mut heap_list = AutoVMListStorage::new(ListStorage::Heap);
         heap_list.push(Value::Int(1));
         heap_list.push(Value::Int(3));
 
@@ -285,7 +285,7 @@ mod tests {
         assert_eq!(heap_list.remove(1), Some(Value::Int(2)));
         assert_eq!(heap_list.len(), 2);
 
-        let mut inline_list = BigVMListStorage::new(ListStorage::InlineInt64);
+        let mut inline_list = AutoVMListStorage::new(ListStorage::InlineInt64);
         inline_list.push(Value::Int(1));
         inline_list.push(Value::Int(3));
 
@@ -297,12 +297,12 @@ mod tests {
 
     #[test]
     fn test_bigvm_list_storage_try_grow() {
-        let mut heap_list = BigVMListStorage::new(ListStorage::Heap);
+        let mut heap_list = AutoVMListStorage::new(ListStorage::Heap);
         assert_eq!(heap_list.capacity(), Some(0));
         assert!(heap_list.try_grow(16));
         assert!(heap_list.capacity() >= Some(16));
 
-        let mut inline_list = BigVMListStorage::new(ListStorage::InlineInt64);
+        let mut inline_list = AutoVMListStorage::new(ListStorage::InlineInt64);
         assert!(inline_list.try_grow(32));  // <= 64, should succeed
         assert!(inline_list.try_grow(64));  // == 64, should succeed
         assert!(!inline_list.try_grow(65)); // > 64, should fail
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_bigvm_list_storage_to_vec() {
-        let mut heap_list = BigVMListStorage::new(ListStorage::Heap);
+        let mut heap_list = AutoVMListStorage::new(ListStorage::Heap);
         heap_list.push(Value::Int(1));
         heap_list.push(Value::Int(2));
         heap_list.push(Value::Int(3));
@@ -321,7 +321,7 @@ mod tests {
         assert_eq!(vec[1], Value::Int(2));
         assert_eq!(vec[2], Value::Int(3));
 
-        let mut inline_list = BigVMListStorage::new(ListStorage::InlineInt64);
+        let mut inline_list = AutoVMListStorage::new(ListStorage::InlineInt64);
         inline_list.push(Value::Int(1));
         inline_list.push(Value::Int(2));
         inline_list.push(Value::Int(3));
@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn test_bigvm_list_storage_clear() {
-        let mut heap_list = BigVMListStorage::new(ListStorage::Heap);
+        let mut heap_list = AutoVMListStorage::new(ListStorage::Heap);
         heap_list.push(Value::Int(1));
         heap_list.push(Value::Int(2));
         heap_list.clear();
@@ -343,7 +343,7 @@ mod tests {
         assert_eq!(heap_list.len(), 0);
         assert!(heap_list.is_empty());
 
-        let mut inline_list = BigVMListStorage::new(ListStorage::InlineInt64);
+        let mut inline_list = AutoVMListStorage::new(ListStorage::InlineInt64);
         inline_list.push(Value::Int(1));
         inline_list.push(Value::Int(2));
         inline_list.clear();

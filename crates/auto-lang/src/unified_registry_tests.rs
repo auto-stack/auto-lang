@@ -1,8 +1,8 @@
 // Plan 077 Phase 4: Unified Object Registry Integration Tests
-// Tests for the unified object registry in BigVM Engine
+// Tests for the unified object registry in AutoVM Engine
 
 use crate::universe::{ListData, ListStorage};
-use crate::vm::engine::BigVM;
+use crate::vm::engine::AutoVM;
 use crate::vm::heap_object::{HeapObject, TypeTag, downcast, downcast_mut, is_type};
 use crate::vm::virt_memory::VirtualFlash;
 use auto_val::Value;
@@ -15,7 +15,7 @@ use std::sync::Arc;
 #[test]
 fn test_engine_insert_and_get_heap_object() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert a ListData<i32>
     let mut list: ListData<i32> = ListData::new();
@@ -45,7 +45,7 @@ fn test_engine_insert_and_get_heap_object() {
 #[test]
 fn test_engine_insert_multiple_heap_objects() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert multiple different types
     let mut int_list: ListData<i32> = ListData::new();
@@ -93,7 +93,7 @@ fn test_engine_insert_multiple_heap_objects() {
 #[test]
 fn test_engine_remove_heap_object() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert an object
     let mut list: ListData<i32> = ListData::new();
@@ -116,7 +116,7 @@ fn test_engine_remove_heap_object() {
 #[test]
 fn test_engine_remove_nonexistent_object() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Try to remove an object that doesn't exist
     let result = vm.remove_heap_object(999);
@@ -126,7 +126,7 @@ fn test_engine_remove_nonexistent_object() {
 #[test]
 fn test_engine_get_nonexistent_object() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Try to get an object that doesn't exist
     let result = vm.get_heap_object(999);
@@ -136,7 +136,7 @@ fn test_engine_get_nonexistent_object() {
 #[test]
 fn test_engine_clear_heap_objects() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert multiple objects
     vm.insert_heap_object(ListData::<i32>::new());
@@ -158,7 +158,7 @@ fn test_engine_clear_heap_objects() {
 #[test]
 fn test_engine_mutate_heap_object() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert a list
     let mut list: ListData<i32> = ListData::new();
@@ -182,7 +182,7 @@ fn test_engine_mutate_heap_object() {
 #[test]
 fn test_engine_concurrent_read_write() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert a list
     let mut list: ListData<i32> = ListData::new();
@@ -217,7 +217,7 @@ fn test_engine_concurrent_read_write() {
 #[test]
 fn test_engine_heap_object_with_storage() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert ListData with InlineInt64 storage
     let mut list: ListData<i32> = ListData::with_storage(ListStorage::InlineInt64);
@@ -245,7 +245,7 @@ fn test_engine_heap_object_with_storage() {
 #[test]
 fn test_engine_type_tag_verification() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert different types and verify TypeTags
     let id_int = vm.insert_heap_object(ListData::<i32>::new());
@@ -278,7 +278,7 @@ fn test_engine_type_tag_verification() {
 #[test]
 fn test_engine_heap_object_id_generation() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert multiple objects and verify IDs are sequential
     let id1 = vm.insert_heap_object(ListData::<i32>::new());
@@ -297,7 +297,7 @@ fn test_engine_heap_object_id_generation() {
 #[test]
 fn test_engine_empty_list_operations() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert an empty list
     let list: ListData<i32> = ListData::new();
@@ -315,7 +315,7 @@ fn test_engine_empty_list_operations() {
 #[test]
 fn test_engine_large_list() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert a list with many elements
     let mut list: ListData<i32> = ListData::new();
@@ -342,7 +342,7 @@ fn test_engine_large_list() {
 #[test]
 fn test_engine_multiple_lists_coexist() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert into unified registry (new way)
     let mut new_list: ListData<i32> = ListData::new();
@@ -381,7 +381,7 @@ fn test_engine_multiple_lists_coexist() {
 #[test]
 fn test_engine_many_objects() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert many objects
     let mut ids = Vec::new();
@@ -407,7 +407,7 @@ fn test_engine_many_objects() {
 #[test]
 fn test_engine_mixed_type_operations() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert different types
     let int_id = vm.insert_heap_object({
@@ -462,7 +462,7 @@ fn test_engine_mixed_type_operations() {
 #[test]
 fn test_engine_heap_object_clone() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Insert a list
     let mut list: ListData<i32> = ListData::new();
@@ -494,7 +494,7 @@ fn test_engine_heap_object_clone() {
 #[test]
 fn test_engine_registry_performance() {
     let flash = VirtualFlash::new(1024);
-    let vm = BigVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Benchmark insertion
     let start = std::time::Instant::now();

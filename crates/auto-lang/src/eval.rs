@@ -31,12 +31,35 @@ pub enum EvalTempo {
     LAZY,
 }
 
+/// Evaluation mode
+///
+/// **Deprecated**: Use AutoVM with Codegen/ConfigCodegen/TemplateCodegen instead.
+///
+/// **Plan 068 Phase 9**: Evaler is deprecated in favor of AutoVM
+/// **Plan 075**: ConfigCodegen and TemplateCodegen replace CONFIG and TEMPLATE modes
+#[deprecated(since = "0.9.0", note = "Use AutoVM with Codegen/ConfigCodegen/TemplateCodegen instead (Plan 068 Phase 9 + Plan 075)")]
 pub enum EvalMode {
     SCRIPT,   // normal evaluation
     CONFIG,   // combine every pair/object in the same scope to one object; returns a big object
     TEMPLATE, // evaluate every statement into a string, and join them with newlines
 }
 
+/// TreeWalker evaluator
+///
+/// **Deprecated**: Use AutoVM (bytecode VM) instead for better performance.
+///
+/// **Plan 068 Phase 9**: Evaler is deprecated in favor of AutoVM
+/// AutoVM provides:
+/// - Faster execution (compiled bytecode vs tree walking)
+/// - Consistent behavior across PC and MCU
+/// - Lower memory footprint
+/// - Better scalability
+///
+/// Migration path:
+/// - For simple evaluation: Use `run()` or `run_bigvm()`
+/// - For incremental compilation: Use `CompileSession` (Plan 063-065)
+/// - For custom scopes: Use `run_with_session()` with Database
+#[deprecated(since = "0.9.0", note = "Use AutoVM instead (Plan 068 Phase 9). See run() or run_bigvm() functions.")]
 pub struct Evaler {
     // ========================================================================
     // Phase 4.5: New AIE Architecture Fields (Plan 064)

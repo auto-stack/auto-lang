@@ -3,15 +3,15 @@
 **Status**: ✅ **COMPLETE (100%)** - All 3 Phases Done
 **Created**: 2026-02-05
 **Completed**: 2026-02-06
-**Related**: Plan 073 (BigVM Migration), Plan 068 (BigVM Implementation)
+**Related**: Plan 073 (AutoVM Migration), Plan 068 (AutoVM Implementation)
 
 ---
 
 ## Objective
 
-Implement **ConfigCodegen** and **TemplateCodegen** to support CONFIG and TEMPLATE execution modes in BigVM, completing the migration from the evaluator's three-mode system (SCRIPT, CONFIG, TEMPLATE) to a pure bytecode-based architecture.
+Implement **ConfigCodegen** and **TemplateCodegen** to support CONFIG and TEMPLATE execution modes in AutoVM, completing the migration from the evaluator's three-mode system (SCRIPT, CONFIG, TEMPLATE) to a pure bytecode-based architecture.
 
-**Goal**: Enable BigVM to fully replace the evaluator by supporting all three execution modes without polluting the VM with mode-aware logic.
+**Goal**: Enable AutoVM to fully replace the evaluator by supporting all three execution modes without polluting the VM with mode-aware logic.
 
 ---
 
@@ -79,7 +79,7 @@ You have ${count} messages.
 
 ### ✅ Chosen Approach: Compiler-Based Mode Handling
 
-**DO NOT** add mode awareness to BigVM. Instead, implement three separate codegen strategies:
+**DO NOT** add mode awareness to AutoVM. Instead, implement three separate codegen strategies:
 
 1. **Codegen** (existing) → SCRIPT mode
 2. **ConfigCodegen** (new) → CONFIG mode
@@ -123,7 +123,7 @@ You have ${count} messages.
           │             │              │
           ▼             ▼              ▼
     ┌────────────────────────────────────────────┐
-    │           BigVM (mode-agnostic)            │
+    │           AutoVM (mode-agnostic)            │
     │      Executes bytecode, returns Value      │
     └────────────────────────────────────────────┘
                           │
@@ -358,7 +358,7 @@ debug = true
     configgen.compile_config(&code).unwrap();
 
     let module = configgen.finish("test");
-    let vm = BigVM::new();
+    let vm = AutoVM::new();
     let result = vm.run(&module).unwrap();
 
     // Should return object: {host: "localhost", port: 8080, debug: true}
@@ -610,7 +610,7 @@ fn test_template_simple() {
     tgen.compile_template(&code).unwrap();
 
     let module = tgen.finish("test");
-    let vm = BigVM::new();
+    let vm = AutoVM::new();
     let result = vm.run(&module).unwrap();
 
     // Should return: "Hello, World!\nGoodbye!"
@@ -676,7 +676,7 @@ pub fn run_with_mode(source: &str, mode: CompileMode) -> AutoResult<String> {
         }
     };
 
-    let vm = BigVM::new();
+    let vm = AutoVM::new();
     let result = vm.run(&module)?;
 
     Ok(format!("{:?}", result))
@@ -805,16 +805,16 @@ auto run script.at             // Uses Codegen
 ### 5.2 Integration Tests
 
 **Mode Comparison Tests**:
-- Run same file with evaluator and BigVM in all three modes
+- Run same file with evaluator and AutoVM in all three modes
 - Verify outputs match
 
 **Existing Test Migration**:
-- Migrate config tests from evaluator to BigVM
-- Migrate template tests from evaluator to BigVM
+- Migrate config tests from evaluator to AutoVM
+- Migrate template tests from evaluator to AutoVM
 
 ### 5.3 Performance Tests
 
-Benchmark evaluator vs BigVM for each mode:
+Benchmark evaluator vs AutoVM for each mode:
 - Config mode: Large configuration files (1000+ fields)
 - Template mode: Long templates with many interpolations
 
@@ -827,7 +827,7 @@ Benchmark evaluator vs BigVM for each mode:
 - ✅ TemplateCodegen compiles template files to equivalent bytecode
 - ✅ Both modes produce identical results to evaluator
 - ✅ Zero VM changes for mode awareness
-- ✅ All existing config/template tests pass with BigVM
+- ✅ All existing config/template tests pass with AutoVM
 
 ### 6.2 Performance Requirements
 - Config mode: Performance within 2x of evaluator
@@ -883,8 +883,8 @@ Benchmark evaluator vs BigVM for each mode:
 
 ## Related Documents
 
-- [Plan 068: AutoVM (BigVM) Implementation](068-autovm-bigvm.md)
-- [Plan 073: BigVM Migration Roadmap](073-bigvm-migration-roadmap.md)
+- [Plan 068: AutoVM (AutoVM) Implementation](068-autovm-autovm.md)
+- [Plan 073: AutoVM Migration Roadmap](073-autovm-migration-roadmap.md)
 - [Evaluator: Three Mode System](d:\autostack\auto-lang\crates\auto-lang\src\eval.rs#L34-L38)
 
 ---

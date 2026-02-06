@@ -994,10 +994,9 @@ impl Codegen {
                     // Variable found in local scope - load it
                     self.emit_load_loc(var_index);
                 } else {
-                    // Variable not found - this is an error
-                    // For now, emit LOAD_LOC_0 as a fallback (will be fixed later)
-                    // TODO: Proper error handling for undefined variables
-                    self.emit(OpCode::LOAD_LOC_0);
+                    // Plan 080: Variable not found - return proper error
+                    // Even with skip_check=true in parser, we catch undefined variables here
+                    return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
                 }
             }
             // Plan 073: Dot expression field access (obj.field)

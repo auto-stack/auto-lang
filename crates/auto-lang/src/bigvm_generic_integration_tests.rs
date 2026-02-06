@@ -1,5 +1,5 @@
-// Plan 076 Phase 5: BigVM Generic Type Integration Tests
-// Comprehensive integration tests for generic type support in BigVM
+// Plan 076 Phase 5: AutoVM Generic Type Integration Tests
+// Comprehensive integration tests for generic type support in AutoVM
 
 use crate::vm::codegen::Codegen;
 use crate::vm::generic::{GenericInstance, GenericTable, extract_generic_instance};

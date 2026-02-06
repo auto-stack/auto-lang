@@ -1,9 +1,9 @@
-/// BigVM Native Function Registry
+/// AutoVM Native Function Registry
 ///
 /// Runtime registry for mapping function names (like "List.new", "List.len")
 /// to native function IDs used by CALL_NAT opcode.
 ///
-/// This is the BigVM equivalent of the linker's symbol table:
+/// This is the AutoVM equivalent of the linker's symbol table:
 /// - Function names are "symbols" (like "printf" in C)
 /// - Native IDs are "addresses" (like 0x12345678 in machine code)
 ///
@@ -23,13 +23,13 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-pub struct BigVMNativeRegistry {
+pub struct AutoVMNativeRegistry {
     // Maps function name ("List.new") -> native ID (100, 101, ...)
     registry: HashMap<String, u16>,
     next_id: u16,
 }
 
-impl BigVMNativeRegistry {
+impl AutoVMNativeRegistry {
     pub fn new() -> Self {
         Self {
             registry: HashMap::new(),
@@ -94,8 +94,8 @@ impl BigVMNativeRegistry {
 
 // Global native registry instance
 lazy_static::lazy_static! {
-    pub static ref BIGVM_NATIVES: Mutex<BigVMNativeRegistry> =
-        Mutex::new(BigVMNativeRegistry::new());
+    pub static ref BIGVM_NATIVES: Mutex<AutoVMNativeRegistry> =
+        Mutex::new(AutoVMNativeRegistry::new());
 }
 
 /// Register all built-in native functions.
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn test_register_returns_id() {
-        let mut registry = BigVMNativeRegistry::new();
+        let mut registry = AutoVMNativeRegistry::new();
 
         let id1 = registry.register("List.new");
         assert_eq!(id1, 100);
@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn test_register_idempotent() {
-        let mut registry = BigVMNativeRegistry::new();
+        let mut registry = AutoVMNativeRegistry::new();
 
         let id1 = registry.register("List.new");
         let id2 = registry.register("List.new");
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_get_id() {
-        let mut registry = BigVMNativeRegistry::new();
+        let mut registry = AutoVMNativeRegistry::new();
 
         registry.register("List.new");
         assert_eq!(registry.get_id("List.new"), Some(100));
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn test_contains() {
-        let mut registry = BigVMNativeRegistry::new();
+        let mut registry = AutoVMNativeRegistry::new();
 
         registry.register("List.new");
         assert!(registry.contains("List.new"));

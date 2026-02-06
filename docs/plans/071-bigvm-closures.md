@@ -1,4 +1,4 @@
-# Plan 071: BigVM Closure Implementation
+# Plan 071: AutoVM Closure Implementation
 
 **Status**: 🟢 Phase 1 Complete, Phase 2 Complete, Phase 3 Complete, Phase 4 Complete, Phase 5 Complete, Phase 6.1 Complete, Phase 6.2 Complete
 **Created**: 2025-02-03
@@ -11,7 +11,7 @@
 
 **Phase 1: Data Structures** ✅ **COMPLETE (2025-02-03)**
 - ✅ Closure struct added with `func_addr` and `env` (HashMap capture)
-- ✅ Closure registry added to BigVM
+- ✅ Closure registry added to AutoVM
 - ✅ Old upvalue code removed (UpValue, UpvalLocation, GET_UPVAL, SET_UPVAL, CLOSE_UPVALS)
 - ✅ New opcodes defined (CLOSURE, CAPTURE_VAR, LOAD_CAPTURED, STORE_CAPTURED, CALL_CLOSURE)
 - ✅ Build compiles successfully
@@ -60,7 +60,7 @@
 
 **Test Implementation**:
 - Created `tests_closures.rs` with 4 integration tests
-- All tests validate end-to-end BigVM execution
+- All tests validate end-to-end AutoVM execution
 - Tests verify VM runs without crashing (MVP limitations documented)
 - test_04 validates codegen correctly emits CLOSURE opcodes
 
@@ -170,12 +170,12 @@
 - ✅ Closure creation and calling work in evaluator
 - ✅ Variable capture works in evaluator
 
-**Plan 071** implements the SAME closure feature in **BigVM** (bytecode VM execution):
-- 🔄 BigVM is the REPLACEMENT for the tree-walk evaluator
+**Plan 071** implements the SAME closure feature in **AutoVM** (bytecode VM execution):
+- 🔄 AutoVM is the REPLACEMENT for the tree-walk evaluator
 - 🔄 Compile Plan 060's closures to bytecode
-- 🔄 Execute closures using BigVM opcodes
+- 🔄 Execute closures using AutoVM opcodes
 
-**Context**: BigVM = bytecode VM that replaces the tree-walk interpreter for better performance.
+**Context**: AutoVM = bytecode VM that replaces the tree-walk interpreter for better performance.
 
 ---
 
@@ -183,8 +183,8 @@
 
 **Context**:
 - Plan 060 implemented closures in the tree-walk evaluator (✅ Complete)
-- Plan 071 implements the SAME closures in BigVM (bytecode VM)
-- BigVM will REPLACE the tree-walk evaluator for better performance
+- Plan 071 implements the SAME closures in AutoVM (bytecode VM)
+- AutoVM will REPLACE the tree-walk evaluator for better performance
 
 **ARCHITECTURE CHANGE** (2025-02-03):
 - ❌ **REJECTED**: Lua-style upvalues (too complex for AutoLang)
@@ -201,7 +201,7 @@
 
 ## 1. Objective
 
-Implement **closure support** in BigVM to allow functions to capture variables from their enclosing scope. This enables:
+Implement **closure support** in AutoVM to allow functions to capture variables from their enclosing scope. This enables:
 - Nested functions that access outer variables
 - Higher-order functions (functions that return functions)
 - Functional programming patterns (map, filter with actual lambdas)
@@ -239,7 +239,7 @@ print(add_5(3))  // Output: 8
 - ✅ Variable capture works via `find_captured_vars()`
 - ✅ Closure calling works
 
-**Goal of Plan 071 (BigVM)**:
+**Goal of Plan 071 (AutoVM)**:
 - 🔄 Compile closures to bytecode (codegen)
 - 🔄 Execute closures using CLOSURE/LOAD_CAPTURED/STORE_CAPTURED opcodes
 
@@ -428,7 +428,7 @@ struct EvalClosure {
 }
 ```
 
-**Plan 071 BigVM (Bytecode) - Same Approach**:
+**Plan 071 AutoVM (Bytecode) - Same Approach**:
 ```rust
 struct Closure {
     pub func_addr: u32,              // Bytecode address
@@ -471,7 +471,7 @@ pub struct AutoTask {
 
 **Key Difference from Plan 060**:
 - Evaluator: `EvalClosure.env` + `EvalClosure.body` (AST stored at runtime)
-- BigVM: `Closure.env` + `func_addr` (bytecode address, no AST)
+- AutoVM: `Closure.env` + `func_addr` (bytecode address, no AST)
 
 ### 3.2 New Opcodes
 
@@ -509,11 +509,11 @@ pub struct AutoTask {
 ## 4. Implementation Plan
 
 ### Phase 1: Data Structures (✅ COMPLETE)
-**Goal**: Add closure type to BigVM
+**Goal**: Add closure type to AutoVM
 
 - [x] **1.1 Closure struct**
     - ✅ Added `Closure` struct with `func_addr` and `env: HashMap<String, Value>`
-    - ✅ Added closure registry to BigVM
+    - ✅ Added closure registry to AutoVM
     - ✅ Added closure_id generator
 
 - [x] **1.2 Remove old upvalue code**
@@ -825,7 +825,7 @@ struct FuncMetadata {
 **Recommended Sequence**:
 1. Add data structures (UpValue, Closure) to engine.rs
 2. Implement CLOSURE, GET_UPVAL, SET_UPVAL opcodes
-3. Add closure registry to BigVM
+3. Add closure registry to AutoVM
 4. Update codegen to emit CLOSURE for nested functions
 5. Update codegen to use GET_UPVAL/SET_UPVAL for captured vars
 6. Implement CLOSE_UPVALS opcode
@@ -857,7 +857,7 @@ Start with simplest cases:
 
 ### Phase 1: Data Structures ✅ COMPLETE
 - [x] `Closure` struct added with `func_addr` and `env: HashMap<String, Value>`
-- [x] Closure registry added to BigVM (DashMap<u32, Closure>)
+- [x] Closure registry added to AutoVM (DashMap<u32, Closure>)
 - [x] Old upvalue code removed (UpValue, UpvalLocation)
 - [x] New opcodes defined in opcode.rs (CLOSURE, CAPTURE_VAR, LOAD_CAPTURED, STORE_CAPTURED)
 - [x] MVP placeholder implementations in engine.rs
@@ -913,7 +913,7 @@ Expr::Take(e) => {
 
 ### 10.2 Default Capture Semantics
 
-**BigVM closures use COPY semantics by default**:
+**AutoVM closures use COPY semantics by default**:
 - Safe: No dangling references
 - Flexible: Variable still usable after closure creation
 - Matches evaluator behavior
@@ -944,14 +944,14 @@ fn make_closure(x int) {
   - **Mitigation**: Unboxing overhead acceptable for MVP
   - **Future**: Generic closure types for better performance
 
-### 11.2 Borrow Safety (Evaluator vs BigVM)
+### 11.2 Borrow Safety (Evaluator vs AutoVM)
 
 **Evaluator** (Plan 060):
 - ✅ Full borrow checking with `.take`/`.view`/`.mut`
 - ✅ Lifetime tracking via `lifetime_ctx`
 - ✅ Conflict detection at runtime
 
-**BigVM** (Plan 071):
+**AutoVM** (Plan 071):
 - ⏸️ TODO: Implement borrow checking in codegen
 - ⏸️ TODO: Support `.take`/`.view`/`.mut` in closure capture
 - **MVP**: COPY semantics only (safe, simple)
@@ -1080,7 +1080,7 @@ fn make_closure(x int) {
 - ✅ [task.rs](../crates/auto-lang/src/vm/task.rs) - Added current_closure_id field
 - ✅ [tests_closures.rs](../crates/auto-lang/src/vm/tests_closures.rs) - Integration tests (460+ lines, 5 tests)
 - ✅ [vm.rs](../crates/auto-lang/src/vm.rs) - Added test module registration
-- ✅ [071-bigvm-closures.md](071-bigvm-closures.md) - Plan document (this file)
+- ✅ [071-autovm-closures.md](071-autovm-closures.md) - Plan document (this file)
 
 ### Next Steps
 
@@ -1108,13 +1108,13 @@ fn make_closure(x int) {
 4. test_04_closure_opcode_verification - Codegen validation
 5. test_05_closure_end_to_end_execution - Full closure execution with LOAD_CAPTURED
 
-**Architecture Achievement**: BigVM closures now work end-to-end with proper environment access!
+**Architecture Achievement**: AutoVM closures now work end-to-end with proper environment access!
 
 ---
 
 ## Future Work (Phase 6+)
 
-This section describes postponed enhancements that can be implemented in future iterations to improve BigVM closures.
+This section describes postponed enhancements that can be implemented in future iterations to improve AutoVM closures.
 
 ### Priority 1: Borrow Checking Integration ✅ **COMPLETE (2025-02-04)**
 
@@ -1432,7 +1432,7 @@ let result = apply_twice(5, y => y + x.view);
 
 ## Implementation Roadmap (Future)
 
-If continuing with BigVM closure development, recommended order:
+If continuing with AutoVM closure development, recommended order:
 
 ### Phase 6: Safety & Usability (1-2 weeks)
 1. ✅ **Borrow Checking Integration** (Priority 1)
@@ -1495,7 +1495,7 @@ If continuing with BigVM closure development, recommended order:
 ### References
 
 - [Plan 060: Closure Syntax](060-closure-syntax.md) - Evaluator closure implementation
-- [Plan 068: AutoVM BigVM](068-autovm-bigvm.md) - BigVM architecture overview
+- [Plan 068: AutoVM AutoVM](068-autovm-autovm.md) - AutoVM architecture overview
 - [eval.rs:closure()](../crates/auto-lang/src/eval.rs#L5580-L5604) - Evaluator closure creation
 - [eval.rs:find_captured_vars()](../crates/auto-lang/src/eval.rs#L5470-L5497) - Free variable analysis in evaluator
 - Or require explicit `.take`/`.view` in closure syntax

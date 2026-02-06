@@ -1,5 +1,5 @@
 // Plan 073 Phase 9.1: Performance Benchmarking
-// Compares BigVM vs Evaluator performance
+// Compares AutoVM vs Evaluator performance
 
 use crate::run;
 use std::time::Instant;
@@ -15,14 +15,14 @@ struct BenchmarkResult {
     bigvm_result: String,
 }
 
-/// Run a benchmark comparing evaluator vs BigVM
+/// Run a benchmark comparing evaluator vs AutoVM
 fn run_benchmark(name: &str, source: &str) -> BenchmarkResult {
     // Benchmark Evaluator
     let eval_start = Instant::now();
     let eval_result = run(source).unwrap_or_else(|e| format!("ERROR: {}", e));
     let eval_duration = eval_start.elapsed().as_micros();
 
-    // Benchmark BigVM (using compile mode script)
+    // Benchmark AutoVM (using compile mode script)
     let vm_start = Instant::now();
     let vm_result = crate::run_with_mode(source, crate::CompileMode::Script)
         .unwrap_or_else(|e| format!("ERROR: {}", e));
@@ -61,13 +61,13 @@ fn main() -> int {
 
     println!("\n=== Benchmark: {} ===", result.name);
     println!("Evaluator:  {} μs", result.evaluator_time_us);
-    println!("BigVM:      {} μs", result.bigvm_time_us);
+    println!("AutoVM:      {} μs", result.bigvm_time_us);
     println!("Speedup:    {:.2}x", result.speedup);
 
-    // BigVM should be at least as fast or faster
+    // AutoVM should be at least as fast or faster
     // (This is a soft assertion - actual performance may vary)
     if result.speedup < 0.5 {
-        println!("WARNING: BigVM is significantly slower than evaluator");
+        println!("WARNING: AutoVM is significantly slower than evaluator");
     }
 }
 
@@ -91,7 +91,7 @@ fn main() -> int {
 
     println!("\n=== Benchmark: {} ===", result.name);
     println!("Evaluator:  {} μs", result.evaluator_time_us);
-    println!("BigVM:      {} μs", result.bigvm_time_us);
+    println!("AutoVM:      {} μs", result.bigvm_time_us);
     println!("Speedup:    {:.2}x", result.speedup);
 }
 
@@ -115,7 +115,7 @@ fn main() -> int {
 
     println!("\n=== Benchmark: {} ===", result.name);
     println!("Evaluator:  {} μs", result.evaluator_time_us);
-    println!("BigVM:      {} μs", result.bigvm_time_us);
+    println!("AutoVM:      {} μs", result.bigvm_time_us);
     println!("Speedup:    {:.2}x", result.speedup);
 }
 
@@ -141,7 +141,7 @@ fn main() -> int {
 
     println!("\n=== Benchmark: {} ===", result.name);
     println!("Evaluator:  {} μs", result.evaluator_time_us);
-    println!("BigVM:      {} μs", result.bigvm_time_us);
+    println!("AutoVM:      {} μs", result.bigvm_time_us);
     println!("Speedup:    {:.2}x", result.speedup);
 }
 
@@ -165,7 +165,7 @@ fn main() -> int {
 
     println!("\n=== Benchmark: {} ===", result.name);
     println!("Evaluator:  {} μs", result.evaluator_time_us);
-    println!("BigVM:      {} μs", result.bigvm_time_us);
+    println!("AutoVM:      {} μs", result.bigvm_time_us);
     println!("Speedup:    {:.2}x", result.speedup);
 }
 
@@ -184,7 +184,7 @@ fn main() -> int {
 
     println!("\n=== Benchmark: {} ===", result.name);
     println!("Evaluator:  {} μs", result.evaluator_time_us);
-    println!("BigVM:      {} μs", result.bigvm_time_us);
+    println!("AutoVM:      {} μs", result.bigvm_time_us);
     println!("Speedup:    {:.2}x", result.speedup);
 }
 
@@ -210,7 +210,7 @@ fn main() -> int {
 
     println!("\n=== Benchmark: {} ===", result.name);
     println!("Evaluator:  {} μs", result.evaluator_time_us);
-    println!("BigVM:      {} μs", result.bigvm_time_us);
+    println!("AutoVM:      {} μs", result.bigvm_time_us);
     println!("Speedup:    {:.2}x", result.speedup);
 }
 
@@ -219,7 +219,7 @@ fn benchmark_comprehensive() {
     println!("\n");
     println!("╔════════════════════════════════════════════════════════════════╗");
     println!("║         Plan 073 Phase 9.1: Performance Benchmarking          ║");
-    println!("║              BigVM vs Evaluator Performance                   ║");
+    println!("║              AutoVM vs Evaluator Performance                   ║");
     println!("╚════════════════════════════════════════════════════════════════╝");
 
     let benchmarks = vec![
@@ -268,7 +268,7 @@ fn main() -> int {
     }
 
     println!("\n┌────────────────────────────────┬──────────────┬──────────────┬──────────┐");
-    println!("│ Benchmark                     │ Evaluator    │ BigVM        │ Speedup  │");
+    println!("│ Benchmark                     │ Evaluator    │ AutoVM        │ Speedup  │");
     println!("│                               │ (μs)         │ (μs)         │ (x)      │");
     println!("├────────────────────────────────┼──────────────┼──────────────┼──────────┤");
 
@@ -292,9 +292,9 @@ fn main() -> int {
     println!("\n📊 Average Speedup: {:.2}x", avg_speedup);
 
     if avg_speedup >= 1.0 {
-        println!("✅ BigVM is faster than or equal to Evaluator");
+        println!("✅ AutoVM is faster than or equal to Evaluator");
     } else {
-        println!("⚠️  BigVM is slower than Evaluator (needs optimization)");
+        println!("⚠️  AutoVM is slower than Evaluator (needs optimization)");
     }
 }
 

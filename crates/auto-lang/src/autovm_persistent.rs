@@ -114,8 +114,18 @@ impl AutovmReplSession {
         codegen.code.clear();
 
         // 3. Compile new statements (reuses locals, exports, strings, etc.)
-        for stmt in &ast.stmts {
-            codegen.compile_stmt(stmt)?;
+        // Plan 080: Ensure codegen is returned even on compilation failure
+        let compile_result: AutoResult<()> = (|| {
+            for stmt in &ast.stmts {
+                codegen.compile_stmt(stmt)?;
+            }
+            Ok(())
+        })();
+
+        // If compilation failed, put codegen back and return error
+        if let Err(e) = compile_result {
+            self.codegen = Some(codegen);
+            return Err(e);
         }
 
         // 4. Add HALT at the end
@@ -478,6 +488,38 @@ mod tests {
             Err(e) => {
                 panic!("x + 1 failed: {:?}", e);
             }
+        }
+    }
+
+    #[test]
+    fn test_autovm_undefined_variable_error() {
+        let mut session = AutovmReplSession::new();
+
+        // Define x
+        let r1 = session.run("let x = 5");
+        assert!(r1.is_ok(), "let x = 5 should succeed");
+
+        // Try to access undefined variable y (should error)
+        let r2 = session.run("y + 1");
+        assert!(r2.is_err(), "y + 1 should fail (undefined variable)");
+
+        // Verify error message contains "Undefined variable"
+        if let Err(e) = r2 {
+            let error_msg = e.to_string();
+            assert!(error_msg.contains("Undefined variable"), "Error should mention undefined variable");
+            assert!(error_msg.contains("y"), "Error should mention variable name 'y'");
+        }
+
+        // Plan 080: After error, session should still be usable (codegen was returned)
+        // This test verifies the fix for the panic bug
+        let r3 = session.run("x + 2");
+        assert!(r3.is_ok(), "After error, session should still work: x + 2");
+
+        // Verify result is correct
+        if let Some(result) = session.get_last_result() {
+            assert_eq!(result, 7, "x + 2 should be 7 (x is still 5)");
+        } else {
+            panic!("Expected last_result to be Some(7)");
         }
     }
 }

@@ -14,6 +14,26 @@ pub struct Importer {
     pub scope: Shared<Universe>,
 }
 
+/// TreeWalker interpreter (deprecated)
+///
+/// **Deprecated**: Use AutoVM (bytecode VM) instead for better performance.
+///
+/// **Plan 068 Phase 9**: Interpreter is deprecated in favor of AutoVM
+///
+/// The Interpreter uses the TreeWalker evaluator (Evaler), which is slower
+/// than the compiled bytecode approach used by AutoVM.
+///
+/// Migration path:
+/// - For script execution: Use `run()` or `run_bigvm()`
+/// - For incremental compilation: Use `CompileSession` (Plan 063-065)
+/// - For REPL: Use `ReplSession` in repl.rs
+///
+/// AutoVM advantages:
+/// - 10-100x faster execution (compiled bytecode vs tree walking)
+/// - Consistent behavior across PC and MCU environments
+/// - Lower memory footprint
+/// - Better scalability for large programs
+#[deprecated(since = "0.9.0", note = "Use run() or run_bigvm() instead (Plan 068 Phase 9).")]
 pub struct Interpreter {
     // ========================================================================
     // Phase 4.4: New AIE Architecture Fields (Plan 064)

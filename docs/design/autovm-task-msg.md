@@ -8,7 +8,7 @@
 
 ### 1. 为什么不能“以后再加”？
 
-如果你现在按照**单线程/同步模型**去实现 AutoVM（BigVM），你的核心循环（Dispatch Loop）大概长这样：
+如果你现在按照**单线程/同步模型**去实现 AutoVM（AutoVM），你的核心循环（Dispatch Loop）大概长这样：
 
 ```rust
 // 同步模型（现在的样子）
@@ -52,7 +52,7 @@ struct Task {
     status: TaskStatus, // Running, Waiting, Ready
 }
 
-struct BigVM {
+struct AutoVM {
     // 调度器持有一堆 Task
     tasks: HashMap<TaskId, Arc<Mutex<Task>>>, 
     // Tokio 的 Handle，用于真正的调度
@@ -66,7 +66,7 @@ struct BigVM {
 这是最关键的一步。把指令执行逻辑包装成一个 **Rust Future**（或者 `async` 块）。
 
 ```rust
-impl BigVM {
+impl AutoVM {
     // 启动一个 Task
     fn spawn(&self, task_id: TaskId) {
         let task = self.tasks.get(&task_id).unwrap().clone();
@@ -113,7 +113,7 @@ impl BigVM {
 
 ### 4. 关于 MicroVM 的思考
 
-你可能会担心：*“BigVM 用了 Tokio，那 MicroVM 怎么办？MCU 上没有 Tokio 啊。”*
+你可能会担心：*“AutoVM 用了 Tokio，那 MicroVM 怎么办？MCU 上没有 Tokio 啊。”*
 
 **不用担心。** 正如我们之前讨论的，两者的 **数据模型 (Data Model)** 是一致的：
 
@@ -123,10 +123,10 @@ impl BigVM {
 
 区别只在于 **调度循环 (The Loop)**：
 
-* **BigVM**: 用 `tokio::spawn` 驱动 `task.run_step()`。
+* **AutoVM**: 用 `tokio::spawn` 驱动 `task.run_step()`。
 * **MicroVM**: 用 `xTaskCreate` (FreeRTOS) 驱动 `task.run_step()`。
 
-**`task.run_step()` 里面的核心解释逻辑（字节码 switch-case）是可以复用的！** 甚至可以把核心解释逻辑抽离成一个 `auto_core` crate（`no_std`），让 BigVM 和 MicroVM 共享。
+**`task.run_step()` 里面的核心解释逻辑（字节码 switch-case）是可以复用的！** 甚至可以把核心解释逻辑抽离成一个 `auto_core` crate（`no_std`），让 AutoVM 和 MicroVM 共享。
 
 ### 总结
 
@@ -136,4 +136,4 @@ impl BigVM {
 如果你等基本功能都写完了再改，那就是**伤筋动骨**（几千行代码的逻辑重写），而且很容易引入极其难调的并发 Bug。
 
 **行动指令：**
-请立刻让负责生成 BigVM 的 AI 暂停填充具体指令，先**生成基于 Tokio 的 Task 调度框架**。框架定好了，再填指令就是填空题了。
+请立刻让负责生成 AutoVM 的 AI 暂停填充具体指令，先**生成基于 Tokio 的 Task 调度框架**。框架定好了，再填指令就是填空题了。

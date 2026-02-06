@@ -411,14 +411,14 @@ To fully support project-level modules with nested paths, we need to:
    - Convert module paths with dots to directory paths (e.g., `subdir.helpers` → `subdir/helpers.at`)
    - Reuse `util::find_module_file()` function
 
-2. **Update BigVM Codegen** (`vm/codegen.rs`)
-   - Check if BigVM has similar module lookup issues
+2. **Update AutoVM Codegen** (`vm/codegen.rs`)
+   - Check if AutoVM has similar module lookup issues
    - Ensure consistency across all execution modes
 
 3. **Testing**
    - Create comprehensive test suite for module imports
    - Test nested paths, multiple directories, and edge cases
-   - Verify behavior across interpreter, BigVM, and transpilers
+   - Verify behavior across interpreter, AutoVM, and transpilers
 
 ### Files Modified
 

@@ -1,10 +1,10 @@
-这是一份针对 **AutoVM (BigVM Edition)** 的核心并发架构设计文档。
+这是一份针对 **AutoVM (AutoVM Edition)** 的核心并发架构设计文档。
 
 这份文档的确立意味着 AutoVM 将从一个简单的“循环解释器”升级为一个现代化的、基于 **Tokio** 的 **M:N 异步运行时**。这将是 Auto 语言在 PC 端实现高并发高性能的基石。
 
 ---
 
-# AutoVM (BigVM) Asynchronous Concurrency Architecture
+# AutoVM (AutoVM) Asynchronous Concurrency Architecture
 
 **Design Document v1.0**
 **Target**: Rust (Tokio) Implementation
@@ -12,7 +12,7 @@
 
 ## 1. Executive Summary (核心摘要)
 
-本设计旨在为 AutoVM (BigVM) 引入原生的 **Task/Message** 并发模型。
+本设计旨在为 AutoVM (AutoVM) 引入原生的 **Task/Message** 并发模型。
 通过利用 Rust 的 **Tokio** 异步运行时作为底层引擎，我们将 Auto 语言中的轻量级 `Task` 映射为 Rust 的 `Future`。这使得 Auto 语言能够以同步的直线代码风格（无 `async/await` 关键字），享受底层的异步非阻塞 I/O 能力。
 
 **核心映射关系：**
@@ -72,7 +72,7 @@ struct AutoTask {
 }
 
 // 虚拟机全局句柄
-struct BigVM {
+struct AutoVM {
     // 任务注册表 (用于调试、监控、强制杀死任务)
     // Key: TaskId
     tasks: DashMap<TaskId, Arc<Mutex<AutoTask>>>,
@@ -112,7 +112,7 @@ struct AutoChannel {
 当解析到 `OP_SPAWN <func_id>` 指令时：
 
 ```rust
-impl BigVM {
+impl AutoVM {
     fn spawn_task(&self, func_id: FragId, args: Vec<Value>) {
         let task_id = self.id_gen.fetch_add(1, Ordering::SeqCst);
         
@@ -138,7 +138,7 @@ impl BigVM {
 这是原本的 `vm.run()` 的异步改造版。
 
 ```rust
-impl BigVM {
+impl AutoVM {
     async fn run_task_loop(&self, task_state: Arc<Mutex<AutoTask>>) {
         loop {
             // A. 获取锁，执行一段 CPU 密集逻辑
@@ -229,7 +229,7 @@ impl BigVM {
 ### 5.1 `OP_RECV` (非阻塞接收)
 
 * **Auto 语义**: 阻塞当前 Task，直到收到消息。
-* **BigVM 实现**:
+* **AutoVM 实现**:
 1. VM 暂停指令执行。
 2. 调用 `tokio_channel.recv().await`。
 3. Rust 编译器将其编译为状态机挂起。
@@ -240,12 +240,12 @@ impl BigVM {
 ### 5.2 `OP_SEND` (非阻塞发送)
 
 * **Auto 语义**: 发送消息，如果不满则立即返回，满则阻塞。
-* **BigVM 实现**: `tokio_channel.send(msg).await`。
+* **AutoVM 实现**: `tokio_channel.send(msg).await`。
 
 ### 5.3 `OP_SLEEP` (睡眠)
 
 * **Auto 语义**: `sleep(1000)`。
-* **BigVM 实现**: `tokio::time::sleep(Duration::from_ms(1000)).await`。
+* **AutoVM 实现**: `tokio::time::sleep(Duration::from_ms(1000)).await`。
 * *注意*：这不会阻塞物理线程，只会让当前的 Auto Task 挂起 1 秒。
 
 
@@ -254,9 +254,9 @@ impl BigVM {
 
 ## 6. Compatibility Strategy (MicroVM 兼容性)
 
-虽然 BigVM 用了 Tokio，MicroVM 用了 RTOS，但**指令集 (ISA) 是一致的**。
+虽然 AutoVM 用了 Tokio，MicroVM 用了 RTOS，但**指令集 (ISA) 是一致的**。
 
-| Auto OpCode | BigVM (Rust/Tokio) Implementation | MicroVM (C/RTOS) Implementation |
+| Auto OpCode | AutoVM (Rust/Tokio) Implementation | MicroVM (C/RTOS) Implementation |
 | --- | --- | --- |
 | `OP_SPAWN` | `tokio::spawn(async_loop)` | `xTaskCreate(c_loop)` |
 | `OP_RECV` | `rx.recv().await` | `xQueueReceive(..., portMAX_DELAY)` |
@@ -278,7 +278,7 @@ impl BigVM {
 
 
 2. **Step 2: Struct Refactoring**
-* 将原有的单体 `struct VM` 拆分为 `struct BigVM` (Runtime) 和 `struct AutoTask` (State)。
+* 将原有的单体 `struct VM` 拆分为 `struct AutoVM` (Runtime) 和 `struct AutoTask` (State)。
 * 实现 `Task` 的 `lock()` 机制。
 
 
@@ -305,4 +305,4 @@ impl BigVM {
 这个设计将 AutoVM 从一个“玩具解释器”提升为了一个“工业级运行时”。
 它利用 Tokio 解决了并发和 IO 的难题，同时保留了 Auto 语言简洁的同步语法。这是实现 Auto "System Glue" 愿景的必经之路。
 
-**Next Action for AI:** Start refactoring `struct VM` into `AutoTask` and `BigVM` based on Section 3.
+**Next Action for AI:** Start refactoring `struct VM` into `AutoTask` and `AutoVM` based on Section 3.

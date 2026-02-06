@@ -1,5 +1,5 @@
 // Plan 073 Phase 9.2: Feature Parity Check
-// Analyzes test coverage and identifies gaps between Evaluator and BigVM
+// Analyzes test coverage and identifies gaps between Evaluator and AutoVM
 //
 // Run with: cargo run --example feature_parity
 
@@ -13,7 +13,7 @@ fn main() {
     println!();
     println!("╔════════════════════════════════════════════════════════════════╗");
     println!("║         Plan 073 Phase 9.2: Feature Parity Check               ║");
-    println!("║           Evaluator vs BigVM Test Coverage                     ║");
+    println!("║           Evaluator vs AutoVM Test Coverage                     ║");
     println!("╚════════════════════════════════════════════════════════════════╝");
     println!();
 
@@ -30,7 +30,7 @@ fn main() {
 
     // Known failing tests (from analysis)
     let known_failures = vec![
-        // These are NOT BigVM-related failures (other issues)
+        // These are NOT AutoVM-related failures (other issues)
         "target::tests::test_detect_from_cargo_target",
         "test_double_lexer::tests::test_lexer_float_suffix",
         "tests::a2c_tests::test_014_tag",
@@ -51,23 +51,23 @@ fn main() {
     ];
 
     // Categorize failures
-    let bigvm_failures: Vec<&str> = known_failures.iter()
-        .filter(|t| t.contains("vm_tests") || t.contains("BigVM"))
+    let autovm_failures: Vec<&str> = known_failures.iter()
+        .filter(|t| t.contains("vm_tests") || t.contains("AutoVM"))
         .copied()
         .collect();
     let other_failures: Vec<&str> = known_failures.iter()
-        .filter(|t| !(t.contains("vm_tests") || t.contains("BigVM")))
+        .filter(|t| !(t.contains("vm_tests") || t.contains("AutoVM")))
         .copied()
         .collect();
 
     println!("🔍 Failure Analysis:");
-    println!("   BigVM-related failures: {}", bigvm_failures.len());
+    println!("   AutoVM-related failures: {}", autovm_failures.len());
     println!("   Other failures:         {}", other_failures.len());
     println!();
 
-    if !bigvm_failures.is_empty() {
-        println!("   BigVM Test Failures:");
-        for test in &bigvm_failures {
+    if !autovm_failures.is_empty() {
+        println!("   AutoVM Test Failures:");
+        for test in &autovm_failures {
             println!("     ❌ {}", test);
         }
         println!();
@@ -78,7 +78,7 @@ fn main() {
     println!();
 
     println!("┌──────────────────────────────┬─────────────┬─────────────┬──────────┐");
-    println!("│ Feature                      │ Evaluator   │ BigVM       │ Parity   │");
+    println!("│ Feature                      │ Evaluator   │ AutoVM       │ Parity   │");
     println!("├──────────────────────────────┼─────────────┼─────────────┼──────────┤");
 
     let features = vec![
@@ -139,7 +139,7 @@ fn main() {
     println!();
     println!("   2. Borrow checking integration");
     println!("      - Hold/View/Mut/Take expressions exist in AST");
-    println!("      - Not fully compiled to BigVM yet (Phase 8.5)");
+    println!("      - Not fully compiled to AutoVM yet (Phase 8.5)");
     println!("      - Can defer to post-migration (not critical)");
     println!();
 
@@ -151,8 +151,8 @@ fn main() {
         println!("   ✅ FEATURE PARITY: EXCELLENT");
         println!("      Only {} failures out of {} total tests ({:.2}%)",
             failed, total, (failed as f64 / total as f64) * 100.0);
-        println!("      Most failures are NOT related to BigVM functionality");
-        println!("      BigVM is ready for production use!");
+        println!("      Most failures are NOT related to AutoVM functionality");
+        println!("      AutoVM is ready for production use!");
     } else if failed < 50 {
         println!("   ⚠️  FEATURE PARITY: GOOD");
         println!("      {} failures out of {} total tests ({:.2}%)",
@@ -170,7 +170,7 @@ fn main() {
     println!();
 
     if failed < 20 {
-        println!("   1. ✅ Safe to proceed with Phase 9.3 (Switch to BigVM)");
+        println!("   1. ✅ Safe to proceed with Phase 9.3 (Switch to AutoVM)");
         println!("   2. 📝 Document non-critical gaps for future work");
         println!("   3. 🔄 Keep evaluator as fallback during transition period");
         println!("   4. 📊 Monitor production usage for any edge cases");
@@ -192,7 +192,7 @@ fn main() {
     println!();
     if current_pass_rate >= 98.0 {
         println!("✅ STATUS: READY FOR PRODUCTION");
-        println!("   BigVM can safely replace the Evaluator!");
+        println!("   AutoVM can safely replace the Evaluator!");
     } else if current_pass_rate >= 95.0 {
         println!("🟡 STATUS: NEAR PRODUCTION READY");
         println!("   Minor issues remain, but generally safe to proceed");

@@ -1,10 +1,10 @@
-这是一份关于 **AutoVM (BigVM Edition)** 的详细架构设计文档。
+这是一份关于 **AutoVM (AutoVM Edition)** 的详细架构设计文档。
 
-作为资深架构师，我将 BigVM 定义为 **MicroVM 的“数字孪生 (Digital Twin)”**。它不仅是一个解释器，更是 AutoLive 开发体验的核心引擎。它必须在 Rust 的安全包裹下，精确模拟 C/MCU 的底层行为。
+作为资深架构师，我将 AutoVM 定义为 **MicroVM 的“数字孪生 (Digital Twin)”**。它不仅是一个解释器，更是 AutoLive 开发体验的核心引擎。它必须在 Rust 的安全包裹下，精确模拟 C/MCU 的底层行为。
 
 ---
 
-# AutoVM (BigVM) Architecture Design Document
+# AutoVM (AutoVM) Architecture Design Document
 
 **Project:** Auto Language Runtime
 **Target Platform:** Windows / Linux / macOS (Written in Rust)
@@ -13,17 +13,17 @@
 
 ## 1. Executive Summary (执行摘要)
 
-**BigVM** 是 Auto 语言在 PC 端的参考实现运行时。
+**AutoVM** 是 Auto 语言在 PC 端的参考实现运行时。
 它的核心使命不是追求 PC 上的极致性能，而是**精确模拟** MicroVM 在嵌入式 MCU 上的行为。它是连接 AIE (增量编译引擎) 与 IDE 调试器的桥梁。
 
 * **Role**: 开发环境仿真器、调试器后端、AIE 增量更新的接收端。
-* **Key Characteristic**: **同构性 (Isomorphism)**。BigVM 的内存布局、栈操作、溢出行为必须与 MicroVM 保持逻辑一致，确保“在 PC 上跑通的代码，烧录到 MCU 必定能跑”。
+* **Key Characteristic**: **同构性 (Isomorphism)**。AutoVM 的内存布局、栈操作、溢出行为必须与 MicroVM 保持逻辑一致，确保“在 PC 上跑通的代码，烧录到 MCU 必定能跑”。
 
 ---
 
 ## 2. Architecture Overview (架构概览)
 
-BigVM 由四个核心子系统组成：
+AutoVM 由四个核心子系统组成：
 
 1. **Virtual Hardware (虚拟硬件层)**: 模拟 MCU 的 Flash (Code) 和 RAM (Stack/Heap)。
 2. **Execution Engine (执行引擎)**: 一个基于 Rust 的 Dispatch Loop，执行 ABC (Auto Bytecode)。
@@ -34,7 +34,7 @@ BigVM 由四个核心子系统组成：
 
 ## 3. Core Design: Virtual Hardware (内存模型)
 
-为了保证同构性，BigVM 不能直接使用 Rust 的 `Heap`，必须手动管理两块巨大的 `Vec<u8>`。
+为了保证同构性，AutoVM 不能直接使用 Rust 的 `Heap`，必须手动管理两块巨大的 `Vec<u8>`。
 
 ### 3.1 The "Flash" (Code Space)
 
@@ -55,7 +55,7 @@ struct VirtualFlash {
 
 ### 3.2 The "RAM" (Data Space)
 
-模拟 MCU 的 SRAM。这是 BigVM 与传统解释器最大的不同——**强类型的 Raw Memory**。
+模拟 MCU 的 SRAM。这是 AutoVM 与传统解释器最大的不同——**强类型的 Raw Memory**。
 
 ```rust
 // 模拟 MCU 上的 32位 宽度的字
@@ -64,7 +64,7 @@ union Word {
     i: i32,
     u: u32,
     f: f32,
-    // BigVM 特供：为了调试，我们可以包含元数据，
+    // AutoVM 特供：为了调试，我们可以包含元数据，
     // 但在 release 模式下应强制对齐到 4 字节行为
     #[cfg(debug_assertions)]
     debug_ptr: usize, 
@@ -87,10 +87,10 @@ struct VirtualRAM {
 
 ### 4.1 The Loop
 
-BigVM 使用 Rust 编写核心循环。为了性能和模拟精确度，不使用递归函数，而是单循环。
+AutoVM 使用 Rust 编写核心循环。为了性能和模拟精确度，不使用递归函数，而是单循环。
 
 ```rust
-impl BigVM {
+impl AutoVM {
     pub fn run(&mut self) -> Result<(), VMError> {
         loop {
             // 1. Fetch
@@ -125,16 +125,16 @@ impl BigVM {
 
 ### 4.2 Isomorphic Trap (同构陷阱)
 
-BigVM 必须捕获那些在 Rust 里是 Panic 但在 C 里是 UB (Undefined Behavior) 的行为，并将其标准化。
+AutoVM 必须捕获那些在 Rust 里是 Panic 但在 C 里是 UB (Undefined Behavior) 的行为，并将其标准化。
 
-* **栈溢出**: BigVM 必须在 `sp >= RAM_SIZE` 时抛出明确的 `StackOverflow` 错误，模拟 MCU 的 HardFault。
+* **栈溢出**: AutoVM 必须在 `sp >= RAM_SIZE` 时抛出明确的 `StackOverflow` 错误，模拟 MCU 的 HardFault。
 * **除以零**: 必须检查并抛出异常，而不是让 Rust Panic。
 
 ---
 
 ## 5. Integration with AIE: Hot Reload Simulation
 
-这是 BigVM 最关键的特性：模拟 **AutoLive** 机制。
+这是 AutoVM 最关键的特性：模拟 **AutoLive** 机制。
 
 ### 5.1 The "Hot Zone"
 
@@ -142,7 +142,7 @@ BigVM 必须捕获那些在 Rust 里是 Panic 但在 C 里是 UB (Undefined Beha
 
 ### 5.2 Patch Protocol
 
-当 AIE (增量编译器) 完成编译后，它会发送一个 `Patch` 给 BigVM：
+当 AIE (增量编译器) 完成编译后，它会发送一个 `Patch` 给 AutoVM：
 
 ```rust
 struct Patch {
@@ -155,7 +155,7 @@ struct Patch {
 
 ### 5.3 The Loader Logic
 
-BigVM 收到 Patch 后的行为：
+AutoVM 收到 Patch 后的行为：
 
 1. **Alloc**: 在 `VirtualRAM` 的 Hot Zone 中分配一块空间 `addr`。
 2. **Write**: 将 `patch.code` 写入这块 RAM。
@@ -169,7 +169,7 @@ BigVM 收到 Patch 后的行为：
 
 ## 6. FFI Simulation (ABI 垫片)
 
-为了模拟 MicroVM 里的 C 函数调用，BigVM 使用 Rust 闭包来模拟 C 函数。
+为了模拟 MicroVM 里的 C 函数调用，AutoVM 使用 Rust 闭包来模拟 C 函数。
 
 ### 6.1 Shim Registry
 
@@ -196,7 +196,7 @@ struct NativeInterface {
 
 ## 7. Debugging & Observability (可观测性)
 
-作为开发工具，BigVM 必须提供 MicroVM 无法提供的“上帝视角”。
+作为开发工具，AutoVM 必须提供 MicroVM 无法提供的“上帝视角”。
 
 ### 7.1 Instruction Tracing
 
@@ -205,7 +205,7 @@ struct NativeInterface {
 
 ### 7.2 Reverse Debugging Support (Time Travel)
 
-由于 BigVM 的状态完全封闭在 `VirtualFlash` 和 `VirtualRAM` 两个 Vec 中。
+由于 AutoVM 的状态完全封闭在 `VirtualFlash` 和 `VirtualRAM` 两个 Vec 中。
 我们可以轻松实现 **快照 (Snapshotting)**：
 
 * 每执行 N 条指令，clone 一份 `VirtualRAM`。
@@ -216,7 +216,7 @@ struct NativeInterface {
 
 ## 8. Implementation Roadmap (实施路径)
 
-建议分为三个阶段实现 BigVM：
+建议分为三个阶段实现 AutoVM：
 
 ### Phase 1: The Core (纯计算)
 
@@ -240,7 +240,7 @@ struct NativeInterface {
 
 ## 9. Conclusion
 
-AutoVM (BigVM) 不是一个简单的模拟器，它是 Auto 语言**开发体验的基石**。
+AutoVM (AutoVM) 不是一个简单的模拟器，它是 Auto 语言**开发体验的基石**。
 通过在 Rust 中严格模拟 MCU 的内存限制和底层行为，我们不仅能保证代码的跨平台一致性，还能利用 PC 的强大资源实现“时间旅行调试”和“亚秒级热更”。
 
 **下一步行动建议**：

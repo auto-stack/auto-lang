@@ -1,9 +1,9 @@
-use crate::vm::engine::{BigVM, VMError};
+use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::task::AutoTask;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub type ShimFunc = Arc<dyn Fn(&mut AutoTask, &BigVM) -> Result<(), VMError> + Send + Sync>;
+pub type ShimFunc = Arc<dyn Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync>;
 
 pub struct NativeInterface {
     registry: HashMap<u16, ShimFunc>,
@@ -18,7 +18,7 @@ impl NativeInterface {
 
     pub fn register<F>(&mut self, id: u16, func: F)
     where
-        F: Fn(&mut AutoTask, &BigVM) -> Result<(), VMError> + Send + Sync + 'static,
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
     {
         self.registry.insert(id, Arc::new(func));
     }
@@ -86,7 +86,7 @@ pub const NATIVE_ITERATOR_FIND: u16 = 117;
 
 // === Standard Shims ===
 
-pub fn shim_print_i32(task: &mut AutoTask, _vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_print_i32(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     // Expect arg on TOS.
     // Callee cleanup: logic assumes we pop the arg.
     let val = task.ram.pop_i32();
@@ -96,7 +96,7 @@ pub fn shim_print_i32(task: &mut AutoTask, _vm: &BigVM) -> Result<(), VMError> {
     Ok(())
 }
 
-pub fn shim_print_f32(task: &mut AutoTask, _vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_print_f32(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     // Not implemented in RAM yet, treating as i32 for now or implementing primitive float read
     // For MVP Phase 1/4 compatibility, assuming i32-as-bits if needed, or simple placeholder
     // But let's assume raw bits.
@@ -110,7 +110,7 @@ pub fn shim_print_f32(task: &mut AutoTask, _vm: &BigVM) -> Result<(), VMError> {
 
 /// Print a string from the string constant pool.
 /// Expects string index (u16) on TOS as i32.
-pub fn shim_print_str(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let str_index = task.ram.pop_i32() as u16;
     if let Some(bytes) = vm.get_string(str_index) {
         let s = String::from_utf8_lossy(&bytes);
@@ -130,7 +130,7 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Create a new empty list.
 /// Stack: -> list_id
 /// Returns: list_id (u64 as i32)
-pub fn shim_list_new(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use std::sync::atomic::Ordering;
 
     // Plan 077 Phase 5: Create List<int> in unified registry
@@ -146,7 +146,7 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Push an element to the end of the list.
 /// Stack: list_id, elem -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry
-pub fn shim_list_push(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::universe::ListData;
     use crate::vm::heap_object::HeapObject;
 
@@ -168,7 +168,7 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Pop an element from the end of the list.
 /// Stack: list_id -> elem
 // Plan 077 Phase 5: Updated to use unified registry
-pub fn shim_list_pop(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::universe::ListData;
     use crate::vm::heap_object::HeapObject;
 
@@ -191,7 +191,7 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Get the length of the list.
 /// Stack: list_id -> len
 // Plan 077 Phase 5: Updated to use unified registry
-pub fn shim_list_len(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::universe::ListData;
     use crate::vm::heap_object::HeapObject;
 
@@ -213,7 +213,7 @@ pub fn shim_list_len(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Check if the list is empty.
 /// Stack: list_id -> is_empty (1 if empty, 0 otherwise)
 // Plan 077 Phase 5: Updated to use unified registry
-pub fn shim_list_is_empty(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_list_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::universe::ListData;
     use crate::vm::heap_object::HeapObject;
 
@@ -235,7 +235,7 @@ pub fn shim_list_is_empty(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError
 /// Clear all elements from the list.
 /// Stack: list_id -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry
-pub fn shim_list_clear(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::universe::ListData;
     use crate::vm::heap_object::HeapObject;
 
@@ -256,7 +256,7 @@ pub fn shim_list_clear(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Get element at index.
 /// Stack: list_id, index -> elem
 // Plan 077 Phase 5: Updated to use unified registry
-pub fn shim_list_get(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::universe::ListData;
     use crate::vm::heap_object::HeapObject;
 
@@ -280,7 +280,7 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Set element at index.
 /// Stack: list_id, index, elem -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry
-pub fn shim_list_set(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::universe::ListData;
     use crate::vm::heap_object::HeapObject;
 
@@ -303,7 +303,7 @@ pub fn shim_list_set(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Insert element at index.
 /// Stack: list_id, index, elem -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry
-pub fn shim_list_insert(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::universe::ListData;
     use crate::vm::heap_object::HeapObject;
 
@@ -326,7 +326,7 @@ pub fn shim_list_insert(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> 
 /// Remove element at index and return it.
 /// Stack: list_id, index -> elem
 // Plan 077 Phase 5: Updated to use unified registry
-pub fn shim_list_remove(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::universe::ListData;
     use crate::vm::heap_object::HeapObject;
 
@@ -351,7 +351,7 @@ pub fn shim_list_remove(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> 
 /// Drop/free the list.
 /// Stack: list_id -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry
-pub fn shim_list_drop(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_list_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let list_id = task.ram.pop_i32() as u64;
     vm.remove_heap_object(list_id);
 
@@ -367,7 +367,7 @@ pub fn shim_list_drop(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Create an iterator for a list.
 /// Stack: list_id -> iterator_id
 /// Returns: iterator_id (u32 as i32)
-pub fn shim_list_iter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_list_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use std::sync::atomic::Ordering;
     use crate::vm::engine::{Iterator, ListIterator};
 
@@ -394,7 +394,7 @@ pub fn shim_list_iter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
 /// Stack: iterator_id -> element (or -1 for nil)
 /// Returns: element value, or -1 if exhausted
 // Plan 077 Phase 6: Updated to use unified registry
-pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::universe::ListData;
     use crate::vm::engine::Iterator;
     use crate::vm::heap_object::HeapObject;
@@ -541,7 +541,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError
 /// NOTE: For MVP, this creates the MapIterator but the actual function
 /// calling during iteration is not yet implemented. The map iterator
 /// will currently return an error when next() is called.
-pub fn shim_iterator_map(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_iterator_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use std::sync::atomic::Ordering;
     use crate::vm::engine::{Iterator, MapIterator};
 
@@ -580,7 +580,7 @@ pub fn shim_iterator_map(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError>
 /// NOTE: For MVP, this creates the FilterIterator but the actual predicate
 /// calling during iteration is not yet implemented. The filter iterator
 /// will currently return all elements without filtering.
-pub fn shim_iterator_filter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use std::sync::atomic::Ordering;
     use crate::vm::engine::{Iterator, FilterIterator};
 
@@ -620,7 +620,7 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMErr
 /// Stack: iterator_id -> list_id
 /// Returns: new list_id (lower 32 bits of u64 as i32)
 // Plan 077 Phase 6: Updated to use unified registry
-pub fn shim_iterator_collect(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use std::sync::atomic::Ordering;
     use crate::vm::engine::Iterator;
     use crate::vm::heap_object::HeapObject;
@@ -678,7 +678,7 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMEr
 /// Returns: final reduced value
 ///
 /// NOTE: For MVP, this just sums all elements without calling the function.
-pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::Iterator;
     use crate::vm::heap_object::HeapObject;
     use crate::universe::ListData;
@@ -726,7 +726,7 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMErr
 ///
 /// NOTE: For MVP, this just returns the first element without calling the predicate.
 // Plan 077 Phase 6: Updated to use unified registry
-pub fn shim_iterator_find(task: &mut AutoTask, vm: &BigVM) -> Result<(), VMError> {
+pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::Iterator;
     use crate::vm::heap_object::HeapObject;
     use crate::universe::ListData;

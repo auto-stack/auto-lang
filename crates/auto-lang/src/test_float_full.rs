@@ -1,4 +1,4 @@
-// Test full float/double support from parsing to BigVM codegen (Plan 073 Stage A.5)
+// Test full float/double support from parsing to AutoVM codegen (Plan 073 Stage A.5)
 
 #[cfg(test)]
 mod tests {
