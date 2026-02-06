@@ -67,6 +67,7 @@ impl AutovmReplSession {
         let task_arc = vm.tasks.get(&task_id).unwrap().clone();
         let mut task = task_arc.blocking_lock();
         task.bp = 1;
+        task.num_locals = 0; // Initialize with no locals
         drop(task);
 
         Self {
@@ -135,15 +136,73 @@ impl AutovmReplSession {
         eprintln!("DEBUG: Generated {} bytes of bytecode", codegen.code.len());
         let mut i = 0;
         while i < codegen.code.len() {
-            let opcode = OpCode::from(codegen.code[i]);
+            // Safe conversion: catch invalid opcodes
+            let opcode: Result<OpCode, _> = codegen.code[i].try_into();
+            let opcode = match opcode {
+                Ok(op) => op,
+                Err(_) => {
+                    eprintln!("DEBUG:   [{:04x}] {:02x} <invalid opcode>", i, codegen.code[i]);
+                    i += 1;
+                    continue;
+                }
+            };
             eprint!("DEBUG:   [{:04x}] {:02x} {:?}", i, codegen.code[i], opcode);
             i += 1;
             // Print immediate values based on opcode
             match opcode {
-                OpCode::CONST_I32 | OpCode::CONST_U8 | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL => {
+                // 1-byte immediates
+                OpCode::CONST_U8 | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL | OpCode::CALL_CLOSURE => {
                     if i < codegen.code.len() {
                         eprint!(" (imm: {:02x})", codegen.code[i]);
                         i += 1;
+                    }
+                }
+                // 2-byte immediates (i16 for jumps, u16 for native ID)
+                OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ | OpCode::JMP_L | OpCode::CALL_NAT => {
+                    if i + 1 < codegen.code.len() {
+                        let val = u16::from_le_bytes([codegen.code[i], codegen.code[i + 1]]);
+                        eprint!(" (imm: {:04x})", val);
+                        i += 2;
+                    }
+                }
+                // 4-byte immediates (u32 for addresses)
+                OpCode::CALL => {
+                    if i + 3 < codegen.code.len() {
+                        let val = u32::from_le_bytes([
+                            codegen.code[i],
+                            codegen.code[i + 1],
+                            codegen.code[i + 2],
+                            codegen.code[i + 3],
+                        ]);
+                        eprint!(" (imm: {:08x})", val);
+                        i += 4;
+                    }
+                }
+                // SPAWN: 4-byte address + 1-byte arg_count
+                OpCode::SPAWN => {
+                    if i + 4 < codegen.code.len() {
+                        let addr = u32::from_le_bytes([
+                            codegen.code[i],
+                            codegen.code[i + 1],
+                            codegen.code[i + 2],
+                            codegen.code[i + 3],
+                        ]);
+                        let arg_count = codegen.code[i + 4];
+                        eprint!(" (addr: {:08x}, arg_count: {})", addr, arg_count);
+                        i += 5;
+                    }
+                }
+                // 4-byte immediates (i32 for constants)
+                OpCode::CONST_I32 => {
+                    if i + 3 < codegen.code.len() {
+                        let val = i32::from_le_bytes([
+                            codegen.code[i],
+                            codegen.code[i + 1],
+                            codegen.code[i + 2],
+                            codegen.code[i + 3],
+                        ]);
+                        eprint!(" (imm: {})", val);
+                        i += 4;
                     }
                 }
                 _ => {}
@@ -226,6 +285,7 @@ impl AutovmReplSession {
             .and_then(|c| c.scope_stack.last())
             .map(|scope| scope.len())
             .unwrap_or(0);
+        task.num_locals = num_locals; // Store on task for native shims to access
         task.ram.sp = task.bp + 1 + num_locals;
 
         // Debug: Print state BEFORE execution
@@ -275,6 +335,10 @@ impl AutovmReplSession {
             let result = task.ram.pop_i32();
             self.last_result = Some(result);
             eprintln!("DEBUG: Saved result to last_result: {}", result);
+        } else {
+            // No result produced (e.g., let statement without expression)
+            // Clear last_result to avoid printing stale value
+            self.last_result = None;
         }
 
         // Reset stack pointer to target_sp (clear all temporary values)
@@ -349,6 +413,50 @@ impl AutovmReplSession {
     /// This is used by the REPL to display results to the user.
     pub fn get_last_result(&self) -> Option<i32> {
         self.last_result
+    }
+
+    /// Format the last result for display
+    ///
+    /// If the result is a heap object ID (like a list), format it appropriately.
+    /// Otherwise, return the integer value as-is.
+    ///
+    /// Note: This is a heuristic - we can't distinguish between a list ID and an integer
+    /// value that happens to be the same number. We check if the object exists to reduce
+    /// false positives, but there's still ambiguity (e.g., if list ID 1 exists and you
+    /// evaluate an expression that returns 1, it will be formatted as a list).
+    pub fn format_last_result(&self) -> Option<String> {
+        self.last_result.map(|value| {
+            // Check if this is a heap object ID (positive values >= 1)
+            // AND the object actually exists in the heap
+            if value >= 1 {
+                let list_id = value as u64;
+                if let Some(obj) = self.vm.get_heap_object(list_id) {
+                    let guard = obj.read().unwrap();
+                    // Check if it's a List<int>
+                    use crate::universe::ListData;
+                    if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                        // Check if this looks like it could be an element value vs a list reference
+                        // Heuristic: If the value is small (0-10) and matches a list element value,
+                        // it's more likely to be an element than a list ID. But we can't be 100% sure.
+                        // For now, always format lists properly - users will see the issue if
+                        // they index into lists and get elements that happen to match list IDs.
+                        let elems: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
+                        return format!("List[{}]", elems.join(", "));
+                    }
+                    if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+                        return format!("List[{}]", list.elems.join(", "));
+                    }
+                    if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
+                        let elems: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
+                        return format!("List[{}]", elems.join(", "));
+                    }
+                    // Generic heap object
+                    return format!("<heap object {}>", list_id);
+                }
+            }
+            // Regular integer value
+            value.to_string()
+        })
     }
 }
 

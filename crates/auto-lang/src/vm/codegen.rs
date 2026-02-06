@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Stmt, Closure, Iter, TypeDecl};
+use crate::ast::{Expr, Stmt, Closure, Iter, Type, TypeDecl};
 use crate::error::{AutoResult, AutoError};
 use crate::error::SyntaxError;
 // use crate::val::Value; // Removed if not directly used or fix path
@@ -59,6 +59,16 @@ pub struct Codegen {
     /// Each scope has its own variable namespace
     pub scope_stack: Vec<HashMap<String, usize>>,
 
+    /// Variable type tracking (Plan 080: support for instance methods on List, etc.)
+    /// Maps variable name -> its type (e.g., "x" -> Type::List(Type::Int))
+    /// Used to generate correct native method calls (e.g., x.push -> List.push)
+    pub var_types: HashMap<String, Type>,
+
+    /// Variable mutability tracking (Plan 080+: enforce immutability for let bindings)
+    /// Maps variable name -> is_mutable (true for mut/var, false for let)
+    /// Used to reject reassignments to immutable variables
+    pub var_mutability: HashMap<String, bool>,
+
     /// Captured variables stack for nested closures (Plan 071 Phase 6.2)
     /// Each level has its own captured variable map (name -> capture index)
     /// Stack allows proper nesting: inner closures can capture from outer closures
@@ -105,6 +115,8 @@ impl Codegen {
             object_types: Vec::new(),
             locals: HashMap::new(),
             scope_stack,
+            var_types: HashMap::new(), // Plan 080: variable type tracking
+            var_mutability: HashMap::new(), // Plan 080+: variable mutability tracking
             captured_vars_stack: Vec::new(),
             loop_exits: Vec::new(),
             types: HashMap::new(),
@@ -244,41 +256,92 @@ impl Codegen {
                 // 3. Push new scope for function locals
                 self.push_scope();
 
-                // 4. Compile body
-                self.compile_stmt(&Stmt::Block(fn_decl.body.clone()))?;
-
-                // 5. Get number of locals and emit stack reservation at function entry
-                let n_locals = self.scope_stack.last().unwrap().len();
-
-                // Emit stack reservation at FUNCTION START (right after entry point)
-                // This ensures sp starts at n_locals, preventing stack from overwriting locals
-                if n_locals > 0 {
-                    // Insert CONST_0 opcodes at entry_point to reserve stack space
-                    // Each CONST_0 is 5 bytes (1 byte opcode + 4 bytes i32)
-                    for _ in 0..n_locals {
-                        self.code.insert(entry_point as usize, OpCode::CONST_0 as u8);
-                        self.code.insert(entry_point as usize + 1, 0u8);
-                        self.code.insert(entry_point as usize + 2, 0u8);
-                        self.code.insert(entry_point as usize + 3, 0u8);
-                        self.code.insert(entry_point as usize + 4, 0u8);
-                    }
+                // 4. Compile function parameters
+                for param in &fn_decl.params {
+                    self.add_var(&param.name);
                 }
 
-                // 6. Emit RET at end of body
+                // 5. Compile body FIRST to count locals
+                self.compile_stmt(&Stmt::Block(fn_decl.body.clone()))?;
+
+                // 6. Get number of locals and INSERT stack reservation at function entry
+                let n_locals = self.scope_stack.last().unwrap().len();
+                eprintln!("DEBUG: Function {}: n_locals={}, params={}", fn_decl.name, n_locals, fn_decl.params.len());
+                if n_locals > 0 {
+                    // Insert RESERVE_STACK at entry_point (before function body)
+                    // This is 2 bytes: 1 byte opcode + 1 byte operand
+                    self.code.insert(entry_point as usize, OpCode::RESERVE_STACK as u8);
+                    self.code.insert(entry_point as usize + 1, n_locals as u8);
+                    // All jumps and offsets AFTER entry_point need to be adjusted by +2
+                    // TODO: Adjust jumps/offsets (complex, skipping for now)
+                    eprintln!("DEBUG: Function {}: inserted RESERVE_STACK {} at entry_point={}", fn_decl.name, n_locals, entry_point);
+                } else {
+                    eprintln!("DEBUG: Function {}: n_locals=0, skipping RESERVE_STACK", fn_decl.name);
+                }
+
+                // 7. Emit RET at end of body
                 let n_args = fn_decl.params.len() as u8;
                 self.emit(OpCode::RET);
                 self.code.push(n_args);
 
-                // 7. Pop function scope
+                // 8. Pop function scope
                 self.pop_scope();
 
-                // 8. Patch jump to skip body
+                // 9. Patch jump to skip body
                 self.patch_jump(jump_over);
             }
             Stmt::Store(store) => {
                 // Variable declaration: let/mut/var name = expr
+                //
+                // Immutability checking:
+                // - let x = 5: creates immutable binding
+                // - mut x = 5: creates mutable binding
+                // - var x = 5: creates mutable binding
+                // - x = 7: reassignment (error if x was declared with let)
+
+                let name_str = store.name.to_string();
+                let scope = self.scope_stack.last_mut().expect("Scope stack should never be empty");
+
+                // Check if this is a reassignment (variable already exists in current scope)
+                if scope.contains_key(&name_str) {
+                    // This is a reassignment - check if variable is immutable
+                    if let Some(&is_mutable) = self.var_mutability.get(&name_str) {
+                        if !is_mutable {
+                            // Variable was declared with 'let' (immutable) - reject reassignment
+                            return Err(crate::error::AutoError::Msg(format!(
+                                "Cannot reassign to immutable variable '{}' (declared with 'let')",
+                                name_str
+                            )));
+                        }
+                        // Variable is mutable - allow reassignment
+                    }
+                } else {
+                    // First-time declaration - track mutability based on StoreKind
+                    let is_mutable = matches!(store.kind, crate::ast::StoreKind::Var | crate::ast::StoreKind::CVar);
+                    self.var_mutability.insert(name_str.clone(), is_mutable);
+                }
+
                 // Compile the RHS expression (pushes result on stack)
                 self.compile_expr(&store.expr)?;
+
+                // Plan 080: Track variable type for instance method support
+                // If the expression is a call like List.new(), track that the variable has type List
+                if let Expr::Call(call) = &store.expr {
+                    if let Expr::Dot(obj, method) = call.name.as_ref() {
+                        if let Expr::Ident(type_name) = obj.as_ref() {
+                            // Check if this is a known type (List, HashMap, etc.)
+                            if type_name == "List" && method == "new" {
+                                // Variable is being assigned a List
+                                self.var_types.insert(store.name.to_string(), Type::List(Box::new(Type::Int)));
+                            }
+                            // Add more type constructors here as needed
+                            // For example:
+                            // else if type_name == "HashMap" && method == "new" {
+                            //     self.var_types.insert(store.name.to_string(), Type::User(...));
+                            // }
+                        }
+                    }
+                }
 
                 // Add variable to symbol table and get its index
                 let var_index = self.add_var(&store.name);
@@ -985,15 +1048,19 @@ impl Codegen {
             }
             Expr::Ident(name) => {
                 let name_str = name.to_string();
+                eprintln!("DEBUG: Compiling Ident: {}", name_str);
 
                 // Check if this is a captured variable (Plan 071)
                 if let Some(_capture_index) = self.current_captured_vars().get(&name_str) {
                     // Variable is captured - emit LOAD_CAPTURED
+                    eprintln!("DEBUG: Variable {} is captured", name_str);
                     self.emit_load_captured(&name_str);
                 } else if let Some(var_index) = self.lookup_var(&name_str) {
                     // Variable found in local scope - load it
+                    eprintln!("DEBUG: Variable {} found at index {}", name_str, var_index);
                     self.emit_load_loc(var_index);
                 } else {
+                    eprintln!("DEBUG: Variable {} NOT FOUND!", name_str);
                     // Plan 080: Variable not found - return proper error
                     // Even with skip_check=true in parser, we catch undefined variables here
                     return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
@@ -1279,6 +1346,7 @@ impl Codegen {
                     // Native function call
                     // For instance methods, compile receiver (self) FIRST, then arguments
                     // This ensures stack order: [self, arg1, arg2, ...]
+                    eprintln!("DEBUG: Native function call: func_name={:?}, native_id={}", func_name, id);
                     if let Expr::Dot(obj, _method) = call.name.as_ref() {
                         // Check if it's a static method call (Type.method with capital T)
                         let is_static_method = match obj.as_ref() {
@@ -1287,11 +1355,14 @@ impl Codegen {
                             }
                             _ => false,
                         };
+                        eprintln!("DEBUG: is_static_method={}", is_static_method);
 
                         // Compile receiver for instance methods
                         if !is_static_method {
+                            eprintln!("DEBUG: Compiling receiver for instance method");
                             // Check if this method needs 'id' field extraction
                             if let Some(ref method_name) = func_name {
+                                eprintln!("DEBUG: method_name={}, needs_id_extraction={}", method_name, self.needs_id_extraction(method_name));
                                 if self.needs_id_extraction(method_name) {
                                     // Compile object expression
                                     self.compile_expr(obj)?;
@@ -1306,6 +1377,7 @@ impl Codegen {
                                     self.code.extend_from_slice(&field_idx.to_le_bytes());
                                 } else {
                                     // Compile full instance (for user-defined types)
+                                    eprintln!("DEBUG: Compiling object expr (no id extraction)");
                                     self.compile_expr(obj)?;
                                 }
                             } else {
@@ -1490,7 +1562,10 @@ impl Codegen {
     // === Helpers ===
 
     fn emit(&mut self, op: OpCode) {
-        self.code.push(op as u8);
+        let opcode = op as u8;
+        eprintln!("DEBUG: emit() called, opcode={}, code.len() before push={}", opcode, self.code.len());
+        self.code.push(opcode);
+        eprintln!("DEBUG: emit() done, code.len() after push={}, code[{}]={}", self.code.len(), self.code.len() - 1, self.code[self.code.len() - 1]);
     }
 
     fn emit_i32(&mut self, val: i32) {
@@ -1632,8 +1707,12 @@ impl Codegen {
         }
 
         let bytes = (offset as i16).to_le_bytes();
+        eprintln!("DEBUG: patch_jump: placeholder_idx={}, offset={}, writing [{}, {}] to code[{}] and code[{}]",
+            placeholder_idx, offset, bytes[0], bytes[1], placeholder_idx, placeholder_idx + 1);
+        eprintln!("DEBUG: patch_jump: code[{}] was {}, code[{}] was {}", placeholder_idx, self.code[placeholder_idx], placeholder_idx + 1, self.code[placeholder_idx + 1]);
         self.code[placeholder_idx] = bytes[0];
         self.code[placeholder_idx + 1] = bytes[1];
+        eprintln!("DEBUG: patch_jump: code[{}] now {}, code[{}] now {}", placeholder_idx, self.code[placeholder_idx], placeholder_idx + 1, self.code[placeholder_idx + 1]);
     }
 
     // === Symbol Table Helpers ===
@@ -1687,8 +1766,12 @@ impl Codegen {
     /// Emit LOAD_LOCAL for a given local index
     /// Uses dedicated opcodes for locals 0-2 for performance
     fn emit_load_loc(&mut self, index: usize) {
+        eprintln!("DEBUG: emit_load_loc called with index={}", index);
         match index {
-            0 => self.emit(OpCode::LOAD_LOC_0),
+            0 => {
+                eprintln!("DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)");
+                self.emit(OpCode::LOAD_LOC_0);
+            }
             1 => self.emit(OpCode::LOAD_LOC_1),
             2 => self.emit(OpCode::LOAD_LOC_2),
             _ => {
@@ -2118,8 +2201,11 @@ impl Codegen {
         // Step 5: Back-fill the func_addr in the CLOSURE opcode
         // Now we know the actual function address, so we can fill it in
         let func_addr_bytes = func_addr.to_le_bytes();
+        eprintln!("DEBUG: Closure back-fill: func_addr_offset={}, func_addr={}, writing {} bytes", func_addr_offset, func_addr, func_addr_bytes.len());
         for (i, byte) in func_addr_bytes.iter().enumerate() {
-            self.code[func_addr_offset as usize + i] = *byte;
+            let idx = func_addr_offset as usize + i;
+            eprintln!("DEBUG:   code[{}] = {} (was {})", idx, byte, self.code[idx]);
+            self.code[idx] = *byte;
         }
 
         // Step 6: Create reloc entry for this closure (Plan 071 Phase 6.2)
@@ -2148,107 +2234,69 @@ impl Codegen {
             .unwrap_or(false)
     }
 
-    /// Infer type name from a variable name (heuristic)
+    /// Infer type name from a variable name (Plan 080: with explicit type tracking)
+    ///
+    /// First checks the var_types map (tracked during let declarations)
+    /// Falls back to a heuristic based on common naming patterns
+    ///
     /// For standard library types, we can map variable names to types:
     /// - "list", "arr" -> "List"
     /// - "str", "s" -> "String"
     /// - "map", "dict" -> "Map"
     /// This is a fallback for when type information is not available
     fn infer_type_from_var(&self, var_name: &str) -> Option<String> {
-        match var_name {
-            "list" | "arr" | "array" | "vec" => Some("List".to_string()),
-            "str" | "string" | "s" => Some("String".to_string()),
-            "map" | "dict" | " hashmap" => Some("Map".to_string()),
-            "set" => Some("Set".to_string()),
-            "opt" | "option" => Some("Option".to_string()),
-            "file" => Some("File".to_string()),
-            _ => None,
+        // Plan 080: First check if we have explicit type information from var_types
+        if let Some(ty) = self.var_types.get(var_name) {
+            // Return the base type name (without generic parameters for now)
+            match ty {
+                Type::List(_) => Some("List".to_string()),
+                Type::User(type_decl) => Some(type_decl.name.to_string()),
+                Type::GenericInstance(inst) => Some(inst.base_name.to_string()),
+                _ => None,
+            }
+        } else {
+            // Fallback: heuristic based on variable naming
+            match var_name {
+                "list" | "arr" | "array" | "vec" => Some("List".to_string()),
+                "str" | "string" | "s" => Some("String".to_string()),
+                "map" | "dict" | "hashmap" => Some("Map".to_string()),
+                "set" => Some("Set".to_string()),
+                "opt" | "option" => Some("Option".to_string()),
+                "file" => Some("File".to_string()),
+                _ => None,
+            }
         }
     }
 
     /// Check if a method requires extracting the 'id' field from the instance
-    /// instead of passing the full instance.
     ///
-    /// This is needed for built-in types (List, HashMap, etc.) that use shim functions
-    /// expecting raw IDs (u64) rather than full Value::Instance objects.
+    /// Plan 077 Phase 5: With unified heap registry, heap objects (List, HashMap, etc.)
+    /// are now referenced directly by their ID (u64) instead of being wrapped in
+    /// Value::Instance with an 'id' field. So we NO LONGER need to extract 'id' for these types.
     ///
-    /// Examples:
-    /// - `List.push` → extract `id` field
-    /// - `List.len` → extract `id` field
-    /// - `HashMap.insert` → extract `id` field
-    /// - `ListIter.next` → extract `id` field (iterator methods)
+    /// This function now only returns true for legacy types that still use Value::Instance.
+    ///
+    /// Legacy examples (when this returns true):
+    /// - `Iterator.next` → extract `id` field (iterators still use old format)
+    ///
+    /// Examples (now returns false, no extraction needed):
+    /// - `List.push` → NO extraction needed, use list_id directly
+    /// - `List.len` → NO extraction needed, use list_id directly
+    /// - `List.iter` → NO extraction needed, use list_id directly
     fn needs_id_extraction(&self, method_name: &str) -> bool {
-        // List methods that use shim
-        if method_name.starts_with("List.") {
+        // Plan 077 Phase 5: With unified heap registry, List/HashMap/HashSet don't need id extraction
+        // They are now stored as heap objects with direct IDs
+
+        // Only iterators still use the old Value::Instance format with id field
+        if method_name.starts_with("Iterator.") {
             return matches!(
                 method_name,
-                "List.push" | "List.pop" | "List.len" | "List.is_empty"
-                    | "List.clear" | "List.get" | "List.set" | "List.insert"
-                    | "List.remove" | "List.drop" | "List.capacity"
+                "Iterator.next" | "Iterator.map" | "Iterator.filter"
+                    | "Iterator.collect" | "Iterator.reduce" | "Iterator.find"
             );
         }
 
-        // HashMap methods that use shim
-        if method_name.starts_with("HashMap.") {
-            return matches!(
-                method_name,
-                "HashMap.insert_str" | "HashMap.insert_int"
-                    | "HashMap.get_str" | "HashMap.get_int"
-                    | "HashMap.contains" | "HashMap.remove"
-                    | "HashMap.size" | "HashMap.clear" | "HashMap.drop"
-            );
-        }
-
-        // HashSet methods that use shim
-        if method_name.starts_with("HashSet.") {
-            return matches!(
-                method_name,
-                "HashSet.insert" | "HashSet.contains"
-                    | "HashSet.remove" | "HashSet.size"
-                    | "HashSet.clear" | "HashSet.drop"
-            );
-        }
-
-        // StringBuilder methods that use shim
-        if method_name.starts_with("StringBuilder.") {
-            return matches!(
-                method_name,
-                "StringBuilder.append" | "StringBuilder.append_char"
-                    | "StringBuilder.append_int" | "StringBuilder.build"
-                    | "StringBuilder.clear" | "StringBuilder.len"
-                    | "StringBuilder.drop"
-            );
-        }
-
-        // Heap/InlineInt64 storage methods
-        if method_name.starts_with("Heap.") || method_name.starts_with("InlineInt64.") {
-            return matches!(
-                method_name,
-                "Heap.data" | "Heap.capacity" | "Heap.try_grow" | "Heap.drop"
-                    | "InlineInt64.data" | "InlineInt64.capacity"
-                    | "InlineInt64.try_grow" | "InlineInt64.drop"
-            );
-        }
-
-        // Iterator methods (ListIter, MapIter, FilterIter)
-        if method_name.starts_with("ListIter.") || method_name.starts_with("MapIter.")
-            || method_name.starts_with("FilterIter.")
-        {
-            return matches!(
-                method_name,
-                "ListIter.next" | "ListIter.map" | "ListIter.filter"
-                    | "ListIter.reduce" | "ListIter.count" | "ListIter.for_each"
-                    | "ListIter.collect" | "ListIter.any" | "ListIter.all"
-                    | "ListIter.find" | "MapIter.next" | "MapIter.filter"
-                    | "MapIter.reduce" | "MapIter.count" | "MapIter.for_each"
-                    | "MapIter.collect" | "MapIter.any" | "MapIter.all"
-                    | "MapIter.find" | "FilterIter.next" | "FilterIter.map"
-                    | "FilterIter.reduce" | "FilterIter.count" | "FilterIter.for_each"
-                    | "FilterIter.collect" | "FilterIter.any" | "FilterIter.all"
-                    | "FilterIter.find"
-            );
-        }
-
+        // All other types now use direct heap object IDs - no extraction needed
         false
     }
 

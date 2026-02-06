@@ -117,6 +117,7 @@ pub fn register_builtin_natives() {
     registry.register("List.insert");
     registry.register("List.remove");
     registry.register("List.drop");
+    registry.register("List.reserve");
 
     // Iterator functions
     registry.register("List.iter");

@@ -18,6 +18,7 @@ pub struct AutoTask {
     pub ram: VirtualRAM,
     pub ip: usize,
     pub bp: usize, // Base Pointer
+    pub num_locals: usize, // Number of local variables in current stack frame
     pub status: TaskStatus,
     pub wake_time: Option<Instant>, // For SLEEP opcode
     pub current_closure_id: Option<u32>, // Plan 071: Current closure being executed
@@ -30,6 +31,7 @@ impl AutoTask {
             ram: VirtualRAM::new(ram_size),
             ip: start_ip,
             bp: 0,
+            num_locals: 0,
             status: TaskStatus::Ready,
             wake_time: None,
             current_closure_id: None,

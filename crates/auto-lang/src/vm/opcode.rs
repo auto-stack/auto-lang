@@ -13,6 +13,7 @@ pub enum OpCode {
     DUP = 0x03,
     SWAP = 0x04,
     DROP = 0x05, // RAII cleanup: pops and frees owned value
+    RESERVE_STACK = 0x06, // Reserve stack space for n_locals (prevents stack from overwriting locals)
 
     // === Constants ===
     CONST_I32 = 0x10,

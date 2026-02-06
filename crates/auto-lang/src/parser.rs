@@ -3696,9 +3696,13 @@ impl<'a> Parser<'a> {
         match self.kind() {
             TokenKind::Var => Ok(StoreKind::Var),
             TokenKind::Let => Ok(StoreKind::Let),
-            TokenKind::Mut => Ok(StoreKind::Var), // mut is now an alias for var in store statements
+            TokenKind::Mut => {
+                let message = "'mut' is not supported as a storage modifier. Use 'var' for mutable variables.".to_string();
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic { message, span }.into());
+            }
             _ => {
-                let message = format!("Expected store kind, got {:?}", self.kind());
+                let message = format!("Expected store kind (let or var), got {:?}", self.kind());
                 let span = pos_to_span(self.cur.pos);
                 return Err(SyntaxError::Generic { message, span }.into());
             }

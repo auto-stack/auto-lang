@@ -126,16 +126,17 @@ impl AutoVM {
             closures: DashMap::new(),
             closure_id_gen: AtomicU32::new(0),
             objects: DashMap::new(),
-            object_id_gen: AtomicU64::new(0),
+            object_id_gen: AtomicU64::new(1),
             // Plan 073: Array registry
             arrays: DashMap::new(),
-            array_id_gen: AtomicU64::new(0),
+            array_id_gen: AtomicU64::new(1),
             // Plan 073: Node registry
             nodes: DashMap::new(),
-            node_id_gen: AtomicU64::new(0),
+            node_id_gen: AtomicU64::new(1),
             // Plan 077 Phase 4: Unified object registry
+            // Note: IDs start at 1000000 to avoid confusion with small integer values
             heap_objects: DashMap::new(),
-            heap_object_id_gen: AtomicU64::new(0),
+            heap_object_id_gen: AtomicU64::new(1000000),
         }
     }
 
@@ -365,7 +366,9 @@ impl AutoVM {
                 OpCode::CONST_I32 => {
                     let val = self.flash.read_i32(task.ip);
                     task.ip += 4;
+                    eprintln!("DEBUG: CONST_I32: val={}, sp before push={}", val, task.ram.sp);
                     task.ram.push_i32(val);
+                    eprintln!("DEBUG: CONST_I32: sp after push={}, wrote to address {}", task.ram.sp, task.ram.sp - 1);
                 }
                 OpCode::CONST_F32 => {
                     // Plan 073: Fixed to use push_f32 instead of push_i32
@@ -496,15 +499,14 @@ impl AutoVM {
 
                     // Pop elements from stack (in reverse order since last element is on top)
                     let mut elems = Vec::with_capacity(elem_count as usize);
-                    for i in 0..elem_count {
-                        let idx = (elem_count - 1 - i) as usize;
+                    for _ in 0..elem_count {
                         // Pop element and convert to Value
                         let bits = task.ram.pop_i32();
-
-                        // For now, treat all elements as integers
-                        // TODO: Add type metadata for arrays to support mixed types
-                        elems.insert(idx, auto_val::Value::Int(bits));
+                        elems.push(auto_val::Value::Int(bits));
                     }
+
+                    // Reverse to get correct order (elements were popped LIFO)
+                    elems.reverse();
 
                     // Store array in arrays registry and get ID
                     let array_id = self.array_id_gen.fetch_add(1, Ordering::SeqCst);
@@ -893,15 +895,58 @@ impl AutoVM {
                     task.ram.push_i32(node_id as i32);
                 }
                 // Plan 073: Array element access (arr[index])
+                // Plan 080: Also supports heap objects (lists like List<int>)
                 OpCode::GET_ELEM => {
-                    // Stack: array_id, index
+                    // Stack: array_id/list_id, index
                     // Pop index first (top of stack)
                     let index = task.ram.pop_i32() as usize;
-                    // Pop array_id
-                    let array_id = task.ram.pop_i32() as u64;
+                    // Pop array_id/list_id
+                    let obj_id = task.ram.pop_i32() as u64;
 
-                    // Get array from registry
-                    if let Some(array_ref) = self.arrays.get(&array_id) {
+                    eprintln!("DEBUG GET_ELEM: obj_id={}, index={}", obj_id, index);
+
+                    // First, try heap_objects registry (Plan 077 unified registry)
+                    if let Some(obj) = self.get_heap_object(obj_id) {
+                        use crate::universe::ListData;
+                        let guard = obj.read().unwrap();
+
+                        // Try List<int>
+                        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                            eprintln!("DEBUG GET_ELEM: Found List<int> with {} elems", list.elems.len());
+                            if let Some(&elem) = list.elems.get(index) {
+                                eprintln!("DEBUG GET_ELEM: Returning elem[{}]={}", index, elem);
+                                task.ram.push_i32(elem);
+                            } else {
+                                eprintln!("DEBUG GET_ELEM: Index {} out of bounds", index);
+                                task.ram.push_i32(0); // Out of bounds
+                            }
+                        }
+                        // Try List<String>
+                        else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+                            eprintln!("DEBUG GET_ELEM: Found List<String>");
+                            if let Some(_elem) = list.elems.get(index) {
+                                // TODO: Support string elements (currently push placeholder)
+                                task.ram.push_i32(0);
+                            } else {
+                                task.ram.push_i32(0); // Out of bounds
+                            }
+                        }
+                        // Try List<bool>
+                        else if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
+                            eprintln!("DEBUG GET_ELEM: Found List<bool>");
+                            if let Some(&elem) = list.elems.get(index) {
+                                task.ram.push_i32(if elem { 1 } else { 0 });
+                            } else {
+                                task.ram.push_i32(0); // Out of bounds
+                            }
+                        }
+                        else {
+                            eprintln!("DEBUG GET_ELEM: Unknown heap object type");
+                            task.ram.push_i32(0); // Unknown heap object type
+                        }
+                    }
+                    // Fallback to legacy arrays registry
+                    else if let Some(array_ref) = self.arrays.get(&obj_id) {
                         let array = array_ref.read().unwrap();
 
                         // Check bounds
@@ -929,8 +974,8 @@ impl AutoVM {
                             task.ram.push_i32(0);
                         }
                     } else {
-                        // Array not found - push 0 as error sentinel
-                        // TODO: Proper error handling for invalid array IDs
+                        // Object not found - push 0 as error sentinel
+                        // TODO: Proper error handling for invalid object IDs
                         task.ram.push_i32(0);
                     }
                 }
@@ -1626,6 +1671,7 @@ impl AutoVM {
                 OpCode::LOAD_LOC_0 => {
                     // Load from bp+1 (first local variable)
                     let val = task.ram.read_i32(task.bp + 1);
+                    eprintln!("DEBUG: LOAD_LOC_0: bp={}, loading from bp+1={}, val={}", task.bp, task.bp + 1, val);
                     task.ram.push_i32(val);
                 }
                 OpCode::LOAD_LOC_1 => {
@@ -1641,6 +1687,7 @@ impl AutoVM {
                 OpCode::STORE_LOC_0 => {
                     // Store to bp+1 (first local variable)
                     let val = task.ram.pop_i32();
+                    eprintln!("DEBUG: STORE_LOC_0: bp={}, storing val={} to bp+1={}", task.bp, val, task.bp + 1);
                     task.ram.write_i32(task.bp + 1, val);
                 }
                 OpCode::STORE_LOC_1 => {
@@ -1652,6 +1699,18 @@ impl AutoVM {
                 // === Stack ===
                 OpCode::DROP => {
                     task.ram.pop_i32();
+                }
+                OpCode::RESERVE_STACK => {
+                    // Reserve stack space for n_locals to prevent stack from overwriting locals
+                    let n_locals = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+
+                    // Actually push zeros to reserve the space (not just increment sp)
+                    for _ in 0..n_locals {
+                        task.ram.push_i32(0);
+                    }
+
+                    task.num_locals = n_locals; // Track num_locals for native shims
                 }
 
                 // === Comparison ===

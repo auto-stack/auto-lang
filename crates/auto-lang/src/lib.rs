@@ -168,8 +168,15 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     let mut vm = AutoVM::new(flash, 1024); // 1KB RAM
     vm.load_strings(strings);
 
-    // 5. Execute
-    let task_id = vm.spawn_task(0, 1024);
+    // 5. Execute - Find main/test entry point
+    let entry_point = codegen.exports
+        .get("main")
+        .or_else(|| codegen.exports.get("test"))
+        .copied()
+        .unwrap_or(0) as usize; // Default to address 0 for scripts without main/test
+
+    eprintln!("DEBUG: Spawning task at entry_point={}", entry_point);
+    let task_id = vm.spawn_task(entry_point, 1024);
     vm.run_task_loop().await;
 
     // 6. Get result from stack
@@ -181,6 +188,28 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
         }
 
         let result = task.ram.pop_i32();
+
+        // Format result: check if it's an array ID, heap object ID, or regular value
+        let result_u64 = result as u64;
+
+        // Check arrays registry (for array literals)
+        if let Some(arr_arc) = vm.arrays.get(&result_u64) {
+            let arr = arr_arc.read().unwrap();
+            let formatted: Vec<String> = arr.iter().map(|v| v.repr().to_string()).collect();
+            return Ok(format!("[{}]", formatted.join(", ")));
+        }
+
+        // Check heap objects (for List, HashMap, etc.)
+        if let Some(obj_arc) = vm.heap_objects.get(&result_u64) {
+            let obj = obj_arc.read().unwrap();
+            // Try to format as List<int>
+            if let Some(list) = obj.as_any().downcast_ref::<crate::universe::ListData<i32>>() {
+                let formatted: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
+                return Ok(format!("[{}]", formatted.join(", ")));
+            }
+        }
+
+        // Default: return as integer
         Ok(format!("{}", result))
     } else {
         Err(crate::error::AutoError::Msg(

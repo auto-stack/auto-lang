@@ -127,15 +127,45 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // List Native Shims
 // ============================================================================
 
-/// Create a new empty list.
-/// Stack: -> list_id
+/// Create a new list with optional initial elements.
+/// Stack: [elem1, elem2, ...] -> list_id
 /// Returns: list_id (u64 as i32)
+///
+/// If elements are on the stack (above bp + 1 + num_locals), they are used to initialize the list.
+/// Elements are in LIFO order (top of stack is last element).
 pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use std::sync::atomic::Ordering;
-
-    // Plan 077 Phase 5: Create List<int> in unified registry
     use crate::universe::ListData;
-    let list: ListData<i32> = ListData::new();
+
+    // Calculate the target stack pointer
+    // For main() (bp=0): stack layout is [local0, local1, ..., localN-1, temps...]
+    //                    where local0..N-1 are the reserved zeros, temps start after them
+    // For regular functions: [ret_addr, old_bp, local0, local1, ..., localN, temps...]
+    //                        bp points to old_bp, locals at bp+1..bp+N, temps start after
+    let target_sp = if task.bp == 0 {
+        // Main function: locals are at addresses 0..num_locals-1, temps start at num_locals
+        task.num_locals
+    } else {
+        // Regular function: bp points to saved BP, locals at bp+1..bp+num_locals
+        // Temps start at bp + 1 + num_locals
+        task.bp + 1 + task.num_locals
+    };
+
+    // Collect all argument values from the stack
+    let mut elems = Vec::new();
+    while task.ram.sp > target_sp {
+        elems.push(task.ram.pop_i32());
+    }
+
+    // Reverse since stack is LIFO (last pushed = first element)
+    elems.reverse();
+
+    // Create list with initial elements
+    let mut list: ListData<i32> = ListData::new();
+    for elem in &elems {
+        list.push(*elem);
+    }
+
+    // Register the list in the heap
     let list_id = vm.insert_heap_object(list);
 
     // Return list_id
