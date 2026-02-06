@@ -1,0 +1,57 @@
+#!gbuild
+[Program]
+$ for define in defines {
+    -D${define}
+$ }
+
+	-cpu=rh850g3kh
+	-bsp generic
+$ for inc in all_incs {
+	-I${rel}${inc}
+$ }
+    -I${rel}${device_inc}
+	-g
+	-dual_debug
+	-ignore_debug_references
+	-object_dir=objs
+	-sda=all
+	-large_sda
+	-init_ram_at_startup
+	-e _RESET
+
+${rel}${device_dir}/device/device.gpj
+
+# Deps
+
+$ for dev in devices {
+# ${dev.id}
+${dev.id}.gpj
+$ }
+
+
+$ for dep in deps {
+# ${dep.id}
+${dep.id}.gpj
+$ }
+
+$ for bag in bags {
+# ${bag.id}
+${bag.id}.gpj
+$ }
+
+$ for lib in libs {
+# ${lib.id}
+${lib.id}.gpj
+$ }
+
+# Dirs
+
+$ for dir in dirs {
+# ${dir.name}
+${dir.lpath}.gpj
+$ }
+
+# Srcs
+$ for src in srcs {
+${rel}${src}
+$ }

@@ -1,0 +1,11 @@
+#!gbuild
+[Subproject]
+## Sources in this subproject
+$ for src in srcs {
+${rel}${src}
+$ }
+
+## Subdirs of this subproject
+$ for dir in dirs {
+${name}/${dir.rpath}.gpj
+$ }

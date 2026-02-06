@@ -1,0 +1,9 @@
+name: "${name}"
+version: "0.1.0"
+
+lib("${name}") {}
+
+app("${name}_demo") {
+    srcs: ["apps/${name}/${name}_demo.c"]
+    links: ["${name}"]
+}

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workspace>
+    @ for app in apps {
+    <project>
+        <path>$WS_DIR$\@{app.id}.ewp</path>
+    </project>
+    @ }
+    <batchBuild />
+</workspace>

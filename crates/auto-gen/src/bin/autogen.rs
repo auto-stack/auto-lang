@@ -120,6 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 data_source: DataSource::AutoFile(data),
                 templates,
                 lib_files: Vec::new(),  // No library files by default
+                lib_paths: Vec::new(),  // No library search paths by default
             };
 
             match generator.generate(&spec) {

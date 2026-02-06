@@ -1,0 +1,48 @@
+#!gbuild
+# Header Section
+defineConfig ("Debug" "dbg" "${rel}${device_dir}\tgt\debug.gpc")
+defineConfig ("Release" "rel" "${rel}${device_dir}\tgt\release.gpc")
+primaryTarget=v800_standalone.tgt
+[Project]
+
+# Project Options Section
+   -cpu=rh850g3kh
+   -bsp=generic
+   -fsingle                            # Hardware Single, Software Double
+
+   -reserve_r2                         # Reserves this register for use by the user.
+   --short_enum                        # Store enumerations in the smallest possible type.
+   -delete                             # Controls the removal of unused and unreferenced functions from an executable.
+
+   -g                                  # Generates source-level debugging information, but does not allow procedure calls from the MULTI Debugger's command line.
+   -dual_debug                         # Enables the generation of DWARF debugging information in the object file
+
+   -no_callt                           # Controls the use of the V850E callt instruction function prologues and epilogues.
+   -prepare_dispose                    # Controls the use of the V850E prepare and dispose instructions for function prologues and epilogues.
+   -inline_prologue                    # Forces the compiler to use inline code sequences.
+
+   -sda=all                            # Assigns all variables to the special data area.
+   -large_sda                          # Generate 23-bit SDA relocations for load/store instructions
+
+   -preprocess_assembly_files          # Preprocess Assembly Files
+   --preprocess_linker_directive_full  # The C preprocessor preprocesses linker directives files.
+   -passsource                         # Controls the interleaving of your original source code with the generated assembly code.
+
+   -Wundef                             # Controls a warning that is issued for undefined symbols in preprocessor expressions.
+
+   -gsize                              # Output File Size Analysis
+   -list                               # Creates a listing by using the name and directory of the object file with the .lst extension.
+   -Mx                                 # Map File Cross-Referencing
+
+   -e _RESET                           # Specifying an Alternate Program Start Address
+   -D__GHS__
+   -ffunctions
+   :binDir=out
+
+# Target
+${rel}${device_dir}/tgt/target.gpj
+
+# Projects
+$ for app in apps {
+${app.id}.gpj    [Program]
+$ }

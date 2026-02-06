@@ -25,6 +25,8 @@ pub use parser::Parser;
 pub mod patch;
 pub mod autovm_repl;
 pub mod repl;
+// Plan 078: ModuleResolver trait for dependency resolution
+pub mod resolver;
 pub mod runtime;
 pub mod scope;
 pub mod target;

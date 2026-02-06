@@ -4,49 +4,131 @@
 
 **前置条件**：
 
-1. 当前位于项目根目录。
-2. 拥有 `auto-man` 的 Git 仓库地址（如果无法访问远程，假设本地存在副本）。
+1. 当前位于项目根目录 (`auto-lang/`)。
+2. **auto-man 项目位于 `../auto-man`**（与 `auto-lang` 同级目录）。
 3. Rust 工具链 (`cargo`) 已安装。
+
+**重要信息**：
+- ✅ **auto-lang workspace 已配置完成** - `crates/auto-lang` 已存在并正常工作
+- ✅ **源项目位置确认** - `../auto-man` 是现有的 auto-man 实现目录
+- **迁移策略**：两种可选方案
+  1. **直接复制方案**：从 `../auto-man` 复制实现到 `crates/auto-man`
+  2. **渐进式方案**：先创建空的 `crates/auto-man` crate，然后逐步迁移功能
 
 ---
 
 ## 阶段一：物理迁移与 Workspace 设置 (Physical Migration)
 
-此阶段目标是建立 `crates/` 目录结构，并合并代码库，确保编译通过。
+此阶段目标是建立 `crates/auto-man` 目录结构，并合并代码库，确保编译通过。
 
-### 任务 1.1：重组 auto-lang 结构
+### ✅ 任务 1.1：确认 auto-lang 结构（已完成）
 
-1. 创建目录 `crates/auto-lang`。
-2. 将根目录下原有的 `src/` 目录移动到 `crates/auto-lang/src/`。
-3. 将根目录下原有的 `Cargo.toml` 移动到 `crates/auto-lang/Cargo.toml`。
-4. **修改配置**：编辑 `crates/auto-lang/Cargo.toml`，确保 `[package]` 下的 `name` 为 `"auto-lang"`。
-5. **验证**：检查 `crates/auto-lang/src/main.rs` (或 lib.rs) 是否存在。
+**状态**：✅ 已完成
+- ✅ 目录 `crates/auto-lang` 已存在
+- ✅ Workspace 已配置，包含多个 crates
+- ✅ `crates/auto-lang/Cargo.toml` 配置正确
 
-### 任务 1.2：合并 auto-man 仓库
-
-*(注：如果 Agent 无法访问外部 Git，请跳过 Git 合并步骤，假设代码已拷贝到 `crates/auto-man`)*
-
-1. 添加 `auto-man` 远程仓库：`git remote add -f auto-man-repo <AUTO_MAN_GIT_URL>`。
-2. 合并代码：`git merge -s ours --no-commit --allow-unrelated-histories auto-man-repo/main`。
-3. 读取文件树：`git read-tree --prefix=crates/auto-man/ -u auto-man-repo/main`。
-4. 提交更改：`git commit -m "Migrate auto-man into crates/auto-man"`。
-
-### 任务 1.3：配置 Cargo Workspace
-
-1. 在根目录新建 `Cargo.toml`，内容如下：
-```toml
-[workspace]
-resolver = "2"
-members = [
-    "crates/auto-lang",
-    "crates/auto-man",
-    # 如果存在 cli 目录，也加进来
-]
-
+**验证**：
+```bash
+ls -la crates/auto-lang/
+cat Cargo.toml  # 确认 workspace.members 包含 "crates/auto-lang"
 ```
 
+### 🚧 任务 1.2：迁移 auto-man 仓库（进行中）
 
-2. **验证**：运行 `cargo build`，确认 Cargo 能识别 workspace 成员。
+**源位置**：`../auto-man`（与 `auto-lang` 同级）
+
+**方案选择**：
+
+#### 方案 A：直接复制（推荐）
+**适用场景**：auto-man 代码量不大，需要快速迁移
+**步骤**：
+1. 检查 `../auto-man` 目录结构：
+   ```bash
+   ls -la ../auto-man/
+   cat ../auto-man/Cargo.toml
+   ```
+2. 复制源代码到新 crate：
+   ```bash
+   mkdir -p crates/auto-man/src
+   cp -r ../auto-man/src/* crates/auto-man/src/
+   cp ../auto-man/Cargo.toml crates/auto-man/Cargo.toml
+   ```
+
+#### 方案 B：渐进式迁移（更安全）
+**适用场景**：auto-man 代码复杂，需要逐步适配
+**步骤**：
+1. 创建空的 `crates/auto-man` crate 结构
+2. 先建立基础框架（Cargo.toml, lib.rs）
+3. 逐个迁移模块从 `../auto-man`
+4. 每个模块迁移后运行测试验证
+
+**本计划采用方案 B（渐进式）**：
+
+1. **创建基础结构**：
+   ```bash
+   mkdir -p crates/auto-man/src
+   touch crates/auto-man/Cargo.toml
+   touch crates/auto-man/src/lib.rs
+   ```
+
+2. **添加到 workspace**：
+   修改根 `Cargo.toml`，添加 `"crates/auto-man"` 到 `members`
+
+3. **配置 auto-man/Cargo.toml**：
+   ```toml
+   [package]
+   name = "auto-man"
+   version = "0.1.0"
+   edition = "2021"
+
+   [dependencies]
+   auto-lang = { path = "../auto-lang" }
+   ```
+
+4. **检查源项目结构**：
+   ```bash
+   # 了解需要迁移的内容
+   find ../auto-man/src -name "*.rs" | head -20
+   cat ../auto-man/src/lib.rs  # 查看入口点
+   ```
+
+### 🚧 任务 1.3：配置 Cargo Workspace（进行中）
+
+**状态**：✅ 已有 workspace，需要添加 auto-man
+
+**当前 workspace 配置**（`Cargo.toml`）：
+```toml
+[workspace]
+members = [
+    "crates/auto",
+    "crates/auto-gen",
+    "crates/auto-lang",
+    "crates/auto-lang-macros",
+    "crates/auto-val",
+    "crates/auto-vm",
+]
+```
+
+**需要添加**：
+```toml
+[workspace]
+members = [
+    "crates/auto",
+    "crates/auto-gen",
+    "crates/auto-lang",
+    "crates/auto-lang-macros",
+    # 🆕 Plan 078: 添加 auto-man
+    "crates/auto-man",
+    "crates/auto-val",
+    "crates/auto-vm",
+]
+```
+
+**验证步骤**：
+1. 添加 `crates/auto-man` 到 `workspace.members`
+2. 运行 `cargo build`，确认 workspace 识别新 crate
+3. 运行 `cargo check -p auto-man`，确认 auto-man 编译通过
 
 ### 任务 1.4：修复内部依赖
 

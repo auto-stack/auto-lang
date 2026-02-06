@@ -1,0 +1,50 @@
+[package]
+name = "auto-man"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+auto-lang = { path = "../auto-lang" }
+auto-val = { path = "../auto-val" }
+auto-gen = { path = "../auto-gen" }
+
+# Error handling
+thiserror = { workspace = true }
+
+# CLI
+clap = { workspace = true }
+rust-embed = { workspace = true }
+
+# Utilities
+tabled = { workspace = true }
+simplelog = { workspace = true }
+log = { workspace = true }
+normalize-path = { workspace = true }
+dialoguer = { workspace = true }
+glob = { workspace = true }
+dirs = { workspace = true }
+reqwest = { workspace = true }
+version-compare = { workspace = true }
+colored = { workspace = true }
+zip = { workspace = true }
+glob-match = { workspace = true }
+encoding_rs = { workspace = true }
+is_executable = { workspace = true }
+
+# Serialization (Phase 1+)
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+indicatif = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lib]
+name = "auto_man"
+path = "src/lib.rs"
+
+# Binary target (Phase 5: CLI & Binary)
+[[bin]]
+name = "auto-man"
+path = "src/main.rs"
