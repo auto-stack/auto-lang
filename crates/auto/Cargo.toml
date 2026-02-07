@@ -8,8 +8,12 @@ default-run = "auto"
 clap = { workspace = true }
 auto-lang = { path = "../auto-lang" }
 auto-val = { path = "../auto-val" }
+auto-man = { path = "../auto-man" }
 miette = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 walkdir = "2.5.0"
 indicatif = "0.18.3"
+log = "0.4"
+simplelog = "0.12"
+colored = { workspace = true }

@@ -108,6 +108,15 @@ impl AutoConfig {
                 root: root,
             })
         } else {
+            // For empty config files (Nil result), return an empty root Node instead of error
+            if matches!(result, Value::Nil) {
+                return Ok(Self {
+                    code: code.clone(),
+                    args: args.clone(),
+                    root: auto_val::Node::new("root"),
+                });
+            }
+
             Err(format!("Invalid config result: {}", result.repr()).into())
         }
     }

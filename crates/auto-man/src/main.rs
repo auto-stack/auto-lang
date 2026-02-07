@@ -295,7 +295,8 @@ SUBCOMMANDS:
   inspect  Inspect a specific cache entry
 
 ENVIRONMENT:
-  AUTO_CACHE_ENABLED=true  Enable caching for builds
+  AUTO_CACHE_ENABLED=true  Enable caching for builds (default: enabled)
+  AUTO_CACHE_ENABLED=false Disable caching
 
 EXAMPLES:
   am cache stats

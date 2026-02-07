@@ -206,11 +206,11 @@ impl Automan {
         // Currently, only CMake builder is supported
         let mut am = Self::parse_pac(path, &am)?;
 
-        // Initialize cache if enabled
+        // Initialize cache if enabled (enabled by default, can be disabled with AUTO_CACHE_ENABLED=false)
         let cache_enabled = env::var("AUTO_CACHE_ENABLED")
             .ok()
             .and_then(|v| v.parse::<bool>().ok())
-            .unwrap_or(false);
+            .unwrap_or(true);  // Default: enabled
 
         if cache_enabled {
             match AutoManCache::in_home_dir(am.pac.name.to_string()) {
@@ -385,7 +385,7 @@ impl Automan {
     /// Display cache statistics
     pub fn cache_stats(&self) -> AutoResult<()> {
         let cache = self.cache.as_ref()
-            .ok_or("AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.")?;
+            .ok_or("AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.")?;
 
         let stats = cache.get_statistics();
 
@@ -408,7 +408,7 @@ impl Automan {
     /// Run garbage collection manually
     pub fn cache_prune(&mut self) -> AutoResult<()> {
         let cache = self.cache.as_mut()
-            .ok_or("AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.")?;
+            .ok_or("AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.")?;
 
         println!("Running cache garbage collection...");
         let freed_bytes = cache.run_gc()
@@ -429,7 +429,7 @@ impl Automan {
     /// Clear all cached artifacts
     pub fn cache_clear(&mut self) -> AutoResult<()> {
         let cache = self.cache.as_mut()
-            .ok_or("AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.")?;
+            .ok_or("AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.")?;
 
         print!("⚠️  This will clear ALL cached artifacts. Continue? [y/N] ");
         use std::io::Write;
@@ -455,7 +455,7 @@ impl Automan {
     /// Inspect a specific cache entry by module name or hash key
     pub fn cache_inspect(&self, name_or_hash: &str) -> AutoResult<()> {
         let cache = self.cache.as_ref()
-            .ok_or("AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.")?;
+            .ok_or("AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.")?;
 
         // Try to find artifact by hash key first
         if let Some(metadata) = cache.get_metadata(name_or_hash) {
@@ -499,7 +499,7 @@ impl Automan {
     /// List all cached artifacts with optional filtering
     pub fn cache_list(&self, type_filter: Option<String>, limit: usize) -> AutoResult<()> {
         let cache = self.cache.as_ref()
-            .ok_or("AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.")?;
+            .ok_or("AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.")?;
 
         let stats = cache.get_statistics();
         let count = stats.count as usize;
@@ -561,7 +561,7 @@ impl Automan {
     /// Verify cache integrity
     pub fn cache_verify(&self) -> AutoResult<()> {
         let cache = self.cache.as_ref()
-            .ok_or("AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.")?;
+            .ok_or("AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.")?;
 
         println!("\n=== Verifying Cache Integrity ===\n");
 

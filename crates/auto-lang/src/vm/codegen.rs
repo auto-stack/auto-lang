@@ -1542,6 +1542,25 @@ impl Codegen {
                 // Emit ERROR_PROPAGATE (pops May<T>, pushes unwrapped value or early returns)
                 self.emit(OpCode::ERROR_PROPAGATE);
             }
+            Expr::Pair(pair) => {
+                // Handle Pair as a single-element object for config syntax like: name: "value"
+                // This is equivalent to Object {key: value}
+                self.compile_expr(&pair.value)?;
+
+                // Store key in the object_keys pool
+                let key = self.ast_key_to_value_key(&pair.key);
+                let key_index = self.object_keys.len() as u16;
+                self.object_keys.push(vec![key.clone()]);
+
+                // Track field type
+                let ty = self.infer_object_type(&pair.value);
+                self.object_types.push(vec![ty]);
+
+                // Emit CREATE_OBJ with key_index and field count (1)
+                self.emit(OpCode::CREATE_OBJ);
+                self.code.extend_from_slice(&key_index.to_le_bytes());
+                self.code.push(1); // field_count = 1
+            }
             _ => {
                 unimplemented!("Expression {:?}", expr);
             }
@@ -1563,9 +1582,7 @@ impl Codegen {
 
     fn emit(&mut self, op: OpCode) {
         let opcode = op as u8;
-        eprintln!("DEBUG: emit() called, opcode={}, code.len() before push={}", opcode, self.code.len());
         self.code.push(opcode);
-        eprintln!("DEBUG: emit() done, code.len() after push={}, code[{}]={}", self.code.len(), self.code.len() - 1, self.code[self.code.len() - 1]);
     }
 
     fn emit_i32(&mut self, val: i32) {

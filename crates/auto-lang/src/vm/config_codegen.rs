@@ -67,7 +67,9 @@ impl ConfigCodegen {
         }
 
         // Return the config object
+        // RET instruction: opcode (1 byte) + n_args (1 byte)
         self.base.code.push(OpCode::RET as u8);
+        self.base.code.push(0); // n_args = 0 for config return
 
         Ok(())
     }
@@ -75,6 +77,10 @@ impl ConfigCodegen {
     /// Collect field assignments from statements
     fn collect_config_stmt(&mut self, stmt: &Stmt) -> AutoResult<()> {
         match stmt {
+            // Ignore empty lines
+            Stmt::EmptyLine(_) => {
+                // Do nothing
+            }
             // Parse field assignments: server.host = "localhost"
             Stmt::Store(store) => {
                 self.collect_store_field(store)?;
@@ -82,6 +88,12 @@ impl ConfigCodegen {
             // Evaluate expressions and add to config
             Stmt::Expr(expr) => {
                 self.collect_expr_field(expr)?;
+            }
+            // Node statements (like app("name") {...}) are treated as expressions
+            Stmt::Node(node) => {
+                // Convert Node to Expr::Node and collect it
+                let node_expr = crate::ast::Expr::Node(node.clone());
+                self.collect_expr_field(&node_expr)?;
             }
             _ => {
                 return Err(AutoError::Msg(

@@ -435,15 +435,15 @@ echo "y" | auto cache clear
 **Examples**:
 
 ```bash
-# Enable for single command
-AUTO_CACHE_ENABLED=true auto build
-
-# Enable for session
-export AUTO_CACHE_ENABLED=true
+# AutoCache is enabled by default
 auto build
 
-# Disable
-unset AUTO_CACHE_ENABLED
+# Disable for single command
+AUTO_CACHE_ENABLED=false auto build
+
+# Disable for session
+export AUTO_CACHE_ENABLED=false
+auto build
 ```
 
 **Check current value**:
@@ -480,25 +480,22 @@ auto build
 ### Basic Workflow
 
 ```bash
-# 1. Enable AutoCache
-export AUTO_CACHE_ENABLED=true
-
-# 2. Build project (cache miss on first build)
+# 1. Build project (cache miss on first build, AutoCache enabled by default)
 auto build
 # Output: [Cache Miss] std:io (C)
 #         [Cache Miss] std:fs (C)
 
-# 3. Check cache statistics
+# 2. Check cache statistics
 auto cache stats
 # Output: Total Artifacts: 2
 #         Cache Size: 21.0 KB / 10.0 GB
 
-# 4. List cached artifacts
+# 3. List cached artifacts
 auto cache list
 # Output: std:io    C    12.3 KB   Just now    1
 #         std:fs    C    8.7 KB    Just now    1
 
-# 5. Rebuild (cache hit)
+# 4. Rebuild (cache hit)
 auto build
 # Output: [Cache Hit] std:io (C)
 #         [Cache Hit] std:fs (C)
@@ -549,8 +546,7 @@ auto build
 ```bash
 # Build stdlib project
 cd /path/to/stdlib
-export AUTO_CACHE_ENABLED=true
-auto build
+auto build  # AutoCache enabled by default
 
 # Build app project (reuses stdlib from cache)
 cd /path/to/app
@@ -564,8 +560,8 @@ auto build
 # .github/workflows/build.yml
 name: Build with AutoCache
 
-env:
-  AUTO_CACHE_ENABLED: "true"
+# AutoCache is enabled by default
+# Set AUTO_CACHE_ENABLED=false to disable
 
 steps:
   - name: Checkout code
@@ -594,13 +590,25 @@ steps:
 cargo install auto-man
 ```
 
-### Cache Not Enabled
+### Cache Not Available
 
-**Error**: `AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.`
+**Error**: `AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.`
 
-**Solution**: Enable environment variable
+**Note**: AutoCache is enabled by default. This error only occurs if initialization failed.
+
+**Solution**: Check cache directory and permissions:
 ```bash
-export AUTO_CACHE_ENABLED=true
+# Verify cache directory exists
+ls ~/.auto/cache  # Linux/macOS
+dir C:\Users\%USERNAME%\.auto\cache  # Windows
+
+# Create directory if missing
+mkdir -p ~/.auto/cache  # Linux/macOS
+```
+
+**To disable AutoCache** (if needed):
+```bash
+export AUTO_CACHE_ENABLED=false
 ```
 
 ### Permission Denied

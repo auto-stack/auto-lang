@@ -3,6 +3,8 @@ use auto_lang::repl;
 use clap::{Parser, Subcommand, ValueEnum};
 use miette::{Diagnostic, MietteHandlerOpts, Result};
 use serde_json::{json, Value};
+use colored::Colorize;
+use log::info;
 
 mod cmd_a2c_stdlib;
 
@@ -94,6 +96,47 @@ enum OutputFormat {
     Json,
 }
 
+fn init_logger() {
+    simplelog::CombinedLogger::init(vec![
+        simplelog::TermLogger::new(
+            simplelog::LevelFilter::Info,
+            simplelog::Config::default(),
+            simplelog::TerminalMode::Mixed,
+            simplelog::ColorChoice::Auto,
+        ),
+    ])
+    .unwrap();
+}
+
+fn load_am_config() -> Option<auto_man::AmConfig> {
+    auto_man::load_am_config()
+}
+
+fn select_port(input: Option<String>, ports: &Vec<auto_val::AutoStr>) -> auto_val::AutoResult<auto_val::AutoStr> {
+    auto_man::util::select_or_default_port(input, ports, "Which port do you want to build?")
+}
+
+#[derive(Subcommand, Debug)]
+enum CacheCommands {
+    #[command(about = "Show cache statistics")]
+    Stats,
+    #[command(about = "List all cached artifacts")]
+    List {
+        #[arg(long)]
+        type_: Option<String>,
+        #[arg(short, long, default_value = "50")]
+        limit: usize,
+    },
+    #[command(about = "Run garbage collection")]
+    Prune,
+    #[command(about = "Clear all cached artifacts")]
+    Clear,
+    #[command(about = "Inspect a cache entry")]
+    Inspect { name: String },
+    #[command(about = "Verify cache integrity")]
+    Verify,
+}
+
 #[derive(Subcommand, Debug)]
 enum Commands {
     #[command(about = "AutoLang REPL (deprecated - uses TreeWalker Interpreter)")]
@@ -120,6 +163,74 @@ enum Commands {
     JavaScript { path: String },
     #[command(about = "Transpile stdlib to C")]
     A2cStdlib,
+
+    // ========== Build System Commands ==========
+
+    #[command(about = "Create a new Auto application package", alias = "a")]
+    App { name: String },
+
+    #[command(about = "Create a new Auto library package", alias = "l")]
+    Lib { name: String },
+
+    #[command(about = "Create a new C application package")]
+    Capp { name: String },
+
+    #[command(about = "Create a new C library package")]
+    Clib { name: String },
+
+    #[command(about = "Scan project and download dependencies")]
+    Scan,
+
+    #[command(about = "Build the project", alias = "b")]
+    Build {
+        #[arg(short, long)]
+        dir: Option<String>,
+    },
+
+    #[command(about = "Run the compiled executable", alias = "r")]
+    RunExe {
+        #[arg(allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+
+    #[command(about = "Clean build artifacts")]
+    Clean {
+        #[arg(short, long)]
+        dir: Option<String>,
+    },
+
+    #[command(about = "Show dependency tree")]
+    Deps,
+
+    #[command(about = "Show available devices")]
+    Devices,
+
+    #[command(about = "Manage AutoCache")]
+    Cache {
+        #[command(subcommand)]
+        command: CacheCommands,
+    },
+
+    #[command(about = "Open project in IDE", alias = "o")]
+    Open,
+
+    #[command(about = "Show package or target information", alias = "i")]
+    Info {
+        #[arg(short, long)]
+        target: Option<String>,
+    },
+
+    #[command(about = "Show or select build port")]
+    Port,
+
+    #[command(about = "Pull/download all dependencies")]
+    Pull,
+
+    #[command(about = "Reset AutoMan configuration and index")]
+    Reset,
+
+    #[command(about = "Install AutoMan configuration file")]
+    Install { file: String },
 }
 
 fn main() -> Result<()> {
@@ -248,6 +359,194 @@ fn main() -> Result<()> {
         Some(Commands::A2cStdlib) => {
             cmd_a2c_stdlib::run()?;
         }
+
+        // ========== Build System Commands ==========
+
+        Some(Commands::App { name }) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            auto_man::Automan::create_app(&name).map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Lib { name }) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            auto_man::Automan::create_lib(&name).map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Capp { name }) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            auto_man::Automan::create_capp(&name).map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Clib { name }) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            auto_man::Automan::create_clib(&name).map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Scan) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            let config = load_am_config().unwrap_or(auto_man::AmConfig::default());
+            let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
+            am.scan().map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Build { dir }) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            let dir = if let Some(dir) = dir { dir } else { ".".to_string() };
+            let config = load_am_config().unwrap_or(auto_man::AmConfig::default());
+            let mut am = auto_man::Automan::new(&dir, config).map_err(|e| miette::miette!("{}", e))?;
+            am.scan().map_err(|e| miette::miette!("{}", e))?;
+            am.build().map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::RunExe { args }) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            let config = load_am_config().unwrap_or(auto_man::AmConfig::default());
+            let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
+            info!("Running app ...");
+            println!();
+            println!("------------ output ------------");
+            am.run(args).map_err(|e| miette::miette!("{}", e))?;
+            println!("------------- end --------------");
+        }
+
+        Some(Commands::Clean { dir }) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            let dir = if let Some(dir) = dir { dir } else { ".".to_string() };
+            let config = load_am_config().unwrap_or(auto_man::AmConfig::default());
+            let mut am = auto_man::Automan::new(&dir, config).map_err(|e| miette::miette!("{}", e))?;
+            am.clean().map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Deps) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            let config = load_am_config().unwrap_or(auto_man::AmConfig::default());
+            auto_man::Automan::list_deps(&config).map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Devices) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            let config = load_am_config().unwrap_or(auto_man::AmConfig::default());
+            auto_man::Automan::list_devices(&config).map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Open) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            let config = load_am_config().unwrap_or(auto_man::AmConfig::default());
+            let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
+            am.open_ide().map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Cache { command }) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            let config = load_am_config().unwrap_or(auto_man::AmConfig::default());
+            let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
+
+            match command {
+                CacheCommands::Stats => {
+                    am.cache_stats().map_err(|e| miette::miette!("{}", e))?;
+                }
+                CacheCommands::List { type_, limit } => {
+                    am.cache_list(type_, limit).map_err(|e| miette::miette!("{}", e))?;
+                }
+                CacheCommands::Prune => {
+                    am.cache_prune().map_err(|e| miette::miette!("{}", e))?;
+                }
+                CacheCommands::Clear => {
+                    am.cache_clear().map_err(|e| miette::miette!("{}", e))?;
+                }
+                CacheCommands::Inspect { name } => {
+                    am.cache_inspect(&name).map_err(|e| miette::miette!("{}", e))?;
+                }
+                CacheCommands::Verify => {
+                    am.cache_verify().map_err(|e| miette::miette!("{}", e))?;
+                }
+            }
+        }
+
+        Some(Commands::Info { target }) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            let config = load_am_config().unwrap_or(auto_man::AmConfig::default());
+            let am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
+            am.info(target).map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Port) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            let config = load_am_config().unwrap_or(auto_man::AmConfig::default());
+            let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
+            let port = select_port(None, &am.list_port_names()).map_err(|e| miette::miette!("{}", e))?;
+            am.set_port(port.clone()).map_err(|e| miette::miette!("{}", e))?;
+            info!("port \"{}\" written to .am/state.at", port)
+        }
+
+        Some(Commands::Pull) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            let config = load_am_config().unwrap_or(auto_man::AmConfig::default());
+            let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
+            am.pull().map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Reset) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            auto_man::Automan::reset_index().map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Install { file }) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "Hello, I'm Auto!".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+            auto_man::Automan::install_config(&file).map_err(|e| miette::miette!("{}", e))?;
+        }
+
         None => {
             // Default: Use BigVM REPL (Plan 068 Phase 9.5)
             auto_lang::autovm_repl::main_loop().map_err(|e| miette::miette!("{}", e))?;

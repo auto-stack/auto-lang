@@ -1,5 +1,8 @@
 {
   "workbench": {
     "path": "D:\\soft\\iar\\ewriscv-3.40.1"
+  },
+  "workspace": {
+    "path": "${workspaceFolder}\\crates\\auto-man\\assets\\builders\\iar\\iar.eww"
   }
 }

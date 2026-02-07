@@ -1310,22 +1310,19 @@ Test scenarios:
 
 **End-to-end test**:
 ```bash
-# 1. Enable cache
-export AUTO_CACHE_ENABLED=true
-
-# 2. Build project (cache miss)
+# 1. Build project (cache miss, AutoCache enabled by default)
 time auto build
 
-# 3. Check cache stats
+# 2. Check cache stats
 auto cache stats
 
-# 4. Rebuild (cache hit)
+# 3. Rebuild (cache hit)
 time auto build
 
-# 5. Verify integrity
+# 4. Verify integrity
 auto cache verify
 
-# 6. List artifacts
+# 5. List artifacts
 auto cache list --limit 10
 ```
 

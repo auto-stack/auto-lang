@@ -61,46 +61,74 @@ impl VirtualFlash {
     }
 
     // Plan 073: Create VirtualFlash with code, object_keys, and object_types
-    pub fn new_with_code_and_keys(code: Vec<u8>, object_keys: Vec<Vec<auto_val::ValueKey>>) -> Self {
+    pub fn new_with_code_and_keys(
+        code: Vec<u8>,
+        object_keys: Vec<Vec<auto_val::ValueKey>>,
+        object_types: Vec<Vec<crate::vm::codegen::ObjectType>>,
+    ) -> Self {
         Self {
             memory: code,
             symbol_map: HashMap::new(),
             object_keys,
-            object_types: Vec::new(), // Will be populated separately
+            object_types,
         }
     }
 
     #[inline(always)]
     pub fn read_u8(&self, addr: usize) -> u8 {
+        if addr >= self.memory.len() {
+            eprintln!("WARNING: Flash read_u8 out of bounds: addr={}, len={}", addr, self.memory.len());
+            return 0; // Return 0 (NOP) as safe default
+        }
         self.memory[addr]
     }
 
     #[inline(always)]
     pub fn read_i32(&self, addr: usize) -> i32 {
+        if addr + 4 > self.memory.len() {
+            eprintln!("WARNING: Flash read_i32 out of bounds: addr={}, len={}", addr, self.memory.len());
+            return 0; // Return safe default
+        }
         let bytes = &self.memory[addr..addr + 4];
         i32::from_le_bytes(bytes.try_into().unwrap())
     }
 
     #[inline(always)]
     pub fn read_i16(&self, addr: usize) -> i16 {
+        if addr + 2 > self.memory.len() {
+            eprintln!("WARNING: Flash read_i16 out of bounds: addr={}, len={}", addr, self.memory.len());
+            return 0; // Return safe default
+        }
         let bytes = &self.memory[addr..addr + 2];
         i16::from_le_bytes(bytes.try_into().unwrap())
     }
 
     #[inline(always)]
     pub fn read_u16(&self, addr: usize) -> u16 {
+        if addr + 2 > self.memory.len() {
+            eprintln!("WARNING: Flash read_u16 out of bounds: addr={}, len={}", addr, self.memory.len());
+            return 0; // Return safe default
+        }
         let bytes = &self.memory[addr..addr + 2];
         u16::from_le_bytes(bytes.try_into().unwrap())
     }
 
     #[inline(always)]
     pub fn read_u32(&self, addr: usize) -> u32 {
+        if addr + 4 > self.memory.len() {
+            eprintln!("WARNING: Flash read_u32 out of bounds: addr={}, len={}", addr, self.memory.len());
+            return 0; // Return safe default
+        }
         let bytes = &self.memory[addr..addr + 4];
         u32::from_le_bytes(bytes.try_into().unwrap())
     }
 
     #[inline(always)]
     pub fn read_f32(&self, addr: usize) -> f32 {
+        if addr + 4 > self.memory.len() {
+            eprintln!("WARNING: Flash read_f32 out of bounds: addr={}, len={}", addr, self.memory.len());
+            return 0.0; // Return safe default
+        }
         let bytes = &self.memory[addr..addr + 4];
         f32::from_le_bytes(bytes.try_into().unwrap())
     }
@@ -108,6 +136,10 @@ impl VirtualFlash {
     // Plan 073 Stage A: Double precision support
     #[inline(always)]
     pub fn read_f64(&self, addr: usize) -> f64 {
+        if addr + 8 > self.memory.len() {
+            eprintln!("WARNING: Flash read_f64 out of bounds: addr={}, len={}", addr, self.memory.len());
+            return 0.0; // Return safe default
+        }
         let bytes = &self.memory[addr..addr + 8];
         f64::from_le_bytes(bytes.try_into().unwrap())
     }
@@ -115,12 +147,20 @@ impl VirtualFlash {
     // Plan 073 Stage A: 64-bit integer support
     #[inline(always)]
     pub fn read_i64(&self, addr: usize) -> i64 {
+        if addr + 8 > self.memory.len() {
+            eprintln!("WARNING: Flash read_i64 out of bounds: addr={}, len={}", addr, self.memory.len());
+            return 0; // Return safe default
+        }
         let bytes = &self.memory[addr..addr + 8];
         i64::from_le_bytes(bytes.try_into().unwrap())
     }
 
     #[inline(always)]
     pub fn read_u64(&self, addr: usize) -> u64 {
+        if addr + 8 > self.memory.len() {
+            eprintln!("WARNING: Flash read_u64 out of bounds: addr={}, len={}", addr, self.memory.len());
+            return 0; // Return safe default
+        }
         let bytes = &self.memory[addr..addr + 8];
         u64::from_le_bytes(bytes.try_into().unwrap())
     }

@@ -49,32 +49,39 @@ AutoCache stores compiled artifacts from:
 
 ### Enabling AutoCache
 
-AutoCache is **disabled by default**. Enable it by setting an environment variable:
+AutoCache is **enabled by default** for all builds. Simply run:
+
+```bash
+auto build
+```
+
+The cache will be used automatically. No configuration needed!
+
+**Disabling AutoCache** (if needed):
 
 **Windows (Command Prompt)**:
 ```cmd
-set AUTO_CACHE_ENABLED=true
+set AUTO_CACHE_ENABLED=false
 auto build
 ```
 
 **Windows (PowerShell)**:
 ```powershell
-$env:AUTO_CACHE_ENABLED="true"
+$env:AUTO_CACHE_ENABLED="false"
 auto build
 ```
 
 **Linux/macOS**:
 ```bash
-export AUTO_CACHE_ENABLED=true
+export AUTO_CACHE_ENABLED=false
 auto build
 ```
 
 ### First Build
 
-The first time you build with AutoCache enabled:
+The first time you build with AutoCache (enabled by default):
 
 ```bash
-$ export AUTO_CACHE_ENABLED=true
 $ auto build
 
 [Cache Miss] std:io (C)
@@ -448,7 +455,7 @@ let gc = GarbageCollector::new(10);  // Change 10 to desired GB limit
 
 3. Rebuild to repopulate cache:
    ```bash
-   AUTO_CACHE_ENABLED=true auto build
+   auto build  # AutoCache enabled by default
    ```
 
 ### Out of Space
@@ -500,18 +507,20 @@ let gc = GarbageCollector::new(10);  // Change 10 to desired GB limit
 
 ## Best Practices
 
-### When to Enable AutoCache
+### When to Use AutoCache
 
-✅ **Enable for**:
+✅ **Use for** (default behavior):
 - Development builds
 - CI/CD pipelines with multiple projects
 - Projects sharing common dependencies
 - Large codebases with long build times
 
-❌ **Disable for**:
+❌ **Disable for** (if needed):
 - Production builds (need clean build)
 - One-off builds
 - When disk space is very limited
+
+To disable: Set `AUTO_CACHE_ENABLED=false`
 
 ### Cache Maintenance
 
@@ -529,7 +538,7 @@ let gc = GarbageCollector::new(10);  // Change 10 to desired GB limit
 3. **Quarterly**: Clear and rebuild cache
    ```bash
    auto cache clear
-   AUTO_CACHE_ENABLED=true auto build
+   auto build  # AutoCache enabled by default
    ```
 
 ### Multi-Project Setups
@@ -538,8 +547,7 @@ let gc = GarbageCollector::new(10);  // Change 10 to desired GB limit
 ```bash
 # Build stdlib first
 cd /path/to/stdlib
-export AUTO_CACHE_ENABLED=true
-auto build
+auto build  # AutoCache enabled by default
 
 # Build app (reuses stdlib from cache)
 cd /path/to/app
@@ -598,8 +606,7 @@ auto cache stats
 ```bash
 # Build all dependencies first
 cd dependencies/
-export AUTO_CACHE_ENABLED=true
-auto build
+auto build  # AutoCache enabled by default
 
 # Now build main project (fast!)
 cd ../main-project

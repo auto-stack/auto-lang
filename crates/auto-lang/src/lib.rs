@@ -478,12 +478,14 @@ pub fn eval_config_with_vm(code: &str, args: &Obj, univ: Universe) -> AutoResult
     }
 
     // 4. Load into VM and execute
-    // Clone the bytecode before moving into the async block
+    // Clone the bytecode and metadata before moving into the async block
     let bytecode = configgen.base().code.clone();
+    let object_keys = configgen.base().object_keys.clone();
+    let object_types = configgen.base().object_types.clone();
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let flash = VirtualFlash::new_with_code(bytecode);
+        let flash = VirtualFlash::new_with_code_and_keys(bytecode, object_keys, object_types);
         let mut vm = AutoVM::new(flash, 4096); // 4KB RAM for config
         vm.load_strings(strings);
 

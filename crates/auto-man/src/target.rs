@@ -637,11 +637,11 @@ impl Target {
             return Ok(());
         }
 
-        // Check if caching is enabled
+        // Check if caching is enabled (enabled by default, can be disabled with AUTO_CACHE_ENABLED=false)
         let cache_enabled = std::env::var("AUTO_CACHE_ENABLED")
             .ok()
             .and_then(|v| v.parse::<bool>().ok())
-            .unwrap_or(false);  // Default: disabled for backward compatibility
+            .unwrap_or(true);  // Default: enabled
 
         if !cache_enabled {
             // Fallback to non-cached transpilation
