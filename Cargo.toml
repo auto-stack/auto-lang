@@ -10,6 +10,8 @@ members = [
     "crates/auto-val",
     "crates/auto-vm",
     # "crates/auto-xml",  # Temporarily disabled due to Cargo.toml issues
+    # Plan 082: AutoCache global build cache
+    "crates/auto-cache",
 ]
 resolver = "2"
 
@@ -32,6 +34,7 @@ tokio = { version = "1.42", features = ["full"] }
 blake3 = "1.5"
 bincode = "1.3"
 glob-match = "0.2.1"
+chrono = "0.4"
 
 # AutoMan dependencies (Phase 1)
 tabled = "0.18"

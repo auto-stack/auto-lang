@@ -15,9 +15,13 @@ use std::env;
 use std::fmt::Display;
 use std::path::Path;
 
+// Plan 082: AutoCache integration
+use auto_cache::{AutoManCache, ArtifactType, ArtifactMetadata, CacheStatistics, CompilationTarget, IntegrityReport};
+
 pub struct Automan {
     pac: Pac,
     index_store: IndexStore,
+    cache: Option<AutoManCache>,  // Optional cache for builds
 }
 
 // Static API
@@ -159,7 +163,7 @@ impl Automan {
         pac.set_port(port_name.clone())?;
         pac.save_port(port_name.clone())?;
 
-        Ok(Self { pac, index_store })
+        Ok(Self { pac, index_store, cache: None })
     }
 
     fn select_port(ports: &Vec<AutoStr>) -> AutoResult<AutoStr> {
@@ -200,7 +204,26 @@ impl Automan {
 
     pub fn new(path: &str, am: AmConfig) -> AutoResult<Self> {
         // Currently, only CMake builder is supported
-        let am = Self::parse_pac(path, &am)?;
+        let mut am = Self::parse_pac(path, &am)?;
+
+        // Initialize cache if enabled
+        let cache_enabled = env::var("AUTO_CACHE_ENABLED")
+            .ok()
+            .and_then(|v| v.parse::<bool>().ok())
+            .unwrap_or(false);
+
+        if cache_enabled {
+            match AutoManCache::in_home_dir(am.pac.name.to_string()) {
+                Ok(cache) => {
+                    info!("AutoCache initialized for project: {}", am.pac.name);
+                    am.cache = Some(cache);
+                }
+                Err(e) => {
+                    warn!("Failed to initialize AutoCache: {}", e);
+                }
+            }
+        }
+
         Ok(am)
     }
 
@@ -288,8 +311,20 @@ impl Automan {
         // 1. Transpile auto code to c code
         println!("Transpiling auto code to c code");
         self.transpile_auto()?;
+
         // 2. Build the project with a specific builder
-        self.pac.build()
+        self.pac.build()?;
+
+        // 3. Run garbage collection if needed (Plan 082: AutoCache)
+        if let Some(ref cache) = self.cache {
+            if cache.should_gc() {
+                println!("Running cache garbage collection...");
+                let freed_mb = cache.run_gc()? / (1024 * 1024);
+                println!("Cache GC: freed {} MB", freed_mb);
+            }
+        }
+
+        Ok(())
     }
 
     pub fn transpile_auto(&mut self) -> AutoResult<()> {
@@ -343,6 +378,286 @@ impl Automan {
         std::fs::remove_dir_all(".am")?;
         // clean pac related files
         self.pac.clean()
+    }
+
+    // Plan 082: AutoCache management methods
+
+    /// Display cache statistics
+    pub fn cache_stats(&self) -> AutoResult<()> {
+        let cache = self.cache.as_ref()
+            .ok_or("AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.")?;
+
+        let stats = cache.get_statistics();
+
+        println!("\n=== AutoCache Statistics ===");
+        println!("Total Artifacts: {}", stats.count);
+        println!("Total Size: {:.2} GB / {} GB", stats.size_gb, stats.max_size_gb);
+        println!("Hit Rate: {:.1}%", stats.hit_rate * 100.0);
+        println!("Status: {}", if stats.size_gb > stats.max_size_gb as f64 {
+            "⚠️  Exceeds limit (GC needed)"
+        } else if stats.size_gb > (stats.max_size_gb as f64 * 0.8) {
+            "⚠️  Near limit"
+        } else {
+            "✓ Healthy"
+        });
+        println!("============================\n");
+
+        Ok(())
+    }
+
+    /// Run garbage collection manually
+    pub fn cache_prune(&mut self) -> AutoResult<()> {
+        let cache = self.cache.as_mut()
+            .ok_or("AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.")?;
+
+        println!("Running cache garbage collection...");
+        let freed_bytes = cache.run_gc()
+            .map_err(|e| format!("GC failed: {}", e))?;
+
+        let freed_mb = freed_bytes / (1024 * 1024);
+        let freed_gb = freed_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+
+        println!("Freed {} artifacts ({} MB, {:.2} GB)",
+                 freed_bytes > 0, freed_mb, freed_gb);
+
+        // Show updated stats
+        self.cache_stats()?;
+
+        Ok(())
+    }
+
+    /// Clear all cached artifacts
+    pub fn cache_clear(&mut self) -> AutoResult<()> {
+        let cache = self.cache.as_mut()
+            .ok_or("AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.")?;
+
+        print!("⚠️  This will clear ALL cached artifacts. Continue? [y/N] ");
+        use std::io::Write;
+        std::io::stdout().flush().ok();
+
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)
+            .map_err(|e| format!("Failed to read input: {}", e))?;
+
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Cancelled.");
+            return Ok(());
+        }
+
+        println!("Clearing all cache...");
+        cache.clear_all()
+            .map_err(|e| format!("Failed to clear cache: {}", e))?;
+
+        println!("Cache cleared successfully.");
+        Ok(())
+    }
+
+    /// Inspect a specific cache entry by module name or hash key
+    pub fn cache_inspect(&self, name_or_hash: &str) -> AutoResult<()> {
+        let cache = self.cache.as_ref()
+            .ok_or("AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.")?;
+
+        // Try to find artifact by hash key first
+        if let Some(metadata) = cache.get_metadata(name_or_hash) {
+            Self::display_metadata(&metadata);
+            return Ok(());
+        }
+
+        // If not found by hash, search by module name
+        // This requires listing artifacts and filtering by module name
+        let artifacts = cache.list_artifacts(None, 1000)  // Get up to 1000 artifacts
+            .map_err(|e| format!("Failed to search artifacts: {}", e))?;
+
+        let matching: Vec<_> = artifacts.iter()
+            .filter(|a| a.module_name.contains(name_or_hash))
+            .collect();
+
+        if matching.is_empty() {
+            println!("\nNo cache entry found for '{}'\n", name_or_hash);
+            println!("Use `auto cache list` to see all cached artifacts.\n");
+            return Ok(());
+        }
+
+        if matching.len() == 1 {
+            println!("\n=== Cache Entry: {} ===\n", matching[0].module_name);
+            Self::display_metadata(matching[0]);
+        } else {
+            println!("\nFound {} cache entries matching '{}':\n", matching.len(), name_or_hash);
+            for artifact in matching {
+                println!("  [{}] {} - {} ({})",
+                         &artifact.hash_key[..16],
+                         artifact.module_name,
+                         artifact.artifact_type,
+                         Self::format_size(artifact.file_size));
+            }
+            println!("\nUse specific hash key for full details.\n");
+        }
+
+        Ok(())
+    }
+
+    /// List all cached artifacts with optional filtering
+    pub fn cache_list(&self, type_filter: Option<String>, limit: usize) -> AutoResult<()> {
+        let cache = self.cache.as_ref()
+            .ok_or("AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.")?;
+
+        let stats = cache.get_statistics();
+        let count = stats.count as usize;
+
+        println!("\n=== Cached Artifacts (showing {} of {}) ===\n",
+                 limit.min(count), count);
+
+        if stats.count == 0 {
+            println!("Cache is empty.\n");
+            return Ok(());
+        }
+
+        // Parse type filter
+        let artifact_type = match type_filter.as_deref() {
+            Some("c") => Some(ArtifactType::TranspiledC),
+            Some("h") => Some(ArtifactType::TranspiledCHeader),
+            Some("rust") => Some(ArtifactType::TranspiledRust),
+            Some("bytecode") => Some(ArtifactType::Bytecode),
+            Some("object") => Some(ArtifactType::CompiledObject),
+            Some(_) => {
+                println!("Unknown artifact type. Valid types: c, h, rust, bytecode, object\n");
+                return Ok(());
+            }
+            None => None,
+        };
+
+        // List artifacts
+        let artifacts = cache.list_artifacts(artifact_type, limit)
+            .map_err(|e| format!("Failed to list artifacts: {}", e))?;
+
+        if artifacts.is_empty() {
+            println!("No artifacts found.\n");
+            return Ok(());
+        }
+
+        // Display header
+        println!("{:<35} {:<12} {:>10} {:>12} {:>8}",
+                 "Module", "Type", "Size", "Last Used", "Access");
+        println!("{:-<35} {:-<12} {:->10} {:->12} {:->8}",
+                 "-", "-", "-", "-", "-");
+
+        // Display artifacts
+        for artifact in &artifacts {
+            let module_name = artifact.module_name.clone();
+            let size_str = Self::format_size(artifact.file_size);
+            let last_used = Self::format_time_ago(artifact.last_used_at);
+            let access_count = artifact.access_count;
+
+            println!("{:<35} {:<12} {:>10} {:>12} {:>8}",
+                     module_name, artifact.artifact_type, size_str, last_used, access_count);
+        }
+
+        println!("\n(Top {} artifacts shown)", artifacts.len());
+        println!("Use `auto cache inspect <hash>` for details\n");
+
+        Ok(())
+    }
+
+    /// Verify cache integrity
+    pub fn cache_verify(&self) -> AutoResult<()> {
+        let cache = self.cache.as_ref()
+            .ok_or("AutoCache is not enabled. Set AUTO_CACHE_ENABLED=true to enable.")?;
+
+        println!("\n=== Verifying Cache Integrity ===\n");
+
+        println!("Checking metadata entries...");
+        println!("Checking blob files...");
+        println!("Verifying file integrity...");
+
+        let report = cache.verify_integrity()
+            .map_err(|e| format!("Failed to verify cache: {}", e))?;
+
+        println!();
+
+        if report.is_valid {
+            println!("✓ Cache integrity verified");
+        } else {
+            println!("⚠ Cache integrity issues detected");
+        }
+
+        println!("  - {} metadata entries", report.metadata_entries);
+        println!("  - {} blob files", report.blob_files);
+        println!("  - {} orphaned files", report.orphaned_files);
+        println!("  - {} corrupted entries", report.corrupted_entries);
+
+        if !report.is_valid {
+            println!("\nRecommendations:");
+            if report.corrupted_entries > 0 {
+                println!("  - Run `auto cache clear` to remove corrupted entries");
+            }
+            if report.orphaned_files > 0 {
+                println!("  - Orphaned files will be cleaned up by garbage collection");
+            }
+        }
+
+        println!();
+        Ok(())
+    }
+
+    /// Format file size for display
+    fn format_size(bytes: u64) -> String {
+        const KB: u64 = 1024;
+        const MB: u64 = 1024 * KB;
+        const GB: u64 = 1024 * MB;
+
+        if bytes >= GB {
+            format!("{:.1} GB", bytes as f64 / GB as f64)
+        } else if bytes >= MB {
+            format!("{:.1} MB", bytes as f64 / MB as f64)
+        } else if bytes >= KB {
+            format!("{:.1} KB", bytes as f64 / KB as f64)
+        } else {
+            format!("{} B", bytes)
+        }
+    }
+
+    /// Format timestamp as time ago
+    fn format_time_ago(timestamp: u64) -> String {
+        let now = chrono::Utc::now().timestamp() as u64;
+        let diff = now.saturating_sub(timestamp);
+
+        const MINUTE: u64 = 60;
+        const HOUR: u64 = 60 * MINUTE;
+        const DAY: u64 = 24 * HOUR;
+
+        if diff < MINUTE {
+            format!("{}s ago", diff)
+        } else if diff < HOUR {
+            format!("{}m ago", diff / MINUTE)
+        } else if diff < DAY {
+            format!("{}h ago", diff / HOUR)
+        } else {
+            format!("{}d ago", diff / DAY)
+        }
+    }
+
+    /// Format timestamp as date/time string
+    fn format_timestamp(timestamp: u64) -> String {
+        let datetime = chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp as i64, 0);
+        match datetime {
+            Some(dt) => dt.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+            None => format!("Invalid timestamp: {}", timestamp),
+        }
+    }
+
+    /// Display artifact metadata
+    fn display_metadata(metadata: &auto_cache::ArtifactMetadata) {
+        println!("Hash Key:         {}", metadata.hash_key);
+        println!("Module:           {}", metadata.module_name);
+        println!("Type:             {}", metadata.artifact_type);
+        println!("Size:             {}", Self::format_size(metadata.file_size));
+        println!("Source Hash:      {}", metadata.source_hash);
+        println!("Project:          {}", metadata.project_name);
+        println!("Created:          {}", Self::format_timestamp(metadata.created_at));
+        println!("Last Used:        {}", Self::format_timestamp(metadata.last_used_at));
+        println!("Access Count:     {}", metadata.access_count);
+        println!("Blob Path:        {}", metadata.blob_path.display());
+        println!();
     }
 
     pub fn list_port_names(&self) -> Vec<AutoStr> {

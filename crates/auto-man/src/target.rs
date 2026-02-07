@@ -13,7 +13,11 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
 use std::path::Path;
+use std::path::PathBuf;
 use tabled::Tabled;
+
+// Plan 082: AutoCache integration
+use auto_cache::CTranspilationCache;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TargetKind {
@@ -617,6 +621,183 @@ impl Target {
         // Recursively transpile dependencies
         for dep in self.deps.iter_mut() {
             dep.transpile_auto()?;
+        }
+
+        Ok(())
+    }
+
+    /// Transpile Auto files with AutoCache support (Plan 082)
+    ///
+    /// This method integrates with AutoCache to cache transpilation artifacts.
+    /// Cache is controlled by the AUTO_CACHE_ENABLED environment variable.
+    pub fn transpile_auto_with_cache(&mut self) -> AutoResult<()> {
+        use indicatif::{ProgressBar, ProgressStyle};
+
+        if self.autos.is_empty() {
+            return Ok(());
+        }
+
+        // Check if caching is enabled
+        let cache_enabled = std::env::var("AUTO_CACHE_ENABLED")
+            .ok()
+            .and_then(|v| v.parse::<bool>().ok())
+            .unwrap_or(false);  // Default: disabled for backward compatibility
+
+        if !cache_enabled {
+            // Fallback to non-cached transpilation
+            return self.transpile_auto();
+        }
+
+        // Initialize cache
+        let project_name = self.name.to_string();
+        let cache = CTranspilationCache::new(project_name)
+            .map_err(|e| format!("Failed to initialize cache: {}", e))?;
+
+        info!("AutoCache enabled for transpilation");
+
+        // Create progress bar for transpilation
+        let pb = ProgressBar::new(self.autos.len() as u64);
+        pb.set_message("Transpiling Auto files (with cache)");
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner} {msg} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len}")
+                .unwrap()
+                .progress_chars("=> "),
+        );
+
+        for path in self.autos.iter() {
+            pb.set_message(format!("Transpiling {}", path.as_str()));
+            info!("Transpiling {}", path.as_str());
+
+            // Read the Auto source file
+            let content = std::fs::read_to_string(path.as_str())
+                .map_err(|e| format!("Failed to read Auto file '{}': {}", path, e))?;
+
+            // Generate output file paths
+            let c_path_str = path.as_str().replace(".at", ".c");
+            let h_path_str = path.as_str().replace(".at", ".h");
+            let c_path = Path::new(&c_path_str);
+            let h_path = Path::new(&h_path_str);
+
+            // Generate module name from path
+            let module_name = path.as_str().replace("\\", "/").replace(".at", "");
+            let module_name = module_name.replace("/", ":");
+
+            // Check cache
+            let cached = cache.get_or_link(
+                &module_name,
+                &content,
+                c_path,
+                Some(h_path),
+            );
+
+            match cached {
+                Ok(true) => {
+                    // Cache hit - files already linked
+                    info!("[Cache Hit] {} -> {}", module_name, c_path_str);
+                    self.srcs.insert(AutoStr::from(c_path_str.clone()));
+
+                    // Add header directory to includes if header exists
+                    if h_path.exists() {
+                        if let Some(d) = h_path.parent() {
+                            let d: AutoStr = d.to_str().unwrap().into();
+                            if !d.is_empty() {
+                                self.incs.insert(d);
+                            }
+                        }
+                    }
+                }
+                Ok(false) => {
+                    // Cache miss - transpile normally
+                    info!("[Cache Miss] {}", module_name);
+
+                    let fname = AutoPath::new(path).basename();
+                    let (mut c_code, uni) = transpile_c(fname, &content)
+                        .map_err(|e| format!("Failed to transpile '{}': {}", path, e))?;
+
+                    // Write C file
+                    let c_content = c_code.done()?;
+                    if !c_content.is_empty() {
+                        std::fs::write(c_path, c_content)
+                            .map_err(|e| format!("Failed to write C file '{}': {}", c_path_str, e))?;
+                        self.srcs.insert(AutoStr::from(c_path_str.clone()));
+                        info!("Generated {}", c_path_str);
+                    }
+
+                    // Write header file
+                    let h_content = c_code.header;
+                    if !h_content.is_empty() {
+                        std::fs::write(h_path, h_content)
+                            .map_err(|e| format!("Failed to write header file '{}': {}", h_path_str, e))?;
+
+                        if let Some(d) = h_path.parent() {
+                            let d: AutoStr = d.to_str().unwrap().into();
+                            if !d.is_empty() {
+                                self.incs.insert(d);
+                            }
+                        }
+                        info!("Generated {}", h_path_str);
+
+                        // Store in cache (only if both .c and .h were generated)
+                        if c_path.exists() && h_path.exists() {
+                            if let Err(e) = cache.store(&module_name, &content, c_path, Some(h_path)) {
+                                warn!("Failed to cache artifact '{}': {}", module_name, e);
+                            }
+                        }
+                    }
+
+                    // Add code paks (additional generated files from dependencies)
+                    for (_sid, pak) in uni.borrow().code_paks.iter() {
+                        let inc = AutoPath::new(pak.header.clone()).parent().parent();
+                        if inc.is_dir() {
+                            self.incs.insert(inc.to_astr());
+                        }
+                        self.srcs.insert(pak.cfile.clone());
+                    }
+                }
+                Err(e) => {
+                    // Cache error - fallback to normal transpilation
+                    warn!("Cache error: {}, falling back to transpilation", e);
+                    let fname = AutoPath::new(path).basename();
+                    let (mut c_code, uni) = transpile_c(fname, &content)
+                        .map_err(|e| format!("Failed to transpile '{}': {}", path, e))?;
+
+                    let c_content = c_code.done()?;
+                    if !c_content.is_empty() {
+                        std::fs::write(c_path, c_content)
+                            .map_err(|e| format!("Failed to write C file '{}': {}", c_path_str, e))?;
+                        self.srcs.insert(AutoStr::from(c_path_str.clone()));
+                    }
+
+                    if !c_code.header.is_empty() {
+                        std::fs::write(h_path, c_code.header)
+                            .map_err(|e| format!("Failed to write header file '{}': {}", h_path_str, e))?;
+                        if let Some(d) = h_path.parent() {
+                            let d: AutoStr = d.to_str().unwrap().into();
+                            if !d.is_empty() {
+                                self.incs.insert(d);
+                            }
+                        }
+                    }
+
+                    for (_sid, pak) in uni.borrow().code_paks.iter() {
+                        let inc = AutoPath::new(pak.header.clone()).parent().parent();
+                        if inc.is_dir() {
+                            self.incs.insert(inc.to_astr());
+                        }
+                        self.srcs.insert(pak.cfile.clone());
+                    }
+                }
+            }
+
+            pb.inc(1);
+        }
+
+        pb.finish_with_message("Transpilation complete (with cache)");
+
+        // Recursively transpile dependencies
+        for dep in self.deps.iter_mut() {
+            dep.transpile_auto_with_cache()?;
         }
 
         Ok(())

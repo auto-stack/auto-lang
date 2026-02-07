@@ -13,6 +13,110 @@ struct Cli {
 }
 
 #[derive(Subcommand, Debug)]
+enum CacheCommands {
+    #[command(
+        about = "Show cache statistics",
+        long_about = "Display cache statistics including:
+  - Total number of cached artifacts
+  - Total cache size
+  - Cache hit rate
+  - Cache health status
+
+EXAMPLES:
+  am cache stats"
+    )]
+    Stats,
+
+    #[command(
+        about = "List all cached artifacts",
+        long_about = "List all cached artifacts with optional filtering.
+
+Shows all cached artifacts with their:
+  - Module name
+  - Artifact type
+  - File size
+  - Last access time
+  - Access count
+
+OPTIONS:
+  --type <TYPE>  Filter by artifact type (c, header, rust, bytecode, object)
+  --limit <N>    Limit number of results (default: 50)
+
+EXAMPLES:
+  am cache list
+  am cache list --type c
+  am cache list --limit 10"
+    )]
+    List {
+        /// Filter by artifact type
+        #[arg(long)]
+        type_: Option<String>,
+
+        /// Limit number of results
+        #[arg(short, long, default_value = "50")]
+        limit: usize,
+    },
+
+    #[command(
+        about = "Run garbage collection",
+        long_about = "Manually run garbage collection to free up space.
+
+This removes least recently used artifacts until cache size
+is below the watermark (80% of max size).
+
+EXAMPLES:
+  am cache prune"
+    )]
+    Prune,
+
+    #[command(
+        about = "Clear all cached artifacts",
+        long_about = "Remove ALL cached artifacts from the cache.
+
+This will free up maximum space but requires retranspilation
+of all code on next build.
+
+EXAMPLES:
+  am cache clear"
+    )]
+    Clear,
+
+    #[command(
+        about = "Inspect a cache entry",
+        long_about = "Inspect a specific cached artifact by module name.
+
+Shows detailed metadata including:
+  - Cache key
+  - Artifact type
+  - File size
+  - Creation and access times
+  - Source hash
+  - Project origin
+
+EXAMPLES:
+  am cache inspect std:io"
+    )]
+    Inspect {
+        /// Module name to inspect (e.g., 'std:io')
+        name: String,
+    },
+
+    #[command(
+        about = "Verify cache integrity",
+        long_about = "Verify cache integrity by checking:
+  - All metadata entries have corresponding blob files
+  - Blob files are readable
+  - No orphaned files in cache directory
+
+This helps identify corrupted or incomplete cache entries.
+
+EXAMPLES:
+  am cache verify"
+    )]
+    Verify,
+}
+
+#[derive(Subcommand, Debug)]
 enum Commands {
     #[command(
         about = "Create a new Auto application package",
@@ -177,6 +281,32 @@ EXAMPLES:
   am devices"
     )]
     Devices,
+
+    #[command(
+        about = "Manage AutoCache (Plan 082)",
+        long_about = "Manage the global build cache for AutoLang projects.
+
+AutoCache stores compiled artifacts across projects to speed up builds.
+
+SUBCOMMANDS:
+  stats    Show cache statistics
+  prune    Run garbage collection
+  clear    Clear all cached artifacts
+  inspect  Inspect a specific cache entry
+
+ENVIRONMENT:
+  AUTO_CACHE_ENABLED=true  Enable caching for builds
+
+EXAMPLES:
+  am cache stats
+  am cache prune
+  am cache clear",
+        alias = "c"
+    )]
+    Cache {
+        #[command(subcommand)]
+        command: CacheCommands,
+    },
 
     #[command(
         about = "Open project in IDE",
@@ -382,6 +512,31 @@ Hello, I'm Automan {}!
             // .spawn()?;
             let mut am = Automan::new(".", config)?;
             am.open_ide()?;
+        }
+        Some(Commands::Cache { command }) => {
+            // Handle cache subcommands (Plan 082)
+            let mut am = Automan::new(".", config)?;
+
+            match command {
+                CacheCommands::Stats => {
+                    am.cache_stats()?;
+                }
+                CacheCommands::List { type_, limit } => {
+                    am.cache_list(type_, limit)?;
+                }
+                CacheCommands::Prune => {
+                    am.cache_prune()?;
+                }
+                CacheCommands::Clear => {
+                    am.cache_clear()?;
+                }
+                CacheCommands::Inspect { name } => {
+                    am.cache_inspect(&name)?;
+                }
+                CacheCommands::Verify => {
+                    am.cache_verify()?;
+                }
+            }
         }
         Some(Commands::Info { target }) => {
             let am = Automan::new(".", config)?;
