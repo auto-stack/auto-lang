@@ -10,9 +10,12 @@ license = "MIT"
 keywords = ["automation", "language", "scripting"]
 
 [features]
-default = ["with-file-history", "use-bigvm"]
+default = ["with-file-history"]
 with-file-history = []
-# Plan 073 Phase 9.3: Use BigVM bytecode VM as default execution engine
+# Plan 081: AutoVM is now the default execution engine (no feature flag required)
+# DEPRECATED: The use-bigvm feature is kept for compatibility but has no effect
+# AutoVM is always enabled. Use environment variable AUTO_EXECUTION_ENGINE=evaluator
+# to switch to the TreeWalker evaluator for debugging/comparison.
 use-bigvm = []
 # Fallback to TreeWalker evaluator (for debugging/comparison)
 use-evaluator = []
@@ -37,6 +40,10 @@ dashmap = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 blake3 = { workspace = true }
 bincode = { workspace = true }
+# Plan 081 Phase 5: Dynamic library loading for C/Rust FFI
+libloading = "0.8"
+# Logging for FFI bridge
+log = { workspace = true }
 
 [dev-dependencies]
 criterion = "0.5"

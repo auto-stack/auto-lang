@@ -1,11 +1,41 @@
 // Plan 078 Stage 3: AutoMan-based Module Resolver
 //
-// This module implements the ModuleResolver trait from auto-lang,
-// providing package management and dependency resolution via auto-man.
+// Plan 081 Phase 3: Track ExecutionMode per dependency
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use auto_lang::resolver::ModuleResolver;
+use auto_lang::mode::ExecutionMode;
+
+/// Dependency with execution mode
+///
+/// **Plan 081**: Each dependency can specify its execution mode
+/// (autovm, evaluator, c, rust) independently.
+#[derive(Debug, Clone)]
+pub struct Dependency {
+    /// Dependency name
+    pub name: String,
+    /// Path to the dependency
+    pub path: PathBuf,
+    /// Execution mode for this dependency
+    pub mode: ExecutionMode,
+}
+
+impl Dependency {
+    /// Create a new dependency
+    pub fn new(name: String, path: PathBuf, mode: ExecutionMode) -> Self {
+        Self { name, path, mode }
+    }
+
+    /// Create a dependency with default mode (AutoVM)
+    pub fn with_default_mode(name: String, path: PathBuf) -> Self {
+        Self {
+            name,
+            path,
+            mode: ExecutionMode::default(), // AutoVM
+        }
+    }
+}
 
 /// AutoMan-based module resolver
 ///
@@ -14,14 +44,19 @@ use auto_lang::resolver::ModuleResolver;
 /// - Standard library modules (std.xxx)
 /// - Third-party packages (configured in pac.at)
 /// - Relative imports (./xxx, ../xxx)
+///
+/// **Plan 081 Phase 3**: Each dependency can specify its execution mode
 pub struct AutoManResolver {
     /// Standard library root directory
     std_root: PathBuf,
     /// Project root directory
     project_root: PathBuf,
     /// Package dependencies from pac.at
-    /// Maps package name -> package path
-    dependencies: HashMap<String, PathBuf>,
+    /// **Plan 081**: Now includes mode information
+    dependencies: HashMap<String, Dependency>,
+    /// Default execution mode for this project
+    /// **Plan 081**: Read from `mode:` field in pac.at
+    default_mode: ExecutionMode,
     /// Additional search paths
     search_paths: Vec<PathBuf>,
 }
@@ -47,6 +82,7 @@ impl AutoManResolver {
             std_root,
             project_root,
             dependencies: HashMap::new(),
+            default_mode: ExecutionMode::default(), // Plan 081: AutoVM is default
             search_paths: Vec::new(),
         }
     }
@@ -76,10 +112,12 @@ impl AutoManResolver {
 
     /// Load dependencies from pac.at file
     ///
+    /// **Plan 081 Phase 3**: Parses `mode:` field and dependency modes
+    ///
     /// This is a simplified implementation. A full implementation would:
-    /// - Parse the pac.at AutoLang code
-    /// - Extract package dependencies
-    /// - Build a dependency map
+    /// - Parse the pac.at AutoLang code using AutoConfig
+    /// - Extract package dependencies with their modes
+    /// - Build a dependency map with mode information
     fn load_pac_at(&mut self, pac_path: &std::path::Path) -> Result<(), crate::AutoManError> {
         use std::fs;
 
@@ -87,8 +125,26 @@ impl AutoManResolver {
         let content = fs::read_to_string(pac_path)
             .map_err(|e| crate::AutoManError::Io(e))?;
 
+        // **Plan 081 Phase 3**: Parse mode field
+        // Format: `mode: "autovm"` or `mode: "c"` or `mode: "rust"`
+        for line in content.lines() {
+            let line = line.trim();
+
+            if let Some(rest) = line.strip_prefix("mode:") {
+                let mode_str = rest.trim().trim_matches('"').trim().trim_matches('"');
+                if let Some(mode) = ExecutionMode::from_str(mode_str) {
+                    self.default_mode = mode;
+                    log::info!("Project execution mode: {}", mode.as_str());
+                } else {
+                    log::warn!("Invalid execution mode: '{}', using default (AutoVM)", mode_str);
+                }
+            }
+        }
+
         // Simple parsing: look for "use" statements or dependency declarations
         // Format: "use package_name" or "dep: package_name"
+        // **Plan 081 Phase 3**: Support mode specification per dependency
+        // Format: `("package_name", mode: "c")`
         for line in content.lines() {
             let line = line.trim();
 
@@ -104,13 +160,62 @@ impl AutoManResolver {
 
                 // Try to find the package in standard locations
                 if let Ok(pkg_path) = self.find_package_path(package_name) {
-                    self.dependencies.insert(package_name.to_string(), pkg_path);
+                    let dep = Dependency::with_default_mode(
+                        package_name.to_string(),
+                        pkg_path
+                    );
+                    self.dependencies.insert(package_name.to_string(), dep);
                 }
             } else if let Some(rest) = line.strip_prefix("dep:") {
                 let package_name = rest.trim().trim_matches('"').trim();
 
                 if let Ok(pkg_path) = self.find_package_path(package_name) {
-                    self.dependencies.insert(package_name.to_string(), pkg_path);
+                    let dep = Dependency::with_default_mode(
+                        package_name.to_string(),
+                        pkg_path
+                    );
+                    self.dependencies.insert(package_name.to_string(), dep);
+                }
+            }
+            // **Plan 081 Phase 3**: Parse dependency with mode specification
+            // Format: ("package_name", mode: "c")
+            else if line.contains("(") && line.contains("mode:") {
+                // Simple parsing for: ("pkg", mode: "c") or ("pkg", mode: "rust")
+                if let Some(start) = line.find('"') {
+                    if let Some(end) = line.rfind('"') {
+                        if start < end {
+                            let package_name = &line[start + 1..end];
+
+                            // Extract mode
+                            let mode = if let Some(mode_start) = line.find("mode:") {
+                                let mode_part = &line[mode_start..];
+                                if let Some(mode_quote) = mode_part.find('"') {
+                                    let mode_str_start = mode_quote + 1;
+                                    if let Some(mode_end) = mode_part[mode_str_start..].find('"') {
+                                        let mode_str = &mode_part[mode_str_start..mode_str_start + mode_end];
+                                        ExecutionMode::from_str(mode_str).unwrap_or(self.default_mode)
+                                    } else {
+                                        self.default_mode
+                                    }
+                                } else {
+                                    self.default_mode
+                                }
+                            } else {
+                                self.default_mode
+                            };
+
+                            // Try to find the package
+                            if let Ok(pkg_path) = self.find_package_path(package_name) {
+                                let dep = Dependency::new(
+                                    package_name.to_string(),
+                                    pkg_path,
+                                    mode
+                                );
+                                self.dependencies.insert(package_name.to_string(), dep);
+                                log::info!("Dependency '{}' with mode '{}'", package_name, mode.as_str());
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -156,6 +261,42 @@ impl AutoManResolver {
     pub fn add_search_path(&mut self, path: PathBuf) {
         self.search_paths.push(path);
     }
+
+    /// Get the execution mode for a dependency
+    ///
+    /// **Plan 081 Phase 3**: Returns the mode for the specified dependency
+    ///
+    /// # Arguments
+    /// * `name` - Dependency name
+    ///
+    /// # Returns
+    /// * `Some(ExecutionMode)` - If dependency exists
+    /// * `None` - If dependency not found
+    pub fn get_dependency_mode(&self, name: &str) -> Option<ExecutionMode> {
+        self.dependencies.get(name).map(|dep| dep.mode)
+    }
+
+    /// Get all dependencies
+    ///
+    /// **Plan 081 Phase 3**: Returns all dependencies with their modes
+    pub fn get_dependencies(&self) -> &HashMap<String, Dependency> {
+        &self.dependencies
+    }
+
+    /// Get the default execution mode for this project
+    ///
+    /// **Plan 081 Phase 3**: Returns the mode specified in pac.at
+    pub fn get_default_mode(&self) -> ExecutionMode {
+        self.default_mode
+    }
+
+    /// Add a dependency with a specific mode
+    ///
+    /// **Plan 081 Phase 3**: Manually add a dependency with mode
+    pub fn add_dependency(&mut self, name: String, path: PathBuf, mode: ExecutionMode) {
+        let dep = Dependency::new(name.clone(), path, mode);
+        self.dependencies.insert(name, dep);
+    }
 }
 
 impl ModuleResolver for AutoManResolver {
@@ -171,8 +312,9 @@ impl ModuleResolver for AutoManResolver {
         }
 
         // Check if it's a known dependency from pac.at
-        if let Some(pkg_path) = self.dependencies.get(module_name) {
-            return Ok(pkg_path.join("package.at"));
+        // **Plan 081**: dependencies now contain mode information
+        if let Some(dep) = self.dependencies.get(module_name) {
+            return Ok(dep.path.join("package.at"));
         }
 
         // Search in additional paths
@@ -204,7 +346,8 @@ impl ModuleResolver for AutoManResolver {
     fn search_paths(&self) -> Vec<PathBuf> {
         let mut paths = self.search_paths.clone();
         paths.push(self.std_root.clone());
-        paths.extend(self.dependencies.values().cloned());
+        // **Plan 081**: Extract paths from Dependency objects
+        paths.extend(self.dependencies.values().map(|dep| dep.path.clone()));
         paths
     }
 
@@ -449,5 +592,216 @@ use std.fs
         fs::remove_dir_all(&pkg_dir).ok();
         fs::remove_dir_all(project_root.join("packages")).ok();
         fs::remove_dir(&project_root).ok();
+    }
+
+    // **Plan 081 Phase 3**: Tests for ExecutionMode tracking
+
+    #[test]
+    fn test_default_mode() {
+        let resolver = AutoManResolver::new(
+            PathBuf::from("."),
+            PathBuf::from("stdlib/auto")
+        );
+
+        // Default mode should be AutoVM
+        assert_eq!(resolver.get_default_mode(), ExecutionMode::AutoVM);
+    }
+
+    #[test]
+    fn test_dependency_creation() {
+        let dep = Dependency::new(
+            "test_pkg".to_string(),
+            PathBuf::from("/test/pkg"),
+            ExecutionMode::C
+        );
+
+        assert_eq!(dep.name, "test_pkg");
+        assert_eq!(dep.path, PathBuf::from("/test/pkg"));
+        assert_eq!(dep.mode, ExecutionMode::C);
+    }
+
+    #[test]
+    fn test_dependency_with_default_mode() {
+        let dep = Dependency::with_default_mode(
+            "test_pkg".to_string(),
+            PathBuf::from("/test/pkg")
+        );
+
+        // Default mode should be AutoVM
+        assert_eq!(dep.mode, ExecutionMode::AutoVM);
+    }
+
+    #[test]
+    fn test_add_dependency_with_mode() {
+        let mut resolver = AutoManResolver::new(
+            PathBuf::from("."),
+            PathBuf::from("stdlib/auto")
+        );
+
+        resolver.add_dependency(
+            "test_pkg".to_string(),
+            PathBuf::from("/test/pkg"),
+            ExecutionMode::Rust
+        );
+
+        // Verify dependency was added with correct mode
+        let mode = resolver.get_dependency_mode("test_pkg");
+        assert_eq!(mode, Some(ExecutionMode::Rust));
+
+        // Verify dependency is in the map
+        let deps = resolver.get_dependencies();
+        assert!(deps.contains_key("test_pkg"));
+        assert_eq!(deps["test_pkg"].mode, ExecutionMode::Rust);
+    }
+
+    #[test]
+    fn test_get_dependency_mode() {
+        let mut resolver = AutoManResolver::new(
+            PathBuf::from("."),
+            PathBuf::from("stdlib/auto")
+        );
+
+        resolver.add_dependency(
+            "pkg1".to_string(),
+            PathBuf::from("/pkg1"),
+            ExecutionMode::AutoVM
+        );
+
+        resolver.add_dependency(
+            "pkg2".to_string(),
+            PathBuf::from("/pkg2"),
+            ExecutionMode::C
+        );
+
+        assert_eq!(resolver.get_dependency_mode("pkg1"), Some(ExecutionMode::AutoVM));
+        assert_eq!(resolver.get_dependency_mode("pkg2"), Some(ExecutionMode::C));
+        assert_eq!(resolver.get_dependency_mode("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_parse_pac_at_with_mode() {
+        use auto_lang::mode::ExecutionMode;
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir();
+        let project_root = temp_dir.join("test_mode_parsing");
+        fs::create_dir_all(&project_root).ok();
+
+        // Create pac.at with mode field
+        let pac_at_path = project_root.join("pac.at");
+        let pac_content = r#"
+mode: "c"
+
+use std.io
+"#;
+        fs::write(&pac_at_path, pac_content).ok();
+
+        // Create mock stdlib
+        let stdlib_dir = temp_dir.join("test_stdlib");
+        fs::create_dir_all(&stdlib_dir).ok();
+        fs::write(stdlib_dir.join("io.at"), "// std.io mock").ok();
+
+        // Create resolver and prepare environment
+        let resolver = AutoManResolver::new(
+            project_root.clone(),
+            stdlib_dir.clone()
+        );
+
+        let resolver = resolver.prepare_env().unwrap();
+
+        // Verify default mode was parsed
+        assert_eq!(resolver.get_default_mode(), ExecutionMode::C);
+
+        // Cleanup
+        fs::remove_file(&pac_at_path).ok();
+        fs::remove_file(stdlib_dir.join("io.at")).ok();
+        fs::remove_dir(&stdlib_dir).ok();
+        fs::remove_dir(&project_root).ok();
+    }
+
+    #[test]
+    fn test_parse_pac_at_with_rust_mode() {
+        use auto_lang::mode::ExecutionMode;
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir();
+        let project_root = temp_dir.join("test_rust_mode");
+        fs::create_dir_all(&project_root).ok();
+
+        // Create pac.at with rust mode
+        let pac_at_path = project_root.join("pac.at");
+        let pac_content = r#"mode: "rust""#;
+        fs::write(&pac_at_path, pac_content).ok();
+
+        // Create resolver and prepare environment
+        let resolver = AutoManResolver::new(
+            project_root.clone(),
+            PathBuf::from("stdlib/auto")
+        );
+
+        let resolver = resolver.prepare_env().unwrap();
+
+        // Verify default mode was parsed as Rust
+        assert_eq!(resolver.get_default_mode(), ExecutionMode::Rust);
+
+        // Cleanup
+        fs::remove_file(&pac_at_path).ok();
+        fs::remove_dir(&project_root).ok();
+    }
+
+    #[test]
+    fn test_parse_pac_at_invalid_mode() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir();
+        let project_root = temp_dir.join("test_invalid_mode");
+        fs::create_dir_all(&project_root).ok();
+
+        // Create pac.at with invalid mode
+        let pac_at_path = project_root.join("pac.at");
+        let pac_content = r#"mode: "invalid_mode""#;
+        fs::write(&pac_at_path, pac_content).ok();
+
+        // Create resolver and prepare environment
+        let resolver = AutoManResolver::new(
+            project_root.clone(),
+            PathBuf::from("stdlib/auto")
+        );
+
+        let resolver = resolver.prepare_env().unwrap();
+
+        // Verify default mode falls back to AutoVM
+        assert_eq!(resolver.get_default_mode(), ExecutionMode::AutoVM);
+
+        // Cleanup
+        fs::remove_file(&pac_at_path).ok();
+        fs::remove_dir(&project_root).ok();
+    }
+
+    #[test]
+    fn test_get_all_dependencies() {
+        let mut resolver = AutoManResolver::new(
+            PathBuf::from("."),
+            PathBuf::from("stdlib/auto")
+        );
+
+        resolver.add_dependency(
+            "pkg1".to_string(),
+            PathBuf::from("/pkg1"),
+            ExecutionMode::AutoVM
+        );
+
+        resolver.add_dependency(
+            "pkg2".to_string(),
+            PathBuf::from("/pkg2"),
+            ExecutionMode::C
+        );
+
+        let deps = resolver.get_dependencies();
+        assert_eq!(deps.len(), 2);
+        assert!(deps.contains_key("pkg1"));
+        assert!(deps.contains_key("pkg2"));
+        assert_eq!(deps["pkg1"].mode, ExecutionMode::AutoVM);
+        assert_eq!(deps["pkg2"].mode, ExecutionMode::C);
     }
 }

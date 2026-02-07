@@ -1,5 +1,5 @@
-// Plan 073 Phase 9.3: Execution Engine Selection
-// Provides configuration to choose between AutoVM and Evaluator
+// Plan 081 Phase 1: AutoVM as Default Execution Mode
+// AutoVM is now the default execution engine for all AutoLang code
 
 use crate::error::AutoResult;
 
@@ -13,18 +13,14 @@ pub enum ExecutionEngine {
 }
 
 impl ExecutionEngine {
-    /// Get the default execution engine based on compile-time features
+    /// Get the default execution engine
+    ///
+    /// **Plan 081**: AutoVM is now the default execution engine.
+    /// No feature flag required. Use environment variable AUTO_EXECUTION_ENGINE
+    /// to override to evaluator if needed.
     pub fn default_engine() -> Self {
-        // Priority: AutoVM (if enabled) > Evaluator (fallback)
-        #[cfg(feature = "use-bigvm")]
-        {
-            return ExecutionEngine::AutoVM;
-        }
-
-        #[cfg(not(feature = "use-bigvm"))]
-        {
-            return ExecutionEngine::Evaluator;
-        }
+        // AutoVM is the default execution mode
+        ExecutionEngine::AutoVM
     }
 
     /// Get execution engine from environment variable
@@ -78,7 +74,8 @@ mod tests {
     #[test]
     fn test_default_engine() {
         let engine = ExecutionEngine::default_engine();
-        // Should be AutoVM if feature is enabled, else Evaluator
+        // Plan 081: AutoVM is now the default (no feature flag required)
+        assert_eq!(engine, ExecutionEngine::AutoVM);
         println!("Default engine: {:?}", engine);
     }
 

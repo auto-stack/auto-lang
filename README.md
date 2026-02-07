@@ -25,6 +25,77 @@ AutoLang is a programming language designed for automation and flexibility.
     - Code Gen: AutoGen is a powerfull code generation tool that supports C/Rust/HTML and more. See [Tutorial](docs/tutorials/autogen-tutorial.md).
     - IDE: As AutoUI is based on Zed/GPUI, we'll build a plugin system with AutoLang, and provide a IDE.
 
+## Execution Modes
+
+**AutoVM** is the default execution engine for AutoLang (Plan 081). AutoVM is a fast bytecode VM that provides consistent behavior across all platforms.
+
+### Mode Selection
+
+AutoLang supports multiple execution and transpilation modes:
+
+- **AutoVM** (default) - Fast bytecode VM execution
+- **C Transpilation** - Transpile to C for embedded systems
+- **Rust Transpilation** - Transpile to Rust for native applications
+- **Evaluator** - Legacy TreeWalker interpreter (deprecated)
+
+You can specify the execution mode in your `pac.at` file:
+
+```auto
+// pac.at
+name: "myapp"
+version: "1.0.0"
+mode: "autovm"  // Options: "autovm", "c", "rust", "evaluator"
+
+app("myapp") {
+    dependencies: [
+        "std:core",
+        ("hal", mode: "c"),      # HAL in C
+        ("crypto", mode: "rust"), # Crypto in Rust
+    ]
+}
+```
+
+### Mixed-Mode Projects
+
+Different parts of your project can use different execution modes:
+
+```auto
+mode: "autovm"  # Main app uses AutoVM
+
+app("mixed_app") {
+    dependencies: [
+        ("hal", mode: "c"),       # Hardware layer in C
+        ("crypto", mode: "rust"),  # Crypto library in Rust
+        "utils",                   # Utilities in AutoVM (default)
+    ]
+}
+```
+
+AutoVM bytecode can call C and Rust functions via the FFI layer, enabling seamless integration between modes.
+
+### Environment Variable Override
+
+You can override the execution mode at runtime:
+
+```bash
+# Force Evaluator mode (for debugging)
+export AUTO_EXECUTION_ENGINE=evaluator
+auto run myapp.at
+
+# Force AutoVM mode
+export AUTO_EXECUTION_ENGINE=autovm
+auto run myapp.at
+```
+
+**Note**: The `use-bigvm` feature flag is deprecated. AutoVM is now the default and no feature flags are required.
+
+### Learn More
+
+- [Mode Selection Guide](docs/guides/mode-selection-guide.md)
+- [FFI Usage Guide](docs/guides/ffi-usage-guide.md)
+- [Migration Guide](docs/guides/migration-guide.md)
+- [Plan 081: AutoVM as Default](docs/plans/081-autovm-default-mode.md)
+
 ## Language Tour
 
 #### Hello World

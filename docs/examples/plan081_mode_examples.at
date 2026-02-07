@@ -1,0 +1,47 @@
+// Plan 081 Phase 2: Mode Selection Demonstration
+//
+// This example shows how pac.at files can now specify execution modes
+
+// Example 1: Project with AutoVM mode (default)
+name: "example_autovm"
+version: "1.0.0"
+mode: "autovm"
+
+app("example_autovm") {}
+
+// Example 2: Project with C transpilation mode
+name: "embedded_c"
+version: "0.2.0"
+mode: "c"
+
+app("embedded_c") {
+    // This project will be transpiled to C
+    // Useful for embedded systems, microcontrollers
+}
+
+// Example 3: Project with Rust transpilation mode
+name: "native_rust"
+version: "1.0.0"
+mode: "rust"
+
+app("native_rust") {
+    // This project will be transpiled to Rust
+    // Useful for native applications
+}
+
+// Example 4: Project without mode specified (defaults to AutoVM)
+name: "default_project"
+version: "0.1.0"
+
+app("default_project") {
+    // No mode specified - defaults to AutoVM
+}
+
+// Future: Per-dependency mode specification (Phase 3)
+// app("mixed_mode") {
+//     dependencies: [
+//         ("std:core", mode: "autovm"),      // Standard library in bytecode
+//         ("hal", mode: "c"),                // Hardware abstraction in C
+//         ("crypto", mode: "rust"),          // Crypto in Rust
+//     ]
+// }
