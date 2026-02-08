@@ -22,11 +22,16 @@ use auto.io: say
 // ============================================================================
 // Collections
 // ============================================================================
-// Rationale: Lists are fundamental data structures used in most programs.
-// The List type provides dynamic array functionality with manual memory
-// management via alloc_array/realloc_array/free_array (Plan 052).
+// Rationale: Lists, HashMaps, HashSets, VecDeques, and BTreeMaps are fundamental
+// data structures used in most programs. These types provide dynamic collection
+// functionality backed by efficient Rust implementations (Vec, HashMap, HashSet,
+// VecDeque, BTreeMap).
 
 use auto.list: List
+use auto.hashmap: HashMap
+use auto.hashset: HashSet
+use auto.vecdeque: VecDeque
+use auto.btreemap: BTreeMap
 
 // ============================================================================
 // Iteration & Functional Programming (Plan 051)

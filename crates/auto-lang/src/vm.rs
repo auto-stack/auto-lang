@@ -38,6 +38,9 @@ pub mod virt_memory;
 #[cfg(test)]
 mod tests_closures;
 
+#[cfg(test)]
+mod tests_collections;
+
 // TODO: Create tests_bigvm.rs file
 // #[cfg(test)]
 // mod tests_bigvm;
@@ -288,6 +291,108 @@ pub fn init_collections_module() {
     collections_module
         .types
         .insert("HashSet".into(), hashset_type);
+
+    // Register VecDeque type with methods (Plan 085)
+    let mut vecdeque_type = VmTypeEntry {
+        name: "VecDeque".into(),
+        methods: HashMap::new(),
+    };
+
+    vecdeque_type
+        .methods
+        .insert("push_back".into(), collections::vec_deque_push_back as VmMethod);
+    vecdeque_type
+        .methods
+        .insert("push_front".into(), collections::vec_deque_push_front as VmMethod);
+    vecdeque_type
+        .methods
+        .insert("pop_back".into(), collections::vec_deque_pop_back as VmMethod);
+    vecdeque_type
+        .methods
+        .insert("pop_front".into(), collections::vec_deque_pop_front as VmMethod);
+    vecdeque_type
+        .methods
+        .insert("front".into(), collections::vec_deque_front as VmMethod);
+    vecdeque_type
+        .methods
+        .insert("back".into(), collections::vec_deque_back as VmMethod);
+    vecdeque_type
+        .methods
+        .insert("size".into(), collections::vec_deque_size as VmMethod);
+    vecdeque_type
+        .methods
+        .insert("is_empty".into(), collections::vec_deque_is_empty as VmMethod);
+    vecdeque_type
+        .methods
+        .insert("clear".into(), collections::vec_deque_clear as VmMethod);
+    vecdeque_type
+        .methods
+        .insert("drop".into(), collections::vec_deque_drop as VmMethod);
+
+    // Register VecDeque.new() as a static function
+    collections_module.functions.insert(
+        "VecDeque.new".into(),
+        VmFunctionEntry {
+            name: "VecDeque.new".into(),
+            func: collections::vec_deque_new,
+            is_method: false,
+        },
+    );
+
+    collections_module
+        .types
+        .insert("VecDeque".into(), vecdeque_type);
+
+    // Register BTreeMap type with methods (Plan 085)
+    let mut btreemap_type = VmTypeEntry {
+        name: "BTreeMap".into(),
+        methods: HashMap::new(),
+    };
+
+    btreemap_type
+        .methods
+        .insert("insert".into(), collections::btree_map_insert as VmMethod);
+    btreemap_type
+        .methods
+        .insert("get".into(), collections::btree_map_get as VmMethod);
+    btreemap_type
+        .methods
+        .insert("contains".into(), collections::btree_map_contains as VmMethod);
+    btreemap_type
+        .methods
+        .insert("remove".into(), collections::btree_map_remove as VmMethod);
+    btreemap_type
+        .methods
+        .insert("size".into(), collections::btree_map_size as VmMethod);
+    btreemap_type
+        .methods
+        .insert("is_empty".into(), collections::btree_map_is_empty as VmMethod);
+    btreemap_type
+        .methods
+        .insert("clear".into(), collections::btree_map_clear as VmMethod);
+    btreemap_type
+        .methods
+        .insert("first_key".into(), collections::btree_map_first_key as VmMethod);
+    btreemap_type
+        .methods
+        .insert("last_key".into(), collections::btree_map_last_key as VmMethod);
+    btreemap_type
+        .methods
+        .insert("drop".into(), collections::btree_map_drop as VmMethod);
+
+    // Register BTreeMap.new() as a static function
+    collections_module.functions.insert(
+        "BTreeMap.new".into(),
+        VmFunctionEntry {
+            name: "BTreeMap.new".into(),
+            func: collections::btree_map_new,
+            is_method: false,
+        },
+    );
+
+    collections_module
+        .types
+        .insert("BTreeMap".into(), btreemap_type);
 
     // Register List type with methods
     let mut list_type = VmTypeEntry {

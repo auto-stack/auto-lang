@@ -1,0 +1,116 @@
+/// VecDeque<T> - Double-ended queue implementation using Rust's std::collections::VecDeque
+/// Provides O(1) push/pop from both ends, making it ideal for queues and stacks
+///
+/// This is a VM-native type backed by Rust's VecDeque<Value>
+///
+/// Example usage (Queue - FIFO):
+/// ```auto
+/// let queue = VecDeque.new()
+/// queue.push_back("task1")
+/// queue.push_back("task2")
+/// let task = queue.pop_front()  // "task1" (first in, first out)
+/// ```
+///
+/// Example usage (Stack):
+/// ```auto
+/// let stack = VecDeque.new()
+/// stack.push_back(1)
+/// stack.push_back(2)
+/// let top = stack.pop_back()  // 2 (last in, first out)
+/// ```
+///
+/// Example usage (Sliding Window):
+/// ```auto
+/// let window = VecDeque.new()
+/// window.push_back(1.0)
+/// window.push_back(2.0)
+/// window.push_back(3.0)
+/// if window.len() > 2 {
+///     window.pop_front()  // Keep only last 2
+/// }
+/// ```
+
+type VecDeque<T> {
+    // ========================================================================
+    // Static Methods - Creation
+    // ========================================================================
+
+    /// Create a new empty VecDeque
+    /// Example: VecDeque.new() or let deque = VecDeque.new()
+    #[vm, pub]
+    static fn new() VecDeque<T>
+
+    // ========================================================================
+    // Instance Methods - Insertion
+    // ========================================================================
+
+    /// Push element to the back of the deque
+    /// Example: deque.push_back("last")
+    #[vm, pub]
+    fn push_back(elem T)
+
+    /// Push element to the front of the deque
+    /// Example: deque.push_front("first")
+    #[vm, pub]
+    fn push_front(elem T)
+
+    // ========================================================================
+    // Instance Methods - Removal
+    // ========================================================================
+
+    /// Remove and return element from the back (returns nil if empty)
+    /// Example: let last = deque.pop_back()
+    #[vm, pub]
+    fn pop_back() T
+
+    /// Remove and return element from the front (returns nil if empty)
+    /// Example: let first = deque.pop_front()
+    #[vm, pub]
+    fn pop_front() T
+
+    // ========================================================================
+    // Instance Methods - Peek
+    // ========================================================================
+
+    /// Get element at the front without removing it (returns nil if empty)
+    /// Example: let first = deque.front()
+    #[vm, pub]
+    fn front() T
+
+    /// Get element at the back without removing it (returns nil if empty)
+    /// Example: let last = deque.back()
+    #[vm, pub]
+    fn back() T
+
+    // ========================================================================
+    // Instance Methods - Query
+    // ========================================================================
+
+    /// Get the number of elements in the deque
+    /// Example: let count = deque.size()
+    #[vm, pub]
+    fn size() int
+
+    /// Check if the deque is empty
+    /// Example: let empty = deque.is_empty()
+    #[vm, pub]
+    fn is_empty() bool
+
+    // ========================================================================
+    // Instance Methods - Modification
+    // ========================================================================
+
+    /// Clear all elements from the deque
+    /// Example: deque.clear()
+    #[vm, pub]
+    fn clear()
+
+    // ========================================================================
+    // Instance Methods - Lifecycle
+    // ========================================================================
+
+    /// Free the deque's resources and drop all elements
+    /// Example: deque.drop()
+    #[vm, pub]
+    fn drop()
+}

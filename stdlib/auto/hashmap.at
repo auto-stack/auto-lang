@@ -1,0 +1,94 @@
+/// HashMap<K, V> - Hash map implementation using Rust's std::collections::HashMap
+/// Provides O(1) average case lookup, insertion, and deletion
+///
+/// This is a VM-native type backed by Rust's HashMap<String, Value>
+/// Keys are stored as strings, values can be any AutoLang type
+///
+/// Example usage:
+/// ```auto
+/// let map = HashMap.new()
+/// map.insert_str("name", "Alice")
+/// map.insert_str("age", 30)
+/// let name = map.get_str("name")
+/// let has_age = map.contains("age")
+/// map.remove("age")
+/// let count = map.size()
+/// map.clear()
+/// map.drop()
+/// ```
+
+type HashMap<K, V> {
+    // ========================================================================
+    // Static Methods - Creation
+    // ========================================================================
+
+    /// Create a new empty HashMap
+    /// Example: HashMap.new() or let map = HashMap.new()
+    #[vm, pub]
+    static fn new() HashMap<K, V>
+
+    // ========================================================================
+    // Instance Methods - Insertion
+    // ========================================================================
+
+    /// Insert a string key with any value
+    /// Example: map.insert_str("name", "Alice")
+    #[vm, pub]
+    fn insert_str(key str, value V)
+
+    /// Insert an integer key (converted to string internally) with any value
+    /// Example: map.insert_int(0, "first")
+    #[vm, pub]
+    fn insert_int(key int, value V)
+
+    // ========================================================================
+    // Instance Methods - Lookup
+    // ========================================================================
+
+    /// Get value by string key, returns nil if key not found
+    /// Example: let name = map.get_str("name")
+    #[vm, pub]
+    fn get_str(key str) V
+
+    /// Get value by integer key (converted to string internally), returns nil if not found
+    /// Example: let first = map.get_int(0)
+    #[vm, pub]
+    fn get_int(key int) V
+
+    /// Check if key exists in the map
+    /// Example: let has_key = map.contains("name")
+    #[vm, pub]
+    fn contains(key str) bool
+
+    // ========================================================================
+    // Instance Methods - Modification
+    // ========================================================================
+
+    /// Remove a key-value pair from the map
+    /// Example: map.remove("age")
+    #[vm, pub]
+    fn remove(key str)
+
+    /// Clear all entries from the map
+    /// Example: map.clear()
+    #[vm, pub]
+    fn clear()
+
+    // ========================================================================
+    // Instance Methods - Query
+    // ========================================================================
+
+    /// Get the number of key-value pairs in the map
+    /// Example: let count = map.size()
+    #[vm, pub]
+    fn size() int
+
+    // ========================================================================
+    // Instance Methods - Lifecycle
+    // ========================================================================
+
+    /// Free the map's resources and drop all entries
+    /// Example: map.drop()
+    #[vm, pub]
+    fn drop()
+}

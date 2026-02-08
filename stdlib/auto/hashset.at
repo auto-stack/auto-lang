@@ -1,0 +1,70 @@
+/// HashSet<T> - Hash set implementation using Rust's std::collections::HashMap
+/// Provides O(1) average case insertion, deletion, and membership testing
+///
+/// This is a VM-native type backed by Rust's HashMap<String, ()>
+/// Elements are stored as strings for efficient lookup
+///
+/// Example usage:
+/// ```auto
+/// let set = HashSet.new()
+/// set.insert("apple")
+/// set.insert("banana")
+/// let has_apple = set.contains("apple")
+/// set.remove("banana")
+/// let count = set.size()
+/// set.clear()
+/// set.drop()
+/// ```
+
+type HashSet<T> {
+    // ========================================================================
+    // Static Methods - Creation
+    // ========================================================================
+
+    /// Create a new empty HashSet
+    /// Example: HashSet.new() or let set = HashSet.new()
+    #[vm, pub]
+    static fn new() HashSet<T>
+
+    // ========================================================================
+    // Instance Methods - Modification
+    // ========================================================================
+
+    /// Insert an element into the set (converted to string internally)
+    /// Example: set.insert("apple")
+    #[vm, pub]
+    fn insert(value T)
+
+    /// Remove an element from the set
+    /// Example: set.remove("apple")
+    #[vm, pub]
+    fn remove(value T)
+
+    /// Clear all elements from the set
+    /// Example: set.clear()
+    #[vm, pub]
+    fn clear()
+
+    // ========================================================================
+    // Instance Methods - Query
+    // ========================================================================
+
+    /// Check if an element exists in the set
+    /// Example: let has_apple = set.contains("apple")
+    #[vm, pub]
+    fn contains(value T) bool
+
+    /// Get the number of elements in the set
+    /// Example: let count = set.size()
+    #[vm, pub]
+    fn size() int
+
+    // ========================================================================
+    // Instance Methods - Lifecycle
+    // ========================================================================
+
+    /// Free the set's resources and drop all elements
+    /// Example: set.drop()
+    #[vm, pub]
+    fn drop()
+}

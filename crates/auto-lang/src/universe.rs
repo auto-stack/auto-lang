@@ -4,7 +4,7 @@ use crate::ast::FnKind;
 use crate::ast::{self, SpecDecl, Type};
 use crate::atom::Atom;
 use crate::libs;
-use crate::vm::collections::{HashMapData, HashSetData};
+use crate::vm::collections::{BTreeMapData, HashMapData, HashSetData, VecDequeData};
 use crate::vm::builder::StringBuilderData;
 use auto_val::{
     shared, AccessError, AccessPath, Args, AutoStr, ExtFn, Obj, PathComponent, Sig, TypeInfoStore,
@@ -12,7 +12,7 @@ use auto_val::{
 };
 use std::any::Any; // Still needed for env_vals
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap as StdHashMap, VecDeque};
 use std::fs::File;
 use std::io::BufReader;
 use std::rc::Rc;
@@ -41,6 +41,8 @@ impl SymbolLocation {
 pub enum VmRefData {
     HashMap(HashMapData),
     HashSet(HashSetData),
+    BTreeMap(BTreeMapData),  // Plan 085: Ordered map using Rust's BTreeMap
+    VecDeque(VecDequeData),  // Plan 085: Double-ended queue using Rust's VecDeque
     StringBuilder(StringBuilderData),
     File(BufReader<File>),
     List(ListData),
@@ -304,22 +306,28 @@ impl HeapObject for ListData<Value> {
     }
 }
 
+// ============================================================================
+// Plan 085: Additional Collections - VecDeque and BTreeMap
+// ============================================================================
+
+/// Data for VecDeque (double-ended queue)
+/// Provides O(1) push/pop from both ends
 /// Data for objects (key-value maps)
 #[derive(Debug)]
 pub struct ObjectData {
-    pub fields: HashMap<ValueKey, Value>,
+    pub fields: StdHashMap<ValueKey, Value>,
 }
 
 impl ObjectData {
     pub fn new() -> Self {
         Self {
-            fields: HashMap::new(),
+            fields: StdHashMap::new(),
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            fields: HashMap::with_capacity(capacity),
+            fields: StdHashMap::with_capacity(capacity),
         }
     }
 
@@ -409,14 +417,14 @@ pub struct CodePak {
 /// - **Future**: Phases 4.7, 5-6 to complete migration
 #[deprecated(since = "0.4.0", note = "Use Database + ExecutionEngine instead (see Plan 064)")]
 pub struct Universe {
-    pub scopes: HashMap<Sid, Scope>,   // sid -> scope
-    pub asts: HashMap<Sid, ast::Code>, // sid -> ast
-    pub code_paks: HashMap<Sid, CodePak>,
+    pub scopes: StdHashMap<Sid, Scope>,   // sid -> scope
+    pub asts: StdHashMap<Sid, ast::Code>, // sid -> ast
+    pub code_paks: StdHashMap<Sid, CodePak>,
     // pub stack: Vec<StackedScope>,
-    pub env_vals: HashMap<AutoStr, Box<dyn Any>>,
-    pub shared_vals: HashMap<AutoStr, Rc<RefCell<Value>>>,
-    pub builtins: HashMap<AutoStr, Value>, // Value of builtin functions
-    pub vm_refs: HashMap<usize, RefCell<VmRefData>>,
+    pub env_vals: StdHashMap<AutoStr, Box<dyn Any>>,
+    pub shared_vals: StdHashMap<AutoStr, Rc<RefCell<Value>>>,
+    pub builtins: StdHashMap<AutoStr, Value>, // Value of builtin functions
+    pub vm_refs: StdHashMap<usize, RefCell<VmRefData>>,
     pub types: TypeInfoStore,
     pub args: Obj,
     lambda_counter: usize,
@@ -425,20 +433,20 @@ pub struct Universe {
 
     // NEW: Central value storage for reference-based system
     value_counter: usize,
-    pub values: HashMap<ValueID, Rc<RefCell<ValueData>>>,
-    weak_refs: HashMap<ValueID, Weak<RefCell<ValueData>>>,
+    pub values: StdHashMap<ValueID, Rc<RefCell<ValueData>>>,
+    weak_refs: StdHashMap<ValueID, Weak<RefCell<ValueData>>>,
 
     // NEW: Symbol location table for LSP support
     // Maps symbol name -> definition location
-    pub symbol_locations: HashMap<AutoStr, SymbolLocation>,
+    pub symbol_locations: StdHashMap<AutoStr, SymbolLocation>,
 
     // NEW: Type alias storage for Plan 058
     // Maps alias name -> (params, target_type)
-    pub type_aliases: HashMap<AutoStr, (Vec<AutoStr>, Type)>,
+    pub type_aliases: StdHashMap<AutoStr, (Vec<AutoStr>, Type)>,
 
     // Plan 061 Phase 2: Spec registry for constraint validation
     // Maps spec name -> spec declaration
-    pub specs: HashMap<AutoStr, Rc<SpecDecl>>,
+    pub specs: StdHashMap<AutoStr, Rc<SpecDecl>>,
 
     // Raw pointer to evaluator for VM functions to call user-defined functions
     // WARNING: This is only valid during evaluator's lifetime
@@ -455,20 +463,20 @@ impl Default for Universe {
 impl Universe {
     pub fn new() -> Self {
         let builtins = libs::builtin::builtins();
-        let mut scopes = HashMap::new();
+        let mut scopes = StdHashMap::new();
         scopes.insert(
             SID_PATH_GLOBAL.clone(),
             Scope::new(ScopeKind::Global, SID_PATH_GLOBAL.clone()),
         );
         let mut uni = Self {
             scopes,
-            asts: HashMap::new(),
-            code_paks: HashMap::new(),
+            asts: StdHashMap::new(),
+            code_paks: StdHashMap::new(),
             // stack: vec![StackedScope::new()],
-            env_vals: HashMap::new(),
-            shared_vals: HashMap::new(),
+            env_vals: StdHashMap::new(),
+            shared_vals: StdHashMap::new(),
             builtins,
-            vm_refs: HashMap::new(),
+            vm_refs: StdHashMap::new(),
             types: TypeInfoStore::new(),
             lambda_counter: 0,
             vmref_counter: 0,
@@ -476,14 +484,14 @@ impl Universe {
             args: Obj::new(),
             // NEW: Initialize value storage
             value_counter: 0,
-            values: HashMap::new(),
-            weak_refs: HashMap::new(),
+            values: StdHashMap::new(),
+            weak_refs: StdHashMap::new(),
             // NEW: Initialize symbol location table
-            symbol_locations: HashMap::new(),
+            symbol_locations: StdHashMap::new(),
             // NEW: Initialize type alias storage
-            type_aliases: HashMap::new(),
+            type_aliases: StdHashMap::new(),
             // Plan 061: Initialize spec registry
-            specs: HashMap::new(),
+            specs: StdHashMap::new(),
             // Initialize evaluator pointer (will be set by evaluator)
             evaluator_ptr: std::ptr::null_mut(),
         };
@@ -877,7 +885,7 @@ impl Universe {
     }
 
     /// Get all symbol locations (for LSP workspace symbols)
-    pub fn get_all_symbol_locations(&self) -> &HashMap<AutoStr, SymbolLocation> {
+    pub fn get_all_symbol_locations(&self) -> &StdHashMap<AutoStr, SymbolLocation> {
         &self.symbol_locations
     }
 

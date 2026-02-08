@@ -1,0 +1,113 @@
+/// BTreeMap<K, V> - Ordered map implementation using Rust's std::collections::BTreeMap
+/// Provides O(log n) insertion, deletion, and lookup with sorted key iteration
+///
+/// This is a VM-native type backed by Rust's BTreeMap<String, Value>
+/// Keys are stored as strings and maintained in sorted order
+///
+/// Example usage (Ordered iteration):
+/// ```auto
+/// let scores = BTreeMap.new()
+/// scores.insert("alice", 95)
+/// scores.insert("bob", 87)
+/// scores.insert("charlie", 92)
+/// // Keys are iterated in sorted order: "alice", "bob", "charlie"
+/// ```
+///
+/// Example usage (Range queries):
+/// ```auto
+/// let map = BTreeMap.new()
+/// map.insert("a", 1)
+/// map.insert("b", 2)
+/// map.insert("c", 3)
+/// let first = map.first_key()  // "a"
+/// let last = map.last_key()    // "c"
+/// ```
+///
+/// When to use BTreeMap vs HashMap:
+/// - BTreeMap: Use when you need sorted keys, range queries, or ordered iteration
+/// - HashMap: Use when you need fastest possible lookup (O(1)) and don't care about order
+
+type BTreeMap<K, V> {
+    // ========================================================================
+    // Static Methods - Creation
+    // ========================================================================
+
+    /// Create a new empty BTreeMap
+    /// Example: BTreeMap.new() or let map = BTreeMap.new()
+    #[vm, pub]
+    static fn new() BTreeMap<K, V>
+
+    // ========================================================================
+    // Instance Methods - Insertion
+    // ========================================================================
+
+    /// Insert a key-value pair (converted to string key internally)
+    /// Example: map.insert("name", "Alice")
+    #[vm, pub]
+    fn insert(key K, value V)
+
+    // ========================================================================
+    // Instance Methods - Lookup
+    // ========================================================================
+
+    /// Get value by key (returns nil if not found)
+    /// Example: let name = map.get("name")
+    #[vm, pub]
+    fn get(key K) V
+
+    /// Check if key exists (returns bool)
+    /// Example: let has_name = map.contains("name")
+    #[vm, pub]
+    fn contains(key K) bool
+
+    // ========================================================================
+    // Instance Methods - Removal
+    // ========================================================================
+
+    /// Remove key-value pair by key
+    /// Example: map.remove("name")
+    #[vm, pub]
+    fn remove(key K)
+
+    /// Clear all entries from the map
+    /// Example: map.clear()
+    #[vm, pub]
+    fn clear()
+
+    // ========================================================================
+    // Instance Methods - Query
+    // ========================================================================
+
+    /// Get the number of entries in the map
+    /// Example: let count = map.size()
+    #[vm, pub]
+    fn size() int
+
+    /// Check if the map is empty
+    /// Example: let empty = map.is_empty()
+    #[vm, pub]
+    fn is_empty() bool
+
+    // ========================================================================
+    // Instance Methods - Ordered Access
+    // ========================================================================
+
+    /// Get the first (smallest) key in the map (returns nil if empty)
+    /// Example: let first = map.first_key()
+    #[vm, pub]
+    fn first_key() K
+
+    /// Get the last (largest) key in the map (returns nil if empty)
+    /// Example: let last = map.last_key()
+    #[vm, pub]
+    fn last_key() K
+
+    // ========================================================================
+    // Instance Methods - Lifecycle
+    // ========================================================================
+
+    /// Free the map's resources and drop all entries
+    /// Example: map.drop()
+    #[vm, pub]
+    fn drop()
+}
