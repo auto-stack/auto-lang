@@ -35,13 +35,6 @@ impl Flyer for Hawk {
 
 fn main() {
 
-    let b1: Pigeon = Pigeon {};
-    let b2: Hawk = Hawk {};
-
-
-
-
-
     let arr: &[dyn Flyer] = [b1, b2];
     for b in arr {
         b.fly();

@@ -1,70 +1,29 @@
-trait Storage {
+trait Storage<T> {
     fn data(&self) -> *mut T;
     fn capacity(&self) -> /* unknown */;
     fn try_grow(&self, min_cap: /* unknown */) -> bool;
 }
 
 
-struct Heap {
+struct Heap<T> {
     ptr: *mut T,
     cap: /* unknown */,
 }
 
-impl Heap {
-
-
-
-
-
-}
-
-impl Storage for Heap {
-    fn data(&self) -> *mut () {
-{
-        }    }
-    fn capacity(&self) -> /* unknown */ {
-{
-        }    }
-    fn try_grow(&self, min_cap: /* unknown */) -> bool {
-{
-        }    }
+impl Storage<T> for Heap<T> {
 }
 
 struct InlineInt64 {
     buffer: [i32; 64],
 }
 
-impl InlineInt64 {
-
-
-
-
-
+impl Storage<T> for InlineInt64 {
 }
 
-impl Storage for InlineInt64 {
-    fn data(&self) -> *mut i32 {
-{
-        }    }
-    fn capacity(&self) -> /* unknown */ {
-{
-        }    }
-    fn try_grow(&self, min_cap: /* unknown */) -> bool {
-{
-        }    }
-}
-
-struct List {
+struct List<T, S> {
     len: /* unknown */,
     store: S,
 }
-
-impl List {
-
-
-
-}
-
 
 fn main() {
 

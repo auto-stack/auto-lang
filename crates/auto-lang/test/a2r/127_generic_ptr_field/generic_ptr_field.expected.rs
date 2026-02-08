@@ -1,4 +1,4 @@
-struct MyStruct {
+struct MyStruct<T> {
     value: *mut T,
 }
 

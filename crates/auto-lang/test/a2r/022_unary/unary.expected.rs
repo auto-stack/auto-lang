@@ -1,7 +1,7 @@
 fn main() {
-    let x = -10;
-    let y = -5;
-    let z = x + y;
+    let x: i32 = -10;
+    let y: i32 = -5;
+    let z: i32 = x + y;
 
     println!("x: {} {} {} {} {}", x, "y:", y, "z:", z);
 }

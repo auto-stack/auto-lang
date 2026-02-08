@@ -2192,7 +2192,7 @@ impl<'a> Parser<'a> {
             TokenKind::Hash => {
                 // #[...] annotation syntax (Rust-style)
                 // Use centralized parse_fn_annotations() function
-                let (has_c, has_vm, _has_pub, with_params) = self.parse_fn_annotations()?;
+                let (has_c, has_vm, has_rs, _has_pub, with_params) = self.parse_fn_annotations()?;
 
                 // Skip empty lines after annotation
                 self.skip_empty_lines();
@@ -2200,8 +2200,11 @@ impl<'a> Parser<'a> {
                 // Check if this annotation is compatible with current compile destination
                 let should_skip = match self.compile_dest {
                     CompileDest::TransC if has_vm && !has_c => true, // Skip #[vm] in C transpiler
-                    CompileDest::TransRust if has_vm && !has_c => true, // Skip #[vm] in Rust transpiler
+                    CompileDest::TransC if has_rs && !has_c => true, // Skip #[rs] in C transpiler
+                    CompileDest::TransRust if has_vm && !has_rs => true, // Skip #[vm] in Rust transpiler
+                    CompileDest::TransRust if has_c && !has_rs => true, // Skip #[c] in Rust transpiler
                     CompileDest::Interp if has_c && !has_vm => true,    // Skip #[c] in interpreter
+                    CompileDest::Interp if has_rs && !has_vm => true,   // Skip #[rs] in interpreter
                     _ => false,
                 };
 
@@ -2220,6 +2223,7 @@ impl<'a> Parser<'a> {
                             "",
                             has_c,
                             has_vm,
+                            has_rs,
                             is_static,
                             with_params.clone(),
                         );
@@ -2238,7 +2242,7 @@ impl<'a> Parser<'a> {
                     if is_static {
                         self.next(); // skip static keyword
                     }
-                    self.fn_decl_stmt_with_annotations("", has_c, has_vm, is_static, with_params)?
+                    self.fn_decl_stmt_with_annotations("", has_c, has_vm, has_rs, is_static, with_params)?
                 } else if self.is_kind(TokenKind::Type) {
                     // Type declaration
                     self.type_decl_stmt_with_annotation(has_c)?
@@ -2403,16 +2407,19 @@ impl<'a> Parser<'a> {
         let mut methods = Vec::new();
 
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            // Check for annotations: #[c], #[vm], #[pub], #[c,vm] before function declarations
-            let (has_c, has_vm, _has_pub, with_params) = self.parse_fn_annotations()?;
+            // Check for annotations: #[c], #[vm], #[rs], #[pub], #[c,vm] before function declarations
+            let (has_c, has_vm, has_rs, _has_pub, with_params) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
             // Check if this annotation should be skipped for current compile destination
             let should_skip = match self.compile_dest {
                 CompileDest::TransC if has_vm && !has_c => true, // Skip #[vm] in C transpiler
-                CompileDest::TransRust if has_vm && !has_c => true, // Skip #[vm] in Rust transpiler
+                CompileDest::TransC if has_rs && !has_c => true, // Skip #[rs] in C transpiler
+                CompileDest::TransRust if has_vm && !has_rs => true, // Skip #[vm] in Rust transpiler
+                CompileDest::TransRust if has_c && !has_rs => true, // Skip #[c] in Rust transpiler
                 CompileDest::Interp if has_c && !has_vm => true, // Skip #[c] in interpreter
+                CompileDest::Interp if has_rs && !has_vm => true, // Skip #[rs] in interpreter
                 _ => false,
             };
 
@@ -2483,6 +2490,7 @@ impl<'a> Parser<'a> {
                         &target,
                         has_c,
                         has_vm,
+                        has_rs,
                         is_static_method,
                         with_params.clone(),
                     );
@@ -2495,6 +2503,7 @@ impl<'a> Parser<'a> {
                     &target,
                     has_c,
                     has_vm,
+                    has_rs,
                     is_static_method,
                     with_params,
                 )?;
@@ -2505,9 +2514,9 @@ impl<'a> Parser<'a> {
                     }
                     methods.push(fn_expr);
                 }
-                // For VM/C methods, they can end with newline (interface contract)
+                // For VM/C/RS methods, they can end with newline (interface contract)
                 // For regular methods, expect EOS (semicolon or newline after statement)
-                if !has_vm && !has_c {
+                if !has_vm && !has_c && !has_rs {
                     self.expect_eos(false)?;
                 }
                 self.skip_empty_lines();
@@ -2733,7 +2742,7 @@ impl<'a> Parser<'a> {
         match self.compile_dest {
             CompileDest::Interp => vec![".at", ".vm.at"], // Interpreter: Interface (first) → VM implementation (second)
             CompileDest::TransC => vec![".at", ".c.at"], // Transpiler: Interface (first) → C implementation (second)
-            CompileDest::TransRust => vec![".at", ".rust.at"], // Rust transpiler
+            CompileDest::TransRust => vec![".at", ".rs.at"], // Rust transpiler: Interface → Rust implementation
         }
     }
 
@@ -3773,16 +3782,18 @@ impl<'a> Parser<'a> {
 
     /// Parse function annotations: [c], [vm], [c,vm], [pub]
     ///
-    /// Parse function annotations: #[c], #[vm], #[pub], #[c,vm], #[with(T as Spec)], etc.
+    /// Parse function annotations: #[c], #[vm], #[rs], #[pub], #[c,vm], #[with(T as Spec)], etc.
     /// Annotations must start with # prefix (Rust-style).
-    /// Returns (has_c, has_vm, has_pub, with_params) tuple
+    /// Returns (has_c, has_vm, has_rs, has_pub, with_params) tuple
     ///
     /// Plan 061: Added support for #[with(T as Spec)] generic constraints
+    /// Plan 083: Added support for #[rs] (Rust transpiler)
     fn parse_fn_annotations(
         &mut self,
-    ) -> AutoResult<(bool, bool, bool, Vec<crate::ast::TypeParam>)> {
+    ) -> AutoResult<(bool, bool, bool, bool, Vec<crate::ast::TypeParam>)> {
         let mut has_c = false;
         let mut has_vm = false;
+        let mut has_rs = false;
         let mut has_pub = false;
         let mut with_params: Vec<crate::ast::TypeParam> = Vec::new();
 
@@ -3798,6 +3809,7 @@ impl<'a> Parser<'a> {
                     match annot.as_str() {
                         "c" => has_c = true,
                         "vm" => has_vm = true,
+                        "rs" => has_rs = true,
                         "pub" => has_pub = true,
                         "with" => {
                             // Plan 061: Parse #[with(T, U as Spec<V>)]
@@ -3806,7 +3818,7 @@ impl<'a> Parser<'a> {
                         }
                         _ => {
                             return Err(SyntaxError::Generic {
-                                message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[pub], #[with(...)], #[c,vm]", annot),
+                                message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[rs], #[pub], #[with(...)], #[c,vm,rs]", annot),
                                 span: pos_to_span(self.cur.pos),
                             }.into());
                         }
@@ -3848,7 +3860,7 @@ impl<'a> Parser<'a> {
             self.skip_empty_lines();
         }
 
-        Ok((has_c, has_vm, has_pub, with_params))
+        Ok((has_c, has_vm, has_rs, has_pub, with_params))
     }
 
     /// Plan 061: Parse with(...) parameter list: (T, U as Spec<V>)
@@ -3919,11 +3931,11 @@ impl<'a> Parser<'a> {
 
     // Function Declaration
     pub fn fn_decl_stmt(&mut self, parent_name: &str) -> AutoResult<Stmt> {
-        // Check for annotations: #[c], #[vm], #[c,vm] BEFORE fn keyword
-        let (has_c, has_vm, _has_pub, with_params) = if self.is_kind(TokenKind::Hash) {
+        // Check for annotations: #[c], #[vm], #[rs], #[c,vm] BEFORE fn keyword
+        let (has_c, has_vm, has_rs, _has_pub, with_params) = if self.is_kind(TokenKind::Hash) {
             self.parse_fn_annotations()?
         } else {
-            (false, false, false, Vec::new())
+            (false, false, false, false, Vec::new())
         };
 
         // Skip empty lines after annotations
@@ -3933,6 +3945,7 @@ impl<'a> Parser<'a> {
 
         let mut is_vm = has_vm;
         let mut is_c = has_c;
+        let mut is_rs = has_rs;
 
         // Backwards compatibility: check for fn.c and fn.vm after fn keyword
         if !is_vm && !is_c && self.is_kind(TokenKind::Dot) {
@@ -4141,6 +4154,7 @@ impl<'a> Parser<'a> {
         parent_name: &str,
         has_c: bool,
         has_vm: bool,
+        has_rs: bool,
         is_static: bool,
         with_params: Vec<crate::ast::TypeParam>,
     ) -> AutoResult<Stmt> {
@@ -4148,6 +4162,7 @@ impl<'a> Parser<'a> {
 
         let is_c = has_c;
         let is_vm = has_vm;
+        let is_rs = has_rs;
 
         // parse function name
         let name = self.parse_name()?;
@@ -4831,16 +4846,19 @@ impl<'a> Parser<'a> {
         let mut methods = Vec::new();
         let mut delegations = Vec::new();
         while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
-            // Check for annotations: #[c], #[vm], #[pub], #[c,vm] before function declarations
-            let (has_c, has_vm, _has_pub, with_params) = self.parse_fn_annotations()?;
+            // Check for annotations: #[c], #[vm], #[rs], #[pub], #[c,vm] before function declarations
+            let (has_c, has_vm, has_rs, _has_pub, with_params) = self.parse_fn_annotations()?;
 
             self.skip_empty_lines(); // Skip newlines after annotations
 
             // Check if this annotation should be skipped for current compile destination
             let should_skip = match self.compile_dest {
                 CompileDest::TransC if has_vm && !has_c => true, // Skip #[vm] in C transpiler
-                CompileDest::TransRust if has_vm && !has_c => true, // Skip #[vm] in Rust transpiler
+                CompileDest::TransC if has_rs && !has_c => true, // Skip #[rs] in C transpiler
+                CompileDest::TransRust if has_vm && !has_rs => true, // Skip #[vm] in Rust transpiler
+                CompileDest::TransRust if has_c && !has_rs => true, // Skip #[c] in Rust transpiler
                 CompileDest::Interp if has_c && !has_vm => true, // Skip #[c] in interpreter
+                CompileDest::Interp if has_rs && !has_vm => true, // Skip #[rs] in interpreter
                 _ => false,
             };
 
@@ -4856,6 +4874,7 @@ impl<'a> Parser<'a> {
                         &name,
                         has_c,
                         has_vm,
+                        has_rs,
                         is_static,
                         with_params.clone(),
                     );
@@ -4884,6 +4903,7 @@ impl<'a> Parser<'a> {
                     &name,
                     has_c,
                     has_vm,
+                    has_rs,
                     is_static,
                     with_params,
                 )?;

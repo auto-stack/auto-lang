@@ -1,4 +1,4 @@
-struct Box {
+struct Box<T> {
     value: T,
 }
 

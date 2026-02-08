@@ -1,3 +1,47 @@
+//! # Auto-to-Rust (a2r) Transpiler
+//!
+//! This module transpiles AutoLang source code to Rust, providing a native code
+//! compilation path for AutoLang applications. The a2r transpiler converts AutoLang's
+//! high-level syntax to idiomatic Rust code.
+//!
+//! ## Features
+//!
+//! - **Full language support**: Functions, structs, enums, closures, generics
+//! - **Trait system**: AutoLang specs transpile to Rust traits
+//! - **Type safety**: Preserves AutoLang's type system in Rust
+//! - **Pattern matching**: AutoLang `is` expressions transpile to Rust `match`
+//! - **Memory safety**: Borrow checking via AutoLang's view/mut/take semantics
+//!
+//! ## Usage
+//!
+//! ```rust,ignore
+//! use auto_lang::trans::rust::RustTrans;
+//!
+//! let code = r#"
+//! fn main() {
+//!     let x = 42
+//!     print(x)
+//! }
+//! "#;
+//!
+//! let mut trans = RustTrans::new("test".into());
+//! let mut sink = Sink::new(AutoStr::from("test"));
+//! trans.trans(code.parse()?, &mut sink)?;
+//! println!("{}", String::from_utf8(sink.done()?.to_vec())?);
+//! ```
+//!
+//! ## Transpilation Mapping
+//!
+//! | AutoLang | Rust |
+//! |-----------|------|
+//! | `fn add(a int, b int) int` | `fn add(a: i32, b: i32) -> i32` |
+//! | `let x = 42` | `let x: i32 = 42;` |
+//! | `var x = 42` | `let mut x: i32 = 42;` |
+//! | `(a, b) => a + b` | `|a: i32, b: i32| a + b` |
+//! | `spec Flyer { fn fly() }` | `trait Flyer { fn fly(&self); }` |
+//! | `type Point<T>` | `struct Point<T>` |
+//! | `use auto.io: say` | `use crate::io::say;` |
+
 use super::{Sink, Trans};
 use crate::ast::*;
 use crate::parser::Parser;
@@ -856,6 +900,26 @@ impl RustTrans {
                 Ok(())
             }
 
+            // Closure (Plan 060): (params) => body or param => body
+            Expr::Closure(closure) => {
+                write!(out, "|")?;
+                for (i, param) in closure.params.iter().enumerate() {
+                    // Name first, then optional type annotation
+                    write!(out, "{}", param.name)?;
+                    if let Some(ref ty) = param.ty {
+                        write!(out, ": {}", self.rust_type_name(ty))?;
+                    }
+                    if i < closure.params.len() - 1 {
+                        write!(out, ", ")?;
+                    }
+                }
+                write!(out, "| ")?;
+
+                // Closure body - it's a boxed expression
+                self.expr(&closure.body, out)?;
+                Ok(())
+            }
+
             // Plan 056: Dot expression for field access
             Expr::Dot(object, field) => {
                 // **Phase 1.1: Pointer Operators (test: 005_pointer)**
@@ -1226,6 +1290,11 @@ impl RustTrans {
                 Ok(true)
             }
 
+            Stmt::Ext(ext) => {
+                self.ext_decl(ext, sink)?;
+                Ok(true)
+            }
+
             Stmt::EmptyLine(n) => {
                 for _ in 0..*n {
                     sink.body.write(b"\n")?;
@@ -1280,26 +1349,45 @@ impl RustTrans {
                 }
             }
         } else {
-            // Explicit type annotation
-            match store.kind {
-                StoreKind::Let => {
-                    write!(
-                        out,
-                        "let {}: {} = ",
-                        store.name,
-                        self.rust_type_name(&store.ty)
-                    )?;
+            // Check if the expression is a closure - closures should not have explicit type annotations
+            // because Rust infers closure types automatically
+            let is_closure = matches!(store.expr, Expr::Closure(_));
+
+            if is_closure {
+                // For closures, don't add type annotation - let Rust infer it
+                match store.kind {
+                    StoreKind::Let => {
+                        write!(out, "let {} = ", store.name)?;
+                    }
+                    StoreKind::Var => {
+                        write!(out, "let mut {} = ", store.name)?;
+                    }
+                    _ => {
+                        write!(out, "let {} = ", store.name)?;
+                    }
                 }
-                StoreKind::Var => {
-                    write!(
-                        out,
-                        "let mut {}: {} = ",
-                        store.name,
-                        self.rust_type_name(&store.ty)
-                    )?;
-                }
-                _ => {
-                    write!(out, "let {}: {} = ", store.name, &store.ty)?;  // Use type reference
+            } else {
+                // Explicit type annotation for non-closure expressions
+                match store.kind {
+                    StoreKind::Let => {
+                        write!(
+                            out,
+                            "let {}: {} = ",
+                            store.name,
+                            self.rust_type_name(&store.ty)
+                        )?;
+                    }
+                    StoreKind::Var => {
+                        write!(
+                            out,
+                            "let mut {}: {} = ",
+                            store.name,
+                            self.rust_type_name(&store.ty)
+                        )?;
+                    }
+                    _ => {
+                        write!(out, "let {}: {} = ", store.name, &store.ty)?;
+                    }
                 }
             }
         }
@@ -1776,8 +1864,25 @@ impl RustTrans {
             }
         }
 
-        // Struct definition
-        write!(sink.body, "struct {} {{", type_decl.name)?;
+        // Struct definition with generic parameters
+        write!(sink.body, "struct {}", type_decl.name)?;
+
+        // Add generic parameters if present
+        if !type_decl.generic_params.is_empty() {
+            write!(sink.body, "<")?;
+            for (i, param) in type_decl.generic_params.iter().enumerate() {
+                if i > 0 {
+                    write!(sink.body, ", ")?;
+                }
+                match param {
+                    GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                    GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                }
+            }
+            write!(sink.body, ">")?;
+        }
+
+        write!(sink.body, " {{")?;
 
         // Collect all members (including from parent and composed types)
         // Use a set to avoid duplicates
@@ -1855,7 +1960,42 @@ impl RustTrans {
         // Implement traits for composed types
         for has_type in &type_decl.has {
             if let Type::User(has_decl) = has_type {
-                write!(sink.body, "\nimpl {} for {} {{\n", has_decl.name, type_decl.name)?;
+                // Build the impl signature with generic parameters
+                write!(sink.body, "\nimpl {}", has_decl.name)?;
+
+                // Add generic parameters from has_decl (trait)
+                if !has_decl.generic_params.is_empty() {
+                    write!(sink.body, "<")?;
+                    for (i, param) in has_decl.generic_params.iter().enumerate() {
+                        if i > 0 {
+                            write!(sink.body, ", ")?;
+                        }
+                        match param {
+                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                        }
+                    }
+                    write!(sink.body, ">")?;
+                }
+
+                write!(sink.body, " for {}", type_decl.name)?;
+
+                // Add generic parameters from type_decl (type)
+                if !type_decl.generic_params.is_empty() {
+                    write!(sink.body, "<")?;
+                    for (i, param) in type_decl.generic_params.iter().enumerate() {
+                        if i > 0 {
+                            write!(sink.body, ", ")?;
+                        }
+                        match param {
+                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                        }
+                    }
+                    write!(sink.body, ">")?;
+                }
+
+                writeln!(sink.body, " {{")?;
                 self.indent();
 
                 for method in &has_decl.methods {
@@ -1909,7 +2049,42 @@ impl RustTrans {
 
             // Now use the cloned spec_decl
             if let Some(spec_decl) = spec_decl_clone {
-                write!(sink.body, "\nimpl {} for {} {{\n", spec_decl.name, type_decl.name)?;
+                // Build impl signature with generic parameters
+                write!(sink.body, "\nimpl {}", spec_decl.name)?;
+
+                // Add generic parameters from spec_decl (trait)
+                if !spec_decl.generic_params.is_empty() {
+                    write!(sink.body, "<")?;
+                    for (i, param) in spec_decl.generic_params.iter().enumerate() {
+                        if i > 0 {
+                            write!(sink.body, ", ")?;
+                        }
+                        match param {
+                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                        }
+                    }
+                    write!(sink.body, ">")?;
+                }
+
+                write!(sink.body, " for {}", type_decl.name)?;
+
+                // Add generic parameters from type_decl (type)
+                if !type_decl.generic_params.is_empty() {
+                    write!(sink.body, "<")?;
+                    for (i, param) in type_decl.generic_params.iter().enumerate() {
+                        if i > 0 {
+                            write!(sink.body, ", ")?;
+                        }
+                        match param {
+                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                        }
+                    }
+                    write!(sink.body, ">")?;
+                }
+
+                writeln!(sink.body, " {{")?;
                 self.indent();
 
                 // Generate methods that delegate to the member
@@ -1956,8 +2131,24 @@ impl RustTrans {
         // Generate impl block with own methods
         if !type_decl.methods.is_empty() {
             sink.body.write(b"\n")?;
-            write!(sink.body, "impl {} {{", type_decl.name)?;
-            sink.body.write(b"\n")?;
+            write!(sink.body, "impl {}", type_decl.name)?;
+
+            // Add generic parameters if present
+            if !type_decl.generic_params.is_empty() {
+                write!(sink.body, "<")?;
+                for (i, param) in type_decl.generic_params.iter().enumerate() {
+                    if i > 0 {
+                        write!(sink.body, ", ")?;
+                    }
+                    match param {
+                        GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                        GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                    }
+                }
+                write!(sink.body, ">")?;
+            }
+
+            writeln!(sink.body, " {{")?;
             self.indent();
 
             for method in &type_decl.methods {
@@ -1988,7 +2179,43 @@ impl RustTrans {
             // Generate impl block for each spec
             for spec_decl in spec_decls {
                 sink.body.write(b"\n")?;
-                writeln!(sink.body, "impl {} for {} {{", spec_decl.name, type_decl.name)?;
+
+                // Build impl signature with generic parameters
+                write!(sink.body, "impl {}", spec_decl.name)?;
+
+                // Add generic parameters from spec_decl (trait)
+                if !spec_decl.generic_params.is_empty() {
+                    write!(sink.body, "<")?;
+                    for (i, param) in spec_decl.generic_params.iter().enumerate() {
+                        if i > 0 {
+                            write!(sink.body, ", ")?;
+                        }
+                        match param {
+                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                        }
+                    }
+                    write!(sink.body, ">")?;
+                }
+
+                write!(sink.body, " for {}", type_decl.name)?;
+
+                // Add generic parameters from type_decl (type)
+                if !type_decl.generic_params.is_empty() {
+                    write!(sink.body, "<")?;
+                    for (i, param) in type_decl.generic_params.iter().enumerate() {
+                        if i > 0 {
+                            write!(sink.body, ", ")?;
+                        }
+                        match param {
+                            GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                        }
+                    }
+                    write!(sink.body, ">")?;
+                }
+
+                writeln!(sink.body, " {{")?;
                 self.indent();
 
                 // Find methods in type_decl that match spec methods
@@ -2161,7 +2388,24 @@ impl RustTrans {
     fn tag_decl(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
         // Generate enum definition for tag
         // AutoLang tags are algebraic data types that map to Rust enums
-        writeln!(sink.body, "enum {} {{", tag.name)?;
+        write!(sink.body, "enum {}", tag.name)?;
+
+        // Add generic parameters if present
+        if !tag.generic_params.is_empty() {
+            write!(sink.body, "<")?;
+            for (i, param) in tag.generic_params.iter().enumerate() {
+                if i > 0 {
+                    write!(sink.body, ", ")?;
+                }
+                match param {
+                    GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                    GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                }
+            }
+            write!(sink.body, ">")?;
+        }
+
+        writeln!(sink.body, " {{")?;
         self.indent();
 
         for field in &tag.fields {
@@ -2188,10 +2432,63 @@ impl RustTrans {
         Ok(())
     }
 
+    // Ext block (type extension) - transpiles to impl block
+    fn ext_decl(&mut self, ext: &Ext, sink: &mut Sink) -> AutoResult<()> {
+        // Generate impl block for the target type
+        write!(sink.body, "impl {}", ext.target)?;
+
+        // Add generic parameters if present
+        if !ext.generic_params.is_empty() {
+            write!(sink.body, "<")?;
+            for (i, param) in ext.generic_params.iter().enumerate() {
+                if i > 0 {
+                    write!(sink.body, ", ")?;
+                }
+                match param {
+                    GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                    GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                }
+            }
+            write!(sink.body, ">")?;
+        }
+
+        writeln!(sink.body, " {{")?;
+        self.indent();
+
+        // Generate methods
+        for method in &ext.methods {
+            self.fn_decl(method, sink)?;
+            sink.body.write(b"\n")?;
+        }
+
+        self.dedent();
+        self.print_indent(&mut sink.body)?;
+        sink.body.write(b"}\n")?;
+
+        Ok(())
+    }
+
     // Spec/trait declaration
     fn spec_decl(&mut self, spec_decl: &SpecDecl, sink: &mut Sink) -> AutoResult<()> {
-        // Generate trait definition
-        writeln!(sink.body, "trait {} {{", spec_decl.name)?;
+        // Generate trait definition with generic parameters
+        write!(sink.body, "trait {}", spec_decl.name)?;
+
+        // Add generic parameters if present
+        if !spec_decl.generic_params.is_empty() {
+            write!(sink.body, "<")?;
+            for (i, param) in spec_decl.generic_params.iter().enumerate() {
+                if i > 0 {
+                    write!(sink.body, ", ")?;
+                }
+                match param {
+                    GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
+                    GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                }
+            }
+            write!(sink.body, ">")?;
+        }
+
+        writeln!(sink.body, " {{")?;
         self.indent();
 
         for method in &spec_decl.methods {
