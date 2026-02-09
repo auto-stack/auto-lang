@@ -171,6 +171,9 @@ pub struct Parser<'a> {
     current_const_params: HashMap<Name, Type>,
     /// Type inference context (Plan 010 Phase 5: Integration)
     pub infer_ctx: InferenceContext,
+    /// Type registry for REPL (Plan 087)
+    /// Allows checking if an identifier is a type across REPL inputs
+    pub type_registry: Option<crate::type_registry::SharedTypeRegistry>,
 }
 
 impl<'a> Parser<'a> {
@@ -203,6 +206,7 @@ impl<'a> Parser<'a> {
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
             infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
+            type_registry: None, // Plan 087: Type registry for REPL
         };
         parser.skip_comments();
         parser
@@ -210,6 +214,14 @@ impl<'a> Parser<'a> {
 
     pub fn set_dest(&mut self, dest: CompileDest) {
         self.compile_dest = dest;
+    }
+
+    /// Set type registry for REPL (Plan 087)
+    ///
+    /// This allows the parser to check if an identifier is a type
+    /// across REPL inputs, enabling node instance syntax like `Point{x:1, y:2}`.
+    pub fn set_type_registry(&mut self, registry: crate::type_registry::SharedTypeRegistry) {
+        self.type_registry = Some(registry);
     }
 
     pub fn add_special_block(&mut self, block: AutoStr, parser: Box<dyn BlockParser>) {
@@ -242,6 +254,7 @@ impl<'a> Parser<'a> {
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
             infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
+            type_registry: None, // Plan 087: Type registry for REPL
         };
         parser.skip_comments();
         parser
@@ -277,6 +290,7 @@ impl<'a> Parser<'a> {
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
             infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
+            type_registry: None, // Plan 087: Type registry for REPL
         };
         parser.skip_comments();
         parser
@@ -1865,7 +1879,14 @@ impl<'a> Parser<'a> {
             // Check if this is a generic type instance (followed by <)
             // Only treat as generic type if the identifier is a known TYPE (not a variable)
             // This prevents false positives like "x < 10" being treated as generic type
-            let is_type = self.scope.borrow().lookup_ident_type(&name).is_some();
+            // Plan 087: Also check type_registry for REPL support
+            let mut is_type = self.scope.borrow().lookup_ident_type(&name).is_some();
+            if !is_type {
+                // Check type registry for REPL (Plan 087)
+                if let Some(ref registry) = self.type_registry {
+                    is_type = registry.borrow().is_type(&name);
+                }
+            }
 
             // Check for generic type instance: Identifier<Type, ...>
             if self.is_kind(TokenKind::Lt) && is_type {
@@ -4743,6 +4764,11 @@ impl<'a> Parser<'a> {
 
         // put type in scope
         self.define(name.as_str(), Meta::Type(Type::User(decl.clone())));
+
+        // Plan 087: Also register to type_registry for REPL support
+        if let Some(ref registry) = self.type_registry {
+            registry.borrow_mut().register_type(name.to_string(), Type::User(decl.clone()));
+        }
 
         // Register symbol location for LSP
         // Use the saved name_pos which is the position of the type name

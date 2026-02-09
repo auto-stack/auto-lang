@@ -38,6 +38,8 @@ pub mod scope;
 pub mod target;
 pub mod token;
 pub mod trait_checker;
+// Plan 087: Type registry for REPL
+pub mod type_registry;
 pub mod trans;
 mod universe;
 pub mod util;

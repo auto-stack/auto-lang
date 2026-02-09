@@ -12,6 +12,7 @@ use crate::vm::codegen::Codegen;
 use crate::vm::engine::AutoVM;
 use crate::vm::opcode::OpCode;
 use crate::vm::task::TaskId;
+use crate::type_registry;
 use crate::vm::virt_memory::VirtualFlash;
 use crate::Parser;
 use std::collections::HashMap;
@@ -30,6 +31,10 @@ pub struct AutovmReplSession {
     /// Reusable Codegen (contains locals, exports, strings, etc.)
     /// Option allows moving it out during run() and moving it back
     codegen: Option<Codegen>,
+
+    /// Type registry for REPL (Plan 087)
+    /// Persists type definitions across REPL inputs
+    type_registry: type_registry::SharedTypeRegistry,
 
     /// All bytecode compiled so far (for flash updates)
     bytecode: Vec<u8>,
@@ -81,6 +86,7 @@ impl AutovmReplSession {
             vm,
             main_task_id: task_id,
             codegen: Some(codegen),  // Store Codegen for reuse
+            type_registry: type_registry::new_type_registry(),  // Plan 087: Type registry for REPL
             bytecode,
             object_keys: Vec::new(),
             object_types: Vec::new(),
@@ -90,10 +96,14 @@ impl AutovmReplSession {
 
     /// Execute code with persistent state
     ///
-    /// **Efficient**: Reuses Codegen to avoid allocations
+    /// **Efficient**: Reuses Codegen and TypeRegistry to avoid allocations
     pub fn run(&mut self, code: &str) -> AutoResult<String> {
         // 1. Parse the code
         let mut parser = Parser::from(code);
+
+        // Plan 087: Set type registry for REPL support
+        // This allows parser to recognize types defined in previous REPL inputs
+        parser.set_type_registry(self.type_registry.clone());
 
         // Plan 080: Enable skip_check for REPL mode
         // This allows using undefined variables (e.g., "x" as a statement)

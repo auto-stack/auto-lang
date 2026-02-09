@@ -117,7 +117,16 @@ impl AutovmRepl {
                             }
                         }
                         Err(e) => {
-                            eprintln!("Error: {}", e);
+                            // Check if this is a MultipleErrors error and print all inner errors
+                            if let crate::error::AutoError::MultipleErrors { errors, .. } = &e {
+                                eprintln!("Error: {}", e);
+                                for (i, err) in errors.iter().enumerate() {
+                                    eprintln!("  Error {}:", i + 1);
+                                    eprintln!("    {}", err);
+                                }
+                            } else {
+                                eprintln!("Error: {}", e);
+                            }
                         }
                     }
                 }
