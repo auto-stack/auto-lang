@@ -4,7 +4,7 @@ use crate::vm::heap_object::HeapObject;
 use crate::vm::native::NativeInterface;
 use crate::vm::opcode::OpCode;
 use crate::vm::task::{AutoTask, TaskId, TaskStatus};
-use crate::vm::virt_memory::VirtualFlash;
+use crate::vm::virt_memory::{VirtualFlash, VirtualRAM};
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -222,7 +222,61 @@ impl AutoVM {
     }
 
     // ============================================================================
-    // End Plan 077 Phase 4
+    // Plan 087 Phase 2: Generic Instance Value Helper Functions
+    // ============================================================================
+
+    /// Push a Value onto the stack based on its type
+    ///
+    /// For Phase 2, supports: Int, Uint, Float, Double, Bool, Char, Nil, Str
+    fn push_value(ram: &mut VirtualRAM, value: &Value, strings: &std::sync::Arc<RwLock<Vec<Vec<u8>>>>) {
+        match value {
+            Value::Int(i) => ram.push_i32(*i),
+            Value::Uint(u) => ram.push_i32(*u as i32),
+            Value::Float(f) => ram.push_f32(*f as f32),
+            Value::Double(d) => ram.push_f64(*d),
+            Value::Bool(b) => ram.push_i32(if *b { 1 } else { 0 }),
+            Value::Char(c) => ram.push_i32(*c as i32),
+            Value::Nil => ram.push_i32(0),
+            Value::Str(s) => {
+                // Store string in constant pool and push its index
+                let s_bytes = s.as_bytes().to_vec();
+                let mut strings = strings.write().unwrap();
+                let idx = strings.len();
+                strings.push(s_bytes);
+                drop(strings);
+                ram.push_i32(idx as i32);
+            }
+            _ => {
+                eprintln!("WARNING: push_value unsupported type: {:?}", value);
+                ram.push_i32(0);
+            }
+        }
+    }
+
+    /// Pop a basic value from the stack as i32
+    ///
+    /// For Phase 2, assumes the value is a basic type (int, bool, char, nil)
+    fn pop_value_as_int(ram: &mut VirtualRAM) -> i32 {
+        ram.pop_i32()
+    }
+
+    /// Pop a float value from the stack as f32
+    fn pop_value_as_float(ram: &mut VirtualRAM) -> f32 {
+        ram.pop_f32()
+    }
+
+    /// Pop a double value from the stack as f64
+    fn pop_value_as_double(ram: &mut VirtualRAM) -> f64 {
+        ram.pop_f64()
+    }
+
+    /// Pop a string value from the stack (returns string index)
+    fn pop_value_as_string_index(ram: &mut VirtualRAM) -> i32 {
+        ram.pop_i32()
+    }
+
+    // ============================================================================
+    // End Plan 087 Phase 2
     // ============================================================================
 
     /// Spawn a new task starting at the given instruction pointer
@@ -737,6 +791,155 @@ impl AutoVM {
 
                     // Push list ID onto stack
                     task.ram.push_i32(list_id as i32);
+                }
+
+                // === Plan 087 Phase 2: Generic Instance Support ===
+                OpCode::NEW_INSTANCE => {
+                    // Plan 087 Phase 2: Create a new generic instance (type-erased storage)
+                    // Stack layout: [..., mono_name_len]
+                    // Code layout: [opcode, mono_name_bytes...]
+                    // Stack after: [..., instance_id]
+                    use crate::vm::generic_registry::GenericInstanceData;
+
+                    // Read mono_name length from stack
+                    let name_len = task.ram.pop_i32() as usize;
+
+                    // Read mono_name bytes from flash memory and convert to String
+                    // Note: task.ip already points to the first byte after the opcode (advanced by main loop)
+                    let mut name_bytes = vec![0u8; name_len];
+                    for i in 0..name_len {
+                        let byte_addr = task.ip.wrapping_add(i);
+                        name_bytes[i] = self.flash.read_u8(byte_addr);
+                    }
+
+                    // Advance IP past the name bytes
+                    task.ip = task.ip.wrapping_add(name_len);
+
+                    let mono_name = String::from_utf8(name_bytes)
+                        .map_err(|e| VMError::RuntimeError(format!("Invalid UTF-8 in mono_name: {}", e)))?;
+
+                    // Create instance with no fields (uninitialized)
+                    let instance = GenericInstanceData::new(mono_name, vec![]);
+                    let instance_id = self.insert_heap_object(instance);
+
+                    // Push instance ID onto stack
+                    task.ram.push_i32(instance_id as i32);
+                }
+                OpCode::CONSTRUCT_INSTANCE => {
+                    // Plan 087 Phase 2: Populate fields of a generic instance
+                    // Stack layout: [..., field_count, value1, value2, ..., instance_id]
+                    // Stack after: [...]
+                    use crate::vm::generic_registry::GenericInstanceData;
+                    use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+
+                    // Pop instance_id (top of stack)
+                    let instance_id = task.ram.pop_i32() as u64;
+
+                    // Pop field_count
+                    let field_count = task.ram.pop_i32() as usize;
+
+                    // Pop values from stack (in reverse order)
+                    // For Phase 2, we assume all values are basic types (int, float, bool, etc.)
+                    let mut field_values = Vec::with_capacity(field_count);
+                    for _ in 0..field_count {
+                        // Pop value as i32 (basic type)
+                        let val_i32 = task.ram.pop_i32();
+                        // For Phase 2, convert to Int (simplified)
+                        field_values.push(Value::Int(val_i32));
+                    }
+                    field_values.reverse(); // Reverse to get correct order
+
+                    // Get instance and populate fields
+                    if let Some(obj) = self.get_heap_object(instance_id) {
+                        let mut guard = obj.write().unwrap();
+
+                        if let Some(instance) = try_downcast_checked_mut::<GenericInstanceData>(
+                            &mut *guard,
+                            TypeTag::GenericInstance("".into())
+                        ) {
+                            instance.fields = field_values;
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Type error: CONSTRUCT_INSTANCE expected GenericInstance")));
+                        }
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid instance ID: {}", instance_id)));
+                    }
+                }
+                OpCode::GET_GENERIC_FIELD => {
+                    // Plan 087 Phase 2: Get field value from generic instance
+                    // Stack layout: [..., instance_id, field_index]
+                    // Stack after: [..., value]
+                    use crate::vm::generic_registry::GenericInstanceData;
+                    use crate::vm::heap_object::{try_downcast_checked, TypeTag};
+
+                    // Pop field_index
+                    let field_index = task.ram.pop_i32() as usize;
+
+                    // Pop instance_id
+                    let instance_id = task.ram.pop_i32() as u64;
+
+                    // Get instance and read field
+                    if let Some(obj) = self.get_heap_object(instance_id) {
+                        let guard = obj.read().unwrap();
+
+                        if let Some(instance) = try_downcast_checked::<GenericInstanceData>(
+                            &*guard,
+                            TypeTag::GenericInstance("".into())
+                        ) {
+                            if let Some(value) = instance.get_field(field_index) {
+                                // Push field value onto stack using helper
+                                Self::push_value(&mut task.ram, value, &self.strings);
+                            } else {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field index {} out of bounds (instance has {} fields)",
+                                    field_index, instance.field_count())));
+                            }
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Type error: GET_GENERIC_FIELD expected GenericInstance")));
+                        }
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid instance ID: {}", instance_id)));
+                    }
+                }
+                OpCode::SET_GENERIC_FIELD => {
+                    // Plan 087 Phase 2: Set field value in generic instance
+                    // Stack layout: [..., instance_id, field_index, value]
+                    // Stack after: [...]
+                    use crate::vm::generic_registry::GenericInstanceData;
+                    use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+
+                    // Pop value (for Phase 2, assume it's a basic int)
+                    let val_i32 = task.ram.pop_i32();
+                    let value = Value::Int(val_i32);
+
+                    // Pop field_index
+                    let field_index = task.ram.pop_i32() as usize;
+
+                    // Pop instance_id
+                    let instance_id = task.ram.pop_i32() as u64;
+
+                    // Get instance and set field
+                    if let Some(obj) = self.get_heap_object(instance_id) {
+                        let mut guard = obj.write().unwrap();
+
+                        if let Some(instance) = try_downcast_checked_mut::<GenericInstanceData>(
+                            &mut *guard,
+                            TypeTag::GenericInstance("".into())
+                        ) {
+                            instance.set_field(field_index, value)
+                                .map_err(|e| VMError::RuntimeError(format!("Failed to set field: {}", e)))?;
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Type error: SET_GENERIC_FIELD expected GenericInstance")));
+                        }
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid instance ID: {}", instance_id)));
+                    }
                 }
                 OpCode::LIST_PUSH_INT => {
                     // Plan 077 Phase 7: Optimized with inline helper

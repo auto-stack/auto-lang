@@ -61,7 +61,7 @@ pub trait HeapObject: Any + Send + Sync {
 ///
 /// Each variant corresponds to a concrete type that implements `HeapObject`.
 /// Used for runtime type checking and debugging.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeTag {
     // List types (monomorphized generics)
     /// `ListData<i32>` - List of 32-bit integers
@@ -99,6 +99,14 @@ pub enum TypeTag {
     /// Byte string / bytes object
     Bytes,
 
+    // Generic instances (Plan 087)
+    /// User-defined generic instance (e.g., Pair<int, string>)
+    /// Stores mono_name for identification
+    GenericInstance(String),  // mono_name: "Pair_int_str"
+    /// Specialized pair storage (Plan 087 Phase 4)
+    /// Stores mono_name for identification
+    SpecializedPair(String),  // mono_name: "Pair_int_int", "Pair_int_Value", etc.
+
     // Future types
     /// User-defined or custom types
     CustomType,
@@ -106,20 +114,25 @@ pub enum TypeTag {
 
 impl TypeTag {
     /// Get the name of this type tag as a string
-    pub fn name(&self) -> &'static str {
+    pub fn name(&self) -> std::borrow::Cow<'static, str> {
         match self {
-            TypeTag::ListInt => "List<int>",
-            TypeTag::ListChar => "List<char>",
-            TypeTag::ListBool => "List<bool>",
-            TypeTag::ListString => "List<string>",
-            TypeTag::ListValue => "List<Value>",
-            TypeTag::HashMap => "HashMap",
-            TypeTag::TreeMap => "TreeMap",
-            TypeTag::HashSet => "HashSet",
-            TypeTag::TreeSet => "TreeSet",
-            TypeTag::String => "String",
-            TypeTag::Bytes => "Bytes",
-            TypeTag::CustomType => "CustomType",
+            TypeTag::ListInt => "List<int>".into(),
+            TypeTag::ListChar => "List<char>".into(),
+            TypeTag::ListBool => "List<bool>".into(),
+            TypeTag::ListString => "List<string>".into(),
+            TypeTag::ListValue => "List<Value>".into(),
+            TypeTag::HashMapInt => "HashMap<String, int>".into(),
+            TypeTag::HashMapBool => "HashMap<String, bool>".into(),
+            TypeTag::HashMapString => "HashMap<String, String>".into(),
+            TypeTag::HashMapValue => "HashMap<String, Value>".into(),
+            TypeTag::TreeMap => "TreeMap".into(),
+            TypeTag::HashSet => "HashSet".into(),
+            TypeTag::TreeSet => "TreeSet".into(),
+            TypeTag::String => "String".into(),
+            TypeTag::Bytes => "Bytes".into(),
+            TypeTag::GenericInstance(name) => format!("<{}>", name).into(),
+            TypeTag::SpecializedPair(name) => format!("[Specialized:{}]", name).into(),
+            TypeTag::CustomType => "CustomType".into(),
         }
     }
 
@@ -136,7 +149,7 @@ impl TypeTag {
 
     /// Check if this type tag represents a map type
     pub fn is_map(&self) -> bool {
-        matches!(self, TypeTag::HashMap | TypeTag::TreeMap)
+        matches!(self, TypeTag::HashMapInt | TypeTag::HashMapBool | TypeTag::HashMapString | TypeTag::HashMapValue | TypeTag::TreeMap)
     }
 
     /// Check if this type tag represents a set type
@@ -220,8 +233,8 @@ pub fn downcast_mut<T: Any>(obj: &mut dyn HeapObject) -> Option<&mut T> {
 /// let guard = obj.read();
 /// println!("Object type: {}", type_name(&*guard));
 /// ```
-pub fn type_name(obj: &dyn HeapObject) -> &'static str {
-    obj.type_tag().name()
+pub fn type_name(obj: &dyn HeapObject) -> String {
+    obj.type_tag().name().to_string()
 }
 
 // ============================================================================
@@ -341,7 +354,7 @@ mod tests {
         assert_eq!(TypeTag::ListBool.name(), "List<bool>");
         assert_eq!(TypeTag::ListString.name(), "List<string>");
         assert_eq!(TypeTag::ListValue.name(), "List<Value>");
-        assert_eq!(TypeTag::HashMap.name(), "HashMap");
+        assert_eq!(TypeTag::HashMapInt.name(), "HashMap<String, int>");
         assert_eq!(TypeTag::TreeMap.name(), "TreeMap");
         assert_eq!(TypeTag::HashSet.name(), "HashSet");
         assert_eq!(TypeTag::TreeSet.name(), "TreeSet");
@@ -353,7 +366,7 @@ mod tests {
     #[test]
     fn test_type_tag_display() {
         assert_eq!(format!("{}", TypeTag::ListInt), "List<int>");
-        assert_eq!(format!("{}", TypeTag::HashMap), "HashMap");
+        assert_eq!(format!("{}", TypeTag::HashMapInt), "HashMap<String, int>");
         assert_eq!(format!("{}", TypeTag::String), "String");
     }
 
@@ -364,13 +377,13 @@ mod tests {
         assert!(TypeTag::ListBool.is_list());
         assert!(TypeTag::ListString.is_list());
         assert!(TypeTag::ListValue.is_list());
-        assert!(!TypeTag::HashMap.is_list());
+        assert!(!TypeTag::HashMapInt.is_list());
         assert!(!TypeTag::String.is_list());
     }
 
     #[test]
     fn test_type_tag_is_map() {
-        assert!(TypeTag::HashMap.is_map());
+        assert!(TypeTag::HashMapInt.is_map());
         assert!(TypeTag::TreeMap.is_map());
         assert!(!TypeTag::ListInt.is_map());
         assert!(!TypeTag::HashSet.is_map());
@@ -380,7 +393,7 @@ mod tests {
     fn test_type_tag_is_set() {
         assert!(TypeTag::HashSet.is_set());
         assert!(TypeTag::TreeSet.is_set());
-        assert!(!TypeTag::HashMap.is_set());
+        assert!(!TypeTag::HashMapInt.is_set());
         assert!(!TypeTag::ListInt.is_set());
     }
 
@@ -388,7 +401,7 @@ mod tests {
     fn test_type_tag_equality() {
         assert_eq!(TypeTag::ListInt, TypeTag::ListInt);
         assert_ne!(TypeTag::ListInt, TypeTag::ListChar);
-        assert_ne!(TypeTag::HashMap, TypeTag::HashSet);
+        assert_ne!(TypeTag::HashMapInt, TypeTag::HashSet);
     }
 
     #[test]
@@ -398,12 +411,12 @@ mod tests {
         let mut set = HashSet::new();
         set.insert(TypeTag::ListInt);
         set.insert(TypeTag::ListChar);
-        set.insert(TypeTag::HashMap);
+        set.insert(TypeTag::HashMapInt);
 
         assert_eq!(set.len(), 3);
         assert!(set.contains(&TypeTag::ListInt));
         assert!(set.contains(&TypeTag::ListChar));
-        assert!(set.contains(&TypeTag::HashMap));
+        assert!(set.contains(&TypeTag::HashMapInt));
         assert!(!set.contains(&TypeTag::String));
     }
 
@@ -548,10 +561,10 @@ mod tests {
     }
 
     #[test]
-    fn test_copy_type_tag() {
-        let tag = TypeTag::HashMap;
-        let copied = tag;
-        assert_eq!(tag, copied);
+    fn test_clone_hashmap_type_tag() {
+        let tag = TypeTag::HashMapInt;
+        let cloned = tag.clone();
+        assert_eq!(tag, cloned);
     }
 
     // Plan 077 Phase 7: Tests for optimized downcast helpers

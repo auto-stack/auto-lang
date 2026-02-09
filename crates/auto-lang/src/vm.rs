@@ -13,6 +13,8 @@ pub mod collections;
 pub mod engine;
 // Plan 076 Phase 1: Generic type support for AutoVM
 pub mod generic;
+// Plan 087 Phase 1: Generic registry for user-defined generic types
+pub mod generic_registry;
 // Plan 076 Phase 2: Monomorphization pass
 pub mod monomorphize;
 // Plan 076 Phase 4: Storage strategy runtime for AutoVM

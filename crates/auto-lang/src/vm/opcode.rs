@@ -134,6 +134,17 @@ pub enum OpCode {
     CREATE_LIST_STR_INLINE = 0xA8,  // -> list_id (create List<string> with InlineInt64 storage)
     CREATE_LIST_BOOL_INLINE = 0xA9, // -> list_id (create List<bool> with InlineInt64 storage)
 
+    // === Plan 087 Phase 2: Generic Instance Opcodes ===
+    // Support for user-defined generic types (type erasure)
+    NEW_INSTANCE = 0xB0,      // mono_name_len, mono_name_bytes -> instance_id
+                             // Create a new generic instance (uninitialized)
+    CONSTRUCT_INSTANCE = 0xB1, // instance_id, field_count × value -> void
+                             // Construct instance by populating fields from stack
+    GET_GENERIC_FIELD = 0xB2, // instance_id, field_index -> value
+                             // Get field value from generic instance
+    SET_GENERIC_FIELD = 0xB3, // instance_id, field_index, value -> void
+                             // Set field value in generic instance
+
     // === Debug ===
     PRINT = 0xF0,
     HALT = 0xFF,

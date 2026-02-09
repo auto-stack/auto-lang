@@ -86,6 +86,10 @@ pub struct Codegen {
     /// Plan 076 Phase 1: Generic instantiation table
     /// Tracks all generic type instantiations (e.g., List<int>, List<string>)
     pub generics: GenericTable,
+
+    /// Plan 087 Phase 1: Generic registry for user-defined generic types
+    /// Stores generic class templates and their instantiations (e.g., Pair<int, string>)
+    pub generic_registry: crate::vm::generic_registry::GenericRegistry,
 }
 
 impl Codegen {
@@ -121,6 +125,7 @@ impl Codegen {
             loop_exits: Vec::new(),
             types: HashMap::new(),
             generics: GenericTable::new(), // Plan 076 Phase 1
+            generic_registry: crate::vm::generic_registry::GenericRegistry::new(), // Plan 087 Phase 1
         }
     }
 
@@ -319,6 +324,25 @@ impl Codegen {
                     // First-time declaration - track mutability based on StoreKind
                     let is_mutable = matches!(store.kind, crate::ast::StoreKind::Var | crate::ast::StoreKind::CVar);
                     self.var_mutability.insert(name_str.clone(), is_mutable);
+
+                    // Plan 087 Phase 1: Handle generic type instantiations
+                    // If the variable has an explicit generic type annotation (e.g., let p: Pair<int, string>),
+                    // register the instantiation in the GenericRegistry
+                    if let Type::GenericInstance(ref inst) = store.ty {
+                        // Extract type arguments from GenericInstance
+                        let type_args: Vec<Type> = inst.args.clone();
+
+                        // Register or get the ClassType from GenericRegistry
+                        if let Ok(class_type) = self.generic_registry.get_or_create_type(
+                            &inst.base_name.to_string(),
+                            type_args
+                        ) {
+                            // Store the complete type in var_types
+                            self.var_types.insert(name_str.clone(), store.ty.clone());
+                        } else {
+                            eprintln!("Warning: Failed to register generic instance '{}'", inst.base_name);
+                        }
+                    }
                 }
 
                 // Compile the RHS expression (pushes result on stack)
@@ -1125,18 +1149,77 @@ impl Codegen {
                 }
             }
             // Plan 073: Dot expression field access (obj.field)
+            // Plan 087 Phase 2: Support generic instance field access
             Expr::Dot(obj, field) => {
-                // Compile object expression (should push object_id onto stack)
-                self.compile_expr(obj)?;
+                // Check if obj is a generic instance variable
+                let is_generic_instance = if let Expr::Ident(var_name) = obj.as_ref() {
+                    // Look up variable type
+                    if let Some(var_type) = self.var_types.get(var_name.as_ref()) {
+                        matches!(var_type, Type::GenericInstance(_))
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
 
-                // Add field name to string pool and emit GET_FIELD <field_idx>
-                let field_str = field.to_string();
-                let field_bytes = field_str.as_bytes().to_vec();
-                let field_idx = self.strings.len() as u16;
-                self.strings.push(field_bytes);
+                if is_generic_instance {
+                    // Plan 087 Phase 2: Generic instance field access
+                    // Compile object expression (pushes instance_id onto stack)
+                    self.compile_expr(obj)?;
 
-                self.emit(OpCode::GET_FIELD);
-                self.code.extend_from_slice(&field_idx.to_le_bytes());
+                    // Get field index from generic registry
+                    if let Expr::Ident(var_name) = obj.as_ref() {
+                        if let Some(Type::GenericInstance(ref inst)) = self.var_types.get(var_name.as_ref()) {
+                            // Generate mono_name from base_name and args
+                            let mono_name = self.generic_registry.get_template(&inst.base_name.to_string())
+                                .map(|t| t.mono_name_from_args(&inst.args))
+                                .unwrap_or_else(|| format!("{}_unknown", inst.base_name));
+
+                            // Get ClassType to find field index
+                            if let Some(class_type) = self.generic_registry.get_type(&mono_name) {
+                                let field_str = field.to_string();
+                                if let Some(field_index) = class_type.field_index(&field_str) {
+                                    // Emit GET_GENERIC_FIELD with field index
+                                    self.emit(OpCode::GET_GENERIC_FIELD);
+                                    self.emit_u32(field_index as u32);
+                                } else {
+                                    eprintln!("Warning: Field '{}' not found in generic type '{}'",
+                                        field, inst.base_name);
+                                    // Fallback: emit placeholder
+                                    self.emit(OpCode::GET_GENERIC_FIELD);
+                                    self.emit_u32(0);
+                                }
+                            } else {
+                                eprintln!("Warning: Generic type '{}' not found in registry", mono_name);
+                                // Fallback to regular field access
+                                self.emit(OpCode::GET_FIELD);
+                                self.emit_u16(0);
+                            }
+                        } else {
+                            // Fallback to regular field access
+                            self.emit(OpCode::GET_FIELD);
+                            self.emit_u16(0);
+                        }
+                    } else {
+                        // Fallback to regular field access
+                        self.emit(OpCode::GET_FIELD);
+                        self.emit_u16(0);
+                    }
+                } else {
+                    // Regular field access (Plan 073)
+                    // Compile object expression (should push object_id onto stack)
+                    self.compile_expr(obj)?;
+
+                    // Add field name to string pool and emit GET_FIELD <field_idx>
+                    let field_str = field.to_string();
+                    let field_bytes = field_str.as_bytes().to_vec();
+                    let field_idx = self.strings.len() as u16;
+                    self.strings.push(field_bytes);
+
+                    self.emit(OpCode::GET_FIELD);
+                    self.code.extend_from_slice(&field_idx.to_le_bytes());
+                }
             }
             // Plan 073: Array indexing (arr[index])
             Expr::Index(arr, idx) => {
@@ -1250,20 +1333,96 @@ impl Codegen {
                         self.emit(OpCode::SET_ELEM);  // Expects: value, array_id, index
                     } else if let Expr::Dot(obj, field) = lhs.as_ref() {
                         // Plan 075: Field assignment: obj.field = value
+                        // Plan 087 Phase 2: Support generic instance field assignment
                         // Stack has: value (from RHS compilation above)
-                        // Compile object expression
-                        self.compile_expr(obj)?;
-                        // Now stack has: value, object_id
-                        // Load field name
-                        let field_str = field.to_string();
-                        let field_bytes = field_str.as_bytes().to_vec();
-                        let field_idx = self.strings.len() as u16;
-                        self.strings.push(field_bytes);
 
-                        self.emit(OpCode::LOAD_STR);
-                        self.code.extend_from_slice(&field_idx.to_le_bytes());
-                        // Emit SET_FIELD: expects value, object_id, field_name_idx
-                        self.emit(OpCode::SET_FIELD);
+                        // Check if obj is a generic instance variable
+                        let is_generic_instance = if let Expr::Ident(var_name) = obj.as_ref() {
+                            // Look up variable type
+                            if let Some(var_type) = self.var_types.get(var_name.as_ref()) {
+                                matches!(var_type, Type::GenericInstance(_))
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
+                        if is_generic_instance {
+                            // Plan 087 Phase 2: Generic instance field assignment
+                            // Compile object expression (pushes instance_id onto stack)
+                            self.compile_expr(obj)?;
+                            // Now stack has: value, instance_id
+
+                            // Get field index from generic registry
+                            if let Expr::Ident(var_name) = obj.as_ref() {
+                                if let Some(Type::GenericInstance(ref inst)) = self.var_types.get(var_name.as_ref()) {
+                                    // Generate mono_name from base_name and args
+                                    let mono_name = self.generic_registry.get_template(&inst.base_name.to_string())
+                                        .map(|t| t.mono_name_from_args(&inst.args))
+                                        .unwrap_or_else(|| format!("{}_unknown", inst.base_name));
+
+                                    // Get ClassType to find field index
+                                    if let Some(class_type) = self.generic_registry.get_type(&mono_name) {
+                                        let field_str = field.to_string();
+                                        if let Some(field_index) = class_type.field_index(&field_str) {
+                                            // Emit SET_GENERIC_FIELD: expects value, instance_id, field_index
+                                            self.emit_u32(field_index as u32);
+                                            self.emit(OpCode::SET_GENERIC_FIELD);
+                                        } else {
+                                            eprintln!("Warning: Field '{}' not found in generic type '{}' (assignment)",
+                                                field, inst.base_name);
+                                            // Fallback: emit placeholder
+                                            self.emit_u32(0);
+                                            self.emit(OpCode::SET_GENERIC_FIELD);
+                                        }
+                                    } else {
+                                        eprintln!("Warning: Generic type '{}' not found in registry (assignment)", mono_name);
+                                        // Fallback to regular field access
+                                        let field_str = field.to_string();
+                                        let field_bytes = field_str.as_bytes().to_vec();
+                                        let field_idx = self.strings.len() as u16;
+                                        self.strings.push(field_bytes);
+                                        self.emit(OpCode::LOAD_STR);
+                                        self.code.extend_from_slice(&field_idx.to_le_bytes());
+                                        self.emit(OpCode::SET_FIELD);
+                                    }
+                                } else {
+                                    // Fallback to regular field access
+                                    let field_str = field.to_string();
+                                    let field_bytes = field_str.as_bytes().to_vec();
+                                    let field_idx = self.strings.len() as u16;
+                                    self.strings.push(field_bytes);
+                                    self.emit(OpCode::LOAD_STR);
+                                    self.code.extend_from_slice(&field_idx.to_le_bytes());
+                                    self.emit(OpCode::SET_FIELD);
+                                }
+                            } else {
+                                // Fallback to regular field access
+                                let field_str = field.to_string();
+                                let field_bytes = field_str.as_bytes().to_vec();
+                                let field_idx = self.strings.len() as u16;
+                                self.strings.push(field_bytes);
+                                self.emit(OpCode::LOAD_STR);
+                                self.code.extend_from_slice(&field_idx.to_le_bytes());
+                                self.emit(OpCode::SET_FIELD);
+                            }
+                        } else {
+                            // Regular field assignment (Plan 075)
+                            // Compile object expression
+                            self.compile_expr(obj)?;
+                            // Now stack has: value, object_id
+                            // Load field name
+                            let field_str = field.to_string();
+                            let field_bytes = field_str.as_bytes().to_vec();
+                            let field_idx = self.strings.len() as u16;
+                            self.strings.push(field_bytes);
+
+                            self.emit(OpCode::LOAD_STR);
+                            self.code.extend_from_slice(&field_idx.to_le_bytes());
+                            // Emit SET_FIELD: expects value, object_id, field_name_idx
+                            self.emit(OpCode::SET_FIELD);
+                        }
                     } else {
                         unimplemented!("Assignment to complex LHS not supported yet");
                     }
@@ -1350,12 +1509,99 @@ impl Codegen {
                 }
             }
             Expr::Call(call) => {
+                // Plan 087 Phase 2: Check if this is a generic constructor call (e.g., Pair.new(1, "a"))
+                let is_generic_constructor = if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    if method == "new" {
+                        if let Expr::Ident(type_name) = obj.as_ref() {
+                            // Check if this type is registered in generic_registry
+                            self.generic_registry.has_template(type_name.as_ref())
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                if is_generic_constructor {
+                    // Plan 087 Phase 2: Generic constructor call
+                    // Generate: NEW_INSTANCE + CONSTRUCT_INSTANCE
+
+                    if let Expr::Dot(obj, _method) = call.name.as_ref() {
+                        if let Expr::Ident(type_name) = obj.as_ref() {
+                            // Get or create ClassType to determine mono_name and field count
+                            let type_args = Vec::new(); // For Phase 2, use empty type args (no inference)
+                            if let Ok(class_type) = self.generic_registry.get_or_create_type(
+                                type_name.as_ref(),
+                                type_args
+                            ) {
+                                let field_count = class_type.template.fields.len();
+
+                                // Compile arguments (push values onto stack)
+                                // Stack: ..., arg1, arg2, ..., argN
+                                if !call.args.args.is_empty() {
+                                    for arg in &call.args.args {
+                                        match arg {
+                                            crate::ast::Arg::Pos(expr) => {
+                                                self.compile_expr(expr)?;
+                                            }
+                                            crate::ast::Arg::Pair(key, expr) => {
+                                                // Named argument: compile value only
+                                                self.compile_expr(expr)?;
+                                            }
+                                            crate::ast::Arg::Name(name) => {
+                                                // Named argument without value - treat as string
+                                                self.emit(OpCode::LOAD_STR);
+                                                        let s_bytes = name.to_string().as_bytes().to_vec();
+                                                        let s_idx = self.strings.len() as u16;
+                                                        self.strings.push(s_bytes);
+                                                        self.code.extend_from_slice(&s_idx.to_le_bytes());
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Emit NEW_INSTANCE instruction
+                                // Push mono_name length
+                                let mono_name = class_type.mono_name.clone();
+                                let name_bytes = mono_name.as_bytes();
+                                self.emit(OpCode::CONST_I32);
+                                self.emit_i32(name_bytes.len() as i32);
+
+                                // Emit mono_name bytes directly into code
+                                for &byte in name_bytes {
+                                    self.code.push(byte);
+                                }
+
+                                self.emit(OpCode::NEW_INSTANCE);
+
+                                // Emit CONSTRUCT_INSTANCE
+                                // Stack layout should be: ..., instance_id, field_count, arg1, ..., argN
+                                self.emit(OpCode::CONST_I32);
+                                self.emit_i32(field_count as i32);
+                                self.emit(OpCode::CONSTRUCT_INSTANCE);
+
+                                return Ok(());
+                            } else {
+                                eprintln!("Warning: Failed to get/create generic type '{}'", type_name);
+                                // Fallback to regular call
+                            }
+                        }
+                    }
+
+                    // Fallback to regular call if something went wrong
+                }
+
+                // Regular function/method call (existing code)
                 // Extract function name and determine if it's a method call
                 // Plan 073: Support both static methods (Type.method) and instance methods (obj.method)
                 let mut func_name = match call.name.as_ref() {
                     Expr::Ident(name) => Some(name.to_string()),
                     Expr::Dot(obj, method) => {
                         // Method call: Type.method (static) or obj.method (instance)
+                        // Plan 087 Phase 3: Support generic instance method calls
                         match obj.as_ref() {
                             Expr::Ident(obj_name) => {
                                 // Check if it's a static method call (Type.method with capital T)
@@ -1364,13 +1610,35 @@ impl Codegen {
                                     Some(format!("{}.{}", obj_name, method))
                                 } else {
                                     // Instance method call: obj.method
-                                    // Infer type from variable name and generate: TypeName.method
-                                    if let Some(type_name) = self.infer_type_from_var(obj_name) {
-                                        Some(format!("{}.{}", type_name, method))
+                                    // Plan 087 Phase 3: Check if obj is a generic instance
+                                    let func_name = if let Some(ty) = self.var_types.get(obj_name.as_ref()) {
+                                        if let Type::GenericInstance(inst) = ty {
+                                            // Generate monomorphic method name for generic instance
+                                            // Example: p.get_key() where p: Pair<int, string>
+                                            //          → "Pair_int_str.get_key"
+                                            let mono_name = self.generic_registry.get_template(&inst.base_name.to_string())
+                                                .map(|t| t.mono_name_from_args(&inst.args))
+                                                .unwrap_or_else(|| format!("{}_unknown", inst.base_name));
+
+                                            Some(format!("{}.{}", mono_name, method))
+                                        } else {
+                                            // Not a generic instance, use regular inference
+                                            if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
+                                                Some(format!("{}.{}", type_name, method))
+                                            } else {
+                                                Some(format!("{}.{}", obj_name, method))
+                                            }
+                                        }
                                     } else {
-                                        // Fallback: generate obj.method (may fail at link time)
-                                        Some(format!("{}.{}", obj_name, method))
-                                    }
+                                        // No type info, use regular inference
+                                        if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
+                                            Some(format!("{}.{}", type_name, method))
+                                        } else {
+                                            Some(format!("{}.{}", obj_name, method))
+                                        }
+                                    };
+
+                                    func_name
                                 }
                             }
                             _ => {
@@ -1644,6 +1912,16 @@ impl Codegen {
     }
 
     fn emit_i32(&mut self, val: i32) {
+        self.code.extend_from_slice(&val.to_le_bytes());
+    }
+
+    // Plan 087 Phase 2: Emit u32 value (4 bytes, little-endian)
+    fn emit_u32(&mut self, val: u32) {
+        self.code.extend_from_slice(&val.to_le_bytes());
+    }
+
+    // Plan 087 Phase 2: Emit u16 value (2 bytes, little-endian)
+    fn emit_u16(&mut self, val: u16) {
         self.code.extend_from_slice(&val.to_le_bytes());
     }
 
@@ -2380,18 +2658,62 @@ impl Codegen {
     // ========== Plan 073: Type Registry Helper Methods ==========
 
     /// Register a type declaration in the type registry
+    ///
+    /// Plan 087 Phase 1: If the type has generic parameters, register as a generic template
+    /// in the GenericRegistry. Otherwise, register as a regular type in the type registry.
     pub fn register_type(&mut self, type_decl: &TypeDecl) {
-        let member_names: Vec<String> = type_decl.members
+        // Plan 087 Phase 1: Check if this is a generic type
+        if !type_decl.generic_params.is_empty() {
+            // Register as generic template
+            self.register_generic_template(type_decl);
+        } else {
+            // Register as regular type
+            let member_names: Vec<String> = type_decl.members
+                .iter()
+                .map(|m| m.name.to_string())
+                .collect();
+
+            let type_info = TypeInfo {
+                name: type_decl.name.to_string(),
+                member_names,
+            };
+
+            self.types.insert(type_decl.name.to_string(), type_info);
+        }
+    }
+
+    // Plan 087 Phase 1: Register a generic type template
+    ///
+    /// Converts a TypeDecl with generic parameters into a ClassTemplate
+    /// and registers it in the GenericRegistry.
+    fn register_generic_template(&mut self, type_decl: &TypeDecl) {
+        use crate::vm::generic_registry::{ClassTemplate, FieldDef, MethodInfo};
+
+        // Convert members to FieldDef
+        let fields: Vec<FieldDef> = type_decl.members
             .iter()
-            .map(|m| m.name.to_string())
+            .map(|m| FieldDef::new(m.name.to_string(), m.ty.clone()))
             .collect();
 
-        let type_info = TypeInfo {
-            name: type_decl.name.to_string(),
-            member_names,
-        };
+        // Convert methods to MethodInfo
+        let mut methods = std::collections::HashMap::new();
+        for method in &type_decl.methods {
+            let method_info = MethodInfo::new(method.name.to_string(), method.clone());
+            methods.insert(method.name.to_string(), method_info);
+        }
 
-        self.types.insert(type_decl.name.to_string(), type_info);
+        // Create ClassTemplate
+        let template = ClassTemplate::new(
+            type_decl.name.to_string(),
+            type_decl.generic_params.clone(),
+            fields,
+            type_decl.methods.clone(),
+        );
+
+        // Register in GenericRegistry
+        if let Err(e) = self.generic_registry.register_template(template) {
+            eprintln!("Warning: Failed to register generic template '{}': {}", type_decl.name, e);
+        }
     }
 
     /// Check if a name is a registered type
