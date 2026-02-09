@@ -1,0 +1,8 @@
+// Plan 087: Test HashMap generic type
+let map = HashMap.new()
+map.insert_str("name", "Alice")
+map.insert_str("age", 30)
+map.insert_str("city", "Tokyo")
+
+let size = map.size()
+size

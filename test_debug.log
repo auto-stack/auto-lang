@@ -1,0 +1,67 @@
+=== Test: Bytecode Accumulation ===
+
+Running AutoVM REPL...
+
+🟢 AutoVM REPL (Plan 068 Phase 9.6)
+Type ':help' for commands, ':quit' to exit
+
+DEBUG: Parsed 1 statements from: 'let x = 5'
+DEBUG:   Stmt 0: Store(Store { kind: Let, name: "x", ty: Int, expr: Int(5) })
+DEBUG: Before compilation, scope_stack = [{}]
+DEBUG: Generated 8 bytes of bytecode
+DEBUG:   [0000] 10 CONST_I32 (imm: 05)
+DEBUG:   [0002] 00 NOP
+DEBUG:   [0003] 00 NOP
+DEBUG:   [0004] 00 NOP
+DEBUG:   [0005] 25 STORE_LOC_0
+DEBUG:   [0006] 22 LOAD_LOC_0
+DEBUG:   [0007] ff HALT
+DEBUG: BEFORE execution - bp=0, sp=0, ip=0, raw[0]=0
+DEBUG: bp=0, sp=1, stack_top=Some(5)
+DEBUG: result=5
+5
+=== AutoVM REPL Statistics ===
+  Functions: 0
+  Bytecode size: 8 bytes
+  Strings: 0
+DEBUG: Parsed 1 statements from: 'x + 1'
+DEBUG:   Stmt 0: Expr(Bina(Ident("x"), Add, Int(1)))
+DEBUG: Before compilation, scope_stack = [{"x": 0}]
+DEBUG: Generated 8 bytes of bytecode
+DEBUG:   [0000] 22 LOAD_LOC_0
+DEBUG:   [0001] 10 CONST_I32 (imm: 01)
+DEBUG:   [0003] 00 NOP
+DEBUG:   [0004] 00 NOP
+DEBUG:   [0005] 00 NOP
+DEBUG:   [0006] 30 ADD
+DEBUG:   [0007] ff HALT
+DEBUG: BEFORE execution - bp=0, sp=0, ip=8, raw[0]=5
+DEBUG: bp=0, sp=1, stack_top=Some(6)
+DEBUG: result=6
+6
+=== AutoVM REPL Statistics ===
+  Functions: 0
+  Bytecode size: 15 bytes
+  Strings: 0
+DEBUG: Parsed 1 statements from: 'x + 1'
+DEBUG:   Stmt 0: Expr(Bina(Ident("x"), Add, Int(1)))
+DEBUG: Before compilation, scope_stack = [{"x": 0}]
+DEBUG: Generated 8 bytes of bytecode
+DEBUG:   [0000] 22 LOAD_LOC_0
+DEBUG:   [0001] 10 CONST_I32 (imm: 01)
+DEBUG:   [0003] 00 NOP
+DEBUG:   [0004] 00 NOP
+DEBUG:   [0005] 00 NOP
+DEBUG:   [0006] 30 ADD
+DEBUG:   [0007] ff HALT
+DEBUG: BEFORE execution - bp=0, sp=0, ip=15, raw[0]=6
+DEBUG: bp=0, sp=1, stack_top=Some(7)
+DEBUG: result=7
+7
+=== AutoVM REPL Statistics ===
+  Functions: 0
+  Bytecode size: 22 bytes
+  Strings: 0
+Goodbye!
+
+=== Check bytecode size growth ===

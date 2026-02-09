@@ -1,0 +1,3 @@
+// Simple test - direct integer
+let x = 42
+x

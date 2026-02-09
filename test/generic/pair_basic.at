@@ -1,0 +1,35 @@
+# Plan 087 Phase 2: Basic generic instantiation and field access
+# Testing user-defined generic type Pair<K, V>
+
+# Define a generic type Pair
+tag Pair<K, V> {
+    PairData(K key, V val)
+
+    fn get_key(self) K {
+        self.key
+    }
+
+    fn get_val(self) V {
+        self.val
+    }
+}
+
+# Case 1: Create Pair<int, int> instance
+let p1 = Pair.PairData(42, 100)
+
+# Case 2: Access fields
+let k = p1.key
+let v = p1.val
+
+say("key: $k")
+say("val: $v")
+
+# Case 3: Create Pair<int, string> instance
+let p2 = Pair.PairData(1, "hello")
+say("p2.key: $p2.key")
+say("p2.val: $p2.val")
+
+# Case 4: Create Pair<string, bool> instance
+let p3 = Pair.PairData("flag", true)
+say("p3.key: $p3.key")
+say("p3.val: $p3.val")

@@ -1,0 +1,13 @@
+// Plan 087: Test built-in generic type List
+let list = List.new()
+list.push(1)
+list.push(2)
+list.push(3)
+
+let len = list.len()
+let first = list.get(0)
+let second = list.get(1)
+
+say(f"List length: {len}")
+say(f"First element: {first}")
+say(f"Second element: {second}")
