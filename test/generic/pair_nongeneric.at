@@ -1,0 +1,8 @@
+// Test non-generic type with multiple fields
+type Pair {
+    x int
+    y str
+}
+
+let p = Pair { x: 42, y: "hello" }
+p.x

@@ -1,0 +1,5 @@
+// Test generic type declaration (no construction)
+type Pair<K, V> {
+    key K
+    val V
+}

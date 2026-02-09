@@ -1,0 +1,9 @@
+// Simple test: check if type construction works
+type IntBox {
+    value int
+}
+
+fn main() {
+    let box = IntBox { value: 42 }
+    box.value
+}

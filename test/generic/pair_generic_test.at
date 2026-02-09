@@ -1,0 +1,10 @@
+// Test generic type with object syntax
+type Pair<K, V> {
+    key K
+    val V
+}
+
+fn main() {
+    let p = Pair { key: 42, val: "hello" }
+    say(p.key)
+}

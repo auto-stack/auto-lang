@@ -1,0 +1,5 @@
+type Pair {
+    x int
+}
+
+let p = Pair { x: 42 }

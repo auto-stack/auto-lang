@@ -1866,6 +1866,8 @@ impl<'a> Parser<'a> {
             // Only treat as generic type if the identifier is a known TYPE (not a variable)
             // This prevents false positives like "x < 10" being treated as generic type
             let is_type = self.scope.borrow().lookup_ident_type(&name).is_some();
+
+            // Check for generic type instance: Identifier<Type, ...>
             if self.is_kind(TokenKind::Lt) && is_type {
                 // Parse as generic type instance: List<int, Heap>
                 self.expect(TokenKind::Lt)?;
@@ -1888,10 +1890,26 @@ impl<'a> Parser<'a> {
                 let generic_name = format!("{}<{}>", name, args_str);
 
                 return Ok(Expr::GenName(generic_name.into()));
-            } else {
-                // Not a generic type, just a regular identifier
-                return Ok(Expr::Ident(name));
             }
+
+            // Check for node instance: Identifier { ... }
+            // This handles type construction syntax like Pair {x: 1, y: 2}
+            if self.is_kind(TokenKind::LBrace) && is_type {
+                // Parse as node instance with the already-read identifier
+                let ident = Expr::Ident(name.clone());
+                let primary_prop = None;
+                let args = Args::new();
+
+                return Ok(Expr::Node(self.parse_node(
+                    &name,
+                    primary_prop,
+                    args,
+                    &AutoStr::new(),
+                )?));
+            }
+
+            // Not a special type expression, just a regular identifier
+            return Ok(Expr::Ident(name));
         }
 
         let expr = match self.kind() {

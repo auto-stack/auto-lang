@@ -1,0 +1,11 @@
+// Test type construction with function call syntax
+type Pair<K, V> {
+    key K
+    val V
+}
+
+fn main() {
+    // Use function call syntax (not object literal)
+    let p = Pair(key: 42, val: "hello")
+    say(p.key)
+}

@@ -1,0 +1,24 @@
+// Test both syntaxes for type construction
+type Pair<K, V> {
+    key K
+    val V
+}
+
+fn main() {
+    // Function call syntax
+    let p1 = Pair(key: 100, val: "call syntax")
+    say("p1.key:")
+    say(p1.key)
+    say("p1.val:")
+    say(p1.val)
+
+    // Object literal syntax
+    let p2 = Pair { key: 200, val: "object syntax" }
+    say("p2.key:")
+    say(p2.key)
+    say("p2.val:")
+    say(p2.val)
+
+    // Verify both work correctly
+    say("done!")
+}
