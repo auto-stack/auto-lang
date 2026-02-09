@@ -1,5 +1,21 @@
 # Plan 087: AutoVM 泛型系统实现 - 类型擦除 + 特化存储
 
+> **当前状态**: 🟢 **基本完成** (80%)
+> - ✅ 数据结构设计：100% 完成
+> - ✅ 单元测试：72/72 通过
+> - ✅ 编译时支持：95% 完成（Parser + Codegen，**Node instance 语法支持**）
+> - ✅ 运行时支持：70% 完成（VM 指令已实现）
+> - ⚠️ 集成测试：40% 完成（基础测试 + 语法验证通过）
+>
+> **最新进展**（2025-02-09）：
+> - ✅ **修复 Parser：支持 `Identifier { ... }` node instance 语法**
+> - ✅ 用户定义泛型类型两种语法都工作：
+>   - 函数调用语法：`Pair(key: 42, val: "hello")`
+>   - 对象字面量语法：`Pair { key: 42, val: "hello" }`
+> - ✅ 非泛型和泛型类型都正常工作
+>
+> **下一步**: 完善用户定义泛型类型支持，添加完整集成测试
+
 ## Context
 
 ### 问题背景
@@ -401,6 +417,106 @@ m.insert(\"key\", 42)
 say(m.get(\"key\"))" > test_hashmap.at
 auto.exe run test_hashmap.at
 # 预期输出: 42
+```
+
+## 🔍 重要发现与修复（2025-02-09）
+
+### ✅ 对象字面量语法修复
+
+**问题**: `Pair {key: 1, val: 2}` 语法无法工作
+
+**错误信息**:
+```
+Error: Expected end of statement, got LBrace<{>
+```
+
+**问题根因**:
+- Parser 的 `atom()` 函数在遇到标识符时，只检查了 `Identifier <` （泛型类型）
+- 没有检查 `Identifier {` （node instance）模式
+- 导致返回 `Expr::Ident`，然后遇到 `{` 时解析失败
+
+**修复方案**（已实现）:
+- 修改 `parser.rs` 的 `atom()` 函数（第 1868-1891 行）
+- 添加检查：如果标识符后跟 `{` 且标识符是 type，调用 `parse_node()` 创建 `Expr::Node`
+- **提交**: `8a26c2e` - "Fix parser: Support node instance syntax Identifier { ... }"
+
+### 两种类型构造语法
+
+AutoLang 现在支持两种类型构造语法：
+
+#### 1️⃣ 函数调用语法
+```auto
+let p = Pair(key: 42, val: "hello")
+```
+- Parser: `Expr::Call`
+- Evaluator: `eval_call()` 检测到 `Pair` 是 type → 调用 `eval_type_new()`
+- **状态**: ✅ 工作正常
+
+#### 2️⃣ 对象字面量语法（Node Instance）
+```auto
+let p = Pair { key: 42, val: "hello" }
+```
+- Parser: `Expr::Node`
+- Evaluator: `eval_node()` 创建 type instance
+- **状态**: ✅ 已修复，工作正常
+
+### 语法区分
+
+| 语法 | Parser 结果 | 语义 | 状态 |
+|------|-------------|------|------|
+| `{x: 1, y: 2}` | `Expr::Object` | **匿名对象** | ✅ |
+| `Pair {x: 1, y: 2}` | `Expr::Node` | **Node instance / Type construction** | ✅ |
+| `Pair(x: 1, y: 2)` | `Expr::Call` | **Function call / Type construction** | ✅ |
+
+**关键区别**:
+- `{x: 1, y: 2}` - 没有 type name，是匿名对象
+- `Pair {x: 1, y: 2}` - 有 type name 打头，是 node instance（type construction）
+
+### 测试验证
+
+**测试文件**:
+- `test/generic/pair_nongeneric.at` - 非泛型类型 ✅
+- `test/generic/pair_generic_test.at` - 泛型类型 ✅
+- `test/generic/both_syntaxes.at` - 两种语法对比 ✅
+- `test/generic/simple_type.at` - 简单类型构造 ✅
+
+**运行结果**:
+```bash
+# 非泛型类型
+$ cargo run --release -- run test/generic/pair_nongeneric.at
+输出: 42 ✅
+
+# 泛型类型
+$ cargo run --release -- run test/generic/pair_generic_test.at
+输出: 42 ✅
+
+# 两种语法对比
+$ cargo run --release -- run test/generic/both_syntaxes.at
+p1.key: 100 ✅
+p1.val: call syntax ✅
+p2.key: 200 ✅
+p2.val: object syntax ✅
+```
+
+### 代码位置
+
+**Parser 修改**: `crates/auto-lang/src/parser.rs:1868-1891`
+```rust
+// Check for node instance: Identifier { ... }
+// This handles type construction syntax like Pair {x: 1, y: 2}
+if self.is_kind(TokenKind::LBrace) && is_type {
+    // Parse as node instance with the already-read identifier
+    let ident = Expr::Ident(name.clone());
+    let primary_prop = None;
+    let args = Args::new();
+
+    return Ok(Expr::Node(self.parse_node(
+        &name,
+        primary_prop,
+        args,
+        &AutoStr::new(),
+    )?));
+}
 ```
 
 ## 参考
