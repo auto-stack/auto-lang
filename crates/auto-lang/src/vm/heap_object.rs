@@ -76,8 +76,14 @@ pub enum TypeTag {
     ListValue,
 
     // Map types
-    /// `HashMapData<K, V>` - Hash map implementation
-    HashMap,
+    /// `HashMap<String, i32>` - Hash map with integer values (Plan 087)
+    HashMapInt,
+    /// `HashMap<String, bool>` - Hash map with boolean values (Plan 087)
+    HashMapBool,
+    /// `HashMap<String, String>` - Hash map with string values (Plan 087)
+    HashMapString,
+    /// `HashMap<String, Value>` - Generic hash map with any values (Plan 087)
+    HashMapValue,
     /// `TreeMapData<K, V>` - Tree map implementation
     TreeMap,
 
