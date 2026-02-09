@@ -48,6 +48,13 @@ pub struct AutovmReplSession {
 impl AutovmReplSession {
     /// Create a new persistent AutoVM REPL session
     pub fn new() -> Self {
+        // Initialize VM modules (registers HashMap, HashSet, List, etc.)
+        // This MUST be called before creating Codegen or VM
+        crate::vm::init_io_module();
+        crate::vm::init_collections_module();
+        crate::vm::init_builder_module();
+        crate::vm::init_storage_module();
+
         // Create initial Codegen
         let mut codegen = Codegen::new();
 

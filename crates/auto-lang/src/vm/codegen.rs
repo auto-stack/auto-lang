@@ -334,11 +334,69 @@ impl Codegen {
                                 // Variable is being assigned a List
                                 self.var_types.insert(store.name.to_string(), Type::List(Box::new(Type::Int)));
                             }
-                            // Add more type constructors here as needed
-                            // For example:
-                            // else if type_name == "HashMap" && method == "new" {
-                            //     self.var_types.insert(store.name.to_string(), Type::User(...));
-                            // }
+                            // Plan 086: Add collection type constructors
+                            else if type_name == "HashMap" && method == "new" {
+                                // HashMap<String, i32> - simplified version
+                                // Create a synthetic TypeDecl to represent HashMap
+                                let type_decl = crate::ast::TypeDecl {
+                                    name: crate::ast::Name::from("HashMap"),
+                                    kind: crate::ast::TypeDeclKind::UserType,
+                                    parent: None,
+                                    has: vec![],
+                                    specs: vec![],
+                                    spec_impls: vec![],
+                                    generic_params: vec![],
+                                    members: vec![],
+                                    delegations: vec![],
+                                    methods: vec![],
+                                };
+                                self.var_types.insert(store.name.to_string(), Type::User(type_decl));
+                            }
+                            else if type_name == "HashSet" && method == "new" {
+                                let type_decl = crate::ast::TypeDecl {
+                                    name: crate::ast::Name::from("HashSet"),
+                                    kind: crate::ast::TypeDeclKind::UserType,
+                                    parent: None,
+                                    has: vec![],
+                                    specs: vec![],
+                                    spec_impls: vec![],
+                                    generic_params: vec![],
+                                    members: vec![],
+                                    delegations: vec![],
+                                    methods: vec![],
+                                };
+                                self.var_types.insert(store.name.to_string(), Type::User(type_decl));
+                            }
+                            else if type_name == "VecDeque" && method == "new" {
+                                let type_decl = crate::ast::TypeDecl {
+                                    name: crate::ast::Name::from("VecDeque"),
+                                    kind: crate::ast::TypeDeclKind::UserType,
+                                    parent: None,
+                                    has: vec![],
+                                    specs: vec![],
+                                    spec_impls: vec![],
+                                    generic_params: vec![],
+                                    members: vec![],
+                                    delegations: vec![],
+                                    methods: vec![],
+                                };
+                                self.var_types.insert(store.name.to_string(), Type::User(type_decl));
+                            }
+                            else if type_name == "BTreeMap" && method == "new" {
+                                let type_decl = crate::ast::TypeDecl {
+                                    name: crate::ast::Name::from("BTreeMap"),
+                                    kind: crate::ast::TypeDeclKind::UserType,
+                                    parent: None,
+                                    has: vec![],
+                                    specs: vec![],
+                                    spec_impls: vec![],
+                                    generic_params: vec![],
+                                    members: vec![],
+                                    delegations: vec![],
+                                    methods: vec![],
+                                };
+                                self.var_types.insert(store.name.to_string(), Type::User(type_decl));
+                            }
                         }
                     }
                 }
@@ -2276,10 +2334,12 @@ impl Codegen {
             match var_name {
                 "list" | "arr" | "array" | "vec" => Some("List".to_string()),
                 "str" | "string" | "s" => Some("String".to_string()),
-                "map" | "dict" | "hashmap" => Some("Map".to_string()),
-                "set" => Some("Set".to_string()),
+                "map" | "dict" | "hashmap" | "m" => Some("HashMap".to_string()),  // Plan 086: Added "m" for common map variable name
+                "set" => Some("HashSet".to_string()),
                 "opt" | "option" => Some("Option".to_string()),
                 "file" => Some("File".to_string()),
+                "deque" => Some("VecDeque".to_string()),
+                "bmap" | "treemap" => Some("BTreeMap".to_string()),
                 _ => None,
             }
         }

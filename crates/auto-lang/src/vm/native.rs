@@ -1,3 +1,4 @@
+use crate::vm::collections::AutoVMHashMap;
 use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::task::AutoTask;
 use std::collections::HashMap;
@@ -54,6 +55,18 @@ impl NativeInterface {
         self.register(NATIVE_ITERATOR_COLLECT, shim_iterator_collect);
         self.register(NATIVE_ITERATOR_REDUCE, shim_iterator_reduce);
         self.register(NATIVE_ITERATOR_FIND, shim_iterator_find);
+
+        // HashMap functions
+        self.register(NATIVE_HASHMAP_NEW, shim_hashmap_new);
+        self.register(NATIVE_HASHMAP_INSERT_STR, shim_hashmap_insert_str);
+        self.register(NATIVE_HASHMAP_INSERT_INT, shim_hashmap_insert_int);
+        self.register(NATIVE_HASHMAP_GET_STR, shim_hashmap_get_str);
+        self.register(NATIVE_HASHMAP_GET_INT, shim_hashmap_get_int);
+        self.register(NATIVE_HASHMAP_CONTAINS, shim_hashmap_contains);
+        self.register(NATIVE_HASHMAP_REMOVE, shim_hashmap_remove);
+        self.register(NATIVE_HASHMAP_SIZE, shim_hashmap_size);
+        self.register(NATIVE_HASHMAP_CLEAR, shim_hashmap_clear);
+        self.register(NATIVE_HASHMAP_DROP, shim_hashmap_drop);
     }
 }
 
@@ -83,6 +96,18 @@ pub const NATIVE_ITERATOR_FILTER: u16 = 114;
 pub const NATIVE_ITERATOR_COLLECT: u16 = 115;
 pub const NATIVE_ITERATOR_REDUCE: u16 = 116;
 pub const NATIVE_ITERATOR_FIND: u16 = 117;
+
+// === HashMap Native Functions (119+) ===
+pub const NATIVE_HASHMAP_NEW: u16 = 119;
+pub const NATIVE_HASHMAP_INSERT_STR: u16 = 120;
+pub const NATIVE_HASHMAP_INSERT_INT: u16 = 121;
+pub const NATIVE_HASHMAP_GET_STR: u16 = 122;
+pub const NATIVE_HASHMAP_GET_INT: u16 = 123;
+pub const NATIVE_HASHMAP_CONTAINS: u16 = 124;
+pub const NATIVE_HASHMAP_REMOVE: u16 = 125;
+pub const NATIVE_HASHMAP_SIZE: u16 = 126;
+pub const NATIVE_HASHMAP_CLEAR: u16 = 127;
+pub const NATIVE_HASHMAP_DROP: u16 = 128;
 
 // === Standard Shims ===
 
@@ -794,5 +819,223 @@ pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     }
 
     task.ram.push_i32(result);
+    Ok(())
+}
+
+// ============================================================================
+// HashMap Shims (Plan 086)
+// ============================================================================
+
+/// Create a new HashMap
+/// Stack: -> hashmap_id
+pub fn shim_hashmap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::heap_object::HeapObject;
+
+    let map = AutoVMHashMap::new();
+    let map_id = vm.insert_heap_object(map);
+
+    task.ram.push_i32(map_id as i32);
+    Ok(())
+}
+
+/// Insert a string key with i32 value
+/// Stack: hashmap_id, key_str_id, value -> result (0)
+pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::heap_object::HeapObject;
+
+    let value = task.ram.pop_i32();
+    let key_str_id = task.ram.pop_i32() as u64;
+    let map_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<AutoVMHashMap>() {
+            // Get string from strings pool
+            let key_bytes = vm.strings.read().unwrap().get(key_str_id as usize).cloned()
+                .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            // We need to drop the read guard before we can get a write guard
+            drop(guard);
+
+            // Get write guard and insert
+            let mut guard = obj.write().unwrap();
+            if let Some(map) = guard.as_any_mut().downcast_mut::<AutoVMHashMap>() {
+                map.data.insert(key_str, value);
+            }
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Insert an integer key (as string) with i32 value
+/// Stack: hashmap_id, key_int, value -> result (0)
+pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::heap_object::HeapObject;
+
+    let value = task.ram.pop_i32();
+    let key_int = task.ram.pop_i32();
+    let map_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard.as_any_mut().downcast_mut::<AutoVMHashMap>() {
+            let key_str = key_int.to_string();
+            map.data.insert(key_str, value);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get value by string key
+/// Stack: hashmap_id, key_str_id -> value (0 if not found)
+pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::heap_object::HeapObject;
+
+    let key_str_id = task.ram.pop_i32() as u64;
+    let map_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<AutoVMHashMap>() {
+            let key_bytes = vm.strings.read().unwrap().get(key_str_id as usize).cloned()
+                .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            map.data.get(&key_str).copied().unwrap_or(0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Get value by integer key (as string)
+/// Stack: hashmap_id, key_int -> value (0 if not found)
+pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::heap_object::HeapObject;
+
+    let key_int = task.ram.pop_i32();
+    let map_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<AutoVMHashMap>() {
+            let key_str = key_int.to_string();
+            map.data.get(&key_str).copied().unwrap_or(0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Check if key exists
+/// Stack: hashmap_id, key_str_id -> result (1 if exists, 0 otherwise)
+pub fn shim_hashmap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::heap_object::HeapObject;
+
+    let key_str_id = task.ram.pop_i32() as u64;
+    let map_id = task.ram.pop_i32() as u64;
+
+    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<AutoVMHashMap>() {
+            let key_bytes = vm.strings.read().unwrap().get(key_str_id as usize).cloned()
+                .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            if map.data.contains_key(&key_str) { 1 } else { 0 }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Remove a key-value pair
+/// Stack: hashmap_id, key_str_id -> result (0)
+pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::heap_object::HeapObject;
+
+    let key_str_id = task.ram.pop_i32() as u64;
+    let map_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard.as_any_mut().downcast_mut::<AutoVMHashMap>() {
+            let key_bytes = vm.strings.read().unwrap().get(key_str_id as usize).cloned()
+                .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            map.data.remove(&key_str);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get the number of entries
+/// Stack: hashmap_id -> size
+pub fn shim_hashmap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::heap_object::HeapObject;
+
+    let map_id = task.ram.pop_i32() as u64;
+
+    let size = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<AutoVMHashMap>() {
+            map.data.len() as i32
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(size);
+    Ok(())
+}
+
+/// Clear all entries
+/// Stack: hashmap_id -> result (0)
+pub fn shim_hashmap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::heap_object::HeapObject;
+
+    let map_id = task.ram.pop_i32() as u64;
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard.as_any_mut().downcast_mut::<AutoVMHashMap>() {
+            map.data.clear();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Drop the HashMap (no-op for now, heap objects are managed by Arc)
+/// Stack: hashmap_id -> result (0)
+pub fn shim_hashmap_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    // No-op: heap objects are managed by Arc<RwLock<>>
+    // When the last reference is dropped, the object is automatically freed
     Ok(())
 }

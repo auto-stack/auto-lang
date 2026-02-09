@@ -1,7 +1,9 @@
 use auto_val::{Instance, Obj, Type, Value};
 use std::collections::{BTreeMap, HashMap as StdHashMap, VecDeque};
+use std::any::Any;
 
 use crate::{ast, eval::Evaler};
+use crate::vm::heap_object::{HeapObject, TypeTag};
 
 // ============================================================================
 // HashMap Implementation
@@ -877,4 +879,37 @@ pub fn btree_map_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Val
         }
     }
     Value::Nil
+}
+
+// ============================================================================
+// AutoVM HeapObject Implementation (Plan 086)
+// ============================================================================
+
+/// AutoVM HashMap - stores string keys to i32 values
+/// Simplified version for AutoVM bytecode execution
+#[derive(Debug)]
+pub struct AutoVMHashMap {
+    pub data: StdHashMap<String, i32>,
+}
+
+impl AutoVMHashMap {
+    pub fn new() -> Self {
+        Self {
+            data: StdHashMap::new(),
+        }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            data: StdHashMap::with_capacity(capacity),
+        }
+    }
+}
+
+impl HeapObject for AutoVMHashMap {
+    fn type_tag(&self) -> TypeTag { TypeTag::HashMap }
+
+    fn as_any(&self) -> &dyn Any { self }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
 }

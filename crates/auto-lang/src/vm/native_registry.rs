@@ -127,6 +127,53 @@ pub fn register_builtin_natives() {
     registry.register("Iterator.collect");
     registry.register("Iterator.reduce");
     registry.register("Iterator.find");
+
+    // HashMap functions
+    registry.register("HashMap.new");
+    registry.register("HashMap.insert_str");
+    registry.register("HashMap.insert_int");
+    registry.register("HashMap.get_str");
+    registry.register("HashMap.get_int");
+    registry.register("HashMap.contains");
+    registry.register("HashMap.remove");
+    registry.register("HashMap.size");
+    registry.register("HashMap.clear");
+    registry.register("HashMap.drop");
+
+    // HashSet functions
+    registry.register("HashSet.new");
+    registry.register("HashSet.insert");
+    registry.register("HashSet.contains");
+    registry.register("HashSet.remove");
+    registry.register("HashSet.size");
+    registry.register("HashSet.clear");
+    registry.register("HashSet.drop");
+
+    // VecDeque functions (Plan 085)
+    registry.register("VecDeque.new");
+    registry.register("VecDeque.push_back");
+    registry.register("VecDeque.push_front");
+    registry.register("VecDeque.pop_back");
+    registry.register("VecDeque.pop_front");
+    registry.register("VecDeque.front");
+    registry.register("VecDeque.back");
+    registry.register("VecDeque.size");
+    registry.register("VecDeque.is_empty");
+    registry.register("VecDeque.clear");
+    registry.register("VecDeque.drop");
+
+    // BTreeMap functions (Plan 085)
+    registry.register("BTreeMap.new");
+    registry.register("BTreeMap.insert");
+    registry.register("BTreeMap.get");
+    registry.register("BTreeMap.contains");
+    registry.register("BTreeMap.remove");
+    registry.register("BTreeMap.size");
+    registry.register("BTreeMap.is_empty");
+    registry.register("BTreeMap.clear");
+    registry.register("BTreeMap.first_key");
+    registry.register("BTreeMap.last_key");
+    registry.register("BTreeMap.drop");
 }
 
 #[cfg(test)]
