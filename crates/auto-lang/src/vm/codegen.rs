@@ -1085,6 +1085,27 @@ impl Codegen {
                     let key_index = self.object_keys.len() as u16;
                     self.object_keys.push(keys);
 
+                    // Plan 087: Infer field types from node args
+                    // For Node instances like Point{x: 1, y: 2}, infer types from args
+                    let types: Vec<ObjectType> = node.args.args.iter()
+                        .take(arg_count as usize)
+                        .map(|arg| {
+                            match arg {
+                                crate::ast::Arg::Pos(expr) => {
+                                    self.infer_object_type(expr)
+                                }
+                                crate::ast::Arg::Pair(_, expr) => {
+                                    self.infer_object_type(expr)
+                                }
+                                crate::ast::Arg::Name(_) => {
+                                    ObjectType::Int  // Default to Int
+                                }
+                            }
+                        }).collect();
+
+                    // Register types in object_types pool
+                    self.object_types.push(types);
+
                     // Emit CREATE_OBJ instead of CREATE_NODE
                     let field_count = arg_count.min(member_names.len() as u8);
                     self.emit(OpCode::CREATE_OBJ);
