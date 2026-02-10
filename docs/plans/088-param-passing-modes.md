@@ -1,10 +1,56 @@
-# Plan 088: 函数参数传递模式实现
+# Plan 088: 函数参数传递模式实现 - 语义 View，实现 Copy 优化
 
-**目标**: 实现函数参数的 4 种传递模式：`copy`, `view`, `mut`, `take`
+**主题**: 语义上统一 View，实现上自动 Copy (Semantic View, Implementation Copy)
+
+**目标**: 实现函数参数的智能传递策略，在保持"默认不可变借用"语义的同时，利用自动优化获得最大性能
 
 **优先级**: **高** - Phase 3 泛型方法支持的前提条件
-**依赖**: 无
-**工作量**: 1-2 周
+
+**依赖**: [Plan 024](024-ownership-first-implementation.md) (所有权系统), [param-passing-default.md](../design/param-passing-default.md) (设计文档)
+
+**工作量**: 2-3 周
+
+**设计原则**:
+1. **用户侧**: 所有参数默认都是 `view`（不可变引用）
+2. **实现侧**: 小对象自动 Copy 优化，大对象引用传递
+3. **安全性**: 前端禁止修改 view 参数
+
+---
+
+## 设计文档参考
+
+本计划基于 **[param-passing-default.md](../design/param-passing-default.md)** (ABO-01) 详细设计文档实现。
+
+### 核心策略
+
+> **"语义上统一 View，实现上自动 Copy"**
+
+- **用户视角**: 所有参数都是 `view`（不可变引用）
+- **编译器视角**: 自动优化小对象的传递方式
+- **结果**: 简洁的语义 + 最优的性能
+
+### 类型分类
+
+**小对象（值传递优化）**:
+```auto
+int, float, bool, char, byte  // 原生类型
+enum (C-style, 无数据)
+```
+
+**大对象（引用传递）**:
+```auto
+string, vector, map  // 堆分配
+struct, closure      // V1 暂不优化
+```
+
+### 语义映射矩阵
+
+| Auto 类型 | Auto 语义 | VM 实际传递 | Rust 后端 |
+|-----------|----------|-------------|-----------|
+| `int` | View (ReadOnly) | 值传递（优化） | `fn foo(x: i64)` |
+| `bool` | View (ReadOnly) | 值传递（优化） | `fn foo(x: bool)` |
+| `string` | View (ReadOnly) | 引用传递 | `fn foo(x: &String)` |
+| `struct` | View (ReadOnly) | 引用传递 | `fn foo(x: &MyStruct)` |
 
 ---
 
@@ -25,24 +71,72 @@ p.set_x(100)
 say(p.x)  // 输出: 10 (不是 100)
 ```
 
+**根因**: AutoVM 当前的 `self` 是**值传递**（Copy），不是**引用传递**（View/Mut）
+
+---
+
 ## 解决方案
 
-### 1. 添加 `ParamMode` 枚举
+### Phase 1: 类型系统扩展（1-2 天）
+
+#### 1.1 添加 `is_optimized_by_value()` 方法
+
+**文件**: `crates/auto-lang/src/ast/types.rs`
+
+```rust
+impl Type {
+    /// 判断是否应该进行"值传递优化"
+    /// 参考: param-passing-default.md Section 2.1
+    pub fn is_optimized_by_value(&self) -> bool {
+        match self {
+            // 小对象：值传递优化
+            Type::Int | Type::Uint | Type::I8 | Type::U8 |
+            Type::I64 | Type::U64 | Type::Byte |
+            Type::Bool | Type::Char | Type::Float(_) | Type::Double(_) => true,
+
+            // 大对象：引用传递
+            Type::Str(_) => false,  // string 引用传递
+            Type::Array(..) => false,
+            Type::Object | Type::Tag(_) => false,  // struct 引用传递
+
+            // 其他
+            Type::Fn | Type::Closure => false,
+            Type::Unknown | Type::Nil | Type::Null => false,
+            _ => false,
+        }
+    }
+
+    /// 判断类型是否实现 Copy spec（未来扩展用）
+    pub fn is_copy(&self) -> bool {
+        // V1: 简化版本，直接使用 is_optimized_by_value
+        // 未来: 检查 TypeDecl.spec_impls 是否包含 Copy
+        self.is_optimized_by_value()
+    }
+}
+```
+
+**测试**: `cargo test -p auto-lang types`
+
+---
+
+### Phase 2: AST 更新（1 天）
+
+#### 2.1 添加 `ParamMode` 枚举
 
 **文件**: `crates/auto-lang/src/ast/fun.rs`
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParamMode {
-    Copy,  // 值传递，复制（默认，兼容简单类型）
-    View,  // 引用传递，不可变（Rust 的 &T）
-    Mut,   // 引用传递，可变（Rust 的 &mut T）
-    Take,  // Move 语义（转移所有权）
+    Copy,  // 显式值传递
+    View,  // 不可变引用（默认）
+    Mut,   // 可变引用
+    Take,  // Move 语义
 }
 
 impl Default for ParamMode {
     fn default() -> Self {
-        Self::View  // Auto 的默认传递形式是 view（引用传递）
+        Self::View  // ✅ 默认 View
     }
 }
 
@@ -58,7 +152,7 @@ impl fmt::Display for ParamMode {
 }
 ```
 
-### 2. 扩展 `Param` 结构体
+#### 2.2 扩展 `Param` 结构体
 
 **文件**: `crates/auto-lang/src/ast/fun.rs`
 
@@ -80,24 +174,34 @@ impl Param {
             mode: ParamMode::default(),  // ✅ 默认 View
         }
     }
+
+    pub fn with_mode(name: Name, ty: Type, default: Option<Expr>, mode: ParamMode) -> Self {
+        Self {
+            name,
+            ty,
+            default,
+            mode,
+        }
+    }
+}
+
+impl fmt::Display for Param {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(param (name {}) (type {}) (mode {})",
+            self.name, self.ty, self.mode)?;
+        if let Some(default) = &self.default {
+            write!(f, " (default {})", default)?;
+        }
+        write!(f, ")")
+    }
 }
 ```
 
-### 3. Lexer 支持
+---
 
-**文件**: `crates/auto-lang/src/lexer.rs`
+### Phase 3: Parser 解析（2-3 天）
 
-Lexer 已经支持 `View`, `Mut`, `Take` token（Plan 026），只需确保它们可以用作参数修饰符。
-
-```rust
-// 确认这些 token kind 存在
-TokenKind::View   // view 关键字
-TokenKind::Mut    // mut 关键字
-TokenKind::Take   // take 关键字
-// TokenKind::Copy  // copy 关键字（如果不存在则添加）
-```
-
-### 4. Parser 解析参数模式
+#### 3.1 解析参数模式
 
 **文件**: `crates/auto-lang/src/parser.rs`
 
@@ -107,8 +211,8 @@ TokenKind::Take   // take 关键字
 pub fn fn_params(&mut self) -> AutoResult<Vec<Param>> {
     let mut params = Vec::new();
     while self.is_kind(TokenKind::Ident) {
-        // 1. 检查参数传递模式（copy/view/mut/take）
-        let mut mode = ParamMode::default();  // 默认 View
+        // 1. 检查参数传递模式（可选，默认 View）
+        let mut mode = ParamMode::default();  // ✅ 默认 View
 
         if self.is_kind(TokenKind::Copy) {
             mode = ParamMode::Copy;
@@ -129,7 +233,7 @@ pub fn fn_params(&mut self) -> AutoResult<Vec<Param>> {
         let name_pos = self.cur.pos;
         self.next(); // skip name
 
-        // 3. param type
+        // 3. param type (skip ':' if present)
         let mut ty = Type::Int;
         if self.is_kind(TokenKind::Colon) {
             self.next(); // skip ':'
@@ -163,81 +267,224 @@ pub fn fn_params(&mut self) -> AutoResult<Vec<Param>> {
         );
         self.scope.borrow_mut().define_symbol_location(name.clone(), loc);
 
-        // ✅ 创建参数时包含 mode
+        // ✅ 创建参数（包含 mode）
         params.push(Param { name, ty, default, mode });
         self.sep_params()?;
     }
 
-    // Handle variadic arguments
+    // Handle variadic arguments (...)
     // ...
 
     Ok(params)
 }
 ```
 
-### 5. Codegen 生成不同的参数传递
-
-**文件**: `crates/auto-lang/src/vm/codegen.rs`
-
-**关键函数**: `compile_fn_decl()` 和方法调用编译
+#### 3.2 单元测试
 
 ```rust
-// 在编译函数声明时
-fn compile_fn_decl(&mut self, fn_decl: &Fn) -> AutoResult<()> {
-    // 编译参数：根据 ParamMode 生成不同的字节码
-    for (i, param) in fn_decl.params.iter().enumerate() {
-        match param.mode {
-            ParamMode::Copy => {
-                // 复制参数值到栈
-                self.emit(OpCode::STORE_LOCAL);
-                self.emit_u32(i as u32);
-            }
-            ParamMode::View => {
-                // 传递引用（对象ID）
-                self.emit(OpCode::STORE_REF);
-                self.emit_u32(i as u32);
-            }
-            ParamMode::Mut => {
-                // 传递可变引用（对象ID + 可变标记）
-                self.emit(OpCode::STORE_MUT_REF);
-                self.emit_u32(i as u32);
-            }
-            ParamMode::Take => {
-                // Move 语义（转移所有权）
-                self.emit(OpCode::STORE_TAKE);
-                self.emit_u32(i as u32);
-            }
-        }
-    }
-    // ...
+#[test]
+fn test_param_mode_parsing() {
+    // 默认 view
+    assert_eq!(parse_one("fn foo(x int)"),
+        fn_decl("foo", [param("x", INT, View)]));
+
+    // 显式 copy
+    assert_eq!(parse_one("fn foo(copy x int)"),
+        fn_decl("foo", [param("x", INT, Copy)]));
+
+    // 显式 mut
+    assert_eq!(parse_one("fn set_x(mut self Point, new_x int)"),
+        fn_decl("set_x", [param("self", Point, Mut), param("new_x", INT, View)]));
 }
 ```
 
-### 6. VM 执行不同的参数访问
+---
+
+### Phase 4: Codegen 编译（3-4 天）
+
+#### 4.1 添加新指令
+
+**文件**: `crates/auto-lang/src/vm/opcode.rs`
+
+```rust
+pub enum OpCode {
+    // ... existing opcodes ...
+
+    // Plan 088: Reference passing opcodes
+    LOAD_REF,       // 加载不可变引用（对象ID）
+    LOAD_MUT_REF,   // 加载可变引用（对象ID + 可变标记）
+    STORE_REF,      // 存储不可变引用
+    STORE_MUT_REF,  // 存储可变引用
+    STORE_TAKE,     // Move 语义（所有权转移）
+}
+```
+
+#### 4.2 智能参数编译
+
+**文件**: `crates/auto-lang/src/vm/codegen.rs`
+
+**关键**: 实现自动分流优化
+
+```rust
+// 在 compile_call() 中编译参数
+for (i, arg) in call.args.iter().enumerate() {
+    match arg {
+        Arg::Pos(expr) => {
+            // 获取目标函数的参数信息
+            let (param_ty, param_mode) = self.get_param_info(&func_name, i)?;
+
+            match expr {
+                Expr::Ident(name) => {
+                    let var_index = self.lookup_var(&name.to_string())?;
+
+                    // ✅ 核心优化：自动分流
+                    match param_mode {
+                        ParamMode::View => {
+                            if param_ty.is_optimized_by_value() {
+                                // 优化：小对象直接值传递
+                                self.emit_load_loc(var_index);
+                                eprintln!("DEBUG: Optimizing {} param '{}' as value (copy)", param_ty, name);
+                            } else {
+                                // 默认：大对象引用传递
+                                self.emit_load_ref(var_index);
+                                eprintln!("DEBUG: Passing {} param '{}' by reference", param_ty, name);
+                            }
+                        }
+                        ParamMode::Mut => {
+                            if param_ty.is_optimized_by_value() {
+                                // 可变引用 + Copy 类型：值传递
+                                self.emit_load_loc(var_index);
+                            } else {
+                                // 可变引用 + 大类型：可变引用
+                                self.emit_load_mut_ref(var_index);
+                            }
+                        }
+                        ParamMode::Take => {
+                            // Move 语义：转移所有权
+                            self.emit_load_loc(var_index);
+                        }
+                        ParamMode::Copy => {
+                            // 显式 Copy
+                            if param_ty.is_optimized_by_value() {
+                                self.emit_load_loc(var_index);
+                            } else {
+                                // 大对象显式 copy：需要 clone
+                                self.emit_clone(var_index);
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    // 常量等直接编译
+                    self.compile_expr(expr)?;
+                }
+            }
+        }
+    }
+}
+```
+
+**辅助函数**:
+
+```rust
+impl Codegen {
+    fn emit_load_ref(&mut self, var_index: usize) {
+        match var_index {
+            0 => self.emit(OpCode::LOAD_REF_0),
+            1 => self.emit(OpCode::LOAD_REF_1),
+            2 => self.emit(OpCode::LOAD_REF_2),
+            _ => {
+                self.emit(OpCode::LOAD_REF);
+                self.emit_u32(var_index as u32);
+            }
+        }
+    }
+
+    fn emit_load_mut_ref(&mut self, var_index: usize) {
+        match var_index {
+            0 => self.emit(OpCode::LOAD_MUT_REF_0),
+            1 => self.emit(OpCode::LOAD_MUT_REF_1),
+            2 => self.emit(OpCode::LOAD_MUT_REF_2),
+            _ => {
+                self.emit(OpCode::LOAD_MUT_REF);
+                self.emit_u32(var_index as u32);
+            }
+        }
+    }
+}
+```
+
+---
+
+### Phase 5: VM 执行（3-4 天）
+
+#### 5.1 实现引用类型
+
+**文件**: `crates/auto-lang/src/val/value.rs`
+
+```rust
+#[derive(Debug, Clone)]
+pub enum Value {
+    // ... existing variants ...
+
+    // Plan 088: Reference types
+    VmRef(VmRef),       // 不可变引用（对象ID）
+    VmMutRef(VmMutRef), // 可变引用（对象ID + 可变标记）
+}
+
+#[derive(Debug, Clone)]
+pub struct VmRef {
+    pub id: usize,  // 引用的对象 ID
+}
+
+#[derive(Debug, Clone)]
+pub struct VmMutRef {
+    pub id: usize,  // 引用的对象 ID（可变）
+}
+```
+
+#### 5.2 实现指令
 
 **文件**: `crates/auto-lang/src/vm/engine.rs`
 
 ```rust
-// 新增指令
+OpCode::LOAD_REF => {
+    // 加载不可变引用
+    let local_index = task.read_u32() as usize;
+    let obj_id = task.get_object_id(local_index);  // 从局部变量获取对象ID
+    task.ram.push(Value::VmRef(VmRef { id: obj_id }));
+}
+
+OpCode::LOAD_MUT_REF => {
+    // 加载可变引用
+    let local_index = task.read_u32() as usize;
+    let obj_id = task.get_object_id(local_index);
+    task.ram.push(Value::VmMutRef(VmMutRef { id: obj_id }));
+}
+
 OpCode::STORE_REF => {
-    // 从栈弹出引用（对象ID）
-    let obj_id = task.ram.pop_i32() as usize;
-    task.set_local(local_index as usize, Value::VmRef(VmRef { id: obj_id }));
+    let local_index = task.read_u32() as usize;
+    let value = task.ram.pop();
+    task.set_local(local_index, value);
 }
 
 OpCode::STORE_MUT_REF => {
-    // 从栈弹出可变引用
-    let obj_id = task.ram.pop_i32() as usize;
-    task.set_local(local_index as usize, Value::VmMutRef(VmMutRef { id: obj_id }));
+    let local_index = task.read_u32() as usize;
+    let value = task.ram.pop();
+    task.set_local(local_index, value);
 }
 
 OpCode::STORE_TAKE => {
     // Move 语义：从栈弹出并转移所有权
     let value = task.ram.pop();
-    task.set_local(local_index as usize, value);
+    let local_index = task.read_u32() as usize;
+    task.set_local(local_index, value);
 }
+```
 
-// 字段访问时检查引用类型
+#### 5.3 字段访问时的引用处理
+
+```rust
 OpCode::GET_FIELD => {
     let field_idx = task.read_u16();
     let obj_value = task.ram.pop();
@@ -256,7 +503,7 @@ OpCode::GET_FIELD => {
             task.ram.push(field_val);
         }
         _ => {
-            // 常规对象访问
+            // 常规对象访问（值类型）
             // 现有逻辑
         }
     }
@@ -273,9 +520,13 @@ OpCode::SET_FIELD => {
             let obj = task.vm.get_object_mut(vm_mut_ref.id)?;
             obj.set_field(field_idx, new_value)?;
         }
+        Value::VmRef(_) => {
+            // ❌ 不可变引用：编译时应该报错
+            return Err("Cannot modify through immutable reference".into());
+        }
         _ => {
-            // ❌ 不可变引用或值：编译时应该报错
-            return Err("Cannot modify non-mut reference".into());
+            // 常规对象
+            // 现有逻辑
         }
     }
 }
@@ -283,148 +534,284 @@ OpCode::SET_FIELD => {
 
 ---
 
-## 语法示例
+### Phase 6: 类型检查器 - 不可变性保证（2-3 天）
 
-### 默认行为（View - 引用传递）
+**文件**: `crates/auto-lang/src/typeck/mod.rs` 或创建新文件
 
-```auto
-type Point {
-    x int
-    fn get_x(self) int {  // 默认 self 是 view 引用
-        self.x  // ✅ 可以读取
+```rust
+pub struct TypeChecker {
+    // 检查 view 参数是否被修改
+    fn check_fn_decl(&mut self, fn_decl: &Fn) -> Result<(), Vec<TypeError>> {
+        let mut errors = Vec::new();
+
+        // 收集所有 view 参数
+        let view_params: HashSet<Name> = fn_decl.params.iter()
+            .filter(|p| p.mode == ParamMode::View)
+            .map(|p| p.name.clone())
+            .collect();
+
+        // 检查函数体
+        self.check_body_immutable(&fn_decl.body, &view_params, &mut errors)?;
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
+    fn check_body_immutable(
+        &mut self,
+        body: &Body,
+        view_params: &HashSet<Name>,
+        errors: &mut Vec<TypeError>
+    ) -> Result<(), ()> {
+        for stmt in &body.stmts {
+            match stmt {
+                Stmt::Store(store) => {
+                    // 检查是否在修改 view 参数
+                    if view_params.contains(&store.name) {
+                        errors.push(TypeError::CannotModifyViewParam {
+                            param: store.name.clone(),
+                            span: pos_to_span(store.expr.pos()),
+                        });
+                    }
+                }
+                // ... 其他语句检查 ...
+            }
+        }
+        Ok(())
     }
 }
 
-let p = Point{x: 10}
-say(p.get_x())  // 输出: 10
-```
-
-### 显式 Mut（可变引用）
-
-```auto
-type Point {
-    x int
-    fn set_x(mut self, new_x int) void {  // ✅ 添加 mut 关键字
-        self.x = new_x  // ✅ 可以修改
-    }
+#[derive(Error, Debug, Diagnostic)]
+#[error("Cannot modify view parameter '{param}'")]
+pub struct CannotModifyViewParam {
+    pub param: Name,
+    #[label("parameter '{param}' is declared as view (immutable)")]
+    #[label("consider using 'mut' instead")]
+    pub span: SourceSpan,
 }
-
-let p = Point{x: 10}
-p.set_x(100)
-say(p.x)  // 输出: 100 ✅
-```
-
-### Copy（值传递）
-
-```auto
-fn process(copy data int) int {
-    data = data * 2  // ✅ 修改的是副本
-    return data
-}
-
-let x = 5
-let y = process(x)
-say(x)  // 输出: 5 (原值不变)
-say(y)  // 输出: 10 (返回的副本)
-```
-
-### Take（Move 语义）
-
-```auto
-fn consume(take s str) int {
-    let len = s.len()
-    // s 在这里被销毁
-    return len
-}
-
-let my_str = str_new("hello")
-let length = consume(my_str)
-// say(my_str)  // ❌ 编译错误：my_str 已被 move
 ```
 
 ---
 
 ## 实现阶段
 
-### Phase 1: AST 更新（1 天）
-- ✅ 添加 `ParamMode` 枚举
+### Phase 1: 类型系统扩展（1-2 天）
+- ✅ 添加 `is_optimized_by_value()` 方法
+- ✅ 添加 `is_copy()` 方法
+- ✅ 10 单元测试
+
+### Phase 2: AST 更新（1 天）
+- ✅ `ParamMode` 枚举
 - ✅ 扩展 `Param` 结构体
-- ✅ 更新 `Display` 实现
+- ✅ `Display` 实现
+- ✅ 5 单元测试
 
-### Phase 2: Parser 解析（2-3 天）
-- ✅ 修改 `fn_params()` 解析参数模式
-- ✅ 支持在类型内部声明方法时使用 mut
-- ✅ 添加解析测试
+### Phase 3: Parser 解析（2-3 天）
+- ✅ `fn_params()` 解析参数模式
+- ✅ 支持类型内部方法声明
+- ✅ 15 单元测试
 
-### Phase 3: Codegen 编译（3-4 天）
-- ✅ 根据参数模式生成不同字节码
-- ✅ 处理 self 参数的特殊情况
-- ✅ 方法调用时传递引用
+### Phase 4: Codegen 编译（3-4 天）
+- ✅ 添加引用指令（LOAD_REF, STORE_REF, etc.）
+- ✅ 智能参数编译（自动分流优化）
+- ✅ 20 单元测试
 
-### Phase 4: VM 执行（3-4 天）
-- ✅ 实现新指令（STORE_REF, STORE_MUT_REF, STORE_TAKE）
-- ✅ 字段访问时检查引用类型
-- ✅ 可变引用的字段修改
+### Phase 5: VM 执行（3-4 天）
+- ✅ VmRef/VmMutRef 类型
+- ✅ 指令执行
+- ✅ 字段访问引用处理
+- ✅ 25 单元测试
 
-### Phase 5: 测试（2-3 天）
-- ✅ 单元测试（参数解析、编译）
-- ✅ 集成测试（方法调用、字段修改）
-- ✅ 边界情况（嵌套调用、多参数）
+### Phase 6: 类型检查器（2-3 天）
+- ✅ 不可变性检查
+- ✅ View 参数修改检测
+- ✅ 15 单元测试
 
----
-
-## 向后兼容
-
-**默认行为改为 View（引用传递）**：
-
-这是**破坏性变更**，但对于正确的方法语义是必要的。迁移策略：
-
-1. **第一阶段**：默认仍然是 Copy，显式声明 `mut` 才使用引用
-2. **第二阶段**：默认改为 View，旧代码添加 `copy` 关键字
-3. **第三阶段**：移除对 Copy 默认的支持
-
-**推荐**：直接实现 View 为默认，因为：
-- 大多数方法不需要修改 self
-- View 性能更好（不复制）
-- 符合 Auto 语言设计目标
+### Phase 7: 集成测试（2-3 天）
+- ✅ 端到端测试
+- ✅ 性能基准测试
+- ✅ 15 集成测试
 
 ---
 
 ## 验证标准
 
 ### 功能完整性
-- ✅ 支持 4 种参数传递模式
-- ✅ 默认 View（引用传递）
-- ✅ 方法可以修改调用者对象（使用 mut）
-- ✅ Take 语义防止 use-after-move
 
-### 测试覆盖
-- ✅ 20 个单元测试
-- ✅ 15 个集成测试
-- ✅ 零回归（现有 1250+ 测试全部通过）
+| 功能 | 测试 | 预期结果 |
+|------|------|---------|
+| 默认 View | `fn add(a int, b int)` | `a, b` 是 view，但实际值传递（优化） |
+| 大对象引用 | `fn process(view p Point)` | `p` 引用传递 |
+| Mut 修改 | `fn set_x(mut self, x int)` | 可以修改原对象 |
+| 不可变性检查 | `fn bad(view a int) { a = 2 }` | 编译错误 |
+| Take Move | `fn consume(take s str)` | `s` 使用后报错 |
 
 ### 性能目标
-- View 传递：零拷贝（只传递对象ID）
-- Mut 传递：零拷贝
-- Copy 传递：值复制（与当前行为相同）
-- Take 传递：所有权转移（零拷贝）
+
+| 操作 | 未优化 | 优化后 | 提升 |
+|------|--------|--------|------|
+| `add(int, int)` | 引用传递 | 值传递 | 2-5x |
+| `process(view Point)` | 值传递 | 引用传递 | 10-100x |
+| `string` 参数 | 值传递 | 引用传递 | 避免大拷贝 |
+
+### 测试覆盖
+
+- **单元测试**: 110 个
+- **集成测试**: 15 个
+- **性能基准**: 10 个
+
+---
+
+## 语法示例
+
+### 默认 View（自动优化）
+
+```auto
+// 小对象：值传递优化
+fn add(a int, b int) int {
+    // ✅ a, b 实际是值（已优化）
+    return a + b
+}
+
+let x = 5
+let y = add(x, 10)  // ✅ x 仍可用（值传递）
+```
+
+### 大对象引用传递
+
+```auto
+type Point {
+    x int
+    y int
+    data: [1000]int
+}
+
+fn get_x(view p Point) int {
+    // ✅ p 是引用（不复制 1000 个 int）
+    return p.x
+}
+
+let pt = Point{x: 1, y: 2, data: [...]}
+let x = get_x(pt)  // ✅ 零拷贝
+```
+
+### Mut 可变引用
+
+```auto
+type Point {
+    x int
+}
+
+fn set_x(mut self Point, new_x int) void {
+    // ✅ self 是可变引用
+    self.x = new_x  // 修改原对象
+}
+
+let p = Point{x: 10}
+set_x(p, 100)
+say(p.x)  // ✅ 输出: 100
+```
+
+### 不可变性检查
+
+```auto
+fn bad(view a int) int {
+    a = 2  // ❌ 编译错误：Parameter 'a' is view-only
+    return a
+}
+```
+
+---
+
+## 向后兼容
+
+**破坏性变更**: 是
+
+从当前的"值传递默认"改为"引用传递默认"是破坏性变更，但提供了清晰的迁移路径：
+
+### 迁移策略
+
+1. **V1（当前实现）**: 所有参数 Copy
+   ```auto
+   fn add(a int, b int) int { a + b }  // 值传递
+   ```
+
+2. **V2（目标实现）**: 默认 View，自动优化
+   ```auto
+   fn add(a int, b int) int { a + b }  // view 语义，值传递优化
+   ```
+
+**兼容性**:
+- ✅ **功能兼容**: `a + b` 在两种实现中都能工作
+- ✅ **性能提升**: V2 对小对象保持高性能
+- ⚠️ **语义变化**: V2 中参数不可修改（编译时检查）
+
+### 迁移步骤
+
+1. **实现 Phase 1-5**（参数传递基础设施）
+2. **添加不可变性检查**（Phase 6）
+3. **修复现有代码**（如果违反不可变性）
+4. **移除旧的纯 Copy 语义**
+
+---
+
+## 关键文件清单
+
+### 新建文件
+1. `crates/auto-lang/src/typeck/param_check.rs` (~300 行) - 参数不可变性检查
+2. `crates/auto-lang/src/vm/ref_types.rs` (~200 行) - 引用类型定义
+
+### 修改文件
+1. `crates/auto-lang/src/ast/types.rs` (+20 行) - `is_optimized_by_value()`
+2. `crates/auto-lang/src/ast/fun.rs` (+50 行) - `ParamMode`, `Param` 扩展
+3. `crates/auto-lang/src/parser.rs` (+30 行) - 解析参数模式
+4. `crates/auto-lang/src/vm/opcode.rs` (+10 行) - 新指令
+5. `crates/auto-lang/src/vm/codegen.rs` (+150 行) - 智能参数编译
+6. `crates/auto-lang/src/vm/engine.rs` (+200 行) - 引用类型执行
+7. `crates/auto-lang/src/val/value.rs` (+20 行) - `VmRef`, `VmMutRef`
+
+### 参考文件
+- [param-passing-default.md](../design/param-passing-default.md) - 详细设计文档
+- [Plan 024](024-ownership-first-implementation.md) - 所有权系统
+- [Plan 026](026-property-keywords.md) - 属性关键字
+
+---
+
+## 成功指标
+
+### 功能完整性
+- ✅ 默认 View（引用语义）
+- ✅ 小对象自动 Copy 优化
+- ✅ 大对象引用传递
+- ✅ Mut 可变引用修改对象
+- ✅ Take Move 语义
+- ✅ 编译时不可变性检查
+
+### 性能目标
+- `add(int, int)`: 零额外开销（寄存器传递）
+- `process(view Point)`: 避免大对象复制
+- `string` 参数: 引用传递，避免拷贝
+
+### 测试覆盖
+- 110 单元测试
+- 15 集成测试
+- 10 性能基准
+- 零回归（现有 1250+ 测试）
 
 ---
 
 ## 相关计划
 
-- **Plan 024**: 所有权系统基础
-- **Plan 026**: 属性关键字（.view, .mut, .take）
-- **Plan 071**: 闭包变量捕获
-- **Plan 087**: 泛型方法支持（依赖本计划）
+- **[Plan 024](024-ownership-first-implementation.md)**: 所有权系统基础
+- **[Plan 026](026-property-keywords.md)**: 属性关键字（.view, .mut, .take）
+- **[Plan 087](087-autovm-generics-type-erasure-specialization.md)**: 泛型方法支持（依赖本计划）
+- **[param-passing-default.md](../design/param-passing-default.md)**: 设计文档 ABO-01
 
 ---
 
-## 时间估算
+**时间估算**: 2-3 周
 
-- **Phase 1**: 1 天
-- **Phase 2**: 2-3 天
-- **Phase 3**: 3-4 天
-- **Phase 4**: 3-4 天
-- **Phase 5**: 2-3 天
-- **总计**: 11-15 天（约 2 周）
+**下一步**: 实现 Phase 1（类型系统扩展），添加 `is_optimized_by_value()` 方法
