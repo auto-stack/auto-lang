@@ -1,25 +1,26 @@
 # Plan 087: AutoVM 泛型系统实现 - 类型擦除 + 特化存储
 
-> **当前状态**: 🟢 **已完成** (95%)
+> **当前状态**: 🟢 **核心功能已完成** (95%)
 > - ✅ 数据结构设计：100% 完成
 > - ✅ 单元测试：72/72 通过
 > - ✅ 编译时支持：100% 完成（Parser + Codegen + TypeRegistry）
 > - ✅ 运行时支持：100% 完成（VM 指令 + CREATE_OBJ 修复）
 > - ✅ 集成测试：95% 完成（7/7 完整测试套件通过）
+> - ⚠️ Phase 3 泛型方法：⏸️ **已阻塞 - 等待 Plan 088（参数传递模式）**
 >
 > **最新进展**（2025-02-09）：
 > - ✅ **修复 Codegen：添加 object_types 初始化**
 > - ✅ **TypeRegistry 集成：REPL 跨输入类型持久化**
-> - ✅ **完整集成测试套件**：
->   - 多实例共存：`Pair<int, int>` + `Pair<string, bool>`
->   - 嵌套泛型：`List<int>`, `List<string>`
->   - 边界情况：空类型、单字段、多字段
->   - 高级泛型：`Triple<A,B,C>`, `Option<T>`, `Result<T,E>`
->   - 泛型约束：`Container<T>`, `Node<T>`
->   - 混合语法：对象字面量 + 函数调用
->   - 类型修改：字段独立性和修改验证
+> - ✅ **完整集成测试套件**（7/7 通过）
+> - ⚠️ **Phase 3 问题发现**：
+>   - 方法调用可以工作（`p.get_key()` 正确调用）
+>   - ❌ 但方法无法修改调用者对象（`self.x = new_x` 不生效）
+>   - 根因：AutoVM 当前是**值传递**（Copy），需要实现**引用传递**（View/Mut）
+>   - 解决方案：创建 **Plan 088 - 函数参数传递模式**
 >
-> **下一步**: Phase 3 泛型方法支持（可选，当前功能已可用）
+> **下一步**:
+> - 短期：保持现状，使用直接字段访问 `p.x = 100` 替代方法
+> - 中期：实现 Plan 088（参数传递模式），然后完成 Phase 3
 
 ## Context
 
@@ -179,11 +180,55 @@
 - ✅ 多个实例共存：`Pair<int, int>` 和 `Pair<string, bool>`
 - ✅ 20 单元测试 + 15 集成测试
 
-### Phase 3: 泛型方法分发（Week 5-6）
+### Phase 3: 泛型方法分发 ⏸️ **已阻塞 - 等待 Plan 088**
 
-**目标**：支持泛型实例上的方法调用：`p.get_key()` → 调用 `Pair<K, V>.get_key()` 并绑定类型。
+**状态**: ⏸️ **BLOCKED** - 依赖参数传递模式实现
 
-**核心改动**：
+**问题诊断**（2025-02-09）:
+```auto
+type Point {
+    x int
+    fn set_x(self, new_x int) void {
+        self.x = new_x  // ❌ 不生效
+    }
+}
+
+let p = Point{x: 10}
+p.set_x(100)
+say(p.x)  // 输出: 10 (不是 100) ❌
+```
+
+**根因**: AutoVM 当前的 `self` 是**值传递**（Copy），不是**引用传递**（View/Mut）
+
+**解决方案**: 实现 **[Plan 088: 函数参数传递模式](../plans/plan-088-param-passing-modes.md)**
+
+**需要实现**:
+1. **参数传递模式**: `copy`, `view`, `mut`, `take`
+2. **默认行为改为 View**: 引用传递（不复制）
+3. **显式 Mut 修饰符**: `fn set_x(mut self, new_x int)`
+4. **VM 引用类型**: `VmRef`, `VmMutRef`
+
+**测试验证**:
+```auto
+// Plan 088 完成后
+type Point {
+    x int
+    fn set_x(mut self, new_x int) void {  // ✅ 添加 mut
+        self.x = new_x  // ✅ 可以修改
+    }
+}
+
+let p = Point{x: 10}
+p.set_x(100)
+say(p.x)  // 输出: 100 ✅
+```
+
+**依赖关系**:
+- **前置条件**: Plan 088（参数传递模式）必须先完成
+- **工作量**: Plan 088 需要 2 周，Phase 3 需要 1-2 周
+- **优先级**: 中（Phase 1-2 已可用，Phase 3 是增强功能）
+
+**Phase 3 原始设计**（等待 Plan 088 完成后）:
 
 1. **在 ClassTemplate 中存储方法**
    - 文件：`crates/auto-lang/src/vm/generic_registry.rs`（修改，+100 行）
@@ -208,9 +253,10 @@
    - 通过索引查找方法
    - 执行单态化的方法字节码
 
-**验证标准**：
+**验证标准**（Plan 088 完成后）:
 - ✅ `p.get_key()` 正确返回 `int` 值
-- ✅ 方法签名尊重类型参数：`fn get(self) V`
+- ✅ `p.set_val(100)` 正确修改字段值（需要 `mut self`）
+- ✅ 方法签名尊重类型参数：`fn get(mut self) V`
 - ✅ 多个实例有独立方法：`Pair_int.get()` vs `Pair_string.get()`
 - ✅ 25 单元测试 + 15 集成测试
 

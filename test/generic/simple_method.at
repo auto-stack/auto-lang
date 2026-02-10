@@ -1,0 +1,28 @@
+// Test: Simple non-generic method first
+type Point {
+    x int
+    y int
+
+    fn get_x(self) int {
+        self.x
+    }
+
+    fn set_x(self, new_x int) void {
+        self.x = new_x
+    }
+}
+
+fn main() {
+    let p = Point{x: 10, y: 20}
+
+    say("Initial x:")
+    say(p.get_x())
+
+    say("Calling set_x(100)")
+    p.set_x(100)
+
+    say("After set_x:")
+    say(p.x)
+
+    say("done!")
+}

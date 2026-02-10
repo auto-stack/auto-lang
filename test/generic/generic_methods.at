@@ -1,0 +1,43 @@
+// Test: Generic methods on user-defined types
+// Plan 087 Phase 3 - 泛型方法支持
+
+type Pair<K, V> {
+    key K
+    val V
+
+    // Instance method to get key
+    fn get_key(self) K {
+        self.key
+    }
+
+    // Instance method to get value
+    fn get_val(self) V {
+        self.val
+    }
+
+    // Instance method to set value
+    fn set_val(self, new_val V) void {
+        self.val = new_val
+    }
+}
+
+fn main() {
+    // Create Pair<int, string>
+    let p = Pair{key: 42, val: "hello"}
+
+    say("=== Initial values ===")
+    say("key:")
+    say(p.get_key())
+    say("val:")
+    say(p.get_val())
+
+    say("=== Modify value ===")
+    p.set_val("world")
+    say("after set_val:")
+    say(p.get_val())
+
+    say("=== Key unchanged ===")
+    say(p.get_key())
+
+    say("done!")
+}

@@ -1,0 +1,54 @@
+// Test: Diagnostic for generic methods
+type Pair<K, V> {
+    key K
+    val V
+
+    fn get_key(self) K {
+        say("get_key called")
+        self.key
+    }
+
+    fn simple_get(self) int {
+        say("simple_get called")
+        999
+    }
+
+    fn modify_val(self, new_val int) void {
+        say("modify_val called")
+        say("new_val:")
+        say(new_val)
+        say("self.val before:")
+        say(self.val)
+        self.val = new_val
+        say("self.val after:")
+        say(self.val)
+    }
+}
+
+fn main() {
+    say("=== Create Pair ===")
+    let p = Pair{key: 100, val: 200}
+
+    say("=== Test get_key ===")
+    let k = p.get_key()
+    say("returned key:")
+    say(k)
+
+    say("=== Test simple_get ===")
+    let s = p.simple_get()
+    say("returned simple:")
+    say(s)
+
+    say("=== Before modify ===")
+    say("p.val:")
+    say(p.val)
+
+    say("=== Call modify_val ===")
+    p.modify_val(888)
+
+    say("=== After modify ===")
+    say("p.val:")
+    say(p.val)
+
+    say("done!")
+}
