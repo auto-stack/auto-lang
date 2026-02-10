@@ -200,7 +200,7 @@ say(p.x)  // 输出: 10 (不是 100) ❌
 
 **根因**: AutoVM 当前的 `self` 是**值传递**（Copy），不是**引用传递**（View/Mut）
 
-**解决方案**: 实现 **[Plan 088: 函数参数传递模式](../plans/plan-088-param-passing-modes.md)**
+**解决方案**: 实现 **[Plan 088: 函数参数传递模式](../plans/088-param-passing-modes.md)**
 
 **需要实现**:
 1. **参数传递模式**: `copy`, `view`, `mut`, `take`
