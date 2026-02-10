@@ -1,0 +1,78 @@
+// Test: Field modification and independence
+// Plan 087 Integration Test
+
+type Point {
+    x int
+    y int
+}
+
+type Box<T> {
+    content T
+    label str
+}
+
+fn main() {
+    // Test 1: Basic field modification
+    say("Test 1: Basic modification")
+    let p1 = Point{x: 10, y: 20}
+    say("initial:")
+    say(p1.x)
+    say(p1.y)
+
+    p1.x = 100
+    p1.y = 200
+    say("after modification:")
+    say(p1.x)
+    say(p1.y)
+
+    // Test 2: Multiple instances are independent
+    say("Test 2: Independence")
+    let p2 = Point{x: 1, y: 2}
+    let p3 = Point{x: 3, y: 4}
+
+    say("p2:")
+    say(p2.x)
+    say(p2.y)
+
+    say("p3:")
+    say(p3.x)
+    say(p3.y)
+
+    p2.x = 999
+    say("after p2 modification:")
+
+    say("p2:")
+    say(p2.x)
+    say(p2.y)
+
+    say("p3 unchanged:")
+    say(p3.x)
+    say(p3.y)
+
+    // Test 3: Generic type with modification
+    say("Test 3: Generic type")
+    let b1 = Box{content: 42, label: "first"}
+    let b2 = Box{content: "hello", label: "second"}
+
+    say("b1:")
+    say(b1.content)
+    say(b1.label)
+
+    say("b2:")
+    say(b2.content)
+    say(b2.label)
+
+    b1.content = 100
+    b1.label = "modified"
+
+    say("after b1 modification:")
+    say("b1:")
+    say(b1.content)
+    say(b1.label)
+
+    say("b2 unchanged:")
+    say(b2.content)
+    say(b2.label)
+
+    say("done!")
+}

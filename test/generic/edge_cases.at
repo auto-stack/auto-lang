@@ -1,0 +1,61 @@
+// Test: Edge cases for user-defined types
+// Plan 087 Integration Test
+
+// Test 1: Empty type (no fields)
+type Empty {
+}
+
+// Test 2: Single field type
+type Single {
+    value int
+}
+
+// Test 3: Type with multiple fields
+type Multi {
+    field1 int
+    field2 str
+    field3 bool
+}
+
+fn main() {
+    // Test 1: Empty type instance
+    say("Test 1: Empty type")
+    let e = Empty{}
+    say("created empty instance")
+
+    // Test 2: Single field
+    say("Test 2: Single field")
+    let s = Single{value: 42}
+    say(s.value)
+
+    // Test 3: Multiple fields
+    say("Test 3: Multiple fields")
+    let m = Multi{field1: 100, field2: "hello", field3: 1}
+    say(m.field1)
+    say(m.field2)
+    say(m.field3)
+
+    // Test 4: Modify fields
+    say("Test 4: Modify fields")
+    m.field1 = 200
+    m.field2 = "world"
+    m.field3 = 0
+    say(m.field1)
+    say(m.field2)
+    say(m.field3)
+
+    // Test 5: Function call syntax
+    say("Test 5: Function call syntax")
+    let s2 = Single(value: 999)
+    say(s2.value)
+
+    // Test 6: Generic type with empty fields (edge case)
+    type GenericEmpty<K, V> {
+    }
+
+    say("Test 6: Generic empty type")
+    let ge = GenericEmpty{}
+    say("created generic empty instance")
+
+    say("done!")
+}

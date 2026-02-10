@@ -1,0 +1,76 @@
+// Test: Advanced generic type scenarios
+// Plan 077+087 Integration Test
+
+type Triple<A, B, C> {
+    first A
+    second B
+    third C
+}
+
+type Option<T> {
+    is_some bool
+    value T
+}
+
+type Result<T, E> {
+    is_ok bool
+    ok_val T
+    err_val E
+}
+
+fn main() {
+    // Test 1: Triple type with three type parameters
+    say("Test 1: Triple<int, string, bool>")
+    let t1 = Triple{first: 42, second: "hello", third: 1}
+    say(t1.first)
+    say(t1.second)
+    say(t1.third)
+
+    // Test 2: Triple with different type combination
+    say("Test 2: Triple<string, int, string>")
+    let t2 = Triple{first: "one", second: 100, third: "two"}
+    say(t2.first)
+    say(t2.second)
+    say(t2.third)
+
+    // Test 3: Option<T> pattern (Some variant)
+    say("Test 3: Option<int> - Some")
+    let some_int = Option{is_some: 1, value: 42}
+    say(some_int.is_some)
+    say(some_int.value)
+
+    // Test 4: Option<T> pattern (None variant)
+    say("Test 4: Option<string> - None")
+    let none_str = Option{is_some: 0, value: ""}
+    say(none_str.is_some)
+    say(none_str.value)
+
+    // Test 5: Result<T, E> - Ok variant
+    say("Test 5: Result<int, string> - Ok")
+    let ok_result = Result{is_ok: 1, ok_val: 100, err_val: ""}
+    say(ok_result.is_ok)
+    say(ok_result.ok_val)
+    say(ok_result.err_val)
+
+    // Test 6: Result<T, E> - Err variant
+    say("Test 6: Result<string, int> - Err")
+    let err_result = Result{is_ok: 0, ok_val: "", err_val: 404}
+    say(err_result.is_ok)
+    say(err_result.ok_val)
+    say(err_result.err_val)
+
+    // Test 7: Modify generic instance fields
+    say("Test 7: Modify generic fields")
+    let opt = Option{is_some: 0, value: 0}
+    say("initial:")
+    say(opt.is_some)
+    say(opt.value)
+
+    opt.is_some = 1
+    opt.value = 999
+    say("modified:")
+    say(opt.is_some)
+    say(opt.value)
+
+    say("done!")
+}

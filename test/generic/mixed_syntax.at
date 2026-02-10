@@ -1,0 +1,77 @@
+// Test: Mixed syntax usage for type construction
+// Plan 087 Integration Test - Syntax Compatibility
+
+type Point<K, V> {
+    x K
+    y V
+}
+
+type Simple {
+    a int
+    b str
+}
+
+fn main() {
+    say("=== Generic Type: Point<K, V> ===")
+
+    // Test 1: Object literal syntax with generic
+    say("Test 1: Point{x: 10, y: 20}")
+    let p1 = Point{x: 10, y: 20}
+    say(p1.x)
+    say(p1.y)
+
+    // Test 2: Function call syntax with generic
+    say("Test 2: Point(x: 30, y: 40)")
+    let p2 = Point(x: 30, y: 40)
+    say(p2.x)
+    say(p2.y)
+
+    // Test 3: Mixed types in generic
+    say("Test 3: Point with int and string")
+    let p3 = Point{x: 100, y: "hello"}
+    say(p3.x)
+    say(p3.y)
+
+    say("=== Non-Generic Type: Simple ===")
+
+    // Test 4: Object literal with non-generic
+    say("Test 4: Simple object literal")
+    let s1 = Simple{a: 1, b: "test"}
+    say(s1.a)
+    say(s1.b)
+
+    // Test 5: Function call with non-generic
+    say("Test 5: Simple function call")
+    let s2 = Simple(a: 2, b: "demo")
+    say(s2.a)
+    say(s2.b)
+
+    say("=== Verify Independence ===")
+
+    // Test 6: All instances are independent
+    say("Test 6: Modify p1")
+    p1.x = 999
+    p1.y = 888
+
+    say("p1 modified:")
+    say(p1.x)
+    say(p1.y)
+
+    say("p2 unchanged:")
+    say(p2.x)
+    say(p2.y)
+
+    say("p3 unchanged:")
+    say(p3.x)
+    say(p3.y)
+
+    say("s1 unchanged:")
+    say(s1.a)
+    say(s1.b)
+
+    say("s2 unchanged:")
+    say(s2.a)
+    say(s2.b)
+
+    say("done!")
+}

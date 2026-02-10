@@ -1,0 +1,78 @@
+// Test: Type parameter usage with different value types
+// Plan 087 Integration Test - Type Erasure Verification
+
+type Container<T> {
+    item T
+    count int
+}
+
+type Node<T> {
+    data T
+    next int  // Placeholder for pointer (would be actual pointer in full implementation)
+}
+
+fn main() {
+    // Test 1: Container with int
+    say("Test 1: Container<int>")
+    let c1 = Container{item: 123, count: 1}
+    say(c1.item)
+    say(c1.count)
+
+    // Test 2: Container with string
+    say("Test 2: Container<string>")
+    let c2 = Container{item: "hello world", count: 42}
+    say(c2.item)
+    say(c2.count)
+
+    // Test 3: Container with bool
+    say("Test 3: Container<bool>")
+    let c3 = Container{item: 1, count: 0}
+    say(c3.item)
+    say(c3.count)
+
+    // Test 4: Node with int
+    say("Test 4: Node<int>")
+    let n1 = Node{data: 100, next: 0}
+    say(n1.data)
+    say(n1.next)
+
+    // Test 5: Node with string
+    say("Test 5: Node<string>")
+    let n2 = Node{data: "node data", next: 1}
+    say(n2.data)
+    say(n2.next)
+
+    // Test 6: Multiple containers with different types coexist
+    say("Test 6: Multiple containers")
+    let c_int = Container{item: 999, count: 10}
+    let c_str = Container{item: "text", count: 20}
+    let c_bool = Container{item: 0, count: 30}
+
+    say("int container:")
+    say(c_int.item)
+    say(c_int.count)
+
+    say("string container:")
+    say(c_str.item)
+    say(c_str.count)
+
+    say("bool container:")
+    say(c_bool.item)
+    say(c_bool.count)
+
+    // Test 7: Verify independence
+    say("Test 7: Modify one, others unchanged")
+    c_int.item = 111
+    say("modified int container:")
+    say(c_int.item)
+    say("string container unchanged:")
+    say(c_str.item)
+
+    // Test 8: Function call syntax for generic types
+    say("Test 8: Function call syntax")
+    let c4 = Container(item: 777, count: 99)
+    say(c4.item)
+    say(c4.count)
+
+    say("done!")
+}

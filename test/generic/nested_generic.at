@@ -1,0 +1,47 @@
+// Test: Nested generic types
+// Plan 087 Integration Test
+
+type Pair<K, V> {
+    key K
+    val V
+}
+
+fn main() {
+    // Test 1: List<int> works
+    say("Test 1: List<int>")
+    let list1 = List.new()
+    list1.push(10)
+    list1.push(20)
+    say(list1.get(0))
+    say(list1.get(1))
+
+    // Test 2: List<string> works
+    say("Test 2: List<string>")
+    let list2 = List.new()
+    list2.push("hello")
+    list2.push("world")
+    say(list2.get(0))
+    say(list2.get(1))
+
+    // Test 3: Create Pair instances (nested with List)
+    say("Test 3: Pair with int values")
+    let p1 = Pair{key: 1, val: 2}
+    say(p1.key)
+    say(p1.val)
+
+    say("Test 4: Pair with string values")
+    let p2 = Pair{key: "first", val: "second"}
+    say(p2.key)
+    say(p2.val)
+
+    // Test 5: Multiple lists can coexist
+    say("Test 5: Multiple List<int> instances")
+    let list3 = List.new()
+    list3.push(100)
+    let list4 = List.new()
+    list4.push(200)
+    say(list3.get(0))
+    say(list4.get(0))
+
+    say("done!")
+}

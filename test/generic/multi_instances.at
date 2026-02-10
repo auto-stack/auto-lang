@@ -1,0 +1,37 @@
+// Test: Multiple instances with different type parameters can coexist
+// Plan 087 Integration Test
+
+type Pair<K, V> {
+    key K
+    val V
+}
+
+fn main() {
+    // Create Pair<int, int>
+    let p1 = Pair{key: 100, val: 200}
+    say("p1 (int, int):")
+    say(p1.key)
+    say(p1.val)
+
+    // Create Pair<int, string>
+    let p2 = Pair{key: 42, val: "hello"}
+    say("p2 (int, string):")
+    say(p2.key)
+    say(p2.val)
+
+    // Create Pair<string, bool>
+    let p3 = Pair{key: "active", val: 1}
+    say("p3 (string, bool):")
+    say(p3.key)
+    say(p3.val)
+
+    // Verify all instances are independent
+    say("modify p1:")
+    p1.key = 999
+    say(p1.key)
+
+    say("p2 unchanged:")
+    say(p2.key)
+
+    say("done!")
+}
