@@ -1,0 +1,56 @@
+// Plan 088 Phase 7 Test 11: Complex Parameter Scenarios
+// 测试复杂的参数传递场景
+
+type Config {
+    max int
+    min int
+}
+
+type State {
+    current int
+    history: [5]int
+}
+
+// 多个不同模式的参数
+fn complex_operation(
+    mut state State,         // 可变引用：修改状态
+    view config Config,      // 不可变引用：读取配置
+    copy factor int,         // 值传递：小对象
+    view name str            // 不可变引用：字符串
+) void {
+    say("Processing:")
+    say(name)
+
+    // 使用 config
+    if state.current > config.max {
+        state.current = config.max
+    }
+    if state.current < config.min {
+        state.current = config.min
+    }
+
+    // 使用 factor
+    state.current = state.current * factor
+
+    say("New state:")
+    say(state.current)
+}
+
+fn main() void {
+    let cfg = Config{max: 100, min: 0}
+    let st = State{current: 50, history: [5]int{0, 0, 0, 0, 0}}
+
+    say("Initial state:")
+    say(st.current)
+
+    complex_operation(st, cfg, 2, "operation1")
+
+    say("After complex_operation:")
+    say(st.current)
+
+    // 再次调用
+    complex_operation(st, cfg, 3, "operation2")
+
+    say("After second call:")
+    say(st.current)
+}

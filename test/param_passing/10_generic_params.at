@@ -1,0 +1,40 @@
+// Plan 088 Phase 7 Test 10: Parameter Modes with Generics
+// 测试参数模式与泛型的结合使用
+
+type Pair<K, V> {
+    key K
+    val V
+
+    fn get_key(view self Pair) K {
+        return self.key
+    }
+
+    fn set_val(mut self Pair, new_val V) void {
+        self.val = new_val
+    }
+}
+
+fn process_pair(view p Pair<int, str>) int {
+    // 泛型类型 + view 模式
+    return p.get_key()
+}
+
+fn update_pair(mut p Pair<int, str>, new_key int) void {
+    // 泛型类型 + mut 模式
+    p.key = new_key
+}
+
+fn main() void {
+    let pair = Pair{key: 42, val: "hello"}
+
+    say("Pair key:")
+    say(process_pair(pair))
+
+    say("Pair val:")
+    say(pair.val)
+
+    // 修改 pair
+    update_pair(pair, 100)
+    say("After update, key:")
+    say(pair.key)
+}

@@ -7,6 +7,7 @@
 #![allow(unused_assignments)]
 
 use crate::token::Pos;
+use crate::ast::Name;
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
@@ -678,6 +679,19 @@ pub enum TypeError {
     CannotGetDecl {
         type_: String,
         #[label("invalid type for constraint")]
+        span: SourceSpan,
+    },
+
+    /// Cannot modify view parameter (Plan 088 Phase 6)
+    #[error("Cannot modify view parameter '{param}'")]
+    #[diagnostic(
+        code(auto_type_E0204),
+        help("View parameters are immutable. Consider using 'mut' instead of 'view' if you need to modify it")
+    )]
+    CannotModifyViewParam {
+        param: Name,
+        #[label("parameter '{param}' is declared as view (immutable)")]
+        #[label("consider using 'mut' instead")]
         span: SourceSpan,
     },
 }

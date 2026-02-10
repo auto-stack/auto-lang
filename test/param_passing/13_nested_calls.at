@@ -1,0 +1,36 @@
+// Plan 088 Phase 7 Test 13: Nested Function Calls
+// 测试嵌套函数调用中的参数传递
+
+fn add(a int, b int) int {
+    return a + b
+}
+
+fn multiply(a int, b int) int {
+    return a * b
+}
+
+fn transform(a int, b int, c int) int {
+    // 嵌套调用：所有参数都是 view（小对象优化为值传递）
+    return add(multiply(a, b), c)
+}
+
+fn main() void {
+    let x = 2
+    let y = 3
+    let z = 4
+
+    say("x =")
+    say(x)
+    say("y =")
+    say(y)
+    say("z =")
+    say(z)
+
+    // 嵌套调用
+    say("transform(2, 3, 4) =")
+    say(transform(x, y, z))
+
+    // 复杂嵌套
+    say("add(multiply(2, 3), 4) =")
+    say(add(multiply(2, 3), 4))
+}

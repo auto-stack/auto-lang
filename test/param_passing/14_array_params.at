@@ -1,0 +1,39 @@
+// Plan 088 Phase 7 Test 14: Array Parameter Passing
+// 测试数组参数的传递模式
+
+// 小数组：值传递优化
+fn sum_small(arr [3]int) int {
+    let mut total = 0
+    for i in 0..3 {
+        total = total + arr[i]
+    }
+    return total
+}
+
+// 大数组：引用传递
+fn get_first(view arr [10]int) int {
+    return arr[0]
+}
+
+fn set_first(mut arr [10]int, val int) void {
+    arr[0] = val
+}
+
+fn main() void {
+    // 测试小数组
+    let small = [3]int{1, 2, 3}
+    say("sum_small([1, 2, 3]) =")
+    say(sum_small(small))
+
+    // 测试大数组
+    let large = [10]int{10, 20, 30, 40, 50, 60, 70, 80, 90, 100}
+    say("get_first([10..100]) =")
+    say(get_first(large))
+
+    // 测试修改
+    say("Before set_first:")
+    say(large[0])
+    set_first(large, 999)
+    say("After set_first(large, 999):")
+    say(large[0])
+}

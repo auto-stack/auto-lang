@@ -1,0 +1,121 @@
+// Plan 088 Phase 7 Test 15: Comprehensive Integration Test
+// 综合测试：验证所有参数传递模式
+
+// 定义测试类型
+type Counter {
+    value int
+    name str
+}
+
+// ========== 场景 1: 默认 View + 小对象优化 ==========
+fn add_numbers(a int, b int, c int) int {
+    return a + b + c
+}
+
+// ========== 场景 2: View + 大对象引用 ==========
+fn get_counter_name(view c Counter) str {
+    return c.name
+}
+
+// ========== 场景 3: Mut 参数修改 ==========
+fn increment(mut c Counter) void {
+    c.value = c.value + 1
+}
+
+fn reset(mut c Counter, new_val int) void {
+    c.value = new_val
+}
+
+// ========== 场景 4: Copy 显式值传递 ==========
+fn copy_and_process(copy c Counter) int {
+    return c.value
+}
+
+// ========== 场景 5: 混合参数模式 ==========
+fn complex_func(
+    mut state Counter,
+    view config Counter,
+    copy multiplier int
+) void {
+    state.value = state.value * multiplier
+    say("Config name:")
+    say(config.name)
+}
+
+// ========== 场景 6: 泛型 + 参数模式 ==========
+type Pair<A, B> {
+    first A
+    second B
+}
+
+fn swap<A, B>(mut p Pair<A, B>) void {
+    let temp = p.first
+    p.first = p.second
+    p.second = temp
+}
+
+// ========== 场景 7: 嵌套调用 ==========
+fn double(x int) int {
+    return x * 2
+}
+
+fn quadruple(x int) int {
+    return double(double(x))
+}
+
+fn main() void {
+    say("=== Plan 088 Phase 7 Comprehensive Test ===")
+
+    // 场景 1: 小对象优化
+    say("--- Test 1: Small Object Optimization ---")
+    say("add_numbers(1, 2, 3) =")
+    say(add_numbers(1, 2, 3))
+
+    // 场景 2: 大对象引用
+    say("--- Test 2: Large Object Reference ---")
+    let c1 = Counter{value: 42, name: "counter1"}
+    say("Counter name:")
+    say(get_counter_name(c1))
+
+    // 场景 3: Mut 修改
+    say("--- Test 3: Mutable Reference ---")
+    say("Initial value:")
+    say(c1.value)
+    increment(c1)
+    say("After increment:")
+    say(c1.value)
+    reset(c1, 100)
+    say("After reset to 100:")
+    say(c1.value)
+
+    // 场景 4: Copy 模式
+    say("--- Test 4: Copy Mode ---")
+    say("copy_and_process result:")
+    say(copy_and_process(c1))
+
+    // 场景 5: 混合模式
+    say("--- Test 5: Mixed Modes ---")
+    let state = Counter{value: 5, name: "state"}
+    let config = Counter{value: 0, name: "config"}
+    complex_func(state, config, 3)
+    say("State after complex_func:")
+    say(state.value)
+
+    // 场景 6: 泛型 + Mut
+    say("--- Test 6: Generics + Mut ---")
+    let pair = Pair{first: 1, second: 2}
+    say("Before swap:")
+    say(pair.first)
+    say(pair.second)
+    swap(pair)
+    say("After swap:")
+    say(pair.first)
+    say(pair.second)
+
+    // 场景 7: 嵌套调用
+    say("--- Test 7: Nested Calls ---")
+    say("quadruple(5) =")
+    say(quadruple(5))
+
+    say("=== All Tests Complete ===")
+}

@@ -1,0 +1,45 @@
+// Plan 088 Phase 7 Test 7: Performance Characteristics
+// 测试不同类型参数的传递性能特征
+
+// 小对象：值传递优化（零拷贝）
+fn add_ints(a int, b int) int {
+    return a + b
+}
+
+// 大对象：引用传递（避免拷贝）
+fn sum_array(view arr [10]int) int {
+    let mut total = 0
+    for i in 0..10 {
+        total = total + arr[i]
+    }
+    return total
+}
+
+type Point {
+    x int
+    y int
+}
+
+// 大对象引用传递
+fn distance(view p1 Point, view p2 Point) int {
+    let dx = p1.x - p2.x
+    let dy = p1.y - p2.y
+    return dx * dx + dy * dy
+}
+
+fn main() void {
+    // 测试小对象优化
+    say("add_ints(100, 200) =")
+    say(add_ints(100, 200))
+
+    // 测试大对象引用传递
+    let arr = [10]int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+    say("sum_array([1..10]) =")
+    say(sum_array(arr))
+
+    // 测试 struct 引用传递
+    let p1 = Point{x: 0, y: 0}
+    let p2 = Point{x: 3, y: 4}
+    say("distance((0,0), (3,4)) =")
+    say(distance(p1, p2))
+}

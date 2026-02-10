@@ -1,0 +1,61 @@
+// Plan 088 Phase 7 Test 5: Mixed Parameter Modes
+// 测试混合使用不同参数模式
+
+type Point {
+    x int
+    y int
+}
+
+// 混合使用 view, mut, copy 模式
+fn process(
+    mut self Point,     // 可变引用
+    view offset int,    // 不可变引用（小对象优化为值传递）
+    copy name str       // 显式值传递
+) void {
+    // 修改 self
+    self.x = self.x + offset
+    self.y = self.y + offset
+
+    say("Processing:")
+    say(name)
+    say("Offset:")
+    say(offset)
+}
+
+// 默认 view + 显式 view
+fn add(view a int, view b int) int {
+    // 两者都是 view，小对象优化为值传递
+    return a + b
+}
+
+// mut + copy 混合
+fn transform(mut self Point, copy scale int) void {
+    self.x = self.x * scale
+    self.y = self.y * scale
+}
+
+fn main() void {
+    let p = Point{x: 10, y: 20}
+
+    say("Before process:")
+    say("p.x =")
+    say(p.x)
+
+    process(p, 5, "test")
+
+    say("After process:")
+    say("p.x =")
+    say(p.x)
+    say("p.y =")
+    say(p.y)
+
+    // 测试 add 函数
+    say("add(3, 4) =")
+    say(add(3, 4))
+
+    // 测试 transform
+    transform(p, 2)
+    say("After transform(p, 2):")
+    say("p.x =")
+    say(p.x)
+}

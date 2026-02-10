@@ -28,6 +28,8 @@ pub mod maker;
 pub mod ownership;
 pub mod parser;
 pub use parser::Parser;
+// Plan 088 Phase 6: Type checking module for parameter passing modes
+pub mod typeck;
 pub mod patch;
 pub mod autovm_repl;
 pub mod repl;
@@ -147,6 +149,16 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     // Add explicit HALT at the end
     codegen.code.push(OpCode::HALT as u8);
 
+    // DEBUG: Print bytecode BEFORE relocation
+    eprintln!("DEBUG: === Bytecode BEFORE relocation (0x15-0x35) ===");
+    for i in 0x15..0x35u32 {
+        if (i as usize) < codegen.code.len() {
+            let op = codegen.code[i as usize];
+            let marker = if op == 0xB6 || op == 0x25 { " <--" } else { "" };
+            eprintln!("CODE[{:04x}]: {:02x}{}", i, op, marker);
+        }
+    }
+
     // 3. Perform linking (resolve function calls)
     let strings = codegen.strings.clone();
     for reloc in &codegen.relocs {
@@ -164,7 +176,12 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     }
 
     // 4. Load into VM
-    let flash = VirtualFlash::new_with_code(codegen.code);
+    // Plan 073: Include object_keys and object_types for object literal support
+    let flash = VirtualFlash::new_with_code_and_keys(
+        codegen.code,
+        codegen.object_keys,
+        codegen.object_types,
+    );
     let mut vm = AutoVM::new(flash, 1024); // 1KB RAM
     vm.load_strings(strings);
 
@@ -175,7 +192,6 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
         .copied()
         .unwrap_or(0) as usize; // Default to address 0 for scripts without main/test
 
-    eprintln!("DEBUG: Spawning task at entry_point={}", entry_point);
     let task_id = vm.spawn_task(entry_point, 1024);
     vm.run_task_loop().await;
 
@@ -370,9 +386,9 @@ pub fn interpret_with_scope(code: &str, scope: Universe) -> AutoResult<interp::I
 pub fn run_file(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
-    let mut interpreter = interp::Interpreter::new();
-    interpreter.interpret(&code)?;
-    Ok(interpreter.result.repr().to_string())
+    // Plan 088 Phase 4: Use AutoVM instead of deprecated Interpreter
+    // This enables smart parameter passing and other AutoVM features
+    run(&code)
 }
 
 pub fn interpret_file(path: &str) -> interp::Interpreter {

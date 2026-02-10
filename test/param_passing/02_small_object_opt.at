@@ -1,0 +1,41 @@
+// Plan 088 Phase 7 Test 2: Small Object Optimization
+// 测试小对象（int, bool, char, float）的值传递优化
+
+fn test_int(x int) int {
+    // int 是小对象，自动优化为值传递
+    return x + 1
+}
+
+fn test_bool(b bool) bool {
+    // bool 是小对象，自动优化为值传递
+    return !b
+}
+
+fn test_char(c char) char {
+    // char 是小对象，自动优化为值传递
+    return c
+}
+
+fn test_float(f float) float {
+    // float 是小对象，自动优化为值传递
+    return f * 2.0
+}
+
+fn main() void {
+    // 测试 int 优化
+    let i = 10
+    say("test_int(10) =")
+    say(test_int(i))
+
+    // 测试 bool 优化
+    say("test_bool(true) =")
+    say(test_bool(true))
+
+    // 测试 char 优化
+    say("test_char('A') =")
+    say(test_char('A'))
+
+    // 测试 float 优化
+    say("test_float(3.14) =")
+    say(test_float(3.14))
+}

@@ -1,0 +1,40 @@
+// Plan 088 Phase 7 Test 4: Mutable Reference Parameter
+// 测试 mut 参数可以修改原对象
+
+use auto.io: say
+
+type Counter {
+    count int
+}
+
+fn increment(mut self Counter) void {
+    // mut 参数允许修改原对象
+    self.count = self.count + 1
+}
+
+fn set_value(mut self Counter, new_val int) void {
+    // 通过 mut 引用设置新值
+    self.count = new_val
+}
+
+fn main() void {
+    let c = Counter{count: 0}
+
+    say("Initial count:")
+    say(c.count)
+
+    // 调用 increment 修改原对象
+    increment(c)
+    say("After increment(c):")
+    say(c.count)
+
+    // 再次调用
+    increment(c)
+    say("After second increment:")
+    say(c.count)
+
+    // 使用 set_value
+    set_value(c, 100)
+    say("After set_value(c, 100):")
+    say(c.count)
+}

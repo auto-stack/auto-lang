@@ -24,6 +24,8 @@ pub mod list_storage;
 pub mod heap_object;
 pub mod heap;
 pub mod io;
+// Plan 088 Phase 5: Reference types for parameter passing modes
+pub mod refs;
 pub mod list;
 pub mod loader;
 pub mod memory;

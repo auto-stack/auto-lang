@@ -1,0 +1,21 @@
+// Plan 088 Phase 4 Verification Test
+// 验证参数信息是否被正确存储和用于智能参数编译
+
+type Point {
+    x int
+    y int
+}
+
+// 这个函数的参数信息应该被存储到 fn_params
+fn process_point(view p Point, copy scale int) int {
+    return p.x * scale
+}
+
+fn main() void {
+    let pt = Point{x: 10, y: 20}
+    let result = process_point(pt, 2)
+
+    say("Result:")
+    say(result)
+    say("Done")
+}

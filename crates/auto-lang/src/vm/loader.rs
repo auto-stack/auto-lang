@@ -39,6 +39,11 @@ pub struct Module {
     pub relocs: Vec<RelocEntry>,
     /// String constant pool: index -> string bytes
     pub strings: Vec<Vec<u8>>,
+    /// Plan 073: Object keys metadata for object literal creation
+    /// Each entry is a Vec of keys for one object literal (indexed by key_index)
+    pub object_keys: Vec<Vec<auto_val::ValueKey>>,
+    /// Plan 073: Object field types for runtime value conversion
+    pub object_types: Vec<Vec<crate::vm::codegen::ObjectType>>,
 }
 
 pub struct Linker {

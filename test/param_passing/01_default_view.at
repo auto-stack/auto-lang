@@ -1,0 +1,21 @@
+// Plan 088 Phase 7 Test 1: Default View Mode
+// 测试所有参数默认是 view 模式（不可变引用语义）
+
+// 默认参数应该是 view 模式
+fn add(a int, b int) int {
+    // 小对象（int）会自动优化为值传递
+    return a + b
+}
+
+fn main() void {
+    let x = 5
+    let y = 10
+    let result = add(x, y)
+
+    say("add(5, 10) =")
+    say(result)
+
+    // x 仍可用（值传递，不改变原值）
+    say("x still usable:")
+    say(x)
+}

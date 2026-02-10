@@ -1,0 +1,30 @@
+// Plan 088 Phase 7 Test 3: Large Object Reference Passing
+// 测试大对象（string, struct）的引用传递
+
+// 定义一个较大的结构体
+type Point {
+    x int
+    y int
+}
+
+fn get_x(view p Point) int {
+    // Point 是大对象，应该引用传递（不复制）
+    return p.x
+}
+
+fn get_string_length(view s str) int {
+    // string 是大对象，应该引用传递
+    return s.len()
+}
+
+fn main() void {
+    // 测试 struct 引用传递
+    let pt = Point{x: 100, y: 200}
+    say("Point.x =")
+    say(get_x(pt))
+
+    // 测试 string 引用传递
+    let text = "Hello, AutoLang!"
+    say("String length =")
+    say(get_string_length(text))
+}

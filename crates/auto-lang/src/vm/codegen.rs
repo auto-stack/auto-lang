@@ -297,17 +297,33 @@ impl Codegen {
 
                 // 6. Get number of locals and INSERT stack reservation at function entry
                 let n_locals = self.scope_stack.last().unwrap().len();
-                eprintln!("DEBUG: Function {}: n_locals={}, params={}", fn_decl.name, n_locals, fn_decl.params.len());
                 if n_locals > 0 {
+                    // IMPORTANT: Adjust exports FIRST (before inserting RESERVE_STACK)
+                    // All function addresses >= entry_point will shift by +2 after insertion
+                    let mut adjusted_exports = std::collections::HashMap::new();
+                    for (name, &addr) in &self.exports {
+                        if addr >= entry_point {
+                            adjusted_exports.insert(name.clone(), addr + 2);
+                        }
+                    }
+                    // Apply the adjustments
+                    for (name, new_addr) in adjusted_exports {
+                        self.exports.insert(name, new_addr);
+                    }
+
+                    // IMPORTANT: Adjust reloc offsets too!
+                    // Relocations that target positions >= entry_point will have their placeholder
+                    // positions shifted by +2 after insertion.
+                    for reloc in &mut self.relocs {
+                        if reloc.offset >= entry_point {
+                            reloc.offset += 2;
+                        }
+                    }
+
                     // Insert RESERVE_STACK at entry_point (before function body)
                     // This is 2 bytes: 1 byte opcode + 1 byte operand
                     self.code.insert(entry_point as usize, OpCode::RESERVE_STACK as u8);
                     self.code.insert(entry_point as usize + 1, n_locals as u8);
-                    // All jumps and offsets AFTER entry_point need to be adjusted by +2
-                    // TODO: Adjust jumps/offsets (complex, skipping for now)
-                    eprintln!("DEBUG: Function {}: inserted RESERVE_STACK {} at entry_point={}", fn_decl.name, n_locals, entry_point);
-                } else {
-                    eprintln!("DEBUG: Function {}: n_locals=0, skipping RESERVE_STACK", fn_decl.name);
                 }
 
                 // 7. Emit RET at end of body
@@ -1760,11 +1776,19 @@ impl Codegen {
                     }
 
                     // Compile arguments (left-to-right)
+                    // Plan 088 Phase 4: Smart parameter passing for native functions
                     if !call.args.is_empty() {
-                        for arg in &call.args.args {
+                        let func_name_for_params = func_name.as_ref().map(|s| s.as_str()).unwrap_or("");
+                        for (i, arg) in call.args.args.iter().enumerate() {
                             match arg {
                                 crate::ast::Arg::Pos(expr) => {
-                                    self.compile_expr(expr)?;
+                                    // Use smart parameter passing if we have function info
+                                    if !func_name_for_params.is_empty() && self.fn_params.contains_key(func_name_for_params) {
+                                        self.compile_call_arg(expr, func_name_for_params, i)?;
+                                    } else {
+                                        // No parameter info, compile normally
+                                        self.compile_expr(expr)?;
+                                    }
                                 }
                                 _ => {
                                     unimplemented!("Named arguments not supported in AutoVM yet")
@@ -1816,17 +1840,27 @@ impl Codegen {
                 }
 
                 // Compile Arguments (pushes them to stack)
+                // Plan 088 Phase 4: Smart parameter passing based on type and mode
+                let call_display = format!("{:?}", call.name);
+                eprintln!("DEBUG: ===== Compiling call: {} =====", call_display);
+                eprintln!("DEBUG: Before compiling args, code.len()={:04x} ({})", self.code.len(), self.code.len());
                 if !call.args.is_empty() {
-                    for arg in &call.args.args {
+                    let func_name_for_params = func_name.as_ref().map(|s| s.as_str()).unwrap_or("");
+                    for (i, arg) in call.args.args.iter().enumerate() {
                         match arg {
                             crate::ast::Arg::Pos(expr) => {
-                                self.compile_expr(expr)?;
+                                if !func_name_for_params.is_empty() && self.fn_params.contains_key(func_name_for_params) {
+                                    eprintln!("DEBUG:   Arg {}: smart param passing for '{}'", i, func_name_for_params);
+                                    self.compile_call_arg(expr, func_name_for_params, i)?;
+                                } else {
+                                    eprintln!("DEBUG:   Arg {}: normal compile", i);
+                                    self.compile_expr(expr)?;
+                                }
                             }
                             _ => unimplemented!("Named arguments not supported in AutoVM yet"),
                         }
                     }
                 }
-
                 // 2. Emit CALL opcode
                 self.emit(OpCode::CALL);
 
@@ -1948,6 +1982,9 @@ impl Codegen {
             exports: self.exports,
             relocs: self.relocs,
             strings: self.strings,
+            // Plan 073: Include object_keys and object_types in module
+            object_keys: self.object_keys,
+            object_types: self.object_types,
         }
     }
 
@@ -2107,12 +2144,8 @@ impl Codegen {
         }
 
         let bytes = (offset as i16).to_le_bytes();
-        eprintln!("DEBUG: patch_jump: placeholder_idx={}, offset={}, writing [{}, {}] to code[{}] and code[{}]",
-            placeholder_idx, offset, bytes[0], bytes[1], placeholder_idx, placeholder_idx + 1);
-        eprintln!("DEBUG: patch_jump: code[{}] was {}, code[{}] was {}", placeholder_idx, self.code[placeholder_idx], placeholder_idx + 1, self.code[placeholder_idx + 1]);
         self.code[placeholder_idx] = bytes[0];
         self.code[placeholder_idx + 1] = bytes[1];
-        eprintln!("DEBUG: patch_jump: code[{}] now {}, code[{}] now {}", placeholder_idx, self.code[placeholder_idx], placeholder_idx + 1, self.code[placeholder_idx + 1]);
     }
 
     // === Symbol Table Helpers ===
@@ -2195,8 +2228,11 @@ impl Codegen {
 
     /// Plan 088 Phase 4: Emit LOAD_MUT_REF for mutable reference
     fn emit_load_mut_ref(&mut self, index: usize) {
+        eprintln!("DEBUG: emit_load_mut_ref called with index={}", index);
         self.emit(OpCode::LOAD_MUT_REF);
-        self.code.extend_from_slice(&(index as u32).to_le_bytes());
+        let bytes = (index as u32).to_le_bytes();
+        eprintln!("DEBUG: emit_load_mut_ref bytes: {:02x} {:02x} {:02x} {:02x}", bytes[0], bytes[1], bytes[2], bytes[3]);
+        self.code.extend_from_slice(&bytes);
     }
 
     /// Plan 088 Phase 4: Emit STORE_MUT_REF for mutable reference
@@ -2217,6 +2253,87 @@ impl Codegen {
         let var_idx = self.add_string(var_name);
         self.emit(OpCode::STORE_CAPTURED);
         self.code.extend_from_slice(&var_idx.to_le_bytes());
+    }
+
+    // === Plan 088 Phase 4: Smart Parameter Passing ===
+
+    /// Get parameter information for a function at a specific index
+    /// Returns (type, mode) if found, None otherwise
+    fn get_param_info(&self, func_name: &str, param_index: usize) -> Option<(Type, ParamMode)> {
+        if let Some(params) = self.fn_params.get(func_name) {
+            if param_index < params.len() {
+                let param = &params[param_index];
+                return Some((param.ty.clone(), param.mode));
+            }
+        }
+        None
+    }
+
+    /// Compile a single argument for a function call with smart parameter passing
+    /// This implements the Plan 088 ABO-01 strategy: "Semantic View, Implementation Copy"
+    fn compile_call_arg(&mut self, arg: &Expr, func_name: &str, param_index: usize) -> AutoResult<()> {
+        // Get target parameter info (type and mode)
+        let param_info = self.get_param_info(func_name, param_index);
+
+        if let Some((param_ty, param_mode)) = param_info {
+            // We have parameter info, use smart parameter passing
+            match arg {
+                Expr::Ident(var_name) => {
+                    // Argument is a variable/identifier
+                    // === BUG FIX === Use lookup_var() instead of self.locals.get()
+                    // to properly search the scope stack
+                    if let Some(var_index) = self.lookup_var(var_name.as_ref()) {
+                        // Local variable: choose loading strategy based on type and mode
+                        match param_mode {
+                            ParamMode::View => {
+                                // View mode: immutable reference
+                                if param_ty.is_optimized_by_value() {
+                                    // Small object: optimize to value passing (LOAD_LOC)
+                                    self.emit_load_loc(var_index);
+                                } else {
+                                    // Large object: reference passing (LOAD_REF)
+                                    self.emit_load_ref(var_index);
+                                }
+                            }
+                            ParamMode::Mut => {
+                                // Mut mode: mutable reference
+                                if param_ty.is_optimized_by_value() {
+                                    // Small object + Mut: value passing (LOAD_LOC)
+                                    // Note: Mut semantic not enforced for small types (they're copies anyway)
+                                    self.emit_load_loc(var_index);
+                                } else {
+                                    // Large object + Mut: mutable reference (LOAD_MUT_REF)
+                                    self.emit_load_mut_ref(var_index);
+                                }
+                            }
+                            ParamMode::Copy => {
+                                // Copy mode: explicit value passing
+                                if param_ty.is_optimized_by_value() {
+                                    // Small object: direct value passing (LOAD_LOC)
+                                    self.emit_load_loc(var_index);
+                                } else {
+                                    // Large object + Copy: needs clone
+                                    // For now, use LOAD_LOC (TODO: implement clone in future)
+                                    self.emit_load_loc(var_index);
+                                }
+                            }
+                            ParamMode::Take => {
+                                // Take mode: move semantics (value passing)
+                                self.emit_load_loc(var_index);
+                            }
+                        }
+                        return Ok(());
+                    }
+                }
+                _ => {
+                    // Argument is a complex expression (constant, operation, etc.)
+                    // Just compile it normally
+                }
+            }
+        }
+
+        // Fallback: compile argument as expression
+        self.compile_expr(arg)
     }
 
     // === Closure Support (Plan 071) ===

@@ -1,0 +1,45 @@
+// Plan 088 Phase 7 Test 9: Method Parameter Modes
+// 测试类型方法中的参数模式
+
+type Calculator {
+    value int
+
+    // 实例方法使用 mut self
+    fn add(mut self Calculator, x int) void {
+        self.value = self.value + x
+    }
+
+    fn multiply(mut self Calculator, x int) void {
+        self.value = self.value * x
+    }
+
+    // 只读方法使用 view self
+    fn get(view self Calculator) int {
+        return self.value
+    }
+
+    // 静态方法
+    fn static_add(a int, b int) int {
+        return a + b
+    }
+}
+
+fn main() void {
+    let calc = Calculator{value: 0}
+
+    say("Initial value:")
+    say(calc.get())
+
+    // 使用 mut 方法
+    calc.add(10)
+    say("After add(10):")
+    say(calc.get())
+
+    calc.multiply(2)
+    say("After multiply(2):")
+    say(calc.get())
+
+    // 使用静态方法
+    say("static_add(5, 3) =")
+    say(Calculator.static_add(5, 3))
+}

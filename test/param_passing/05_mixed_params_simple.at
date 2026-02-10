@@ -1,0 +1,55 @@
+// Plan 088 Phase 7 Test 5 (Simplified): Mixed Parameter Modes (without self)
+// 测试混合使用不同参数模式（普通参数，不使用 self）
+
+type Point {
+    x int
+    y int
+}
+
+// 混合使用 view, copy 模式（普通参数）
+fn process_point(
+    view p Point,
+    view offset int,
+    copy name str
+) void {
+    say("Processing:")
+    say(name)
+    say("Point x:")
+    say(p.x)
+    say("Offset:")
+    say(offset)
+}
+
+// 默认 view + 显式 view
+fn add(view a int, view b int) int {
+    return a + b
+}
+
+// copy 模式
+fn copy_and_process(copy val int) int {
+    return val * 2
+}
+
+fn main() void {
+    let p = Point{x: 10, y: 20}
+
+    say("Before process:")
+    say("p.x =")
+    say(p.x)
+
+    process_point(p, 5, "test")
+
+    say("After process:")
+    say("p.x =")
+    say(p.x)
+    say("p.y =")
+    say(p.y)
+
+    // 测试 add 函数
+    say("add(3, 4) =")
+    say(add(3, 4))
+
+    // 测试 copy_and_process
+    say("copy_and_process(10) =")
+    say(copy_and_process(10))
+}

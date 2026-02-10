@@ -1993,6 +1993,59 @@ impl AutoVM {
                     return Ok(TaskStatus::Terminated);
                 }
 
+                // === Plan 088 Phase 5: Reference Passing Instructions ===
+                // Note: For Phase 5, references are implemented as var_index on the stack
+                // LOAD_REF/LOAD_MUT_REF push the var_index, STORE_REF/STORE_MUT_REF use it
+                OpCode::LOAD_REF => {
+                    // Plan 088 Phase 5: Load immutable reference
+                    // Format: var_index: u32
+                    let var_index = self.flash.read_u32(task.ip);
+                    task.ip += 4;
+
+                    // Push var_index onto stack as the "reference"
+                    // This will be used by subsequent STORE_REF or other operations
+                    task.ram.push_i32(var_index as i32);
+
+                    eprintln!("DEBUG: LOAD_REF: var_index={}, bp={}", var_index, task.bp);
+                }
+                OpCode::STORE_REF => {
+                    // Plan 088 Phase 5: Store through immutable reference
+                    // Format: var_index: u32
+                    let var_index = self.flash.read_u32(task.ip);
+                    task.ip += 4;
+
+                    // Pop the value to store
+                    let val = task.ram.pop_i32();
+
+                    // Store to bp+1+var_index (same as LOAD_LOCAL logic)
+                    task.ram.write_i32(task.bp + 1 + var_index as usize, val);
+
+                    eprintln!("DEBUG: STORE_REF: var_index={}, val={}, bp={}", var_index, val, task.bp);
+                }
+                OpCode::LOAD_MUT_REF => {
+                    // Plan 088 Phase 5: Load mutable reference
+                    // Format: var_index: u32
+                    let var_index = self.flash.read_u32(task.ip);
+                    task.ip += 4;
+
+                    // Push var_index onto stack as the "mutable reference"
+                    task.ram.push_i32(var_index as i32);
+                }
+                OpCode::STORE_MUT_REF => {
+                    // Plan 088 Phase 5: Store through mutable reference
+                    // Format: var_index: u32
+                    let var_index = self.flash.read_u32(task.ip);
+                    task.ip += 4;
+
+                    // Pop the value to store
+                    let val = task.ram.pop_i32();
+
+                    // Store to bp+1+var_index (same as STORE_LOCAL logic)
+                    task.ram.write_i32(task.bp + 1 + var_index as usize, val);
+
+                    eprintln!("DEBUG: STORE_MUT_REF: var_index={}, val={}, bp={}", var_index, val, task.bp);
+                }
+
                 _ => {
                     // Unimplemented opcodes for Phase 1
                     return Err(VMError::InvalidOpCode(op_byte));

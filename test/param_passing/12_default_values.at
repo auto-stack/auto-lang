@@ -1,0 +1,46 @@
+// Plan 088 Phase 7 Test 12: Parameter Modes with Default Values
+// 测试参数模式与默认值的结合使用
+
+fn greet(
+    view name str,
+    copy greeting str = "Hello"
+) void {
+    say(greeting)
+    say(name)
+}
+
+fn calculate(
+    view x int,
+    view y int,
+    copy operation str = "add"
+) int {
+    if operation == "add" {
+        return x + y
+    }
+    if operation == "multiply" {
+        return x * y
+    }
+    return 0
+}
+
+fn main() void {
+    // 使用默认 greeting
+    say("Test 1:")
+    greet("Alice")
+
+    // 提供自定义 greeting
+    say("Test 2:")
+    greet("Bob", "Hi")
+
+    // 使用默认 operation
+    say("Test 3:")
+    say(calculate(5, 3))
+
+    // 提供自定义 operation
+    say("Test 4:")
+    say(calculate(5, 3, "multiply"))
+
+    // 显式指定 view
+    say("Test 5:")
+    say(calculate(view 10, view 20))
+}

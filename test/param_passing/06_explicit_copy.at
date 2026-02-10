@@ -1,0 +1,39 @@
+// Plan 088 Phase 7 Test 6: Explicit Copy Mode
+// 测试显式 copy 模式强制值传递
+
+type Data {
+    value int
+}
+
+// 显式 copy 参数
+fn process_copy(copy data Data) int {
+    // copy 模式：data 是副本，不影响原对象
+    return data.value
+}
+
+// 默认 view 参数（大对象引用传递）
+fn process_view(data Data) int {
+    // view 模式：data 是引用
+    return data.value
+}
+
+fn main() void {
+    let d = Data{value: 42}
+
+    say("Original value:")
+    say(d.value)
+
+    // 使用 copy 模式
+    let result1 = process_copy(d)
+    say("process_copy result:")
+    say(result1)
+
+    // 使用 view 模式
+    let result2 = process_view(d)
+    say("process_view result:")
+    say(result2)
+
+    // 原对象不受影响
+    say("Original after calls:")
+    say(d.value)
+}

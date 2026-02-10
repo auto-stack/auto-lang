@@ -1,0 +1,33 @@
+// Plan 088 Phase 7 Test 8: Take Mode (Move Semantics)
+// 测试 take 模式的 move 语义
+
+type Resource {
+    data int
+}
+
+// take 模式：获取所有权
+fn consume(take r Resource) int {
+    // r 的所有权转移到此函数
+    return r.data
+}
+
+// view 模式：借用
+fn borrow(view r Resource) int {
+    // r 只是借用，不获取所有权
+    return r.data
+}
+
+fn main() void {
+    let res = Resource{data: 100}
+
+    say("Resource data:")
+    say(res.data)
+
+    // 使用 view 模式（借用）
+    say("borrow result:")
+    say(borrow(res))
+
+    // 使用 take 模式（获取所有权）
+    say("consume result:")
+    say(consume(res))
+}
