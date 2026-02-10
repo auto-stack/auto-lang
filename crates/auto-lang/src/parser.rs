@@ -4417,13 +4417,46 @@ impl<'a> Parser<'a> {
     // parse function parameters
     pub fn fn_params(&mut self) -> AutoResult<Vec<Param>> {
         let mut params = Vec::new();
-        while self.is_kind(TokenKind::Ident) {
+
+        // Plan 088 Phase 3: Support parameter mode keywords (copy, view, mut, take)
+        // Loop until we hit a non-parameter (non-ident or non-mode keyword)
+        loop {
+            // 1. Check for parameter mode keyword (optional, defaults to View)
+            let mut mode = ParamMode::default();  // Default: View
+
+            if self.is_kind(TokenKind::Copy) {
+                mode = ParamMode::Copy;
+                self.next(); // skip 'copy'
+            } else if self.is_kind(TokenKind::View) {
+                mode = ParamMode::View;
+                self.next(); // skip 'view'
+            } else if self.is_kind(TokenKind::Mut) {
+                mode = ParamMode::Mut;
+                self.next(); // skip 'mut'
+            } else if self.is_kind(TokenKind::Take) {
+                mode = ParamMode::Take;
+                self.next(); // skip 'take'
+            }
+
+            // 2. Check for parameter name (required)
+            if !self.is_kind(TokenKind::Ident) {
+                // If no ident after mode keyword, it's an error
+                if mode != ParamMode::default() {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected parameter name after '{}'", mode),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+                // No mode keyword and no ident means we're done with parameters
+                break;
+            }
+
             // param name
             let name = self.cur.text.clone();
             let name_pos = self.cur.pos; // Capture position before skipping name
             self.next(); // skip name
 
-            // param type (skip ':' if present for type annotation)
+            // 3. param type (skip ':' if present for type annotation)
             let mut ty = Type::Int;
             if self.is_kind(TokenKind::Colon) {
                 self.next(); // skip ':'
@@ -4431,14 +4464,16 @@ impl<'a> Parser<'a> {
             if self.is_type_name() {
                 ty = self.parse_type()?;
             }
-            // default val
+
+            // 4. default val
             let mut default = None;
             if self.is_kind(TokenKind::Asn) {
                 self.next(); // skip =
                 let expr = self.parse_expr()?;
                 default = Some(expr);
             }
-            // define param in current scope (currently in fn scope)
+
+            // 5. define param in current scope (currently in fn scope)
             let var = Store {
                 kind: StoreKind::Var,
                 name: name.clone(),
@@ -4458,7 +4493,8 @@ impl<'a> Parser<'a> {
                 .borrow_mut()
                 .define_symbol_location(name.clone(), loc);
 
-            params.push(Param { name, ty, default, mode: ParamMode::default() });
+            // 6. Plan 088: Create parameter with explicit mode
+            params.push(Param { name, ty, default, mode });
             self.sep_params()?;
         }
 

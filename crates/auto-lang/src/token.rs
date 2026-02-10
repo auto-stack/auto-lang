@@ -93,6 +93,7 @@ pub enum TokenKind {
     Tag,
     Let,
     Mut,
+    Copy,   // ADDED: copy keyword for explicit value passing (Plan 088 Phase 3)
     Const, // ADDED: const keyword for const generics (Plan 052)
     View,  // ADDED: view keyword for immutable borrow (Phase 3)
     Take,  // ADDED: take keyword for move semantics (Phase 3)
@@ -292,6 +293,7 @@ impl Token {
             "tag" => Some(TokenKind::Tag),
             "let" => Some(TokenKind::Let),
             "mut" => Some(TokenKind::Mut),
+            "copy" => Some(TokenKind::Copy), // ADDED: copy keyword for explicit value passing (Plan 088 Phase 3)
             "view" => Some(TokenKind::View),
             "take" => Some(TokenKind::Take),
             "hold" => Some(TokenKind::Hold),

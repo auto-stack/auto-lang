@@ -48,6 +48,8 @@ pub mod vm;
 // Plan 088: Parameter passing mode tests
 #[cfg(test)]
 mod plan_088_tests;
+#[cfg(test)]
+mod plan_088_parser_tests;
 
 pub use atom::{Atom, AtomReader};
 
