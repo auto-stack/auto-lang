@@ -276,6 +276,7 @@ mod tests {
                     name: Name::from("vehicle"),
                     ty: Type::Unknown,
                     default: None,
+                    mode: Default::default(),
                 },
             ],
             Type::Void,

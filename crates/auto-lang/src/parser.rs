@@ -4458,7 +4458,7 @@ impl<'a> Parser<'a> {
                 .borrow_mut()
                 .define_symbol_location(name.clone(), loc);
 
-            params.push(Param { name, ty, default });
+            params.push(Param { name, ty, default, mode: ParamMode::default() });
             self.sep_params()?;
         }
 
@@ -4479,6 +4479,7 @@ impl<'a> Parser<'a> {
                 name: "...".into(),
                 ty: Type::Variadic,
                 default: None,
+                mode: ParamMode::default(),
             });
         }
 

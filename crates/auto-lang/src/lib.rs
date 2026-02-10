@@ -45,6 +45,10 @@ mod universe;
 pub mod util;
 pub mod vm;
 
+// Plan 088: Parameter passing mode tests
+#[cfg(test)]
+mod plan_088_tests;
+
 pub use atom::{Atom, AtomReader};
 
 // 过程宏 - 支持 AutoLang 语法的内嵌 DSL

@@ -335,11 +335,13 @@ mod tests {
                         name: Name::from("a"),
                         ty: Type::Int,
                         default: None,
+                        mode: Default::default(),
                     },
                     Param {
                         name: Name::from("b"),
                         ty: Type::Int,
                         default: None,
+                        mode: Default::default(),
                     },
                 ],
                 Type::Int,

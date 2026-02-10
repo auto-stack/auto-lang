@@ -132,11 +132,13 @@ mod tests {
                     name: Name::from("x"),
                     ty: Type::Int,
                     default: None,
+                    mode: Default::default(),
                 },
                 Param {
                     name: Name::from("y"),
                     ty: Type::Int,
                     default: None,
+                    mode: Default::default(),
                 },
             ],
             body: Body {
@@ -175,6 +177,7 @@ mod tests {
                 name: Name::from("count"),
                 ty: Type::Unknown,
                 default: Some(Expr::Int(5)),
+                mode: Default::default(),
             }],
             body: Body {
                 stmts: vec![], // Empty body returns Void
@@ -211,6 +214,7 @@ mod tests {
                 name: Name::from("x"),
                 ty: Type::Unknown,
                 default: None,
+                mode: Default::default(),
             }],
             body: Body {
                 stmts: vec![],
@@ -274,11 +278,13 @@ mod tests {
                     name: Name::from("a"),
                     ty: Type::Int,
                     default: None,
+                    mode: Default::default(),
                 },
                 Param {
                     name: Name::from("b"),
                     ty: Type::Int,
                     default: None,
+                    mode: Default::default(),
                 },
             ],
             body: Body {
@@ -346,6 +352,7 @@ mod tests {
                 name: Name::from("name"),
                 ty: Type::Unknown,
                 default: Some(Expr::Str("world".into())),
+                mode: Default::default(),
             }],
             body: Body {
                 stmts: vec![],
@@ -466,6 +473,7 @@ mod tests {
                 name: Name::from("x"),
                 ty: Type::Int,
                 default: None,
+                mode: Default::default(),
             }],
             body: Body {
                 stmts: vec![Stmt::Return(Box::new(Expr::Bool(false)))], // Wrong return type
@@ -497,16 +505,19 @@ mod tests {
                     name: Name::from("a"),
                     ty: Type::Int,
                     default: None,
+                    mode: Default::default(),
                 },
                 Param {
                     name: Name::from("b"),
                     ty: Type::Bool,
                     default: None,
+                    mode: Default::default(),
                 },
                 Param {
                     name: Name::from("c"),
                     ty: Type::Float,
                     default: None,
+                    mode: Default::default(),
                 },
             ],
             body: Body {
@@ -543,6 +554,7 @@ mod tests {
                 name: Name::from("value"),
                 ty: Type::Unknown,
                 default: Some(Expr::Uint(42)),
+                mode: Default::default(),
             }],
             body: Body {
                 stmts: vec![],

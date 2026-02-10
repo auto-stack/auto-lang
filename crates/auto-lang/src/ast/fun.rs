@@ -114,11 +114,45 @@ impl Fn {
     }
 }
 
+/// Plan 088: Parameter passing mode
+///
+/// Defines how parameters are passed to functions:
+/// - `Copy`: Explicit value passing (caller value is copied)
+/// - `View`: Immutable reference (default, read-only borrow)
+/// - `Mut`: Mutable reference (read-write borrow)
+/// - `Take`: Move semantics (ownership transferred)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParamMode {
+    Copy,  // Explicit value passing
+    View,  // Immutable reference (DEFAULT)
+    Mut,   // Mutable reference
+    Take,  // Move semantics
+}
+
+impl Default for ParamMode {
+    fn default() -> Self {
+        Self::View  // Default is View per Plan 088 ABO-01
+    }
+}
+
+impl fmt::Display for ParamMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ParamMode::Copy => write!(f, "copy"),
+            ParamMode::View => write!(f, "view"),
+            ParamMode::Mut => write!(f, "mut"),
+            ParamMode::Take => write!(f, "take"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Param {
     pub name: Name,
     pub ty: Type,
     pub default: Option<Expr>,
+    /// Plan 088: Parameter passing mode (default: View)
+    pub mode: ParamMode,
 }
 
 impl PartialEq for Param {
@@ -129,7 +163,7 @@ impl PartialEq for Param {
 
 impl fmt::Display for Param {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(param (name {}) (type {})", self.name, self.ty)?;
+        write!(f, "(param (name {}) (type {}) (mode {})", self.name, self.ty, self.mode)?;
         if let Some(default) = &self.default {
             write!(f, " (default {})", default)?;
         }
@@ -139,7 +173,22 @@ impl fmt::Display for Param {
 
 impl Param {
     pub fn new(name: Name, ty: Type, default: Option<Expr>) -> Self {
-        Self { name, ty, default }
+        Self {
+            name,
+            ty,
+            default,
+            mode: ParamMode::default(),  // Plan 088: default to View
+        }
+    }
+
+    /// Plan 088: Create parameter with explicit mode
+    pub fn with_mode(name: Name, ty: Type, default: Option<Expr>, mode: ParamMode) -> Self {
+        Self {
+            name,
+            ty,
+            default,
+            mode,
+        }
     }
 }
 
@@ -151,6 +200,10 @@ use auto_val::{AutoStr, Node as AutoNode, Value};
 impl AtomWriter for Param {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         write!(f, "({}, {})", self.name, self.ty.to_atom_str())?;
+        // Plan 088: Only write mode if not default (View)
+        if self.mode != ParamMode::default() {
+            write!(f, " {}", self.mode)?;
+        }
         if let Some(default) = &self.default {
             write!(f, " = {}", default.to_atom_str())?;
         }
@@ -163,6 +216,8 @@ impl ToNode for Param {
         let mut node = AutoNode::new("param");
         node.set_prop("name", Value::str(self.name.as_str()));
         node.set_prop("type", Value::str(&*self.ty.to_atom()));
+        // Plan 088: Store mode in node
+        node.set_prop("mode", Value::str(self.mode.to_string().as_str()));
         if let Some(default) = &self.default {
             node.set_prop("default", Value::str(&*default.to_atom()));
         }

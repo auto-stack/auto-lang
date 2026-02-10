@@ -208,6 +208,55 @@ impl Type {
             Type::CStruct(_) | Type::Storage(_) | Type::I64 | Type::U64 => self.clone(),  // Storage types are not generic
         }
     }
+
+    /// Plan 088: Check if type should use value-passing optimization
+    ///
+    /// Returns `true` for small types that are efficiently copied (int, bool, etc.).
+    /// Returns `false` for large types that should use reference passing (string, struct, etc.).
+    ///
+    /// # Strategy (ABO-01: Semantic View, Implementation Copy)
+    ///
+    /// - **User side**: All parameters are semantically `view` (immutable reference)
+    /// - **Compiler side**: Small types use value passing (optimization), large types use references
+    ///
+    /// # Returns
+    ///
+    /// - `true`: Use value passing (int, bool, char, byte, float, double)
+    /// - `false`: Use reference passing (string, array, list, struct, closure, etc.)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use auto_lang::ast::Type;
+    ///
+    /// assert!(Type::Int.is_optimized_by_value());      // true: small type
+    /// assert!(Type::Bool.is_optimized_by_value());     // true: small type
+    /// assert!(!Type::Str(10).is_optimized_by_value()); // false: heap-allocated
+    /// ```
+    pub fn is_optimized_by_value(&self) -> bool {
+        match self {
+            // Small types - use value passing (register-passed, no heap allocation)
+            Type::Byte | Type::Int | Type::Uint | Type::USize |
+            Type::I64 | Type::U64 |
+            Type::Bool | Type::Char |
+            Type::Float | Type::Double => true,
+
+            // Large types - use reference passing (heap-allocated or expensive to copy)
+            Type::Str(_) | Type::CStr | Type::StrSlice => false,
+            Type::Array(_) | Type::RuntimeArray(_) | Type::List(_) => false,
+            Type::Slice(_) | Type::Ptr(_) | Type::Reference(_) => false,
+
+            // User-defined types - use reference passing (V1 conservative)
+            Type::User(_) | Type::Tag(_) | Type::Enum(_) | Type::Union(_) | Type::CStruct(_) => false,
+
+            // Generic instances - use reference passing
+            Type::GenericInstance(_) => false,
+
+            // Complex types - use reference passing
+            Type::Spec(_) | Type::Storage(_) | Type::Fn(_, _) => false,
+            Type::Linear(_) | Type::Void | Type::Unknown | Type::Variadic => false,
+        }
+    }
 }
 
 /// Generic parameter - can be either a type parameter or const parameter (Plan 052)
