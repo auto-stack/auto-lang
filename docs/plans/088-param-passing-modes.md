@@ -19,22 +19,23 @@
 
 ## 实现状态
 
-**总体进度**: 43% (3/7 Phases 完成)
+**总体进度**: 50% (3.5/7 Phases 完成)
 
 **已完成** (2025-02-09):
 - ✅ **Phase 1**: 类型系统扩展 - `is_optimized_by_value()` 方法，12 个测试全部通过
 - ✅ **Phase 2**: AST 更新 - `ParamMode` 枚举和 `Param` 扩展，12 个测试全部通过
 - ✅ **Phase 3**: Parser 解析 - 参数模式解析，15 个测试全部通过
+- ⚠️ **Phase 4**: Codegen 基础 - 引用指令和参数信息跟踪（部分完成）
 
 **进行中**:
-- ⏸️ **Phase 4**: Codegen 编译 - 智能参数编译（待实现）
+- ⏸️ **Phase 4**: Codegen 智能参数编译（需要 Phase 5 VM 支持）
 
 **待实现**:
 - ⏸️ **Phase 5**: VM 执行 - VmRef/VmMutRef 类型
 - ⏸️ **Phase 6**: 类型检查器 - 不可变性检查
 - ⏸️ **Phase 7**: 集成测试 - 端到端测试
 
-**最新提交**: `05f5744` - "Implement Plan 088 Phase 3: Parser parameter mode parsing"
+**最新提交**: `9860126` - "Implement Plan 088 Phase 4: Codegen foundation for smart parameter compilation"
 
 ---
 
@@ -713,10 +714,66 @@ fn process(mut self Point, copy x int, view y float) void
 - `test_empty_params` - 空参数列表
 - `test_single_param` - 单参数
 
-### Phase 4: Codegen 编译（3-4 天）
-- ✅ 添加引用指令（LOAD_REF, STORE_REF, etc.）
-- ✅ 智能参数编译（自动分流优化）
-- ✅ 20 单元测试
+### Phase 4: Codegen 编译（3-4 天） ⚠️ **部分完成 (2025-02-09)**
+- ✅ 添加引用指令（LOAD_REF, STORE_REF, LOAD_MUT_REF, STORE_MUT_REF）
+- ✅ 添加引用指令发射函数
+- ✅ 添加参数信息跟踪结构
+- ✅ 在函数定义时存储参数信息
+- ⏸️ 智能参数编译逻辑（需要 Phase 5 VM 支持）
+- ✅ 27 个测试通过（Phase 1-3）
+
+**实现细节**：
+
+1. **引用指令集**（✅ 完成）:
+   - `LOAD_REF` (0xB4) - 加载不可变引用
+   - `STORE_REF` (0xB5) - 存储通过不可变引用
+   - `LOAD_MUT_REF` (0xB6) - 加载可变引用
+   - `STORE_MUT_REF` (0xB7) - 存储通过可变引用
+
+2. **Codegen 基础设施**（✅ 完成）:
+   - 添加 `ParamInfo` 结构体存储参数类型和模式
+   - 添加 `fn_params: HashMap<String, Vec<ParamInfo>>` 到 Codegen
+   - 添加 `emit_load_ref()`, `emit_store_ref()`, `emit_load_mut_ref()`, `emit_store_mut_ref()` 函数
+   - 修改函数定义编译，存储参数信息到 `fn_params`
+
+3. **智能参数编译**（⏸️ 需要 Phase 5）:
+   - 当前状态：基础设施就绪，但完整的智能参数编译需要 VM 引擎支持
+   - 待实现：根据参数的 `is_optimized_by_value()` 和 `mode` 选择传递方式
+   - 依赖：Phase 5 的 VmRef/VmMutRef 类型
+
+**设计**（未实现）:
+```rust
+// 计划的智能参数编译逻辑
+match param_mode {
+    ParamMode::View => {
+        if param_ty.is_optimized_by_value() {
+            self.emit_load_loc(var_index);  // 小类型：值传递（优化）
+        } else {
+            self.emit_load_ref(var_index);  // 大类型：引用传递
+        }
+    },
+    ParamMode::Mut => {
+        self.emit_load_mut_ref(var_index);  // 可变引用
+    },
+    ParamMode::Copy => {
+        self.emit_load_loc(var_index);  // 强制值传递
+    },
+    ParamMode::Take => {
+        self.emit_load_loc(var_index);  // Move（值传递，但源失效）
+    },
+}
+```
+
+**当前限制**：
+- 参数信息已跟踪，但未在函数调用时使用
+- 所有参数仍使用值传递（Plan 088 之前的行为）
+- Phase 5 将实现 VM 引擎对引用指令的支持
+- Phase 5 完成后，可以启用智能参数编译逻辑
+
+**测试验证**：
+- 所有 27 个现有测试通过
+- 集成测试 `test_phase_4_codegen.at` 验证参数模式解析和编译
+- 无回归错误
 
 ### Phase 5: VM 执行（3-4 天）
 - ✅ VmRef/VmMutRef 类型
