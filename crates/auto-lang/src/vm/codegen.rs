@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Stmt, Closure, Iter, Type, TypeDecl};
+use crate::ast::{Expr, ParamMode, Stmt, Closure, Iter, Type, TypeDecl};
 use crate::error::{AutoResult, AutoError};
 use crate::error::SyntaxError;
 // use crate::val::Value; // Removed if not directly used or fix path
@@ -35,6 +35,14 @@ pub enum ObjectType {
 struct TypeInfo {
     pub name: String,
     pub member_names: Vec<String>,  // Member names in order
+}
+
+/// Plan 088 Phase 4: Parameter information for function signatures
+/// Stores parameter type and mode for smart parameter passing
+#[derive(Debug, Clone)]
+struct ParamInfo {
+    pub ty: Type,
+    pub mode: ParamMode,
 }
 
 /// Codegen: Compiles AST directly to AutoVM Bytecode
@@ -90,6 +98,11 @@ pub struct Codegen {
     /// Plan 087 Phase 1: Generic registry for user-defined generic types
     /// Stores generic class templates and their instantiations (e.g., Pair<int, string>)
     pub generic_registry: crate::vm::generic_registry::GenericRegistry,
+
+    /// Plan 088 Phase 4: Function parameter information for smart parameter passing
+    /// Maps function name -> Vec of parameter types and modes
+    /// Used during function calls to determine whether to use value or reference passing
+    pub fn_params: HashMap<String, Vec<ParamInfo>>,
 }
 
 impl Codegen {
@@ -126,6 +139,7 @@ impl Codegen {
             types: HashMap::new(),
             generics: GenericTable::new(), // Plan 076 Phase 1
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(), // Plan 087 Phase 1
+            fn_params: HashMap::new(), // Plan 088 Phase 4: function parameter information
         }
     }
 
@@ -262,6 +276,18 @@ impl Codegen {
                 self.push_scope();
 
                 // 4. Compile function parameters
+                // Plan 088 Phase 4: Store parameter types and modes for smart parameter passing
+                let param_infos: Vec<ParamInfo> = fn_decl.params.iter().map(|param| {
+                    ParamInfo {
+                        ty: param.ty.clone(),
+                        mode: param.mode,
+                    }
+                }).collect();
+
+                // Store parameter information in fn_params map
+                self.fn_params.insert(fn_decl.name.to_string(), param_infos.clone());
+
+                // Add parameters to scope
                 for param in &fn_decl.params {
                     self.add_var(&param.name);
                 }
@@ -2153,6 +2179,30 @@ impl Codegen {
                 self.code.push(index as u8);
             }
         }
+    }
+
+    /// Plan 088 Phase 4: Emit LOAD_REF for immutable reference
+    fn emit_load_ref(&mut self, index: usize) {
+        self.emit(OpCode::LOAD_REF);
+        self.code.extend_from_slice(&(index as u32).to_le_bytes());
+    }
+
+    /// Plan 088 Phase 4: Emit STORE_REF for immutable reference
+    fn emit_store_ref(&mut self, index: usize) {
+        self.emit(OpCode::STORE_REF);
+        self.code.extend_from_slice(&(index as u32).to_le_bytes());
+    }
+
+    /// Plan 088 Phase 4: Emit LOAD_MUT_REF for mutable reference
+    fn emit_load_mut_ref(&mut self, index: usize) {
+        self.emit(OpCode::LOAD_MUT_REF);
+        self.code.extend_from_slice(&(index as u32).to_le_bytes());
+    }
+
+    /// Plan 088 Phase 4: Emit STORE_MUT_REF for mutable reference
+    fn emit_store_mut_ref(&mut self, index: usize) {
+        self.emit(OpCode::STORE_MUT_REF);
+        self.code.extend_from_slice(&(index as u32).to_le_bytes());
     }
 
     /// Emit LOAD_CAPTURED for a captured variable by name (Plan 071)

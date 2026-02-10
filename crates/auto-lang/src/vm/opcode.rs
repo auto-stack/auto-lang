@@ -145,6 +145,17 @@ pub enum OpCode {
     SET_GENERIC_FIELD = 0xB3, // instance_id, field_index, value -> void
                              // Set field value in generic instance
 
+    // === Plan 088 Phase 4: Reference Passing Opcodes ===
+    // Support for parameter passing modes (view, mut, take, copy)
+    LOAD_REF = 0xB4,          // var_index: u32 -> reference (load immutable reference)
+                             // Load an immutable reference to a local variable
+    STORE_REF = 0xB5,         // var_index: u32, value -> void (store via immutable reference)
+                             // Store a value through an immutable reference (error if not supported)
+    LOAD_MUT_REF = 0xB6,      // var_index: u32 -> mut_reference (load mutable reference)
+                             // Load a mutable reference to a local variable
+    STORE_MUT_REF = 0xB7,     // var_index: u32, value -> void (store via mutable reference)
+                             // Store a value through a mutable reference
+
     // === Debug ===
     PRINT = 0xF0,
     HALT = 0xFF,
