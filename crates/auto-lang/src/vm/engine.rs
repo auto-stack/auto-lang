@@ -2031,8 +2031,8 @@ impl AutoVM {
                     let n_locals = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
-                    eprintln!("DEBUG RESERVE_STACK: n_locals={}, BP before={}, SP before={}",
-                        n_locals, task.bp, task.ram.sp);
+                    eprintln!("DEBUG RESERVE_STACK: n_locals={}, BP before={}, SP before={}, RAM len={}",
+                        n_locals, task.bp, task.ram.sp, task.ram.raw.len());
 
                     // Actually push zeros to reserve the space (not just increment sp)
                     for _ in 0..n_locals {
@@ -2040,8 +2040,15 @@ impl AutoVM {
                     }
 
                     eprintln!("DEBUG RESERVE_STACK: BP after={}, SP after={}", task.bp, task.ram.sp);
-                    eprintln!("DEBUG RESERVE_STACK: Stack[BP-1] = {}, [BP] = {}, [BP+1] = {}",
-                        task.ram.read_i32(task.bp - 1), task.ram.read_i32(task.bp), task.ram.read_i32(task.bp + 1));
+
+                    // Check if addresses are valid before accessing
+                    if task.bp >= 1 && task.bp + 1 < task.ram.raw.len() {
+                        eprintln!("DEBUG RESERVE_STACK: Stack[BP-1] = {}, [BP] = {}, [BP+1] = {}",
+                            task.ram.read_i32(task.bp - 1), task.ram.read_i32(task.bp), task.ram.read_i32(task.bp + 1));
+                    } else {
+                        eprintln!("DEBUG RESERVE_STACK: Skipping stack dump - BP={}, BP-1={}, BP+1={}, RAM len={}",
+                            task.bp, task.bp.wrapping_sub(1), task.bp + 1, task.ram.raw.len());
+                    }
 
                     task.num_locals = n_locals; // Track num_locals for native shims
                 }

@@ -107,6 +107,12 @@ pub struct Codegen {
     /// Plan 087 Phase 3: Current function parameter count (for correct local/param indexing)
     /// Used during compilation to distinguish parameters (before BP) from locals (after BP)
     pub current_fn_n_args: usize,
+
+    /// Plan 088 Phase 4: Jump placeholder tracking for multi-function compilation
+    /// Tracks all jump_over placeholder indices to update them when FN_PROLOG is inserted
+    /// When FN_PROLOG (3 bytes) is inserted, all subsequent code shifts
+    /// and all jump_over placeholders after the insertion point need their indices updated
+    pub jump_placeholders: Vec<usize>,
 }
 
 impl Codegen {
@@ -145,6 +151,7 @@ impl Codegen {
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(), // Plan 087 Phase 1
             fn_params: HashMap::new(), // Plan 088 Phase 4: function parameter information
             current_fn_n_args: 0, // Plan 087 Phase 3: Initialize to 0
+            jump_placeholders: Vec::new(), // Plan 088 Phase 4: Initialize empty jump placeholder tracking
         }
     }
 
@@ -359,6 +366,17 @@ impl Codegen {
                 for reloc in &mut self.relocs {
                     if reloc.offset >= entry_point {
                         reloc.offset += shift;
+                    }
+                }
+
+                // Plan 088 Phase 4: Adjust jump placeholder indices BEFORE insertion!
+                // Jump placeholders AFTER entry_point need to be shifted
+                // Jump placeholders BEFORE or AT entry_point are NOT affected
+                // (e.g., current function's jump_over at entry_point-2 stays at same position)
+                // This MUST happen BEFORE code.insert() so patch_jump uses correct indices
+                for placeholder_idx in &mut self.jump_placeholders {
+                    if *placeholder_idx > entry_point as usize {
+                        *placeholder_idx += shift as usize;
                     }
                 }
 
@@ -2419,6 +2437,9 @@ impl Codegen {
     fn emit_placeholder_i16(&mut self) -> usize {
         let idx = self.code.len();
         self.code.extend_from_slice(&0i16.to_le_bytes());
+        // Plan 088 Phase 4: Track this jump placeholder for multi-function compilation
+        // When FN_PROLOG is inserted later, all subsequent jump placeholders need updating
+        self.jump_placeholders.push(idx);
         idx
     }
 
@@ -2445,6 +2466,9 @@ impl Codegen {
 
         let anchor = placeholder_idx + 2;
         let offset = (target as isize) - (anchor as isize);
+
+        eprintln!("DEBUG patch_jump: placeholder_idx={}, target={}, anchor={}, offset={}",
+            placeholder_idx, target, anchor, offset);
 
         // Check bounds
         if offset > i16::MAX as isize || offset < i16::MIN as isize {
