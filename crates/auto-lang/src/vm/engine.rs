@@ -902,7 +902,7 @@ impl AutoVM {
                     // Plan 087 Phase 2: Get field value from generic instance
                     // Code layout: [opcode, field_index:u32]
                     // Stack layout: [..., instance_id]
-                    // Stack after: [..., value]
+                    // Stack after: [..., value, instance_id]  (instance_id restored to top)
                     use crate::vm::generic_registry::GenericInstanceData;
                     use crate::vm::heap_object::TypeTag;
 
@@ -910,8 +910,9 @@ impl AutoVM {
                     let field_index = self.flash.read_u32(task.ip) as usize;
                     task.ip += 4;
 
-                    // Pop instance_id
-                    let instance_id = task.ram.pop_i32() as u64;
+                    // Read instance_id from stack WITHOUT popping it
+                    // Stack: [..., instance_id, ...]
+                    let instance_id = task.ram.read_i32(task.ram.sp - 1) as u64;
 
                     eprintln!("DEBUG: GET_GENERIC_FIELD: instance_id={}, field_index={}",
                         instance_id, field_index);
@@ -929,6 +930,7 @@ impl AutoVM {
                                     // Push field value onto stack using helper
                                     Self::push_value(&mut task.ram, value, &self.strings);
                                     eprintln!("DEBUG: GET_GENERIC_FIELD: field value = {:?}", value);
+                                    // instance_id remains on stack below field value, DO NOT restore it here
                                 } else {
                                     return Err(VMError::RuntimeError(format!(
                                         "Field index {} out of bounds (instance has {} fields)",
