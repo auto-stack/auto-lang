@@ -1231,6 +1231,7 @@ impl Codegen {
                     // Plan 087 Phase 2/3: Generic type or user-defined type instance
                     // Generate: [CONST_I32, length, NEW_INSTANCE, name_bytes..., CONSTRUCT_INSTANCE]
                     // VM: pop length, read name from code (after NEW_INSTANCE), push instance_id
+                    // Note: NEW_INSTANCE does NOT push instance_id - VM will push it when executing the instruction
                     eprintln!("DEBUG: Compiling type instance: {}", type_name);
 
                     // Get ClassType to determine mono_name and field count
