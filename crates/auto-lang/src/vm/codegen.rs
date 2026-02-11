@@ -331,34 +331,51 @@ impl Codegen {
                 self.compile_stmt(&Stmt::Block(fn_decl.body.clone()))?;
 
                 // 6. Get number of locals and INSERT stack reservation at function entry
-                let n_locals = self.scope_stack.last().unwrap().len();
+                let n_args = fn_decl.params.len();
+                let total_vars = self.scope_stack.last().unwrap().len();
+                let n_locals = total_vars - n_args;  // Pure local vars (excluding parameters)
+
+                // Plan 088 Phase 4: Always emit FN_PROLOG at function entry
+                // This provides function metadata for dynamic parameter counting
+                // IMPORTANT: Adjust exports FIRST (before inserting FN_PROLOG and RESERVE_STACK)
+                // All function addresses > entry_point (after current function) will shift after insertion
+                // NOTE: Current function (at entry_point) should NOT be adjusted!
+                let mut adjusted_exports = std::collections::HashMap::new();
+                for (name, &addr) in &self.exports {
+                    if addr > entry_point {  // Note: > not >=
+                        let shift = if n_locals > 0 { 5 } else { 3 }; // FN_PROLOG (3 bytes) + optional RESERVE_STACK (2 bytes)
+                        adjusted_exports.insert(name.clone(), addr + shift);
+                    }
+                }
+                // Apply the adjustments
+                for (name, new_addr) in adjusted_exports {
+                    self.exports.insert(name, new_addr);
+                }
+
+                // IMPORTANT: Adjust reloc offsets too!
+                // Relocations that target positions >= entry_point will have their placeholder
+                // positions shifted after insertion.
+                let shift = if n_locals > 0 { 5 } else { 3 };
+                for reloc in &mut self.relocs {
+                    if reloc.offset >= entry_point {
+                        reloc.offset += shift;
+                    }
+                }
+
+                // Insert FN_PROLOG at entry_point (before function body)
+                // This is 3 bytes: 1 byte opcode + 1 byte n_args + 1 byte n_locals
+                eprintln!("DEBUG: Emitting FN_PROLOG at address {}, n_args={}, n_locals={}",
+                    entry_point, n_args, n_locals);
+                self.code.insert(entry_point as usize, OpCode::FN_PROLOG as u8);
+                self.code.insert(entry_point as usize + 1, n_args as u8);
+                self.code.insert(entry_point as usize + 2, n_locals as u8);
+
+                // Insert RESERVE_STACK after FN_PROLOG (if needed)
                 if n_locals > 0 {
-                    // IMPORTANT: Adjust exports FIRST (before inserting RESERVE_STACK)
-                    // All function addresses >= entry_point will shift by +2 after insertion
-                    let mut adjusted_exports = std::collections::HashMap::new();
-                    for (name, &addr) in &self.exports {
-                        if addr >= entry_point {
-                            adjusted_exports.insert(name.clone(), addr + 2);
-                        }
-                    }
-                    // Apply the adjustments
-                    for (name, new_addr) in adjusted_exports {
-                        self.exports.insert(name, new_addr);
-                    }
-
-                    // IMPORTANT: Adjust reloc offsets too!
-                    // Relocations that target positions >= entry_point will have their placeholder
-                    // positions shifted by +2 after insertion.
-                    for reloc in &mut self.relocs {
-                        if reloc.offset >= entry_point {
-                            reloc.offset += 2;
-                        }
-                    }
-
-                    // Insert RESERVE_STACK at entry_point (before function body)
+                    // Insert RESERVE_STACK at entry_point + 3 (after FN_PROLOG)
                     // This is 2 bytes: 1 byte opcode + 1 byte operand
-                    self.code.insert(entry_point as usize, OpCode::RESERVE_STACK as u8);
-                    self.code.insert(entry_point as usize + 1, n_locals as u8);
+                    self.code.insert(entry_point as usize + 3, OpCode::RESERVE_STACK as u8);
+                    self.code.insert(entry_point as usize + 4, n_locals as u8);
                 }
 
                 // 7. Emit RET at end of body

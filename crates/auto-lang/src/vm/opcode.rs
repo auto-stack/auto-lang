@@ -156,6 +156,12 @@ pub enum OpCode {
     STORE_MUT_REF = 0xB7,     // var_index: u32, value -> void (store via mutable reference)
                              // Store a value through a mutable reference
 
+    // === Plan 088 Phase 4: Function Prologue ===
+    // Function metadata for dynamic parameter counting
+    FN_PROLOG = 0xB8,         // n_args: u8, n_locals: u8 -> void
+                             // Function prologue: record argument and local count
+                             // Used by LOAD_LOCAL/STORE_LOCAL to calculate stack offsets
+
     // === Debug ===
     PRINT = 0xF0,
     HALT = 0xFF,

@@ -1936,10 +1936,8 @@ impl AutoVM {
                         // Stack layout: [..., args(0), args(1), ..., return_addr, old_bp, locals...]
                         //                        ^- BP-n_args           ^- BP-1    ^- BP
 
-                        // Calculate offset: param_idx is at BP - n_args + param_idx
-                        // But we need n_args! For now, assume simple instance method (n_args=1)
-                        // TODO: Read n_args from function metadata (RESERVE_STACK operand at function entry)
-                        let n_args = 1_usize;  // Placeholder for Counter.get(self)
+                        // Plan 088 Phase 4: Read n_args from function metadata (set by FN_PROLOG)
+                        let n_args = task.current_fn_n_args;
                         let offset = n_args - param_idx;  // For n_args=1, param 0: offset=1
 
                         // Stack layout for n_args=1: [arg0, ret_addr, old_bp, ...]
@@ -1962,8 +1960,25 @@ impl AutoVM {
                     let idx = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
                     let val = task.ram.pop_i32();
-                    // Store to bp+1+idx (bp+1 is first local variable)
-                    task.ram.write_i32(task.bp + 1 + idx, val);
+
+                    // Plan 088 Phase 4: Check if this is a parameter (idx >= 0x80)
+                    if idx >= 0x80 {
+                        // Parameter: decode parameter index
+                        let param_idx = idx - 0x80;  // 0x80 -> param 0, 0x81 -> param 1, etc.
+                        let n_args = task.current_fn_n_args;
+                        let offset = n_args - param_idx;
+                        let actual_offset = offset + 1;  // +1 for return_addr
+
+                        // Store to parameter location
+                        task.ram.write_i32(task.bp - actual_offset, val);
+                        eprintln!("DEBUG: STORE_LOCAL param {}: BP-{} = {}",
+                            param_idx, actual_offset, val);
+                    } else {
+                        // Local variable: store to bp+1+idx (bp+1 is first local variable)
+                        task.ram.write_i32(task.bp + 1 + idx, val);
+                        eprintln!("DEBUG: STORE_LOCAL local {}: BP+1+{} = {}",
+                            idx, idx, val);
+                    }
                 }
                 OpCode::LOAD_LOC_0 => {
                     // Load from bp+1 (first local variable)
@@ -1996,6 +2011,20 @@ impl AutoVM {
                 // === Stack ===
                 OpCode::DROP => {
                     task.ram.pop_i32();
+                }
+                // Plan 088 Phase 4: Function Prologue
+                OpCode::FN_PROLOG => {
+                    // Read function metadata
+                    let n_args = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+                    let n_locals = self.flash.read_u8(task.ip) as usize;
+                    task.ip += 1;
+
+                    eprintln!("DEBUG FN_PROLOG: n_args={}, n_locals={}", n_args, n_locals);
+
+                    // Save function metadata in task for use by LOAD_LOCAL/STORE_LOCAL
+                    task.current_fn_n_args = n_args;
+                    task.current_fn_n_locals = n_locals;
                 }
                 OpCode::RESERVE_STACK => {
                     // Reserve stack space for n_locals to prevent stack from overwriting locals

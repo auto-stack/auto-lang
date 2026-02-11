@@ -162,8 +162,11 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     // 3. Perform linking (resolve function calls)
     let strings = codegen.strings.clone();
     eprintln!("DEBUG: === Performing relocation for {} entries ===", codegen.relocs.len());
+    eprintln!("DEBUG: Available exports: {:?}", codegen.exports.keys().collect::<Vec<_>>());
+    eprintln!("DEBUG: exports map: {:?}", codegen.exports);
     for reloc in &codegen.relocs {
         eprintln!("DEBUG: Relocating '{}' at offset 0x{:04x}", reloc.symbol_name, reloc.offset);
+        eprintln!("DEBUG:   Looking up symbol '{}' (len={}, bytes={:?})", reloc.symbol_name, reloc.symbol_name.len(), reloc.symbol_name.as_bytes());
         if let Some(&addr) = codegen.exports.get(&reloc.symbol_name) {
             eprintln!("DEBUG:   Found '{}' at address 0x{:04x}", reloc.symbol_name, addr);
             let bytes = addr.to_le_bytes();
