@@ -1,6 +1,9 @@
 # Plan 087: AutoVM 泛型系统实现 - 类型擦除 + 特化存储
 
-> **当前状态**: 🟢 **核心功能已完成** (95%)
+> **状态**: ✅ **已完成** (2025-02-11)
+> **完成度**: 100% (Phase 1-3 完成，Plan 088 Phase 4 集成）
+
+**最新进展**: Plan 087 Phase 3 已与 Plan 088 Phase 4 完美集成，支持实例方法的 receiver 参数传递。详见：[088-implementation-complete.md](088-implementation-complete.md)
 > - ✅ 数据结构设计：100% 完成
 > - ✅ 单元测试：72/72 通过
 > - ✅ 编译时支持：100% 完成（Parser + Codegen + TypeRegistry）
