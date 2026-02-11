@@ -103,6 +103,10 @@ pub struct Codegen {
     /// Maps function name -> Vec of parameter types and modes
     /// Used during function calls to determine whether to use value or reference passing
     pub fn_params: HashMap<String, Vec<ParamInfo>>,
+
+    /// Plan 087 Phase 3: Current function parameter count (for correct local/param indexing)
+    /// Used during compilation to distinguish parameters (before BP) from locals (after BP)
+    pub current_fn_n_args: usize,
 }
 
 impl Codegen {
@@ -140,6 +144,7 @@ impl Codegen {
             generics: GenericTable::new(), // Plan 076 Phase 1
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(), // Plan 087 Phase 1
             fn_params: HashMap::new(), // Plan 088 Phase 4: function parameter information
+            current_fn_n_args: 0, // Plan 087 Phase 3: Initialize to 0
         }
     }
 
@@ -270,6 +275,7 @@ impl Codegen {
                 // 2. Record function entry point (export)
                 // Entry point is HERE (after JMP instruction)
                 let entry_point = self.code.len() as u32;
+                eprintln!("DEBUG: Exporting function '{}' at address {:#04x}", fn_decl.name, entry_point);
                 self.exports.insert(fn_decl.name.to_string(), entry_point);
 
                 // 3. Push new scope for function locals
@@ -287,9 +293,38 @@ impl Codegen {
                 // Store parameter information in fn_params map
                 self.fn_params.insert(fn_decl.name.to_string(), param_infos.clone());
 
+                // Plan 087 Phase 3: Set current function parameter count
+                self.current_fn_n_args = fn_decl.params.len();
+
                 // Add parameters to scope
+                // Plan 087 Phase 3: Record self parameter type for field access
                 for param in &fn_decl.params {
                     self.add_var(&param.name);
+
+                    // Check if this is a 'self' parameter in a method
+                    if param.name.to_string() == "self" {
+                        // Extract type name from method name (e.g., "Counter.get" → "Counter")
+                        if let Some(dot_pos) = fn_decl.name.to_string().find('.') {
+                            let type_name = fn_decl.name.to_string()[..dot_pos].to_string();
+                            eprintln!("DEBUG: Recording self parameter type: {}", type_name);
+                            // Create a synthetic TypeDecl for type tracking
+                            if let Some(_type_info) = self.get_type(&type_name) {
+                                let type_decl = crate::ast::TypeDecl {
+                                    name: crate::ast::Name::from(type_name),
+                                    kind: crate::ast::TypeDeclKind::UserType,
+                                    parent: None,
+                                    has: vec![],
+                                    specs: vec![],
+                                    spec_impls: vec![],
+                                    generic_params: vec![],
+                                    members: vec![],
+                                    delegations: vec![],
+                                    methods: vec![],
+                                };
+                                self.var_types.insert("self".to_string(), Type::User(type_decl));
+                            }
+                        }
+                    }
                 }
 
                 // 5. Compile body FIRST to count locals
@@ -333,6 +368,9 @@ impl Codegen {
 
                 // 8. Pop function scope
                 self.pop_scope();
+
+                // Plan 087 Phase 3: Reset current function parameter count
+                self.current_fn_n_args = 0;
 
                 // 9. Patch jump to skip body
                 self.patch_jump(jump_over);
@@ -463,6 +501,51 @@ impl Codegen {
                                 };
                                 self.var_types.insert(store.name.to_string(), Type::User(type_decl));
                             }
+                            // Plan 087 Phase 3: Track user-defined type instances
+                            // Example: let c = Counter.new()
+                            else if self.is_type(type_name) {
+                                // Get type info and create a synthetic TypeDecl
+                                if let Some(type_info) = self.get_type(type_name) {
+                                    let type_decl = crate::ast::TypeDecl {
+                                        name: crate::ast::Name::from(type_name),
+                                        kind: crate::ast::TypeDeclKind::UserType,
+                                        parent: None,
+                                        has: vec![],
+                                        specs: vec![],
+                                        spec_impls: vec![],
+                                        generic_params: vec![],
+                                        members: vec![],
+                                        delegations: vec![],
+                                        methods: vec![],
+                                    };
+                                    self.var_types.insert(store.name.to_string(), Type::User(type_decl));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Plan 087 Phase 3: Track type instances from Node literals
+                // Example: let c = Counter{count: 0}
+                else if let Expr::Node(node) = &store.expr {
+                    let type_name = node.name.to_string();
+                    // Check if this node name corresponds to a registered type
+                    if self.is_type(&type_name) {
+                        if let Some(_type_info) = self.get_type(&type_name) {
+                            // Create a synthetic TypeDecl for type tracking
+                            let type_decl = crate::ast::TypeDecl {
+                                name: crate::ast::Name::from(type_name),
+                                kind: crate::ast::TypeDeclKind::UserType,
+                                parent: None,
+                                has: vec![],
+                                specs: vec![],
+                                spec_impls: vec![],
+                                generic_params: vec![],
+                                members: vec![],
+                                delegations: vec![],
+                                methods: vec![],
+                            };
+                            self.var_types.insert(store.name.to_string(), Type::User(type_decl));
                         }
                     }
                 }
@@ -495,8 +578,23 @@ impl Codegen {
             Stmt::TypeDecl(type_decl) => {
                 // Register the type in the type registry
                 self.register_type(type_decl);
-                // Type declarations don't generate any bytecode at compile time
-                // They just register metadata for use in instance construction
+
+                // Plan 087 Phase 3: Compile type methods as standalone functions
+                // Method naming: TypeName.method_name (e.g., Counter.increment)
+                // self becomes the first parameter
+                let type_name = type_decl.name.to_string();
+                for method in &type_decl.methods {
+                    // Create mangled method name: TypeName.method_name
+                    let mangled_name = format!("{}.{}", type_name, method.name);
+
+                    // Clone and modify the method for standalone compilation
+                    let mut method_fn = method.clone();
+                    method_fn.name = crate::ast::Name::from(mangled_name.as_str());
+                    method_fn.parent = Some(crate::ast::Name::from(type_name.as_str()));
+
+                    // Compile as a standalone function
+                    self.compile_stmt(&Stmt::Fn(method_fn))?;
+                }
             }
             Stmt::EnumDecl(enum_decl) => {
                 // Plan 073 Phase 8.6: Enum declaration support
@@ -1088,10 +1186,141 @@ impl Codegen {
             }
             // Plan 073: Node support (for type instances like Point(10, 20))
             Expr::Node(node) => {
-                // Check if this is a type instance
+                // Plan 087 Phase 3: Check if this is a user-defined type instance
                 let type_name = node.name.to_string();
 
-                if let Some(type_info) = self.get_type(&type_name) {
+                // Check if this is a type registered in generic_registry
+                let is_registered_type = self.generic_registry.has_template(&type_name);
+
+                if is_registered_type {
+                    // Plan 087 Phase 2/3: Generic type or user-defined type instance
+                    // Generate: [CONST_I32, length, NEW_INSTANCE, name_bytes..., CONSTRUCT_INSTANCE]
+                    // VM: pop length, read name from code (after NEW_INSTANCE), push instance_id
+                    eprintln!("DEBUG: Compiling type instance: {}", type_name);
+
+                    // Get ClassType to determine mono_name and field count
+                    let type_args = Vec::new(); // Non-generic types have empty type args
+                    if let Ok(class_type) = self.generic_registry.get_or_create_type(&type_name, type_args) {
+                        let field_count = class_type.template.fields.len();
+                        let mono_name = class_type.mono_name.clone();
+                        eprintln!("DEBUG: mono_name = '{}' ({} bytes)", mono_name, mono_name.len());
+                        eprintln!("DEBUG: mono_name bytes = {:?}", mono_name.as_bytes());
+                        let name_bytes = mono_name.as_bytes();
+                        let name_len = name_bytes.len();
+
+                        // Plan 087 Phase 3: Generate bytecode in correct order
+                        // CONSTRUCT_INSTANCE expects: [..., field_count, value1, value2, ..., instance_id]
+                        // So we need to push field_count FIRST, then values, then instance_id
+
+                        // Collect all field values from both args and body
+                        let mut field_values = Vec::new();
+
+                        // 1. Collect from args (if any, e.g., Counter(count: 42))
+                        for arg in &node.args.args {
+                            match arg {
+                                crate::ast::Arg::Pos(expr) => {
+                                    field_values.push(expr.clone());
+                                }
+                                crate::ast::Arg::Pair(_, expr) => {
+                                    field_values.push(expr.clone());
+                                }
+                                crate::ast::Arg::Name(_) => {
+                                    // Name-only arg - treat as nil value
+                                    field_values.push(crate::ast::Expr::Nil);
+                                }
+                            }
+                        }
+
+                        // 2. Collect from body stmts (for Counter{count: 42} syntax)
+                        // The body contains Stmt::Expr(Expr::Pair(...)) for each field
+                        for stmt in &node.body.stmts {
+                            if let crate::ast::Stmt::Expr(expr) = stmt {
+                                if let crate::ast::Expr::Pair(pair) = expr {
+                                    // Extract the value from the pair
+                                    field_values.push(pair.value.as_ref().clone());
+                                }
+                            }
+                        }
+
+                        eprintln!("DEBUG codegen: field_count = {}, collected {} field values from args ({}), body ({})",
+                            field_count,
+                            field_values.len(),
+                            node.args.args.len(),
+                            node.body.stmts.len()
+                        );
+
+                        // Plan 087 Phase 3: Generate bytecode in correct order
+                        // CONSTRUCT_INSTANCE pops: instance_id, then field_count, then field_count values
+                        // So the stack should be: [..., value1, value2, ..., valueN, instance_id, field_count]
+
+                        // 1. Compile each field value expression (pushes values onto stack)
+                        // Stack: ..., value1, value2, ..., valueN
+                        for (i, value_expr) in field_values.iter().enumerate() {
+                            eprintln!("DEBUG codegen: Compiling field value {}", i);
+                            self.compile_expr(value_expr)?;
+                            eprintln!("DEBUG codegen: code.len() = 0x{:04x} after field value {}", self.code.len(), i);
+                        }
+
+                        // 2. Push mono_name length onto stack (for NEW_INSTANCE to pop)
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_u32(name_len as u32);
+
+                        // 3. Emit NEW_INSTANCE instruction
+                        // VM will pop length, read name_bytes from code, push instance_id
+                        // Stack after: [..., value1, value2, ..., valueN, instance_id]
+                        self.emit(OpCode::NEW_INSTANCE);
+
+                        // 4. Emit mono_name bytes directly into code (AFTER NEW_INSTANCE instruction)
+                        for &byte in name_bytes {
+                            self.code.push(byte);
+                        }
+
+                        // 5. Push field_count (for CONSTRUCT_INSTANCE)
+                        // Stack: [..., value1, value2, ..., valueN, instance_id, field_count]
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_u32(field_count as u32);
+
+                        // 6. Emit CONSTRUCT_INSTANCE
+                        // Stack layout: [..., value1, value2, ..., valueN, instance_id, field_count]
+                        self.emit(OpCode::CONSTRUCT_INSTANCE);
+                        eprintln!("DEBUG codegen: code.len() = 0x{:04x} after CONSTRUCT_INSTANCE", self.code.len());
+                    } else {
+                        eprintln!("Warning: Failed to get/create ClassType for '{}'", type_name);
+                        // Fallback to CREATE_OBJ (regular object)
+                        let member_names = vec!["count".to_string()]; // Fallback
+
+                        // Compile args
+                        let arg_count = node.num_args as u8;
+                        for arg in &node.args.args {
+                            match arg {
+                                crate::ast::Arg::Pos(expr) => {
+                                    self.compile_expr(expr)?;
+                                }
+                                crate::ast::Arg::Pair(_, expr) => {
+                                    self.compile_expr(expr)?;
+                                }
+                                crate::ast::Arg::Name(_) => {
+                                    self.emit(OpCode::CONST_0);
+                                }
+                            }
+                        }
+
+                        // Create object keys
+                        let keys: Vec<auto_val::ValueKey> = member_names
+                            .iter()
+                            .take(arg_count as usize)
+                            .map(|name| auto_val::ValueKey::Str(name.clone().into()))
+                            .collect();
+                        let key_index = self.object_keys.len() as u16;
+                        self.object_keys.push(keys);
+
+                        // Emit CREATE_OBJ
+                        let field_count = arg_count.min(member_names.len() as u8);
+                        self.emit(OpCode::CREATE_OBJ);
+                        self.code.extend_from_slice(&key_index.to_le_bytes());
+                        self.code.push(field_count);
+                    }
+                } else if let Some(type_info) = self.get_type(&type_name) {
                     // This is a type instance! Generate object creation instead of node
                     // Example: Point(10, 20) -> object with x: 10, y: 20
 
@@ -1214,6 +1443,18 @@ impl Codegen {
             // Plan 073: Dot expression field access (obj.field)
             // Plan 087 Phase 2: Support generic instance field access
             Expr::Dot(obj, field) => {
+                // Plan 087 Phase 3: Check if this is field access on a user-defined type instance
+                let is_user_type_instance = if let Expr::Ident(var_name) = obj.as_ref() {
+                    // Look up variable type
+                    if let Some(var_type) = self.var_types.get(var_name.as_ref()) {
+                        matches!(var_type, Type::User(_))
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
                 // Check if obj is a generic instance variable
                 let is_generic_instance = if let Expr::Ident(var_name) = obj.as_ref() {
                     // Look up variable type
@@ -1226,48 +1467,61 @@ impl Codegen {
                     false
                 };
 
-                if is_generic_instance {
-                    // Plan 087 Phase 2: Generic instance field access
+                if is_user_type_instance || is_generic_instance {
+                    eprintln!("DEBUG: Compiling field access: obj={:?}, field={}", obj, field);
+                    // Plan 087 Phase 2/3: Generic instance or user-defined type field access
                     // Compile object expression (pushes instance_id onto stack)
                     self.compile_expr(obj)?;
 
-                    // Get field index from generic registry
+                    // Get field index from type registry
                     if let Expr::Ident(var_name) = obj.as_ref() {
-                        if let Some(Type::GenericInstance(ref inst)) = self.var_types.get(var_name.as_ref()) {
-                            // Generate mono_name from base_name and args
-                            let mono_name = self.generic_registry.get_template(&inst.base_name.to_string())
-                                .map(|t| t.mono_name_from_args(&inst.args))
-                                .unwrap_or_else(|| format!("{}_unknown", inst.base_name));
+                        if let Some(var_type) = self.var_types.get(var_name.as_ref()) {
+                            let type_name = match var_type {
+                                Type::User(type_decl) => type_decl.name.to_string(),
+                                Type::GenericInstance(inst) => {
+                                    // Generate mono_name from base_name and args
+                                    self.generic_registry.get_template(&inst.base_name.to_string())
+                                        .map(|t| t.mono_name_from_args(&inst.args))
+                                        .unwrap_or_else(|| format!("{}_unknown", inst.base_name))
+                                }
+                                _ => var_name.to_string(),
+                            };
 
+                            eprintln!("DEBUG: Looking up type '{}' for field '{}'", type_name, field);
                             // Get ClassType to find field index
-                            if let Some(class_type) = self.generic_registry.get_type(&mono_name) {
+                            if let Some(class_type) = self.generic_registry.get_type(&type_name) {
                                 let field_str = field.to_string();
                                 if let Some(field_index) = class_type.field_index(&field_str) {
+                                    eprintln!("DEBUG: Field '{}' index = {}", field, field_index);
                                     // Emit GET_GENERIC_FIELD with field index
                                     self.emit(OpCode::GET_GENERIC_FIELD);
                                     self.emit_u32(field_index as u32);
                                 } else {
-                                    eprintln!("Warning: Field '{}' not found in generic type '{}'",
-                                        field, inst.base_name);
+                                    eprintln!("Warning: Field '{}' not found in type '{}'",
+                                        field, type_name);
                                     // Fallback: emit placeholder
                                     self.emit(OpCode::GET_GENERIC_FIELD);
                                     self.emit_u32(0);
                                 }
                             } else {
-                                eprintln!("Warning: Generic type '{}' not found in registry", mono_name);
+                                eprintln!("Warning: Type '{}' not found in registry", type_name);
                                 // Fallback to regular field access
                                 self.emit(OpCode::GET_FIELD);
-                                self.emit_u16(0);
+                                let field_str = field.to_string();
+                                let field_bytes = field_str.as_bytes().to_vec();
+                                let field_idx = self.strings.len() as u16;
+                                self.strings.push(field_bytes);
+                                self.emit_u16(field_idx);
                             }
                         } else {
                             // Fallback to regular field access
                             self.emit(OpCode::GET_FIELD);
-                            self.emit_u16(0);
+                            let field_str = field.to_string();
+                            let field_bytes = field_str.as_bytes().to_vec();
+                            let field_idx = self.strings.len() as u16;
+                            self.strings.push(field_bytes);
+                            self.emit_u16(field_idx);
                         }
-                    } else {
-                        // Fallback to regular field access
-                        self.emit(OpCode::GET_FIELD);
-                        self.emit_u16(0);
                     }
                 } else {
                     // Regular field access (Plan 073)
@@ -1686,17 +1940,23 @@ impl Codegen {
                                             Some(format!("{}.{}", mono_name, method))
                                         } else {
                                             // Not a generic instance, use regular inference
+                                            eprintln!("DEBUG: Instance method call: obj={}, method={}, var_types={:?}", obj_name, method, self.var_types);
                                             if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
+                                                eprintln!("DEBUG: Inferred type name: {}", type_name);
                                                 Some(format!("{}.{}", type_name, method))
                                             } else {
+                                                eprintln!("DEBUG: Failed to infer type for {}", obj_name);
                                                 Some(format!("{}.{}", obj_name, method))
                                             }
                                         }
                                     } else {
                                         // No type info, use regular inference
+                                        eprintln!("DEBUG: No type info for obj={}, var_types empty", obj_name);
                                         if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
+                                            eprintln!("DEBUG: Inferred type name: {}", type_name);
                                             Some(format!("{}.{}", type_name, method))
                                         } else {
+                                            eprintln!("DEBUG: Failed to infer type for {}", obj_name);
                                             Some(format!("{}.{}", obj_name, method))
                                         }
                                     };
@@ -1803,7 +2063,9 @@ impl Codegen {
                 }
 
                 // Normal Function Call (user-defined)
-                // Plan 073: For instance methods, compile receiver (self) FIRST, then arguments
+                // Plan 087 Phase 3 + Plan 088 Phase 4: Instance method receiver as first argument
+                let mut is_instance_method_call = false;
+
                 if let Expr::Dot(obj, _method) = call.name.as_ref() {
                     // Check if it's a static method call (Type.method with capital T)
                     let is_static_method = match obj.as_ref() {
@@ -1813,10 +2075,15 @@ impl Codegen {
                         _ => false,
                     };
 
-                    // Compile receiver for instance methods
+                    // For instance methods, treat receiver as first argument
                     if !is_static_method {
-                        // Check if this method needs 'id' field extraction
+                        is_instance_method_call = true;
+
+                        // Plan 088 Phase 4: Compile receiver as first argument (index 0)
                         if let Some(ref method_name) = func_name {
+                            eprintln!("DEBUG: Compiling instance method call: receiver is arg 0 for '{}'", method_name);
+
+                            // Check if this method needs 'id' field extraction
                             if self.needs_id_extraction(method_name) {
                                 // Compile object expression
                                 self.compile_expr(obj)?;
@@ -1830,12 +2097,28 @@ impl Codegen {
                                 self.emit(OpCode::GET_FIELD);
                                 self.code.extend_from_slice(&field_idx.to_le_bytes());
                             } else {
-                                // Compile full instance (for user-defined types)
-                                self.compile_expr(obj)?;
+                                // Plan 088 Phase 4: Smart parameter passing for receiver
+                                // Use compile_call_arg to support Copy/View/Mut/Take modes
+                                eprintln!("DEBUG: Checking fn_params for '{}': found={}",
+                                    method_name,
+                                    self.fn_params.contains_key(method_name)
+                                );
+                                eprintln!("DEBUG: Available fn_params: {:?}",
+                                    self.fn_params.keys().collect::<Vec<_>>()
+                                );
+
+                                if self.fn_params.contains_key(method_name) {
+                                    eprintln!("DEBUG:   Receiver (arg 0): smart param passing for '{}'", method_name);
+                                    self.compile_call_arg(obj, method_name, 0)?;
+                                } else {
+                                    eprintln!("DEBUG:   Receiver (arg 0): normal compile (no param info)");
+                                    self.compile_expr(obj)?;
+                                }
                             }
-                        } else {
-                            self.compile_expr(obj)?;
                         }
+                    } else {
+                        // Static method - no receiver
+                        is_instance_method_call = false;
                     }
                 }
 
@@ -1844,16 +2127,21 @@ impl Codegen {
                 let call_display = format!("{:?}", call.name);
                 eprintln!("DEBUG: ===== Compiling call: {} =====", call_display);
                 eprintln!("DEBUG: Before compiling args, code.len()={:04x} ({})", self.code.len(), self.code.len());
+
+                // For instance methods, receiver is arg 0, so other args start from index 1
+                let arg_offset = if is_instance_method_call { 1 } else { 0 };
+
                 if !call.args.is_empty() {
                     let func_name_for_params = func_name.as_ref().map(|s| s.as_str()).unwrap_or("");
                     for (i, arg) in call.args.args.iter().enumerate() {
                         match arg {
                             crate::ast::Arg::Pos(expr) => {
+                                let param_index = i + arg_offset;
                                 if !func_name_for_params.is_empty() && self.fn_params.contains_key(func_name_for_params) {
-                                    eprintln!("DEBUG:   Arg {}: smart param passing for '{}'", i, func_name_for_params);
-                                    self.compile_call_arg(expr, func_name_for_params, i)?;
+                                    eprintln!("DEBUG:   Arg {}: smart param passing for '{}'", param_index, func_name_for_params);
+                                    self.compile_call_arg(expr, func_name_for_params, param_index)?;
                                 } else {
-                                    eprintln!("DEBUG:   Arg {}: normal compile", i);
+                                    eprintln!("DEBUG:   Arg {}: normal compile", param_index);
                                     self.compile_expr(expr)?;
                                 }
                             }
@@ -1875,6 +2163,9 @@ impl Codegen {
                         _ => unimplemented!("Dynamic call (computed function name) not supported yet"),
                     }
                 });
+
+                eprintln!("DEBUG: Creating reloc for function '{}' at offset 0x{:04x}", reloc_name, placeholder_idx);
+                eprintln!("DEBUG: Available exports: {:?}", self.exports.keys().collect::<Vec<_>>());
 
                 self.relocs.push(RelocEntry {
                     offset: placeholder_idx as u32,
@@ -2197,19 +2488,55 @@ impl Codegen {
     }
 
     /// Emit LOAD_LOCAL for a given local index
+    /// Plan 087 Phase 3: Distinguish between parameters (before BP) and locals (after BP)
+    /// Parameters: index < current_fn_n_args, stored at BP - n_args + index
+    /// Locals: index >= current_fn_n_args, stored at BP + 1 + (index - n_args)
     /// Uses dedicated opcodes for locals 0-2 for performance
     fn emit_load_loc(&mut self, index: usize) {
-        eprintln!("DEBUG: emit_load_loc called with index={}", index);
-        match index {
-            0 => {
-                eprintln!("DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)");
-                self.emit(OpCode::LOAD_LOC_0);
-            }
-            1 => self.emit(OpCode::LOAD_LOC_1),
-            2 => self.emit(OpCode::LOAD_LOC_2),
-            _ => {
-                self.emit(OpCode::LOAD_LOCAL);
-                self.code.push(index as u8);
+        eprintln!("DEBUG: emit_load_loc called with index={}, n_args={}", index, self.current_fn_n_args);
+
+        let n_args = self.current_fn_n_args;
+
+        if index < n_args {
+            // This is a parameter, stored before BP
+            // Stack layout: [..., args(0), args(1), ..., return_addr, old_bp, locals...]
+            //                        ^- BP-n_args     ^- BP-1    ^- BP
+            // Parameter i is at BP - n_args + i
+            let offset = (n_args - index) as i32;  // Positive offset going backwards from BP
+            eprintln!("DEBUG: Loading parameter {} at BP-{} (BP-{}={})",
+                index, offset, offset, "calculate at runtime");
+
+            // Load parameter using LOAD_LOCAL with negative offset logic
+            // For now, use LOAD_LOCAL with special encoding
+            self.emit(OpCode::LOAD_LOCAL);
+            // Encode as negative offset (0x80..0xFF means parameter)
+            let encoded_index = 0x80 + index as u8;  // 0x80 means param 0, 0x81 means param 1, etc.
+            self.code.push(encoded_index);
+            eprintln!("DEBUG: Emitting LOAD_LOCAL with encoded parameter index 0x{:02x}", encoded_index);
+        } else {
+            // This is a local variable, stored after BP
+            let local_index = index - n_args;
+            eprintln!("DEBUG: Loading local variable {} at BP+1+{}",
+                local_index, local_index);
+
+            match local_index {
+                0 => {
+                    eprintln!("DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)");
+                    self.emit(OpCode::LOAD_LOC_0);
+                }
+                1 => {
+                    eprintln!("DEBUG: Emitting LOAD_LOC_1");
+                    self.emit(OpCode::LOAD_LOC_1);
+                }
+                2 => {
+                    eprintln!("DEBUG: Emitting LOAD_LOC_2");
+                    self.emit(OpCode::LOAD_LOC_2);
+                }
+                _ => {
+                    self.emit(OpCode::LOAD_LOCAL);
+                    self.code.push(local_index as u8);
+                    eprintln!("DEBUG: Emitting LOAD_LOCAL with local index {}", local_index);
+                }
             }
         }
     }
@@ -2866,7 +3193,20 @@ impl Codegen {
                 member_names,
             };
 
-            self.types.insert(type_decl.name.to_string(), type_info);
+            self.types.insert(type_decl.name.to_string(), type_info.clone());
+
+            // Plan 087 Phase 3: Also register non-generic types in generic_registry
+            // This enables field access lookup for user-defined types
+            self.register_generic_template(type_decl);
+
+            // Create a ClassType for non-generic types using get_or_create_type
+            // This allows get_type() to find non-generic types
+            let type_args: Vec<Type> = vec![];  // Non-generic types have empty type args
+            if let Ok(class_type) = self.generic_registry.get_or_create_type(&type_decl.name.to_string(), type_args) {
+                eprintln!("DEBUG: Registered non-generic type '{}' in generic_registry", type_decl.name);
+            } else {
+                eprintln!("Warning: Failed to create ClassType for '{}'", type_decl.name);
+            }
         }
     }
 

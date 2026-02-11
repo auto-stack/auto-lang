@@ -150,22 +150,26 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     codegen.code.push(OpCode::HALT as u8);
 
     // DEBUG: Print bytecode BEFORE relocation
-    eprintln!("DEBUG: === Bytecode BEFORE relocation (0x15-0x35) ===");
-    for i in 0x15..0x35u32 {
+    eprintln!("DEBUG: === Bytecode BEFORE relocation (0x00-0x40) ===");
+    for i in 0x00..0x40u32 {
         if (i as usize) < codegen.code.len() {
             let op = codegen.code[i as usize];
-            let marker = if op == 0xB6 || op == 0x25 { " <--" } else { "" };
-            eprintln!("CODE[{:04x}]: {:02x}{}", i, op, marker);
+            eprintln!("CODE[{:04x}]: {:02x}", i, op);
         }
     }
+    eprintln!("DEBUG: === End of bytecode ===");
 
     // 3. Perform linking (resolve function calls)
     let strings = codegen.strings.clone();
+    eprintln!("DEBUG: === Performing relocation for {} entries ===", codegen.relocs.len());
     for reloc in &codegen.relocs {
+        eprintln!("DEBUG: Relocating '{}' at offset 0x{:04x}", reloc.symbol_name, reloc.offset);
         if let Some(&addr) = codegen.exports.get(&reloc.symbol_name) {
+            eprintln!("DEBUG:   Found '{}' at address 0x{:04x}", reloc.symbol_name, addr);
             let bytes = addr.to_le_bytes();
             let offset = reloc.offset as usize;
             for (i, b) in bytes.iter().enumerate() {
+                eprintln!("DEBUG:   code[{}] = {} (was {})", offset + i, *b, codegen.code[offset + i]);
                 codegen.code[offset + i] = *b;
             }
         } else {

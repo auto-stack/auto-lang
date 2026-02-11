@@ -801,8 +801,11 @@ impl AutoVM {
                     // Stack after: [..., instance_id]
                     use crate::vm::generic_registry::GenericInstanceData;
 
+                    eprintln!("DEBUG NEW_INSTANCE: Stack depth before pop = {}", task.ram.sp);
+
                     // Read mono_name length from stack
                     let name_len = task.ram.pop_i32() as usize;
+                    eprintln!("DEBUG NEW_INSTANCE: Popped name_len = {}", name_len);
 
                     // Read mono_name bytes from flash memory and convert to String
                     // Note: task.ip already points to the first byte after the opcode (advanced by main loop)
@@ -817,88 +820,128 @@ impl AutoVM {
 
                     let mono_name = String::from_utf8(name_bytes)
                         .map_err(|e| VMError::RuntimeError(format!("Invalid UTF-8 in mono_name: {}", e)))?;
+                    eprintln!("DEBUG NEW_INSTANCE: mono_name = '{}'", mono_name);
 
                     // Create instance with no fields (uninitialized)
                     let instance = GenericInstanceData::new(mono_name, vec![]);
                     let instance_id = self.insert_heap_object(instance);
 
                     // Push instance ID onto stack
+                    eprintln!("DEBUG NEW_INSTANCE: Pushing instance_id = {}", instance_id);
                     task.ram.push_i32(instance_id as i32);
+                    eprintln!("DEBUG NEW_INSTANCE: Stack depth after push = {}, top value = {}",
+                        task.ram.sp,
+                        if task.ram.sp > 0 { task.ram.raw[(task.ram.sp - 1) as usize] } else { 0 }
+                    );
                 }
                 OpCode::CONSTRUCT_INSTANCE => {
                     // Plan 087 Phase 2: Populate fields of a generic instance
-                    // Stack layout: [..., field_count, value1, value2, ..., instance_id]
-                    // Stack after: [...]
+                    // Stack layout: [..., value1, value2, ..., valueN, instance_id, field_count]
+                    // Stack after: [..., instance_id]  (instance_id left on stack for variable assignment)
                     use crate::vm::generic_registry::GenericInstanceData;
                     use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
 
-                    // Pop instance_id (top of stack)
-                    let instance_id = task.ram.pop_i32() as u64;
+                    eprintln!("DEBUG CONSTRUCT_INSTANCE: Stack depth before pop = {}", task.ram.sp);
 
-                    // Pop field_count
+                    // Pop field_count (top of stack)
                     let field_count = task.ram.pop_i32() as usize;
+                    eprintln!("DEBUG CONSTRUCT_INSTANCE: Popped field_count = {}", field_count);
+
+                    // Pop instance_id (next on stack)
+                    let instance_id = task.ram.pop_i32() as u64;
+                    eprintln!("DEBUG CONSTRUCT_INSTANCE: Popped instance_id = {}", instance_id);
 
                     // Pop values from stack (in reverse order)
                     // For Phase 2, we assume all values are basic types (int, float, bool, etc.)
                     let mut field_values = Vec::with_capacity(field_count);
-                    for _ in 0..field_count {
+                    for i in 0..field_count {
+                        eprintln!("DEBUG CONSTRUCT_INSTANCE: Popping value {}/{}, stack depth = {}", i+1, field_count, task.ram.sp);
                         // Pop value as i32 (basic type)
                         let val_i32 = task.ram.pop_i32();
+                        eprintln!("DEBUG CONSTRUCT_INSTANCE: Popped value = {}", val_i32);
                         // For Phase 2, convert to Int (simplified)
                         field_values.push(Value::Int(val_i32));
                     }
                     field_values.reverse(); // Reverse to get correct order
 
+                    eprintln!("DEBUG CONSTRUCT_INSTANCE: Field values (reversed): {:?}", field_values);
+
                     // Get instance and populate fields
                     if let Some(obj) = self.get_heap_object(instance_id) {
                         let mut guard = obj.write().unwrap();
 
-                        if let Some(instance) = try_downcast_checked_mut::<GenericInstanceData>(
-                            &mut *guard,
-                            TypeTag::GenericInstance("".into())
-                        ) {
-                            instance.fields = field_values;
+                        // Check if this is a GenericInstance by checking the type tag
+                        let is_generic_instance = matches!(guard.type_tag(), TypeTag::GenericInstance(_));
+
+                        if is_generic_instance {
+                            // Use as_any_mut for downcasting (works without exact TypeTag match)
+                            if let Some(instance) = guard.as_any_mut().downcast_mut::<GenericInstanceData>() {
+                                let field_count = field_values.len();
+                                instance.fields = field_values;
+                                eprintln!("DEBUG CONSTRUCT_INSTANCE: Successfully populated {} fields", field_count);
+                            } else {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Type error: Failed to downcast GenericInstance")));
+                            }
                         } else {
                             return Err(VMError::RuntimeError(format!(
-                                "Type error: CONSTRUCT_INSTANCE expected GenericInstance")));
+                                "Type error: CONSTRUCT_INSTANCE expected GenericInstance, got {:?}", guard.type_tag())));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(
                             "Invalid instance ID: {}", instance_id)));
                     }
+
+                    // Push instance_id back onto stack for variable assignment
+                    // Stack layout after: [..., instance_id]
+                    eprintln!("DEBUG CONSTRUCT_INSTANCE: Pushing instance_id back to stack: {}", instance_id);
+                    task.ram.push_i32(instance_id as i32);
+                    eprintln!("DEBUG CONSTRUCT_INSTANCE: Stack depth after = {}", task.ram.sp);
                 }
                 OpCode::GET_GENERIC_FIELD => {
                     // Plan 087 Phase 2: Get field value from generic instance
-                    // Stack layout: [..., instance_id, field_index]
+                    // Code layout: [opcode, field_index:u32]
+                    // Stack layout: [..., instance_id]
                     // Stack after: [..., value]
                     use crate::vm::generic_registry::GenericInstanceData;
-                    use crate::vm::heap_object::{try_downcast_checked, TypeTag};
+                    use crate::vm::heap_object::TypeTag;
 
-                    // Pop field_index
-                    let field_index = task.ram.pop_i32() as usize;
+                    // Read field_index from code stream (not stack!)
+                    let field_index = self.flash.read_u32(task.ip) as usize;
+                    task.ip += 4;
 
                     // Pop instance_id
                     let instance_id = task.ram.pop_i32() as u64;
+
+                    eprintln!("DEBUG: GET_GENERIC_FIELD: instance_id={}, field_index={}",
+                        instance_id, field_index);
 
                     // Get instance and read field
                     if let Some(obj) = self.get_heap_object(instance_id) {
                         let guard = obj.read().unwrap();
 
-                        if let Some(instance) = try_downcast_checked::<GenericInstanceData>(
-                            &*guard,
-                            TypeTag::GenericInstance("".into())
-                        ) {
-                            if let Some(value) = instance.get_field(field_index) {
-                                // Push field value onto stack using helper
-                                Self::push_value(&mut task.ram, value, &self.strings);
+                        // Check if this is a GenericInstance (any variant)
+                        let is_generic_instance = matches!(guard.type_tag(), TypeTag::GenericInstance(_));
+
+                        if is_generic_instance {
+                            if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                if let Some(value) = instance.get_field(field_index) {
+                                    // Push field value onto stack using helper
+                                    Self::push_value(&mut task.ram, value, &self.strings);
+                                    eprintln!("DEBUG: GET_GENERIC_FIELD: field value = {:?}", value);
+                                } else {
+                                    return Err(VMError::RuntimeError(format!(
+                                        "Field index {} out of bounds (instance has {} fields)",
+                                        field_index, instance.field_count())));
+                                }
                             } else {
                                 return Err(VMError::RuntimeError(format!(
-                                    "Field index {} out of bounds (instance has {} fields)",
-                                    field_index, instance.field_count())));
+                                    "Type error: GET_GENERIC_FIELD failed to downcast GenericInstance")));
                             }
                         } else {
                             return Err(VMError::RuntimeError(format!(
-                                "Type error: GET_GENERIC_FIELD expected GenericInstance")));
+                                "Type error: GET_GENERIC_FIELD expected GenericInstance, got {:?}",
+                                guard.type_tag())));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(
@@ -907,34 +950,48 @@ impl AutoVM {
                 }
                 OpCode::SET_GENERIC_FIELD => {
                     // Plan 087 Phase 2: Set field value in generic instance
-                    // Stack layout: [..., instance_id, field_index, value]
+                    // Code layout: [opcode, field_index:u32]
+                    // Stack layout: [..., instance_id, value]
                     // Stack after: [...]
                     use crate::vm::generic_registry::GenericInstanceData;
-                    use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+                    use crate::vm::heap_object::TypeTag;
+
+                    // Read field_index from code stream (not stack!)
+                    let field_index = self.flash.read_u32(task.ip) as usize;
+                    task.ip += 4;
 
                     // Pop value (for Phase 2, assume it's a basic int)
                     let val_i32 = task.ram.pop_i32();
                     let value = Value::Int(val_i32);
 
-                    // Pop field_index
-                    let field_index = task.ram.pop_i32() as usize;
-
                     // Pop instance_id
                     let instance_id = task.ram.pop_i32() as u64;
+
+                    eprintln!("DEBUG: SET_GENERIC_FIELD: instance_id={}, field_index={}, value={}",
+                        instance_id, field_index, val_i32);
 
                     // Get instance and set field
                     if let Some(obj) = self.get_heap_object(instance_id) {
                         let mut guard = obj.write().unwrap();
 
-                        if let Some(instance) = try_downcast_checked_mut::<GenericInstanceData>(
-                            &mut *guard,
-                            TypeTag::GenericInstance("".into())
-                        ) {
-                            instance.set_field(field_index, value)
-                                .map_err(|e| VMError::RuntimeError(format!("Failed to set field: {}", e)))?;
+                        // Check if this is a GenericInstance (any variant)
+                        let is_generic_instance = matches!(guard.type_tag(), TypeTag::GenericInstance(_));
+
+                        if is_generic_instance {
+                            if let Some(instance) = guard.as_any_mut().downcast_mut::<GenericInstanceData>() {
+                                let value_repr = format!("{:?}", value);  // Capture before move
+                                instance.set_field(field_index, value)
+                                    .map_err(|e| VMError::RuntimeError(format!("Failed to set field: {}", e)))?;
+                                eprintln!("DEBUG: SET_GENERIC_FIELD: successfully set field {} to {}",
+                                    field_index, value_repr);
+                            } else {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Type error: SET_GENERIC_FIELD failed to downcast GenericInstance")));
+                            }
                         } else {
                             return Err(VMError::RuntimeError(format!(
-                                "Type error: SET_GENERIC_FIELD expected GenericInstance")));
+                                "Type error: SET_GENERIC_FIELD expected GenericInstance, got {:?}",
+                                guard.type_tag())));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(
@@ -1399,7 +1456,14 @@ impl AutoVM {
                     task.ram.push_i32(!a);
                 }
                 OpCode::CALL => {
+                    eprintln!("DEBUG CALL: Stack depth before = {}", task.ram.sp);
+                    // Print stack before CALL
+                    if task.ram.sp > 0 {
+                        eprintln!("DEBUG CALL: Stack[0] = {}", task.ram.read_i32(0));
+                    }
+
                     let target = self.flash.read_u32(task.ip) as usize;
+                    eprintln!("DEBUG CALL: Calling function at address 0x{:04x}", target);
                     task.ip += 4;
 
                     // Push Return Address (IP)
@@ -1409,6 +1473,10 @@ impl AutoVM {
 
                     // New BP points to the saved BP location (SP - 1)
                     task.bp = task.ram.sp - 1;
+
+                    eprintln!("DEBUG CALL: Stack depth after setup = {}, BP = {}", task.ram.sp, task.bp);
+                    eprintln!("DEBUG CALL: Stack[0] = {}, [1] = {}, [2] = {}",
+                        task.ram.read_i32(0), task.ram.read_i32(1), task.ram.read_i32(2));
 
                     // Jump
                     task.ip = target;
@@ -1860,9 +1928,35 @@ impl AutoVM {
                 OpCode::LOAD_LOCAL => {
                     let idx = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
-                    // Load from bp+1+idx (bp+1 is first local variable)
-                    let val = task.ram.read_i32(task.bp + 1 + idx);
-                    task.ram.push_i32(val);
+
+                    // Plan 087 Phase 3: Check if this is a parameter (idx >= 0x80)
+                    if idx >= 0x80 {
+                        // Parameter: decode parameter index
+                        let param_idx = idx - 0x80;  // 0x80 -> param 0, 0x81 -> param 1, etc.
+                        // Stack layout: [..., args(0), args(1), ..., return_addr, old_bp, locals...]
+                        //                        ^- BP-n_args           ^- BP-1    ^- BP
+
+                        // Calculate offset: param_idx is at BP - n_args + param_idx
+                        // But we need n_args! For now, assume simple instance method (n_args=1)
+                        // TODO: Read n_args from function metadata (RESERVE_STACK operand at function entry)
+                        let n_args = 1_usize;  // Placeholder for Counter.get(self)
+                        let offset = n_args - param_idx;  // For n_args=1, param 0: offset=1
+
+                        // Stack layout for n_args=1: [arg0, ret_addr, old_bp, ...]
+                        //                                    ^-BP-2 ^-BP-1  ^-BP
+                        // For n_args=2:             [arg0, arg1, ret_addr, old_bp, ...]
+                        //                                    ^-BP-3 ^-BP-2 ^-BP-1  ^-BP
+                        let actual_offset = offset + 1;  // +1 for return_addr
+                        let val = task.ram.read_i32(task.bp - actual_offset);
+                        eprintln!("DEBUG: LOAD_LOCAL param {}: BP-{} (n_args={}, offset={}) = {}",
+                            param_idx, actual_offset, n_args, offset, val);
+                        task.ram.push_i32(val);
+                    } else {
+                        // Local variable: load from bp+1+idx (bp+1 is first local variable)
+                        let val = task.ram.read_i32(task.bp + 1 + idx);
+                        eprintln!("DEBUG: LOAD_LOCAL local {}: BP+1+{} = {}", idx, idx, val);
+                        task.ram.push_i32(val);
+                    }
                 }
                 OpCode::STORE_LOCAL => {
                     let idx = self.flash.read_u8(task.ip) as usize;
@@ -1908,10 +2002,17 @@ impl AutoVM {
                     let n_locals = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
+                    eprintln!("DEBUG RESERVE_STACK: n_locals={}, BP before={}, SP before={}",
+                        n_locals, task.bp, task.ram.sp);
+
                     // Actually push zeros to reserve the space (not just increment sp)
                     for _ in 0..n_locals {
                         task.ram.push_i32(0);
                     }
+
+                    eprintln!("DEBUG RESERVE_STACK: BP after={}, SP after={}", task.bp, task.ram.sp);
+                    eprintln!("DEBUG RESERVE_STACK: Stack[BP-1] = {}, [BP] = {}, [BP+1] = {}",
+                        task.ram.read_i32(task.bp - 1), task.ram.read_i32(task.bp), task.ram.read_i32(task.bp + 1));
 
                     task.num_locals = n_locals; // Track num_locals for native shims
                 }

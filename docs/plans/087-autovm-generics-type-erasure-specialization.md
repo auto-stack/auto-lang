@@ -6,21 +6,24 @@
 > - ✅ 编译时支持：100% 完成（Parser + Codegen + TypeRegistry）
 > - ✅ 运行时支持：100% 完成（VM 指令 + CREATE_OBJ 修复）
 > - ✅ 集成测试：95% 完成（7/7 完整测试套件通过）
-> - ⚠️ Phase 3 泛型方法：⏸️ **已阻塞 - 等待 Plan 088（参数传递模式）**
+> - ⚠️ Phase 3 泛型方法：🔓 **已解除阻塞 - Plan 088 已完成（2025-02-10）**
 >
-> **最新进展**（2025-02-09）：
+> **最新进展**（2025-02-10）：
 > - ✅ **修复 Codegen：添加 object_types 初始化**
 > - ✅ **TypeRegistry 集成：REPL 跨输入类型持久化**
 > - ✅ **完整集成测试套件**（7/7 通过）
-> - ⚠️ **Phase 3 问题发现**：
->   - 方法调用可以工作（`p.get_key()` 正确调用）
->   - ❌ 但方法无法修改调用者对象（`self.x = new_x` 不生效）
->   - 根因：AutoVM 当前是**值传递**（Copy），需要实现**引用传递**（View/Mut）
->   - 解决方案：创建 **Plan 088 - 函数参数传递模式**
+> - ✅ **Plan 088 完成标志**：
+>   - ✅ mut 参数完全正常工作（`fn increment(mut self)` 正确修改调用者对象）
+>   - ✅ ABO-01 策略实现（默认 View，小对象 Copy 优化）
+>   - ✅ LOAD_MUT_REF 指令正确执行
+>   - ✅ 重定位正确调整
+> - 🔓 **Phase 3 可以开始实现**：
+>   - 现在 `fn set_x(mut self, new_x int)` 可以正确修改对象
+>   - 可以实现泛型方法分发和单态化
 >
 > **下一步**:
-> - 短期：保持现状，使用直接字段访问 `p.x = 100` 替代方法
-> - 中期：实现 Plan 088（参数传递模式），然后完成 Phase 3
+> - 短期：实现 Phase 3 泛型方法分发
+> - 中期：完成 Phase 4 特化存储
 
 ## Context
 
@@ -180,41 +183,17 @@
 - ✅ 多个实例共存：`Pair<int, int>` 和 `Pair<string, bool>`
 - ✅ 20 单元测试 + 15 集成测试
 
-### Phase 3: 泛型方法分发 ⏸️ **已阻塞 - 等待 Plan 088**
+### Phase 3: 泛型方法分发 🔓 **可以开始实现**（Plan 088 已完成）
 
-**状态**: ⏸️ **BLOCKED** - 依赖参数传递模式实现
+**状态**: 🔓 **READY** - 阻塞已解除（Plan 088 于 2025-02-10 完成）
 
-**问题诊断**（2025-02-09）:
+**阻塞解除**（2025-02-10）:
 ```auto
+// ✅ Plan 088 完成后，mut 参数可以正常工作
 type Point {
     x int
-    fn set_x(self, new_x int) void {
-        self.x = new_x  // ❌ 不生效
-    }
-}
-
-let p = Point{x: 10}
-p.set_x(100)
-say(p.x)  // 输出: 10 (不是 100) ❌
-```
-
-**根因**: AutoVM 当前的 `self` 是**值传递**（Copy），不是**引用传递**（View/Mut）
-
-**解决方案**: 实现 **[Plan 088: 函数参数传递模式](../plans/088-param-passing-modes.md)**
-
-**需要实现**:
-1. **参数传递模式**: `copy`, `view`, `mut`, `take`
-2. **默认行为改为 View**: 引用传递（不复制）
-3. **显式 Mut 修饰符**: `fn set_x(mut self, new_x int)`
-4. **VM 引用类型**: `VmRef`, `VmMutRef`
-
-**测试验证**:
-```auto
-// Plan 088 完成后
-type Point {
-    x int
-    fn set_x(mut self, new_x int) void {  // ✅ 添加 mut
-        self.x = new_x  // ✅ 可以修改
+    fn set_x(mut self, new_x int) void {
+        self.x = new_x  // ✅ 现在可以修改了！
     }
 }
 
@@ -223,12 +202,15 @@ p.set_x(100)
 say(p.x)  // 输出: 100 ✅
 ```
 
-**依赖关系**:
-- **前置条件**: Plan 088（参数传递模式）必须先完成
-- **工作量**: Plan 088 需要 2 周，Phase 3 需要 1-2 周
-- **优先级**: 中（Phase 1-2 已可用，Phase 3 是增强功能）
+**前置条件**:
+- ✅ **Plan 088 完成** - 参数传递模式已实现
+- ✅ **LOAD_MUT_REF 指令** - 可变引用传递正常工作
+- ✅ **ABO-01 策略** - 默认 View，小对象 Copy 优化
 
-**Phase 3 原始设计**（等待 Plan 088 完成后）:
+**工作量估算**: 1-2 周
+**优先级**: 中（Phase 1-2 已可用，Phase 3 是增强功能）
+
+**Phase 3 实现内容**:
 
 1. **在 ClassTemplate 中存储方法**
    - 文件：`crates/auto-lang/src/vm/generic_registry.rs`（修改，+100 行）
