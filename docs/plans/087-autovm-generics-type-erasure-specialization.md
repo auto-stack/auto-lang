@@ -983,6 +983,51 @@ let p Pair<int, string> = Pair { key: 1, val: "hello" }
 - 类型注解中的泛型参数 `<int, string>` 尚未实现
 - 需要扩展类型系统和 Codegen
 
+#### ❌ 当前已知 Bug
+
+**泛型类型字段访问 bug**（2025-02-10 发现）：
+
+**问题描述**：
+泛型类型实例的字段访问（`p.x`）加载的是 `instance_id` 而不是字段值。
+
+**复现步骤**：
+```bash
+# 1. 创建泛型类型
+type Point<T> {
+    x T
+    y T
+}
+
+# 2. 创建实例并访问字段
+let p = Point { x: 100, y: 200 }
+p.x  # 预期输出 100，实际输出 1000000 (instance_id)
+```
+
+**根因分析**：
+1. **NEW_INSTANCE 和 CONSTRUCT_INSTANCE 正常工作**：字段值 `Int(100)` 和 `Int(200)` 被正确存储到 `GenericInstanceData.fields`
+2. **类型信息丢失**：Node 表达式编译时（codegen.rs:1358-1381 行），类型信息 `Type::GenericInstance(...)` 没有被存储到 `var_types`
+3. **字段访问失败**：当编译 `p.x` 时，Codegen 无法从 `var_types` 查找到泛型实例类型，因此判定为普通变量，生成 `LOAD_LOC` 而不是 `GET_GENERIC_FIELD`
+4. **运行时行为**：`LOAD_LOC` 加载 `instance_id` (1000000) 而不是字段值 `100`
+
+**修复建议**：
+在 Codegen 的 Node 表达式处理分支中（当类型已注册时），需要添加类型信息存储：
+```rust
+// 在 codegen.rs:1358-1381 行的 else 分支中
+// 需要添加：
+self.var_types.insert(node.name.to_string(), store.ty.clone());
+```
+
+**影响范围**：
+- ✅ Parser + Codegen：泛型类型定义和实例化**正常工作**
+- ✅ 字段定义和填充：CONSTRUCT_INSTANCE **正确执行**
+- ❌ **字段访问**：类型信息缺失导致使用 LOAD_LOC 而不是 GET_GENERIC_FIELD
+- ✅ **方法调用**：未测试（可能也有同样问题）
+
+**状态**：
+- **阻塞**：此 bug 阻塞泛型类型字段访问功能
+- **优先级**：🔴 **高**（影响核心功能）
+- **修复复杂度**：中等（约 10 行代码）
+
 ### ⚠️ 已知限制
 
 1. **Receiver 参数传递** - ✅ 已完成（Plan 088 Phase 4）
