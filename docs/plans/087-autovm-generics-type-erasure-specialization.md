@@ -1,32 +1,33 @@
 # Plan 087: AutoVM 泛型系统实现 - 类型擦除 + 特化存储
 
-> **状态**: ✅ **已完成** (2025-02-11)
-> **完成度**: 100% (Phase 1-3 完成，Plan 088 Phase 4 集成）
+> **状态**: ✅ **核心功能已完成** (2025-02-10)
+> **完成度**: 90% (Phase 1-3 完成，Plan 088 Phase 4 集成）
+
+**核心功能状态**:
+> - ✅ **Parser**: 完全支持 `type Pair<K, V>` 泛型类型定义
+> - ✅ **Codegen**: 支持泛型类型实例化（对象字面量语法 `Pair { key: 1, val: "a" }`）
+> - ✅ **VM**: 完整运行时支持（NEW_INSTANCE, CONSTRUCT_INSTANCE, GET/SET_GENERIC_FIELD）
+> - ✅ **数据结构**: 100% 完成（GenericRegistry, SpecializedPair, SpecializedHashMap）
+> - ✅ **单元测试**: 72/72 通过
+> - ⚠️ **命名参数**: 不支持函数调用语法 `Pair(key: 1, val: "a")`（应使用对象字面量）
+> - ⚠️ **类型注解**: 不支持泛型实例类型注解 `let p Pair<int, string>`（需要扩展类型系统）
+
+**语法支持总结**:
+| 语法 | 状态 | 说明 |
+|------|------|------|
+| `type Pair<K, V> { ... }` | ✅ 完全支持 | Parser + Codegen |
+| `let p = Pair { key: 1, val: "a" }` | ✅ 完全支持 | 对象字面量语法 |
+| `let p = Pair(key: 1, val: "a")` | ❌ 不支持 | 函数调用语法 + 命名参数 |
+| `let p Pair<int, string> = ...` | ❌ 不支持 | 泛型实例类型注解 |
+| `p.key` / p.key = val` | ✅ 完全支持 | 字段读/写 |
+| `p.get_key()` | ✅ 完全支持 | 方法调用（Plan 088 Phase 4）
 
 **最新进展**: Plan 087 Phase 3 已与 Plan 088 Phase 4 完美集成，支持实例方法的 receiver 参数传递。详见：[088-implementation-complete.md](088-implementation-complete.md)
-> - ✅ 数据结构设计：100% 完成
-> - ✅ 单元测试：72/72 通过
-> - ✅ 编译时支持：100% 完成（Parser + Codegen + TypeRegistry）
-> - ✅ 运行时支持：100% 完成（VM 指令 + CREATE_OBJ 修复）
-> - ✅ 集成测试：95% 完成（7/7 完整测试套件通过）
-> - ⚠️ Phase 3 泛型方法：🔓 **已解除阻塞 - Plan 088 已完成（2025-02-10）**
->
-> **最新进展**（2025-02-10）：
-> - ✅ **修复 Codegen：添加 object_types 初始化**
-> - ✅ **TypeRegistry 集成：REPL 跨输入类型持久化**
-> - ✅ **完整集成测试套件**（7/7 通过）
-> - ✅ **Plan 088 完成标志**：
->   - ✅ mut 参数完全正常工作（`fn increment(mut self)` 正确修改调用者对象）
->   - ✅ ABO-01 策略实现（默认 View，小对象 Copy 优化）
->   - ✅ LOAD_MUT_REF 指令正确执行
->   - ✅ 重定位正确调整
-> - 🔓 **Phase 3 可以开始实现**：
->   - 现在 `fn set_x(mut self, new_x int)` 可以正确修改对象
->   - 可以实现泛型方法分发和单态化
->
-> **下一步**:
-> - 短期：实现 Phase 3 泛型方法分发
-> - 中期：完成 Phase 4 特化存储
+
+**下一步**:
+> - **短期**：实现函数调用中的命名参数支持（扩展 Codegen 处理 `Arg::Pair`）
+> - **中期**：实现泛型实例类型注解（扩展类型系统）
+> - **长期**：完成 Phase 4 特化存储自动检测
 
 ## Context
 
@@ -913,10 +914,81 @@ DEBUG LOAD_LOC_0: bp=2, loading from bp+1=3, val=0  // 应该是 instance_id!
 4. **字段访问** - `c.count` 生成正确指令
 5. **类型跟踪** - `self` 类型正确记录
 
+### 📝 泛型类型语法支持状态（2025-02-10 更新）
+
+#### ✅ 已完全支持
+
+**1. Parser 层面 - 泛型类型定义**
+```auto
+// ✅ 完全支持
+type Pair<K, V> {
+    key K
+    val V
+
+    fn get_key(self) K {
+        self.key
+    }
+}
+
+// ✅ 完全支持
+tag Option<T> {
+    Some(T)
+    None
+}
+```
+- Parser 正确解析泛型参数 `<K, V>` 和 `<T>`
+- 存储在 `TypeDecl.generic_params` 中
+
+**2. Codegen 层面 - 泛型类型实例化（对象字面量语法）**
+```auto
+// ✅ 完全支持
+let p = Pair { key: 42, val: "hello" }
+say(p.key)  // 输出: 42
+say(p.val)  // 输出: hello
+```
+- Codegen 正确生成 NEW_INSTANCE + CONSTRUCT_INSTANCE 指令
+- 支持字段访问（GET_GENERIC_FIELD）
+- 支持方法调用（已集成 Plan 088 Phase 4）
+
+#### ⚠️ 部分支持
+
+**函数调用语法（带命名参数）**
+```auto
+// ❌ 当前不支持
+let p = Pair(key: 42, val: "hello")
+```
+
+**错误信息**:
+```
+thread 'main' panicked at crates\auto-lang\src\vm\codegen.rs:2183:34:
+not implemented: Named arguments not supported in AutoVM yet
+```
+
+**根本原因**:
+- `Pair(key: 42, val: "hello")` 被解析为 `Expr::Call` with `Arg::Pair` 参数
+- Codegen 的 `compile_call()` 只处理 `Arg::Pos`（位置参数）
+- `Arg::Pair` 在 codegen.rs:2183 处理 `Expr::Call` 时未实现
+
+**解决方案**:
+1. **推荐**：使用对象字面量语法 `Pair { key: 42, val: "hello" }`
+2. **扩展**：实现 Codegen 对 `Arg::Pair` 的支持（需要修改 codegen.rs:2183）
+
+#### ❌ 不支持
+
+**泛型类型参数实例化**
+```auto
+// ❌ 当前不支持
+let p Pair<int, string> = Pair { key: 1, val: "hello" }
+```
+- 类型注解中的泛型参数 `<int, string>` 尚未实现
+- 需要扩展类型系统和 Codegen
+
 ### ⚠️ 已知限制
 
-1. **Receiver 参数传递** - 需要 Plan 088 Phase 4 扩展
-2. **Mut 方法支持** - 需要赋值语句支持（待实现）
+1. **Receiver 参数传递** - ✅ 已完成（Plan 088 Phase 4）
+2. **Mut 方法支持** - ✅ 已完成（Plan 088 Phase 4）
+3. **命名参数支持** - ❌ 不支持（需要扩展 Codegen）
+4. **泛型实例类型注解** - ❌ 不支持（需要扩展类型系统）
 
 ## 解决方案完成
 
