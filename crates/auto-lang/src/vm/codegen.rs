@@ -564,8 +564,23 @@ impl Codegen {
                 // Example: let c = Counter{count: 0}
                 else if let Expr::Node(node) = &store.expr {
                     let type_name = node.name.to_string();
-                    // Check if this node name corresponds to a registered type
-                    if self.is_type(&type_name) {
+
+                    // Check if this is a user-defined generic type in GenericRegistry
+                    if self.generic_registry.has_template(&type_name) {
+                        // Get or create ClassType for this generic type
+                        let type_args = Vec::new(); // No explicit type args provided
+                        if let Ok(class_type) = self.generic_registry.get_or_create_type(&type_name, type_args) {
+                            // Create GenericInstance type to store in var_types
+                            use crate::ast::GenericInstance;
+                            let generic_inst = GenericInstance {
+                                base_name: crate::ast::Name::from(type_name),
+                                args: vec![],
+                            };
+                            self.var_types.insert(store.name.to_string(), Type::GenericInstance(generic_inst));
+                            eprintln!("DEBUG: Stored generic type for '{}' in var_types", store.name);
+                        }
+                    } else if self.is_type(&type_name) {
+                        // Built-in type (List, HashMap, etc.)
                         if let Some(_type_info) = self.get_type(&type_name) {
                             // Create a synthetic TypeDecl for type tracking
                             let type_decl = crate::ast::TypeDecl {
