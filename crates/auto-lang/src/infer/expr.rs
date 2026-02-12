@@ -324,13 +324,61 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
             }
         }
 
-        // ========== Dot expression (Plan 056: Phase 1) ==========
-        Expr::Dot(object, _field) => {
+        // ========== Dot expression (Plan 056: Phase 1 + Plan 089) ==========
+        Expr::Dot(object, field) => {
             // Dot expression: object.field or Type.method
-            // For now, return the type of the object expression
-            // TODO: Phase 2 - Add field lookup and type resolution
-            // TODO: Phase 3 - Distinguish between field access and method calls
-            infer_expr(ctx, object)
+            // Phase 089: Add field type lookup using TypeRegistry
+
+            let object_ty = infer_expr(ctx, object);
+
+            // Check if field is "type" (special case for type reflection)
+            if field.as_ref() == "type" {
+                return object_ty.clone();
+            }
+
+            // Look up field type in type declaration
+            match object_ty {
+                // User-defined type with direct type declaration
+                Type::User(type_decl) => {
+                    // Search for field in type's members
+                    for member in &type_decl.members {
+                        if member.name == *field {
+                            return member.ty.clone();
+                        }
+                    }
+                    // Field not found
+                    Type::Unknown
+                }
+
+                // Generic instance (e.g., List<int>, Pair<T, U>)
+                Type::GenericInstance(inst) => {
+                    // Look up the base type declaration from TypeRegistry
+                    if let Some(base_decl) = ctx.lookup_type_decl(&inst.base_name) {
+                        // Search for field in base type's members
+                        for member in &base_decl.members {
+                            if member.name == *field {
+                                // Phase 089: Type parameter substitution
+                                // Replace generic type parameters with concrete types from the instance
+                                // Example: For Point<T> { x T }, accessing Point<int>.x should return int
+                                let field_ty = member.ty.clone();
+                                // Extract type parameter names (only Type params, not Const params)
+                                let type_param_names: Vec<crate::ast::Name> = base_decl.generic_params
+                                    .iter()
+                                    .filter_map(|p| match p {
+                                        crate::ast::GenericParam::Type(tp) => Some(tp.name.clone()),
+                                        crate::ast::GenericParam::Const(_) => None,
+                                    })
+                                    .collect();
+                                return field_ty.substitute(&type_param_names, &inst.args);
+                            }
+                        }
+                    }
+                    Type::Unknown
+                }
+
+                // Other types don't support field access
+                _ => Type::Unknown,
+            }
         }
     }
 }

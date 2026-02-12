@@ -2520,6 +2520,42 @@ impl Codegen {
     // Plan 087 Phase 3: Infer expression type using the infer module
     // Returns the inferred type
     fn infer_expr_type(&mut self, expr: &Expr) -> crate::ast::Type {
+        // Handle Dot expressions for field access type inference (e.g., a.x.type)
+        if let Expr::Dot(obj, field) = expr {
+            // First infer the type of the object (e.g., 'a' in 'a.x')
+            let obj_ty = self.infer_expr_type(obj);
+
+            // Look up field type from type template
+            let field_name = field.as_ref();
+
+            match &obj_ty {
+                // User-defined types (type A { x int })
+                Type::User(type_decl) => {
+                    if let Some(member) = type_decl.members.iter().find(|m| m.name.as_ref() == field_name) {
+                        return member.ty.clone();
+                    }
+                }
+                // Generic instances (Point<int>, List<int>, etc.)
+                Type::GenericInstance(inst) => {
+                    if let Some(template) = self.generic_registry.get_template(&inst.base_name.to_string()) {
+                        if let Some(field_def) = template.fields.iter().find(|f| f.name == field_name) {
+                            // Substitute type parameters with actual types
+                            let generic_params: Vec<crate::ast::Name> = template.generic_params
+                                .iter()
+                                .filter_map(|p| match p {
+                                    crate::ast::GenericParam::Type(tp) => Some(tp.name.clone()),
+                                    crate::ast::GenericParam::Const(_) => None,
+                                })
+                                .collect();
+                            return field_def.field_type.substitute(&generic_params, &inst.args);
+                        }
+                    }
+                }
+                _ => {}
+            }
+            // Fall through to default inference if field type not found
+        }
+
         // Check if this is a function call and we know the return type
         if let Expr::Call(call) = expr {
             // Extract function name from call expression
@@ -3382,7 +3418,14 @@ impl Codegen {
     ///
     /// Plan 087 Phase 1: If the type has generic parameters, register as a generic template
     /// in the GenericRegistry. Otherwise, register as a regular type in the type registry.
+    ///
+    /// Plan 089: Also register type declaration in infer_ctx.type_registry
+    /// This enables field type lookup in the infer module via TypeRegistry.
     pub fn register_type(&mut self, type_decl: &TypeDecl) {
+        // Plan 089: Register type declaration in infer_ctx.type_registry
+        // This allows infer/expr.rs to look up field types via TypeRegistry
+        self.infer_ctx.register_type_decl(type_decl.clone());
+
         // Plan 087 Phase 1: Check if this is a generic type
         if !type_decl.generic_params.is_empty() {
             // Register as generic template

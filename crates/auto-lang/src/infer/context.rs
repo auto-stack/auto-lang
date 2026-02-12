@@ -54,6 +54,12 @@ pub struct InferenceContext {
     /// Phase 070: Migrated from Universe to Database for compile-time data
     pub database: std::sync::Arc<std::sync::RwLock<Database>>,
 
+    /// Phase 089: 统一的类型注册表
+    ///
+    /// 集中管理所有类型声明，包含字段信息。
+    /// 替代分散在 codegen.types 和 Database.type_info_store 中的类型存储。
+    pub type_registry: super::registry::TypeRegistry,
+
     /// 错误累加器
     pub errors: Vec<AutoError>,
 
@@ -70,6 +76,7 @@ impl InferenceContext {
             scopes: Vec::new(),
             current_ret: None,
             database: std::sync::Arc::new(std::sync::RwLock::new(Database::new())),
+            type_registry: super::registry::TypeRegistry::new(),
             errors: Vec::new(),
             warnings: Vec::new(),
         }
@@ -85,6 +92,7 @@ impl InferenceContext {
             scopes: Vec::new(),
             current_ret: None,
             database,
+            type_registry: super::registry::TypeRegistry::new(),
             errors: Vec::new(),
             warnings: Vec::new(),
         }
@@ -147,6 +155,20 @@ impl InferenceContext {
     /// 用于处理变量遮蔽和块级作用域
     pub fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
+    }
+
+    /// Phase 089: 注册类型声明
+    ///
+    /// 将类型声明存储到 TypeRegistry 中，供字段类型查找使用。
+    pub fn register_type_decl(&mut self, type_decl: crate::ast::TypeDecl) {
+        self.type_registry.register_type_decl(type_decl);
+    }
+
+    /// Phase 089: 查找类型声明
+    ///
+    /// 从 TypeRegistry 中查找类型声明。
+    pub fn lookup_type_decl(&self, name: &auto_val::AutoStr) -> Option<&crate::ast::TypeDecl> {
+        self.type_registry.lookup_type_decl(name)
     }
 
     /// 弹出当前作用域

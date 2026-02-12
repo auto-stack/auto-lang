@@ -10,6 +10,7 @@ pub mod context;
 pub mod errors;
 pub mod expr;
 pub mod functions;
+pub mod registry;
 pub mod stmt;
 pub mod unification;
 
@@ -19,6 +20,7 @@ pub use context::InferenceContext;
 pub use errors::{suggest_primitive_type, suggest_type, suggest_type_mismatch_fix, suggest_variable, should_continue};
 pub use expr::infer_expr;
 pub use functions::check_fn;
+pub use registry::TypeRegistry;
 pub use stmt::check_stmt;
 
 use crate::ast::{Member, Type};
