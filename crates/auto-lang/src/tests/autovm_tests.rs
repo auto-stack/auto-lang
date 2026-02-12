@@ -782,3 +782,19 @@ fn main() int {
     assert!(result.is_ok(), "Function with local var should work: {:?}", result);
     assert_eq!(result.unwrap(), "10", "Should return 10");
 }
+
+#[test]
+fn test_type_instance() {
+    let code = r#"
+type A {
+    x int
+    y int
+}
+
+let a = A {x:1, y:2}
+a.x.type
+    "#;
+
+    let result = run_autovm(code);
+    assert_eq!(result.unwrap(), "int", "instance of type A should have type 'A'");
+}

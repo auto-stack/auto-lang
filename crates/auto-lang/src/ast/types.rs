@@ -72,10 +72,15 @@ impl Type {
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             Type::Spec(spec_decl) => spec_decl.borrow().name.clone(),
             Type::GenericInstance(inst) => {
-                let args: Vec<String> = inst.args.iter()
-                    .map(|t| t.unique_name().to_string())
-                    .collect();
-                format!("{}<{}>", inst.base_name, args.join(", ")).into()
+                if inst.args.is_empty() {
+                    // No type arguments, just return base name (e.g., "A" not "A<>")
+                    inst.base_name.clone()
+                } else {
+                    let args: Vec<String> = inst.args.iter()
+                        .map(|t| t.unique_name().to_string())
+                        .collect();
+                    format!("{}<{}>", inst.base_name, args.join(", ")).into()
+                }
             }
             Type::CStruct(type_decl) => format!("struct {}", type_decl.name).into(),
             Type::Linear(inner) => format!("linear<{}>", inner.unique_name()).into(),
