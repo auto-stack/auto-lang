@@ -401,6 +401,7 @@ impl<'a> Lexer<'a> {
             }
             _ => {
                 // Not a property keyword, return regular Dot
+                // This includes "type" which will be handled specially in codegen/eval
             }
         }
 

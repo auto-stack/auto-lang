@@ -116,6 +116,7 @@ pub enum TokenKind {
     DotView,  // .view
     DotMut,   // .mut
     DotTake,  // .take
+    // .type is handled as a special field name in codegen/eval, not as a special token
 
     // Format Str
     FStrStart,

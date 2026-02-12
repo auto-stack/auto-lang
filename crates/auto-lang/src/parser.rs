@@ -1072,6 +1072,7 @@ impl<'a> Parser<'a> {
                 // Allow @, * as special field names for pointer operations
                 // Allow numeric literals for integer-keyed objects: a.1, a.2
                 // Allow boolean keywords: a.true, a.false
+                // Allow 'type' keyword as property name: expr.type
                 if self.is_kind(TokenKind::Ident)
                     || self.is_kind(TokenKind::At)
                     || self.is_kind(TokenKind::Star)
@@ -1084,6 +1085,7 @@ impl<'a> Parser<'a> {
                     || self.is_kind(TokenKind::True)
                     || self.is_kind(TokenKind::False)
                     || self.is_kind(TokenKind::Nil)
+                    || self.is_kind(TokenKind::Type) // Allow .type property
                 {
                     self.next();
                     // Use Expr::Dot for semantic clarity
@@ -1166,7 +1168,7 @@ impl<'a> Parser<'a> {
                 | TokenKind::DotMut
                 | TokenKind::DotTake
                 | TokenKind::DotQuestion => {
-                    // Property keywords: .view, .mut, .take (Phase 3)
+                    // Property keywords: .view, .mut, .take, .type (Phase 3)
                     // Error propagation: ?. (Phase 1b.3)
                     // These are postfix operators with same precedence as dot
                     self.op()
@@ -1951,6 +1953,8 @@ impl<'a> Parser<'a> {
             TokenKind::Star => Expr::Ident("*".into()),
             TokenKind::Nil => Expr::Nil,
             TokenKind::Null => Expr::Null,
+            // Allow 'type' keyword as identifier in certain contexts (e.g., expr.type)
+            TokenKind::Type => Expr::Ident(self.cur.text.clone()),
             _ => {
                 return Err(SyntaxError::Generic {
                     message: format!("Expected term, got {:?}", self.kind()),
@@ -6575,6 +6579,7 @@ impl<'a> Parser<'a> {
                 || self.is_kind(TokenKind::True)
                 || self.is_kind(TokenKind::False)
                 || self.is_kind(TokenKind::Nil)
+                || self.is_kind(TokenKind::Type) // Allow .type property
             {
                 let text = self.cur.text.clone();
                 self.next();

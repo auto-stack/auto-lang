@@ -4395,6 +4395,13 @@ impl Evaler {
             Expr::I64(value) => Value::Int(*value as i32),  // i64 transpiles to Int for now
             Expr::U64(value) => Value::Uint(*value as u32), // u64 transpiles to Uint for now
             Expr::Dot(object, field) => {
+                // Check if this is the .type property - returns type name as string
+                if field.as_str() == "type" {
+                    let obj_val = self.eval_expr(object);
+                    let val_type = obj_val.get_type();
+                    return Value::Str(val_type.name());
+                }
+
                 // First, evaluate the object expression
                 let obj_val = self.eval_expr(object);
 
