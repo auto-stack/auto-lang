@@ -1985,7 +1985,6 @@ impl AutoVM {
                 OpCode::LOAD_LOC_0 => {
                     // Load from bp+1 (first local variable)
                     let val = task.ram.read_i32(task.bp + 1);
-                    eprintln!("DEBUG: LOAD_LOC_0: bp={}, loading from bp+1={}, val={}", task.bp, task.bp + 1, val);
                     task.ram.push_i32(val);
                 }
                 OpCode::LOAD_LOC_1 => {
@@ -2001,7 +2000,6 @@ impl AutoVM {
                 OpCode::STORE_LOC_0 => {
                     // Store to bp+1 (first local variable)
                     let val = task.ram.pop_i32();
-                    eprintln!("DEBUG: STORE_LOC_0: bp={}, storing val={} to bp+1={}", task.bp, val, task.bp + 1);
                     task.ram.write_i32(task.bp + 1, val);
                 }
                 OpCode::STORE_LOC_1 => {
@@ -2030,27 +2028,19 @@ impl AutoVM {
                 }
                 OpCode::RESERVE_STACK => {
                     // Reserve stack space for n_locals to prevent stack from overwriting locals
+                    // Local variables are stored at BP+1, BP+2, ..., BP+n_locals
+                    // We need to ensure SP starts beyond all local addresses to avoid overlap
                     let n_locals = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
-                    eprintln!("DEBUG RESERVE_STACK: n_locals={}, BP before={}, SP before={}",
-                        n_locals, task.bp, task.ram.sp);
-
-                    // Actually push zeros to reserve the space (not just increment sp)
+                    // Push n_locals zeros to reserve space for local variables
                     for _ in 0..n_locals {
                         task.ram.push_i32(0);
                     }
 
-                    eprintln!("DEBUG RESERVE_STACK: BP after={}, SP after={}", task.bp, task.ram.sp);
-
-                    // Safe debugging: only print valid addresses
-                    if task.bp >= 1 {
-                        eprintln!("DEBUG RESERVE_STACK: Stack[BP-1] = {}, [BP] = {}",
-                            task.ram.read_i32(task.bp - 1), task.ram.read_i32(task.bp));
-                        if task.ram.sp > task.bp + 1 {
-                            eprintln!("DEBUG RESERVE_STACK: [BP+1] = {}", task.ram.read_i32(task.bp + 1));
-                        }
-                    }
+                    // Push one more zero to ensure SP is beyond all local addresses
+                    // This prevents stack operations from overwriting local variables
+                    task.ram.push_i32(0);
 
                     task.num_locals = n_locals; // Track num_locals for native shims
                 }
