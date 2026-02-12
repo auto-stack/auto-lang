@@ -106,6 +106,10 @@ pub struct Codegen {
     /// Used during function calls to determine whether to use value or reference passing
     pub fn_params: HashMap<String, Vec<ParamInfo>>,
 
+    /// Plan 087 Phase 3: Function return types for .type property support
+    /// Maps function name -> return type
+    pub fn_return_types: HashMap<String, Type>,
+
     /// Plan 087 Phase 3: Current function parameter count (for correct local/param indexing)
     /// Used during compilation to distinguish parameters (before BP) from locals (after BP)
     pub current_fn_n_args: usize,
@@ -156,6 +160,7 @@ impl Codegen {
             generics: GenericTable::new(), // Plan 076 Phase 1
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(), // Plan 087 Phase 1
             fn_params: HashMap::new(), // Plan 088 Phase 4: function parameter information
+            fn_return_types: HashMap::new(), // Plan 087 Phase 3: function return types for .type
             current_fn_n_args: 0, // Plan 087 Phase 3: Initialize to 0
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
             jump_placeholders: Vec::new(), // Plan 088 Phase 4: Initialize empty jump placeholder tracking
@@ -306,6 +311,9 @@ impl Codegen {
 
                 // Store parameter information in fn_params map
                 self.fn_params.insert(fn_decl.name.to_string(), param_infos.clone());
+
+                // Plan 087 Phase 3: Store function return type for .type property support
+                self.fn_return_types.insert(fn_decl.name.to_string(), fn_decl.ret.clone());
 
                 // Plan 087 Phase 3: Set current function parameter count
                 self.current_fn_n_args = fn_decl.params.len();
@@ -2512,6 +2520,27 @@ impl Codegen {
     // Plan 087 Phase 3: Infer expression type using the infer module
     // Returns the inferred type
     fn infer_expr_type(&mut self, expr: &Expr) -> crate::ast::Type {
+        // Check if this is a function call and we know the return type
+        if let Expr::Call(call) = expr {
+            // Extract function name from call expression
+            let func_name = match call.name.as_ref() {
+                Expr::Ident(name) => Some(name.to_string()),
+                _ => None,
+            };
+
+            if let Some(name) = func_name {
+                if let Some(ret_ty) = self.fn_return_types.get(&name) {
+                    // We know the return type from fn_return_types
+                    // Sync with infer_ctx for future lookups
+                    let key = crate::ast::Name::from(&name);
+                    if !self.infer_ctx.type_env.contains_key(&key) {
+                        self.infer_ctx.type_env.insert(key, ret_ty.clone());
+                    }
+                    return ret_ty.clone();
+                }
+            }
+        }
+
         // Ensure infer_ctx type_env is synced with var_types
         for (name, ty) in &self.var_types {
             let key = crate::ast::Name::from(name.as_str());

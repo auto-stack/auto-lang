@@ -122,3 +122,123 @@ fn main() str {
     assert_eq!(result.unwrap(), "bool", "Should return 'bool'");
 }
 
+// ===== Function .type Tests =====
+
+#[test]
+fn test_type_function_return_int() {
+    // Test: function return value type
+    let code = r#"
+fn get_value() int {
+    42
+}
+
+fn main() str {
+    let x = get_value()
+    x.type
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "function return .type should work: {:?}", result);
+    assert_eq!(result.unwrap(), "int", "Should return 'int'");
+}
+
+#[test]
+fn test_type_function_return_str() {
+    // Test: function returning string
+    let code = r#"
+fn get_name() str {
+    "hello"
+}
+
+fn main() str {
+    let name = get_name()
+    name.type
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "function return str .type should work: {:?}", result);
+    assert_eq!(result.unwrap(), "str", "Should return 'str'");
+}
+
+#[test]
+fn test_type_function_parameter() {
+    // Test: function parameter type
+    let code = r#"
+fn identity(x int) int {
+    x
+}
+
+fn main() str {
+    let result = identity(42)
+    result.type
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "function param .type should work: {:?}", result);
+    assert_eq!(result.unwrap(), "int", "Should return 'int'");
+}
+
+// ===== Array .type Tests =====
+
+#[test]
+fn test_type_array_element() {
+    // Test: array element type
+    let code = r#"
+fn main() str {
+    let arr = [1, 2, 3]
+    arr[0].type
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "array element .type should work: {:?}", result);
+    assert_eq!(result.unwrap(), "int", "Should return 'int'");
+}
+
+#[test]
+fn test_type_array_element_str() {
+    // Test: string array element type
+    let code = r#"
+fn main() str {
+    let arr = ["a", "b", "c"]
+    arr[1].type
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "string array element .type should work: {:?}", result);
+    assert_eq!(result.unwrap(), "str", "Should return 'str'");
+}
+
+// ===== Object/Node .type Tests =====
+
+// Note: These tests require parser support for chained dot access
+// TODO: Add when parser supports { x: 1 }.x.type
+
+// ===== Binary Expression .type Tests =====
+
+#[test]
+fn test_type_binary_add() {
+    // Test: binary operation result type
+    let code = r#"
+fn main() str {
+    let sum = 1 + 2
+    sum.type
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "binary add .type should work: {:?}", result);
+    assert_eq!(result.unwrap(), "int", "Should return 'int'");
+}
+
+#[test]
+fn test_type_binary_multiply() {
+    // Test: binary multiplication result type
+    let code = r#"
+fn main() str {
+    let product = 3 * 4
+    product.type
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "binary multiply .type should work: {:?}", result);
+    assert_eq!(result.unwrap(), "int", "Should return 'int'");
+}
