@@ -2028,21 +2028,22 @@ impl AutoVM {
                 }
                 OpCode::RESERVE_STACK => {
                     // Reserve stack space for n_locals to prevent stack from overwriting locals
-                    // Local variables are stored at BP+1, BP+2, ..., BP+n_locals
-                    // We need to ensure SP starts beyond all local addresses to avoid overlap
+                    // Layout: [local_0, local_1, ..., local_n-1, stack..., return_addr, old_bp, args...]
+                    //           0          1          n_locals-1  n_locals         ...
+                    // BP points to saved BP location (in normal function calls), or 0 in main task
+                    // STORE_LOC_0 writes to BP+1, STORE_LOC_1 writes to BP+2, etc.
+                    // Stack operations (push/pop) use SP which should be >= n_locals + 1 to avoid overlap
                     let n_locals = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
-                    // Push n_locals zeros to reserve space for local variables
-                    for _ in 0..n_locals {
+                    // Push n_locals+1 zeros to reserve space for local variables + 1 extra slot
+                    // The extra slot ensures SP starts beyond all local variable addresses
+                    for _ in 0..n_locals + 1 {
                         task.ram.push_i32(0);
                     }
 
-                    // Push one more zero to ensure SP is beyond all local addresses
-                    // This prevents stack operations from overwriting local variables
-                    task.ram.push_i32(0);
-
-                    task.num_locals = n_locals; // Track num_locals for native shims
+                    // Track num_locals for native shims
+                    task.num_locals = n_locals;
                 }
 
                 // === Comparison ===
