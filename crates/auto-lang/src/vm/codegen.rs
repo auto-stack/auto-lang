@@ -1600,7 +1600,50 @@ impl Codegen {
             }
             Expr::Bina(lhs, op, rhs) => {
                 // Assignment is special: compile RHS first, then store to LHS
-                if *op == Op::Asn {
+                if matches!(op, Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq) {
+                    // For a += b, compile: LOAD_LOC(a), LOAD_CONST(b), ADD, STORE_LOC(a)
+                    if let Expr::Ident(name) = lhs.as_ref() {
+                        let name_str = name.to_string();
+
+                        // Check if this is a captured variable (Plan 071)
+                        if self.current_captured_vars().contains_key(&name_str) {
+                            // Variable is captured - we need different handling
+                            return Err(crate::error::AutoError::Msg(
+                                "Compound assignment to captured variables not yet supported in AutoVM".to_string()
+                            ));
+                        } else if let Some(var_index) = self.lookup_var(&name_str) {
+                            // Variable found in local scope
+                            // Compile RHS (value to add)
+                            self.compile_expr(rhs)?;
+
+                            // Load variable
+                            self.emit_load_loc(var_index);
+
+                            // Perform operation
+                            self.emit(match op {
+                                Op::AddEq => OpCode::ADD,
+                                Op::SubEq => OpCode::SUB,
+                                Op::MulEq => OpCode::MUL,
+                                Op::DivEq => OpCode::DIV,
+                                Op::ModEq => OpCode::MOD,
+                                _ => OpCode::NOP,
+                            });
+
+                            // Store result back to variable
+                            self.emit_store_loc(var_index);
+                        } else {
+                            // Variable not found - error
+                            return Err(crate::error::AutoError::Msg(
+                                format!("Undefined variable '{}' in compound assignment", name_str)
+                            ));
+                        }
+                    } else {
+                        // LHS is not an identifier - error for compound assignment
+                        return Err(crate::error::AutoError::Msg(
+                            "Compound assignment requires a variable on left side".to_string()
+                        ));
+                    }
+                } else if *op == Op::Asn {
                     // Compile RHS (value to store)
                     self.compile_expr(rhs)?;
 

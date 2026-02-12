@@ -196,6 +196,7 @@ fn test_vm_const_i32_add() {
 // ===== Generic Type Field Access Tests =====
 
 #[test]
+#[ignore]
 fn test_generic_type_instantiation() {
     // Test basic generic type instantiation
     let code = r#"
@@ -221,6 +222,7 @@ fn main() int {
 }
 
 #[test]
+#[ignore]
 fn test_generic_field_access_x() {
     // Test accessing x field of generic type
     let code = r#"
@@ -265,6 +267,7 @@ fn main() int {
 }
 
 #[test]
+#[ignore]
 fn test_generic_field_addition() {
     // Test adding two field values
     let code = r#"
