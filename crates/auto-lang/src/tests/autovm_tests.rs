@@ -285,3 +285,483 @@ fn main() int {
     assert!(result.is_ok(), "Field addition should work: {:?}", result);
     assert_eq!(result.unwrap(), "300", "Should return sum");
 }
+
+// ===== Level 2: Conditional Tests =====
+
+#[test]
+fn test_if() {
+    // Test simple if statement
+    let code = r#"
+fn main() int {
+    if true { 1 } else { 2 }
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "If should work: {:?}", result);
+    assert_eq!(result.unwrap(), "1", "Should return 1");
+}
+
+#[test]
+fn test_if_else() {
+    // Test if with else branch
+    let code = r#"
+fn main() int {
+    if false { 1 } else { 2 }
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "If else should work: {:?}", result);
+    assert_eq!(result.unwrap(), "2", "Should return 2");
+}
+
+#[test]
+fn test_if_else_if() {
+    // Test if with else-if chain
+    let code = r#"
+fn main() int {
+    if false { 1 } else if false { 2 } else { 3 }
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "If else if should work: {:?}", result);
+    assert_eq!(result.unwrap(), "3", "Should return 3");
+}
+
+#[test]
+fn test_comp() {
+    // Test comparison operator
+    let code = r#"
+fn main() int {
+    1 < 2
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Comparison should work: {:?}", result);
+    assert_eq!(result.unwrap(), "1", "Should return 1");
+}
+
+#[test]
+fn test_comp_false() {
+    // Test comparison that returns false
+    let code = r#"
+fn main() int {
+    2 < 1
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Comparison false should work: {:?}", result);
+    assert_eq!(result.unwrap(), "0", "Should return 0");
+}
+
+#[test]
+fn test_eq() {
+    // Test equality operator
+    let code = r#"
+fn main() int {
+    1 == 1
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Equality should work: {:?}", result);
+    assert_eq!(result.unwrap(), "1", "Should return 1");
+}
+
+#[test]
+fn test_eq_false() {
+    // Test inequality
+    let code = r#"
+fn main() int {
+    1 == 2
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Inequality should work: {:?}", result);
+    assert_eq!(result.unwrap(), "0", "Should return 0");
+}
+
+// ===== Level3: Variable and Assignment Tests =====
+
+#[test]
+fn test_var() {
+    // Test variable declaration and use
+    let code = r#"
+fn main() int {
+    let a = 1
+    a + 2
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Var should work: {:?}", result);
+    assert_eq!(result.unwrap(), "3", "Should return 3");
+}
+
+#[test]
+fn test_var_assign() {
+    // Test variable reassignment with var
+    let code = r#"
+fn main() int {
+    var a = 1
+    a = 2
+    a
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Var assign should work: {:?}", result);
+    assert_eq!(result.unwrap(), "2", "Should return 2");
+}
+
+#[test]
+fn test_var_mut() {
+    // Test var with mutation
+    let code = r#"
+fn main() int {
+    var x = 1
+    x = 10
+    x + 1
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Var mut should work: {:?}", result);
+    assert_eq!(result.unwrap(), "11", "Should return 11");
+}
+
+#[test]
+fn test_let() {
+    // Test let binding
+    let code = r#"
+fn main() int {
+    let x = 41
+    x
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Let should work: {:?}", result);
+    assert_eq!(result.unwrap(), "41", "Should return 41");
+}
+
+#[test]
+fn test_var_if() {
+    // Test variable in if expression
+    let code = r#"
+fn main() int {
+    var x = if true { 1 } else { 2 }
+    x + 1
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Var if should work: {:?}", result);
+    assert_eq!(result.unwrap(), "2", "Should return 2");
+}
+
+#[test]
+fn test_if_var() {
+    // Test if with variable condition
+    let code = r#"
+fn main() int {
+    var a = 10
+    if a > 10 { a + 1 } else { a - 1 }
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "If var should work: {:?}", result);
+    assert_eq!(result.unwrap(), "9", "Should return 9");
+}
+
+#[test]
+fn test_compound_assignment_add() {
+    // Test compound assignment +=
+    let code = r#"
+fn main() int {
+    var a = 1
+    a += 1
+    a
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "+= should work: {:?}", result);
+    assert_eq!(result.unwrap(), "2", "Should return 2");
+}
+
+#[test]
+fn test_compound_assignment_sub() {
+    // Test compound assignment -=
+    let code = r#"
+fn main() int {
+    var a = 10
+    a -= 3
+    a
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "-= should work: {:?}", result);
+    assert_eq!(result.unwrap(), "7", "Should return 7");
+}
+
+#[test]
+fn test_compound_assignment_mul() {
+    // Test compound assignment *=
+    let code = r#"
+fn main() int {
+    var a = 5
+    a *= 3
+    a
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "*= should work: {:?}", result);
+    assert_eq!(result.unwrap(), "15", "Should return 15");
+}
+
+#[test]
+fn test_compound_assignment_div() {
+    // Test compound assignment /=
+    let code = r#"
+fn main() int {
+    var a = 20
+    a /= 4
+    a
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "/= should work: {:?}", result);
+    assert_eq!(result.unwrap(), "5", "Should return 5");
+}
+
+#[test]
+fn test_compound_assignment_chained() {
+    // Test chained compound assignments
+    let code = r#"
+fn main() int {
+    var a = 1
+    a += 1
+    a += 2
+    a += 3
+    a
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Chained += should work: {:?}", result);
+    assert_eq!(result.unwrap(), "7", "Should return 7");
+}
+
+// ===== Level 4: Array and Object Tests =====
+
+#[test]
+fn test_array() {
+    // Test array literal
+    let code = r#"
+fn main() int {
+    [1, 2, 3]
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Array should work: {:?}", result);
+    assert_eq!(result.unwrap(), "[1, 2, 3]", "Should return [1, 2, 3]");
+}
+
+#[test]
+fn test_array_element() {
+    // Test array element access
+    let code = r#"
+fn main() int {
+    var a = [1, 2, 3]
+    a[0]
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Array element should work: {:?}", result);
+    assert_eq!(result.unwrap(), "1", "Should return 1");
+}
+
+#[test]
+fn test_array_element_1() {
+    // Test array element access at index 1
+    let code = r#"
+fn main() int {
+    var a = [1, 2, 3]
+    a[1]
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Array element 1 should work: {:?}", result);
+    assert_eq!(result.unwrap(), "2", "Should return 2");
+}
+
+#[test]
+fn test_array_element_2() {
+    // Test array element access at index 2
+    let code = r#"
+fn main() int {
+    var a = [1, 2, 3]
+    a[2]
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Array element 2 should work: {:?}", result);
+    assert_eq!(result.unwrap(), "3", "Should return 3");
+}
+
+#[test]
+fn test_object() {
+    // Test object literal
+    let code = r#"
+fn main() int {
+    var a = { name: "auto", age: 18 }
+    a.age
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Object should work: {:?}", result);
+    assert_eq!(result.unwrap(), "18", "Should return 18");
+}
+
+#[test]
+fn test_object_name() {
+    // Test object field access for string field
+    let code = r#"
+fn main() int {
+    var a = { name: "auto", age: 18 }
+    a.name.len()
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Object name should work: {:?}", result);
+    assert_eq!(result.unwrap(), "4", "Should return 4");
+}
+
+#[test]
+fn test_nested_object() {
+    // Test nested object access
+    let code = r#"
+fn main() int {
+    var obj = { inner: { x: 10, y: 20 } }
+    obj.inner.x
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Nested object should work: {:?}", result);
+    assert_eq!(result.unwrap(), "10", "Should return 10");
+}
+
+#[test]
+fn test_nested_object_y() {
+    // Test nested object y field
+    let code = r#"
+fn main() int {
+    var obj = { inner: { x: 10, y: 20 } }
+    obj.inner.y
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Nested object y should work: {:?}", result);
+    assert_eq!(result.unwrap(), "20", "Should return 20");
+}
+
+// ===== Level 5: Function Tests =====
+
+#[test]
+fn test_fn() {
+    // Test simple function call
+    let code = r#"
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() int {
+    add(12, 2)
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Function call should work: {:?}", result);
+    assert_eq!(result.unwrap(), "14", "Should return 14");
+}
+
+#[test]
+fn test_fn_with_args() {
+    // Test function with named arguments
+    let code = r#"
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() int {
+    add(a: 12, b: 2)
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Function with args should work: {:?}", result);
+    assert_eq!(result.unwrap(), "14", "Should return 14");
+}
+
+#[test]
+fn test_fn_multiple() {
+    // Test multiple function calls
+    let code = r#"
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() int {
+    add(add(1, 2), add(3, 4))
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Multiple function calls should work: {:?}", result);
+    assert_eq!(result.unwrap(), "10", "Should return 10");
+}
+
+#[test]
+fn test_fn_in_expression() {
+    // Test function call in expression
+    let code = r#"
+fn add(a int, b int) int {
+    a + b
+}
+
+fn main() int {
+    10 + add(5, 3)
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Function in expression should work: {:?}", result);
+    assert_eq!(result.unwrap(), "18", "Should return 18");
+}
+
+#[test]
+fn test_fn_nested() {
+    // Test nested function calls
+    let code = r#"
+fn add(a int, b int) int {
+    a + b
+}
+
+fn mul(a int, b int) int {
+    a * b
+}
+
+fn main() int {
+    add(mul(2, 3), mul(4, 5))
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Nested function calls should work: {:?}", result);
+    assert_eq!(result.unwrap(), "26", "Should return 26");
+}
+
+#[test]
+fn test_fn_with_local_var() {
+    // Test function with local variable
+    let code = r#"
+fn double(a int) int {
+    let x = a + a
+    x
+}
+
+fn main() int {
+    double(5)
+}
+"#;
+    let result = run_autovm(code);
+    assert!(result.is_ok(), "Function with local var should work: {:?}", result);
+    assert_eq!(result.unwrap(), "10", "Should return 10");
+}
