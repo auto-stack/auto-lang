@@ -10,6 +10,8 @@ use crate::vm::opcode::OpCode;
 use crate::vm::generic::{GenericTable, extract_generic_instance};
 // Plan 076 Phase 2: Monomorphization support
 use crate::vm::monomorphize::{Monomorphizer, MonomorphizedModule};
+// Plan 087 Phase 3: Use infer module for type inference
+use crate::infer::{InferenceContext, infer_expr};
 use auto_val::Op;
 use std::collections::{HashMap, HashSet};
 use miette::SourceSpan;
@@ -108,6 +110,10 @@ pub struct Codegen {
     /// Used during compilation to distinguish parameters (before BP) from locals (after BP)
     pub current_fn_n_args: usize,
 
+    /// Plan 087 Phase 3: Type inference context for .type property support
+    /// Uses the infer module's comprehensive type inference system
+    pub infer_ctx: InferenceContext,
+
     /// Plan 088 Phase 4: Jump placeholder tracking for multi-function compilation
     /// Tracks all jump_over placeholder indices to update them when FN_PROLOG is inserted
     /// When FN_PROLOG (3 bytes) is inserted, all subsequent code shifts
@@ -151,6 +157,7 @@ impl Codegen {
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(), // Plan 087 Phase 1
             fn_params: HashMap::new(), // Plan 088 Phase 4: function parameter information
             current_fn_n_args: 0, // Plan 087 Phase 3: Initialize to 0
+            infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
             jump_placeholders: Vec::new(), // Plan 088 Phase 4: Initialize empty jump placeholder tracking
         }
     }
@@ -603,9 +610,13 @@ impl Codegen {
                 // Plan 087 Phase 3: Infer type from literal expressions for .type property support
                 // If variable type not yet tracked (e.g., let x = 42), infer from expression
                 if !self.var_types.contains_key(&name_str) {
-                    if let Some(ty) = self.infer_expr_type(&store.expr) {
+                    let ty = self.infer_expr_type(&store.expr);
+                    // Only store if we could infer a non-Unknown type
+                    if !matches!(ty, crate::ast::Type::Unknown) {
                         eprintln!("DEBUG: Inferred type for '{}' from expression: {:?}", name_str, ty);
-                        self.var_types.insert(name_str.clone(), ty);
+                        self.var_types.insert(name_str.clone(), ty.clone());
+                        // Sync with infer_ctx
+                        self.infer_ctx.type_env.insert(crate::ast::Name::from(&name_str), ty);
                     }
                 }
 
@@ -1505,27 +1516,18 @@ impl Codegen {
             Expr::Dot(obj, field) => {
                 // Check if this is the .type property - returns type name as string
                 if field.as_str() == "type" {
-                    // Get the type of the object expression
-                    if let Some(ty) = self.infer_expr_type(obj) {
-                        // Get type name as string
-                        let type_name = ty.unique_name();
-                        // Add to string pool
-                        let type_bytes = type_name.to_string().into_bytes();
-                        let str_idx = self.strings.len() as u16;
-                        self.strings.push(type_bytes);
-                        // Emit LOAD_STR instruction
-                        self.emit(OpCode::LOAD_STR);
-                        self.code.extend_from_slice(&str_idx.to_le_bytes());
-                        eprintln!("DEBUG: .type property: obj={:?}, type_name={}", obj, type_name);
-                    } else {
-                        eprintln!("Warning: Could not infer type for .type property on {:?}", obj);
-                        // Fallback: return "unknown"
-                        let type_bytes = "unknown".to_string().into_bytes();
-                        let str_idx = self.strings.len() as u16;
-                        self.strings.push(type_bytes);
-                        self.emit(OpCode::LOAD_STR);
-                        self.code.extend_from_slice(&str_idx.to_le_bytes());
-                    }
+                    // Get the type of the object expression using infer module
+                    let ty = self.infer_expr_type(obj);
+                    // Get type name as string
+                    let type_name = ty.unique_name();
+                    // Add to string pool
+                    let type_bytes = type_name.to_string().into_bytes();
+                    let str_idx = self.strings.len() as u16;
+                    self.strings.push(type_bytes);
+                    // Emit LOAD_STR instruction
+                    self.emit(OpCode::LOAD_STR);
+                    self.code.extend_from_slice(&str_idx.to_le_bytes());
+                    eprintln!("DEBUG: .type property: obj={:?}, type_name={}", obj, type_name);
                     return Ok(());
                 }
 
@@ -2507,29 +2509,18 @@ impl Codegen {
         }
     }
 
-    // Plan 073 Stage A.5: Check if expression is a float/double type
-    // Returns: Some(Type) if the type is known, None otherwise
-    fn infer_expr_type(&self, expr: &Expr) -> Option<crate::ast::Type> {
-        match expr {
-            // Variables: look up from var_types
-            Expr::Ident(name) => self.var_types.get(name.as_str()).cloned(),
-            // Literals with known types
-            Expr::Float(_, _) => Some(crate::ast::Type::Float),
-            Expr::Double(_, _) => Some(crate::ast::Type::Double),
-            Expr::Int(_) => Some(crate::ast::Type::Int),
-            Expr::I64(_) => Some(crate::ast::Type::I64),
-            Expr::U64(_) => Some(crate::ast::Type::U64),
-            Expr::Uint(_) => Some(crate::ast::Type::Uint),
-            Expr::I8(_) => Some(crate::ast::Type::Int),
-            Expr::U8(_) => Some(crate::ast::Type::Uint),
-            Expr::Byte(_) => Some(crate::ast::Type::Byte),
-            Expr::Char(_) => Some(crate::ast::Type::Char),
-            Expr::Str(_) => Some(crate::ast::Type::Str(0)),
-            Expr::CStr(_) => Some(crate::ast::Type::CStr),
-            Expr::Bool(_) => Some(crate::ast::Type::Bool),
-            // For now, we can't infer types from complex expressions
-            _ => None,
+    // Plan 087 Phase 3: Infer expression type using the infer module
+    // Returns the inferred type
+    fn infer_expr_type(&mut self, expr: &Expr) -> crate::ast::Type {
+        // Ensure infer_ctx type_env is synced with var_types
+        for (name, ty) in &self.var_types {
+            let key = crate::ast::Name::from(name.as_str());
+            if !self.infer_ctx.type_env.contains_key(&key) {
+                self.infer_ctx.type_env.insert(key, ty.clone());
+            }
         }
+        // Use the infer module's comprehensive type inference
+        infer_expr(&mut self.infer_ctx, expr)
     }
 
     // Plan 073 Stage A.5: Check if we should use float/double arithmetic
