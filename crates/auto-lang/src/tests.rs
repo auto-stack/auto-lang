@@ -32,3 +32,4 @@ mod test_let_generic;
 mod vm_functions_tests;
 mod vm_tests;
 mod autovm_tests;
+mod infer_tests;

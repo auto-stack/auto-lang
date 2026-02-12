@@ -1494,6 +1494,32 @@ impl Codegen {
             // Plan 073: Dot expression field access (obj.field)
             // Plan 087 Phase 2: Support generic instance field access
             Expr::Dot(obj, field) => {
+                // Check if this is the .type property - returns type name as string
+                if field.as_str() == "type" {
+                    // Get the type of the object expression
+                    if let Some(ty) = self.infer_expr_type(obj) {
+                        // Get type name as string
+                        let type_name = ty.unique_name();
+                        // Add to string pool
+                        let type_bytes = type_name.to_string().into_bytes();
+                        let str_idx = self.strings.len() as u16;
+                        self.strings.push(type_bytes);
+                        // Emit LOAD_STR instruction
+                        self.emit(OpCode::LOAD_STR);
+                        self.code.extend_from_slice(&str_idx.to_le_bytes());
+                        eprintln!("DEBUG: .type property: obj={:?}, type_name={}", obj, type_name);
+                    } else {
+                        eprintln!("Warning: Could not infer type for .type property on {:?}", obj);
+                        // Fallback: return "unknown"
+                        let type_bytes = "unknown".to_string().into_bytes();
+                        let str_idx = self.strings.len() as u16;
+                        self.strings.push(type_bytes);
+                        self.emit(OpCode::LOAD_STR);
+                        self.code.extend_from_slice(&str_idx.to_le_bytes());
+                    }
+                    return Ok(());
+                }
+
                 // Plan 087 Phase 3: Check if this is field access on a user-defined type instance
                 let is_user_type_instance = if let Expr::Ident(var_name) = obj.as_ref() {
                     // Look up variable type
