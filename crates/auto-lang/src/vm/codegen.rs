@@ -3450,9 +3450,11 @@ impl Codegen {
         }
     }
 
-    /// Check if a name is a registered type
+    /// Check if a name is a registered type or a variable with a type
+    ///
+    /// Plan 087 Phase 3: Also checks var_types for generic instances like Point<int>
     pub fn is_type(&self, name: &str) -> bool {
-        self.types.contains_key(name)
+        self.types.contains_key(name) || self.var_types.contains_key(name)
     }
 
     /// Get type information by name
