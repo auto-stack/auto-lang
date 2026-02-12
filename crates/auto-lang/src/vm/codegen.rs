@@ -600,6 +600,15 @@ impl Codegen {
                     }
                 }
 
+                // Plan 087 Phase 3: Infer type from literal expressions for .type property support
+                // If variable type not yet tracked (e.g., let x = 42), infer from expression
+                if !self.var_types.contains_key(&name_str) {
+                    if let Some(ty) = self.infer_expr_type(&store.expr) {
+                        eprintln!("DEBUG: Inferred type for '{}' from expression: {:?}", name_str, ty);
+                        self.var_types.insert(name_str.clone(), ty);
+                    }
+                }
+
                 // Add variable to symbol table and get its index
                 let var_index = self.add_var(&store.name);
 
@@ -2502,6 +2511,8 @@ impl Codegen {
     // Returns: Some(Type) if the type is known, None otherwise
     fn infer_expr_type(&self, expr: &Expr) -> Option<crate::ast::Type> {
         match expr {
+            // Variables: look up from var_types
+            Expr::Ident(name) => self.var_types.get(name.as_str()).cloned(),
             // Literals with known types
             Expr::Float(_, _) => Some(crate::ast::Type::Float),
             Expr::Double(_, _) => Some(crate::ast::Type::Double),
@@ -2516,8 +2527,7 @@ impl Codegen {
             Expr::Str(_) => Some(crate::ast::Type::Str(0)),
             Expr::CStr(_) => Some(crate::ast::Type::CStr),
             Expr::Bool(_) => Some(crate::ast::Type::Bool),
-            // For now, we can't infer types from identifiers or complex expressions
-            // This would require full type inference integration
+            // For now, we can't infer types from complex expressions
             _ => None,
         }
     }
