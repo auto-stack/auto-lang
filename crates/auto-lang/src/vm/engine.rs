@@ -125,14 +125,17 @@ impl AutoVM {
             iterator_id_gen: AtomicU32::new(0),
             closures: DashMap::new(),
             closure_id_gen: AtomicU32::new(0),
+            // Note: IDs start at 1000000 to avoid confusion with small integer values
             objects: DashMap::new(),
-            object_id_gen: AtomicU64::new(1),
+            object_id_gen: AtomicU64::new(1000000),
             // Plan 073: Array registry
+            // Note: IDs start at 1000000 to avoid confusion with small integer values
             arrays: DashMap::new(),
-            array_id_gen: AtomicU64::new(1),
+            array_id_gen: AtomicU64::new(1000000),
             // Plan 073: Node registry
+            // Note: IDs start at 1000000 to avoid confusion with small integer values
             nodes: DashMap::new(),
-            node_id_gen: AtomicU64::new(1),
+            node_id_gen: AtomicU64::new(1000000),
             // Plan 077 Phase 4: Unified object registry
             // Note: IDs start at 1000000 to avoid confusion with small integer values
             heap_objects: DashMap::new(),

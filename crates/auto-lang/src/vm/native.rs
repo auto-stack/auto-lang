@@ -67,6 +67,10 @@ impl NativeInterface {
         self.register(NATIVE_HASHMAP_SIZE, shim_hashmap_size);
         self.register(NATIVE_HASHMAP_CLEAR, shim_hashmap_clear);
         self.register(NATIVE_HASHMAP_DROP, shim_hashmap_drop);
+
+        // String functions
+        self.register(NATIVE_STR_LEN, shim_str_len);
+        self.register(NATIVE_STRING_LEN, shim_string_len);
     }
 }
 
@@ -108,6 +112,10 @@ pub const NATIVE_HASHMAP_REMOVE: u16 = 125;
 pub const NATIVE_HASHMAP_SIZE: u16 = 126;
 pub const NATIVE_HASHMAP_CLEAR: u16 = 127;
 pub const NATIVE_HASHMAP_DROP: u16 = 128;
+
+// === String Native Function IDs (132+) ===
+pub const NATIVE_STR_LEN: u16 = 132;
+pub const NATIVE_STRING_LEN: u16 = 133;
 
 // === Standard Shims ===
 
@@ -1037,5 +1045,31 @@ pub fn shim_hashmap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 pub fn shim_hashmap_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     // No-op: heap objects are managed by Arc<RwLock<>>
     // When the last reference is dropped, the object is automatically freed
+    Ok(())
+}
+
+/// Get the length of a string from the constant pool.
+/// Stack: str_idx -> length (as i32)
+pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_i32() as u16;
+
+    if let Some(bytes) = vm.get_string(str_idx) {
+        task.ram.push_i32(bytes.len() as i32);
+    } else {
+        task.ram.push_i32(0);
+    }
+    Ok(())
+}
+
+/// Get the length of a string from the constant pool (String.len alias).
+/// Stack: str_idx -> length (as i32)
+pub fn shim_string_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_i32() as u16;
+
+    if let Some(bytes) = vm.get_string(str_idx) {
+        task.ram.push_i32(bytes.len() as i32);
+    } else {
+        task.ram.push_i32(0);
+    }
     Ok(())
 }

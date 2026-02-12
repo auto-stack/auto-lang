@@ -1602,6 +1602,8 @@ impl Codegen {
                 // Assignment is special: compile RHS first, then store to LHS
                 if matches!(op, Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq) {
                     // For a += b, compile: LOAD_LOC(a), LOAD_CONST(b), ADD, STORE_LOC(a)
+                    // IMPORTANT: Order matters! Stack must have [a, b] so DIV computes a/b (not b/a)
+                    // Since binary ops pop b then a, we need a pushed before b
                     if let Expr::Ident(name) = lhs.as_ref() {
                         let name_str = name.to_string();
 
@@ -1613,11 +1615,11 @@ impl Codegen {
                             ));
                         } else if let Some(var_index) = self.lookup_var(&name_str) {
                             // Variable found in local scope
-                            // Compile RHS (value to add)
-                            self.compile_expr(rhs)?;
-
-                            // Load variable
+                            // Load variable FIRST (for correct operand order)
                             self.emit_load_loc(var_index);
+
+                            // Compile RHS (value to add/sub/mul/div/mod)
+                            self.compile_expr(rhs)?;
 
                             // Perform operation
                             self.emit(match op {
@@ -2062,7 +2064,17 @@ impl Codegen {
                                 // Complex expression (e.g., arr[0].push, foo().method)
                                 // We cannot determine the type at compile time without type inference
                                 // For now, generate a generic name that may fail at link time
-                                Some(format!("Unknown_{}", method))
+                                // Special case: for len() method, try str.len/String.len first (most common)
+                                if method.as_str() == "len" {
+                                    if BIGVM_NATIVES.lock().unwrap().get_id("str.len").is_some() ||
+                                       BIGVM_NATIVES.lock().unwrap().get_id("String.len").is_some() {
+                                        Some("str.len".to_string())
+                                    } else {
+                                        Some(format!("Unknown_{}", method))
+                                    }
+                                } else {
+                                    Some(format!("Unknown_{}", method))
+                                }
                             }
                         }
                     }
@@ -2239,7 +2251,30 @@ impl Codegen {
                                     self.compile_expr(expr)?;
                                 }
                             }
-                            _ => unimplemented!("Named arguments not supported in AutoVM yet"),
+                            crate::ast::Arg::Pair(_, expr) => {
+                                // Named argument (e.g., add(a: 12, b: 2))
+                                // Extract the value expression and compile it like a positional arg
+                                let param_index = i + arg_offset;
+                                if !func_name_for_params.is_empty() && self.fn_params.contains_key(func_name_for_params) {
+                                    eprintln!("DEBUG:   Named arg {}: smart param passing for '{}'", param_index, func_name_for_params);
+                                    self.compile_call_arg(expr, func_name_for_params, param_index)?;
+                                } else {
+                                    eprintln!("DEBUG:   Named arg {}: normal compile", param_index);
+                                    self.compile_expr(expr)?;
+                                }
+                            }
+                            crate::ast::Arg::Name(name) => {
+                                // Name-only argument (e.g., add(a) where a is both name and value)
+                                // Convert to expression by wrapping in Ident
+                                let param_index = i + arg_offset;
+                                if !func_name_for_params.is_empty() && self.fn_params.contains_key(func_name_for_params) {
+                                    eprintln!("DEBUG:   Named arg {}: smart param passing for '{}'", param_index, func_name_for_params);
+                                    self.compile_call_arg(&Expr::Ident(name.clone()), func_name_for_params, param_index)?;
+                                } else {
+                                    eprintln!("DEBUG:   Named arg {}: normal compile", param_index);
+                                    self.compile_expr(&Expr::Ident(name.clone()))?;
+                                }
+                            }
                         }
                     }
                 }
@@ -2575,14 +2610,29 @@ impl Codegen {
     }
 
     /// Emit STORE_LOCAL for a given local index
+    /// Distinguishes between parameters (before BP) and locals (after BP)
     /// Uses dedicated opcodes for locals 0-1 for performance
     fn emit_store_loc(&mut self, index: usize) {
-        match index {
-            0 => self.emit(OpCode::STORE_LOC_0),
-            1 => self.emit(OpCode::STORE_LOC_1),
-            _ => {
-                self.emit(OpCode::STORE_LOCAL);
-                self.code.push(index as u8);
+        let n_args = self.current_fn_n_args;
+
+        if index < n_args {
+            // This is a parameter, stored before BP
+            // Store parameter using STORE_LOCAL with negative offset logic
+            self.emit(OpCode::STORE_LOCAL);
+            // Encode as negative offset (0x80..0xFF means parameter)
+            let encoded_index = 0x80 + index as u8;
+            self.code.push(encoded_index);
+        } else {
+            // This is a local variable, stored after BP
+            let local_index = index - n_args;
+
+            match local_index {
+                0 => self.emit(OpCode::STORE_LOC_0),
+                1 => self.emit(OpCode::STORE_LOC_1),
+                _ => {
+                    self.emit(OpCode::STORE_LOCAL);
+                    self.code.push(local_index as u8);
+                }
             }
         }
     }
