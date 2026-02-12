@@ -232,6 +232,15 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
             }
         }
 
+        // Check strings pool (for string field results)
+        if result >= 0 {
+            let strings = vm.strings.read().unwrap();
+            if let Some(bytes) = strings.get(result as usize) {
+                let str_val = String::from_utf8_lossy(bytes).to_string();
+                return Ok(str_val);
+            }
+        }
+
         // Default: return as integer
         Ok(format!("{}", result))
     } else {
