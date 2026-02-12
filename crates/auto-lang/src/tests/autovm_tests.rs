@@ -629,16 +629,12 @@ fn main() int {
 "#;
     let result = run_autovm(code);
     assert!(result.is_ok(), "Object name should work: {:?}", result);
-    assert_eq!(result.unwrap(), "auto", "Should return 4");
+    assert_eq!(result.unwrap(), "auto", "Should return auto");
 }
 
 #[test]
-#[ignore]
 fn test_object_name_len() {
-    // Test object field access for string field
-    // TODO: Requires method call support on runtime-typed values
-    // Currently, a.name is not known to be a string at compile time,
-    // so the len() method cannot be resolved correctly.
+    // Test object string field method call
     let code = r#"
 fn main() int {
     var a = { name: "auto", age: 18 }

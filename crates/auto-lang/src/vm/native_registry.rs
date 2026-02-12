@@ -90,6 +90,21 @@ impl AutoVMNativeRegistry {
     pub fn get_function_names(&self) -> Vec<String> {
         self.registry.keys().cloned().collect()
     }
+
+    /// Register a native function with a specific ID.
+    ///
+    /// Use this to align BIGVM_NATIVES IDs with NATIVE_* constants.
+    ///
+    /// # Arguments
+    /// * `name` - Fully qualified function name
+    /// * `id` - The specific ID to use (must match NATIVE_* constant)
+    pub fn register_with_id(&mut self, name: &str, id: u16) {
+        self.registry.insert(name.to_string(), id);
+        // Update next_id to avoid conflicts
+        if id >= self.next_id {
+            self.next_id = id + 1;
+        }
+    }
 }
 
 // Global native registry instance
@@ -174,6 +189,11 @@ pub fn register_builtin_natives() {
     registry.register("BTreeMap.first_key");
     registry.register("BTreeMap.last_key");
     registry.register("BTreeMap.drop");
+
+    // String functions (for string method calls like "hello".len())
+    // Use explicit IDs to match NATIVE_* constants in native.rs
+    registry.register_with_id("str.len", 132);    // NATIVE_STR_LEN
+    registry.register_with_id("String.len", 133);  // NATIVE_STRING_LEN
 }
 
 #[cfg(test)]
