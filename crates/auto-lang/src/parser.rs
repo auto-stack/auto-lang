@@ -534,10 +534,22 @@ impl<'a> Parser<'a> {
         self.infer_ctx.push_scope();
     }
 
-    /// 查找元数据（委托给 InferenceContext）
+    /// 查找元数据（使用 TypeStore 和 InferenceContext）
     ///
-    /// Phase 089: 从 Universe 迁移到 InferenceContext
+    /// Plan 084: 优先使用 TypeStore，然后是 InferenceContext，最后是 Universe
     fn lookup_meta(&mut self, name: &str) -> Option<Rc<Meta>> {
+        // Plan 084: 首先从 TypeStore 查找（如果已注册）
+        // 注意：TypeStore 存储 Fn, Spec, Type 声明
+        if let Some(fn_decl) = self.type_store.lookup_fn_decl_str(name) {
+            return Some(Rc::new(Meta::Fn(fn_decl.clone())));
+        }
+        if let Some(spec_decl) = self.type_store.lookup_spec_decl_str(name) {
+            return Some(Rc::new(Meta::Spec(spec_decl.clone())));
+        }
+        if let Some(type_decl) = self.type_store.lookup_type_decl_str(name) {
+            return Some(Rc::new(Meta::Type(Type::User(type_decl.clone()))));
+        }
+
         // Primary: 使用 InferenceContext 的 lookup_meta()
         if let Some(meta) = self.infer_ctx.lookup_meta(name) {
             return Some(meta);
@@ -548,10 +560,15 @@ impl<'a> Parser<'a> {
         self.scope.borrow().lookup_meta(name)
     }
 
-    /// 查找类型（委托给 InferenceContext）
+    /// 查找类型（使用 TypeStore 和 InferenceContext）
     ///
-    /// Phase 089: 从 Universe 迁移到 InferenceContext
+    /// Plan 084: 优先使用 TypeStore，然后是 InferenceContext，最后是 Universe
     fn lookup_type(&mut self, name: &str) -> Shared<Type> {
+        // Plan 084: 首先从 TypeStore 查找类型声明
+        if let Some(type_decl) = self.type_store.lookup_type_decl_str(name) {
+            return shared(Type::User(type_decl.clone()));
+        }
+
         // Primary: 使用 InferenceContext 的 lookup_type()
         if let Some(ty) = self.infer_ctx.lookup_type(&Name::from(name)) {
             return shared(ty);

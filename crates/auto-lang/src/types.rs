@@ -194,6 +194,26 @@ impl TypeStore {
         self.type_decls.get(&AutoStr::from(name))
     }
 
+    /// 查找函数声明
+    pub fn lookup_fn_decl(&self, name: &Name) -> Option<&Fn> {
+        self.fn_decls.get(name)
+    }
+
+    /// 查找函数声明（字符串参数）
+    pub fn lookup_fn_decl_str(&self, name: &str) -> Option<&Fn> {
+        self.fn_decls.get(&Name::from(name))
+    }
+
+    /// 查找 spec 声明
+    pub fn lookup_spec_decl(&self, name: &AutoStr) -> Option<&SpecDecl> {
+        self.spec_decls.get(name)
+    }
+
+    /// 查找 spec 声明（字符串参数）
+    pub fn lookup_spec_decl_str(&self, name: &str) -> Option<&SpecDecl> {
+        self.spec_decls.get(&AutoStr::from(name))
+    }
+
     /// 获取泛型模板
     pub fn get_template(&self, name: &str) -> Option<&GenericTemplate> {
         self.generic_templates.get(name)

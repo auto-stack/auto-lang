@@ -219,10 +219,18 @@ impl InferenceContext {
         self.type_registry.register_type_decl(type_decl);
     }
 
-    /// Phase 089: 查找类型声明
+    /// Phase 089/084: 查找类型声明
     ///
-    /// 从 TypeRegistry 中查找类型声明。
+    /// 优先从 TypeStore 查找类型声明，如果未设置则回退到 TypeRegistry。
+    /// Plan 084: 统一类型查询 API
     pub fn lookup_type_decl(&self, name: &auto_val::AutoStr) -> Option<&crate::ast::TypeDecl> {
+        // Plan 084: 优先使用 TypeStore
+        if let Some(ref type_store) = self.type_store {
+            if let Some(decl) = type_store.lookup_type_decl(name) {
+                return Some(decl);
+            }
+        }
+        // Fallback: 使用 type_registry
         self.type_registry.lookup_type_decl(name)
     }
 
@@ -268,6 +276,25 @@ impl InferenceContext {
     pub fn lookup_meta(&self, name: &str) -> Option<Rc<crate::scope::Meta>> {
         use crate::scope::Meta;
 
+        // Plan 084: 优先使用 TypeStore（如果设置）
+        if let Some(ref type_store) = self.type_store {
+            // 查找函数声明
+            if let Some(fn_decl) = type_store.lookup_fn_decl_str(name) {
+                return Some(Rc::new(Meta::Fn(fn_decl.clone())));
+            }
+
+            // 查找 spec 声明
+            if let Some(spec_decl) = type_store.lookup_spec_decl_str(name) {
+                return Some(Rc::new(Meta::Spec(spec_decl.clone())));
+            }
+
+            // 查找类型声明
+            if let Some(type_decl) = type_store.lookup_type_decl_str(name) {
+                return Some(Rc::new(Meta::Type(Type::User(type_decl.clone()))));
+            }
+        }
+
+        // Fallback: 使用本地注册表（保持向后兼容）
         // 首先查找函数声明
         if let Some(fn_decl) = self.fn_registry.get(&Name::from(name)) {
             return Some(Rc::new(Meta::Fn(fn_decl.clone())));
