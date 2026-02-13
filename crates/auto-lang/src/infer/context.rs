@@ -26,11 +26,13 @@
 //! assert!(matches!(ty, Some(Type::Int)));
 //! ```
 
-use crate::ast::{Name, Type};
+use crate::ast::{Fn, Name, SpecDecl, Store, StoreKind, Type};
 use crate::database::Database;
+use crate::scope::{Meta, Sid};
 use crate::error::{AutoError, TypeError, Warning};
 use miette::SourceSpan;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 /// 类型推导上下文
 ///
@@ -60,6 +62,18 @@ pub struct InferenceContext {
     /// 替代分散在 codegen.types 和 Database.type_info_store 中的类型存储。
     pub type_registry: super::registry::TypeRegistry,
 
+    /// 函数注册表：函数名 -> 函数声明
+    ///
+    /// 用于替代 Universe 中的函数元数据存储。
+    /// Parser 通过 lookup_meta() 查找函数声明以获取返回类型。
+    pub fn_registry: HashMap<Name, Fn>,
+
+    /// Spec 注册表：spec 名 -> spec 声明
+    ///
+    /// 用于替代 Universe 中的 spec 元数据存储。
+    /// 用于类型约束检查和 trait 验证。
+    pub spec_registry: HashMap<auto_val::AutoStr, SpecDecl>,
+
     /// 错误累加器
     pub errors: Vec<AutoError>,
 
@@ -77,6 +91,8 @@ impl InferenceContext {
             current_ret: None,
             database: std::sync::Arc::new(std::sync::RwLock::new(Database::new())),
             type_registry: super::registry::TypeRegistry::new(),
+            fn_registry: HashMap::new(),
+            spec_registry: HashMap::new(),
             errors: Vec::new(),
             warnings: Vec::new(),
         }
@@ -93,6 +109,8 @@ impl InferenceContext {
             current_ret: None,
             database,
             type_registry: super::registry::TypeRegistry::new(),
+            fn_registry: HashMap::new(),
+            spec_registry: HashMap::new(),
             errors: Vec::new(),
             warnings: Vec::new(),
         }
@@ -169,6 +187,82 @@ impl InferenceContext {
     /// 从 TypeRegistry 中查找类型声明。
     pub fn lookup_type_decl(&self, name: &auto_val::AutoStr) -> Option<&crate::ast::TypeDecl> {
         self.type_registry.lookup_type_decl(name)
+    }
+
+    /// 注册函数声明
+    ///
+    /// 将函数声明存储到 fn_registry 中，供 lookup_meta() 查找使用。
+    ///
+    /// # 参数
+    ///
+    /// * `fn_decl` - 函数声明
+    pub fn register_fn(&mut self, fn_decl: Fn) {
+        let name = fn_decl.name.clone();
+        self.fn_registry.insert(name, fn_decl);
+    }
+
+    /// 注册 spec 声明
+    ///
+    /// 将 spec 声明存储到 spec_registry 中，供 lookup_meta() 查找使用。
+    ///
+    /// # 参数
+    ///
+    /// * `spec_decl` - spec 声明
+    pub fn register_spec(&mut self, spec_decl: SpecDecl) {
+        let name = spec_decl.name.clone();
+        self.spec_registry.insert(name, spec_decl);
+    }
+
+    /// 查找元数据（替代 Universe 的 lookup_meta）
+    ///
+    /// 从各个注册表中查找元数据，用于：
+    /// - 函数声明（`Meta::Fn`）
+    /// - 类型声明（`Meta::Type`）
+    /// - Spec 声明（`Meta::Spec`）
+    /// - 变量绑定（`Meta::Store`）
+    ///
+    /// # 参数
+    ///
+    /// * `name` - 要查找的名称
+    ///
+    /// # 返回
+    ///
+    /// 如果找到元数据则返回其 Rc 包装，否则返回 `None`
+    pub fn lookup_meta(&self, name: &str) -> Option<Rc<crate::scope::Meta>> {
+        use crate::scope::Meta;
+
+        // 首先查找函数声明
+        if let Some(fn_decl) = self.fn_registry.get(&Name::from(name)) {
+            return Some(Rc::new(Meta::Fn(fn_decl.clone())));
+        }
+
+        // 查找 spec 声明
+        if let Some(spec_decl) = self.spec_registry.get(&auto_val::AutoStr::from(name)) {
+            return Some(Rc::new(Meta::Spec(spec_decl.clone())));
+        }
+
+        // 查找类型声明
+        if let Some(type_decl) = self.type_registry.lookup_type_decl(&auto_val::AutoStr::from(name)) {
+            return Some(Rc::new(Meta::Type(Type::User(type_decl.clone()))));
+        }
+
+        // 查找变量绑定（从 type_env）
+        // 注意：type_env 中只存储类型信息，不包含 Store 的完整元数据
+        // 这是与 Universe 的主要区别，因为 Store 还包含 expr 等信息
+        if let Some(ty) = self.lookup_type(&Name::from(name)) {
+            // 构造一个简单的 Store，只包含类型信息
+            // TODO: 如果需要完整的 Store 信息（包括 expr），可能需要额外的存储
+            return Some(Rc::new(Meta::Store(Store {
+                name: crate::ast::Name::from(name),
+                ty,
+                // Store kind 默认为 Let（保守假设）
+                kind: StoreKind::Let,
+                // expr 使用默认值（空表达式）
+                expr: crate::ast::Expr::Nil,
+            })));
+        }
+
+        None
     }
 
     /// 弹出当前作用域

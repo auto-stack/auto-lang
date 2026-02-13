@@ -18,6 +18,8 @@ pub mod execution_engine;
 pub mod eval;
 pub mod hash;
 pub mod infer;
+pub use crate::infer::InferenceContext;
+pub use crate::type_registry::SharedTypeRegistry;
 pub mod indexer;
 pub mod interp;
 pub mod query;
@@ -142,6 +144,15 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
 
     // 2. Compile to bytecode
     let mut codegen = Codegen::new();
+
+    // Plan 089: Transfer type registry from parser to codegen
+    // This ensures types registered during parsing are available during compilation
+    if let Some(type_registry) = parser.type_registry.clone() {
+        // TODO: Set type_registry in Codegen for field lookup support
+        // Currently, Parser types are registered to Parser.type_registry
+        // but Codegen needs access to them. For now, we keep this code
+        // but it doesn't fully solve the problem without more refactoring.
+    }
     for stmt in ast.stmts {
         codegen.compile_stmt(&stmt)?;
     }

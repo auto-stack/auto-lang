@@ -449,12 +449,36 @@ impl<'a> Parser<'a> {
     }
 
     fn define(&mut self, name: &str, meta: Meta) {
-        // Plan 010 Phase 5B: Bind variable in inference context if it's a Store (variable)
-        if let Meta::Store(ref store) = meta {
-            use crate::ast::Name;
-            let name_obj = Name::from(name);
-            self.infer_ctx.bind_var(name_obj, store.ty.clone());
+        // Plan 089: Register to InferenceContext for fn, spec, type, and store
+        match &meta {
+            // 变量绑定 - 绑定类型到 type_env
+            Meta::Store(ref store) => {
+                use crate::ast::Name;
+                let name_obj = Name::from(name);
+                self.infer_ctx.bind_var(name_obj, store.ty.clone());
+            }
+            // 函数声明 - 注册到 fn_registry
+            Meta::Fn(ref fn_decl) => {
+                self.infer_ctx.register_fn(fn_decl.clone());
+            }
+            // Spec 声明 - 注册到 spec_registry
+            Meta::Spec(ref spec_decl) => {
+                self.infer_ctx.register_spec(spec_decl.clone());
+            }
+            // 类型声明和 Enum 声明 - 确保类型已经注册到 type_registry
+            // 注意: TypeDecl 和 EnumDecl 已经在 parse_type_decl/parse_enum_decl 中
+            // 通过 register_type_decl() 注册到 type_registry 了（在 Universe 之前）
+            // 这里不需要额外注册，只需要确保类型在 registry 中即可
+            Meta::Type(_) | Meta::Enum(_) => {
+                // 类型声明已经在 parse_type_decl 中通过 register_type_decl() 注册过了
+                // 这里不需要重复注册
+            }
+            // 其他类型 - 不需要处理
+            _ => {}
         }
+
+        // 始终定义到 Universe（保持向后兼容）
+        // TODO: 完全移除 Universe 依赖后，可以移除此行
         self.scope.borrow_mut().define(name, Rc::new(meta));
     }
 
@@ -488,11 +512,31 @@ impl<'a> Parser<'a> {
         self.infer_ctx.push_scope();
     }
 
+    /// 查找元数据（委托给 InferenceContext）
+    ///
+    /// Phase 089: 从 Universe 迁移到 InferenceContext
     fn lookup_meta(&mut self, name: &str) -> Option<Rc<Meta>> {
+        // Primary: 使用 InferenceContext 的 lookup_meta()
+        if let Some(meta) = self.infer_ctx.lookup_meta(name) {
+            return Some(meta);
+        }
+
+        // Fallback: Universe 作为回退（保持向后兼容）
+        // TODO: 完全移除 Universe 依赖后删除此回退逻辑
         self.scope.borrow().lookup_meta(name)
     }
 
+    /// 查找类型（委托给 InferenceContext）
+    ///
+    /// Phase 089: 从 Universe 迁移到 InferenceContext
     fn lookup_type(&mut self, name: &str) -> Shared<Type> {
+        // Primary: 使用 InferenceContext 的 lookup_type()
+        if let Some(ty) = self.infer_ctx.lookup_type(&Name::from(name)) {
+            return shared(ty);
+        }
+
+        // Fallback: Universe 作为回退（保持向后兼容）
+        // TODO: 完全移除 Universe 依赖后删除此回退逻辑
         match self.scope.borrow().lookup_type_meta(name) {
             Some(meta) => match meta.as_ref() {
                 Meta::Type(ty) => shared(ty.clone()),
@@ -3650,14 +3694,14 @@ impl<'a> Parser<'a> {
     }
 
     fn infer_type_expr(&mut self, expr: &Expr) -> Type {
-        // Plan 010 Phase 5: Hybrid inference system
-        // Primary: Use old Universe-based lookup for backward compatibility
-        // Fallback: Use new inference system when old system returns Unknown
+        // Plan 089: Use infer module as primary type inference system
+        // Previously: Universe-based lookup as primary, infer as fallback
+        // Now: infer module as primary, Universe as fallback for backward compatibility
 
         let mut typ = Type::Unknown;
 
-        // Try Universe-based lookup first (for backward compatibility)
         match expr {
+            // Literals - directly return type (same in both old and new systems)
             Expr::I8(..) => typ = Type::Int,
             Expr::Int(..) => typ = Type::Int,
             Expr::Float(..) => typ = Type::Float,
@@ -3666,76 +3710,65 @@ impl<'a> Parser<'a> {
             Expr::Str(n) => typ = Type::Str(n.len()),
             Expr::CStr(..) => typ = Type::CStr,
             Expr::FStr(..) => typ = Type::Str(0),
+
+            // Identifier - prioritize infer module
             Expr::Ident(id) => {
-                // Try Universe-based lookup first
-                let meta = self.lookup_meta(id);
-                if let Some(m) = meta {
-                    if let Meta::Store(store) = m.as_ref() {
-                        typ = store.ty.clone();
-                    }
+                use crate::infer::infer_expr;
+
+                // Primary: Try infer module first
+                let inferred = infer_expr(&mut self.infer_ctx, expr);
+
+                if !matches!(&inferred, Type::Unknown) {
+                    typ = inferred;
                 } else {
-                    // Try type lookup
-                    let ltyp = self.lookup_type(id);
-                    if !matches!(*ltyp.borrow(), Type::Unknown) {
-                        typ = ltyp.borrow().clone();
-                    }
-                }
-            }
-            Expr::Node(nd) => {
-                typ = nd.typ.borrow().clone();
-            }
-            Expr::Array(arr) => {
-                if arr.len() > 0 {
-                    let elem_ty = self.infer_type_expr(&arr[0]);
-                    typ = Type::Array(ArrayType {
-                        elem: Box::new(elem_ty),
-                        len: arr.len(),
-                    });
-                } else {
-                    typ = Type::Array(ArrayType {
-                        elem: Box::new(Type::Unknown),
-                        len: 0,
-                    });
-                }
-            }
-            Expr::Call(call) => {
-                if let Expr::Ident(type_name) = call.name.as_ref() {
-                    let type_decl = self.lookup_type(type_name);
-                    if !matches!(*type_decl.borrow(), Type::Unknown) {
-                        typ = type_decl.borrow().clone();
+                    // Fallback: Try Universe-based lookup for backward compatibility
+                    let meta = self.lookup_meta(id);
+                    if let Some(m) = meta {
+                        if let Meta::Store(store) = m.as_ref() {
+                            typ = store.ty.clone();
+                        }
                     } else {
-                        typ = call.ret.clone();
+                        // Try type lookup
+                        let ltyp = self.lookup_type(id);
+                        if !matches!(*ltyp.borrow(), Type::Unknown) {
+                            typ = ltyp.borrow().clone();
+                        }
                     }
-                } else {
-                    typ = call.ret.clone();
                 }
             }
+
+            // Node - defer to infer module
+            Expr::Node(nd) => {
+                use crate::infer::infer_expr;
+                typ = infer_expr(&mut self.infer_ctx, expr);
+            }
+
+            // Array - defer to infer module
+            Expr::Array(arr) => {
+                use crate::infer::infer_expr;
+                typ = infer_expr(&mut self.infer_ctx, expr);
+            }
+
+            // Call - defer to infer module
+            Expr::Call(call) => {
+                use crate::infer::infer_expr;
+                typ = infer_expr(&mut self.infer_ctx, expr);
+            }
+
+            // Index - defer to infer module
             Expr::Index(arr, _idx) => {
-                let arr_typ = self.infer_type_expr(arr);
-                match arr_typ {
-                    Type::Array(arr_ty) => {
-                        typ = (*arr_ty.elem).clone();
-                    }
-                    Type::Str(..) => {
-                        typ = Type::Char;
-                    }
-                    _ => {}
-                };
+                use crate::infer::infer_expr;
+                typ = infer_expr(&mut self.infer_ctx, expr);
             }
+
+            // Binary op - defer to infer module
             Expr::Bina(lhs, op, rhs) => {
-                let ltype = self.infer_type_expr(lhs);
-                let rtype = self.infer_type_expr(rhs);
-                match op {
-                    Op::Dot => {
-                        typ = rtype;
-                    }
-                    _ => {
-                        typ = ltype;
-                    }
-                }
+                use crate::infer::infer_expr;
+                typ = infer_expr(&mut self.infer_ctx, expr);
             }
+
+            // All other expressions - use infer module directly
             _ => {
-                // For expressions not handled by old system, use new inference system
                 use crate::infer::infer_expr;
                 typ = infer_expr(&mut self.infer_ctx, expr);
             }

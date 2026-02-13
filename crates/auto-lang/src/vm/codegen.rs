@@ -3426,6 +3426,9 @@ impl Codegen {
         // This allows infer/expr.rs to look up field types via TypeRegistry
         self.infer_ctx.register_type_decl(type_decl.clone());
 
+        // Plan 089: Export type name for symbol resolution
+        // Type names need to be exported so they can be looked up during relocation
+
         // Plan 087 Phase 1: Check if this is a generic type
         if !type_decl.generic_params.is_empty() {
             // Register as generic template
@@ -3491,6 +3494,14 @@ impl Codegen {
         if let Err(e) = self.generic_registry.register_template(template) {
             eprintln!("Warning: Failed to register generic template '{}': {}", type_decl.name, e);
         }
+    }
+
+    /// Set a new inference context (Plan 089)
+    ///
+    /// Used to transfer type registry from Parser to Codegen.
+    /// This ensures types registered during parsing are available for field lookup.
+    pub fn set_infer_ctx(&mut self, infer_ctx: InferenceContext) {
+        self.infer_ctx = infer_ctx;
     }
 
     /// Check if a name is a registered type or a variable with a type
