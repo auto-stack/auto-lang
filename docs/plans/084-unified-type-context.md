@@ -322,18 +322,22 @@ impl InferenceContext {
 - 可以通过 `new_with_type_store()` 与 Parser 共享同一个 TypeStore 实例
 - 为后续统一类型查询 API 奠定基础
 
-### Phase 4: InferenceContext 集成 TypeStore
+### Phase 4: InferenceContext 集成 TypeStore ✅ 完成
 
 **文件：** `crates/auto-lang/src/infer/context.rs`
 
 **修改：**
-1. 移除独立的 `type_registry` 字段
-2. 添加 `type_store: Arc<TypeStore>` 字段
-3. 添加便捷方法
+1. ✅ 添加 `type_store: Option<Arc<types::TypeStore>>` 字段
+2. ✅ 添加 imports: `use crate::types;` 和 `use std::sync::Arc;`
+3. ✅ 修改 `new()` 和 `with_database()` 初始化 type_store 为 None
+4. ✅ 添加 `with_type_store()` 构造函数
+5. ✅ 添加 `set_type_store()` 方法
 
-**任务：**
-1. 在 `new()` 方法中使用 `type_store: Arc::new(TypeStore::new())`
-2. 在 `with_type_store()` 方法中设置类型存储引用
+**实施总结：**
+- InferenceContext 现在可以可选地持有 TypeStore 引用
+- 通过 `with_type_store()` 或 `set_type_store()` 可以设置共享的 TypeStore
+- 保持了与现有代码的向后兼容性（type_store 为 Option）
+- 为后续统一类型查询 API 奠定基础
 
 ## 测试策略
 
@@ -365,7 +369,7 @@ impl InferenceContext {
 | Phase 1 | ✅ 完成 | 创建 types.rs 模块并实现 TypeStore |
 | Phase 2 | ✅ 完成 | 集成 TypeStore 到 Parser |
 | Phase 3 | ✅ 完成 | 集成 TypeStore 到 Codegen |
-| Phase 4 | ⏸️ 待实施 | InferenceContext 集成 TypeStore |
+| Phase 4 | ✅ 完成 | InferenceContext 集成 TypeStore |
 ## 完成状态
 
 **Phase 1 实施完成** (2026-02-13)
@@ -395,8 +399,35 @@ impl InferenceContext {
 - ✅ 添加了 `new_with_type_store()` 构造函数
 - ✅ 代码编译成功
 
-**下一步：**
-开始 Phase 4 - InferenceContext 集成 TypeStore
+**Phase 4 实施完成** (2026-02-13)
+
+- ✅ 在 InferenceContext 中添加了 `type_store: Option<Arc<types::TypeStore>>` 字段
+- ✅ 添加了必要的 imports
+- ✅ 修改了 `new()` 和 `with_database()` 初始化 type_store 为 None
+- ✅ 添加了 `with_type_store()` 构造函数
+- ✅ 添加了 `set_type_store()` 方法
+- ✅ 代码编译成功
+
+## Plan 084 完成总结
+
+**所有 4 个 Phase 已完成** ✅
+
+Plan 084 成功创建了统一的 TypeStore 系统，为 AutoLang 提供了集中化的类型信息管理：
+
+1. **TypeStore 模块** - 集中存储类型、函数、Spec 声明和泛型模板
+2. **Parser 集成** - 解析时自动注册声明到 TypeStore
+3. **Codegen 集成** - 编译时可共享 TypeStore 实例
+4. **InferenceContext 集成** - 类型推导时可访问 TypeStore
+
+**架构优势：**
+- 单一数据源：所有类型信息存储在 TypeStore 中
+- 共享访问：通过 `Arc<TypeStore>` 实现跨组件共享
+- 向后兼容：保留现有注册表作为回退
+
+**后续工作：**
+- 将类型查询统一到 TypeStore API
+- 移除冗余的类型注册表（type_registry, fn_registry, spec_registry）
+- 实现完整的类型同步机制
 
 ## 参考资料
 

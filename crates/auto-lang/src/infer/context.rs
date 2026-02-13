@@ -30,9 +30,11 @@ use crate::ast::{Fn, Name, SpecDecl, Store, StoreKind, Type};
 use crate::database::Database;
 use crate::scope::{Meta, Sid};
 use crate::error::{AutoError, TypeError, Warning};
+use crate::types;  // Plan 084 Phase 4: TypeStore integration
 use miette::SourceSpan;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 /// 类型推导上下文
 ///
@@ -79,6 +81,12 @@ pub struct InferenceContext {
 
     /// 警告累加器
     pub warnings: Vec<Warning>,
+
+    /// Plan 084 Phase 4: 统一的 TypeStore 引用
+    ///
+    /// 可选的 TypeStore 引用，用于与 Parser/Codegen 共享类型信息。
+    /// 当设置时，类型查询可以委托给 TypeStore。
+    pub type_store: Option<Arc<types::TypeStore>>,
 }
 
 impl InferenceContext {
@@ -95,6 +103,7 @@ impl InferenceContext {
             spec_registry: HashMap::new(),
             errors: Vec::new(),
             warnings: Vec::new(),
+            type_store: None, // Plan 084 Phase 4: Initialize as None
         }
     }
 
@@ -113,7 +122,35 @@ impl InferenceContext {
             spec_registry: HashMap::new(),
             errors: Vec::new(),
             warnings: Vec::new(),
+            type_store: None, // Plan 084 Phase 4: Initialize as None
         }
+    }
+
+    /// Plan 084 Phase 4: 使用共享的 TypeStore 创建上下文
+    ///
+    /// 允许 InferenceContext 与 Parser/Codegen 共享类型存储。
+    /// 当设置 TypeStore 后，类型查询可以委托给它。
+    pub fn with_type_store(type_store: Arc<types::TypeStore>) -> Self {
+        Self {
+            type_env: HashMap::new(),
+            constraints: Vec::new(),
+            scopes: Vec::new(),
+            current_ret: None,
+            database: std::sync::Arc::new(std::sync::RwLock::new(Database::new())),
+            type_registry: super::registry::TypeRegistry::new(),
+            fn_registry: HashMap::new(),
+            spec_registry: HashMap::new(),
+            errors: Vec::new(),
+            warnings: Vec::new(),
+            type_store: Some(type_store),
+        }
+    }
+
+    /// Plan 084 Phase 4: 设置 TypeStore 引用
+    ///
+    /// 用于在创建上下文后设置共享的 TypeStore。
+    pub fn set_type_store(&mut self, type_store: Arc<types::TypeStore>) {
+        self.type_store = Some(type_store);
     }
 
     /// 查找变量的类型
