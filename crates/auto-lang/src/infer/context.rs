@@ -58,40 +58,26 @@ pub struct InferenceContext {
     /// Phase 070: Migrated from Universe to Database for compile-time data
     pub database: std::sync::Arc<std::sync::RwLock<Database>>,
 
-    /// Phase 089: 统一的类型注册表
-    ///
-    /// 集中管理所有类型声明，包含字段信息。
-    /// 替代分散在 codegen.types 和 Database.type_info_store 中的类型存储。
-    pub type_registry: super::registry::TypeRegistry,
-
-    /// 函数注册表：函数名 -> 函数声明
-    ///
-    /// 用于替代 Universe 中的函数元数据存储。
-    /// Parser 通过 lookup_meta() 查找函数声明以获取返回类型。
-    pub fn_registry: HashMap<Name, Fn>,
-
-    /// Spec 注册表：spec 名 -> spec 声明
-    ///
-    /// 用于替代 Universe 中的 spec 元数据存储。
-    /// 用于类型约束检查和 trait 验证。
-    pub spec_registry: HashMap<auto_val::AutoStr, SpecDecl>,
-
     /// 错误累加器
     pub errors: Vec<AutoError>,
 
     /// 警告累加器
     pub warnings: Vec<Warning>,
 
-    /// Plan 084 Phase 4: 统一的 TypeStore 引用
+    /// Plan 084: 统一的 TypeStore
     ///
     /// 使用 RwLock 包装以支持共享可变性。
-    /// Parser/Codegen/InferenceContext 可以共享同一个 TypeStore 实例，
-    /// 并通过 write() 进行注册，read() 进行查询。
-    pub type_store: Option<Arc<std::sync::RwLock<types::TypeStore>>>,
+    /// 始终有值 - 如果独立使用则创建内部 TypeStore，如果与 Parser/Codegen 共享则使用传入的实例。
+    /// 通过 write() 进行注册，read() 进行查询。
+    ///
+    /// 替代了之前的 type_registry, fn_registry, spec_registry。
+    pub type_store: Arc<std::sync::RwLock<types::TypeStore>>,
 }
 
 impl InferenceContext {
     /// 创建新的类型推导上下文
+    ///
+    /// Plan 084: 始终创建内部的 TypeStore
     pub fn new() -> Self {
         Self {
             type_env: HashMap::new(),
@@ -99,18 +85,16 @@ impl InferenceContext {
             scopes: Vec::new(),
             current_ret: None,
             database: std::sync::Arc::new(std::sync::RwLock::new(Database::new())),
-            type_registry: super::registry::TypeRegistry::new(),
-            fn_registry: HashMap::new(),
-            spec_registry: HashMap::new(),
             errors: Vec::new(),
             warnings: Vec::new(),
-            type_store: None, // Plan 084 Phase 4: Initialize as None
+            type_store: Arc::new(std::sync::RwLock::new(types::TypeStore::new())),
         }
     }
 
     /// 使用现有的 Database 创建上下文
     ///
     /// Phase 070: Migrated from with_universe to with_database
+    /// Plan 084: 始终创建内部的 TypeStore
     pub fn with_database(database: std::sync::Arc<std::sync::RwLock<Database>>) -> Self {
         Self {
             type_env: HashMap::new(),
@@ -118,19 +102,16 @@ impl InferenceContext {
             scopes: Vec::new(),
             current_ret: None,
             database,
-            type_registry: super::registry::TypeRegistry::new(),
-            fn_registry: HashMap::new(),
-            spec_registry: HashMap::new(),
             errors: Vec::new(),
             warnings: Vec::new(),
-            type_store: None, // Plan 084 Phase 4: Initialize as None
+            type_store: Arc::new(std::sync::RwLock::new(types::TypeStore::new())),
         }
     }
 
-    /// Plan 084 Phase 4: 使用共享的 TypeStore 创建上下文
+    /// Plan 084: 使用共享的 TypeStore 创建上下文
     ///
     /// 允许 InferenceContext 与 Parser/Codegen 共享类型存储。
-    /// 当设置 TypeStore 后，类型查询和注册都通过它进行。
+    /// 所有类型查询和注册都通过这个共享的 TypeStore 进行。
     pub fn with_type_store(type_store: Arc<std::sync::RwLock<types::TypeStore>>) -> Self {
         Self {
             type_env: HashMap::new(),
@@ -138,20 +119,17 @@ impl InferenceContext {
             scopes: Vec::new(),
             current_ret: None,
             database: std::sync::Arc::new(std::sync::RwLock::new(Database::new())),
-            type_registry: super::registry::TypeRegistry::new(),
-            fn_registry: HashMap::new(),
-            spec_registry: HashMap::new(),
             errors: Vec::new(),
             warnings: Vec::new(),
-            type_store: Some(type_store),
+            type_store,
         }
     }
 
-    /// Plan 084 Phase 4: 设置 TypeStore 引用
+    /// Plan 084: 设置/替换 TypeStore 引用
     ///
-    /// 用于在创建上下文后设置共享的 TypeStore。
+    /// 用于在创建上下文后切换到共享的 TypeStore。
     pub fn set_type_store(&mut self, type_store: Arc<std::sync::RwLock<types::TypeStore>>) {
-        self.type_store = Some(type_store);
+        self.type_store = type_store;
     }
 
     /// 查找变量的类型
@@ -213,130 +191,64 @@ impl InferenceContext {
         self.scopes.push(HashMap::new());
     }
 
-    /// Phase 089/084: 注册类型声明
-    ///
-    /// 将类型声明存储到 TypeStore（如果设置）和 TypeRegistry 中。
-    /// Plan 084: 实现类型同步机制
+    /// Plan 084: 注册类型声明到 TypeStore
     pub fn register_type_decl(&mut self, type_decl: crate::ast::TypeDecl) {
-        // Plan 084: 同步到 TypeStore
-        if let Some(ref type_store) = self.type_store {
-            if let Ok(mut store) = type_store.write() {
-                store.register_type_decl(&type_decl);
-            }
+        if let Ok(mut store) = self.type_store.write() {
+            store.register_type_decl(&type_decl);
         }
-        // 同时注册到本地 type_registry（保持向后兼容）
-        self.type_registry.register_type_decl(type_decl);
     }
 
     /// Phase 089/084: 查找类型声明
     ///
-    /// 优先从 TypeStore 查找类型声明，如果未设置则回退到 TypeRegistry。
-    /// Plan 084: 统一类型查询 API
+    /// Plan 084: 只从 TypeStore 查找类型声明
     pub fn lookup_type_decl(&self, name: &auto_val::AutoStr) -> Option<crate::ast::TypeDecl> {
-        // Plan 084: 优先使用 TypeStore
-        if let Some(ref type_store) = self.type_store {
-            if let Ok(store) = type_store.read() {
-                if let Some(decl) = store.lookup_type_decl(name) {
-                    return Some(decl.clone());
-                }
+        if let Ok(store) = self.type_store.read() {
+            if let Some(decl) = store.lookup_type_decl(name) {
+                return Some(decl.clone());
             }
         }
-        // Fallback: 使用 type_registry
-        self.type_registry.lookup_type_decl(name).cloned()
+        None
     }
 
     /// 注册函数声明
     ///
-    /// 将函数声明存储到 fn_registry 中，供 lookup_meta() 查找使用。
-    /// Plan 084: 同时同步到 TypeStore（如果设置）
-    ///
-    /// # 参数
-    ///
-    /// * `fn_decl` - 函数声明
+    /// Plan 084: 只存储到 TypeStore
     pub fn register_fn(&mut self, fn_decl: Fn) {
-        // Plan 084: 同步到 TypeStore
-        if let Some(ref type_store) = self.type_store {
-            if let Ok(mut store) = type_store.write() {
-                store.register_fn_decl(&fn_decl);
-            }
+        if let Ok(mut store) = self.type_store.write() {
+            store.register_fn_decl(&fn_decl);
         }
-        // 同时注册到本地 fn_registry（保持向后兼容）
-        let name = fn_decl.name.clone();
-        self.fn_registry.insert(name, fn_decl);
     }
 
     /// 注册 spec 声明
     ///
-    /// 将 spec 声明存储到 spec_registry 中，供 lookup_meta() 查找使用。
-    /// Plan 084: 同时同步到 TypeStore（如果设置）
-    ///
-    /// # 参数
-    ///
-    /// * `spec_decl` - spec 声明
+    /// Plan 084: 只存储到 TypeStore
     pub fn register_spec(&mut self, spec_decl: SpecDecl) {
-        // Plan 084: 同步到 TypeStore
-        if let Some(ref type_store) = self.type_store {
-            if let Ok(mut store) = type_store.write() {
-                store.register_spec_decl(&spec_decl);
-            }
+        if let Ok(mut store) = self.type_store.write() {
+            store.register_spec_decl(&spec_decl);
         }
-        // 同时注册到本地 spec_registry（保持向后兼容）
-        let name = spec_decl.name.clone();
-        self.spec_registry.insert(name, spec_decl);
     }
 
     /// 查找元数据（替代 Universe 的 lookup_meta）
     ///
-    /// 从各个注册表中查找元数据，用于：
-    /// - 函数声明（`Meta::Fn`）
-    /// - 类型声明（`Meta::Type`）
-    /// - Spec 声明（`Meta::Spec`）
-    /// - 变量绑定（`Meta::Store`）
-    ///
-    /// # 参数
-    ///
-    /// * `name` - 要查找的名称
-    ///
-    /// # 返回
-    ///
-    /// 如果找到元数据则返回其 Rc 包装，否则返回 `None`
+    /// Plan 084: 只从 TypeStore 查找
     pub fn lookup_meta(&self, name: &str) -> Option<Rc<crate::scope::Meta>> {
         use crate::scope::Meta;
 
-        // Plan 084: 优先使用 TypeStore（如果设置）
-        if let Some(ref type_store) = self.type_store {
-            if let Ok(store) = type_store.read() {
-                // 查找函数声明
-                if let Some(fn_decl) = store.lookup_fn_decl_str(name) {
-                    return Some(Rc::new(Meta::Fn(fn_decl.clone())));
-                }
-
-                // 查找 spec 声明
-                if let Some(spec_decl) = store.lookup_spec_decl_str(name) {
-                    return Some(Rc::new(Meta::Spec(spec_decl.clone())));
-                }
-
-                // 查找类型声明
-                if let Some(type_decl) = store.lookup_type_decl_str(name) {
-                    return Some(Rc::new(Meta::Type(Type::User(type_decl.clone()))));
-                }
+        if let Ok(store) = self.type_store.read() {
+            // 查找函数声明
+            if let Some(fn_decl) = store.lookup_fn_decl_str(name) {
+                return Some(Rc::new(Meta::Fn(fn_decl.clone())));
             }
-        }
 
-        // Fallback: 使用本地注册表（保持向后兼容）
-        // 首先查找函数声明
-        if let Some(fn_decl) = self.fn_registry.get(&Name::from(name)) {
-            return Some(Rc::new(Meta::Fn(fn_decl.clone())));
-        }
+            // 查找 spec 声明
+            if let Some(spec_decl) = store.lookup_spec_decl_str(name) {
+                return Some(Rc::new(Meta::Spec(spec_decl.clone())));
+            }
 
-        // 查找 spec 声明
-        if let Some(spec_decl) = self.spec_registry.get(&auto_val::AutoStr::from(name)) {
-            return Some(Rc::new(Meta::Spec(spec_decl.clone())));
-        }
-
-        // 查找类型声明
-        if let Some(type_decl) = self.type_registry.lookup_type_decl(&auto_val::AutoStr::from(name)) {
-            return Some(Rc::new(Meta::Type(Type::User(type_decl.clone()))));
+            // 查找类型声明
+            if let Some(type_decl) = store.lookup_type_decl_str(name) {
+                return Some(Rc::new(Meta::Type(Type::User(type_decl.clone()))));
+            }
         }
 
         // 查找变量绑定（从 type_env）
