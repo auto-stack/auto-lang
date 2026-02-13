@@ -4,6 +4,7 @@ use crate::infer::{check_field_type, InferenceContext};
 use crate::lexer::Lexer;
 use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
+use crate::types;
 use crate::universe::{SymbolLocation, Universe};
 use auto_val::AutoPath;
 use auto_val::AutoStr;
@@ -13,6 +14,7 @@ use miette::SourceSpan;
 use std::collections::HashMap;
 use std::i32;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 /// TODO: T should be a generic AST node type
 pub trait ParserExt {
@@ -174,6 +176,8 @@ pub struct Parser<'a> {
     /// Type registry for REPL (Plan 087)
     /// Allows checking if an identifier is a type across REPL inputs
     pub type_registry: Option<crate::type_registry::SharedTypeRegistry>,
+    /// Plan 084: 统一类型存储
+    pub type_store: Arc<RwLock<types::TypeStore>>,
 }
 
 impl<'a> Parser<'a> {
@@ -207,6 +211,7 @@ impl<'a> Parser<'a> {
             current_const_params: HashMap::new(),
             infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
             type_registry: None, // Plan 087: Type registry for REPL
+            type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
         };
         parser.skip_comments();
         parser
@@ -255,6 +260,7 @@ impl<'a> Parser<'a> {
             current_const_params: HashMap::new(),
             infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
             type_registry: None, // Plan 087: Type registry for REPL
+            type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
         };
         parser.skip_comments();
         parser
@@ -291,6 +297,7 @@ impl<'a> Parser<'a> {
             current_const_params: HashMap::new(),
             infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
             type_registry: None, // Plan 087: Type registry for REPL
+            type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
         };
         parser.skip_comments();
         parser
@@ -461,13 +468,17 @@ impl<'a> Parser<'a> {
             Meta::Fn(ref fn_decl) => {
                 self.infer_ctx.register_fn(fn_decl.clone());
                 // Plan 084 Phase 2: Also register to TypeStore
-                self.type_store.register_fn_decl(fn_decl);
+                if let Ok(mut store) = self.type_store.write() {
+                    store.register_fn_decl(fn_decl);
+                }
             }
             // Spec 声明 - 注册到 spec_registry 和 TypeStore
             Meta::Spec(ref spec_decl) => {
                 self.infer_ctx.register_spec(spec_decl.clone());
                 // Plan 084 Phase 2: Also register to TypeStore
-                self.type_store.register_spec_decl(spec_decl);
+                if let Ok(mut store) = self.type_store.write() {
+                    store.register_spec_decl(spec_decl);
+                }
             }
             // 类型声明和 Enum 声明 - 确保类型已经注册到 type_registry
             // 注意: TypeDecl 和 EnumDecl 已经在 parse_type_decl/parse_enum_decl 中
@@ -476,23 +487,30 @@ impl<'a> Parser<'a> {
             Meta::Type(_) | Meta::Enum(_) => {
                 // 类型声明已经在 parse_type_decl/parse_enum_decl 中通过 register_type_decl() 注册过了
                 // Plan 084 Phase 2: Also register to TypeStore
-                if let Meta::Type(ref type_decl) = meta {
-                    self.type_store.register_type_decl(type_decl);
+                if let Meta::Type(ref ty) = meta {
+                    // Type::User(TypeDecl) contains the TypeDecl
+                    if let Type::User(ref type_decl) = ty {
+                        if let Ok(mut store) = self.type_store.write() {
+                            store.register_type_decl(type_decl);
+                        }
+                    }
                 } else if let Meta::Enum(ref enum_decl) = meta {
-                    // EnumDecl is similar to TypeDecl, register it
+                    // EnumDecl is similar to TypeDecl, register it with minimal fields
                     let type_decl = crate::ast::TypeDecl {
                         name: enum_decl.name.clone(),
                         kind: crate::ast::TypeDeclKind::UserType,
                         parent: None,
                         has: vec![],
-                        specs: enum_decl.specs.clone(),
-                        spec_impls: enum_decl.spec_impls.clone(),
-                        generic_params: enum_decl.generic_params.clone(),
-                        members: enum_decl.members.clone(),
-                        methods: enum_decl.methods.clone(),
+                        specs: vec![],
+                        spec_impls: vec![],
+                        generic_params: vec![],
+                        members: vec![],
+                        methods: vec![],
                         delegations: vec![],
                     };
-                    self.type_store.register_type_decl(&type_decl);
+                    if let Ok(mut store) = self.type_store.write() {
+                        store.register_type_decl(&type_decl);
+                    }
                 }
             }
             // 其他类型 - 不需要处理
@@ -540,14 +558,16 @@ impl<'a> Parser<'a> {
     fn lookup_meta(&mut self, name: &str) -> Option<Rc<Meta>> {
         // Plan 084: 首先从 TypeStore 查找（如果已注册）
         // 注意：TypeStore 存储 Fn, Spec, Type 声明
-        if let Some(fn_decl) = self.type_store.lookup_fn_decl_str(name) {
-            return Some(Rc::new(Meta::Fn(fn_decl.clone())));
-        }
-        if let Some(spec_decl) = self.type_store.lookup_spec_decl_str(name) {
-            return Some(Rc::new(Meta::Spec(spec_decl.clone())));
-        }
-        if let Some(type_decl) = self.type_store.lookup_type_decl_str(name) {
-            return Some(Rc::new(Meta::Type(Type::User(type_decl.clone()))));
+        if let Ok(store) = self.type_store.read() {
+            if let Some(fn_decl) = store.lookup_fn_decl_str(name) {
+                return Some(Rc::new(Meta::Fn(fn_decl.clone())));
+            }
+            if let Some(spec_decl) = store.lookup_spec_decl_str(name) {
+                return Some(Rc::new(Meta::Spec(spec_decl.clone())));
+            }
+            if let Some(type_decl) = store.lookup_type_decl_str(name) {
+                return Some(Rc::new(Meta::Type(Type::User(type_decl.clone()))));
+            }
         }
 
         // Primary: 使用 InferenceContext 的 lookup_meta()
@@ -565,8 +585,10 @@ impl<'a> Parser<'a> {
     /// Plan 084: 优先使用 TypeStore，然后是 InferenceContext，最后是 Universe
     fn lookup_type(&mut self, name: &str) -> Shared<Type> {
         // Plan 084: 首先从 TypeStore 查找类型声明
-        if let Some(type_decl) = self.type_store.lookup_type_decl_str(name) {
-            return shared(Type::User(type_decl.clone()));
+        if let Ok(store) = self.type_store.read() {
+            if let Some(type_decl) = store.lookup_type_decl_str(name) {
+                return shared(Type::User(type_decl.clone()));
+            }
         }
 
         // Primary: 使用 InferenceContext 的 lookup_type()

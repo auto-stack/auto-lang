@@ -84,9 +84,10 @@ pub struct InferenceContext {
 
     /// Plan 084 Phase 4: 统一的 TypeStore 引用
     ///
-    /// 可选的 TypeStore 引用，用于与 Parser/Codegen 共享类型信息。
-    /// 当设置时，类型查询可以委托给 TypeStore。
-    pub type_store: Option<Arc<types::TypeStore>>,
+    /// 使用 RwLock 包装以支持共享可变性。
+    /// Parser/Codegen/InferenceContext 可以共享同一个 TypeStore 实例，
+    /// 并通过 write() 进行注册，read() 进行查询。
+    pub type_store: Option<Arc<std::sync::RwLock<types::TypeStore>>>,
 }
 
 impl InferenceContext {
@@ -129,8 +130,8 @@ impl InferenceContext {
     /// Plan 084 Phase 4: 使用共享的 TypeStore 创建上下文
     ///
     /// 允许 InferenceContext 与 Parser/Codegen 共享类型存储。
-    /// 当设置 TypeStore 后，类型查询可以委托给它。
-    pub fn with_type_store(type_store: Arc<types::TypeStore>) -> Self {
+    /// 当设置 TypeStore 后，类型查询和注册都通过它进行。
+    pub fn with_type_store(type_store: Arc<std::sync::RwLock<types::TypeStore>>) -> Self {
         Self {
             type_env: HashMap::new(),
             constraints: Vec::new(),
@@ -149,7 +150,7 @@ impl InferenceContext {
     /// Plan 084 Phase 4: 设置 TypeStore 引用
     ///
     /// 用于在创建上下文后设置共享的 TypeStore。
-    pub fn set_type_store(&mut self, type_store: Arc<types::TypeStore>) {
+    pub fn set_type_store(&mut self, type_store: Arc<std::sync::RwLock<types::TypeStore>>) {
         self.type_store = Some(type_store);
     }
 
@@ -212,10 +213,18 @@ impl InferenceContext {
         self.scopes.push(HashMap::new());
     }
 
-    /// Phase 089: 注册类型声明
+    /// Phase 089/084: 注册类型声明
     ///
-    /// 将类型声明存储到 TypeRegistry 中，供字段类型查找使用。
+    /// 将类型声明存储到 TypeStore（如果设置）和 TypeRegistry 中。
+    /// Plan 084: 实现类型同步机制
     pub fn register_type_decl(&mut self, type_decl: crate::ast::TypeDecl) {
+        // Plan 084: 同步到 TypeStore
+        if let Some(ref type_store) = self.type_store {
+            if let Ok(mut store) = type_store.write() {
+                store.register_type_decl(&type_decl);
+            }
+        }
+        // 同时注册到本地 type_registry（保持向后兼容）
         self.type_registry.register_type_decl(type_decl);
     }
 
@@ -223,25 +232,35 @@ impl InferenceContext {
     ///
     /// 优先从 TypeStore 查找类型声明，如果未设置则回退到 TypeRegistry。
     /// Plan 084: 统一类型查询 API
-    pub fn lookup_type_decl(&self, name: &auto_val::AutoStr) -> Option<&crate::ast::TypeDecl> {
+    pub fn lookup_type_decl(&self, name: &auto_val::AutoStr) -> Option<crate::ast::TypeDecl> {
         // Plan 084: 优先使用 TypeStore
         if let Some(ref type_store) = self.type_store {
-            if let Some(decl) = type_store.lookup_type_decl(name) {
-                return Some(decl);
+            if let Ok(store) = type_store.read() {
+                if let Some(decl) = store.lookup_type_decl(name) {
+                    return Some(decl.clone());
+                }
             }
         }
         // Fallback: 使用 type_registry
-        self.type_registry.lookup_type_decl(name)
+        self.type_registry.lookup_type_decl(name).cloned()
     }
 
     /// 注册函数声明
     ///
     /// 将函数声明存储到 fn_registry 中，供 lookup_meta() 查找使用。
+    /// Plan 084: 同时同步到 TypeStore（如果设置）
     ///
     /// # 参数
     ///
     /// * `fn_decl` - 函数声明
     pub fn register_fn(&mut self, fn_decl: Fn) {
+        // Plan 084: 同步到 TypeStore
+        if let Some(ref type_store) = self.type_store {
+            if let Ok(mut store) = type_store.write() {
+                store.register_fn_decl(&fn_decl);
+            }
+        }
+        // 同时注册到本地 fn_registry（保持向后兼容）
         let name = fn_decl.name.clone();
         self.fn_registry.insert(name, fn_decl);
     }
@@ -249,11 +268,19 @@ impl InferenceContext {
     /// 注册 spec 声明
     ///
     /// 将 spec 声明存储到 spec_registry 中，供 lookup_meta() 查找使用。
+    /// Plan 084: 同时同步到 TypeStore（如果设置）
     ///
     /// # 参数
     ///
     /// * `spec_decl` - spec 声明
     pub fn register_spec(&mut self, spec_decl: SpecDecl) {
+        // Plan 084: 同步到 TypeStore
+        if let Some(ref type_store) = self.type_store {
+            if let Ok(mut store) = type_store.write() {
+                store.register_spec_decl(&spec_decl);
+            }
+        }
+        // 同时注册到本地 spec_registry（保持向后兼容）
         let name = spec_decl.name.clone();
         self.spec_registry.insert(name, spec_decl);
     }
@@ -278,19 +305,21 @@ impl InferenceContext {
 
         // Plan 084: 优先使用 TypeStore（如果设置）
         if let Some(ref type_store) = self.type_store {
-            // 查找函数声明
-            if let Some(fn_decl) = type_store.lookup_fn_decl_str(name) {
-                return Some(Rc::new(Meta::Fn(fn_decl.clone())));
-            }
+            if let Ok(store) = type_store.read() {
+                // 查找函数声明
+                if let Some(fn_decl) = store.lookup_fn_decl_str(name) {
+                    return Some(Rc::new(Meta::Fn(fn_decl.clone())));
+                }
 
-            // 查找 spec 声明
-            if let Some(spec_decl) = type_store.lookup_spec_decl_str(name) {
-                return Some(Rc::new(Meta::Spec(spec_decl.clone())));
-            }
+                // 查找 spec 声明
+                if let Some(spec_decl) = store.lookup_spec_decl_str(name) {
+                    return Some(Rc::new(Meta::Spec(spec_decl.clone())));
+                }
 
-            // 查找类型声明
-            if let Some(type_decl) = type_store.lookup_type_decl_str(name) {
-                return Some(Rc::new(Meta::Type(Type::User(type_decl.clone()))));
+                // 查找类型声明
+                if let Some(type_decl) = store.lookup_type_decl_str(name) {
+                    return Some(Rc::new(Meta::Type(Type::User(type_decl.clone()))));
+                }
             }
         }
 
