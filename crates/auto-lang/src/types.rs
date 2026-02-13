@@ -247,6 +247,22 @@ impl TypeStore {
         }
     }
 
+    /// Plan 090: 根据名称查找类型
+    ///
+    /// 用于替代 Universe 的 `find_type_for_name()` 方法。
+    /// 查找类型声明并返回对应的 Type。
+    pub fn find_type_for_name(&self, name: &str) -> Option<Type> {
+        // 首先检查类型别名
+        let resolved_name = self.resolve_type_alias(&AutoStr::from(name));
+
+        // 查找类型声明
+        if let Some(type_decl) = self.type_decls.get(&resolved_name) {
+            return Some(Type::User(type_decl.clone()));
+        }
+
+        None
+    }
+
     /// 创建泛型实例（用于类型参数替换）
     pub fn create_generic_instance(&self, type_name: &str, type_args: &[Type]) -> Type {
         if let Some(template) = self.get_template(type_name) {
@@ -277,6 +293,31 @@ impl TypeStore {
     /// 列出所有类型声明
     pub fn list_types(&self) -> Vec<AutoStr> {
         self.type_decls.keys().cloned().collect()
+    }
+
+    /// Plan 090: 获取所有已定义的名称
+    ///
+    /// 用于替代 Universe 的 `get_defined_names()` 方法。
+    /// 返回类型、函数、Spec 的所有名称列表（用于错误提示）。
+    pub fn get_defined_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+
+        // 添加类型名
+        for name in self.type_decls.keys() {
+            names.push(name.to_string());
+        }
+
+        // 添加函数名
+        for name in self.fn_decls.keys() {
+            names.push(name.to_string());
+        }
+
+        // 添加 spec 名
+        for name in self.spec_decls.keys() {
+            names.push(name.to_string());
+        }
+
+        names
     }
 
     /// 列出所有函数声明

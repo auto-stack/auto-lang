@@ -279,6 +279,42 @@ impl InferenceContext {
         self.scopes.pop().expect("No scope to pop");
     }
 
+    /// Plan 090: 进入函数作用域
+    ///
+    /// 与 `push_scope()` 功能相同，但语义上表示进入函数。
+    /// 用于替代 Universe 的 `enter_fn()` 方法。
+    pub fn enter_fn(&mut self, _name: &str) {
+        self.push_scope();
+    }
+
+    /// Plan 090: 退出函数作用域
+    ///
+    /// 与 `pop_scope()` 功能相同，但语义上表示退出函数。
+    pub fn exit_fn(&mut self) {
+        self.pop_scope();
+    }
+
+    /// Plan 090: 获取所有已定义的变量名
+    ///
+    /// 用于错误提示中的候选名称列表。
+    pub fn get_defined_var_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+
+        // 从作用域栈中收集
+        for scope in &self.scopes {
+            for name in scope.keys() {
+                names.push(name.to_string());
+            }
+        }
+
+        // 从全局类型环境中收集
+        for name in self.type_env.keys() {
+            names.push(name.to_string());
+        }
+
+        names
+    }
+
     /// 设置当前函数的返回类型
     ///
     /// # 参数
