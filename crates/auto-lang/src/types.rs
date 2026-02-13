@@ -141,6 +141,9 @@ pub struct TypeStore {
 
     /// 泛型模板：类型名 -> 泛型模板（用于类型参数替换）
     generic_templates: HashMap<String, GenericTemplate>,
+
+    /// 类型别名：别名 -> 目标类型名（Plan 090）
+    type_aliases: HashMap<AutoStr, AutoStr>,
 }
 
 impl TypeStore {
@@ -151,6 +154,7 @@ impl TypeStore {
             fn_decls: HashMap::new(),
             spec_decls: HashMap::new(),
             generic_templates: HashMap::new(),
+            type_aliases: HashMap::new(),
         }
     }
 
@@ -217,6 +221,30 @@ impl TypeStore {
     /// 获取泛型模板
     pub fn get_template(&self, name: &str) -> Option<&GenericTemplate> {
         self.generic_templates.get(name)
+    }
+
+    /// 注册类型别名（Plan 090）
+    pub fn register_type_alias(&mut self, alias: AutoStr, target: AutoStr) {
+        self.type_aliases.insert(alias, target);
+    }
+
+    /// 查找类型别名
+    pub fn lookup_type_alias(&self, alias: &AutoStr) -> Option<&AutoStr> {
+        self.type_aliases.get(alias)
+    }
+
+    /// 查找类型别名（字符串参数）
+    pub fn lookup_type_alias_str(&self, alias: &str) -> Option<&AutoStr> {
+        self.type_aliases.get(&AutoStr::from(alias))
+    }
+
+    /// 解析类型别名（递归解析直到找到真正的类型）
+    pub fn resolve_type_alias(&self, name: &AutoStr) -> AutoStr {
+        if let Some(target) = self.type_aliases.get(name) {
+            self.resolve_type_alias(target)
+        } else {
+            name.clone()
+        }
     }
 
     /// 创建泛型实例（用于类型参数替换）

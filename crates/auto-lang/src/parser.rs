@@ -534,15 +534,58 @@ impl<'a> Parser<'a> {
     }
 
     fn define_alias(&mut self, alias: AutoStr, target: AutoStr) {
+        // Plan 090: Also register to TypeStore
+        if let Ok(mut store) = self.type_store.write() {
+            store.register_type_alias(alias.clone(), target.clone());
+        }
         self.scope.borrow_mut().define_alias(alias, target);
     }
 
     fn define_rc(&mut self, name: &str, meta: Rc<Meta>) {
-        // Plan 010 Phase 5B: Bind variable in inference context if it's a Store (variable)
-        if let Meta::Store(ref store) = meta.as_ref() {
-            use crate::ast::Name;
-            let name_obj = Name::from(name);
-            self.infer_ctx.bind_var(name_obj, store.ty.clone());
+        // Plan 090: Register to TypeStore + infer_ctx based on meta type
+        match meta.as_ref() {
+            Meta::Store(ref store) => {
+                use crate::ast::Name;
+                let name_obj = Name::from(name);
+                self.infer_ctx.bind_var(name_obj, store.ty.clone());
+            }
+            Meta::Fn(ref fn_decl) => {
+                self.infer_ctx.register_fn(fn_decl.clone());
+                if let Ok(mut store) = self.type_store.write() {
+                    store.register_fn_decl(fn_decl);
+                }
+            }
+            Meta::Spec(ref spec_decl) => {
+                self.infer_ctx.register_spec(spec_decl.clone());
+                if let Ok(mut store) = self.type_store.write() {
+                    store.register_spec_decl(spec_decl);
+                }
+            }
+            Meta::Type(ref ty) => {
+                if let Type::User(ref type_decl) = ty {
+                    if let Ok(mut store) = self.type_store.write() {
+                        store.register_type_decl(type_decl);
+                    }
+                }
+            }
+            Meta::Enum(ref enum_decl) => {
+                let type_decl = crate::ast::TypeDecl {
+                    name: enum_decl.name.clone(),
+                    kind: crate::ast::TypeDeclKind::UserType,
+                    parent: None,
+                    has: vec![],
+                    specs: vec![],
+                    spec_impls: vec![],
+                    generic_params: vec![],
+                    members: vec![],
+                    methods: vec![],
+                    delegations: vec![],
+                };
+                if let Ok(mut store) = self.type_store.write() {
+                    store.register_type_decl(&type_decl);
+                }
+            }
+            _ => {}
         }
         self.scope.borrow_mut().define(name, meta);
     }
