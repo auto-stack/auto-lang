@@ -12,8 +12,11 @@ use crate::vm::generic::{GenericTable, extract_generic_instance};
 use crate::vm::monomorphize::{Monomorphizer, MonomorphizedModule};
 // Plan 087 Phase 3: Use infer module for type inference
 use crate::infer::{InferenceContext, infer_expr};
+// Plan 084 Phase 3: Unified TypeStore for type management
+use crate::types;
 use auto_val::Op;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use miette::SourceSpan;
 
 /// Plan 073: Type tags for object field values
@@ -118,6 +121,10 @@ pub struct Codegen {
     /// Uses the infer module's comprehensive type inference system
     pub infer_ctx: InferenceContext,
 
+    /// Plan 084 Phase 3: Unified TypeStore for type declaration management
+    /// Centralized storage for types, functions, specs, and generic templates
+    pub type_store: Arc<types::TypeStore>,
+
     /// Plan 088 Phase 4: Jump placeholder tracking for multi-function compilation
     /// Tracks all jump_over placeholder indices to update them when FN_PROLOG is inserted
     /// When FN_PROLOG (3 bytes) is inserted, all subsequent code shifts
@@ -163,7 +170,52 @@ impl Codegen {
             fn_return_types: HashMap::new(), // Plan 087 Phase 3: function return types for .type
             current_fn_n_args: 0, // Plan 087 Phase 3: Initialize to 0
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
+            type_store: Arc::new(types::TypeStore::new()), // Plan 084 Phase 3: Unified TypeStore
             jump_placeholders: Vec::new(), // Plan 088 Phase 4: Initialize empty jump placeholder tracking
+        }
+    }
+
+    /// Plan 084 Phase 3: Create Codegen with custom TypeStore
+    /// Allows Parser and Codegen to share the same TypeStore instance
+    pub fn new_with_type_store(type_store: Arc<types::TypeStore>) -> Self {
+        // Initialize the global native registry
+        crate::vm::native_registry::register_builtin_natives();
+
+        let mut intrinsics = HashMap::new();
+        // Register intrinsics
+        intrinsics.insert("print".to_string(), NATIVE_PRINT_I32);
+        intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
+        intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
+        intrinsics.insert("print_str".to_string(), NATIVE_PRINT_STR);
+
+        // Create global scope
+        let locals = HashMap::new();
+        let mut scope_stack = Vec::new();
+        scope_stack.push(locals);
+
+        Self {
+            code: Vec::new(),
+            exports: HashMap::new(),
+            relocs: Vec::new(),
+            intrinsics,
+            strings: Vec::new(),
+            object_keys: Vec::new(),
+            object_types: Vec::new(),
+            locals: HashMap::new(),
+            scope_stack,
+            var_types: HashMap::new(),
+            var_mutability: HashMap::new(),
+            captured_vars_stack: Vec::new(),
+            loop_exits: Vec::new(),
+            types: HashMap::new(),
+            generics: GenericTable::new(),
+            generic_registry: crate::vm::generic_registry::GenericRegistry::new(),
+            fn_params: HashMap::new(),
+            fn_return_types: HashMap::new(),
+            current_fn_n_args: 0,
+            infer_ctx: InferenceContext::new(),
+            type_store, // Plan 084 Phase 3: Use provided TypeStore
+            jump_placeholders: Vec::new(),
         }
     }
 

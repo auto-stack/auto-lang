@@ -1,5 +1,7 @@
 pub mod ast;
 pub mod atom;
+// Plan 084: Unified TypeStore for type declaration management
+pub mod types;
 pub mod atom_error;
 pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
 pub mod compile;

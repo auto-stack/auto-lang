@@ -457,21 +457,43 @@ impl<'a> Parser<'a> {
                 let name_obj = Name::from(name);
                 self.infer_ctx.bind_var(name_obj, store.ty.clone());
             }
-            // 函数声明 - 注册到 fn_registry
+            // 函数声明 - 注册到 fn_registry 和 TypeStore
             Meta::Fn(ref fn_decl) => {
                 self.infer_ctx.register_fn(fn_decl.clone());
+                // Plan 084 Phase 2: Also register to TypeStore
+                self.type_store.register_fn_decl(fn_decl);
             }
-            // Spec 声明 - 注册到 spec_registry
+            // Spec 声明 - 注册到 spec_registry 和 TypeStore
             Meta::Spec(ref spec_decl) => {
                 self.infer_ctx.register_spec(spec_decl.clone());
+                // Plan 084 Phase 2: Also register to TypeStore
+                self.type_store.register_spec_decl(spec_decl);
             }
             // 类型声明和 Enum 声明 - 确保类型已经注册到 type_registry
             // 注意: TypeDecl 和 EnumDecl 已经在 parse_type_decl/parse_enum_decl 中
             // 通过 register_type_decl() 注册到 type_registry 了（在 Universe 之前）
             // 这里不需要额外注册，只需要确保类型在 registry 中即可
             Meta::Type(_) | Meta::Enum(_) => {
-                // 类型声明已经在 parse_type_decl 中通过 register_type_decl() 注册过了
-                // 这里不需要重复注册
+                // 类型声明已经在 parse_type_decl/parse_enum_decl 中通过 register_type_decl() 注册过了
+                // Plan 084 Phase 2: Also register to TypeStore
+                if let Meta::Type(ref type_decl) = meta {
+                    self.type_store.register_type_decl(type_decl);
+                } else if let Meta::Enum(ref enum_decl) = meta {
+                    // EnumDecl is similar to TypeDecl, register it
+                    let type_decl = crate::ast::TypeDecl {
+                        name: enum_decl.name.clone(),
+                        kind: crate::ast::TypeDeclKind::UserType,
+                        parent: None,
+                        has: vec![],
+                        specs: enum_decl.specs.clone(),
+                        spec_impls: enum_decl.spec_impls.clone(),
+                        generic_params: enum_decl.generic_params.clone(),
+                        members: enum_decl.members.clone(),
+                        methods: enum_decl.methods.clone(),
+                        delegations: vec![],
+                    };
+                    self.type_store.register_type_decl(&type_decl);
+                }
             }
             // 其他类型 - 不需要处理
             _ => {}
