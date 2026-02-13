@@ -2,6 +2,7 @@ use crate::ast::*;
 use crate::error::{pos_to_span, AutoError, AutoResult, NameError, SyntaxError};
 use crate::infer::{check_field_type, InferenceContext};
 use crate::lexer::Lexer;
+use crate::parser_helpers::{LambdaIdGenerator, ModuleTracker};
 use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
 use crate::types;
@@ -178,6 +179,10 @@ pub struct Parser<'a> {
     pub type_registry: Option<crate::type_registry::SharedTypeRegistry>,
     /// Plan 084: 统一类型存储
     pub type_store: Arc<RwLock<types::TypeStore>>,
+    /// Plan 090: 模块路径追踪器
+    pub module_tracker: ModuleTracker,
+    /// Plan 090: Lambda ID 生成器
+    pub lambda_id_gen: LambdaIdGenerator,
 }
 
 impl<'a> Parser<'a> {
@@ -212,6 +217,8 @@ impl<'a> Parser<'a> {
             infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
             type_registry: None, // Plan 087: Type registry for REPL
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
+            module_tracker: ModuleTracker::new(), // Plan 090
+            lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
         };
         parser.skip_comments();
         parser
@@ -261,6 +268,8 @@ impl<'a> Parser<'a> {
             infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
             type_registry: None, // Plan 087: Type registry for REPL
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
+            module_tracker: ModuleTracker::new(), // Plan 090
+            lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
         };
         parser.skip_comments();
         parser
@@ -298,6 +307,8 @@ impl<'a> Parser<'a> {
             infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
             type_registry: None, // Plan 087: Type registry for REPL
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
+            module_tracker: ModuleTracker::new(), // Plan 090
+            lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
         };
         parser.skip_comments();
         parser
