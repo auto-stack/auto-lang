@@ -3004,11 +3004,15 @@ impl<'a> Parser<'a> {
             // 3. Current directory: .
 
             // Save current scope spot
-            let cur_spot = self.scope.borrow().cur_spot.clone();
+            // Plan 090: Use module_tracker for tracking, keep Universe in sync
+            let universe_spot = self.scope.borrow().cur_spot.clone();
+            let module_spot = self.module_tracker.save_spot();
+            self.module_tracker.reset();
             self.scope.borrow_mut().reset_spot();
 
             for p in scope_name.split(".").into_iter() {
-                self.scope.borrow_mut().enter_mod(p.to_string());
+                self.module_tracker.enter_mod(p.to_string());
+                self.scope.borrow_mut().enter_mod(p.to_string()); // Keep Universe in sync
                 // Plan 010 Phase 5B: Sync inference context scope
                 self.infer_ctx.push_scope();
             }
@@ -3096,7 +3100,9 @@ impl<'a> Parser<'a> {
                 merged_content.into(),
             );
 
-            self.scope.borrow_mut().set_spot(cur_spot);
+            // Plan 090: Restore both module_tracker and Universe spots
+            self.module_tracker.restore_spot(module_spot);
+            self.scope.borrow_mut().set_spot(universe_spot);
             // Plan 010 Phase 5B: Pop module scopes from inference context
             for _ in scope_name.split(".").into_iter() {
                 self.infer_ctx.pop_scope();
@@ -3173,11 +3179,15 @@ impl<'a> Parser<'a> {
         }
 
         // Save current scope spot
-        let cur_spot = self.scope.borrow().cur_spot.clone();
+        // Plan 090: Use module_tracker for tracking, keep Universe in sync
+        let universe_spot = self.scope.borrow().cur_spot.clone();
+        let module_spot = self.module_tracker.save_spot();
+        self.module_tracker.reset();
         self.scope.borrow_mut().reset_spot();
 
         for p in scope_name.split(".").into_iter() {
-            self.scope.borrow_mut().enter_mod(p.to_string());
+            self.module_tracker.enter_mod(p.to_string());
+            self.scope.borrow_mut().enter_mod(p.to_string()); // Keep Universe in sync
             // Plan 010 Phase 5B: Sync inference context scope
             self.infer_ctx.push_scope();
         }
@@ -3295,7 +3305,9 @@ impl<'a> Parser<'a> {
             merged_content.into(),
         );
 
-        self.scope.borrow_mut().set_spot(cur_spot);
+        // Plan 090: Restore both module_tracker and Universe spots
+        self.module_tracker.restore_spot(module_spot);
+        self.scope.borrow_mut().set_spot(universe_spot);
         // Plan 010 Phase 5B: Pop module scopes from inference context
         // We pushed one scope per path component in the loop above
         for _ in scope_name.split(".").into_iter() {
