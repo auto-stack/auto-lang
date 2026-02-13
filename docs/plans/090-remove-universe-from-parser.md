@@ -90,16 +90,20 @@ pub struct LambdaIdGenerator {
 以下功能需要在 TypeStore/InferenceContext 中实现后才能完全移除 Universe：
 
 1. **`enter_fn()`** - 进入函数作用域
+   - ✅ **已实现** (commit: 2059508)
    - 解决方案：在 InferenceContext 中添加 `enter_fn()` 方法
 
 2. **`import()`** - 模块导入
-   - 解决方案：重构 import 逻辑，直接操作 TypeStore
+   - ⏳ **委托给 Plan 085**
+   - 解决方案：使用 AIE + AutoCache 替代，不在 Parser 中处理
 
 3. **`find_type_for_name()`** - 查找类型的父类型
-   - 解决方案：在 TypeStore 中添加类型继承查询
+   - ✅ **已实现** (commit: 2059508)
+   - 解决方案：在 TypeStore 中添加类型查找方法
 
 4. **`get_defined_names()`** - 获取所有定义的名称（用于 LSP）
-   - 解决方案：在 TypeStore 中添加 `list_all_names()` 方法
+   - ✅ **已实现** (commit: 2059508)
+   - 解决方案：在 TypeStore 中添加 `get_defined_names()` 方法
 
 ## 当前 Parser 结构
 
@@ -117,16 +121,15 @@ pub struct Parser<'a> {
 
 ## 下一步
 
-1. 为阻塞项实现替代方案
-2. 或者采用渐进式移除策略：
-   - Phase 7a: 移除已有替代的简单用法
-   - Phase 7b: 实现复杂功能的替代
-   - Phase 7c: 完全移除 `scope` 字段
+1. ~~为阻塞项实现替代方案~~ ✅ 已完成（import 除外）
+2. **import 功能由 Plan 085 处理** - 基于 AIE + AutoCache 的 use 语句处理
+3. 待 Plan 085 完成后，可完全移除 `scope` 字段
 
 ## 成功标准
 
-- [ ] Parser 不再依赖 Universe
+- [ ] Parser 不再依赖 Universe（等待 Plan 085）
 - [x] TypeStore 作为类型信息单一数据源
+- [x] 阻塞项已实现替代方案
 - [ ] 所有现有测试通过
 - [ ] 无功能回归
 
@@ -134,9 +137,9 @@ pub struct Parser<'a> {
 
 | 风险 | 概率 | 影响 | 缓解措施 |
 |------|------|------|----------|
-| 导入功能损坏 | 中 | 高 | 保留 Universe 作为回退，渐进迁移 |
+| 导入功能损坏 | 低 | 高 | Plan 085 提供更好的替代方案 |
 | REPL 类型持久化失效 | 低 | 中 | 保留 type_registry 字段 |
-| LSP 功能受损 | 中 | 中 | 实现 `get_defined_names()` 替代 |
+| LSP 功能受损 | 低 | 中 | ✅ 已实现 `get_defined_names()` 替代 |
 | 性能下降 | 低 | 低 | RwLock 已经优化 |
 
 ## 提交历史
@@ -146,9 +149,11 @@ pub struct Parser<'a> {
 - `bdb9e98` Plan 090 Phase 3: Migrate symbol definition to TypeStore
 - `4916c2e` Plan 090 Phase 4: Migrate symbol lookup to TypeStore
 - `557db22` Plan 090 Phase 5: Migrate module tracking to ModuleTracker
+- `2059508` Plan 090: Implement blocking items (enter_fn, find_type_for_name, get_defined_names)
 
 ## 参考资料
 
 - [Plan 084: Unified TypeStore](./084-unified-type-context.md)
+- [Plan 085: Auto-use with AIE + AutoCache](./085-auto-use.md)
 - [Plan 089: 类型声明存储迁移](./089-infer-module-type-declaration-storage.md)
 - [Plan 064: Database + ExecutionEngine](./064-database-execution-engine.md)
