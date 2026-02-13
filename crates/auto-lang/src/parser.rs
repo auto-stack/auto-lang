@@ -590,7 +590,32 @@ impl<'a> Parser<'a> {
         self.scope.borrow_mut().define(name, meta);
     }
 
+    /// 检查符号是否存在（使用 TypeStore 和 InferenceContext）
+    ///
+    /// Plan 090: 优先使用 TypeStore，然后是 InferenceContext，最后是 Universe
     fn exists(&mut self, name: &str) -> bool {
+        // Plan 090: 首先从 TypeStore 查找
+        if let Ok(store) = self.type_store.read() {
+            if store.lookup_fn_decl_str(name).is_some() {
+                return true;
+            }
+            if store.lookup_spec_decl_str(name).is_some() {
+                return true;
+            }
+            if store.lookup_type_decl_str(name).is_some() {
+                return true;
+            }
+            if store.lookup_type_alias_str(name).is_some() {
+                return true;
+            }
+        }
+
+        // 从 InferenceContext 查找变量绑定
+        if self.infer_ctx.lookup_type(&Name::from(name)).is_some() {
+            return true;
+        }
+
+        // Fallback: Universe 作为回退（保持向后兼容）
         self.scope.borrow().exists(name)
     }
 
