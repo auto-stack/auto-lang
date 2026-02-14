@@ -2279,7 +2279,8 @@ impl<'a> Parser<'a> {
         self.next(); // skip |
         let params = self.fn_params()?;
         self.expect(TokenKind::VBar)?; // skip |
-        let id = self.scope.borrow_mut().gen_lambda_id();
+        // Plan 091: Use lambda_id_gen instead of Universe.gen_lambda_id()
+        let id: AutoStr = format!("lambda_{}", self.lambda_id_gen.gen_id()).into();
         let lambda = if self.is_kind(TokenKind::LBrace) {
             let body = self.body()?;
             Fn::new(
