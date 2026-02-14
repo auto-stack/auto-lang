@@ -55,10 +55,32 @@ Universe 当前承担的职责:
 |-------|------|------|
 | Phase 1 | ✅ 完成 | 移除公开 API，Evaluator 重定向到 AutoVM |
 | Phase 2 | ✅ 完成 | 所有转译器已迁移（trans_c, trans_rust, trans_python, trans_javascript）|
-| Phase 3 | ⏳ 待定 | 移除 Parser.scope 字段 |
+| Phase 3 | 🔄 进行中 | 已替换 gen_lambda_id，剩余 23+ 处用法 |
 | Phase 4 | ✅ 部分完成 | 入口点已简化 |
 | Phase 5 | ⏳ 待定 | config.rs 迁移 |
 | Phase 6 | ⏳ 待定 | 删除 universe.rs |
+
+### Phase 3 进度详情 (commit: 2df0979)
+
+**已迁移**:
+- ✅ `gen_lambda_id()` → `lambda_id_gen.gen_id()`
+
+**待迁移** (23 处):
+- `define()` - 2 处
+- `define_alias()` - 1 处
+- `exists()` - 1 处
+- `exit_scope()` - 1 处
+- `enter_scope()` - 1 处
+- `lookup_meta()` - 1 处
+- `lookup_type_meta()` - 1 处
+- `lookup_ident_type()` - 1 处
+- `enter_fn()` - 3 处
+- `find_type_for_name()` - 2 处
+- `get_defined_names()` - 2 处
+- `define_symbol_location()` - 1 处
+- 直接传递 `self.scope` - 5+ 处
+
+**建议**: 这是一个大工程，需要分阶段进行。可以先专注于最常用的方法。
 
 ### Phase 1 进度 (commit: 15a8f3c)
 
