@@ -1,24 +1,17 @@
-use crate::ast;
 use crate::eval_config_with_vm;
-use crate::scope::Meta;
 use crate::AutoResult;
-use crate::Universe;
-use auto_val::shared;
 use auto_val::Obj;
-use auto_val::Shared;
 use auto_val::{AutoPath, AutoStr, Node, Value};
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 pub struct AutoConfigReader {
-    pub univ: Shared<Universe>,
+    args: Obj,
 }
 
 impl AutoConfigReader {
     pub fn new() -> Self {
-        let univ = shared(Universe::new());
-        Self { univ }
+        Self { args: Obj::new() }
     }
 
     pub fn skip_check(self) -> Self {
@@ -27,24 +20,20 @@ impl AutoConfigReader {
     }
 
     pub fn args(mut self, args: &Obj) -> Self {
-        self.univ
-            .borrow_mut()
-            .define_global("root", Rc::new(Meta::Node(ast::Node::new("root"))));
-        self.univ.borrow_mut().set_args(args);
+        self.args = args.clone();
         self
     }
 
     pub fn parse(&mut self, code: impl Into<AutoStr>) -> AutoResult<AutoConfig> {
         let code = code.into();
 
-        // Plan 081 Phase 2: Use AutoVM instead of deprecated Interpreter
-        // Note: AutoVM doesn't use Universe directly, so we pass a default one
-        let result = eval_config_with_vm(code.as_str(), &Obj::new(), Universe::new())?;
+        // Plan 091: Use AutoVM without Universe
+        let result = eval_config_with_vm(code.as_str(), &self.args)?;
 
         Ok(AutoConfig {
             code: code.to_string(),
             root: result.to_node(),
-            args: Obj::new(),
+            args: self.args.clone(),
         })
     }
 
@@ -69,10 +58,10 @@ pub struct AutoConfig {
 
 impl AutoConfig {
     pub fn read(path: &Path) -> AutoResult<Self> {
-        Self::from_file(path, &Obj::default(), Universe::default())
+        Self::from_file(path, &Obj::default())
     }
 
-    pub fn from_file(path: &Path, args: &Obj, univ: Universe) -> AutoResult<Self> {
+    pub fn from_file(path: &Path, args: &Obj) -> AutoResult<Self> {
         let content = std::fs::read_to_string(path).map_err(|e| {
             format!(
                 "Failed to read config file {}: {}",
@@ -80,12 +69,11 @@ impl AutoConfig {
                 e
             )
         })?;
-        Self::from_code(content, args, univ)
+        Self::from_code(content, args)
     }
 
     pub fn new(code: impl Into<String>) -> AutoResult<Self> {
-        let univ = Universe::default();
-        Self::from_code(code, &Obj::new(), univ)
+        Self::from_code(code, &Obj::new())
     }
 
     pub fn save(&mut self, path: &AutoPath) -> AutoResult<()> {
@@ -95,11 +83,11 @@ impl AutoConfig {
         Ok(())
     }
 
-    pub fn from_code(code: impl Into<String>, args: &Obj, univ: Universe) -> AutoResult<Self> {
+    pub fn from_code(code: impl Into<String>, args: &Obj) -> AutoResult<Self> {
         let code = code.into();
 
-        // Plan 081 Phase 2: Use AutoVM instead of deprecated Interpreter
-        let result = eval_config_with_vm(&code, args, univ)?;
+        // Plan 091: Use AutoVM without Universe
+        let result = eval_config_with_vm(&code, args)?;
 
         if let Value::Node(root) = result {
             Ok(Self {

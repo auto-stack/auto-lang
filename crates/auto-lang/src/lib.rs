@@ -429,9 +429,9 @@ pub fn run_file(path: &str) -> AutoResult<String> {
 /// name: "myapp"
 /// version: "0.1.0"
 /// "#;
-/// let result = eval_config_with_vm(config, &Obj::new(), Universe::default()).unwrap();
+/// let result = eval_config_with_vm(config, &Obj::new()).unwrap();
 /// ```
-pub fn eval_config_with_vm(code: &str, args: &Obj, univ: Universe) -> AutoResult<Value> {
+pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
     use crate::vm::config_codegen::ConfigCodegen;
     use crate::vm::engine::AutoVM;
     use crate::vm::opcode::OpCode;
@@ -440,8 +440,7 @@ pub fn eval_config_with_vm(code: &str, args: &Obj, univ: Universe) -> AutoResult
     // Preprocess macros (e.g., widget → type ... is Widget)
     let code = crate::macro_::preprocess(code);
 
-    // Note: Universe is not directly used by AutoVM (it uses the VM's own state)
-    // We keep it for API compatibility with the old eval_config_with_scope
+    // Note: Plan 091 - Universe parameter removed, AutoVM uses its own state
 
     // 1. Parse the code
     let mut parser = Parser::from(code.as_str());
