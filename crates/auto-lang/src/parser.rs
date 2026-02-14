@@ -2504,12 +2504,12 @@ impl<'a> Parser<'a> {
                         }
 
                         let items = self.parse_use_items()?;
+                        // Plan 085: Import is now handled by CompileSession.resolve_uses()
                         let uses = Use {
                             kind: UseKind::C,
                             paths,
                             items,
                         };
-                        self.import(&uses)?;
                         Stmt::Use(uses)
                     } else {
                         // Regular Auto use statement
@@ -2953,13 +2953,14 @@ impl<'a> Parser<'a> {
 
         let items = self.parse_use_items()?;
 
-        // import the path into scope
+        // Create the Use statement
+        // Plan 085: Import is now handled by CompileSession.resolve_uses()
+        // The symbols should already be in type_store before parsing
         let uses = Use {
             kind: UseKind::Auto,
             paths,
             items,
         };
-        self.import(&uses)?;
         Ok(Stmt::Use(uses))
     }
 
