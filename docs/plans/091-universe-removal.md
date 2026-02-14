@@ -70,7 +70,7 @@ Universe 当前承担的职责:
 
 **注意**: 预先存在的 config 测试失败（ConfigCodegen 不支持 if 语句），与本次迁移无关。
 
-### Phase 3 进度详情 (最新提交: 184e196)
+### Phase 3 进度详情 (最新提交: 0495d9e)
 
 **已完成**:
 - ✅ 添加 `db: Option<Arc<RwLock<Database>>>` 字段
@@ -80,23 +80,27 @@ Universe 当前承担的职责:
 - ✅ 创建 `define_symbol_location()` 包装方法，迁移 8 处用法
 - ✅ 创建 `get_defined_names()` 包装方法，迁移 2 处用法
 - ✅ 创建 `find_type_for_name()` 包装方法，迁移 2 处用法
+- ✅ **作用域管理迁移到 InferenceContext**（enter_scope, exit_scope, enter_fn）
 
-**尝试移除回退逻辑的结果** (2025-02-14):
+**关键进展** (提交: 0495d9e):
 
-尝试移除包装方法中的 scope 回退导致测试失败：
-- `trans::python::tests::test_003_func`
-- `trans::python::tests::test_006_struct`
-- `trans::python::tests::test_008_method`
+分析确认：Parser 的 scope 管理只用于编译期，不影响 AutoVM 执行。
+- AutoVM 有自己的执行状态（VM stack, task frames）
+- Parser 的 scope 已完全迁移到 InferenceContext
+- scope 用法从 21 减少到 15
 
-问题：类型信息变为 `Any` 而不是具体类型（如 `int`）。
-
-**结论**: TypeStore/InferenceContext 尚未完全覆盖 Universe 的所有数据。保留回退逻辑，待新系统完全成熟后再移除。
-
-**剩余 20 处 scope 用法分析**:
+**剩余 15 处 scope 用法**:
 
 | 类型 | 数量 | 说明 |
 |------|------|------|
-| 包装方法回退 | 10 | exists(), lookup_meta(), lookup_type(), get_defined_names(), find_type_for_name(), define(), define_alias(), define_symbol_location() 等的回退逻辑 |
+| 包装方法回退 | 10 | 保留，确保向后兼容 |
+| 类型检查 | 1 | `lookup_ident_type()` |
+| 专用注册 | 3 | `register_spec()`, `define_type_alias()`, `define_type()` |
+| 注释代码 | 1 | `cur_spot`（已忽略）|
+
+**尝试移除回退逻辑的结果** (2025-02-14):
+
+尝试移除包装方法中的 scope 回退导致测试失败。结论：保留回退逻辑，待新系统完全成熟后再移除。
 | 作用域管理 | 5 | enter_scope(), exit_scope(), enter_fn() - 需要作用域栈管理 |
 | 专用注册 | 3 | register_spec(), define_type_alias(), define_type() - 特殊用途 |
 | 类型检查 | 1 | lookup_ident_type() - 类型标识符检查 |
