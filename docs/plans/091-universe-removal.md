@@ -54,13 +54,13 @@ Universe 当前承担的职责:
 | Phase | 状态 | 说明 |
 |-------|------|------|
 | Phase 1 | ✅ 部分完成 | 移除公开 API，保留内部依赖 |
-| Phase 2 | ⏳ 待定 | 转译器迁移到 Database |
+| Phase 2 | ✅ 部分完成 | trans_c/trans_rust 已迁移 |
 | Phase 3 | ⏳ 待定 | 移除 Parser.scope 字段 |
 | Phase 4 | ✅ 部分完成 | 入口点已简化 |
 | Phase 5 | ⏳ 待定 | config.rs 迁移 |
 | Phase 6 | ⏳ 待定 | 删除 universe.rs |
 
-### Phase 1 进度 (commit: pending)
+### Phase 1 进度 (commit: 15a8f3c)
 
 **已完成的清理**:
 - ✅ 移除 `run_with_errors()` - 已删除
@@ -101,7 +101,18 @@ Universe 当前承担的职责:
 2. 确认 AutoVM 功能覆盖度
 3. 运行所有测试确保无依赖
 
-### Phase 2: 转译器迁移到 Database
+### Phase 2: 转译器迁移到 Database (commit: b597599)
+
+**已完成的迁移**:
+- ✅ `trans_c()` 使用 `trans_c_with_session()` 内部
+- ✅ `trans_rust()` 使用 `trans_rust_with_session()` 内部
+- ✅ 添加 `trans_c_legacy()` 和 `trans_rust_legacy()` 作为回退
+
+**待迁移**:
+- ⏳ `trans_python()` - 需要为 PythonTrans 添加 Database 支持
+- ⏳ `trans_javascript()` - 需要为 JavaScriptTrans 添加 Database 支持
+
+### Phase 2 Original: 转译器迁移到 Database
 
 **目标**: 让 a2c, a2r, a2py, a2js 完全使用 Database
 

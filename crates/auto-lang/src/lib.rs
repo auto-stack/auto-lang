@@ -522,7 +522,25 @@ pub fn eval_config_with_vm(code: &str, args: &Obj, univ: Universe) -> AutoResult
     })
 }
 
+/// Transpile AutoLang file to C
+///
+/// **Plan 091**: Now uses CompileSession internally (no Universe dependency)
 pub fn trans_c(path: &str) -> AutoResult<String> {
+    let mut session = CompileSession::new();
+    trans_c_with_session(&mut session, path)
+}
+
+/// Transpile AutoLang file to Rust
+///
+/// **Plan 091**: Now uses CompileSession internally (no Universe dependency)
+pub fn trans_rust(path: &str) -> AutoResult<String> {
+    let mut session = CompileSession::new();
+    trans_rust_with_session(&mut session, path)
+}
+
+/// Transpile AutoLang file to C (legacy implementation)
+#[deprecated(since = "0.10.0", note = "Use trans_c() or trans_c_with_session() instead")]
+pub fn trans_c_legacy(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file: {}", e))
         .unwrap();
@@ -530,7 +548,6 @@ pub fn trans_c(path: &str) -> AutoResult<String> {
     let cname = path.replace(".at", ".c");
 
     let fname = AutoPath::new(path).filename();
-    // println!("trans_C fname: {}", fname); // LSP: disabled
 
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code.as_str(), scope);
@@ -549,8 +566,9 @@ pub fn trans_c(path: &str) -> AutoResult<String> {
     Ok(format!("[trans] {} -> {}", path, cname))
 }
 
-/// Transpile AutoLang file to Rust
-pub fn trans_rust(path: &str) -> AutoResult<String> {
+/// Transpile AutoLang file to Rust (legacy implementation)
+#[deprecated(since = "0.10.0", note = "Use trans_rust() or trans_rust_with_session() instead")]
+pub fn trans_rust_legacy(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file: {}", e))
         .unwrap();
