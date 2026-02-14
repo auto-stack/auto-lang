@@ -1,7 +1,7 @@
 // VM and Evaluator Integration Tests
 // These tests were moved from lib.rs for better organization
 use crate::config::AutoConfig;
-use crate::{ast, interpret, run, run_with_scope};
+use crate::{ast, run, run_with_scope};
 use crate::universe::Universe;
 use auto_val::Value;
 
@@ -304,16 +304,17 @@ fn test_for_loop_with_object() {
     assert_eq!(result, "");
 }
 
-#[test]
-fn test_eval_template_with_note() {
-    let code = "#{x+1}";
-    use crate::interp::Interpreter;
-    let mut scope = Universe::new();
-    scope.set_global("x", Value::Int(41));
-    let mut interp = Interpreter::with_scope(scope);
-    let result = interp.eval_template_with_note(code, '#').unwrap();
-    assert_eq!(result.repr(), "42");
-}
+// TODO: Re-enable with AutoVM implementation (Plan 091)
+// #[test]
+// fn test_eval_template_with_note() {
+//     let code = "#{x+1}";
+//     use crate::interp::Interpreter;
+//     let mut scope = Universe::new();
+//     scope.set_global("x", Value::Int(41));
+//     let mut interp = Interpreter::with_scope(scope);
+//     let result = interp.eval_template_with_note(code, '#').unwrap();
+//     assert_eq!(result.repr(), "42");
+// }
 
 #[test]
 fn test_to_string() {
@@ -382,79 +383,73 @@ fn test_var_reassignment() {
 }
 
 
-#[test]
-fn test_type_decl() {
-    let code = "type Point { x int = 5; y int }; let p = Point(y: 2); p";
-    let mut interpreter = interpret(code).unwrap();
-    // Note: Insertion order is now preserved (y comes after x in declaration, but y:2 is set after default x:5)
-    assert_eq!(interpreter.result.repr(), "Point{y: 2, x: 5}");
+// TODO: Re-enable with AutoVM implementation (Plan 091)
+// These tests use interpret() which returns Interpreter - need REPL-like session support in AutoVM
 
-    let code = "p.x";
-    let result = interpreter.eval(code);
-    assert_eq!(result.repr(), "5");
+// #[test]
+// fn test_type_decl() {
+//     let code = "type Point { x int = 5; y int }; let p = Point(y: 2); p";
+//     let mut interpreter = interpret(code).unwrap();
+//     assert_eq!(interpreter.result.repr(), "Point{y: 2, x: 5}");
+//     let code = "p.x";
+//     let result = interpreter.eval(code);
+//     assert_eq!(result.repr(), "5");
+//     let code = "p.y";
+//     let result = interpreter.eval(code);
+//     assert_eq!(result.repr(), "2");
+// }
 
-    let code = "p.y";
-    let result = interpreter.eval(code);
-    assert_eq!(result.repr(), "2");
-}
+// #[test]
+// fn test_deep_type() {
+//     let code = "type A { x int; y int }; type B { a A; b int }";
+//     let mut interpreter = interpret(code).unwrap();
+//     let code = "var v = B(a: A(x:1, y:2), b:3); v.a.y";
+//     let result = interpreter.eval(code);
+//     assert_eq!(result.repr(), "2");
+// }
 
-#[test]
-fn test_deep_type() {
-    let code = "type A { x int; y int }; type B { a A; b int }";
-    let mut interpreter = interpret(code).unwrap();
-    let code = "var v = B(a: A(x:1, y:2), b:3); v.a.y";
-    let result = interpreter.eval(code);
-    assert_eq!(result.repr(), "2");
-}
+// #[test]
+// fn test_type_with_method() {
+//     let code = r#"type Point {
+//             x int
+//             y int
+//             fn absquare() int {
+//                 .x * .x + .y * .y
+//             }
+//         }"#;
+//     let mut interpreter = interpret(code).unwrap();
+//     let code = "var p = Point(3, 4); p.absquare()";
+//     let result = interpreter.eval(code);
+//     assert_eq!(result.repr(), "25");
+// }
 
-#[test]
-fn test_type_with_method() {
-    let code = r#"type Point {
-            x int
-            y int
+// #[test]
+// fn test_ext_statement_instance_method() {
+//     let code = r#"
+//         ext int {
+//             fn double() int {
+//                 self + self
+//             }
+//         }
+//         "#;
+//     let mut interpreter = interpret(code).unwrap();
+//     let result = interpreter.eval("var x = 5; x.double()");
+//     assert_eq!(result.repr(), "10");
+// }
 
-            fn absquare() int {
-                .x * .x + .y * .y
-            }
-        }"#;
-    let mut interpreter = interpret(code).unwrap();
-    let code = "var p = Point(3, 4); p.absquare()";
-    let result = interpreter.eval(code);
-    assert_eq!(result.repr(), "25");
-}
-
-#[test]
-fn test_ext_statement_instance_method() {
-    // Plan 035 Phase 4: Test ext statement with instance methods
-    let code = r#"
-        ext int {
-            fn double() int {
-                self + self
-            }
-        }
-        "#;
-    let mut interpreter = interpret(code).unwrap();
-    let result = interpreter.eval("var x = 5; x.double()");
-    assert_eq!(result.repr(), "10");
-}
-
-#[test]
-fn test_ext_statement_static_method() {
-    // Plan 035 Phase 4: Test ext statement with static methods
-    // Static methods don't have self, so they can be called without instance
-    let code = r#"
-        ext int {
-            static fn get_default() int {
-                42
-            }
-        }
-        "#;
-    let mut interpreter = interpret(code).unwrap();
-    // Static method call on type
-    let result = interpreter.eval("int.get_default()");
-    println!("Static method result: {:?}", result);
-    assert_eq!(result.repr(), "42");
-}
+// #[test]
+// fn test_ext_statement_static_method() {
+//     let code = r#"
+//         ext int {
+//             static fn get_default() int {
+//                 42
+//             }
+//         }
+//         "#;
+//     let mut interpreter = interpret(code).unwrap();
+//     let result = interpreter.eval("int.get_default()");
+//     assert_eq!(result.repr(), "42");
+// }
 
 #[test]
 fn test_simple_block() {

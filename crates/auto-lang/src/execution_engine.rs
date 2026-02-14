@@ -1,5 +1,6 @@
 // Plan 081 Phase 1: AutoVM as Default Execution Mode
 // AutoVM is now the default execution engine for all AutoLang code
+// Plan 091: Evaluator option removed, always uses AutoVM
 
 use crate::error::AutoResult;
 
@@ -8,7 +9,8 @@ use crate::error::AutoResult;
 pub enum ExecutionEngine {
     /// AutoVM bytecode VM (default, faster)
     AutoVM,
-    /// TreeWalker evaluator (legacy, slower)
+    /// Legacy evaluator (deprecated, redirects to AutoVM)
+    #[deprecated(since = "0.10.0", note = "Use AutoVM instead (Plan 091)")]
     Evaluator,
 }
 
@@ -16,24 +18,25 @@ impl ExecutionEngine {
     /// Get the default execution engine
     ///
     /// **Plan 081**: AutoVM is now the default execution engine.
-    /// No feature flag required. Use environment variable AUTO_EXECUTION_ENGINE
-    /// to override to evaluator if needed.
     pub fn default_engine() -> Self {
-        // AutoVM is the default execution mode
         ExecutionEngine::AutoVM
     }
 
     /// Get execution engine from environment variable
     ///
     /// Environment variable: `AUTO_EXECUTION_ENGINE`
-    /// Values: "autovm", "evaluator", "vm", "eval"
+    /// Values: "autovm", "vm" (evaluator option deprecated)
     pub fn from_env() -> Option<Self> {
         std::env::var("AUTO_EXECUTION_ENGINE")
             .ok()
             .map(|engine_str| {
                 match engine_str.to_lowercase().as_str() {
                     "autovm" | "vm" => ExecutionEngine::AutoVM,
-                    "evaluator" | "eval" | "tree" => ExecutionEngine::Evaluator,
+                    "evaluator" | "eval" | "tree" => {
+                        // Plan 091: Evaluator deprecated, log warning and use AutoVM
+                        eprintln!("WARNING: 'evaluator' engine is deprecated. Using AutoVM instead.");
+                        ExecutionEngine::AutoVM
+                    }
                     _ => ExecutionEngine::default_engine(),
                 }
             })
@@ -53,18 +56,12 @@ pub fn execute_with_engine(engine: ExecutionEngine, code: &str) -> AutoResult<St
             // Use AutoVM (compile to bytecode, execute)
             crate::run_autovm(code)
         }
+        #[allow(deprecated)]
         ExecutionEngine::Evaluator => {
-            execute_with_evaluator(code)
+            // Plan 091: Evaluator redirects to AutoVM
+            crate::run_autovm(code)
         }
     }
-}
-
-/// Execute code using the TreeWalker evaluator
-fn execute_with_evaluator(code: &str) -> AutoResult<String> {
-    use crate::interp::Interpreter;
-    let mut interpreter = Interpreter::new();
-    interpreter.interpret(code)?;
-    Ok(interpreter.result.repr().to_string())
 }
 
 #[cfg(test)]
@@ -74,23 +71,17 @@ mod tests {
     #[test]
     fn test_default_engine() {
         let engine = ExecutionEngine::default_engine();
-        // Plan 081: AutoVM is now the default (no feature flag required)
         assert_eq!(engine, ExecutionEngine::AutoVM);
         println!("Default engine: {:?}", engine);
     }
 
     #[test]
     fn test_engine_from_env() {
-        // Test env override (in a controlled way)
         let original = std::env::var("AUTO_EXECUTION_ENGINE").ok();
 
         std::env::set_var("AUTO_EXECUTION_ENGINE", "autovm");
         let engine = ExecutionEngine::from_env().unwrap();
         assert_eq!(engine, ExecutionEngine::AutoVM);
-
-        std::env::set_var("AUTO_EXECUTION_ENGINE", "evaluator");
-        let engine = ExecutionEngine::from_env().unwrap();
-        assert_eq!(engine, ExecutionEngine::Evaluator);
 
         // Restore original value
         match original {

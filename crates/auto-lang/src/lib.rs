@@ -71,11 +71,10 @@ pub use auto_lang_macros::{atom, node, value};
 
 
 
-use crate::scope::Meta;
 use crate::trans::c::CTrans;
 pub use crate::universe::{SymbolLocation, Universe};
 use crate::compile::CompileSession;
-use crate::{eval::EvalMode, trans::Sink, trans::Trans};
+use crate::{trans::Sink, trans::Trans};
 use auto_val::{AutoPath, Obj, Shared, Value};
 use std::cell::RefCell;
 use std::path::Path;
@@ -273,39 +272,21 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     }
 }
 
-/// Run code and collect all errors during parsing
-///
-/// **Deprecated**: This function uses the TreeWalker evaluator, which is slower than AutoVM.
-/// Use `run()` or `run_autovm()` instead for better performance.
-///
-/// **Plan 068 Phase 9**: Evaluator is deprecated in favor of AutoVM
-///
-/// This function enables error recovery to collect multiple syntax errors
-/// instead of aborting on the first error.
-#[deprecated(since = "0.9.0", note = "Use run() or run_autovm() instead (Plan 068 Phase 9)")]
-pub fn run_with_errors(code: &str) -> AutoResult<String> {
-    let mut interpreter = interp::Interpreter::new();
-    // Enable error recovery
-    interpreter.enable_error_recovery();
-    interpreter.interpret(code)?;
-    Ok(interpreter.result.repr().to_string())
-}
+// run_with_errors() removed in Plan 091 - use run() with built-in error recovery
 
 /// Run code with a custom scope
 ///
-/// **Deprecated**: This function uses the TreeWalker evaluator with Universe, which is deprecated.
-/// Use CompileSession + Database instead (see Plan 064).
+/// **Deprecated**: This function is deprecated. Use CompileSession instead (see Plan 064).
 ///
-/// **Plan 064**: Universe is split into Database + ExecutionEngine
-/// **Plan 068 Phase 9**: Evaluator is deprecated in favor of AutoVM
+/// **Plan 091**: Simplified to use AutoVM internally
 #[deprecated(
     since = "0.9.0",
-    note = "Use run_with_session() with CompileSession instead (Plan 064 + Plan 068 Phase 9)"
+    note = "Use run_with_session() with CompileSession instead (Plan 064 + Plan 091)"
 )]
-pub fn run_with_scope(code: &str, scope: Universe) -> AutoResult<String> {
-    let mut interpreter = interp::Interpreter::with_scope(scope);
-    interpreter.interpret(code)?;
-    Ok(interpreter.result.repr().to_string())
+pub fn run_with_scope(code: &str, _scope: Universe) -> AutoResult<String> {
+    // Plan 091: Simplified implementation using AutoVM
+    // Note: Scope is ignored - proper implementation needs AutoVM session support
+    run(code)
 }
 
 /// Run code with incremental compilation support
@@ -410,17 +391,13 @@ pub fn parse_with_scope(code: &str, scope: Rc<RefCell<Universe>>) -> AutoResult<
     parser.parse().map_err(|e| e.to_string().into())
 }
 
-pub fn interpret(code: &str) -> AutoResult<interp::Interpreter> {
-    let mut interpreter = interp::Interpreter::new();
-    interpreter.interpret(code)?;
-    Ok(interpreter)
-}
-
-pub fn interpret_with_scope(code: &str, scope: Universe) -> AutoResult<interp::Interpreter> {
-    let mut interpreter = interp::Interpreter::with_scope(scope);
-    interpreter.interpret(code)?;
-    Ok(interpreter)
-}
+// Functions removed in Plan 091:
+// - interpret() - use run() instead
+// - interpret_with_scope() - use run_with_session() instead
+// - interpret_file() - use run_file() instead
+// - eval_template() - TODO: implement in AutoVM
+// - eval_config() - use eval_config_with_vm() instead
+// - eval_config_with_scope() - use eval_config_with_vm() instead
 
 pub fn run_file(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
@@ -428,48 +405,6 @@ pub fn run_file(path: &str) -> AutoResult<String> {
     // Plan 088 Phase 4: Use AutoVM instead of deprecated Interpreter
     // This enables smart parameter passing and other AutoVM features
     run(&code)
-}
-
-pub fn interpret_file(path: &str) -> interp::Interpreter {
-    let code = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))
-        .unwrap();
-    let mut interpreter = interp::Interpreter::new();
-    interpreter.interpret(&code).unwrap();
-    interpreter
-}
-
-// TODO: to be deprecated, use Interpreter::eval_template instead
-pub fn eval_template(template: &str, scope: Universe) -> AutoResult<interp::Interpreter> {
-    let mut interpreter = interp::Interpreter::with_scope(scope).with_eval_mode(EvalMode::TEMPLATE);
-    let result = interpreter.eval_template(template)?;
-    interpreter.result = result;
-    Ok(interpreter)
-}
-
-pub fn eval_config_with_scope(
-    code: &str,
-    args: &Obj,
-    mut scope: Universe,
-) -> AutoResult<interp::Interpreter> {
-    // Preprocess macros (e.g., widget → type ... is Widget)
-    let code = crate::macro_::preprocess(code);
-    scope.define_global("root", Rc::new(Meta::Node(ast::Node::new("root"))));
-    scope.set_args(args);
-    let mut interpreter = interp::Interpreter::with_scope(scope).with_eval_mode(EvalMode::CONFIG);
-    interpreter.interpret(&code)?;
-    Ok(interpreter)
-}
-
-pub fn eval_config(code: &str, args: &Obj) -> AutoResult<interp::Interpreter> {
-    // Preprocess macros (e.g., widget → type ... is Widget)
-    let code = crate::macro_::preprocess(code);
-    let mut scope = Universe::new();
-    scope.define_global("root", Rc::new(Meta::Node(ast::Node::new("root"))));
-    scope.set_args(args);
-    let mut interpreter = interp::Interpreter::with_scope(scope).with_eval_mode(EvalMode::CONFIG);
-    interpreter.interpret(&code)?;
-    Ok(interpreter)
 }
 
 /// Evaluate config code using AutoVM (Plan 081 Phase 2)

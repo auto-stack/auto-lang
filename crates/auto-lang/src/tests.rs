@@ -4,7 +4,7 @@ mod atom_tests;
 mod unified_api_tests;
 // Plan 073 Phase 9.1: Performance benchmarking
 mod perf_benchmark_tests;
-mod config_tests;
+// config_tests removed - Plan 091 (deprecated Interpreter dependency)
 mod const_generic_integration_tests; // Plan 052: Const generic integration tests
 mod const_generic_tests; // Plan 052: Const generic parameter tests
 mod default_storage_tests; // Plan 052: DefaultStorage type alias tests
@@ -24,7 +24,7 @@ mod stdlib_tests;
 mod storage_integration_tests;
 mod storage_tests;
 mod string_tests;
-mod template_tests;
+// template_tests removed - Plan 091 (deprecated Interpreter dependency)
 mod test_generic_full;
 mod test_generic_parse;
 mod test_generic_simple;

@@ -1,6 +1,6 @@
 # Plan 091: 完全移除 Universe
 
-> **状态**: ⏳ 规划中
+> **状态**: 🔄 进行中
 > **优先级**: 高
 > **依赖**: Plan 084 (TypeStore), Plan 085 (Auto-use), Plan 090 (Parser 重构), Plan 066 (Database)
 
@@ -48,6 +48,37 @@ Universe 当前承担的职责:
 | config.rs | 9 | P3 | 配置解析 |
 | trans/python.rs | 5 | P3 | 需迁移 |
 | trans/javascript.rs | 5 | P3 | 需迁移 |
+
+## 完成状态
+
+| Phase | 状态 | 说明 |
+|-------|------|------|
+| Phase 1 | ✅ 部分完成 | 移除公开 API，保留内部依赖 |
+| Phase 2 | ⏳ 待定 | 转译器迁移到 Database |
+| Phase 3 | ⏳ 待定 | 移除 Parser.scope 字段 |
+| Phase 4 | ✅ 部分完成 | 入口点已简化 |
+| Phase 5 | ⏳ 待定 | config.rs 迁移 |
+| Phase 6 | ⏳ 待定 | 删除 universe.rs |
+
+### Phase 1 进度 (commit: pending)
+
+**已完成的清理**:
+- ✅ 移除 `run_with_errors()` - 已删除
+- ✅ 移除 `interpret()` - 已删除
+- ✅ 移除 `interpret_with_scope()` - 已删除
+- ✅ 移除 `interpret_file()` - 已删除
+- ✅ 移除 `eval_template()` - 已删除
+- ✅ 移除 `eval_config()` - 已删除
+- ✅ 移除 `eval_config_with_scope()` - 已删除
+- ✅ `run_with_scope()` 简化为使用 AutoVM
+- ✅ `ExecutionEngine::Evaluator` 重定向到 AutoVM
+- ✅ 删除 `config_tests.rs` 和 `template_tests.rs`
+- ✅ 注释掉 `vm_tests.rs` 中使用 interpret() 的测试
+
+**保留的内部依赖** (待后续处理):
+- `atom.rs` 仍使用 `Interpreter` (AtomReader)
+- `vm/*.rs` 仍使用 `Evaler` (VM native functions)
+- `universe.rs` 仍有 `evaluator_ptr` (Universe-evaluator binding)
 
 ## 实施阶段
 
