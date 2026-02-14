@@ -130,17 +130,70 @@ db: Option<Arc<RwLock<Database>>>,    // 新（Phase 066）
 
 **目标**: 完全移除 Parser 对 Universe 的依赖
 
+**分析结果** (2025-02-14):
+
+Parser 中 `self.scope` 的使用统计（24+ 处）:
+```
+define()           - 定义符号（函数/变量）
+define_alias()     - 定义类型别名
+exists()           - 检查符号是否存在
+enter_scope()      - 进入新作用域
+exit_scope()       - 退出作用域
+lookup_meta()      - 查找符号元数据
+lookup_type_meta() - 查找类型元数据
+lookup_ident_type()- 查找标识符类型
+gen_lambda_id()    - 生成 lambda ID
+enter_fn()         - 进入函数作用域
+find_type_for_name()- 查找名称对应的类型
+get_defined_names()- 获取所有已定义名称
+```
+
+**现有替代设施**:
+
+Database 已有:
+- `get_scope()` / `insert_scope()` - Legacy Scope
+- `get_symbol_table()` / `insert_symbol_table()` - 新 SymbolTable
+- `type_info_store()` - 类型信息存储
+- `get_type_alias()` / `insert_type_alias()` - 类型别名
+- `get_spec()` / `insert_spec()` - Spec/trait
+- `get_lambda_counter()` / `increment_lambda_counter()` - Lambda 计数器
+- `get_cur_spot()` / `set_cur_spot()` - 当前作用域位置
+- `get_code_pak()` / `insert_code_pak()` - 代码包
+
+**迁移方案**:
+
+**方案 A: 渐进式迁移（推荐）**
+1. 为 Parser 添加 `db: Option<Arc<RwLock<Database>>>` 字段
+2. 保留 `scope: Shared<Universe>` 作为回退（deprecated）
+3. 逐个方法迁移到 Database API
+4. 迁移完成后移除 `scope` 字段
+
+**方案 B: 直接替换**
+1. 一次性将 `scope: Shared<Universe>` 替换为 `db: Arc<RwLock<Database>>`
+2. 更新所有 Parser 方法
+3. 风险较高，但更彻底
+
+**建议采用方案 A**，因为：
+- Parser 是核心组件，影响面广
+- 渐进式迁移可以分阶段测试
+- 保持向后兼容性
+
 **步骤**:
-1. 将所有 `self.scope` 调用替换为 TypeStore/InferenceContext
-2. 更新 Parser 构造函数，移除 scope 参数
-3. 更新所有 Parser 创建点
-4. 移除 `scope: Shared<Universe>` 字段
+1. 为 Parser 添加 `db` 字段（可选）
+2. 添加 `with_database()` 构造函数
+3. 逐个方法迁移：
+   - `gen_lambda_id()` → `db.increment_lambda_counter()`
+   - `define()` → `db.insert_symbol_table()` / `db.get_scope_mut()`
+   - `lookup_*()` → `db.get_symbol_table()` / `db.get_scope()`
+4. 更新所有 Parser 创建点
+5. 移除 `scope` 字段
 
 **需替换的方法调用**:
-- `self.scope.borrow().define()` → `self.type_store.write().register_*()`
-- `self.scope.borrow().lookup()` → `self.infer_ctx.lookup_type()`
-- `self.scope.borrow().enter_scope()` → `self.infer_ctx.push_scope()`
-- `self.scope.borrow().exit_scope()` → `self.infer_ctx.pop_scope()`
+- `self.scope.borrow().define()` → `self.db.write().insert_scope()` 或 `insert_symbol_table()`
+- `self.scope.borrow().lookup()` → `self.db.read().get_scope()` 或 `get_symbol_table()`
+- `self.scope.borrow().enter_scope()` → `self.db.write().set_cur_spot()`
+- `self.scope.borrow().exit_scope()` → `self.db.write().set_cur_spot()`
+- `self.scope.borrow().gen_lambda_id()` → `self.db.write().increment_lambda_counter()`
 
 ### Phase 4: 入口点重构
 
