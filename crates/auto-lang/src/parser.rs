@@ -743,6 +743,20 @@ impl<'a> Parser<'a> {
         self.scope.borrow().get_defined_names()
     }
 
+    /// 根据名称查找类型（用于继承和方法查找）
+    ///
+    /// Plan 091: 优先使用 TypeStore，然后回退到 Universe
+    fn find_type_for_name(&self, name: &str) -> Option<Type> {
+        // Plan 091: 首先尝试从 TypeStore 查找
+        if let Ok(store) = self.type_store.read() {
+            if let Some(ty) = store.find_type_for_name(name) {
+                return Some(ty);
+            }
+        }
+        // Fallback: Universe
+        self.scope.borrow().find_type_for_name(name)
+    }
+
     fn break_stmt(&mut self) -> AutoResult<Stmt> {
         self.next();
         Ok(Stmt::Break)
@@ -3915,7 +3929,7 @@ impl<'a> Parser<'a> {
 
         // if has parent_name, define `self` in current scope
         if !parent_name.is_empty() {
-            let parent_type = self.scope.borrow().find_type_for_name(parent_name);
+            let parent_type = self.find_type_for_name(parent_name);
             if let Some(parent_type) = parent_type {
                 self.define(
                     "self",
@@ -4118,7 +4132,7 @@ impl<'a> Parser<'a> {
 
         // if has parent_name, define `self` in current scope
         if !parent_name.is_empty() {
-            let parent_type = self.scope.borrow().find_type_for_name(parent_name);
+            let parent_type = self.find_type_for_name(parent_name);
             if let Some(parent_type) = parent_type {
                 self.define(
                     "self",
