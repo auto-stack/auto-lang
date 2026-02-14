@@ -728,6 +728,21 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// 获取所有已定义的名称（用于错误提示）
+    ///
+    /// Plan 091: 优先使用 TypeStore，然后回退到 Universe
+    fn get_defined_names(&self) -> Vec<String> {
+        // Plan 091: 首先尝试从 TypeStore 获取
+        if let Ok(store) = self.type_store.read() {
+            let names = store.get_defined_names();
+            if !names.is_empty() {
+                return names;
+            }
+        }
+        // Fallback: Universe
+        self.scope.borrow().get_defined_names()
+    }
+
     fn break_stmt(&mut self) -> AutoResult<Stmt> {
         self.next();
         Ok(Stmt::Break)
@@ -5960,7 +5975,7 @@ impl<'a> Parser<'a> {
                         };
 
                         if !self.exists(&name) && !is_type_valid {
-                            let candidates = self.scope.borrow().get_defined_names();
+                            let candidates = self.get_defined_names();
                             return Err(NameError::undefined_variable(
                                 name.to_string(),
                                 pos_to_span(self.cur.pos),
@@ -5975,7 +5990,7 @@ impl<'a> Parser<'a> {
             },
             Expr::Ident(name) => {
                 if !self.exists(&name) {
-                    let candidates = self.scope.borrow().get_defined_names();
+                    let candidates = self.get_defined_names();
                     return Err(NameError::undefined_variable(
                         name.to_string(),
                         pos_to_span(self.cur.pos),
