@@ -334,6 +334,68 @@ impl TypeStore {
     pub fn list_generic_templates(&self) -> Vec<String> {
         self.generic_templates.keys().cloned().collect()
     }
+
+    /// Plan 085: 合并另一个 TypeStore 的内容
+    ///
+    /// 用于模块导入时将模块的符号合并到当前 TypeStore。
+    /// 如果存在同名符号，新符号会覆盖旧符号。
+    pub fn merge(&mut self, other: &TypeStore) {
+        // 合并类型声明
+        for (name, decl) in &other.type_decls {
+            self.type_decls.insert(name.clone(), decl.clone());
+        }
+
+        // 合并函数声明
+        for (name, fn_decl) in &other.fn_decls {
+            self.fn_decls.insert(name.clone(), fn_decl.clone());
+        }
+
+        // 合并 spec 声明
+        for (name, spec_decl) in &other.spec_decls {
+            self.spec_decls.insert(name.clone(), spec_decl.clone());
+        }
+
+        // 合并泛型模板
+        for (name, template) in &other.generic_templates {
+            self.generic_templates.insert(name.clone(), template.clone());
+        }
+
+        // 合并类型别名
+        for (alias, target) in &other.type_aliases {
+            self.type_aliases.insert(alias.clone(), target.clone());
+        }
+    }
+
+    /// Plan 085: 选择性导入符号
+    ///
+    /// 只导入指定的项，而不是全部符号。
+    /// 用于 `use module: item1, item2` 形式的导入。
+    pub fn import_items(&mut self, other: &TypeStore, items: &[String]) {
+        for item in items {
+            let item_name = AutoStr::from(item.as_str());
+            let item_name_key = Name::from(item.as_str());
+
+            // 检查是否是类型
+            if let Some(decl) = other.type_decls.get(&item_name) {
+                self.type_decls.insert(item_name.clone(), decl.clone());
+            }
+
+            // 检查是否是函数
+            if let Some(fn_decl) = other.fn_decls.get(&item_name_key) {
+                self.fn_decls.insert(item_name_key.clone(), fn_decl.clone());
+            }
+
+            // 检查是否是 spec
+            if let Some(spec_decl) = other.spec_decls.get(&item_name) {
+                self.spec_decls.insert(item_name.clone(), spec_decl.clone());
+            }
+
+            // 检查是否是类型别名
+            if let Some(target) = other.type_aliases.get(&item_name) {
+                self.type_aliases.insert(item_name.clone(), target.clone());
+            }
+        }
+    }
 }
 
 #[cfg(test)]

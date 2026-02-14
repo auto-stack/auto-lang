@@ -4,6 +4,8 @@ pub mod atom;
 pub mod types;
 // Plan 090: Parser helpers to remove Universe dependency
 pub mod parser_helpers;
+// Plan 085: Use statement scanner for AIE + AutoCache
+pub mod use_scanner;
 pub mod atom_error;
 pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
 pub mod compile;
