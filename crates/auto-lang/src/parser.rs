@@ -319,6 +319,16 @@ impl<'a> Parser<'a> {
         self
     }
 
+    /// Create a new parser with an external type_store (Plan 085)
+    ///
+    /// Used after `CompileSession.resolve_uses()` to pass the pre-loaded
+    /// type_store containing module symbols.
+    pub fn new_with_type_store(code: &'a str, type_store: Arc<RwLock<types::TypeStore>>) -> Self {
+        let mut parser = Self::from(code);
+        parser.type_store = type_store;
+        parser
+    }
+
     pub fn peek(&mut self) -> &Token {
         &self.cur
     }

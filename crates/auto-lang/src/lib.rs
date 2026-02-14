@@ -146,8 +146,12 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     use crate::vm::opcode::OpCode;
     use crate::vm::virt_memory::VirtualFlash;
 
-    // 1. Parse the code
-    let mut parser = Parser::from(code);
+    // Plan 085: Pre-process use statements to load dependencies
+    let mut session = compile::CompileSession::new();
+    session.resolve_uses(code)?;
+
+    // 1. Parse the code (with pre-loaded type_store from resolve_uses)
+    let mut parser = Parser::new_with_type_store(code, session.type_store());
     let ast = parser.parse()?;
 
     // 2. Compile to bytecode
