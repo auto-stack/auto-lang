@@ -661,14 +661,12 @@ impl<'a> Parser<'a> {
     }
 
     fn exit_scope(&mut self) {
-        self.scope.borrow_mut().exit_scope();
-        // Plan 010 Phase 5B: Sync inference context scope
+        // Plan 091: Use InferenceContext for scope management
         self.infer_ctx.pop_scope();
     }
 
     fn enter_scope(&mut self) {
-        self.scope.borrow_mut().enter_scope();
-        // Plan 010 Phase 5B: Sync inference context scope
+        // Plan 091: Use InferenceContext for scope management
         self.infer_ctx.push_scope();
     }
 
@@ -3598,9 +3596,7 @@ impl<'a> Parser<'a> {
         // self.prev now points to the name token after expect()
         let name_pos = self.prev.pos;
 
-        // enter function scope
-        self.scope.borrow_mut().enter_fn(name.clone());
-        // Plan 010 Phase 5B: Sync inference context scope
+        // Plan 091: Use InferenceContext for scope management
         self.infer_ctx.push_scope();
 
         // parse function parameters
@@ -3861,9 +3857,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // enter function scope
-        self.scope.borrow_mut().enter_fn(name.clone());
-        // Plan 010 Phase 5B: Sync inference context scope
+        // Plan 091: Use InferenceContext for scope management
         self.infer_ctx.push_scope();
 
         // parse function parameters
@@ -4064,9 +4058,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // enter function scope
-        self.scope.borrow_mut().enter_fn(name.clone());
-        // Plan 010 Phase 5B: Sync inference context scope
+        // Plan 091: Use InferenceContext for scope management
         self.infer_ctx.push_scope();
 
         // parse function parameters
