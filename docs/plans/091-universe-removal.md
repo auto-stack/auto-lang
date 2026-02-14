@@ -60,7 +60,7 @@ Universe 当前承担的职责:
 | Phase 5 | ⏳ 待定 | config.rs 迁移 |
 | Phase 6 | ⏳ 待定 | 删除 universe.rs |
 
-### Phase 3 进度详情 (最新提交: 202d989)
+### Phase 3 进度详情 (最新提交: 184e196)
 
 **已完成**:
 - ✅ 添加 `db: Option<Arc<RwLock<Database>>>` 字段
@@ -70,6 +70,17 @@ Universe 当前承担的职责:
 - ✅ 创建 `define_symbol_location()` 包装方法，迁移 8 处用法
 - ✅ 创建 `get_defined_names()` 包装方法，迁移 2 处用法
 - ✅ 创建 `find_type_for_name()` 包装方法，迁移 2 处用法
+
+**尝试移除回退逻辑的结果** (2025-02-14):
+
+尝试移除包装方法中的 scope 回退导致测试失败：
+- `trans::python::tests::test_003_func`
+- `trans::python::tests::test_006_struct`
+- `trans::python::tests::test_008_method`
+
+问题：类型信息变为 `Any` 而不是具体类型（如 `int`）。
+
+**结论**: TypeStore/InferenceContext 尚未完全覆盖 Universe 的所有数据。保留回退逻辑，待新系统完全成熟后再移除。
 
 **剩余 20 处 scope 用法分析**:
 
