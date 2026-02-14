@@ -1,6 +1,6 @@
 # Plan 090: 移除 Parser 对 Universe 的依赖
 
-> **状态**: ✅ 大部分完成（import 由 Plan 085 处理）
+> **状态**: ✅ 完成
 > **优先级**: 中
 > **依赖**: Plan 084 (TypeStore), Plan 085 (Auto-use), Plan 089 (类型声明迁移)
 
@@ -19,7 +19,7 @@
 | Phase 5 | ✅ 完成 | 迁移模块追踪到 `ModuleTracker` |
 | Phase 6 | ⏭️ 跳过 | Lambda 已被 closure 替代，`gen_lambda_id()` 仅在 deprecated 代码中使用 |
 | Phase 7 | ✅ 完成 | import 功能由 **Plan 085** 实现（AIE + AutoCache）|
-| Phase 8 | ⏳ 待定 | 清理和测试（可选）|
+| Phase 8 | ✅ 完成 | 删除 Parser.import() 方法（已被 Plan 085 替代）|
 
 ## 已完成的工作
 
@@ -130,6 +130,7 @@ pub struct Parser<'a> {
 - [x] Parser 不再调用 Universe.import()（由 Plan 085 的 CompileSession.resolve_uses() 处理）
 - [x] TypeStore 作为类型信息单一数据源
 - [x] 阻塞项已实现替代方案
+- [x] Parser.import() 方法已删除（Phase 8）
 - [ ] 所有现有测试通过（部分测试有预存问题）
 - [ ] 无功能回归
 
@@ -152,6 +153,7 @@ pub struct Parser<'a> {
 - `2059508` Plan 090: Implement blocking items (enter_fn, find_type_for_name, get_defined_names)
 - `36612ac` Update Plan 090: Document Phase 1-5 completion and Phase 7 analysis
 - `4deb49d` Update Plan 090: Mark blocking items complete, delegate import to Plan 085
+- `4e494b0` Plan 090 Phase 8: Remove Parser.import() method (390 lines deleted)
 
 **Plan 085 相关提交：**
 - `fdd6e4b` Plan 085 Phase 1-2: Use scanner and TypeStore merge
