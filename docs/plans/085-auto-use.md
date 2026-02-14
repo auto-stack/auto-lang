@@ -1,6 +1,6 @@
 # Plan 085: 基于 AIE + AutoCache 的 Use 语句处理
 
-> **状态**: 🔜 待实施
+> **状态**: ✅ 完成
 > **优先级**: 高
 > **依赖**: Plan 063 (AIE), Plan 064 (Database), Plan 090 (Parser 重构)
 
@@ -284,6 +284,27 @@ let ast = parser.parse()?;
 | 循环依赖 | 中 | 高 | 检测并报错，不支持循环依赖 |
 | 缓存失效 | 低 | 中 | 文件哈希 + 接口哈希双重验证 |
 | 符号冲突 | 中 | 中 | 后导入覆盖 + 警告提示 |
+
+## 完成状态
+
+| Phase | 状态 | 提交 | 说明 |
+|-------|------|------|------|
+| Phase 1 | ✅ | `fdd6e4b` | Use 扫描器 (`use_scanner.rs`)，10 测试通过 |
+| Phase 2 | ✅ | `fdd6e4b` | TypeStore.merge() / import_items() |
+| Phase 3 | ✅ | `7c6ed85` | CompileSession.resolve_uses() |
+| Phase 4 | ✅ | `31680f5` | 移除 Parser 的 import 调用 |
+| Phase 5 | ✅ | `5c14fc9` | AutoCache 模块缓存，9 测试通过 |
+
+**新增文件：**
+- `crates/auto-lang/src/use_scanner.rs` - Use 语句扫描器
+- `crates/auto-lang/src/auto_cache.rs` - 模块缓存系统
+
+**新增功能：**
+- `scan_use_statements()` - 快速扫描 use 语句
+- `TypeStore.merge()` - 合并两个 TypeStore
+- `TypeStore.import_items()` - 选择性导入符号
+- `CompileSession.resolve_uses()` - 预处理 use 语句
+- `AutoCache` - 模块缓存管理器
 
 ## 后续工作
 
