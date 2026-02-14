@@ -57,8 +57,18 @@ Universe 当前承担的职责:
 | Phase 2 | ✅ 完成 | 所有转译器已迁移（trans_c, trans_rust, trans_python, trans_javascript）|
 | Phase 3 | 🔄 进行中 | Parser 添加 db 字段，创建多个包装方法 |
 | Phase 4 | ✅ 部分完成 | 入口点已简化 |
-| Phase 5 | ⏳ 待定 | config.rs 迁移 |
+| Phase 5 | ✅ 完成 | config.rs 已迁移到 AutoVM（无 Universe 依赖）|
 | Phase 6 | ⏳ 待定 | 删除 universe.rs |
+
+### Phase 5 进度详情 (提交: e026fbd)
+
+**已完成**:
+- ✅ 移除 `eval_config_with_vm()` 的 Universe 参数
+- ✅ 移除 `AutoConfigReader.univ` 字段
+- ✅ 移除 `AutoConfig` 的 Universe 相关方法
+- ✅ config.rs 不再依赖 Universe
+
+**注意**: 预先存在的 config 测试失败（ConfigCodegen 不支持 if 语句），与本次迁移无关。
 
 ### Phase 3 进度详情 (最新提交: 184e196)
 
