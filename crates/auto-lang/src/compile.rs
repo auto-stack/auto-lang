@@ -9,6 +9,7 @@
 // Phase 2: Add incremental compilation (file hashing, dirty tracking)
 // Phase 3: Add fine-grained incremental (fragment hashing, patches)
 
+use crate::auto_cache::{AutoCache, ModuleCache};
 use crate::database::Database;
 use crate::error::{AutoError, AutoResult};
 use crate::indexer::Indexer;
@@ -31,11 +32,14 @@ use std::sync::RwLock;
 /// Phase 4.5: Database is now wrapped in Arc<RwLock<>> for sharing with Evaler
 /// Phase 3 (Plan 065): QueryEngine integration complete (now accepts Arc<RwLock<Database>>)
 /// Plan 085: Added type_store for module dependency management
+/// Plan 085 Phase 5: Added auto_cache for module caching
 pub struct CompileSession {
     db: Arc<RwLock<Database>>,
     query_engine: Option<crate::query::QueryEngine>,
     /// Plan 085: Unified type store for all loaded modules
     type_store: Arc<RwLock<TypeStore>>,
+    /// Plan 085 Phase 5: Module cache for incremental compilation
+    auto_cache: AutoCache,
 }
 
 impl Clone for CompileSession {
@@ -44,6 +48,7 @@ impl Clone for CompileSession {
             db: self.db.clone(),
             query_engine: None, // QueryEngine is recreated on-demand after clone
             type_store: self.type_store.clone(),
+            auto_cache: self.auto_cache.clone(),
         }
     }
 }
@@ -57,12 +62,23 @@ impl CompileSession {
             db,
             query_engine: None,
             type_store,
+            auto_cache: AutoCache::new(),
         }
     }
 
     /// Get reference to the type store (Plan 085)
     pub fn type_store(&self) -> Arc<RwLock<TypeStore>> {
         self.type_store.clone()
+    }
+
+    /// Get cache statistics (Plan 085 Phase 5)
+    pub fn cache_stats(&self) -> crate::auto_cache::CacheStats {
+        self.auto_cache.stats()
+    }
+
+    /// Get number of cached modules (Plan 085 Phase 5)
+    pub fn cached_module_count(&self) -> usize {
+        self.auto_cache.len()
     }
 
     /// Get reference to the database (for sharing with Evaler)
@@ -139,9 +155,23 @@ impl CompileSession {
     /// Plan 085: 加载模块到 type_store
     ///
     /// 根据模块路径查找并加载模块，将符号合并到 type_store。
-    /// 未来会支持 AutoCache 缓存。
+    /// Plan 085 Phase 5: 支持模块缓存，避免重复解析。
     fn load_module(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
-        // TODO: 检查 AutoCache
+        // Phase 5: 检查 AutoCache
+        if self.auto_cache.is_cached_and_valid(&use_stmt.module) {
+            // 使用缓存的 type_store
+            if let Some(cached) = self.auto_cache.get(&use_stmt.module) {
+                let mut store = self.type_store.write().unwrap();
+                if use_stmt.is_wildcard {
+                    store.merge(&cached.type_store);
+                } else if !use_stmt.items.is_empty() {
+                    store.import_items(&cached.type_store, &use_stmt.items);
+                } else {
+                    store.merge(&cached.type_store);
+                }
+                return Ok(());
+            }
+        }
 
         // 将模块路径转换为文件路径
         let module_path = use_stmt.module.replace(".", "/");
@@ -175,6 +205,15 @@ impl CompileSession {
         // 解析模块获取 type_store
         let module_type_store = self.parse_module_to_type_store(&module_source, &path.to_string_lossy())?;
 
+        // Phase 5: 存入 AutoCache
+        let cache_entry = ModuleCache::with_file(
+            &use_stmt.module,
+            module_type_store.clone(),
+            path.to_string_lossy(),
+            &module_source,
+        );
+        self.auto_cache.store(&use_stmt.module, cache_entry);
+
         // 合并到主 type_store
         {
             let mut store = self.type_store.write().unwrap();
@@ -189,8 +228,6 @@ impl CompileSession {
                 store.merge(&module_type_store);
             }
         }
-
-        // TODO: 存入 AutoCache
 
         Ok(())
     }
@@ -377,6 +414,7 @@ impl CompileSession {
         self.db = Arc::new(RwLock::new(Database::new()));
         self.query_engine = None; // Reset QueryEngine to clear cache
         self.type_store = Arc::new(RwLock::new(TypeStore::new())); // Plan 085
+        self.auto_cache.clear(); // Plan 085 Phase 5
     }
 
     /// Get statistics about the database

@@ -6,6 +6,8 @@ pub mod types;
 pub mod parser_helpers;
 // Plan 085: Use statement scanner for AIE + AutoCache
 pub mod use_scanner;
+// Plan 085 Phase 5: Module cache for incremental compilation
+pub mod auto_cache;
 pub mod atom_error;
 pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
 pub mod compile;
