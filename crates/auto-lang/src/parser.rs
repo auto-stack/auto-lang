@@ -552,17 +552,14 @@ impl<'a> Parser<'a> {
             _ => {}
         }
 
-        // 始终定义到 Universe（保持向后兼容）
-        // TODO: 完全移除 Universe 依赖后，可以移除此行
-        self.scope.borrow_mut().define(name, Rc::new(meta));
+        // Plan 091: Removed Universe.define() - TypeStore + InferenceContext are sufficient
     }
 
     fn define_alias(&mut self, alias: AutoStr, target: AutoStr) {
-        // Plan 090: Also register to TypeStore
+        // Plan 091: Register to TypeStore only (removed Universe fallback)
         if let Ok(mut store) = self.type_store.write() {
-            store.register_type_alias(alias.clone(), target.clone());
+            store.register_type_alias(alias.clone(), target);
         }
-        self.scope.borrow_mut().define_alias(alias, target);
     }
 
     fn define_rc(&mut self, name: &str, meta: Rc<Meta>) {
@@ -611,7 +608,7 @@ impl<'a> Parser<'a> {
             }
             _ => {}
         }
-        self.scope.borrow_mut().define(name, meta);
+        // Plan 091: Removed Universe.define() - TypeStore + InferenceContext are sufficient
     }
 
     /// 检查符号是否存在（使用 TypeStore 和 InferenceContext）
