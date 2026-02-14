@@ -1237,8 +1237,6 @@ impl<'a> Parser<'a> {
             TokenKind::LSquare => self.array()?,
             // object
             TokenKind::LBrace => Expr::Object(self.object()?),
-            // lambda (deprecated - use closure syntax instead: (a, b) => expr)
-            // TokenKind::VBar => self.lambda()?,
             // fstr
             TokenKind::FStrStart => self.fstr()?,
             // grid
@@ -2270,43 +2268,6 @@ impl<'a> Parser<'a> {
     pub fn iterable_expr(&mut self) -> AutoResult<Expr> {
         // TODO: how to check for range/array but reject other cases?
         self.parse_expr()
-    }
-
-    // DEPRECATED: Lambda syntax |a, b| a + b is replaced by closure syntax (a, b) => a + b
-    // This method is kept for backwards compatibility but should not be used
-    #[allow(dead_code)]
-    pub fn lambda(&mut self) -> AutoResult<Expr> {
-        self.next(); // skip |
-        let params = self.fn_params()?;
-        self.expect(TokenKind::VBar)?; // skip |
-        // Plan 091: Use lambda_id_gen instead of Universe.gen_lambda_id()
-        let id: AutoStr = format!("lambda_{}", self.lambda_id_gen.gen_id()).into();
-        let lambda = if self.is_kind(TokenKind::LBrace) {
-            let body = self.body()?;
-            Fn::new(
-                FnKind::Lambda,
-                id.clone(),
-                None,
-                params,
-                body,
-                Type::Unknown,
-            )
-        } else {
-            // single expression
-            let expr = self.parse_expr()?;
-            Fn::new(
-                FnKind::Lambda,
-                id.clone(),
-                None,
-                params,
-                Body::single_expr(expr),
-                Type::Unknown,
-            )
-        };
-        // put lambda in scope
-        self.define(id.as_str(), Meta::Fn(lambda.clone()));
-        // TODO: return meta instead?
-        Ok(Expr::Lambda(lambda))
     }
 
     // Plan 060: Parse JavaScript/TypeScript-style closure: ` x => body` or `(a, b) => body`
