@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::database::Database;
 use crate::error::{pos_to_span, AutoError, AutoResult, NameError, SyntaxError};
 use crate::infer::{check_field_type, InferenceContext};
 use crate::lexer::Lexer;
@@ -156,6 +157,9 @@ pub enum CompileDest {
 
 pub struct Parser<'a> {
     pub scope: Shared<Universe>,
+    /// Plan 091: Optional Database for incremental compilation
+    /// When set, Database methods are used instead of Universe methods
+    pub db: Option<Arc<RwLock<Database>>>,
     lexer: Lexer<'a>,
     pub cur: Token,
     prev: Token, // Track previous token for validation
@@ -194,6 +198,7 @@ impl<'a> Parser<'a> {
         let cur = lexer.next().expect("lexer should produce first token");
         let mut parser = Parser {
             scope,
+            db: None, // Plan 091: Optional Database
             lexer,
             cur,
             prev: Token {
@@ -235,6 +240,14 @@ impl<'a> Parser<'a> {
         self.type_registry = Some(registry);
     }
 
+    /// Set Database for incremental compilation (Plan 091)
+    ///
+    /// When set, Parser will use Database methods instead of Universe methods
+    /// for symbol and type storage.
+    pub fn set_database(&mut self, db: Arc<RwLock<Database>>) {
+        self.db = Some(db);
+    }
+
     pub fn add_special_block(&mut self, block: AutoStr, parser: Box<dyn BlockParser>) {
         self.special_blocks.insert(block, parser);
     }
@@ -245,6 +258,7 @@ impl<'a> Parser<'a> {
         let cur = lexer.next().expect("lexer should produce first token");
         let mut parser = Parser {
             scope,
+            db: None, // Plan 091: Optional Database
             lexer,
             cur,
             prev: Token {
@@ -284,6 +298,7 @@ impl<'a> Parser<'a> {
     ) -> Self {
         let mut parser = Parser {
             scope,
+            db: None, // Plan 091: Optional Database
             lexer,
             cur: first_token,
             prev: Token {
