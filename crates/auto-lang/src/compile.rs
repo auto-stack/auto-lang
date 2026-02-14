@@ -14,7 +14,9 @@ use crate::error::{AutoError, AutoResult};
 use crate::indexer::Indexer;
 use crate::parser::Parser;
 use crate::scope::{Sid, SID_PATH_GLOBAL};
+use crate::types::TypeStore;
 use crate::universe::SymbolLocation;
+use crate::use_scanner::{scan_use_statements, UseStatement};
 use auto_val::AutoStr;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -28,9 +30,12 @@ use std::sync::RwLock;
 ///
 /// Phase 4.5: Database is now wrapped in Arc<RwLock<>> for sharing with Evaler
 /// Phase 3 (Plan 065): QueryEngine integration complete (now accepts Arc<RwLock<Database>>)
+/// Plan 085: Added type_store for module dependency management
 pub struct CompileSession {
     db: Arc<RwLock<Database>>,
     query_engine: Option<crate::query::QueryEngine>,
+    /// Plan 085: Unified type store for all loaded modules
+    type_store: Arc<RwLock<TypeStore>>,
 }
 
 impl Clone for CompileSession {
@@ -38,6 +43,7 @@ impl Clone for CompileSession {
         Self {
             db: self.db.clone(),
             query_engine: None, // QueryEngine is recreated on-demand after clone
+            type_store: self.type_store.clone(),
         }
     }
 }
@@ -46,10 +52,17 @@ impl CompileSession {
     /// Create a new compilation session
     pub fn new() -> Self {
         let db = Arc::new(RwLock::new(Database::new()));
+        let type_store = Arc::new(RwLock::new(TypeStore::new()));
         Self {
             db,
             query_engine: None,
+            type_store,
         }
+    }
+
+    /// Get reference to the type store (Plan 085)
+    pub fn type_store(&self) -> Arc<RwLock<TypeStore>> {
+        self.type_store.clone()
     }
 
     /// Get reference to the database (for sharing with Evaler)
@@ -82,6 +95,135 @@ impl CompileSession {
     /// **Plan 065 Phase 3**: Returns None if QueryEngine hasn't been created yet
     pub fn get_query_engine(&self) -> Option<&crate::query::QueryEngine> {
         self.query_engine.as_ref()
+    }
+
+    /// Plan 085: 预处理 use 语句
+    ///
+    /// 扫描源码中的所有 use 语句，并加载依赖模块到 type_store。
+    /// 这应该在 compile_source() 之前调用。
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - The source code to scan for use statements
+    ///
+    /// # Returns
+    ///
+    /// The number of modules that were processed.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use auto_lang::compile::CompileSession;
+    ///
+    /// let mut session = CompileSession::new();
+    /// let source = "use std.io\nuse std.fs: read, write";
+    /// session.resolve_uses(source).unwrap();
+    /// ```
+    pub fn resolve_uses(&mut self, source: &str) -> AutoResult<usize> {
+        let use_statements = scan_use_statements(source);
+        let mut loaded_count = 0;
+
+        for use_stmt in &use_statements {
+            // Skip C imports - they don't have AutoLang types
+            if use_stmt.is_c_import {
+                continue;
+            }
+
+            self.load_module(use_stmt)?;
+            loaded_count += 1;
+        }
+
+        Ok(loaded_count)
+    }
+
+    /// Plan 085: 加载模块到 type_store
+    ///
+    /// 根据模块路径查找并加载模块，将符号合并到 type_store。
+    /// 未来会支持 AutoCache 缓存。
+    fn load_module(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
+        // TODO: 检查 AutoCache
+
+        // 将模块路径转换为文件路径
+        let module_path = use_stmt.module.replace(".", "/");
+
+        // 尝试找到模块文件
+        let extensions = [".at", ".auto"];
+        let mut found_path: Option<std::path::PathBuf> = None;
+
+        for ext in &extensions {
+            let path = std::path::Path::new(&module_path).with_extension(&ext[1..]);
+            if path.exists() {
+                found_path = Some(path);
+                break;
+            }
+            // 也尝试 stdlib/auto 路径
+            let stdlib_path = std::path::Path::new("stdlib/auto").join(&path);
+            if stdlib_path.exists() {
+                found_path = Some(stdlib_path);
+                break;
+            }
+        }
+
+        let path = found_path.ok_or_else(|| {
+            AutoError::Msg(format!("Module not found: {}", use_stmt.module))
+        })?;
+
+        // 读取并解析模块
+        let module_source = std::fs::read_to_string(&path)
+            .map_err(|e| AutoError::Io(format!("Failed to read module {}: {}", path.display(), e)))?;
+
+        // 解析模块获取 type_store
+        let module_type_store = self.parse_module_to_type_store(&module_source, &path.to_string_lossy())?;
+
+        // 合并到主 type_store
+        {
+            let mut store = self.type_store.write().unwrap();
+            if use_stmt.is_wildcard {
+                // 通配符导入：合并所有符号
+                store.merge(&module_type_store);
+            } else if !use_stmt.items.is_empty() {
+                // 选择性导入：只导入指定项
+                store.import_items(&module_type_store, &use_stmt.items);
+            } else {
+                // 默认导入整个模块
+                store.merge(&module_type_store);
+            }
+        }
+
+        // TODO: 存入 AutoCache
+
+        Ok(())
+    }
+
+    /// Plan 085: 解析模块并提取 type_store
+    ///
+    /// 解析模块源码，提取所有类型、函数、spec 声明到 TypeStore。
+    fn parse_module_to_type_store(&self, source: &str, path: &str) -> AutoResult<TypeStore> {
+        let mut type_store = TypeStore::new();
+
+        // 使用 Parser 解析源码
+        let scope = Rc::new(RefCell::new(crate::universe::Universe::new()));
+        let mut parser = Parser::new(source, scope.clone());
+        let ast = parser.parse()
+            .map_err(|e| crate::error::attach_source(e, path.to_string(), source.to_string()))?;
+
+        // 从 AST 提取声明
+        for stmt in &ast.stmts {
+            match stmt {
+                crate::ast::Stmt::Fn(fn_decl) => {
+                    type_store.register_fn_decl(fn_decl);
+                }
+                crate::ast::Stmt::TypeDecl(type_decl) => {
+                    type_store.register_type_decl(type_decl);
+                }
+                crate::ast::Stmt::SpecDecl(spec_decl) => {
+                    type_store.register_spec_decl(spec_decl);
+                }
+                _ => {}
+            }
+        }
+
+        Ok(type_store)
     }
 
     /// Compile source code and index it into the database
@@ -234,6 +376,7 @@ impl CompileSession {
     pub fn clear(&mut self) {
         self.db = Arc::new(RwLock::new(Database::new()));
         self.query_engine = None; // Reset QueryEngine to clear cache
+        self.type_store = Arc::new(RwLock::new(TypeStore::new())); // Plan 085
     }
 
     /// Get statistics about the database
