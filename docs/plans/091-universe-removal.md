@@ -55,32 +55,43 @@ Universe 当前承担的职责:
 |-------|------|------|
 | Phase 1 | ✅ 完成 | 移除公开 API，Evaluator 重定向到 AutoVM |
 | Phase 2 | ✅ 完成 | 所有转译器已迁移（trans_c, trans_rust, trans_python, trans_javascript）|
-| Phase 3 | 🔄 进行中 | 已替换 gen_lambda_id，剩余 23+ 处用法 |
+| Phase 3 | 🔄 进行中 | Parser 添加 db 字段，创建多个包装方法 |
 | Phase 4 | ✅ 部分完成 | 入口点已简化 |
 | Phase 5 | ⏳ 待定 | config.rs 迁移 |
 | Phase 6 | ⏳ 待定 | 删除 universe.rs |
 
-### Phase 3 进度详情 (commit: 2df0979)
+### Phase 3 进度详情 (最新提交: 202d989)
 
-**已迁移**:
+**已完成**:
+- ✅ 添加 `db: Option<Arc<RwLock<Database>>>` 字段
+- ✅ 添加 `set_database()` 方法
+- ✅ 删除废弃的 `lambda()` 方法（35 行代码）
 - ✅ `gen_lambda_id()` → `lambda_id_gen.gen_id()`
+- ✅ 创建 `define_symbol_location()` 包装方法，迁移 8 处用法
+- ✅ 创建 `get_defined_names()` 包装方法，迁移 2 处用法
+- ✅ 创建 `find_type_for_name()` 包装方法，迁移 2 处用法
 
-**待迁移** (23 处):
-- `define()` - 2 处
-- `define_alias()` - 1 处
-- `exists()` - 1 处
-- `exit_scope()` - 1 处
-- `enter_scope()` - 1 处
-- `lookup_meta()` - 1 处
-- `lookup_type_meta()` - 1 处
-- `lookup_ident_type()` - 1 处
-- `enter_fn()` - 3 处
-- `find_type_for_name()` - 2 处
-- `get_defined_names()` - 2 处
-- `define_symbol_location()` - 1 处
-- 直接传递 `self.scope` - 5+ 处
+**剩余 20 处 scope 用法分析**:
 
-**建议**: 这是一个大工程，需要分阶段进行。可以先专注于最常用的方法。
+| 类型 | 数量 | 说明 |
+|------|------|------|
+| 包装方法回退 | 10 | exists(), lookup_meta(), lookup_type(), get_defined_names(), find_type_for_name(), define(), define_alias(), define_symbol_location() 等的回退逻辑 |
+| 作用域管理 | 5 | enter_scope(), exit_scope(), enter_fn() - 需要作用域栈管理 |
+| 专用注册 | 3 | register_spec(), define_type_alias(), define_type() - 特殊用途 |
+| 类型检查 | 1 | lookup_ident_type() - 类型标识符检查 |
+| 注释代码 | 1 | cur_spot - 已注释 |
+
+**结论**: 大部分核心功能已迁移到 TypeStore + InferenceContext。剩余的 scope 用法主要是：
+1. **回退逻辑** - 保持向后兼容，可在未来删除
+2. **作用域管理** - 需要保留或迁移到 InferenceContext 的 scope 栈
+3. **专用注册** - 特殊用途，可按需迁移
+
+**提交记录**:
+- `82ccde5` - Remove deprecated lambda() method
+- `c7d8b46` - Add optional db field to Parser
+- `9b510f6` - Add define_symbol_location wrapper method
+- `20ce1ff` - Add get_defined_names wrapper method
+- `202d989` - Add find_type_for_name wrapper method
 
 ### Phase 1 进度 (commit: 15a8f3c)
 
