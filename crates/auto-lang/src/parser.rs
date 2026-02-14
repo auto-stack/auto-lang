@@ -643,6 +643,23 @@ impl<'a> Parser<'a> {
         self.scope.borrow().exists(name)
     }
 
+    /// 定义符号位置（用于 LSP 和调试）
+    ///
+    /// Plan 091: 优先使用 Database，然后回退到 Universe
+    fn define_symbol_location(&mut self, name: AutoStr, location: SymbolLocation) {
+        // Plan 091: 首先尝试使用 Database
+        if let Some(ref db) = self.db {
+            if let Ok(mut db) = db.write() {
+                use crate::scope::Sid;
+                let sid = Sid::from(name.as_str());
+                db.define_symbol_location(sid, location);
+                return;
+            }
+        }
+        // Fallback: Universe
+        self.scope.borrow_mut().define_symbol_location(name, location);
+    }
+
     fn exit_scope(&mut self) {
         self.scope.borrow_mut().exit_scope();
         // Plan 010 Phase 5B: Sync inference context scope
@@ -3433,9 +3450,8 @@ impl<'a> Parser<'a> {
             name_pos.at,
             name_pos.pos,
         );
-        self.scope
-            .borrow_mut()
-            .define_symbol_location(name.clone(), loc);
+        // Plan 091: Use wrapper method
+        self.define_symbol_location(name.clone(), loc);
 
         Ok(Stmt::Store(store))
     }
@@ -3596,9 +3612,8 @@ impl<'a> Parser<'a> {
 
         // Register symbol location for LSP
         let loc = SymbolLocation::new(name_pos.line.saturating_sub(1), name_pos.at, name_pos.pos);
-        self.scope
-            .borrow_mut()
-            .define_symbol_location(name.clone(), loc);
+        // Plan 091: Use wrapper method
+        self.define_symbol_location(name.clone(), loc);
 
         Ok(fn_stmt)
     }
@@ -3964,9 +3979,8 @@ impl<'a> Parser<'a> {
             name_pos.at,
             name_pos.pos,
         );
-        self.scope
-            .borrow_mut()
-            .define_symbol_location(unique_name.clone(), loc);
+        // Plan 091: Use wrapper method
+        self.define_symbol_location(unique_name.clone(), loc);
 
         Ok(fn_stmt)
     }
@@ -4174,9 +4188,8 @@ impl<'a> Parser<'a> {
             name_pos.at,
             name_pos.pos,
         );
-        self.scope
-            .borrow_mut()
-            .define_symbol_location(unique_name.clone(), loc);
+        // Plan 091: Use wrapper method
+        self.define_symbol_location(unique_name.clone(), loc);
 
         Ok(fn_stmt)
     }
@@ -4273,9 +4286,8 @@ impl<'a> Parser<'a> {
                 name_pos.at,
                 name_pos.pos,
             );
-            self.scope
-                .borrow_mut()
-                .define_symbol_location(name.clone(), loc);
+            // Plan 091: Use wrapper method
+            self.define_symbol_location(name.clone(), loc);
 
             // 6. Plan 088: Create parameter with explicit mode
             params.push(Param { name, ty, default, mode });
@@ -4488,9 +4500,8 @@ impl<'a> Parser<'a> {
                 // Register symbol location for LSP
                 let loc =
                     SymbolLocation::new(name_pos.line.saturating_sub(1), name_pos.at, name_pos.pos);
-                self.scope
-                    .borrow_mut()
-                    .define_symbol_location(name.clone(), loc);
+                // Plan 091: Use wrapper method
+                self.define_symbol_location(name.clone(), loc);
 
                 return Ok(Stmt::TypeDecl(decl));
             }
@@ -4594,9 +4605,8 @@ impl<'a> Parser<'a> {
         // Register symbol location for LSP
         // Use the saved name_pos which is the position of the type name
         let loc = SymbolLocation::new(name_pos.line.saturating_sub(1), name_pos.at, name_pos.pos);
-        self.scope
-            .borrow_mut()
-            .define_symbol_location(name.clone(), loc);
+        // Plan 091: Use wrapper method
+        self.define_symbol_location(name.clone(), loc);
 
         // For C types, there's no body - they're opaque types
         if kind == TypeDeclKind::CType {
@@ -4950,9 +4960,8 @@ impl<'a> Parser<'a> {
         // Register field location for LSP with qualified name "TypeName.fieldName"
         let qualified_name = format!("{}.{}", type_name, name);
         let loc = SymbolLocation::new(name_pos.line.saturating_sub(1), name_pos.at, name_pos.pos);
-        self.scope
-            .borrow_mut()
-            .define_symbol_location(qualified_name.clone(), loc);
+        // Plan 091: Use wrapper method
+        self.define_symbol_location(qualified_name.clone().into(), loc);
 
         Ok(Member::new(name, ty, value))
     }
