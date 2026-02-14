@@ -744,12 +744,13 @@ pub fn trans_python(path: &str) -> AutoResult<String> {
     let pyname = path.replace(".at", ".py");
     let fname = AutoPath::new(path).filename();
 
+    // Plan 091: PythonTrans no longer needs Universe, but Parser still requires it
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code.as_str(), scope);
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut sink = Sink::new(fname.clone());
     let mut trans = crate::trans::python::PythonTrans::new(fname);
-    trans.set_scope(parser.scope.clone());
+    // Note: PythonTrans no longer uses Universe
     trans.trans(ast, &mut sink)?;
 
     // Write Python file
@@ -767,12 +768,13 @@ pub fn trans_javascript(path: &str) -> AutoResult<String> {
     let jsname = path.replace(".at", ".js");
     let fname = AutoPath::new(path).filename();
 
+    // Plan 091: JavaScriptTrans no longer needs Universe, but Parser still requires it
     let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::new(code.as_str(), scope);
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut sink = Sink::new(fname.clone());
     let mut trans = crate::trans::javascript::JavaScriptTrans::new(fname);
-    trans.set_scope(parser.scope.clone());
+    // Note: JavaScriptTrans no longer uses Universe
     trans.trans(ast, &mut sink)?;
 
     // Write JavaScript file

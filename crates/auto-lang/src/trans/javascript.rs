@@ -1,28 +1,20 @@
 use super::{Sink, Trans, ToStrError};
 use crate::ast::*;
-use crate::universe::Universe;
 use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
-use auto_val::{shared, Shared};
 use std::io::Write;
 
 pub struct JavaScriptTrans {
     #[allow(dead_code)]
     name: AutoStr,
-    scope: Shared<Universe>,
 }
 
 impl JavaScriptTrans {
     pub fn new(name: AutoStr) -> Self {
         Self {
             name,
-            scope: shared(Universe::default()),
         }
-    }
-
-    pub fn set_scope(&mut self, scope: Shared<Universe>) {
-        self.scope = scope;
     }
 
     fn expr(&mut self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
@@ -638,6 +630,8 @@ impl Trans for JavaScriptTrans {
 mod tests {
     use super::*;
     use crate::parser::Parser;
+    use crate::universe::Universe;
+    use auto_val::shared;
 
     fn test_a2j(case: &str) -> AutoResult<()> {
         let parts: Vec<&str> = case.split("_").collect();
@@ -649,12 +643,13 @@ mod tests {
         let src_path = d.join(src_path);
         let src = std::fs::read_to_string(src_path.as_path())?;
 
+        // Plan 091: JavaScriptTrans no longer needs Universe, but Parser still requires it
         let scope = shared(Universe::new());
         let mut parser = Parser::new(src.as_str(), scope);
         let ast = parser.parse()?;
         let mut sink = Sink::new(name.into());
         let mut trans = JavaScriptTrans::new(name.into());
-        trans.set_scope(parser.scope.clone());
+        // Note: set_scope() removed - JavaScriptTrans no longer uses Universe
         trans.trans(ast, &mut sink)?;
         let js_code = sink.done()?;
 

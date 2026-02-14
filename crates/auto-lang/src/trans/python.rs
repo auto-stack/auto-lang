@@ -1,10 +1,8 @@
 use super::{Sink, Trans, ToStrError};
 use crate::ast::*;
-use crate::universe::Universe;
 use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
-use auto_val::{shared, Shared};
 use std::collections::HashSet;
 use std::io::Write;
 
@@ -13,7 +11,6 @@ pub struct PythonTrans {
     imports: HashSet<AutoStr>,
     #[allow(dead_code)]
     name: AutoStr,
-    scope: Shared<Universe>,
 }
 
 impl PythonTrans {
@@ -22,12 +19,7 @@ impl PythonTrans {
             indent: 0,
             imports: HashSet::new(),
             name,
-            scope: shared(Universe::default()),
         }
-    }
-
-    pub fn set_scope(&mut self, scope: Shared<Universe>) {
-        self.scope = scope;
     }
 
     fn indent(&mut self) {
@@ -719,6 +711,8 @@ impl Trans for PythonTrans {
 mod tests {
     use super::*;
     use crate::parser::Parser;
+    use crate::universe::Universe;
+    use auto_val::shared;
     use std::fs::read_to_string;
     use std::path::PathBuf;
 
@@ -732,12 +726,13 @@ mod tests {
         let src_path = d.join(src_path);
         let src = read_to_string(src_path.as_path())?;
 
+        // Plan 091: PythonTrans no longer needs Universe, but Parser still requires it
         let scope = shared(Universe::new());
         let mut parser = Parser::new(src.as_str(), scope);
         let ast = parser.parse()?;
         let mut sink = Sink::new(name.into());
         let mut trans = PythonTrans::new(name.into());
-        trans.set_scope(parser.scope.clone());
+        // Note: set_scope() removed - PythonTrans no longer uses Universe
         trans.trans(ast, &mut sink)?;
         let py_code = sink.done()?;
 

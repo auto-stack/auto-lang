@@ -46,15 +46,15 @@ Universe 当前承担的职责:
 | interp.rs | 17 | P0 | 老解释器，考虑删除 |
 | trans/c.rs | 15 | P2 | 已有 Database 支持 |
 | config.rs | 9 | P3 | 配置解析 |
-| trans/python.rs | 5 | P3 | 需迁移 |
-| trans/javascript.rs | 5 | P3 | 需迁移 |
+| ~~trans/python.rs~~ | ~~5~~ | ~~P3~~ | ✅ 已移除 Universe 依赖 |
+| ~~trans/javascript.rs~~ | ~~5~~ | ~~P3~~ | ✅ 已移除 Universe 依赖 |
 
 ## 完成状态
 
 | Phase | 状态 | 说明 |
 |-------|------|------|
-| Phase 1 | ✅ 部分完成 | 移除公开 API，保留内部依赖 |
-| Phase 2 | ✅ 部分完成 | trans_c/trans_rust 已迁移 |
+| Phase 1 | ✅ 完成 | 移除公开 API，Evaluator 重定向到 AutoVM |
+| Phase 2 | ✅ 完成 | 所有转译器已迁移（trans_c, trans_rust, trans_python, trans_javascript）|
 | Phase 3 | ⏳ 待定 | 移除 Parser.scope 字段 |
 | Phase 4 | ✅ 部分完成 | 入口点已简化 |
 | Phase 5 | ⏳ 待定 | config.rs 迁移 |
@@ -107,10 +107,8 @@ Universe 当前承担的职责:
 - ✅ `trans_c()` 使用 `trans_c_with_session()` 内部
 - ✅ `trans_rust()` 使用 `trans_rust_with_session()` 内部
 - ✅ 添加 `trans_c_legacy()` 和 `trans_rust_legacy()` 作为回退
-
-**待迁移**:
-- ⏳ `trans_python()` - 需要为 PythonTrans 添加 Database 支持
-- ⏳ `trans_javascript()` - 需要为 JavaScriptTrans 添加 Database 支持
+- ✅ `trans_python()` 移除 Universe 依赖 (PythonTrans 不需要 scope)
+- ✅ `trans_javascript()` 移除 Universe 依赖 (JavaScriptTrans 不需要 scope)
 
 ### Phase 2 Original: 转译器迁移到 Database
 
