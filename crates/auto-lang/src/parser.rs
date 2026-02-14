@@ -755,6 +755,28 @@ impl<'a> Parser<'a> {
         self.scope.borrow().find_type_for_name(name)
     }
 
+    /// 检查标识符是否是类型名（用于泛型类型解析）
+    ///
+    /// Plan 091: 优先使用 TypeStore，然后回退到 Universe
+    fn lookup_ident_type(&self, name: &str) -> Option<Type> {
+        // Plan 091: 首先检查 TypeStore
+        if let Ok(store) = self.type_store.read() {
+            if store.lookup_type_decl_str(name).is_some() {
+                // 返回一个简单的 User 类型表示
+                if let Some(decl) = store.lookup_type_decl_str(name) {
+                    return Some(Type::User(decl.clone()));
+                }
+            }
+            // 也检查类型别名
+            if store.lookup_type_alias_str(name).is_some() {
+                // 类型别名需要解析，这里简化处理
+                return Some(Type::Unknown);
+            }
+        }
+        // Fallback: Universe
+        self.scope.borrow().lookup_ident_type(name)
+    }
+
     fn break_stmt(&mut self) -> AutoResult<Stmt> {
         self.next();
         Ok(Stmt::Break)
@@ -2132,7 +2154,8 @@ impl<'a> Parser<'a> {
             // Only treat as generic type if the identifier is a known TYPE (not a variable)
             // This prevents false positives like "x < 10" being treated as generic type
             // Plan 087: Also check type_registry for REPL support
-            let mut is_type = self.scope.borrow().lookup_ident_type(&name).is_some();
+            // Plan 091: Use wrapper method
+            let mut is_type = self.lookup_ident_type(&name).is_some();
             if !is_type {
                 // Check type registry for REPL (Plan 087)
                 if let Some(ref registry) = self.type_registry {
@@ -4402,10 +4425,8 @@ impl<'a> Parser<'a> {
         // Register spec in scope
         self.define(spec_decl.name.as_str(), Meta::Spec(spec_decl.clone()));
 
-        // Plan 061 Phase 2: Register spec in Universe for constraint validation
-        self.scope
-            .borrow_mut()
-            .register_spec(std::rc::Rc::new(spec_decl.clone()));
+        // Note: Plan 091 - Universe.register_spec() removed
+        // Spec is already registered via define() -> TypeStore.register_spec_decl()
 
         Ok(Stmt::SpecDecl(spec_decl))
     }
