@@ -2,6 +2,8 @@ pub mod ast;
 pub mod atom;
 // Plan 084: Unified TypeStore for type declaration management
 pub mod types;
+// Plan 091: AutoVM-based interpreter interface
+pub mod interpreter;
 // Plan 090: Parser helpers to remove Universe dependency
 pub mod parser_helpers;
 // Plan 085: Use statement scanner for AIE + AutoCache
@@ -69,6 +71,8 @@ pub use atom::{Atom, AtomReader};
 // 这些宏接受 AutoLang 代码字符串并解析为 Atom/Node/Value 结构体
 pub use auto_lang_macros::{atom, node, value};
 
+// Plan 091: AutoVM-based interpreter (replacement for eval.rs/interp.rs)
+pub use interpreter::AutoInterpreter;
 
 
 use crate::trans::c::CTrans;
