@@ -189,10 +189,18 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
+    /// Create parser with automatic Universe (for simple cases)
+    ///
+    /// Plan 091: Universe is created internally but not actively used.
+    /// Prefer this for new code.
     pub fn from(code: &'a str) -> Self {
         Self::new(code, shared(Universe::new()))
     }
 
+    /// Create parser with explicit Universe scope
+    ///
+    /// Plan 091 DEPRECATED: Universe is no longer actively used by Parser.
+    /// Use `from()` for new code.
     pub fn new(code: &'a str, scope: Shared<Universe>) -> Self {
         let mut lexer = Lexer::new(code);
         let cur = lexer.next().expect("lexer should produce first token");
