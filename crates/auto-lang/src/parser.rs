@@ -636,8 +636,8 @@ impl<'a> Parser<'a> {
             return true;
         }
 
-        // Fallback: Universe 作为回退（保持向后兼容）
-        self.scope.borrow().exists(name)
+        // Plan 091: Removed Universe fallback
+        false
     }
 
     /// 定义符号位置（用于 LSP 和调试）
@@ -685,93 +685,63 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Primary: 使用 InferenceContext 的 lookup_meta()
-        if let Some(meta) = self.infer_ctx.lookup_meta(name) {
-            return Some(meta);
-        }
-
-        // Fallback: Universe 作为回退（保持向后兼容）
-        // TODO: 完全移除 Universe 依赖后删除此回退逻辑
-        self.scope.borrow().lookup_meta(name)
+        // 从 InferenceContext 查找
+        self.infer_ctx.lookup_meta(name)
     }
 
     /// 查找类型（使用 TypeStore 和 InferenceContext）
     ///
-    /// Plan 084: 优先使用 TypeStore，然后是 InferenceContext，最后是 Universe
+    /// Plan 091: Use TypeStore + InferenceContext (removed Universe fallback)
     fn lookup_type(&mut self, name: &str) -> Shared<Type> {
-        // Plan 084: 首先从 TypeStore 查找类型声明
+        // Plan 091: 首先从 TypeStore 查找类型声明
         if let Ok(store) = self.type_store.read() {
             if let Some(type_decl) = store.lookup_type_decl_str(name) {
                 return shared(Type::User(type_decl.clone()));
             }
         }
 
-        // Primary: 使用 InferenceContext 的 lookup_type()
+        // 从 InferenceContext 查找
         if let Some(ty) = self.infer_ctx.lookup_type(&Name::from(name)) {
             return shared(ty);
         }
 
-        // Fallback: Universe 作为回退（保持向后兼容）
-        // TODO: 完全移除 Universe 依赖后删除此回退逻辑
-        match self.scope.borrow().lookup_type_meta(name) {
-            Some(meta) => match meta.as_ref() {
-                Meta::Type(ty) => shared(ty.clone()),
-                Meta::Spec(spec_decl) => shared(Type::Spec(shared(spec_decl.clone()))),
-                _ => shared(Type::Unknown),
-            },
-            None => shared(Type::Unknown),
-        }
+        shared(Type::Unknown)
     }
 
     /// 获取所有已定义的名称（用于错误提示）
     ///
-    /// Plan 091: 优先使用 TypeStore，然后回退到 Universe
+    /// Plan 091: Use TypeStore only (removed Universe fallback)
     fn get_defined_names(&self) -> Vec<String> {
-        // Plan 091: 首先尝试从 TypeStore 获取
         if let Ok(store) = self.type_store.read() {
-            let names = store.get_defined_names();
-            if !names.is_empty() {
-                return names;
-            }
+            return store.get_defined_names();
         }
-        // Fallback: Universe
-        self.scope.borrow().get_defined_names()
+        Vec::new()
     }
 
     /// 根据名称查找类型（用于继承和方法查找）
     ///
-    /// Plan 091: 优先使用 TypeStore，然后回退到 Universe
+    /// Plan 091: Use TypeStore only (removed Universe fallback)
     fn find_type_for_name(&self, name: &str) -> Option<Type> {
-        // Plan 091: 首先尝试从 TypeStore 查找
         if let Ok(store) = self.type_store.read() {
-            if let Some(ty) = store.find_type_for_name(name) {
-                return Some(ty);
-            }
+            return store.find_type_for_name(name);
         }
-        // Fallback: Universe
-        self.scope.borrow().find_type_for_name(name)
+        None
     }
 
     /// 检查标识符是否是类型名（用于泛型类型解析）
     ///
-    /// Plan 091: 优先使用 TypeStore，然后回退到 Universe
+    /// Plan 091: Use TypeStore only (removed Universe fallback)
     fn lookup_ident_type(&self, name: &str) -> Option<Type> {
-        // Plan 091: 首先检查 TypeStore
         if let Ok(store) = self.type_store.read() {
-            if store.lookup_type_decl_str(name).is_some() {
-                // 返回一个简单的 User 类型表示
-                if let Some(decl) = store.lookup_type_decl_str(name) {
-                    return Some(Type::User(decl.clone()));
-                }
+            if let Some(decl) = store.lookup_type_decl_str(name) {
+                return Some(Type::User(decl.clone()));
             }
             // 也检查类型别名
             if store.lookup_type_alias_str(name).is_some() {
-                // 类型别名需要解析，这里简化处理
                 return Some(Type::Unknown);
             }
         }
-        // Fallback: Universe
-        self.scope.borrow().lookup_ident_type(name)
+        None
     }
 
     fn break_stmt(&mut self) -> AutoResult<Stmt> {
@@ -5529,6 +5499,21 @@ impl<'a> Parser<'a> {
                     return Ok(Type::Storage(crate::ast::StorageType {
                         kind: crate::ast::StorageKind::Dynamic,
                     }));
+                }
+
+                // Plan 091: Handle primitive types directly (don't depend on Universe)
+                match name.as_str() {
+                    "int" | "i32" => return Ok(Type::Int),
+                    "uint" | "u32" => return Ok(Type::Uint),
+                    "float" => return Ok(Type::Float),
+                    "double" | "f64" => return Ok(Type::Double),
+                    "bool" => return Ok(Type::Bool),
+                    "str" => return Ok(Type::Str(0)),
+                    "cstr" => return Ok(Type::CStr),
+                    "byte" | "u8" => return Ok(Type::Byte),
+                    "char" | "i8" => return Ok(Type::Char),
+                    "void" => return Ok(Type::Void),
+                    _ => {}
                 }
 
                 // Check if this is a generic instance (e.g., List<int>, May<string>)
