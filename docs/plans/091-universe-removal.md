@@ -55,40 +55,28 @@ Universe 当前承担的职责:
 |-------|------|------|
 | Phase 1 | ✅ 完成 | 移除公开 API，Evaluator 重定向到 AutoVM |
 | Phase 2 | ✅ 完成 | 所有转译器已迁移（trans_c, trans_rust, trans_python, trans_javascript）|
-| Phase 3 | ✅ **基本完成** | Parser scope 用法从 21 减少到 11 |
+| Phase 3 | ✅ **完成** | Parser scope 用法从 21 减少到 1（仅注释）|
 | Phase 4 | ✅ 部分完成 | 入口点已简化 |
 | Phase 5 | ✅ 完成 | config.rs 已迁移到 AutoVM（无 Universe 依赖）|
-| Phase 6 | ❌ **无法完成** | 删除 universe.rs 需要更大规模重构 |
+| Phase 6 | 🔄 **尝试中** | 尝试删除 universe.rs |
 
-### Phase 3 最终状态 (提交: b18a117)
+### Phase 3 完成状态 (提交: 490ec67)
+
+**Parser scope 用法：21 → 1（仅注释代码）**
 
 **已完成**:
-- ✅ 添加 `db: Option<Arc<RwLock<Database>>>` 字段和 `set_database()` 方法
-- ✅ 删除废弃的 `lambda()` 方法
-- ✅ `gen_lambda_id()` → `lambda_id_gen.gen_id()`
-- ✅ 创建多个包装方法：`define_symbol_location()`, `get_defined_names()`, `find_type_for_name()`, `lookup_ident_type()`
-- ✅ **作用域管理完全迁移到 InferenceContext**（enter_scope, exit_scope, enter_fn）
-- ✅ **移除 define() 系列的 Universe 写入**（define, define_alias, define_rc）
-- ✅ scope 用法从 **21 减少到 11**
+- ✅ 添加 `db` 字段和 `set_database()` 方法
+- ✅ 作用域管理迁移到 InferenceContext
+- ✅ 移除所有 `define()` 系列的 Universe 写入
+- ✅ 移除所有查询方法的 Universe 回退
+- ✅ 添加基础类型直接识别（int, float, bool, str 等）
+- ✅ `define_type_alias()` 迁移到 Database
+- ✅ 动态类型（slice/array）直接返回，不存储
 
-**剩余 11 处 scope 用法**:
-
-| 类型 | 数量 | 可否移除 | 说明 |
-|------|------|----------|------|
-| 查询方法回退 | 6 | ❌ 必须保留 | exists, lookup_meta, lookup_type, get_defined_names, find_type_for_name, lookup_ident_type |
-| define_symbol_location 回退 | 1 | ❌ 必须保留 | Database 优先，Universe 回退 |
-| define_type_alias(params) | 1 | ⚠️ 需要 Database | 泛型类型别名 |
-| define_type() 动态类型 | 2 | ⚠️ 可以迁移 | slice/array 动态类型生成 |
-| 注释代码 | 1 | 忽略 | cur_spot |
-
-**尝试移除查询方法回退的结果**:
-
-移除 `exists()`, `lookup_meta()` 等查询方法的 Universe 回退后，测试失败。原因：TypeStore/InferenceContext 尚未完全覆盖 Universe 的所有数据。
-
-**结论**:
-- 核心注册功能已完全迁移到 TypeStore + InferenceContext
-- 查询方法的 Universe 回退必须保留，否则类型信息丢失
-- **11 处 scope 用法是保证功能正常的最小集合**
+**关键突破**：
+- 基础类型（int, float, bool 等）原本存储在 Universe.define_sys_types()
+- 现在在 parse_ident_or_generic_type() 中直接识别
+- 彻底消除了 Parser 对 Universe 的运行时依赖
 
 ### Phase 5 完成详情 (提交: e026fbd)
 
