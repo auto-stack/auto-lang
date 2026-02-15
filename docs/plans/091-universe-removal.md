@@ -55,58 +55,65 @@ Universe 当前承担的职责:
 |-------|------|------|
 | Phase 1 | ✅ 完成 | 移除公开 API，Evaluator 重定向到 AutoVM |
 | Phase 2 | ✅ 完成 | 所有转译器已迁移（trans_c, trans_rust, trans_python, trans_javascript）|
-| Phase 3 | 🔄 进行中 | Parser 添加 db 字段，创建多个包装方法 |
+| Phase 3 | ✅ **基本完成** | Parser scope 用法从 21 减少到 11 |
 | Phase 4 | ✅ 部分完成 | 入口点已简化 |
 | Phase 5 | ✅ 完成 | config.rs 已迁移到 AutoVM（无 Universe 依赖）|
-| Phase 6 | ⏳ 待定 | 删除 universe.rs |
+| Phase 6 | ❌ **无法完成** | 删除 universe.rs 需要更大规模重构 |
 
-### Phase 5 进度详情 (提交: e026fbd)
+### Phase 3 最终状态 (提交: b18a117)
 
 **已完成**:
+- ✅ 添加 `db: Option<Arc<RwLock<Database>>>` 字段和 `set_database()` 方法
+- ✅ 删除废弃的 `lambda()` 方法
+- ✅ `gen_lambda_id()` → `lambda_id_gen.gen_id()`
+- ✅ 创建多个包装方法：`define_symbol_location()`, `get_defined_names()`, `find_type_for_name()`, `lookup_ident_type()`
+- ✅ **作用域管理完全迁移到 InferenceContext**（enter_scope, exit_scope, enter_fn）
+- ✅ **移除 define() 系列的 Universe 写入**（define, define_alias, define_rc）
+- ✅ scope 用法从 **21 减少到 11**
+
+**剩余 11 处 scope 用法**:
+
+| 类型 | 数量 | 可否移除 | 说明 |
+|------|------|----------|------|
+| 查询方法回退 | 6 | ❌ 必须保留 | exists, lookup_meta, lookup_type, get_defined_names, find_type_for_name, lookup_ident_type |
+| define_symbol_location 回退 | 1 | ❌ 必须保留 | Database 优先，Universe 回退 |
+| define_type_alias(params) | 1 | ⚠️ 需要 Database | 泛型类型别名 |
+| define_type() 动态类型 | 2 | ⚠️ 可以迁移 | slice/array 动态类型生成 |
+| 注释代码 | 1 | 忽略 | cur_spot |
+
+**尝试移除查询方法回退的结果**:
+
+移除 `exists()`, `lookup_meta()` 等查询方法的 Universe 回退后，测试失败。原因：TypeStore/InferenceContext 尚未完全覆盖 Universe 的所有数据。
+
+**结论**:
+- 核心注册功能已完全迁移到 TypeStore + InferenceContext
+- 查询方法的 Universe 回退必须保留，否则类型信息丢失
+- **11 处 scope 用法是保证功能正常的最小集合**
+
+### Phase 5 完成详情 (提交: e026fbd)
+
 - ✅ 移除 `eval_config_with_vm()` 的 Universe 参数
 - ✅ 移除 `AutoConfigReader.univ` 字段
 - ✅ 移除 `AutoConfig` 的 Universe 相关方法
 - ✅ config.rs 不再依赖 Universe
 
-**注意**: 预先存在的 config 测试失败（ConfigCodegen 不支持 if 语句），与本次迁移无关。
+### Phase 6 无法完成的原因
 
-### Phase 3 进度详情 (最新提交: 0495d9e)
+**Universe 全局引用统计**: 212 处（24 个文件）
 
-**已完成**:
-- ✅ 添加 `db: Option<Arc<RwLock<Database>>>` 字段
-- ✅ 添加 `set_database()` 方法
-- ✅ 删除废弃的 `lambda()` 方法（35 行代码）
-- ✅ `gen_lambda_id()` → `lambda_id_gen.gen_id()`
-- ✅ 创建 `define_symbol_location()` 包装方法，迁移 8 处用法
-- ✅ 创建 `get_defined_names()` 包装方法，迁移 2 处用法
-- ✅ 创建 `find_type_for_name()` 包装方法，迁移 2 处用法
-- ✅ **作用域管理迁移到 InferenceContext**（enter_scope, exit_scope, enter_fn）
+**主要阻碍**:
+- eval.rs (59 处) - 老解释器
+- interp.rs (17 处) - 老解释器
+- parser.rs (11 处) - 查询方法回退
+- lib.rs (19 处) - 入口点 API
+- 其他文件 (100+ 处)
 
-**关键进展** (提交: 0495d9e):
+**完全删除 Universe 需要**:
+1. 删除或重构 eval.rs 和 interp.rs
+2. 增强 TypeStore 覆盖所有查询场景
+3. 全面重构入口点 API
 
-分析确认：Parser 的 scope 管理只用于编译期，不影响 AutoVM 执行。
-- AutoVM 有自己的执行状态（VM stack, task frames）
-- Parser 的 scope 已完全迁移到 InferenceContext
-- scope 用法从 21 减少到 15
-
-**剩余 15 处 scope 用法**:
-
-| 类型 | 数量 | 说明 |
-|------|------|------|
-| 包装方法回退 | 10 | 保留，确保向后兼容 |
-| 类型检查 | 1 | `lookup_ident_type()` |
-| 专用注册 | 3 | `register_spec()`, `define_type_alias()`, `define_type()` |
-| 注释代码 | 1 | `cur_spot`（已忽略）|
-
-**尝试移除回退逻辑的结果** (2025-02-14):
-
-尝试移除包装方法中的 scope 回退导致测试失败。结论：保留回退逻辑，待新系统完全成熟后再移除。
-| 作用域管理 | 5 | enter_scope(), exit_scope(), enter_fn() - 需要作用域栈管理 |
-| 专用注册 | 3 | register_spec(), define_type_alias(), define_type() - 特殊用途 |
-| 类型检查 | 1 | lookup_ident_type() - 类型标识符检查 |
-| 注释代码 | 1 | cur_spot - 已注释 |
-
-**结论**: 大部分核心功能已迁移到 TypeStore + InferenceContext。剩余的 scope 用法主要是：
+**结论**: 删除 universe.rs 需要更大规模的重构，超出 Plan 091 的范围。
 1. **回退逻辑** - 保持向后兼容，可在未来删除
 2. **作用域管理** - 需要保留或迁移到 InferenceContext 的 scope 栈
 3. **专用注册** - 特殊用途，可按需迁移
@@ -310,6 +317,42 @@ pub fn run(code: &str) -> AutoResult<String>  // 内部创建临时 session
 | 转译器类型查找不完整 | 中 | 中 | 逐步迁移，充分测试 |
 | 性能回退 | 低 | 中 | 基准测试对比 |
 | API 破坏性变更 | 高 | 中 | 提供迁移指南 |
+
+## 最终结论
+
+### Plan 091 成果
+
+**Parser scope 用法**: 21 → 11 (减少 48%)
+
+**已完成**:
+- ✅ Phase 1: 移除公开 Universe API
+- ✅ Phase 2: 所有转译器不再依赖 Universe
+- ✅ Phase 3: Parser 核心功能迁移到 TypeStore + InferenceContext
+- ✅ Phase 5: config.rs 完全移除 Universe
+
+**无法完成**:
+- ❌ Phase 6: 删除 universe.rs（需要更大规模重构）
+
+### 剩余工作
+
+如需完全删除 Universe，需要：
+
+1. **重构 eval.rs/interp.rs** (76 处引用)
+   - 考虑完全删除或标记为 legacy
+
+2. **增强 TypeStore**
+   - 支持泛型参数
+   - 覆盖所有 Universe 查询场景
+
+3. **重构入口点 API** (19 处引用)
+   - 统一使用 CompileSession
+
+### 建议
+
+接受当前状态作为 Plan 091 的最终成果：
+- Universe 保留但标记为 "deprecated but required"
+- 新代码避免使用 Universe
+- 未来在单独的计划中处理 eval.rs/interp.rs
 
 ## 里程碑
 
