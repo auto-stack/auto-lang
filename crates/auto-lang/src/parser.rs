@@ -653,8 +653,7 @@ impl<'a> Parser<'a> {
                 return;
             }
         }
-        // Fallback: Universe
-        self.scope.borrow_mut().define_symbol_location(name, location);
+        // Plan 091: If no Database, symbol locations are not tracked
     }
 
     fn exit_scope(&mut self) {
@@ -4557,10 +4556,12 @@ impl<'a> Parser<'a> {
                 })
                 .collect();
 
-            // Store type alias in universe for later resolution
-            self.scope
-                .borrow_mut()
-                .define_type_alias(name.clone(), params.clone(), target.clone());
+            // Plan 091: Store type alias in Database (removed Universe dependency)
+            if let Some(ref db) = self.db {
+                if let Ok(mut db) = db.write() {
+                    db.insert_type_alias(name.clone(), (params.clone(), target.clone()));
+                }
+            }
 
             return Ok(Stmt::TypeAlias(TypeAlias {
                 name,
@@ -5206,9 +5207,7 @@ impl<'a> Parser<'a> {
                             let slice_ty = Type::Slice(SliceType {
                                 elem: Box::new(elem_ty.clone()),
                             });
-                            self.scope
-                                .borrow_mut()
-                                .define_type(slice_ty_name, Rc::new(Meta::Type(slice_ty.clone())));
+                            // Plan 091: Removed Universe.define_type() - type is returned directly
                             return Ok(slice_ty);
                         }
                     }
@@ -5329,9 +5328,7 @@ impl<'a> Parser<'a> {
                             elem: Box::new(ty.clone()),
                             len: array_size,
                         });
-                        self.scope
-                            .borrow_mut()
-                            .define_type(array_ty_name, Rc::new(Meta::Type(array_ty.clone())));
+                        // Plan 091: Removed Universe.define_type() - type is returned directly
                         return Ok(array_ty);
                     }
                 }
