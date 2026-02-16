@@ -330,15 +330,8 @@ pub fn run_with_session(session: &mut CompileSession, code: &str) -> AutoResult<
     // The CompileSession tracks which files/fragments have changed
     session.compile_source(code, "<repl-input>")?;
 
-    // Create a new Interpreter for this execution
-    // Note: Each execution gets its own Evaler, but shares the Database
-    let mut interpreter = interp::Interpreter::new_with_session(session);
-
-    // Interpret the code (this parses and executes)
-    // TODO: Phase 3 - Check Database cache before parsing
-    interpreter.interpret(code)?;
-
-    Ok(interpreter.result.repr().to_string())
+    // Plan 091: Use AutoVM instead of deprecated Interpreter
+    run(code)
 }
 
 /// Run code with incremental compilation and persistent scope support
@@ -351,29 +344,23 @@ pub fn run_with_session(session: &mut CompileSession, code: &str) -> AutoResult<
 /// # Arguments
 ///
 /// * `session` - Mutable reference to persistent CompileSession
-/// * `scope` - Persistent scope for variable storage across calls
+/// * `_scope` - Persistent scope (deprecated, not used with AutoVM)
 /// * `code` - AutoLang source code to execute
 ///
 /// # Returns
 ///
 /// String representation of the result, or error message
+///
+/// **Plan 091**: Now uses AutoVM internally. The scope parameter is deprecated.
 pub fn run_with_session_and_scope(
     session: &mut CompileSession,
-    scope: Shared<Universe>,
+    _scope: Shared<Universe>,
     code: &str,
 ) -> AutoResult<String> {
-    // Note: For REPL usage, we skip compile_source() to avoid double-parsing
-    // The interpreter will parse and execute the code directly with the persistent scope
-    // This ensures variables are stored and retrieved from the same scope across REPL inputs
-
-    // Create a new Interpreter for this execution with the persistent scope
-    let mut interpreter = interp::Interpreter::new_with_session_and_scope(session, scope);
-
-    // Interpret the code (this parses and executes)
-    // TODO: Phase 3 - Check Database cache before parsing
-    interpreter.interpret(code)?;
-
-    Ok(interpreter.result.repr().to_string())
+    // Plan 091: Use AutoVM instead of deprecated Interpreter
+    // Note: The scope parameter is deprecated and ignored
+    // AutoVM uses its own state management
+    run_with_session(session, code)
 }
 
 pub fn parse(code: &str) -> AutoResult<ast::Code> {
