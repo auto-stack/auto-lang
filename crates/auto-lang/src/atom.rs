@@ -700,11 +700,8 @@ impl fmt::Display for Atom {
 /// assert!(atom.is_node());
 /// ```
 pub struct AtomReader {
-    /// The interpreter used to evaluate Auto code
-    interp: crate::interp::Interpreter,
-    /// The universe (scope) for variable bindings
-    #[allow(dead_code)]
-    univ: auto_val::Shared<crate::Universe>,
+    /// Plan 091: Use AutoVM-based interpreter
+    interp: crate::interpreter::AutoInterpreter,
 }
 
 impl AtomReader {
@@ -718,13 +715,9 @@ impl AtomReader {
     /// let reader = AtomReader::new();
     /// ```
     pub fn new() -> Self {
-        use crate::eval::EvalMode;
-        use auto_val::shared;
-
-        let univ = shared(crate::Universe::new());
-        let interp =
-            crate::interp::Interpreter::with_univ(univ.clone()).with_eval_mode(EvalMode::CONFIG);
-        Self { interp, univ }
+        Self {
+            interp: crate::interpreter::AutoInterpreter::new(),
+        }
     }
 
     /// Parses Auto code and returns an Atom
@@ -751,11 +744,9 @@ impl AtomReader {
     /// ```
     pub fn parse(&mut self, code: impl Into<auto_val::AutoStr>) -> AtomResult<Atom> {
         let code = code.into();
-        self.interp
-            .interpret(code.as_str())
+        let result = self.interp
+            .eval(code.as_str())
             .map_err(|e| AtomError::ConversionFailed(format!("Failed to parse code: {}", e)))?;
-
-        let result = std::mem::replace(&mut self.interp.result, auto_val::Value::Nil);
 
         // Special handling for bare arrays and objects
         match result {

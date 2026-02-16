@@ -44,7 +44,7 @@ pub use parser::Parser;
 pub mod typeck;
 pub mod patch;
 pub mod autovm_repl;
-pub mod repl;
+// Plan 091: repl.rs deleted - use autovm_persistent::AutovmReplSession instead
 // Plan 078: ModuleResolver trait for dependency resolution
 pub mod resolver;
 pub mod runtime;
