@@ -4,7 +4,7 @@ use crate::error::AutoResult;
 use crate::scope;
 use crate::scope::Meta;
 use crate::universe::Universe;
-use auto_val;
+use crate::vm::context::VmContext;
 use auto_val::{add, comp, div, mod_, mul, sub};
 use auto_val::{Array, AutoStr, MetaID, Method, Obj, Op, Sig, Type, Value, ValueData, ValueKey};
 use std::cell::RefCell;
@@ -3106,7 +3106,8 @@ impl Evaler {
 
                         // Create a mutable copy for the method call
                         let mut inst_copy = inst.clone();
-                        let result = method(self, &mut inst_copy, arg_vals);
+                        let mut vm_ctx = VmContext::with_universe(self.universe.clone());
+                        let result = method(&mut vm_ctx, &mut inst_copy, arg_vals);
 
                         // If this was a variable binding, update it with the mutated instance
                         if let Some(var_name) = binding_name {
@@ -3182,11 +3183,17 @@ impl Evaler {
                     // VM static functions take (&mut Evaler, Value)
                     // For functions with single argument
                     if arg_vals.len() == 1 {
-                        let result = (vm_func.func)(self, arg_vals[0].clone());
+                        let result = {
+                        let mut vm_ctx = VmContext::with_universe(self.universe.clone());
+                        (vm_func.func)(&mut vm_ctx, arg_vals[0].clone())
+                    };
                         return Ok(result);
                     } else if arg_vals.is_empty() {
                         // For no-argument functions, pass Nil
-                        let result = (vm_func.func)(self, Value::Nil);
+                        let result = {
+                        let mut vm_ctx = VmContext::with_universe(self.universe.clone());
+                        (vm_func.func)(&mut vm_ctx, Value::Nil)
+                    };
                         return Ok(result);
                     } else {
                         // For multi-argument functions, wrap them in an Array
@@ -3194,7 +3201,10 @@ impl Evaler {
                         // all arguments as a single Value::Array parameter
                         use auto_val::Array;
                         let array_value = Value::Array(Array { values: arg_vals });
-                        let result = (vm_func.func)(self, array_value);
+                        let result = {
+                        let mut vm_ctx = VmContext::with_universe(self.universe.clone());
+                        (vm_func.func)(&mut vm_ctx, array_value)
+                    };
                         return Ok(result);
                     }
                 }
@@ -3291,7 +3301,10 @@ impl Evaler {
 
                                 // Call the VM method with the instance
                                 // Phase 4.6: Pass &mut self instead of uni.clone()
-                                return Ok(method(self, &mut inst.clone(), arg_vals));
+                                let mut vm_ctx = VmContext::with_universe(self.universe.clone());
+                                let mut inst_mut = inst.clone();
+                                let result = method(&mut vm_ctx, &mut inst_mut, arg_vals);
+                                return Ok(result);
                             }
                         }
 
@@ -3351,17 +3364,26 @@ impl Evaler {
                             // VM static functions take (&mut Evaler, Value)
                             // For functions with single argument
                             if arg_vals.len() == 1 {
-                                let result = (vm_func.func)(self, arg_vals[0].clone());
+                                let result = {
+                        let mut vm_ctx = VmContext::with_universe(self.universe.clone());
+                        (vm_func.func)(&mut vm_ctx, arg_vals[0].clone())
+                    };
                                 return Ok(result);
                             } else if arg_vals.is_empty() {
                                 // For no-argument functions, pass Nil
-                                let result = (vm_func.func)(self, Value::Nil);
+                                let result = {
+                        let mut vm_ctx = VmContext::with_universe(self.universe.clone());
+                        (vm_func.func)(&mut vm_ctx, Value::Nil)
+                    };
                                 return Ok(result);
                             } else {
                                 // For multi-argument functions, wrap them in an Array
                                 use auto_val::Array;
                                 let array_value = Value::Array(Array { values: arg_vals });
-                                let result = (vm_func.func)(self, array_value);
+                                let result = {
+                        let mut vm_ctx = VmContext::with_universe(self.universe.clone());
+                        (vm_func.func)(&mut vm_ctx, array_value)
+                    };
                                 return Ok(result);
                             }
                         }
@@ -3465,11 +3487,11 @@ impl Evaler {
                 // Phase 4.6: Pass &mut self instead of self.universe.clone()
                 // For multi-arg functions, they should be wrapped in Array
                 let result = if arg_vals.len() == 1 {
-                    (func_entry.func)(self, arg_vals[0].clone())
+                    { let mut ctx = VmContext::with_universe(self.universe.clone()); (func_entry.func)(&mut ctx, arg_vals[0].clone()) }
                 } else {
                     // Multiple arguments - wrap in Array
                     let args_array = Value::Array(auto_val::Array { values: arg_vals });
-                    (func_entry.func)(self, args_array)
+                    { let mut ctx = VmContext::with_universe(self.universe.clone()); (func_entry.func)(&mut ctx, args_array) }
                 };
 
                 return Ok(result);
@@ -3889,7 +3911,7 @@ impl Evaler {
                             })
                             .collect();
 
-                        return Ok(method_fn(self, &mut target_clone, arg_vals));
+                        return Ok({ let mut ctx = VmContext::with_universe(self.universe.clone()); method_fn(&mut ctx, &mut target_clone, arg_vals) });
                     }
                 }
             }
@@ -3950,13 +3972,13 @@ impl Evaler {
             // VM static functions take (&mut Evaler, Value)
             // For varargs support (e.g., List.new(1, 2, 3)), pack multiple args into an Array
             if arg_vals.len() == 0 {
-                return Ok((func_entry.func)(self, Value::Nil));
+                return Ok({ let mut ctx = VmContext::with_universe(self.universe.clone()); (func_entry.func)(&mut ctx, Value::Nil) });
             } else if arg_vals.len() == 1 {
-                return Ok((func_entry.func)(self, arg_vals[0].clone()));
+                return Ok({ let mut ctx = VmContext::with_universe(self.universe.clone()); (func_entry.func)(&mut ctx, arg_vals[0].clone()) });
             } else {
                 // Pack multiple arguments into an Array for varargs functions
                 let args_array = Value::Array(auto_val::Array { values: arg_vals });
-                return Ok((func_entry.func)(self, args_array));
+                return Ok({ let mut ctx = VmContext::with_universe(self.universe.clone()); (func_entry.func)(&mut ctx, args_array) });
             }
         }
 
@@ -4009,7 +4031,7 @@ impl Evaler {
 
                 // For single-argument functions like open()
                 if args.len() == 1 {
-                    (func_entry.func)(self, args[0].clone())
+                    { let mut ctx = VmContext::with_universe(self.universe.clone()); (func_entry.func)(&mut ctx, args[0].clone()) }
                 } else {
                     // For multi-argument functions (not yet supported)
                     Value::Error(
@@ -4261,7 +4283,7 @@ impl Evaler {
                             let id = instance.fields.get("id");
                             if let Some(Value::USize(_list_id)) = id {
                                 // Phase 4.6: Pass &mut self instead of uni.clone()
-                                crate::vm::list::list_get(self, &mut array_value, vec![index_value])
+                                crate::vm::list::list_get(&mut VmContext::with_universe(self.universe.clone()), &mut array_value, vec![index_value])
                             } else {
                                 Value::error(format!("Invalid List instance"))
                             }

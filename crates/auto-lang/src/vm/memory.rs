@@ -1,10 +1,10 @@
-use crate::eval::Evaler;
+use super::context::VmContext;
 /// Memory management functions for VM storage strategies
 /// Used by vm/storage.rs for Heap<T> implementation
 use auto_val::Value;
 
 /// Allocate a new array of the given size
-pub fn alloc_array(_evaler: &mut Evaler, size_val: Value) -> Value {
+pub fn alloc_array(ctx: &mut VmContext, size_val: Value) -> Value {
     let size = match size_val {
         Value::Uint(n) => n as usize,
         Value::Int(n) => n as usize,
@@ -20,7 +20,7 @@ pub fn alloc_array(_evaler: &mut Evaler, size_val: Value) -> Value {
 
 /// Reallocate an existing array to a new size
 /// Returns a new array with copied data (or modified if owned)
-pub fn realloc_array(_evaler: &mut Evaler, array: Value, size_val: Value) -> Value {
+pub fn realloc_array(ctx: &mut VmContext, array: Value, size_val: Value) -> Value {
     let new_size = match size_val {
         Value::Uint(n) => n as usize,
         Value::Int(n) => n as usize,
@@ -40,14 +40,14 @@ pub fn realloc_array(_evaler: &mut Evaler, array: Value, size_val: Value) -> Val
 }
 
 /// Free an array (Hint to VM)
-pub fn free_array(_evaler: &mut Evaler, _array: Value) -> Value {
+pub fn free_array(ctx: &mut VmContext, _array: Value) -> Value {
     // No-op in this Rust-based VM as memory is managed by Rc/Drop
     Value::Nil
 }
 
 /// Wrapper for realloc_array to be used as a VmFunction
 /// Expects args to be an Array where [0] is array, [1] is new_size
-pub fn realloc_array_wrapped(evaler: &mut Evaler, args: Value) -> Value {
+pub fn realloc_array_wrapped(evaler: &mut VmContext, args: Value) -> Value {
     match args {
         // Standard calling convention passes arguments as an Array
         Value::Array(arr) => {

@@ -4,6 +4,7 @@ use std::sync::Mutex;
 
 pub mod builder;
 pub mod channel;
+pub mod context;
 pub mod codegen;
 // Plan 075: ConfigCodegen for config file compilation
 pub mod config_codegen;
@@ -49,14 +50,12 @@ mod tests_collections;
 // #[cfg(test)]
 // mod tests_bigvm;
 
-/// Phase 4.6: VM function signature - now takes Evaler instead of Universe
-/// This allows VM functions to use bridge methods for Database/ExecutionEngine access
-pub type VmFunction = fn(&mut crate::eval::Evaler, auto_val::Value) -> auto_val::Value;
+/// Plan 091: VM function signature using VmContext (no Evaler dependency)
+pub type VmFunction = fn(&mut context::VmContext, auto_val::Value) -> auto_val::Value;
 
-/// Phase 4.6: VM method signature - now takes Evaler instead of Universe
-/// Takes evaluator, mutable instance reference, and arguments
+/// Plan 091: VM method signature using VmContext (no Evaler dependency)
 pub type VmMethod =
-    fn(&mut crate::eval::Evaler, &mut auto_val::Value, Vec<auto_val::Value>) -> auto_val::Value;
+    fn(&mut context::VmContext, &mut auto_val::Value, Vec<auto_val::Value>) -> auto_val::Value;
 
 /// Represents a VM function in the registry
 #[derive(Clone)]
