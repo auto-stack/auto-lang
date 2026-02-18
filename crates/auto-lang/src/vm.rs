@@ -4,14 +4,14 @@ use std::sync::Mutex;
 
 pub mod builder;
 pub mod channel;
-pub mod context;
 pub mod codegen;
+pub mod context;
 // Plan 075: ConfigCodegen for config file compilation
 pub mod config_codegen;
 // Plan 075: TemplateCodegen for template file compilation
-pub mod template_codegen;
 pub mod collections;
 pub mod engine;
+pub mod template_codegen;
 // Plan 076 Phase 1: Generic type support for AutoVM
 pub mod generic;
 // Plan 087 Phase 1: Generic registry for user-defined generic types
@@ -22,20 +22,23 @@ pub mod monomorphize;
 pub mod list_data;
 pub mod list_storage;
 // Plan 077 Phase 1: HeapObject trait for unified object registry
-pub mod heap_object;
 pub mod heap;
+pub mod heap_object;
 pub mod io;
 // Plan 088 Phase 5: Reference types for parameter passing modes
-pub mod refs;
 pub mod list;
 pub mod loader;
 pub mod memory;
 pub mod native;
 pub mod native_registry;
 pub mod opcode;
+pub mod refs;
 pub mod storage;
 pub mod task;
 pub mod virt_memory;
+// Plan 091: Extracted from universe.rs
+pub mod object_data;
+pub mod vmref;
 
 // #[cfg(test)]
 // mod tests_concurrency; // TODO: Create tests_concurrency.rs
@@ -301,18 +304,22 @@ pub fn init_collections_module() {
         methods: HashMap::new(),
     };
 
-    vecdeque_type
-        .methods
-        .insert("push_back".into(), collections::vec_deque_push_back as VmMethod);
-    vecdeque_type
-        .methods
-        .insert("push_front".into(), collections::vec_deque_push_front as VmMethod);
-    vecdeque_type
-        .methods
-        .insert("pop_back".into(), collections::vec_deque_pop_back as VmMethod);
-    vecdeque_type
-        .methods
-        .insert("pop_front".into(), collections::vec_deque_pop_front as VmMethod);
+    vecdeque_type.methods.insert(
+        "push_back".into(),
+        collections::vec_deque_push_back as VmMethod,
+    );
+    vecdeque_type.methods.insert(
+        "push_front".into(),
+        collections::vec_deque_push_front as VmMethod,
+    );
+    vecdeque_type.methods.insert(
+        "pop_back".into(),
+        collections::vec_deque_pop_back as VmMethod,
+    );
+    vecdeque_type.methods.insert(
+        "pop_front".into(),
+        collections::vec_deque_pop_front as VmMethod,
+    );
     vecdeque_type
         .methods
         .insert("front".into(), collections::vec_deque_front as VmMethod);
@@ -322,9 +329,10 @@ pub fn init_collections_module() {
     vecdeque_type
         .methods
         .insert("size".into(), collections::vec_deque_size as VmMethod);
-    vecdeque_type
-        .methods
-        .insert("is_empty".into(), collections::vec_deque_is_empty as VmMethod);
+    vecdeque_type.methods.insert(
+        "is_empty".into(),
+        collections::vec_deque_is_empty as VmMethod,
+    );
     vecdeque_type
         .methods
         .insert("clear".into(), collections::vec_deque_clear as VmMethod);
@@ -358,27 +366,31 @@ pub fn init_collections_module() {
     btreemap_type
         .methods
         .insert("get".into(), collections::btree_map_get as VmMethod);
-    btreemap_type
-        .methods
-        .insert("contains".into(), collections::btree_map_contains as VmMethod);
+    btreemap_type.methods.insert(
+        "contains".into(),
+        collections::btree_map_contains as VmMethod,
+    );
     btreemap_type
         .methods
         .insert("remove".into(), collections::btree_map_remove as VmMethod);
     btreemap_type
         .methods
         .insert("size".into(), collections::btree_map_size as VmMethod);
-    btreemap_type
-        .methods
-        .insert("is_empty".into(), collections::btree_map_is_empty as VmMethod);
+    btreemap_type.methods.insert(
+        "is_empty".into(),
+        collections::btree_map_is_empty as VmMethod,
+    );
     btreemap_type
         .methods
         .insert("clear".into(), collections::btree_map_clear as VmMethod);
-    btreemap_type
-        .methods
-        .insert("first_key".into(), collections::btree_map_first_key as VmMethod);
-    btreemap_type
-        .methods
-        .insert("last_key".into(), collections::btree_map_last_key as VmMethod);
+    btreemap_type.methods.insert(
+        "first_key".into(),
+        collections::btree_map_first_key as VmMethod,
+    );
+    btreemap_type.methods.insert(
+        "last_key".into(),
+        collections::btree_map_last_key as VmMethod,
+    );
     btreemap_type
         .methods
         .insert("drop".into(), collections::btree_map_drop as VmMethod);

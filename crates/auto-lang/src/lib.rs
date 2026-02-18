@@ -9,8 +9,8 @@ pub mod parser_helpers;
 // Plan 085: Use statement scanner for AIE + AutoCache
 pub mod use_scanner;
 // Plan 085 Phase 5: Module cache for incremental compilation
-pub mod auto_cache;
 pub mod atom_error;
+pub mod auto_cache;
 pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
 pub mod compile;
 pub mod config;
@@ -24,26 +24,26 @@ pub mod multi_mode;
 // Plan 081 Phase 5: FFI layer for cross-mode function calls
 pub mod ffi;
 // Plan 073 Phase 9.3: Execution engine selection (AutoVM vs Evaluator)
-pub mod execution_engine;
 pub mod eval;
+pub mod execution_engine;
 pub mod hash;
 pub mod infer;
 pub use crate::infer::InferenceContext;
 pub use crate::type_registry::SharedTypeRegistry;
 pub mod indexer;
 pub mod interp;
-pub mod query;
 mod lexer;
 pub mod libs;
 pub mod macro_;
 pub mod maker;
 pub mod ownership;
 pub mod parser;
+pub mod query;
 pub use parser::Parser;
 // Plan 088 Phase 6: Type checking module for parameter passing modes
-pub mod typeck;
-pub mod patch;
 pub mod autovm_repl;
+pub mod patch;
+pub mod typeck;
 // Plan 091: repl.rs deleted - use autovm_persistent::AutovmReplSession instead
 // Plan 078: ModuleResolver trait for dependency resolution
 pub mod resolver;
@@ -53,17 +53,19 @@ pub mod target;
 pub mod token;
 pub mod trait_checker;
 // Plan 087: Type registry for REPL
-pub mod type_registry;
 pub mod trans;
+pub mod type_registry;
+// Plan 091: Extracted from universe.rs
+pub mod symbol;
 mod universe;
 pub mod util;
 pub mod vm;
 
 // Plan 088: Parameter passing mode tests
 #[cfg(test)]
-mod plan_088_tests;
-#[cfg(test)]
 mod plan_088_parser_tests;
+#[cfg(test)]
+mod plan_088_tests;
 
 pub use atom::{Atom, AtomReader};
 
@@ -74,10 +76,9 @@ pub use auto_lang_macros::{atom, node, value};
 // Plan 091: AutoVM-based interpreter (replacement for eval.rs/interp.rs)
 pub use interpreter::AutoInterpreter;
 
-
+use crate::compile::CompileSession;
 use crate::trans::c::CTrans;
 pub use crate::universe::{SymbolLocation, Universe};
-use crate::compile::CompileSession;
 use crate::{trans::Sink, trans::Trans};
 use auto_val::{AutoPath, Obj, Shared, Value};
 use std::cell::RefCell;
@@ -85,7 +86,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::error::{AutoResult, AutoError};
+use crate::error::{AutoError, AutoResult};
 
 /// Global error limit for parser error recovery
 static ERROR_LIMIT: AtomicUsize = AtomicUsize::new(20);
@@ -137,9 +138,7 @@ pub fn run(code: &str) -> AutoResult<String> {
 pub fn run_autovm(code: &str) -> AutoResult<String> {
     // Create tokio runtime for async execution
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async {
-        execute_autovm(code).await
-    })
+    rt.block_on(async { execute_autovm(code).await })
 }
 
 /// Internal AutoVM execution function (async)
@@ -187,23 +186,46 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
 
     // 3. Perform linking (resolve function calls)
     let strings = codegen.strings.clone();
-    eprintln!("DEBUG: === Performing relocation for {} entries ===", codegen.relocs.len());
-    eprintln!("DEBUG: Available exports: {:?}", codegen.exports.keys().collect::<Vec<_>>());
+    eprintln!(
+        "DEBUG: === Performing relocation for {} entries ===",
+        codegen.relocs.len()
+    );
+    eprintln!(
+        "DEBUG: Available exports: {:?}",
+        codegen.exports.keys().collect::<Vec<_>>()
+    );
     eprintln!("DEBUG: exports map: {:?}", codegen.exports);
     for reloc in &codegen.relocs {
-        eprintln!("DEBUG: Relocating '{}' at offset 0x{:04x}", reloc.symbol_name, reloc.offset);
-        eprintln!("DEBUG:   Looking up symbol '{}' (len={}, bytes={:?})", reloc.symbol_name, reloc.symbol_name.len(), reloc.symbol_name.as_bytes());
+        eprintln!(
+            "DEBUG: Relocating '{}' at offset 0x{:04x}",
+            reloc.symbol_name, reloc.offset
+        );
+        eprintln!(
+            "DEBUG:   Looking up symbol '{}' (len={}, bytes={:?})",
+            reloc.symbol_name,
+            reloc.symbol_name.len(),
+            reloc.symbol_name.as_bytes()
+        );
         if let Some(&addr) = codegen.exports.get(&reloc.symbol_name) {
-            eprintln!("DEBUG:   Found '{}' at address 0x{:04x}", reloc.symbol_name, addr);
+            eprintln!(
+                "DEBUG:   Found '{}' at address 0x{:04x}",
+                reloc.symbol_name, addr
+            );
             let bytes = addr.to_le_bytes();
             let offset = reloc.offset as usize;
             for (i, b) in bytes.iter().enumerate() {
-                eprintln!("DEBUG:   code[{}] = {} (was {})", offset + i, *b, codegen.code[offset + i]);
+                eprintln!(
+                    "DEBUG:   code[{}] = {} (was {})",
+                    offset + i,
+                    *b,
+                    codegen.code[offset + i]
+                );
                 codegen.code[offset + i] = *b;
             }
         } else {
             return Err(crate::error::AutoError::Msg(format!(
-                "Undefined symbol: {}", reloc.symbol_name
+                "Undefined symbol: {}",
+                reloc.symbol_name
             )));
         }
     }
@@ -219,7 +241,8 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     vm.load_strings(strings);
 
     // 5. Execute - Find main/test entry point
-    let entry_point = codegen.exports
+    let entry_point = codegen
+        .exports
         .get("main")
         .or_else(|| codegen.exports.get("test"))
         .copied()
@@ -252,7 +275,10 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
         if let Some(obj_arc) = vm.heap_objects.get(&result_u64) {
             let obj = obj_arc.read().unwrap();
             // Try to format as List<int>
-            if let Some(list) = obj.as_any().downcast_ref::<crate::universe::ListData<i32>>() {
+            if let Some(list) = obj
+                .as_any()
+                .downcast_ref::<crate::universe::ListData<i32>>()
+            {
                 let formatted: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
                 return Ok(format!("[{}]", formatted.join(", ")));
             }
@@ -271,7 +297,7 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
         Ok(format!("{}", result))
     } else {
         Err(crate::error::AutoError::Msg(
-            "Task not found after execution".to_string()
+            "Task not found after execution".to_string(),
         ))
     }
 }
@@ -460,7 +486,8 @@ pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
             }
         } else {
             return Err(AutoError::Msg(format!(
-                "Undefined symbol in config: {}", reloc.symbol_name
+                "Undefined symbol in config: {}",
+                reloc.symbol_name
             )));
         }
     }
@@ -478,10 +505,7 @@ pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
         vm.load_strings(strings);
 
         // 5. Execute from entry point (default to 0 for config)
-        let entry_point = exports
-            .get("main")
-            .copied()
-            .unwrap_or(0) as usize;
+        let entry_point = exports.get("main").copied().unwrap_or(0) as usize;
 
         let task_id = vm.spawn_task(entry_point, 4096);
 
@@ -529,7 +553,10 @@ pub fn trans_rust(path: &str) -> AutoResult<String> {
 }
 
 /// Transpile AutoLang file to C (legacy implementation)
-#[deprecated(since = "0.10.0", note = "Use trans_c() or trans_c_with_session() instead")]
+#[deprecated(
+    since = "0.10.0",
+    note = "Use trans_c() or trans_c_with_session() instead"
+)]
 pub fn trans_c_legacy(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file: {}", e))
@@ -557,7 +584,10 @@ pub fn trans_c_legacy(path: &str) -> AutoResult<String> {
 }
 
 /// Transpile AutoLang file to Rust (legacy implementation)
-#[deprecated(since = "0.10.0", note = "Use trans_rust() or trans_rust_with_session() instead")]
+#[deprecated(
+    since = "0.10.0",
+    note = "Use trans_rust() or trans_rust_with_session() instead"
+)]
 pub fn trans_rust_legacy(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file: {}", e))
@@ -605,10 +635,7 @@ pub fn trans_rust_legacy(path: &str) -> AutoResult<String> {
 /// let result = trans_c_with_session(&mut session, "test.at").unwrap();
 /// println!("{}", result);
 /// ```
-pub fn trans_c_with_session(
-    session: &mut CompileSession,
-    path: &str,
-) -> AutoResult<String> {
+pub fn trans_c_with_session(session: &mut CompileSession, path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path)?;
 
     // Compile source with incremental support
@@ -618,7 +645,8 @@ pub fn trans_c_with_session(
     let db = session.db();
     let file_id = {
         let db_read = db.read().unwrap();
-        db_read.get_file_id_by_path(path)
+        db_read
+            .get_file_id_by_path(path)
             .ok_or_else(|| format!("File not found in database: {}", path))?
     };
 
@@ -679,10 +707,7 @@ pub fn trans_c_with_session(
 /// let result = trans_rust_with_session(&mut session, "test.at").unwrap();
 /// println!("{}", result);
 /// ```
-pub fn trans_rust_with_session(
-    session: &mut CompileSession,
-    path: &str,
-) -> AutoResult<String> {
+pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path)?;
 
     // Compile source with incremental support
@@ -692,7 +717,8 @@ pub fn trans_rust_with_session(
     let db = session.db();
     let file_id = {
         let db_read = db.read().unwrap();
-        db_read.get_file_id_by_path(path)
+        db_read
+            .get_file_id_by_path(path)
             .ok_or_else(|| format!("File not found in database: {}", path))?
     };
 
@@ -824,8 +850,8 @@ pub enum CompileMode {
 pub fn run_with_mode(source: &str, mode: CompileMode) -> AutoResult<String> {
     use crate::vm::codegen::Codegen;
     use crate::vm::config_codegen::ConfigCodegen;
-    use crate::vm::template_codegen::TemplateCodegen;
     use crate::vm::loader::Module;
+    use crate::vm::template_codegen::TemplateCodegen;
 
     let mut parser = Parser::from(source);
     let code = parser.parse()?;
@@ -884,9 +910,7 @@ pub fn run_with_mode(source: &str, mode: CompileMode) -> AutoResult<String> {
 /// assert_eq!(mode, CompileMode::Config);
 /// ```
 pub fn detect_mode_from_extension(path: &Path) -> AutoResult<CompileMode> {
-    let filename = path.file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
+    let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
 
     // Check for special suffixes before extension
     if filename.ends_with(".config.at") {
@@ -927,8 +951,9 @@ pub fn detect_mode_from_extension(path: &Path) -> AutoResult<CompileMode> {
 /// let result = run_file_with_auto_mode(std::path::Path::new("script.at")).unwrap();
 /// ```
 pub fn run_file_with_auto_mode(path: &Path) -> AutoResult<String> {
-    let source = std::fs::read_to_string(path)
-        .map_err(|e| crate::error::AutoError::Msg(format!("Failed to read file {}: {}", path.display(), e)))?;
+    let source = std::fs::read_to_string(path).map_err(|e| {
+        crate::error::AutoError::Msg(format!("Failed to read file {}: {}", path.display(), e))
+    })?;
 
     let mode = detect_mode_from_extension(path)?;
     run_with_mode(&source, mode)

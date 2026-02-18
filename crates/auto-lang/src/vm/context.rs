@@ -19,7 +19,7 @@ pub type SharedUniverse = Rc<RefCell<Universe>>;
 pub struct VmContext {
     /// Whether to skip type checking
     pub skip_check: bool,
-    /// Universe for VM references and type lookup
+    /// Universe for type lookup and scope management
     universe: SharedUniverse,
 }
 
@@ -55,7 +55,9 @@ impl VmContext {
     /// Lookup a type by name
     /// Returns auto_val::Type for compatibility with Value/Instance types
     pub fn lookup_type(&self, name: &str) -> Type {
-        self.universe.borrow().lookup_type_meta(name)
+        self.universe
+            .borrow()
+            .lookup_type_meta(name)
             .and_then(|meta| {
                 if let crate::scope::Meta::Type(ty) = meta.as_ref() {
                     // Convert ast::Type to auto_val::Type
@@ -119,14 +121,16 @@ impl VmContext {
         &self.universe
     }
 
-    /// Add a VM reference (convenience method)
-    pub fn add_vmref(&mut self, data: VmRefData) -> usize {
+    /// Add a VM reference and return its unique ID
+    /// Delegates to Universe's vm_refs storage
+    pub fn add_vmref(&self, data: VmRefData) -> usize {
         self.universe.borrow_mut().add_vmref(data)
     }
 
-    /// Drop a VM reference (convenience method)
-    pub fn drop_vmref(&mut self, id: usize) {
-        self.universe.borrow_mut().drop_vmref(id)
+    /// Drop a VM reference by ID
+    /// Delegates to Universe's vm_refs storage
+    pub fn drop_vmref(&self, id: usize) {
+        self.universe.borrow_mut().drop_vmref(id);
     }
 }
 
