@@ -1,5 +1,5 @@
+use super::context::VmContext;
 use auto_val::{Instance, Obj, Type, Value};
-use crate::{ast, eval::Evaler};
 
 // ============================================================================
 // StringBuilder Implementation
@@ -10,10 +10,10 @@ pub struct StringBuilderData {
     pub buffer: String,
 }
 
-pub fn string_builder_new(_evaler: &mut Evaler, capacity: Value) -> Value {
-    let ty = _evaler.lookup_type("StringBuilder");
+pub fn string_builder_new(ctx: &mut VmContext, capacity: Value) -> Value {
+    let ty = ctx.lookup_type("StringBuilder");
     match &ty {
-        ast::Type::User(_) => {
+        Type::User(_) => {
             let _cap = if let Value::Int(c) = capacity {
                 c as usize
             } else {
@@ -23,7 +23,10 @@ pub fn string_builder_new(_evaler: &mut Evaler, capacity: Value) -> Value {
             let builder_data = StringBuilderData {
                 buffer: String::with_capacity(_cap),
             };
-            let id = _evaler.universe().borrow_mut().add_vmref(crate::universe::VmRefData::StringBuilder(builder_data));
+            let id = ctx
+                .universe()
+                .borrow_mut()
+                .add_vmref(crate::universe::VmRefData::StringBuilder(builder_data));
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
             Value::Instance(Instance {
@@ -35,14 +38,14 @@ pub fn string_builder_new(_evaler: &mut Evaler, capacity: Value) -> Value {
     }
 }
 
-pub fn string_builder_append(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn string_builder_append(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::StringBuilder(builder) = &mut *ref_box {
@@ -60,14 +63,18 @@ pub fn string_builder_append(_evaler: &mut Evaler, instance: &mut Value, args: V
     Value::Nil
 }
 
-pub fn string_builder_append_char(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn string_builder_append_char(
+    ctx: &mut VmContext,
+    instance: &mut Value,
+    args: Vec<Value>,
+) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::StringBuilder(builder) = &mut *ref_box {
@@ -86,14 +93,18 @@ pub fn string_builder_append_char(_evaler: &mut Evaler, instance: &mut Value, ar
     Value::Nil
 }
 
-pub fn string_builder_append_int(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn string_builder_append_int(
+    ctx: &mut VmContext,
+    instance: &mut Value,
+    args: Vec<Value>,
+) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::StringBuilder(builder) = &mut *ref_box {
@@ -111,14 +122,14 @@ pub fn string_builder_append_int(_evaler: &mut Evaler, instance: &mut Value, arg
     Value::Nil
 }
 
-pub fn string_builder_build(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn string_builder_build(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::StringBuilder(builder) = &*ref_box {
@@ -132,14 +143,14 @@ pub fn string_builder_build(_evaler: &mut Evaler, instance: &mut Value, _args: V
     Value::empty_str()
 }
 
-pub fn string_builder_clear(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn string_builder_clear(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::StringBuilder(builder) = &mut *ref_box {
@@ -154,14 +165,14 @@ pub fn string_builder_clear(_evaler: &mut Evaler, instance: &mut Value, _args: V
     Value::Nil
 }
 
-pub fn string_builder_len(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn string_builder_len(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::StringBuilder(builder) = &*ref_box {
@@ -175,13 +186,13 @@ pub fn string_builder_len(_evaler: &mut Evaler, instance: &mut Value, _args: Vec
     Value::Int(0)
 }
 
-pub fn string_builder_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn string_builder_drop(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    _evaler.universe().borrow_mut().drop_vmref(id);
+                    ctx.drop_vmref(id);
                     return Value::Nil;
                 }
             }
@@ -191,11 +202,11 @@ pub fn string_builder_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Ve
 }
 
 // Wrapper for static new() method (VmFunction signature - takes single Value)
-pub fn string_builder_new_static(_evaler: &mut Evaler, arg: Value) -> Value {
-    string_builder_new(_evaler, arg)
+pub fn string_builder_new_static(ctx: &mut VmContext, arg: Value) -> Value {
+    string_builder_new(ctx, arg)
 }
 
 // Wrapper for static new_with_default() method (VmFunction signature - takes single Value)
-pub fn string_builder_new_with_default_static(_evaler: &mut Evaler, _arg: Value) -> Value {
-    string_builder_new(_evaler, Value::Int(1024))
+pub fn string_builder_new_with_default_static(ctx: &mut VmContext, _arg: Value) -> Value {
+    string_builder_new(ctx, Value::Int(1024))
 }

@@ -116,11 +116,6 @@ impl VmContext {
         }
     }
 
-    /// Get access to the Universe
-    pub fn universe(&self) -> &SharedUniverse {
-        &self.universe
-    }
-
     /// Add a VM reference and return its unique ID
     /// Delegates to Universe's vm_refs storage
     pub fn add_vmref(&self, data: VmRefData) -> usize {
@@ -131,6 +126,11 @@ impl VmContext {
     /// Delegates to Universe's vm_refs storage
     pub fn drop_vmref(&self, id: usize) {
         self.universe.borrow_mut().drop_vmref(id);
+    }
+
+    /// Access the underlying Universe
+    pub fn universe(&self) -> SharedUniverse {
+        self.universe.clone()
     }
 }
 

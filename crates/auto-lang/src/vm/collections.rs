@@ -1,8 +1,8 @@
+use super::context::VmContext;
 use auto_val::{Instance, Obj, Type, Value};
 use std::collections::{BTreeMap, HashMap as StdHashMap, VecDeque};
 use std::any::Any;
 
-use crate::{ast, eval::Evaler};
 use crate::vm::heap_object::{HeapObject, TypeTag};
 
 // ============================================================================
@@ -204,16 +204,16 @@ pub struct HashMapData {
     pub data: StdHashMap<String, Value>,
 }
 
-pub fn hash_map_new(_evaler: &mut Evaler, _capacity: Value) -> Value {
+pub fn hash_map_new(ctx: &mut VmContext, _capacity: Value) -> Value {
     // Clone the type to avoid holding the borrow across the add_vmref call
-    let ty = _evaler.lookup_type("HashMap");
+    let ty = ctx.lookup_type("HashMap");
 
     match &ty {
-        ast::Type::User(_) => {
+        Type::User(_) => {
             let map_data = HashMapData {
                 data: StdHashMap::new(),
             };
-            let id = _evaler.universe().borrow_mut().add_vmref(crate::universe::VmRefData::HashMap(map_data));
+            let id = ctx.add_vmref(crate::universe::VmRefData::HashMap(map_data));
 
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
@@ -226,14 +226,14 @@ pub fn hash_map_new(_evaler: &mut Evaler, _capacity: Value) -> Value {
     }
 }
 
-pub fn hash_map_insert_str(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn hash_map_insert_str(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
 
@@ -254,19 +254,19 @@ pub fn hash_map_insert_str(_evaler: &mut Evaler, instance: &mut Value, args: Vec
     Value::Nil
 }
 
-pub fn hash_map_insert_int(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn hash_map_insert_int(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     // Same implementation as insert_str - type is determined at runtime
-    hash_map_insert_str(_evaler, instance, args)
+    hash_map_insert_str(ctx, instance, args)
 }
 
-pub fn hash_map_get_str(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn hash_map_get_str(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::HashMap(map) = &*ref_box {
@@ -283,19 +283,19 @@ pub fn hash_map_get_str(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Va
     Value::Nil
 }
 
-pub fn hash_map_get_int(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn hash_map_get_int(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     // Same implementation as get_str
-    hash_map_get_str(_evaler, instance, args)
+    hash_map_get_str(ctx, instance, args)
 }
 
-pub fn hash_map_contains(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn hash_map_contains(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::HashMap(map) = &*ref_box {
@@ -312,14 +312,14 @@ pub fn hash_map_contains(_evaler: &mut Evaler, instance: &mut Value, args: Vec<V
     Value::Bool(false)
 }
 
-pub fn hash_map_remove(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn hash_map_remove(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::HashMap(map) = &mut *ref_box {
@@ -337,14 +337,14 @@ pub fn hash_map_remove(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Val
     Value::Nil
 }
 
-pub fn hash_map_size(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn hash_map_size(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::HashMap(map) = &*ref_box {
@@ -358,14 +358,14 @@ pub fn hash_map_size(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Valu
     Value::Int(0)
 }
 
-pub fn hash_map_clear(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn hash_map_clear(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::HashMap(map) = &mut *ref_box {
@@ -380,13 +380,13 @@ pub fn hash_map_clear(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Val
     Value::Nil
 }
 
-pub fn hash_map_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn hash_map_drop(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    _evaler.universe().borrow_mut().drop_vmref(id);
+                    ctx.drop_vmref(id);
                     return Value::Nil;
                 }
             }
@@ -396,8 +396,8 @@ pub fn hash_map_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Valu
 }
 
 // Wrapper for static new() method (VmFunction signature - takes single Value)
-pub fn hash_map_new_static(_evaler: &mut Evaler, _arg: Value) -> Value {
-    hash_map_new(_evaler, Value::USize(0))
+pub fn hash_map_new_static(ctx: &mut VmContext, _arg: Value) -> Value {
+    hash_map_new(ctx, Value::USize(0))
 }
 
 // ============================================================================
@@ -427,16 +427,16 @@ pub struct BTreeMapData {
     pub data: BTreeMap<String, Value>,
 }
 
-pub fn hash_set_new(_evaler: &mut Evaler, _arg: Value) -> Value {
+pub fn hash_set_new(ctx: &mut VmContext, _arg: Value) -> Value {
     // Clone the type to avoid holding the borrow across the add_vmref call
-    let ty = _evaler.lookup_type("HashSet");
+    let ty = ctx.lookup_type("HashSet");
 
     match &ty {
-        ast::Type::User(_) => {
+        Type::User(_) => {
             let set_data = HashSetData {
                 data: StdHashMap::new(),
             };
-            let id = _evaler.universe().borrow_mut().add_vmref(crate::universe::VmRefData::HashSet(set_data));
+            let id = ctx.add_vmref(crate::universe::VmRefData::HashSet(set_data));
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
             Value::Instance(Instance {
@@ -448,14 +448,14 @@ pub fn hash_set_new(_evaler: &mut Evaler, _arg: Value) -> Value {
     }
 }
 
-pub fn hash_set_insert(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn hash_set_insert(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashSet" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::HashSet(set) = &mut *ref_box {
@@ -473,14 +473,14 @@ pub fn hash_set_insert(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Val
     Value::Nil
 }
 
-pub fn hash_set_contains(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn hash_set_contains(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashSet" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::HashSet(set) = &*ref_box {
@@ -497,14 +497,14 @@ pub fn hash_set_contains(_evaler: &mut Evaler, instance: &mut Value, args: Vec<V
     Value::Bool(false)
 }
 
-pub fn hash_set_remove(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn hash_set_remove(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashSet" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::HashSet(set) = &mut *ref_box {
@@ -522,14 +522,14 @@ pub fn hash_set_remove(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Val
     Value::Nil
 }
 
-pub fn hash_set_size(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn hash_set_size(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashSet" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::HashSet(set) = &*ref_box {
@@ -543,14 +543,14 @@ pub fn hash_set_size(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Valu
     Value::Int(0)
 }
 
-pub fn hash_set_clear(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn hash_set_clear(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashSet" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::HashSet(set) = &mut *ref_box {
@@ -565,13 +565,13 @@ pub fn hash_set_clear(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Val
     Value::Nil
 }
 
-pub fn hash_set_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn hash_set_drop(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "HashSet" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    _evaler.universe().borrow_mut().drop_vmref(id);
+                    ctx.drop_vmref(id);
                     return Value::Nil;
                 }
             }
@@ -584,15 +584,15 @@ pub fn hash_set_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Valu
 // VecDeque Implementation (Plan 085)
 // ============================================================================
 
-pub fn vec_deque_new(_evaler: &mut Evaler, _arg: Value) -> Value {
-    let ty = _evaler.lookup_type("VecDeque");
+pub fn vec_deque_new(ctx: &mut VmContext, _arg: Value) -> Value {
+    let ty = ctx.lookup_type("VecDeque");
 
     match &ty {
-        ast::Type::User(_) => {
+        Type::User(_) => {
             let deque_data = VecDequeData {
                 data: VecDeque::new(),
             };
-            let id = _evaler
+            let id = ctx
                 .universe()
                 .borrow_mut()
                 .add_vmref(crate::universe::VmRefData::VecDeque(deque_data));
@@ -608,14 +608,14 @@ pub fn vec_deque_new(_evaler: &mut Evaler, _arg: Value) -> Value {
     }
 }
 
-pub fn vec_deque_push_back(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn vec_deque_push_back(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::VecDeque(deque) = &mut *ref_box {
@@ -632,14 +632,14 @@ pub fn vec_deque_push_back(_evaler: &mut Evaler, instance: &mut Value, args: Vec
     Value::Nil
 }
 
-pub fn vec_deque_push_front(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn vec_deque_push_front(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::VecDeque(deque) = &mut *ref_box {
@@ -656,14 +656,14 @@ pub fn vec_deque_push_front(_evaler: &mut Evaler, instance: &mut Value, args: Ve
     Value::Nil
 }
 
-pub fn vec_deque_pop_back(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn vec_deque_pop_back(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::VecDeque(deque) = &mut *ref_box {
@@ -677,14 +677,14 @@ pub fn vec_deque_pop_back(_evaler: &mut Evaler, instance: &mut Value, _args: Vec
     Value::Nil
 }
 
-pub fn vec_deque_pop_front(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn vec_deque_pop_front(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::VecDeque(deque) = &mut *ref_box {
@@ -698,14 +698,14 @@ pub fn vec_deque_pop_front(_evaler: &mut Evaler, instance: &mut Value, _args: Ve
     Value::Nil
 }
 
-pub fn vec_deque_front(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn vec_deque_front(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::VecDeque(deque) = &*ref_box {
@@ -719,14 +719,14 @@ pub fn vec_deque_front(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Va
     Value::Nil
 }
 
-pub fn vec_deque_back(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn vec_deque_back(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::VecDeque(deque) = &*ref_box {
@@ -740,14 +740,14 @@ pub fn vec_deque_back(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Val
     Value::Nil
 }
 
-pub fn vec_deque_size(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn vec_deque_size(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::VecDeque(deque) = &*ref_box {
@@ -761,14 +761,14 @@ pub fn vec_deque_size(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Val
     Value::Int(0)
 }
 
-pub fn vec_deque_is_empty(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn vec_deque_is_empty(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::VecDeque(deque) = &*ref_box {
@@ -782,14 +782,14 @@ pub fn vec_deque_is_empty(_evaler: &mut Evaler, instance: &mut Value, _args: Vec
     Value::Bool(true)
 }
 
-pub fn vec_deque_clear(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn vec_deque_clear(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::VecDeque(deque) = &mut *ref_box {
@@ -804,13 +804,13 @@ pub fn vec_deque_clear(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Va
     Value::Nil
 }
 
-pub fn vec_deque_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn vec_deque_drop(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    _evaler.universe().borrow_mut().drop_vmref(id);
+                    ctx.drop_vmref(id);
                     return Value::Nil;
                 }
             }
@@ -823,15 +823,15 @@ pub fn vec_deque_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Val
 // BTreeMap Implementation (Plan 085)
 // ============================================================================
 
-pub fn btree_map_new(_evaler: &mut Evaler, _arg: Value) -> Value {
-    let ty = _evaler.lookup_type("BTreeMap");
+pub fn btree_map_new(ctx: &mut VmContext, _arg: Value) -> Value {
+    let ty = ctx.lookup_type("BTreeMap");
 
     match &ty {
-        ast::Type::User(_) => {
+        Type::User(_) => {
             let map_data = BTreeMapData {
                 data: BTreeMap::new(),
             };
-            let id = _evaler
+            let id = ctx
                 .universe()
                 .borrow_mut()
                 .add_vmref(crate::universe::VmRefData::BTreeMap(map_data));
@@ -847,14 +847,14 @@ pub fn btree_map_new(_evaler: &mut Evaler, _arg: Value) -> Value {
     }
 }
 
-pub fn btree_map_insert(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn btree_map_insert(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::BTreeMap(map) = &mut *ref_box {
@@ -873,14 +873,14 @@ pub fn btree_map_insert(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Va
     Value::Nil
 }
 
-pub fn btree_map_get(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn btree_map_get(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::BTreeMap(map) = &*ref_box {
@@ -897,14 +897,14 @@ pub fn btree_map_get(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value
     Value::Nil
 }
 
-pub fn btree_map_contains(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn btree_map_contains(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::BTreeMap(map) = &*ref_box {
@@ -921,14 +921,14 @@ pub fn btree_map_contains(_evaler: &mut Evaler, instance: &mut Value, args: Vec<
     Value::Bool(false)
 }
 
-pub fn btree_map_remove(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn btree_map_remove(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::BTreeMap(map) = &mut *ref_box {
@@ -946,14 +946,14 @@ pub fn btree_map_remove(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Va
     Value::Nil
 }
 
-pub fn btree_map_size(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn btree_map_size(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::BTreeMap(map) = &*ref_box {
@@ -967,14 +967,14 @@ pub fn btree_map_size(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Val
     Value::Int(0)
 }
 
-pub fn btree_map_is_empty(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn btree_map_is_empty(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::BTreeMap(map) = &*ref_box {
@@ -988,14 +988,14 @@ pub fn btree_map_is_empty(_evaler: &mut Evaler, instance: &mut Value, _args: Vec
     Value::Bool(true)
 }
 
-pub fn btree_map_clear(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn btree_map_clear(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let crate::universe::VmRefData::BTreeMap(map) = &mut *ref_box {
@@ -1010,14 +1010,14 @@ pub fn btree_map_clear(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Va
     Value::Nil
 }
 
-pub fn btree_map_first_key(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn btree_map_first_key(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::BTreeMap(map) = &*ref_box {
@@ -1033,14 +1033,14 @@ pub fn btree_map_first_key(_evaler: &mut Evaler, instance: &mut Value, _args: Ve
     Value::Nil
 }
 
-pub fn btree_map_last_key(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn btree_map_last_key(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let crate::universe::VmRefData::BTreeMap(map) = &*ref_box {
@@ -1056,13 +1056,13 @@ pub fn btree_map_last_key(_evaler: &mut Evaler, instance: &mut Value, _args: Vec
     Value::Nil
 }
 
-pub fn btree_map_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn btree_map_drop(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(decl) = &inst.ty {
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    _evaler.universe().borrow_mut().drop_vmref(id);
+                    ctx.drop_vmref(id);
                     return Value::Nil;
                 }
             }

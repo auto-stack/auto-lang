@@ -3,14 +3,14 @@
 //! Provides VM methods for the List<T> type, which is a growable, heap-allocated
 //! dynamic array similar to Rust's Vec<T> or Python's list.
 
-use crate::{ast, eval::Evaler};
+use super::context::VmContext;
 use crate::universe::{ListData, VmRefData};
 use auto_val::{Instance, Obj, Type, Value};
 
 /// Create a new empty List
 /// Syntax: List.new()
-pub fn list_new_static(_evaler: &mut Evaler, _arg: Value) -> Value {
-    list_new(_evaler, Value::USize(0))
+pub fn list_new_static(ctx: &mut VmContext, _arg: Value) -> Value {
+    list_new(ctx, Value::USize(0))
 }
 
 /// Create a new List with optional initial elements
@@ -19,14 +19,14 @@ pub fn list_new_static(_evaler: &mut Evaler, _arg: Value) -> Value {
 /// This function supports varargs for initialization:
 /// - List.new() creates an empty list
 /// - List.new(1, 2, 3) creates a list with elements [1, 2, 3]
-pub fn list_new(_evaler: &mut Evaler, initial: Value) -> Value {
+pub fn list_new(ctx: &mut VmContext, initial: Value) -> Value {
     // Clone the type to avoid holding the borrow across the add_vmref call
-    let ty = _evaler.lookup_type("List");
+    let ty = ctx.lookup_type("List");
 
     match &ty {
-        ast::Type::User(_) => {
+        Type::User(_) => {
             // Parse initial elements from the argument
-            let mut elems = Vec::with_capacity(4);  // Pre-allocate initial capacity of 4
+            let mut elems = Vec::with_capacity(4); // Pre-allocate initial capacity of 4
 
             // Check if initial is an array (multiple arguments passed)
             if let Value::Array(array) = &initial {
@@ -45,7 +45,10 @@ pub fn list_new(_evaler: &mut Evaler, initial: Value) -> Value {
                 ld.elems = elems;
                 ld
             };
-            let id = _evaler.universe().borrow_mut().add_vmref(crate::universe::VmRefData::List(list_data));
+            let id = ctx
+                .universe()
+                .borrow_mut()
+                .add_vmref(crate::universe::VmRefData::List(list_data));
 
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
@@ -60,14 +63,14 @@ pub fn list_new(_evaler: &mut Evaler, initial: Value) -> Value {
 
 /// Push element to List
 /// Syntax: list.push(elem)
-pub fn list_push(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_push(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let VmRefData::List(list) = &mut *ref_box {
@@ -84,14 +87,14 @@ pub fn list_push(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -
 }
 
 /// Pop element from List
-pub fn list_pop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn list_pop(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let VmRefData::List(list) = &mut *ref_box {
@@ -106,14 +109,14 @@ pub fn list_pop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -
 }
 
 /// Get length of List
-pub fn list_len(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn list_len(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let VmRefData::List(list) = &*ref_box {
@@ -128,14 +131,14 @@ pub fn list_len(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -
 }
 
 /// Check if List is empty
-pub fn list_is_empty(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn list_is_empty(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let VmRefData::List(list) = &*ref_box {
@@ -151,14 +154,14 @@ pub fn list_is_empty(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Valu
 
 /// Get the actual capacity of the list's underlying Vec
 /// Returns the allocated capacity (may be greater than len())
-pub fn list_capacity(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn list_capacity(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let VmRefData::List(list) = &*ref_box {
@@ -173,14 +176,14 @@ pub fn list_capacity(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Valu
 }
 
 /// Clear all elements
-pub fn list_clear(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn list_clear(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let VmRefData::List(list) = &mut *ref_box {
@@ -195,7 +198,7 @@ pub fn list_clear(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>)
 }
 
 /// Reserve capacity
-pub fn list_reserve(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_reserve(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
@@ -203,8 +206,8 @@ pub fn list_reserve(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>
                     if let Value::Int(cap_value) = cap {
                         let id = inst.fields.get("id");
                         if let Some(Value::USize(id)) = id {
-                            let uni = _evaler.universe().borrow();
-                            let b = uni.get_vmref_ref(id);
+                            let uni = ctx.universe(); let uni_ref = uni.borrow();
+                            let b = uni_ref.get_vmref_ref(id);
                             if let Some(b) = b {
                                 let mut ref_box = b.borrow_mut();
                                 if let VmRefData::List(list) = &mut *ref_box {
@@ -221,7 +224,7 @@ pub fn list_reserve(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>
 }
 
 /// Get element at index
-pub fn list_get(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_get(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
@@ -229,12 +232,13 @@ pub fn list_get(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) ->
                     if let Value::Int(idx_value) = idx {
                         let id = inst.fields.get("id");
                         if let Some(Value::USize(id)) = id {
-                            let uni = _evaler.universe().borrow();
-                            let b = uni.get_vmref_ref(id);
+                            let uni = ctx.universe(); let uni_ref = uni.borrow();
+                            let b = uni_ref.get_vmref_ref(id);
                             if let Some(b) = b {
                                 let ref_box = b.borrow();
                                 if let VmRefData::List(list) = &*ref_box {
-                                    return list.get(*idx_value as usize)
+                                    return list
+                                        .get(*idx_value as usize)
                                         .cloned()
                                         .unwrap_or(Value::Nil);
                                 }
@@ -249,7 +253,7 @@ pub fn list_get(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) ->
 }
 
 /// Set element at index
-pub fn list_set(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_set(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
@@ -258,8 +262,8 @@ pub fn list_set(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) ->
                         let elem = &args[1];
                         let id = inst.fields.get("id");
                         if let Some(Value::USize(id)) = id {
-                            let uni = _evaler.universe().borrow();
-                            let b = uni.get_vmref_ref(id);
+                            let uni = ctx.universe(); let uni_ref = uni.borrow();
+                            let b = uni_ref.get_vmref_ref(id);
                             if let Some(b) = b {
                                 let mut ref_box = b.borrow_mut();
                                 if let VmRefData::List(list) = &mut *ref_box {
@@ -277,7 +281,7 @@ pub fn list_set(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) ->
 }
 
 /// Insert element at index
-pub fn list_insert(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_insert(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
@@ -286,8 +290,8 @@ pub fn list_insert(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>)
                         let elem = &args[1];
                         let id = inst.fields.get("id");
                         if let Some(Value::USize(id)) = id {
-                            let uni = _evaler.universe().borrow();
-                            let b = uni.get_vmref_ref(id);
+                            let uni = ctx.universe(); let uni_ref = uni.borrow();
+                            let b = uni_ref.get_vmref_ref(id);
                             if let Some(b) = b {
                                 let mut ref_box = b.borrow_mut();
                                 if let VmRefData::List(list) = &mut *ref_box {
@@ -304,7 +308,7 @@ pub fn list_insert(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>)
 }
 
 /// Remove element at index
-pub fn list_remove(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_remove(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
@@ -312,8 +316,8 @@ pub fn list_remove(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>)
                     if let Value::Int(idx_value) = idx {
                         let id = inst.fields.get("id");
                         if let Some(Value::USize(id)) = id {
-                            let uni = _evaler.universe().borrow();
-                            let b = uni.get_vmref_ref(id);
+                            let uni = ctx.universe(); let uni_ref = uni.borrow();
+                            let b = uni_ref.get_vmref_ref(id);
                             if let Some(b) = b {
                                 let mut ref_box = b.borrow_mut();
                                 if let VmRefData::List(list) = &mut *ref_box {
@@ -332,7 +336,7 @@ pub fn list_remove(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>)
 /// Create an iterator for the List
 /// Syntax: list.iter()
 /// Returns a ListIter instance
-pub fn list_iter(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn list_iter(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
@@ -364,13 +368,13 @@ pub fn list_iter(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) 
 }
 
 /// Drop the List and free its resources
-pub fn list_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn list_drop(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    _evaler.universe().borrow_mut().drop_vmref(id);
+                    ctx.drop_vmref(id);
                     return Value::Nil;
                 }
             }
@@ -386,7 +390,7 @@ pub fn list_drop(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) 
 /// Get the next element from the iterator
 /// Syntax: iter.next()
 /// Returns the next element or nil when iteration is complete
-pub fn list_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn list_iter_next(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "ListIter" {
@@ -398,8 +402,8 @@ pub fn list_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Val
                     _ => (0, 0),
                 };
 
-                let uni = _evaler.universe().borrow();
-                let b = uni.get_vmref_ref(list_id);
+                let uni = ctx.universe(); let uni_ref = uni.borrow();
+                let b = uni_ref.get_vmref_ref(list_id);
                 if let Some(b) = b {
                     let mut ref_box = b.borrow_mut();
                     if let VmRefData::List(list) = &mut *ref_box {
@@ -409,7 +413,7 @@ pub fn list_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Val
 
                             // Increment index in the iterator
                             drop(ref_box); // Drop borrow before modifying instance
-                            drop(uni);
+
                             inst.fields.set("index", Value::USize(idx + 1));
 
                             return elem;
@@ -432,7 +436,7 @@ pub fn list_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Val
 /// Create a Map iterator from ListIter
 /// Syntax: iter.map(func)
 /// Returns a MapIter instance
-pub fn list_iter_map(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_iter_map(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }
@@ -462,7 +466,7 @@ pub fn list_iter_map(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value
                 fields.set("list_id", Value::USize(lid));
                 fields.set("index", Value::USize(idx));
                 fields.set("func", func.clone());
-                fields.set("predicate", Value::Nil);  // No predicate for direct ListIter
+                fields.set("predicate", Value::Nil); // No predicate for direct ListIter
 
                 Value::Instance(auto_val::Instance {
                     ty: auto_val::Type::User("MapIter".into()),
@@ -482,7 +486,7 @@ pub fn list_iter_map(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value
 /// Get the next element from MapIter and apply the function
 /// Syntax: map_iter.next()
 /// Returns the mapped element or nil when iteration is complete
-pub fn map_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn map_iter_next(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "MapIter" {
@@ -505,8 +509,8 @@ pub fn map_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Valu
                 // Check if there's a predicate (from FilterIter)
                 let has_predicate = predicate.is_some() && !predicate.as_ref().unwrap().is_nil();
 
-                let uni = _evaler.universe().borrow();
-                let b = uni.get_vmref_ref(list_id);
+                let uni = ctx.universe(); let uni_ref = uni.borrow();
+                let b = uni_ref.get_vmref_ref(list_id);
                 if let Some(b) = b {
                     let mut ref_box = b.borrow_mut();
                     if let VmRefData::List(list) = &mut *ref_box {
@@ -522,19 +526,19 @@ pub fn map_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Valu
                                         let meta_str = format!("{:?}", meta_id);
                                         meta_str.contains("is_even") && x % 2 == 0
                                     } else {
-                                        true  // Non-int elements always satisfy (for strings etc)
+                                        true // Non-int elements always satisfy (for strings etc)
                                     }
                                 } else {
                                     true
                                 }
                             } else {
-                                true  // No predicate, all elements satisfy
+                                true // No predicate, all elements satisfy
                             };
 
                             if satisfies_predicate {
                                 // Increment index in the iterator
                                 drop(ref_box);
-                                drop(uni);
+
                                 inst.fields.set("index", Value::USize(current_idx + 1));
 
                                 // Apply the function to the element
@@ -545,7 +549,9 @@ pub fn map_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Valu
                                     let meta_str = format!("{:?}", meta_id);
 
                                     if let Value::Int(x) = elem {
-                                        if meta_str.contains("multiply_by_2") || meta_str.contains("double") {
+                                        if meta_str.contains("multiply_by_2")
+                                            || meta_str.contains("double")
+                                        {
                                             return Value::Int(x * 2);
                                         }
                                         if meta_str.contains("square") {
@@ -578,7 +584,7 @@ pub fn map_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Valu
 
                         // End of iteration
                         drop(ref_box);
-                        drop(uni);
+
                         inst.fields.set("index", Value::USize(current_idx));
                         return Value::Nil;
                     }
@@ -596,7 +602,7 @@ pub fn map_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Valu
 /// Create a Filter iterator from ListIter
 /// Syntax: iter.filter(predicate)
 /// Returns a FilterIter instance
-pub fn list_iter_filter(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_iter_filter(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }
@@ -645,7 +651,7 @@ pub fn list_iter_filter(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Va
 /// Get the next element from FilterIter that satisfies the predicate
 /// Syntax: filter_iter.next()
 /// Returns the next matching element or nil when no more elements match
-pub fn filter_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn filter_iter_next(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "FilterIter" {
@@ -673,8 +679,8 @@ pub fn filter_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<V
 
                 // Loop through elements until we find a match or exhaust the list
                 loop {
-                    let uni = _evaler.universe().borrow();
-                    let b = uni.get_vmref_ref(list_id);
+                    let uni = ctx.universe(); let uni_ref = uni.borrow();
+                    let b = uni_ref.get_vmref_ref(list_id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let VmRefData::List(list) = &mut *ref_box {
@@ -709,7 +715,7 @@ pub fn filter_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<V
 
                             // Drop borrows before updating instance
                             drop(ref_box);
-                            drop(uni);
+
 
                             // Check if element satisfies predicate
                             let matches = if let Value::Meta(meta_id) = &predicate {
@@ -762,7 +768,7 @@ pub fn filter_iter_next(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<V
 /// Reduce operation - fold elements using a function
 /// Syntax: iter.reduce(init, func)
 /// Returns the accumulated result
-pub fn list_iter_reduce(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_iter_reduce(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.len() < 2 {
         return Value::Nil;
     }
@@ -790,8 +796,8 @@ pub fn list_iter_reduce(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Va
 
             let mut acc = init;
 
-            let uni = _evaler.universe().borrow();
-            let b = uni.get_vmref_ref(list_id);
+            let uni = ctx.universe(); let uni_ref = uni.borrow();
+            let b = uni_ref.get_vmref_ref(list_id);
             if let Some(b) = b {
                 let ref_box = b.borrow();
                 if let VmRefData::List(list) = &*ref_box {
@@ -828,9 +834,9 @@ pub fn list_iter_reduce(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Va
         // Reduce elements by calling next() until exhausted
         loop {
             let next_val = if ref_name == "MapIter" {
-                map_iter_next(_evaler, instance, vec![])
+                map_iter_next(ctx, instance, vec![])
             } else {
-                filter_iter_next(_evaler, instance, vec![])
+                filter_iter_next(ctx, instance, vec![])
             };
 
             if next_val.is_nil() {
@@ -861,7 +867,7 @@ pub fn list_iter_reduce(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Va
 /// Count operation - count elements in iterator
 /// Syntax: iter.count()
 /// Returns the number of elements
-pub fn list_iter_count(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn list_iter_count(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     // Get the type name without holding a borrow
     let ref_name = if let Value::Instance(inst) = instance {
         inst.ty.name().clone()
@@ -880,8 +886,8 @@ pub fn list_iter_count(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Va
                 _ => (0, 0),
             };
 
-            let uni = _evaler.universe().borrow();
-            let b = uni.get_vmref_ref(list_id);
+            let uni = ctx.universe(); let uni_ref = uni.borrow();
+            let b = uni_ref.get_vmref_ref(list_id);
             if let Some(b) = b {
                 let ref_box = b.borrow();
                 if let VmRefData::List(list) = &*ref_box {
@@ -904,9 +910,9 @@ pub fn list_iter_count(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Va
         // Count elements by calling next() until exhausted
         loop {
             let next_val = if ref_name == "MapIter" {
-                map_iter_next(_evaler, instance, vec![])
+                map_iter_next(ctx, instance, vec![])
             } else {
-                filter_iter_next(_evaler, instance, vec![])
+                filter_iter_next(ctx, instance, vec![])
             };
 
             if next_val.is_nil() {
@@ -925,7 +931,7 @@ pub fn list_iter_count(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Va
 /// ForEach operation - execute function for each element
 /// Syntax: iter.for_each(func)
 /// Returns void
-pub fn list_iter_for_each(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_iter_for_each(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }
@@ -943,15 +949,15 @@ pub fn list_iter_for_each(_evaler: &mut Evaler, instance: &mut Value, args: Vec<
 
                 let func = &args[0];
 
-                let uni = _evaler.universe().borrow();
-                let b = uni.get_vmref_ref(list_id);
+                let uni = ctx.universe(); let uni_ref = uni.borrow();
+                let b = uni_ref.get_vmref_ref(list_id);
                 if let Some(b) = b {
                     let ref_box = b.borrow();
                     if let VmRefData::List(list) = &*ref_box {
                         // Call function for each element
                         for i in idx..list.elems.len() {
                             let _elem = list.elems.get(i).cloned().unwrap_or(Value::Nil);
-                            
+
                             // Apply function to element
                             // For now, just ignore the result (forEach doesn't collect)
                             if let Value::Meta(_meta_id) = func {
@@ -959,7 +965,7 @@ pub fn list_iter_for_each(_evaler: &mut Evaler, instance: &mut Value, args: Vec<
                                 // For testing purposes, we just need to not crash
                             }
                         }
-                        
+
                         return Value::Void;
                     }
                 }
@@ -972,7 +978,7 @@ pub fn list_iter_for_each(_evaler: &mut Evaler, instance: &mut Value, args: Vec<
 /// Collect operation - collect iterator elements into a new List
 /// Syntax: iter.collect()
 /// Returns a new List with all elements from the iterator
-pub fn list_iter_collect(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn list_iter_collect(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     // First, get the type name without holding a borrow
     let ref_name = if let Value::Instance(inst) = instance {
         inst.ty.name().clone()
@@ -995,8 +1001,8 @@ pub fn list_iter_collect(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<
 
             // Collect elements
             {
-                let uni = _evaler.universe().borrow();
-                let b = uni.get_vmref_ref(list_id);
+                let uni = ctx.universe(); let uni_ref = uni.borrow();
+                let b = uni_ref.get_vmref_ref(list_id);
                 if let Some(b) = b {
                     let ref_box = b.borrow();
                     if let VmRefData::List(list) = &*ref_box {
@@ -1011,7 +1017,10 @@ pub fn list_iter_collect(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<
             }
 
             // Allocate new list in universe
-            let new_list_id = _evaler.universe().borrow_mut().add_vmref(VmRefData::List(new_list_data));
+            let new_list_id = ctx
+                .universe()
+                .borrow_mut()
+                .add_vmref(VmRefData::List(new_list_data));
 
             // Create List instance
             let mut fields = auto_val::Obj::new();
@@ -1031,9 +1040,9 @@ pub fn list_iter_collect(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<
         // Collect elements by calling next() until exhausted
         loop {
             let next_val = if ref_name == "MapIter" {
-                map_iter_next(_evaler, instance, vec![])
+                map_iter_next(ctx, instance, vec![])
             } else {
-                filter_iter_next(_evaler, instance, vec![])
+                filter_iter_next(ctx, instance, vec![])
             };
 
             if next_val.is_nil() {
@@ -1044,7 +1053,10 @@ pub fn list_iter_collect(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<
         }
 
         // Allocate new list in universe
-        let new_list_id = _evaler.universe().borrow_mut().add_vmref(VmRefData::List(new_list_data));
+        let new_list_id = ctx
+            .universe()
+            .borrow_mut()
+            .add_vmref(VmRefData::List(new_list_data));
 
         // Create List instance
         let mut fields = auto_val::Obj::new();
@@ -1062,7 +1074,7 @@ pub fn list_iter_collect(_evaler: &mut Evaler, instance: &mut Value, _args: Vec<
 /// Any operation - check if any element satisfies predicate
 /// Syntax: iter.any(predicate)
 /// Returns true (1) if any element matches, false (0) otherwise
-pub fn list_iter_any(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_iter_any(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Int(0);
     }
@@ -1080,29 +1092,29 @@ pub fn list_iter_any(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value
 
                 let predicate = &args[0];
 
-                let uni = _evaler.universe().borrow();
-                let b = uni.get_vmref_ref(list_id);
+                let uni = ctx.universe(); let uni_ref = uni.borrow();
+                let b = uni_ref.get_vmref_ref(list_id);
                 if let Some(b) = b {
                     let ref_box = b.borrow();
                     if let VmRefData::List(list) = &*ref_box {
                         // Check each element
                         for i in idx..list.elems.len() {
                             let elem = list.elems.get(i).cloned().unwrap_or(Value::Nil);
-                            
+
                             if let Value::Meta(meta_id) = predicate {
                                 if let Value::Int(x) = elem {
                                     let meta_str = format!("{:?}", meta_id);
-                                    
+
                                     // Check for is_even predicate
                                     if meta_str.contains("is_even") && x % 2 == 0 {
                                         return Value::Int(1);
                                     }
-                                    
+
                                     // Check for is_greater_than_5 predicate
                                     if meta_str.contains("is_greater_than_5") && x > 5 {
                                         return Value::Int(1);
                                     }
-                                    
+
                                     // Check for is_greater_than_10 predicate
                                     if meta_str.contains("is_greater_than_10") && x > 10 {
                                         return Value::Int(1);
@@ -1110,7 +1122,7 @@ pub fn list_iter_any(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value
                                 }
                             }
                         }
-                        
+
                         // No element matched
                         return Value::Int(0);
                     }
@@ -1124,7 +1136,7 @@ pub fn list_iter_any(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value
 /// All operation - check if all elements satisfy predicate
 /// Syntax: iter.all(predicate)
 /// Returns true (1) if all elements match, false (0) otherwise
-pub fn list_iter_all(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_iter_all(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Int(0);
     }
@@ -1142,19 +1154,19 @@ pub fn list_iter_all(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value
 
                 let predicate = &args[0];
 
-                let uni = _evaler.universe().borrow();
-                let b = uni.get_vmref_ref(list_id);
+                let uni = ctx.universe(); let uni_ref = uni.borrow();
+                let b = uni_ref.get_vmref_ref(list_id);
                 if let Some(b) = b {
                     let ref_box = b.borrow();
                     if let VmRefData::List(list) = &*ref_box {
                         // Check each element
                         for i in idx..list.elems.len() {
                             let elem = list.elems.get(i).cloned().unwrap_or(Value::Nil);
-                            
+
                             if let Value::Meta(meta_id) = predicate {
                                 if let Value::Int(x) = elem {
                                     let meta_str = format!("{:?}", meta_id);
-                                    
+
                                     // Check for is_even predicate
                                     if meta_str.contains("is_even") {
                                         if x % 2 != 0 {
@@ -1164,7 +1176,7 @@ pub fn list_iter_all(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value
                                 }
                             }
                         }
-                        
+
                         // All elements matched
                         return Value::Int(1);
                     }
@@ -1178,7 +1190,7 @@ pub fn list_iter_all(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value
 /// Find operation - find first element that satisfies predicate
 /// Syntax: iter.find(predicate)
 /// Returns the first matching element, or nil if none found
-pub fn list_iter_find(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_iter_find(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }
@@ -1196,24 +1208,24 @@ pub fn list_iter_find(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Valu
 
                 let predicate = &args[0];
 
-                let uni = _evaler.universe().borrow();
-                let b = uni.get_vmref_ref(list_id);
+                let uni = ctx.universe(); let uni_ref = uni.borrow();
+                let b = uni_ref.get_vmref_ref(list_id);
                 if let Some(b) = b {
                     let ref_box = b.borrow();
                     if let VmRefData::List(list) = &*ref_box {
                         // Find first matching element
                         for i in idx..list.elems.len() {
                             let elem = list.elems.get(i).cloned().unwrap_or(Value::Nil);
-                            
+
                             if let Value::Meta(meta_id) = predicate {
                                 if let Value::Int(x) = elem {
                                     let meta_str = format!("{:?}", meta_id);
-                                    
+
                                     // Check for is_greater_than_5 predicate
                                     if meta_str.contains("is_greater_than_5") && x > 5 {
                                         return elem;
                                     }
-                                    
+
                                     // Check for is_greater_than_10 predicate
                                     if meta_str.contains("is_greater_than_10") && x > 10 {
                                         return elem;
@@ -1221,7 +1233,7 @@ pub fn list_iter_find(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Valu
                                 }
                             }
                         }
-                        
+
                         // No element found
                         return Value::Nil;
                     }
@@ -1235,7 +1247,7 @@ pub fn list_iter_find(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Valu
 /// Map operation on FilterIter - chain map after filter
 /// Syntax: filter_iter.map(func)
 /// Returns a MapIter that wraps the FilterIter
-pub fn filter_iter_map(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn filter_iter_map(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }
@@ -1288,7 +1300,7 @@ pub fn filter_iter_map(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Val
 /// Filter operation on MapIter - chain filter after map
 /// Syntax: map_iter.filter(predicate)
 /// Returns a FilterIter that wraps the MapIter
-pub fn map_iter_filter(_evaler: &mut Evaler, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn map_iter_filter(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }

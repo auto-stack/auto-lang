@@ -1106,7 +1106,7 @@ impl Evaler {
             .unwrap();
 
         // Parse the file using the same universe as current evaluator
-        let mut parser = Parser::new(&source_code, self.universe().clone());
+        let mut parser = Parser::new(&source_code);
         let ast = match parser.parse() {
             Ok(ast) => ast,
             Err(e) => return Value::Error(format!("Failed to parse {}: {}", file_path.display(), e).into()),
