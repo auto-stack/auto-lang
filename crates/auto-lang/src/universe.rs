@@ -1,3 +1,20 @@
+//! Universe: Legacy scope management (DEPRECATED)
+//!
+//! **Plan 091**: This module is deprecated and will be removed.
+//!
+//! ## Migration
+//!
+//! - For type lookup: Use `Database` or `VmContext::lookup_type()`
+//! - For VM references: Use `VmContext::add_vmref()` / `VmContext::drop_vmref()`
+//! - For scope management: Use `InferenceContext` or `Database`
+//!
+//! ## Remaining Dependencies
+//!
+//! - parser.rs: 35 references (use Database)
+//! - lib.rs: 19 references (entry points)
+//! - trans/*.rs: 41 references (transpilers)
+//! - vm/context.rs: 14 references (VmContext)
+
 #![allow(deprecated)]
 use super::scope::*;
 use crate::ast::FnKind;
