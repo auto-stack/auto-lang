@@ -13,7 +13,6 @@
 // Phase 2: Extract runtime logic from Universe (CURRENT - Plan 064)
 // Phase 3: Full integration with Database
 
-use crate::eval::Evaler;
 use crate::scope::Sid;
 use crate::universe::VmRefData;
 use auto_val::{AutoStr, Obj, Value, ValueData, ValueID};
@@ -161,10 +160,6 @@ pub struct ExecutionEngine {
     /// Frame ID counter - Phase 4 Plan 064
     pub frame_counter: StackFrameId,
 
-    /// Raw pointer to evaluator for VM functions to call user-defined functions
-    /// WARNING: This is only valid during evaluator's lifetime
-    /// The evaluator must outlive the ExecutionEngine
-    evaluator_ptr: *mut Evaler,
 }
 
 impl ExecutionEngine {
@@ -186,7 +181,6 @@ impl ExecutionEngine {
             call_stack: Vec::new(),
             frames: HashMap::new(),
             frame_counter: 0,
-            evaluator_ptr: std::ptr::null_mut(),
         }
     }
 
@@ -338,47 +332,6 @@ impl ExecutionEngine {
     /// Insert a builtin function
     pub fn insert_builtin(&mut self, name: AutoStr, value: Value) {
         self.builtins.insert(name, value);
-    }
-
-    // ========================================================================
-    // Evaluator Pointer Management (for VM → user function calls)
-    // ========================================================================
-
-    /// Set the evaluator pointer for VM functions to call user-defined functions
-    /// # Safety
-    /// The evaluator must outlive the ExecutionEngine. This is guaranteed by the
-    /// ownership structure where Evaler owns the ExecutionEngine.
-    pub fn set_evaluator(&mut self, evaluator: &mut Evaler) {
-        self.evaluator_ptr = evaluator;
-    }
-
-    /// Set the evaluator pointer from a raw pointer
-    /// # Safety
-    /// The pointer must be valid and outlive the ExecutionEngine
-    pub unsafe fn set_evaluator_raw(&mut self, evaluator: *mut Evaler) {
-        self.evaluator_ptr = evaluator;
-    }
-
-    /// Evaluate a user-defined function using the stored evaluator pointer
-    /// Returns None if no evaluator is set
-    /// # Safety
-    /// The evaluator pointer must be valid and outlive this call
-    pub fn eval_user_fn(&self, fn_name: &AutoStr, args: Vec<Value>) -> Option<Value> {
-        if self.evaluator_ptr.is_null() {
-            return None;
-        }
-        // SAFETY: The evaluator outlives the engine during call chains
-        // This is guaranteed by the ownership structure (Evaler owns ExecutionEngine)
-        unsafe {
-            Some((*self.evaluator_ptr).eval_user_function(fn_name, args))
-        }
-    }
-
-    /// Get the raw evaluator pointer
-    /// # Safety
-    /// The pointer must only be used while the original borrow is active
-    pub unsafe fn get_evaluator_ptr(&self) -> *mut Evaler {
-        self.evaluator_ptr
     }
 }
 

@@ -24,14 +24,12 @@ pub mod multi_mode;
 // Plan 081 Phase 5: FFI layer for cross-mode function calls
 pub mod ffi;
 // Plan 073 Phase 9.3: Execution engine selection (AutoVM vs Evaluator)
-pub mod eval;
 pub mod execution_engine;
 pub mod hash;
 pub mod infer;
 pub use crate::infer::InferenceContext;
 pub use crate::type_registry::SharedTypeRegistry;
 pub mod indexer;
-pub mod interp;
 mod lexer;
 pub mod libs;
 pub mod macro_;
