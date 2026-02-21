@@ -1,6 +1,6 @@
 # Plan 091: 完全移除 Universe
 
-> **状态**: 🔄 进行中
+> **状态**: ✅ **基本完成**
 > **优先级**: 高
 > **依赖**: Plan 084 (TypeStore), Plan 085 (Auto-use), Plan 090 (Parser 重构), Plan 066 (Database)
 
@@ -54,10 +54,42 @@ Universe 当前承担的职责:
 | Phase | 状态 | 说明 |
 |-------|------|------|
 | Phase 1 | ✅ 完成 | 移除公开 API，Evaluator 重定向到 AutoVM |
-| Phase 2 | ✅ 完成 | 所有转译器已迁移（trans_c, trans_rust, trans_python, trans_javascript）|
-| Phase 3 | ✅ **完成** | Parser scope 用法从 21 减少到 1（仅注释）|
-| Phase 4 | ✅ 部分完成 | 入口点已简化 |
-| Phase 5 | ✅ 完成 | config.rs 已迁移到 AutoVM（无 Universe 依赖）|
+| Phase 2 | ✅ 完成 | 所有转译器已迁移 |
+| Phase 3 | ✅ 完成 | Parser scope: 21 → 1 |
+| Phase 4 | ✅ 完成 | 删除 eval.rs/interp.rs |
+| Phase 5 | ✅ 完成 | config.rs 已迁移 |
+| Phase 6 | ⚠️ **部分完成** | universe.rs 标记为 deprecated |
+
+### 提交记录
+
+| 提交 | 描述 |
+|------|------|
+| `0b820fa` | universe.rs 标记为 deprecated |
+| `6862bb4` | 删除 eval.rs 和 interp.rs |
+| `5d32d16` | 所有 VM native 函数使用 VmContext |
+| `ed51e2a` | VmContext 基础结构 |
+
+### 已删除文件
+
+- `repl.rs` - ✅ 已删除
+- `eval.rs` - ✅ 已删除 (7,167 行)
+- `interp.rs` - ✅ 已删除
+
+### 已标记 deprecated
+
+- `universe.rs` - 145 处引用，待删除
+
+### 迁移路径
+
+```rust
+// 旧代码
+let mut evaler = Evaler::new(scope);
+let result = evaler.eval(&ast)?;
+
+// 新代码
+let mut interp = AutoInterpreter::new();
+let result = interp.eval(code)?;
+```
 | Phase 6 | 🔄 **尝试中** | 尝试删除 universe.rs |
 
 ### Phase 3 完成状态 (提交: 490ec67)
