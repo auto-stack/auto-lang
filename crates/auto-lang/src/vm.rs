@@ -38,7 +38,6 @@ pub mod task;
 pub mod virt_memory;
 // Plan 091: Extracted from universe.rs
 pub mod object_data;
-pub mod vmref;
 
 // #[cfg(test)]
 // mod tests_concurrency; // TODO: Create tests_concurrency.rs
