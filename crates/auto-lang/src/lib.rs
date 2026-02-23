@@ -57,7 +57,6 @@ pub mod trans;
 pub mod type_registry;
 // Plan 091: Extracted from universe.rs
 pub mod symbol;
-mod universe;
 pub mod util;
 pub mod vm;
 
@@ -79,7 +78,6 @@ pub use interpreter::AutoInterpreter;
 use crate::compile::CompileSession;
 use crate::trans::c::CTrans;
 pub use crate::symbols::SymbolLocation;
-pub use crate::universe::Universe;
 use crate::{trans::Sink, trans::Trans};
 use auto_val::{AutoPath, Obj, Shared, Value};
 use std::cell::RefCell;
@@ -278,7 +276,7 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
             // Try to format as List<int>
             if let Some(list) = obj
                 .as_any()
-                .downcast_ref::<crate::universe::ListData<i32>>()
+                .downcast_ref::<crate::vm::types::ListData<i32>>()
             {
                 let formatted: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
                 return Ok(format!("[{}]", formatted.join(", ")));
@@ -314,11 +312,10 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     since = "0.9.0",
     note = "Use run_with_session() with CompileSession instead (Plan 064 + Plan 091)"
 )]
-pub fn run_with_scope(code: &str, _scope: Universe) -> AutoResult<String> {
-    // Plan 091: Simplified implementation using AutoVM
-    // Note: Scope is ignored - proper implementation needs AutoVM session support
-    run(code)
-}
+// Plan 091 DEPRECATED: Universe removed
+// pub fn run_with_scope(code: &str, _scope: Universe) -> AutoResult<String> {
+//     run(code)
+// }
 
 /// Run code with incremental compilation support
 ///
@@ -381,7 +378,8 @@ pub fn run_with_session(session: &mut CompileSession, code: &str) -> AutoResult<
 /// **Plan 091**: Now uses AutoVM internally. The scope parameter is deprecated.
 pub fn run_with_session_and_scope(
     session: &mut CompileSession,
-    _scope: Shared<Universe>,
+    // _scope: Shared<Universe>,  // Plan 091: removed
+
     code: &str,
 ) -> AutoResult<String> {
     // Plan 091: Use AutoVM instead of deprecated Interpreter
@@ -391,7 +389,8 @@ pub fn run_with_session_and_scope(
 }
 
 pub fn parse(code: &str) -> AutoResult<ast::Code> {
-    let scope = Rc::new(RefCell::new(Universe::new()));
+    // Plan 091: Universe removed
+    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code);
     parser.parse().map_err(|e| e.to_string().into())
 }
@@ -399,15 +398,17 @@ pub fn parse(code: &str) -> AutoResult<ast::Code> {
 /// Parse code and return proper AutoError (not converted to string)
 /// This is used by the LSP to get detailed error information
 pub fn parse_preserve_error(code: &str) -> Result<ast::Code, error::AutoError> {
-    let scope = Rc::new(RefCell::new(Universe::new()));
+    // Plan 091: Universe removed
+    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code);
     parser.parse()
 }
 
-pub fn parse_with_scope(code: &str, scope: Rc<RefCell<Universe>>) -> AutoResult<ast::Code> {
-    let mut parser = Parser::from(code);
-    parser.parse().map_err(|e| e.to_string().into())
-}
+// Plan 091 DEPRECATED: Universe removed
+// pub fn parse_with_scope(code: &str, scope: Rc<RefCell<Universe>>) -> AutoResult<ast::Code> {
+//     let mut parser = Parser::from(code);
+//     parser.parse().map_err(|e| e.to_string().into())
+// }
 
 // Functions removed in Plan 091:
 // - interpret() - use run() instead
@@ -567,7 +568,8 @@ pub fn trans_c_legacy(path: &str) -> AutoResult<String> {
 
     let fname = AutoPath::new(path).filename();
 
-    let scope = Rc::new(RefCell::new(Universe::new()));
+    // Plan 091: Universe removed
+    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code.as_str());
     let ast = parser.parse()?;
     let mut sink = Sink::new(fname);
@@ -597,7 +599,8 @@ pub fn trans_rust_legacy(path: &str) -> AutoResult<String> {
     let rsname = path.replace(".at", ".rs");
     let fname = AutoPath::new(path).filename();
 
-    let scope = Rc::new(RefCell::new(Universe::new()));
+    // Plan 091: Universe removed
+    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code.as_str());
     parser.set_dest(crate::parser::CompileDest::TransRust);
     let ast = parser.parse().map_err(|e| e.to_string())?;
@@ -762,7 +765,8 @@ pub fn trans_python(path: &str) -> AutoResult<String> {
     let fname = AutoPath::new(path).filename();
 
     // Plan 091: PythonTrans no longer needs Universe, but Parser still requires it
-    let scope = Rc::new(RefCell::new(Universe::new()));
+    // Plan 091: Universe removed
+    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code.as_str());
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut sink = Sink::new(fname.clone());
@@ -786,7 +790,8 @@ pub fn trans_javascript(path: &str) -> AutoResult<String> {
     let fname = AutoPath::new(path).filename();
 
     // Plan 091: JavaScriptTrans no longer needs Universe, but Parser still requires it
-    let scope = Rc::new(RefCell::new(Universe::new()));
+    // Plan 091: Universe removed
+    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code.as_str());
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut sink = Sink::new(fname.clone());

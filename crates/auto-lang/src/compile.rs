@@ -239,7 +239,7 @@ impl CompileSession {
         let mut type_store = TypeStore::new();
 
         // 使用 Parser 解析源码
-        let scope = Rc::new(RefCell::new(crate::universe::Universe::new()));
+        let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
         let mut parser = Parser::from(source);
         let ast = parser.parse()
             .map_err(|e| crate::error::attach_source(e, path.to_string(), source.to_string()))?;
@@ -306,7 +306,7 @@ impl CompileSession {
 
         // Parse source code to AST
         // Note: Phase 1.2 will make parser pure, but for now we use existing parser
-        let scope = Rc::new(RefCell::new(crate::universe::Universe::new()));
+        let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
         let mut parser = Parser::from(source);
         let ast = parser.parse()
             .map_err(|e| crate::error::attach_source(e, path.to_string(), source.to_string()))?;

@@ -1,7 +1,7 @@
 // Plan 077 Phase 4: Unified Object Registry Integration Tests
 // Tests for the unified object registry in AutoVM Engine
 
-use crate::universe::{ListData, ListStorage};
+use crate::vm::types::{ListData, ListStorage};
 use crate::vm::engine::AutoVM;
 use crate::vm::heap_object::{HeapObject, TypeTag, downcast, downcast_mut, is_type};
 use crate::vm::virt_memory::VirtualFlash;

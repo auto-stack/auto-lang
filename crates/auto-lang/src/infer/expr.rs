@@ -771,7 +771,7 @@ fn infer_if_type(ctx: &mut InferenceContext, if_expr: &If) -> Type {
 mod tests {
     use super::*;
     use crate::ast::{Body, Branch};
-    use crate::universe::Universe;
+    // Plan 091: Universe removed
     use auto_val::AutoStr;
 
     fn make_test_context() -> InferenceContext {

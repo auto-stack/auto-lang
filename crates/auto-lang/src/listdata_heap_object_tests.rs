@@ -1,7 +1,7 @@
 // Plan 077 Phase 3: ListData HeapObject Implementation Tests
 // Tests for HeapObject trait implementations for generic ListData<T>
 
-use crate::universe::ListData;
+use crate::vm::types::ListData;
 use crate::vm::heap_object::{HeapObject, TypeTag, downcast, downcast_mut, is_type, type_name};
 use auto_val::Value;
 use std::sync::{Arc, RwLock};
@@ -433,7 +433,7 @@ fn test_listdata_mutation_via_registry() {
 
 #[test]
 fn test_listdata_storage_preserved_in_registry() {
-    use crate::universe::ListStorage;
+    use crate::vm::types::ListStorage;
     use dashmap::DashMap;
 
     let registry: DashMap<u64, Arc<RwLock<dyn HeapObject>>> = DashMap::new();

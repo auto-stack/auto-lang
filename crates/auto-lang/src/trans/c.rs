@@ -5,7 +5,6 @@ use crate::database::Database;
 use crate::error::attach_source;
 use crate::parser::Parser;
 use crate::scope::Meta;
-use crate::universe::Universe;
 use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
@@ -39,7 +38,7 @@ pub struct CTrans {
     uses_bool: bool,
     name: AutoStr,
     // Phase 066: Hybrid support for Universe (deprecated) and Database (new)
-    scope: Option<Shared<Universe>>,      // Old (deprecated)
+    // scope removed (Plan 091)
     db: Option<Arc<RwLock<Database>>>,    // New (Phase 066)
     last_out: OutKind,
     style: CStyle,
@@ -65,7 +64,7 @@ impl CTrans {
             libs: HashSet::new(),
             header: Vec::new(),
             name,
-            scope: Some(shared(Universe::default())),
+            // scope removed
             db: None,
             last_out: OutKind::None,
             style: CStyle::Modern,
@@ -4042,7 +4041,6 @@ impl Trans for CTrans {
 
 pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     let mut transpiler = CTrans::new("part".into());
-    let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::from(code);
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut out = Sink::new(AutoStr::from(""));
@@ -4059,7 +4057,6 @@ pub struct CCode {
 // Transpile the code into a whole C program
 pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> {
     let name = name.into();
-    let scope = Rc::new(RefCell::new(Universe::new()));
     let mut parser = Parser::from(code);
     parser.set_dest(crate::parser::CompileDest::TransC);
     let ast = parser.parse().map_err(|e| {

@@ -46,7 +46,7 @@ use super::{Sink, Trans};
 use crate::ast::*;
 use crate::parser::Parser;
 use crate::database::Database;
-use crate::universe::Universe;
+// Plan 091: Universe removed
 use crate::{AutoResult, Rc};
 use auto_val::{shared, Shared};
 use auto_val::{AutoStr, Op};
@@ -66,7 +66,7 @@ pub struct RustTrans {
 
     // Hybrid: Support both Universe (deprecated) and Database (new)
     // Phase 066: Migrating to Database-based architecture
-    scope: Option<Shared<crate::universe::Universe>>,     // Old (deprecated)
+    scope: Option<Shared<crate::scope_manager::ScopeManager>>,     // Old (deprecated)
     db: Option<Arc<RwLock<Database>>>,   // New (Phase 066)
 
     edition: RustEdition,
@@ -81,7 +81,7 @@ impl RustTrans {
         Self {
             indent: 0,
             uses: HashSet::new(),
-            scope: Some(shared(crate::universe::Universe::default())),  // Old (deprecated)
+            scope: Some(shared(crate::scope_manager::ScopeManager::new())),  // Old (deprecated)
             db: None,  // New (Phase 066)
             edition: RustEdition::E2021,
             current_fn: None,
@@ -103,7 +103,7 @@ impl RustTrans {
     }
 
     #[deprecated(note = "Use with_database() instead (Phase 066)")]
-    pub fn set_scope(&mut self, scope: Shared<crate::universe::Universe>) {
+    pub fn set_scope(&mut self, scope: Shared<crate::scope_manager::ScopeManager>) {
         self.scope = Some(scope);
         self.db = None;  // Clear Database if set
     }
@@ -2766,7 +2766,7 @@ pub fn transpile_rust(
     code: &str,
 ) -> AutoResult<Sink> {
     let name = name.into();
-    let scope = shared(crate::universe::Universe::default());
+    let scope = shared(crate::scope_manager::ScopeManager::new());
     let mut parser = Parser::from(code);
     parser.set_dest(crate::parser::CompileDest::TransRust);
     let ast = parser.parse().map_err(|e| e.to_string())?;
@@ -2780,7 +2780,7 @@ pub fn transpile_rust(
 
 /// Transpile code fragment for testing
 pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
-    let scope = shared(crate::universe::Universe::default());
+    let scope = shared(crate::scope_manager::ScopeManager::new());
     let mut parser = Parser::from(code);
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut out = Sink::new(AutoStr::from(""));

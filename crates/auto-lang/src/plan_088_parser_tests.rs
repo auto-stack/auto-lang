@@ -14,9 +14,10 @@ mod plan_088_parser_tests {
     fn parse_params(source: &str) -> Vec<Param> {
         use std::rc::Rc;
         use std::cell::RefCell;
-        use crate::universe::Universe;
+        // Plan 091: Universe removed
 
-        let scope = Rc::new(RefCell::new(Universe::new()));
+        // Plan 091: Universe removed
+    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
         let full_source = format!("{})", source);  // Add closing parenthesis
         let mut parser = Parser::from(&full_source);
         parser.fn_params().unwrap()

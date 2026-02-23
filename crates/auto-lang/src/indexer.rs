@@ -439,7 +439,7 @@ impl<'db> Indexer<'db> {
         // Phase 2: More granular cache invalidation
 
         // Re-parse the source code
-        let scope = Rc::new(std::cell::RefCell::new(crate::universe::Universe::new()));
+        let scope = Rc::new(std::cell::RefCell::new(crate::scope_manager::ScopeManager::new()));
         let mut parser = Parser::from(new_code);
         let ast = parser.parse()
             .map_err(|e| AutoError::Msg(format!("Parse error during re-indexing: {}", e)))?;

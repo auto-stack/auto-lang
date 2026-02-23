@@ -711,7 +711,7 @@ impl Trans for PythonTrans {
 mod tests {
     use super::*;
     use crate::parser::Parser;
-    use crate::universe::Universe;
+    // Plan 091: Universe removed
     use auto_val::shared;
     use std::fs::read_to_string;
     use std::path::PathBuf;
@@ -727,7 +727,8 @@ mod tests {
         let src = read_to_string(src_path.as_path())?;
 
         // Plan 091: PythonTrans no longer needs Universe, but Parser still requires it
-        let scope = shared(Universe::new());
+        // Plan 091: Universe removed
+    let scope = crate::scope_manager::ScopeManager::new();
         let mut parser = Parser::from(src.as_str());
         let ast = parser.parse()?;
         let mut sink = Sink::new(name.into());

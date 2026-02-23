@@ -305,7 +305,7 @@ fn main() -> int {
 #[test]
 fn benchmark_downcast_performance() {
     use crate::vm::heap_object::{try_downcast_checked, try_downcast_checked_mut, TypeTag};
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
     use std::time::Instant;
 
     println!("\n=== Plan 077 Phase 7: Downcast Performance Benchmark ===\n");
@@ -363,7 +363,7 @@ fn benchmark_downcast_performance() {
 #[test]
 fn benchmark_unified_registry_operations() {
     use crate::vm::heap_object::{try_downcast_checked, try_downcast_checked_mut, TypeTag};
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
     use std::sync::{Arc, RwLock};
     use std::time::Instant;
 

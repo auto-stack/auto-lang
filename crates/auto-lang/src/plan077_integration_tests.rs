@@ -3,7 +3,7 @@
 // This file contains 50+ integration tests for the unified registry system,
 // covering all aspects: correctness, performance, thread safety, and memory safety.
 
-use crate::universe::ListData;
+use crate::vm::types::ListData;
 use crate::vm::engine::AutoVM;
 use crate::vm::heap_object::{HeapObject, TypeTag, try_downcast_checked, try_downcast_checked_mut};
 use crate::vm::virt_memory::VirtualFlash;

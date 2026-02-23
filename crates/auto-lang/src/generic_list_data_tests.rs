@@ -1,7 +1,7 @@
 // Plan 077 Phase 2: Generic ListData<T> Unit Tests
 // Comprehensive tests for zero-overhead generic list storage
 
-use crate::universe::{ListData, ListStorage};
+use crate::vm::types::{ListData, ListStorage};
 use auto_val::Value;
 
 // ============================================================================

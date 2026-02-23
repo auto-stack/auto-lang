@@ -2,7 +2,7 @@
 // Tests for List<T, S> storage strategies in AutoVM
 
 use crate::vm::list_storage::{ListStorage, HeapStorage, InlineInt64Storage};
-use crate::universe::{ListData, ListStorage as UnivListStorage};
+use crate::vm::types::{ListData, ListStorage as UnivListStorage};
 
 #[test]
 fn test_list_storage_enum() {

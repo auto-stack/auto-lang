@@ -91,7 +91,7 @@ pub struct AutoVM {
     pub closure_id_gen: AtomicU32,
 
     // Object Registry (Plan 073: Object literals)
-    pub objects: DashMap<u64, Arc<RwLock<crate::universe::ObjectData>>>,
+    pub objects: DashMap<u64, Arc<RwLock<crate::vm::types::ObjectData>>>,
     pub object_id_gen: AtomicU64,
 
     // Array Registry (Plan 073: Array literals)
@@ -535,7 +535,7 @@ impl AutoVM {
                     }
 
                     // Create object from key-value pairs
-                    let mut obj = crate::universe::ObjectData::new();
+                    let mut obj = crate::vm::types::ObjectData::new();
                     for (i, key) in keys.iter().enumerate() {
                         // Values were popped in reverse order, so reverse them back
                         let val = &values[field_count as usize - 1 - i];
@@ -739,7 +739,7 @@ impl AutoVM {
                 // Plan 076 Phase 3 & 4: Generic List opcodes with storage strategies
                 OpCode::CREATE_LIST_INT => {
                     // Plan 077 Phase 5: Create List<int> in unified registry
-                    use crate::universe::ListData;
+                    use crate::vm::types::ListData;
                     let list_data: ListData<i32> = ListData::new();  // Heap storage (default)
                     let list_id = self.insert_heap_object(list_data);
 
@@ -748,7 +748,7 @@ impl AutoVM {
                 }
                 OpCode::CREATE_LIST_STR => {
                     // Plan 077 Phase 5: Create List<String> in unified registry
-                    use crate::universe::ListData;
+                    use crate::vm::types::ListData;
                     let list_data: ListData<String> = ListData::new();  // Heap storage (default)
                     let list_id = self.insert_heap_object(list_data);
 
@@ -757,7 +757,7 @@ impl AutoVM {
                 }
                 OpCode::CREATE_LIST_BOOL => {
                     // Plan 077 Phase 5: Create List<bool> in unified registry
-                    use crate::universe::ListData;
+                    use crate::vm::types::ListData;
                     let list_data: ListData<bool> = ListData::new();  // Heap storage (default)
                     let list_id = self.insert_heap_object(list_data);
 
@@ -767,7 +767,7 @@ impl AutoVM {
                 // Plan 076 Phase 4: InlineInt64 storage variants
                 OpCode::CREATE_LIST_INT_INLINE => {
                     // Plan 077 Phase 5: Create List<int> with InlineInt64 storage in unified registry
-                    use crate::universe::{ListData, ListStorage};
+                    use crate::vm::types::{ListData, ListStorage};
                     let mut list_data: ListData<i32> = ListData::new();
                     list_data.storage = Some(ListStorage::InlineInt64);
                     let list_id = self.insert_heap_object(list_data);
@@ -777,7 +777,7 @@ impl AutoVM {
                 }
                 OpCode::CREATE_LIST_STR_INLINE => {
                     // Plan 077 Phase 5: Create List<String> with InlineInt64 storage in unified registry
-                    use crate::universe::{ListData, ListStorage};
+                    use crate::vm::types::{ListData, ListStorage};
                     let mut list_data: ListData<String> = ListData::new();
                     list_data.storage = Some(ListStorage::InlineInt64);
                     let list_id = self.insert_heap_object(list_data);
@@ -787,7 +787,7 @@ impl AutoVM {
                 }
                 OpCode::CREATE_LIST_BOOL_INLINE => {
                     // Plan 077 Phase 5: Create List<bool> with InlineInt64 storage in unified registry
-                    use crate::universe::{ListData, ListStorage};
+                    use crate::vm::types::{ListData, ListStorage};
                     let mut list_data: ListData<bool> = ListData::new();
                     list_data.storage = Some(ListStorage::InlineInt64);
                     let list_id = self.insert_heap_object(list_data);
@@ -1011,7 +1011,7 @@ impl AutoVM {
                     let list_id = task.ram.pop_i32() as u64;
 
                     // Get list from unified registry and downcast to ListData<i32>
-                    use crate::universe::ListData;
+                    use crate::vm::types::ListData;
                     use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
 
                     if let Some(obj) = self.get_heap_object(list_id) {
@@ -1039,7 +1039,7 @@ impl AutoVM {
                     let list_id = task.ram.pop_i32() as u64;
 
                     // Get list from unified registry and downcast to ListData<i32>
-                    use crate::universe::ListData;
+                    use crate::vm::types::ListData;
                     use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
 
                     if let Some(obj) = self.get_heap_object(list_id) {
@@ -1066,7 +1066,7 @@ impl AutoVM {
                     let list_id = task.ram.pop_i32() as u64;
 
                     // Get list from unified registry and downcast to ListData<i32>
-                    use crate::universe::ListData;
+                    use crate::vm::types::ListData;
                     use crate::vm::heap_object::{try_downcast_checked, TypeTag};
 
                     if let Some(obj) = self.get_heap_object(list_id) {
@@ -1094,7 +1094,7 @@ impl AutoVM {
                     let list_id = task.ram.pop_i32() as u64;
 
                     // Get list from unified registry and downcast to ListData<i32>
-                    use crate::universe::ListData;
+                    use crate::vm::types::ListData;
                     use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
 
                     if let Some(obj) = self.get_heap_object(list_id) {
@@ -1172,7 +1172,7 @@ impl AutoVM {
 
                     // First, try heap_objects registry (Plan 077 unified registry)
                     if let Some(obj) = self.get_heap_object(obj_id) {
-                        use crate::universe::ListData;
+                        use crate::vm::types::ListData;
                         let guard = obj.read().unwrap();
 
                         // Try List<int>

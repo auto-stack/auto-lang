@@ -2,7 +2,7 @@
 // These tests were moved from lib.rs for better organization
 use crate::config::AutoConfig;
 use crate::{ast, run, run_with_scope};
-use crate::universe::Universe;
+// Plan 091: Universe removed
 use auto_val::Value;
 
 #[test]

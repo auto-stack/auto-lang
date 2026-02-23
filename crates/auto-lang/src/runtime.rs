@@ -14,7 +14,7 @@
 // Phase 3: Full integration with Database
 
 use crate::scope::Sid;
-use crate::universe::VmRefData;
+use crate::vm::types::VmRefData;
 use auto_val::{AutoStr, Obj, Value, ValueData, ValueID};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -384,12 +384,12 @@ mod tests {
         let mut engine = ExecutionEngine::new();
 
         // Allocate a VM ref
-        let data = VmRefData::List(crate::universe::ListData::new());
+        let data = VmRefData::List(crate::vm::types::ListData::new());
         let id1 = engine.alloc_vm_ref(data);
         assert_eq!(id1, 0);
 
         // Allocate another
-        let data2 = VmRefData::List(crate::universe::ListData::new());
+        let data2 = VmRefData::List(crate::vm::types::ListData::new());
         let id2 = engine.alloc_vm_ref(data2);
         assert_eq!(id2, 1);
 

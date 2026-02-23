@@ -167,7 +167,7 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// If elements are on the stack (above bp + 1 + num_locals), they are used to initialize the list.
 /// Elements are in LIFO order (top of stack is last element).
 pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
 
     // Calculate the target stack pointer
     // For main() (bp=0): stack layout is [local0, local1, ..., localN-1, temps...]
@@ -210,7 +210,7 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stack: list_id, elem -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
     use crate::vm::heap_object::HeapObject;
 
     let elem = task.ram.pop_i32();
@@ -232,7 +232,7 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stack: list_id -> elem
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
     use crate::vm::heap_object::HeapObject;
 
     let list_id = task.ram.pop_i32() as u64;
@@ -255,7 +255,7 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stack: list_id -> len
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
     use crate::vm::heap_object::HeapObject;
 
     let list_id = task.ram.pop_i32() as u64;
@@ -277,7 +277,7 @@ pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stack: list_id -> is_empty (1 if empty, 0 otherwise)
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
     use crate::vm::heap_object::HeapObject;
 
     let list_id = task.ram.pop_i32() as u64;
@@ -299,7 +299,7 @@ pub fn shim_list_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Stack: list_id -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
     use crate::vm::heap_object::HeapObject;
 
     let list_id = task.ram.pop_i32() as u64;
@@ -320,7 +320,7 @@ pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// Stack: list_id, index -> elem
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
     use crate::vm::heap_object::HeapObject;
 
     let index = task.ram.pop_i32() as usize;
@@ -344,7 +344,7 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stack: list_id, index, elem -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
     use crate::vm::heap_object::HeapObject;
 
     let elem = task.ram.pop_i32();
@@ -367,7 +367,7 @@ pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stack: list_id, index, elem -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
     use crate::vm::heap_object::HeapObject;
 
     let elem = task.ram.pop_i32();
@@ -390,7 +390,7 @@ pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Stack: list_id, index -> elem
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
     use crate::vm::heap_object::HeapObject;
 
     let index = task.ram.pop_i32() as usize;
@@ -458,7 +458,7 @@ pub fn shim_list_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Returns: element value, or -1 if exhausted
 // Plan 077 Phase 6: Updated to use unified registry
 pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
     use crate::vm::engine::Iterator;
     use crate::vm::heap_object::HeapObject;
 
@@ -687,7 +687,7 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     use std::sync::atomic::Ordering;
     use crate::vm::engine::Iterator;
     use crate::vm::heap_object::HeapObject;
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
 
     let iterator_id = task.ram.pop_i32() as u32;
 
@@ -744,7 +744,7 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::Iterator;
     use crate::vm::heap_object::HeapObject;
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
 
     let iterator_id = task.ram.pop_i32() as u32;
     let _func_addr = task.ram.pop_i32() as u32; // Not used in MVP
@@ -792,7 +792,7 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::Iterator;
     use crate::vm::heap_object::HeapObject;
-    use crate::universe::ListData;
+    use crate::vm::types::ListData;
 
     let iterator_id = task.ram.pop_i32() as u32;
     let _func_addr = task.ram.pop_i32() as u32; // Not used in MVP

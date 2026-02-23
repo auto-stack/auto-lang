@@ -908,8 +908,7 @@ impl ToAtom for Code {
 mod markdown_tests {
     use super::*;
     use crate::parser::Parser;
-    use crate::Universe;
-    use std::cell::RefCell;
+        use std::cell::RefCell;
     use std::fs;
     use std::path::Path;
     use std::rc::Rc;
@@ -1171,7 +1170,8 @@ mod markdown_tests {
         let cases = parse_markdown_tests(&content);
 
         for tc in cases {
-            let scope = Rc::new(RefCell::new(Universe::new()));
+            // Plan 091: Universe removed
+    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
             let mut parser = Parser::from(&tc.input);
             let code = parser
                 .parse()
@@ -1284,7 +1284,8 @@ mod markdown_tests {
         let cases = parse_markdown_tests(&content);
 
         for tc in cases {
-            let scope = Rc::new(RefCell::new(Universe::new()));
+            // Plan 091: Universe removed
+    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
             let mut parser = Parser::from(&tc.input);
 
             match parser.parse() {

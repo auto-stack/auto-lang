@@ -5,7 +5,7 @@ use auto_val::Value;
 use crate::vm::list_storage::{ListStorage, HeapStorage, InlineInt64Storage};
 
 /// AutoVM list storage with pluggable storage strategy
-/// This replaces `crate::universe::ListData` for AutoVM-specific lists
+/// This replaces `crate::vm::types::ListData` for AutoVM-specific lists
 #[derive(Debug)]
 pub enum AutoVMListStorage {
     /// Heap-allocated dynamic storage (unlimited capacity)

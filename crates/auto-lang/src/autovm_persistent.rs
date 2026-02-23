@@ -495,7 +495,7 @@ impl AutovmReplSession {
                 if let Some(obj) = self.vm.get_heap_object(list_id) {
                     let guard = obj.read().unwrap();
                     // Check if it's a List<int>
-                    use crate::universe::ListData;
+                    use crate::vm::types::ListData;
                     if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
                         // Check if this looks like it could be an element value vs a list reference
                         // Heuristic: If the value is small (0-10) and matches a list element value,

@@ -261,7 +261,7 @@ pub fn type_name(obj: &dyn HeapObject) -> String {
 ///
 /// ```rust
 /// use crate::vm::heap_object::{try_downcast_checked, TypeTag};
-/// use crate::universe::ListData;
+/// use crate::vm::types::ListData;
 ///
 /// let obj: Arc<RwLock<dyn HeapObject>> = registry.get(&id).unwrap();
 /// let guard = obj.read().unwrap();
@@ -288,7 +288,7 @@ pub fn try_downcast_checked<T: Any>(obj: &dyn HeapObject, expected_tag: TypeTag)
 ///
 /// ```rust
 /// use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
-/// use crate::universe::ListData;
+/// use crate::vm::types::ListData;
 ///
 /// let obj: Arc<RwLock<dyn HeapObject>> = registry.get(&id).unwrap();
 /// let mut guard = obj.write().unwrap();
