@@ -16,7 +16,7 @@ pub fn open(ctx: &mut VmContext, path: Value) -> Value {
                     match &ty {
                         Type::User(_) => {
                             let reader = std::io::BufReader::new(file);
-                            let id = ctx.add_vmref(crate::universe::VmRefData::File(reader));
+                            let id = ctx.add_vmref(super::types::VmRefData::File(reader));
                             let mut fields = Obj::new();
                             fields.set("id", Value::USize(id));
                             Value::Instance(Instance {
@@ -38,7 +38,7 @@ pub fn open(ctx: &mut VmContext, path: Value) -> Value {
                     match &ty {
                         Type::User(_) => {
                             let reader = std::io::BufReader::new(file);
-                            let id = ctx.add_vmref(crate::universe::VmRefData::File(reader));
+                            let id = ctx.add_vmref(super::types::VmRefData::File(reader));
                             let mut fields = Obj::new();
                             fields.set("id", Value::USize(id));
                             Value::Instance(Instance {
@@ -62,11 +62,10 @@ pub fn read_text(ctx: &mut VmContext, file: &mut Value) -> Value {
             if decl == "File" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::File(f) = &mut *ref_box {
+                        if let super::types::VmRefData::File(f) = &mut *ref_box {
                             let mut s = String::new();
                             if let Ok(_) = f.read_to_string(&mut s) {
                                 return Value::Str(s.into());
@@ -86,11 +85,10 @@ pub fn read_line(ctx: &mut VmContext, file: &mut Value) -> Value {
             if decl == "File" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::File(f) = &mut *ref_box {
+                        if let super::types::VmRefData::File(f) = &mut *ref_box {
                             // f is now &mut BufReader<File>, which implements BufRead
                             let mut line = String::new();
                             return match f.read_line(&mut line) {
@@ -150,11 +148,10 @@ pub fn read_char(ctx: &mut VmContext, file: &mut Value) -> Value {
             if decl == "File" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::File(f) = &mut *ref_box {
+                        if let super::types::VmRefData::File(f) = &mut *ref_box {
                             let mut buf = [0u8; 1];
                             return match f.read(&mut buf) {
                                 Ok(0) => Value::Int(-1), // EOF
@@ -190,11 +187,10 @@ pub fn write_line(ctx: &mut VmContext, file: &mut Value, line: &str) -> Value {
             if decl == "File" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::File(f) = &mut *ref_box {
+                        if let super::types::VmRefData::File(f) = &mut *ref_box {
                             use std::io::Write;
                             if let Err(e) = writeln!(f.get_mut(), "{}", line) {
                                 return Value::Error(format!("Write error: {}", e).into());
@@ -228,11 +224,10 @@ pub fn flush(ctx: &mut VmContext, file: &mut Value) -> Value {
             if decl == "File" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::File(f) = &mut *ref_box {
+                        if let super::types::VmRefData::File(f) = &mut *ref_box {
                             use std::io::Write;
                             if let Err(e) = f.get_mut().flush() {
                                 return Value::Error(format!("Flush error: {}", e).into());

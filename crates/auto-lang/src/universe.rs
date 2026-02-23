@@ -21,8 +21,7 @@ use crate::ast::FnKind;
 use crate::ast::{self, SpecDecl, Type};
 use crate::atom::Atom;
 use crate::libs;
-use crate::vm::collections::{BTreeMapData, HashMapData, HashSetData, VecDequeData};
-use crate::vm::builder::StringBuilderData;
+use crate::vm::types::{BTreeMapData, HashMapData, HashSetData, VecDequeData, StringBuilderData};
 use auto_val::{
     shared, AccessError, AccessPath, Args, AutoStr, ExtFn, Obj, PathComponent, Sig, TypeInfoStore,
     Value, ValueData, ValueID, ValueKey,

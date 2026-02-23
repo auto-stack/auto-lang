@@ -4,7 +4,7 @@
 //! dynamic array similar to Rust's Vec<T> or Python's list.
 
 use super::context::VmContext;
-use crate::universe::{ListData, VmRefData};
+use super::types::{ListData, VmRefData};
 use auto_val::{Instance, Obj, Type, Value};
 
 /// Create a new empty List
@@ -45,10 +45,7 @@ pub fn list_new(ctx: &mut VmContext, initial: Value) -> Value {
                 ld.elems = elems;
                 ld
             };
-            let id = ctx
-                .universe()
-                .borrow_mut()
-                .add_vmref(crate::universe::VmRefData::List(list_data));
+            let id = ctx.add_vmref(super::types::VmRefData::List(list_data));
 
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
@@ -69,8 +66,7 @@ pub fn list_push(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) ->
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let VmRefData::List(list) = &mut *ref_box {
@@ -93,8 +89,7 @@ pub fn list_pop(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) ->
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let VmRefData::List(list) = &mut *ref_box {
@@ -115,8 +110,7 @@ pub fn list_len(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) ->
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let VmRefData::List(list) = &*ref_box {
@@ -137,8 +131,7 @@ pub fn list_is_empty(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let VmRefData::List(list) = &*ref_box {
@@ -160,8 +153,7 @@ pub fn list_capacity(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
                         if let VmRefData::List(list) = &*ref_box {
@@ -182,8 +174,7 @@ pub fn list_clear(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) 
             if ref_name == "List" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let VmRefData::List(list) = &mut *ref_box {
@@ -206,8 +197,7 @@ pub fn list_reserve(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>)
                     if let Value::Int(cap_value) = cap {
                         let id = inst.fields.get("id");
                         if let Some(Value::USize(id)) = id {
-                            let uni = ctx.universe(); let uni_ref = uni.borrow();
-                            let b = uni_ref.get_vmref_ref(id);
+                            let b = ctx.get_vmref(id);
                             if let Some(b) = b {
                                 let mut ref_box = b.borrow_mut();
                                 if let VmRefData::List(list) = &mut *ref_box {
@@ -232,8 +222,7 @@ pub fn list_get(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> 
                     if let Value::Int(idx_value) = idx {
                         let id = inst.fields.get("id");
                         if let Some(Value::USize(id)) = id {
-                            let uni = ctx.universe(); let uni_ref = uni.borrow();
-                            let b = uni_ref.get_vmref_ref(id);
+                            let b = ctx.get_vmref(id);
                             if let Some(b) = b {
                                 let ref_box = b.borrow();
                                 if let VmRefData::List(list) = &*ref_box {
@@ -262,8 +251,7 @@ pub fn list_set(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> 
                         let elem = &args[1];
                         let id = inst.fields.get("id");
                         if let Some(Value::USize(id)) = id {
-                            let uni = ctx.universe(); let uni_ref = uni.borrow();
-                            let b = uni_ref.get_vmref_ref(id);
+                            let b = ctx.get_vmref(id);
                             if let Some(b) = b {
                                 let mut ref_box = b.borrow_mut();
                                 if let VmRefData::List(list) = &mut *ref_box {
@@ -290,8 +278,7 @@ pub fn list_insert(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) 
                         let elem = &args[1];
                         let id = inst.fields.get("id");
                         if let Some(Value::USize(id)) = id {
-                            let uni = ctx.universe(); let uni_ref = uni.borrow();
-                            let b = uni_ref.get_vmref_ref(id);
+                            let b = ctx.get_vmref(id);
                             if let Some(b) = b {
                                 let mut ref_box = b.borrow_mut();
                                 if let VmRefData::List(list) = &mut *ref_box {
@@ -316,8 +303,7 @@ pub fn list_remove(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) 
                     if let Value::Int(idx_value) = idx {
                         let id = inst.fields.get("id");
                         if let Some(Value::USize(id)) = id {
-                            let uni = ctx.universe(); let uni_ref = uni.borrow();
-                            let b = uni_ref.get_vmref_ref(id);
+                            let b = ctx.get_vmref(id);
                             if let Some(b) = b {
                                 let mut ref_box = b.borrow_mut();
                                 if let VmRefData::List(list) = &mut *ref_box {
@@ -402,8 +388,7 @@ pub fn list_iter_next(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Valu
                     _ => (0, 0),
                 };
 
-                let uni = ctx.universe(); let uni_ref = uni.borrow();
-                let b = uni_ref.get_vmref_ref(list_id);
+                let b = ctx.get_vmref(list_id);
                 if let Some(b) = b {
                     let mut ref_box = b.borrow_mut();
                     if let VmRefData::List(list) = &mut *ref_box {
@@ -509,8 +494,7 @@ pub fn map_iter_next(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value
                 // Check if there's a predicate (from FilterIter)
                 let has_predicate = predicate.is_some() && !predicate.as_ref().unwrap().is_nil();
 
-                let uni = ctx.universe(); let uni_ref = uni.borrow();
-                let b = uni_ref.get_vmref_ref(list_id);
+                let b = ctx.get_vmref(list_id);
                 if let Some(b) = b {
                     let mut ref_box = b.borrow_mut();
                     if let VmRefData::List(list) = &mut *ref_box {
@@ -679,8 +663,7 @@ pub fn filter_iter_next(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Va
 
                 // Loop through elements until we find a match or exhaust the list
                 loop {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(list_id);
+                    let b = ctx.get_vmref(list_id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
                         if let VmRefData::List(list) = &mut *ref_box {
@@ -796,8 +779,7 @@ pub fn list_iter_reduce(ctx: &mut VmContext, instance: &mut Value, args: Vec<Val
 
             let mut acc = init;
 
-            let uni = ctx.universe(); let uni_ref = uni.borrow();
-            let b = uni_ref.get_vmref_ref(list_id);
+            let b = ctx.get_vmref(list_id);
             if let Some(b) = b {
                 let ref_box = b.borrow();
                 if let VmRefData::List(list) = &*ref_box {
@@ -886,8 +868,7 @@ pub fn list_iter_count(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Val
                 _ => (0, 0),
             };
 
-            let uni = ctx.universe(); let uni_ref = uni.borrow();
-            let b = uni_ref.get_vmref_ref(list_id);
+            let b = ctx.get_vmref(list_id);
             if let Some(b) = b {
                 let ref_box = b.borrow();
                 if let VmRefData::List(list) = &*ref_box {
@@ -949,8 +930,7 @@ pub fn list_iter_for_each(ctx: &mut VmContext, instance: &mut Value, args: Vec<V
 
                 let func = &args[0];
 
-                let uni = ctx.universe(); let uni_ref = uni.borrow();
-                let b = uni_ref.get_vmref_ref(list_id);
+                let b = ctx.get_vmref(list_id);
                 if let Some(b) = b {
                     let ref_box = b.borrow();
                     if let VmRefData::List(list) = &*ref_box {
@@ -1001,8 +981,7 @@ pub fn list_iter_collect(ctx: &mut VmContext, instance: &mut Value, _args: Vec<V
 
             // Collect elements
             {
-                let uni = ctx.universe(); let uni_ref = uni.borrow();
-                let b = uni_ref.get_vmref_ref(list_id);
+                let b = ctx.get_vmref(list_id);
                 if let Some(b) = b {
                     let ref_box = b.borrow();
                     if let VmRefData::List(list) = &*ref_box {
@@ -1017,10 +996,7 @@ pub fn list_iter_collect(ctx: &mut VmContext, instance: &mut Value, _args: Vec<V
             }
 
             // Allocate new list in universe
-            let new_list_id = ctx
-                .universe()
-                .borrow_mut()
-                .add_vmref(VmRefData::List(new_list_data));
+            let new_list_id = ctx.add_vmref(VmRefData::List(new_list_data));
 
             // Create List instance
             let mut fields = auto_val::Obj::new();
@@ -1053,10 +1029,7 @@ pub fn list_iter_collect(ctx: &mut VmContext, instance: &mut Value, _args: Vec<V
         }
 
         // Allocate new list in universe
-        let new_list_id = ctx
-            .universe()
-            .borrow_mut()
-            .add_vmref(VmRefData::List(new_list_data));
+        let new_list_id = ctx.add_vmref(VmRefData::List(new_list_data));
 
         // Create List instance
         let mut fields = auto_val::Obj::new();
@@ -1092,8 +1065,7 @@ pub fn list_iter_any(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>
 
                 let predicate = &args[0];
 
-                let uni = ctx.universe(); let uni_ref = uni.borrow();
-                let b = uni_ref.get_vmref_ref(list_id);
+                let b = ctx.get_vmref(list_id);
                 if let Some(b) = b {
                     let ref_box = b.borrow();
                     if let VmRefData::List(list) = &*ref_box {
@@ -1154,8 +1126,7 @@ pub fn list_iter_all(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>
 
                 let predicate = &args[0];
 
-                let uni = ctx.universe(); let uni_ref = uni.borrow();
-                let b = uni_ref.get_vmref_ref(list_id);
+                let b = ctx.get_vmref(list_id);
                 if let Some(b) = b {
                     let ref_box = b.borrow();
                     if let VmRefData::List(list) = &*ref_box {
@@ -1208,8 +1179,7 @@ pub fn list_iter_find(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value
 
                 let predicate = &args[0];
 
-                let uni = ctx.universe(); let uni_ref = uni.borrow();
-                let b = uni_ref.get_vmref_ref(list_id);
+                let b = ctx.get_vmref(list_id);
                 if let Some(b) = b {
                     let ref_box = b.borrow();
                     if let VmRefData::List(list) = &*ref_box {

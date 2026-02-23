@@ -1,14 +1,11 @@
 use super::context::VmContext;
+use super::types::{StringBuilderData, VmRefData};
 use auto_val::{Instance, Obj, Type, Value};
 
 // ============================================================================
 // StringBuilder Implementation
 // ============================================================================
 
-#[derive(Debug)]
-pub struct StringBuilderData {
-    pub buffer: String,
-}
 
 pub fn string_builder_new(ctx: &mut VmContext, capacity: Value) -> Value {
     let ty = ctx.lookup_type("StringBuilder");
@@ -23,10 +20,7 @@ pub fn string_builder_new(ctx: &mut VmContext, capacity: Value) -> Value {
             let builder_data = StringBuilderData {
                 buffer: String::with_capacity(_cap),
             };
-            let id = ctx
-                .universe()
-                .borrow_mut()
-                .add_vmref(crate::universe::VmRefData::StringBuilder(builder_data));
+            let id = ctx.add_vmref(VmRefData::StringBuilder(builder_data));
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
             Value::Instance(Instance {
@@ -44,11 +38,10 @@ pub fn string_builder_append(ctx: &mut VmContext, instance: &mut Value, args: Ve
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::StringBuilder(builder) = &mut *ref_box {
+                        if let VmRefData::StringBuilder(builder) = &mut *ref_box {
                             if args.len() >= 1 {
                                 let s = args[0].to_astr();
                                 builder.buffer.push_str(s.as_str());
@@ -73,11 +66,10 @@ pub fn string_builder_append_char(
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::StringBuilder(builder) = &mut *ref_box {
+                        if let VmRefData::StringBuilder(builder) = &mut *ref_box {
                             if args.len() >= 1 {
                                 if let Value::Char(c) = args[0] {
                                     builder.buffer.push(c);
@@ -103,11 +95,10 @@ pub fn string_builder_append_int(
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::StringBuilder(builder) = &mut *ref_box {
+                        if let VmRefData::StringBuilder(builder) = &mut *ref_box {
                             if args.len() >= 1 {
                                 let s = args[0].to_astr();
                                 builder.buffer.push_str(s.as_str());
@@ -128,11 +119,10 @@ pub fn string_builder_build(ctx: &mut VmContext, instance: &mut Value, _args: Ve
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::StringBuilder(builder) = &*ref_box {
+                        if let VmRefData::StringBuilder(builder) = &*ref_box {
                             return Value::Str(builder.buffer.clone().into());
                         }
                     }
@@ -149,11 +139,10 @@ pub fn string_builder_clear(ctx: &mut VmContext, instance: &mut Value, _args: Ve
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::StringBuilder(builder) = &mut *ref_box {
+                        if let VmRefData::StringBuilder(builder) = &mut *ref_box {
                             builder.buffer.clear();
                             return Value::Nil;
                         }
@@ -171,11 +160,10 @@ pub fn string_builder_len(ctx: &mut VmContext, instance: &mut Value, _args: Vec<
             if decl == "StringBuilder" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::StringBuilder(builder) = &*ref_box {
+                        if let VmRefData::StringBuilder(builder) = &*ref_box {
                             return Value::Int(builder.buffer.len() as i32);
                         }
                     }

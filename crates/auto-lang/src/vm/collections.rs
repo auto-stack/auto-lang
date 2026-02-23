@@ -213,7 +213,7 @@ pub fn hash_map_new(ctx: &mut VmContext, _capacity: Value) -> Value {
             let map_data = HashMapData {
                 data: StdHashMap::new(),
             };
-            let id = ctx.add_vmref(crate::universe::VmRefData::HashMap(map_data));
+            let id = ctx.add_vmref(super::types::VmRefData::HashMap(map_data));
 
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
@@ -232,13 +232,12 @@ pub fn hash_map_insert_str(ctx: &mut VmContext, instance: &mut Value, args: Vec<
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
 
                         // Safe pattern matching instead of downcasting
-                        if let crate::universe::VmRefData::HashMap(map) = &mut *ref_box {
+                        if let super::types::VmRefData::HashMap(map) = &mut *ref_box {
                             if args.len() >= 2 {
                                 let key = args[0].to_astr().to_string();
                                 let value = args[1].clone();
@@ -265,11 +264,10 @@ pub fn hash_map_get_str(ctx: &mut VmContext, instance: &mut Value, args: Vec<Val
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::HashMap(map) = &*ref_box {
+                        if let super::types::VmRefData::HashMap(map) = &*ref_box {
                             if args.len() >= 1 {
                                 let key = args[0].to_astr().to_string();
                                 return map.data.get(&key).cloned().unwrap_or(Value::Nil);
@@ -294,11 +292,10 @@ pub fn hash_map_contains(ctx: &mut VmContext, instance: &mut Value, args: Vec<Va
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::HashMap(map) = &*ref_box {
+                        if let super::types::VmRefData::HashMap(map) = &*ref_box {
                             if args.len() >= 1 {
                                 let key = args[0].to_astr().to_string();
                                 return (map.data.contains_key(&key)).into();
@@ -318,11 +315,10 @@ pub fn hash_map_remove(ctx: &mut VmContext, instance: &mut Value, args: Vec<Valu
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::HashMap(map) = &mut *ref_box {
+                        if let super::types::VmRefData::HashMap(map) = &mut *ref_box {
                             if args.len() >= 1 {
                                 let key = args[0].to_astr().to_string();
                                 map.data.remove(&key);
@@ -343,11 +339,10 @@ pub fn hash_map_size(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::HashMap(map) = &*ref_box {
+                        if let super::types::VmRefData::HashMap(map) = &*ref_box {
                             return Value::Int(map.data.len() as i32);
                         }
                     }
@@ -364,11 +359,10 @@ pub fn hash_map_clear(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Valu
             if decl == "HashMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::HashMap(map) = &mut *ref_box {
+                        if let super::types::VmRefData::HashMap(map) = &mut *ref_box {
                             map.data.clear();
                             return Value::Nil;
                         }
@@ -436,7 +430,7 @@ pub fn hash_set_new(ctx: &mut VmContext, _arg: Value) -> Value {
             let set_data = HashSetData {
                 data: StdHashMap::new(),
             };
-            let id = ctx.add_vmref(crate::universe::VmRefData::HashSet(set_data));
+            let id = ctx.add_vmref(super::types::VmRefData::HashSet(set_data));
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
             Value::Instance(Instance {
@@ -454,11 +448,10 @@ pub fn hash_set_insert(ctx: &mut VmContext, instance: &mut Value, args: Vec<Valu
             if decl == "HashSet" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::HashSet(set) = &mut *ref_box {
+                        if let super::types::VmRefData::HashSet(set) = &mut *ref_box {
                             if args.len() >= 1 {
                                 let value = args[0].to_astr().to_string();
                                 set.data.insert(value, ());
@@ -479,11 +472,10 @@ pub fn hash_set_contains(ctx: &mut VmContext, instance: &mut Value, args: Vec<Va
             if decl == "HashSet" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::HashSet(set) = &*ref_box {
+                        if let super::types::VmRefData::HashSet(set) = &*ref_box {
                             if args.len() >= 1 {
                                 let value = args[0].to_astr().to_string();
                                 return (set.data.contains_key(&value)).into();
@@ -503,11 +495,10 @@ pub fn hash_set_remove(ctx: &mut VmContext, instance: &mut Value, args: Vec<Valu
             if decl == "HashSet" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::HashSet(set) = &mut *ref_box {
+                        if let super::types::VmRefData::HashSet(set) = &mut *ref_box {
                             if args.len() >= 1 {
                                 let value = args[0].to_astr().to_string();
                                 set.data.remove(&value);
@@ -528,11 +519,10 @@ pub fn hash_set_size(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value
             if decl == "HashSet" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::HashSet(set) = &*ref_box {
+                        if let super::types::VmRefData::HashSet(set) = &*ref_box {
                             return Value::Int(set.data.len() as i32);
                         }
                     }
@@ -549,11 +539,10 @@ pub fn hash_set_clear(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Valu
             if decl == "HashSet" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::HashSet(set) = &mut *ref_box {
+                        if let super::types::VmRefData::HashSet(set) = &mut *ref_box {
                             set.data.clear();
                             return Value::Nil;
                         }
@@ -592,10 +581,7 @@ pub fn vec_deque_new(ctx: &mut VmContext, _arg: Value) -> Value {
             let deque_data = VecDequeData {
                 data: VecDeque::new(),
             };
-            let id = ctx
-                .universe()
-                .borrow_mut()
-                .add_vmref(crate::universe::VmRefData::VecDeque(deque_data));
+            let id = ctx.add_vmref(super::types::VmRefData::VecDeque(deque_data));
 
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
@@ -614,11 +600,10 @@ pub fn vec_deque_push_back(ctx: &mut VmContext, instance: &mut Value, args: Vec<
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::VecDeque(deque) = &mut *ref_box {
+                        if let super::types::VmRefData::VecDeque(deque) = &mut *ref_box {
                             if args.len() >= 1 {
                                 deque.data.push_back(args[0].clone());
                                 return Value::Nil;
@@ -638,11 +623,10 @@ pub fn vec_deque_push_front(ctx: &mut VmContext, instance: &mut Value, args: Vec
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::VecDeque(deque) = &mut *ref_box {
+                        if let super::types::VmRefData::VecDeque(deque) = &mut *ref_box {
                             if args.len() >= 1 {
                                 deque.data.push_front(args[0].clone());
                                 return Value::Nil;
@@ -662,11 +646,10 @@ pub fn vec_deque_pop_back(ctx: &mut VmContext, instance: &mut Value, _args: Vec<
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::VecDeque(deque) = &mut *ref_box {
+                        if let super::types::VmRefData::VecDeque(deque) = &mut *ref_box {
                             return deque.data.pop_back().unwrap_or(Value::Nil);
                         }
                     }
@@ -683,11 +666,10 @@ pub fn vec_deque_pop_front(ctx: &mut VmContext, instance: &mut Value, _args: Vec
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::VecDeque(deque) = &mut *ref_box {
+                        if let super::types::VmRefData::VecDeque(deque) = &mut *ref_box {
                             return deque.data.pop_front().unwrap_or(Value::Nil);
                         }
                     }
@@ -704,11 +686,10 @@ pub fn vec_deque_front(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Val
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::VecDeque(deque) = &*ref_box {
+                        if let super::types::VmRefData::VecDeque(deque) = &*ref_box {
                             return deque.data.front().cloned().unwrap_or(Value::Nil);
                         }
                     }
@@ -725,11 +706,10 @@ pub fn vec_deque_back(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Valu
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::VecDeque(deque) = &*ref_box {
+                        if let super::types::VmRefData::VecDeque(deque) = &*ref_box {
                             return deque.data.back().cloned().unwrap_or(Value::Nil);
                         }
                     }
@@ -746,11 +726,10 @@ pub fn vec_deque_size(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Valu
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::VecDeque(deque) = &*ref_box {
+                        if let super::types::VmRefData::VecDeque(deque) = &*ref_box {
                             return Value::Int(deque.data.len() as i32);
                         }
                     }
@@ -767,11 +746,10 @@ pub fn vec_deque_is_empty(ctx: &mut VmContext, instance: &mut Value, _args: Vec<
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::VecDeque(deque) = &*ref_box {
+                        if let super::types::VmRefData::VecDeque(deque) = &*ref_box {
                             return deque.data.is_empty().into();
                         }
                     }
@@ -788,11 +766,10 @@ pub fn vec_deque_clear(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Val
             if decl == "VecDeque" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::VecDeque(deque) = &mut *ref_box {
+                        if let super::types::VmRefData::VecDeque(deque) = &mut *ref_box {
                             deque.data.clear();
                             return Value::Nil;
                         }
@@ -831,10 +808,7 @@ pub fn btree_map_new(ctx: &mut VmContext, _arg: Value) -> Value {
             let map_data = BTreeMapData {
                 data: BTreeMap::new(),
             };
-            let id = ctx
-                .universe()
-                .borrow_mut()
-                .add_vmref(crate::universe::VmRefData::BTreeMap(map_data));
+            let id = ctx.add_vmref(super::types::VmRefData::BTreeMap(map_data));
 
             let mut fields = Obj::new();
             fields.set("id", Value::USize(id));
@@ -853,11 +827,10 @@ pub fn btree_map_insert(ctx: &mut VmContext, instance: &mut Value, args: Vec<Val
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::BTreeMap(map) = &mut *ref_box {
+                        if let super::types::VmRefData::BTreeMap(map) = &mut *ref_box {
                             if args.len() >= 2 {
                                 let key = args[0].to_astr().to_string();
                                 let value = args[1].clone();
@@ -879,11 +852,10 @@ pub fn btree_map_get(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::BTreeMap(map) = &*ref_box {
+                        if let super::types::VmRefData::BTreeMap(map) = &*ref_box {
                             if args.len() >= 1 {
                                 let key = args[0].to_astr().to_string();
                                 return map.data.get(&key).cloned().unwrap_or(Value::Nil);
@@ -903,11 +875,10 @@ pub fn btree_map_contains(ctx: &mut VmContext, instance: &mut Value, args: Vec<V
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::BTreeMap(map) = &*ref_box {
+                        if let super::types::VmRefData::BTreeMap(map) = &*ref_box {
                             if args.len() >= 1 {
                                 let key = args[0].to_astr().to_string();
                                 return (map.data.contains_key(&key)).into();
@@ -927,11 +898,10 @@ pub fn btree_map_remove(ctx: &mut VmContext, instance: &mut Value, args: Vec<Val
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::BTreeMap(map) = &mut *ref_box {
+                        if let super::types::VmRefData::BTreeMap(map) = &mut *ref_box {
                             if args.len() >= 1 {
                                 let key = args[0].to_astr().to_string();
                                 map.data.remove(&key);
@@ -952,11 +922,10 @@ pub fn btree_map_size(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Valu
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::BTreeMap(map) = &*ref_box {
+                        if let super::types::VmRefData::BTreeMap(map) = &*ref_box {
                             return Value::Int(map.data.len() as i32);
                         }
                     }
@@ -973,11 +942,10 @@ pub fn btree_map_is_empty(ctx: &mut VmContext, instance: &mut Value, _args: Vec<
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::BTreeMap(map) = &*ref_box {
+                        if let super::types::VmRefData::BTreeMap(map) = &*ref_box {
                             return map.data.is_empty().into();
                         }
                     }
@@ -994,11 +962,10 @@ pub fn btree_map_clear(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Val
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let mut ref_box = b.borrow_mut();
-                        if let crate::universe::VmRefData::BTreeMap(map) = &mut *ref_box {
+                        if let super::types::VmRefData::BTreeMap(map) = &mut *ref_box {
                             map.data.clear();
                             return Value::Nil;
                         }
@@ -1016,11 +983,10 @@ pub fn btree_map_first_key(ctx: &mut VmContext, instance: &mut Value, _args: Vec
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::BTreeMap(map) = &*ref_box {
+                        if let super::types::VmRefData::BTreeMap(map) = &*ref_box {
                             if let Some(key) = map.data.keys().next() {
                                 return Value::Str(key.clone().into());
                             }
@@ -1039,11 +1005,10 @@ pub fn btree_map_last_key(ctx: &mut VmContext, instance: &mut Value, _args: Vec<
             if decl == "BTreeMap" {
                 let id = inst.fields.get("id");
                 if let Some(Value::USize(id)) = id {
-                    let uni = ctx.universe(); let uni_ref = uni.borrow();
-                    let b = uni_ref.get_vmref_ref(id);
+                    let b = ctx.get_vmref(id);
                     if let Some(b) = b {
                         let ref_box = b.borrow();
-                        if let crate::universe::VmRefData::BTreeMap(map) = &*ref_box {
+                        if let super::types::VmRefData::BTreeMap(map) = &*ref_box {
                             if let Some(key) = map.data.keys().next_back() {
                                 return Value::Str(key.clone().into());
                             }
