@@ -16,7 +16,7 @@ use crate::indexer::Indexer;
 use crate::parser::Parser;
 use crate::scope::{Sid, SID_PATH_GLOBAL};
 use crate::types::TypeStore;
-use crate::universe::SymbolLocation;
+use crate::symbols::SymbolLocation;
 use crate::use_scanner::{scan_use_statements, UseStatement};
 use auto_val::AutoStr;
 use std::rc::Rc;
@@ -240,7 +240,7 @@ impl CompileSession {
 
         // 使用 Parser 解析源码
         let scope = Rc::new(RefCell::new(crate::universe::Universe::new()));
-        let mut parser = Parser::new(source, scope.clone());
+        let mut parser = Parser::from(source);
         let ast = parser.parse()
             .map_err(|e| crate::error::attach_source(e, path.to_string(), source.to_string()))?;
 
@@ -307,7 +307,7 @@ impl CompileSession {
         // Parse source code to AST
         // Note: Phase 1.2 will make parser pure, but for now we use existing parser
         let scope = Rc::new(RefCell::new(crate::universe::Universe::new()));
-        let mut parser = Parser::new(source, scope.clone());
+        let mut parser = Parser::from(source);
         let ast = parser.parse()
             .map_err(|e| crate::error::attach_source(e, path.to_string(), source.to_string()))?;
 

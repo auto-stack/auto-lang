@@ -7,7 +7,8 @@ use crate::parser_helpers::{LambdaIdGenerator, ModuleTracker};
 use crate::scope::Meta;
 use crate::token::{Pos, Token, TokenKind};
 use crate::types;
-use crate::universe::{SymbolLocation, Universe};
+use crate::symbols::SymbolLocation;
+use crate::scope_manager::ScopeManager;
 use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::{shared, Shared};
@@ -156,7 +157,7 @@ pub enum CompileDest {
 }
 
 pub struct Parser<'a> {
-    pub scope: Shared<Universe>,
+    pub scope: ScopeManager,
     /// Plan 091: Optional Database for incremental compilation
     /// When set, Database methods are used instead of Universe methods
     pub db: Option<Arc<RwLock<Database>>>,
@@ -189,23 +190,18 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    /// Create parser with automatic Universe (for simple cases)
-    ///
-    /// Plan 091: Universe is created internally but not actively used.
+    /// Create parser (no Universe needed)
     /// Prefer this for new code.
     pub fn from(code: &'a str) -> Self {
-        Self::new(code, shared(Universe::new()))
+        Self::new(code)
     }
 
-    /// Create parser with explicit Universe scope
-    ///
-    /// Plan 091 DEPRECATED: Universe is no longer actively used by Parser.
-    /// Use `from()` for new code.
-    pub fn new(code: &'a str, scope: Shared<Universe>) -> Self {
+    /// Create parser
+    pub fn new(code: &'a str) -> Self {
         let mut lexer = Lexer::new(code);
         let cur = lexer.next().expect("lexer should produce first token");
         let mut parser = Parser {
-            scope,
+            scope: ScopeManager::new(),
             db: None, // Plan 091: Optional Database
             lexer,
             cur,
@@ -260,12 +256,12 @@ impl<'a> Parser<'a> {
         self.special_blocks.insert(block, parser);
     }
 
-    pub fn new_with_note(code: &'a str, scope: Shared<Universe>, note: char) -> Self {
+    pub fn new_with_note(code: &'a str, note: char) -> Self {
         let mut lexer = Lexer::new(code);
         lexer.set_fstr_note(note);
         let cur = lexer.next().expect("lexer should produce first token");
         let mut parser = Parser {
-            scope,
+            scope: ScopeManager::new(),
             db: None, // Plan 091: Optional Database
             lexer,
             cur,
@@ -299,13 +295,12 @@ impl<'a> Parser<'a> {
     /// Create a new parser with a pre-lexed first token
     pub fn new_with_note_and_first_token(
         _code: &'a str,
-        scope: Shared<Universe>,
         _note: char,
         first_token: Token,
         lexer: Lexer<'a>,
     ) -> Self {
         let mut parser = Parser {
-            scope,
+            scope: ScopeManager::new(),
             db: None, // Plan 091: Optional Database
             lexer,
             cur: first_token,
@@ -5539,7 +5534,6 @@ impl<'a> Parser<'a> {
                 // Plan 058: Check if this is a type alias
                 let type_alias = self
                     .scope
-                    .borrow()
                     .lookup_type_alias(name.as_str())
                     .map(|(params, target)| (params.clone(), target.clone()));
 
@@ -5679,7 +5673,6 @@ impl<'a> Parser<'a> {
                 // Get default storage from environment
                 let default_storage = self
                     .scope
-                    .borrow()
                     .get_env_val("DEFAULT_STORAGE")
                     .unwrap_or_else(|| "Heap".into()); // Fallback to Heap for PC
 
@@ -7255,8 +7248,7 @@ exe hello {
     #[test]
     fn test_fstr_with_note() {
         let code = r#"`hello #{2 + 1} again`"#;
-        let scope = shared(Universe::new());
-        let mut parser = Parser::new_with_note(code, scope, '#');
+        let mut parser = Parser::new_with_note(code, '#');
         let ast = parser.parse().unwrap();
         assert_eq!(
             ast.to_string(),

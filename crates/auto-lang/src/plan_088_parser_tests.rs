@@ -18,7 +18,7 @@ mod plan_088_parser_tests {
 
         let scope = Rc::new(RefCell::new(Universe::new()));
         let full_source = format!("{})", source);  // Add closing parenthesis
-        let mut parser = Parser::new(&full_source, scope);
+        let mut parser = Parser::from(&full_source);
         parser.fn_params().unwrap()
     }
 

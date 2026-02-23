@@ -47,6 +47,8 @@ pub mod typeck;
 pub mod resolver;
 pub mod runtime;
 pub mod scope;
+pub mod scope_manager;
+pub mod symbols;
 pub mod target;
 pub mod token;
 pub mod trait_checker;
@@ -76,7 +78,8 @@ pub use interpreter::AutoInterpreter;
 
 use crate::compile::CompileSession;
 use crate::trans::c::CTrans;
-pub use crate::universe::{SymbolLocation, Universe};
+pub use crate::symbols::SymbolLocation;
+pub use crate::universe::Universe;
 use crate::{trans::Sink, trans::Trans};
 use auto_val::{AutoPath, Obj, Shared, Value};
 use std::cell::RefCell;
@@ -389,7 +392,7 @@ pub fn run_with_session_and_scope(
 
 pub fn parse(code: &str) -> AutoResult<ast::Code> {
     let scope = Rc::new(RefCell::new(Universe::new()));
-    let mut parser = Parser::new(code, scope.clone());
+    let mut parser = Parser::from(code);
     parser.parse().map_err(|e| e.to_string().into())
 }
 
@@ -397,12 +400,12 @@ pub fn parse(code: &str) -> AutoResult<ast::Code> {
 /// This is used by the LSP to get detailed error information
 pub fn parse_preserve_error(code: &str) -> Result<ast::Code, error::AutoError> {
     let scope = Rc::new(RefCell::new(Universe::new()));
-    let mut parser = Parser::new(code, scope.clone());
+    let mut parser = Parser::from(code);
     parser.parse()
 }
 
 pub fn parse_with_scope(code: &str, scope: Rc<RefCell<Universe>>) -> AutoResult<ast::Code> {
-    let mut parser = Parser::new(code, scope.clone());
+    let mut parser = Parser::from(code);
     parser.parse().map_err(|e| e.to_string().into())
 }
 
@@ -565,11 +568,11 @@ pub fn trans_c_legacy(path: &str) -> AutoResult<String> {
     let fname = AutoPath::new(path).filename();
 
     let scope = Rc::new(RefCell::new(Universe::new()));
-    let mut parser = Parser::new(code.as_str(), scope);
+    let mut parser = Parser::from(code.as_str());
     let ast = parser.parse()?;
     let mut sink = Sink::new(fname);
     let mut trans = CTrans::new(cname.clone().into());
-    trans.set_scope(parser.scope.clone());
+    // Plan 091: set_scope removed
     trans.trans(ast, &mut sink)?;
 
     // convert sink to .c/.h files
@@ -595,12 +598,12 @@ pub fn trans_rust_legacy(path: &str) -> AutoResult<String> {
     let fname = AutoPath::new(path).filename();
 
     let scope = Rc::new(RefCell::new(Universe::new()));
-    let mut parser = Parser::new(code.as_str(), scope);
+    let mut parser = Parser::from(code.as_str());
     parser.set_dest(crate::parser::CompileDest::TransRust);
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut sink = Sink::new(fname.clone());
     let mut trans = crate::trans::rust::RustTrans::new(fname);
-    trans.set_scope(parser.scope.clone());
+    // Plan 091: set_scope removed
     trans.trans(ast, &mut sink)?;
 
     // Write Rust file
@@ -760,7 +763,7 @@ pub fn trans_python(path: &str) -> AutoResult<String> {
 
     // Plan 091: PythonTrans no longer needs Universe, but Parser still requires it
     let scope = Rc::new(RefCell::new(Universe::new()));
-    let mut parser = Parser::new(code.as_str(), scope);
+    let mut parser = Parser::from(code.as_str());
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut sink = Sink::new(fname.clone());
     let mut trans = crate::trans::python::PythonTrans::new(fname);
@@ -784,7 +787,7 @@ pub fn trans_javascript(path: &str) -> AutoResult<String> {
 
     // Plan 091: JavaScriptTrans no longer needs Universe, but Parser still requires it
     let scope = Rc::new(RefCell::new(Universe::new()));
-    let mut parser = Parser::new(code.as_str(), scope);
+    let mut parser = Parser::from(code.as_str());
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut sink = Sink::new(fname.clone());
     let mut trans = crate::trans::javascript::JavaScriptTrans::new(fname);

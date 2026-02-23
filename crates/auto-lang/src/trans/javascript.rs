@@ -645,7 +645,7 @@ mod tests {
 
         // Plan 091: JavaScriptTrans no longer needs Universe, but Parser still requires it
         let scope = shared(Universe::new());
-        let mut parser = Parser::new(src.as_str(), scope);
+        let mut parser = Parser::from(src.as_str());
         let ast = parser.parse()?;
         let mut sink = Sink::new(name.into());
         let mut trans = JavaScriptTrans::new(name.into());

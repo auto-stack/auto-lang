@@ -2764,25 +2764,24 @@ impl Trans for RustTrans {
 pub fn transpile_rust(
     name: impl Into<AutoStr>,
     code: &str,
-) -> AutoResult<(Sink, Shared<Universe>)> {
+) -> AutoResult<Sink> {
     let name = name.into();
     let scope = shared(crate::universe::Universe::default());
-    let mut parser = Parser::new(code, scope);
+    let mut parser = Parser::from(code);
     parser.set_dest(crate::parser::CompileDest::TransRust);
     let ast = parser.parse().map_err(|e| e.to_string())?;
 
     let mut out = Sink::new(name.clone());
     let mut transpiler = RustTrans::new(name);
-    transpiler.scope = Some(parser.scope.clone());
     transpiler.trans(ast, &mut out)?;
 
-    Ok((out, parser.scope.clone()))
+    Ok(out)
 }
 
 /// Transpile code fragment for testing
 pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     let scope = shared(crate::universe::Universe::default());
-    let mut parser = Parser::new(code, scope);
+    let mut parser = Parser::from(code);
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut out = Sink::new(AutoStr::from(""));
     let mut transpiler = RustTrans::new("part".into());
@@ -2815,7 +2814,7 @@ mod tests {
             read_to_string(exp_path.as_path())?
         };
 
-        let (mut rcode, _) = transpile_rust(&name, &src)?;
+        let mut rcode = transpile_rust(&name, &src)?;
         let rs_code = rcode.done()?;
 
         if rs_code != expected.as_bytes() {

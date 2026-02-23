@@ -16,7 +16,7 @@
 
 use crate::ast::{Fn, Type};
 use crate::scope::{Scope, Sid, SID_PATH_GLOBAL, SymbolTable};
-use crate::universe::{CodePak, SymbolLocation};
+use crate::symbols::{CodePak, SymbolLocation};
 use auto_val::{AutoStr, TypeInfoStore};
 use dashmap::DashMap;
 use std::collections::HashMap;

@@ -74,7 +74,7 @@ fn test_c_var_assign() {
 #[test]
 fn test_c_return_42() {
     let code = r#"42"#;
-    let (mut sink, _) = transpile_c("test", code).unwrap();
+    let mut sink = transpile_c("test", code).unwrap();
     let expected = r#"int main(void) {
     return 42;
 }
@@ -87,7 +87,7 @@ fn test_c_return_42() {
 fn test_math() {
     let code = r#"fn add(x int, y int) int { x+y }
 add(1, 2)"#;
-    let (mut sink, _) = transpile_c("test", code).unwrap();
+    let mut sink = transpile_c("test", code).unwrap();
     let expected = r#"#include "test.h"
 
 int add(int x, int y) {
@@ -174,7 +174,7 @@ fn test_a2c(case: &str) -> AutoResult<()> {
             read_to_string(exph_path.as_path())?
         };
 
-        let (mut ccode, _) = transpile_c(name, &src)?;
+        let mut ccode = transpile_c(name, &src)?;
 
         let src = ccode.done()?;
 

@@ -4043,7 +4043,7 @@ impl Trans for CTrans {
 pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     let mut transpiler = CTrans::new("part".into());
     let scope = Rc::new(RefCell::new(Universe::new()));
-    let mut parser = Parser::new(code, scope);
+    let mut parser = Parser::from(code);
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut out = Sink::new(AutoStr::from(""));
     transpiler.code(ast, &mut out)?;
@@ -4057,10 +4057,10 @@ pub struct CCode {
 }
 
 // Transpile the code into a whole C program
-pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Shared<Universe>)> {
+pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> {
     let name = name.into();
     let scope = Rc::new(RefCell::new(Universe::new()));
-    let mut parser = Parser::new(code, scope);
+    let mut parser = Parser::from(code);
     parser.set_dest(crate::parser::CompileDest::TransC);
     let ast = parser.parse().map_err(|e| {
         // Attach source code to errors for beautiful miette display
@@ -4068,33 +4068,8 @@ pub fn transpile_c(name: impl Into<AutoStr>, code: &str) -> AutoResult<(Sink, Sh
     })?;
     let mut out = Sink::new(name.clone());
     let mut transpiler = CTrans::new(name);
-    transpiler.scope = Some(parser.scope.clone());
     transpiler.trans(ast, &mut out)?;
 
-    let uni = parser.scope.clone();
-    let paks = std::mem::take(&mut parser.scope.borrow_mut().code_paks);
-    // let paks = parser.scope.borrow().code_paks.clone();
-    for (sid, pak) in paks.iter() {
-        let name = sid.name();
-        let mut out = Sink::new(name.clone());
-        let mut transpiler = CTrans::new(sid.name().into());
-        uni.borrow_mut().set_spot(sid.clone());
-        transpiler.scope = Some(uni.clone());
-        transpiler.trans(pak.ast.clone(), &mut out)?;
-
-        let src = out.done()?.clone();
-
-        let str = String::from_utf8(src).unwrap();
-        let file = pak.file.replace(".at", ".c");
-        std::fs::write(Path::new(file.as_str()), str)?;
-
-        let header = out.header;
-        if header.is_empty() {
-            continue;
-        }
-        let header_file = &pak.header;
-        std::fs::write(Path::new(header_file.as_str()), header)?;
-    }
-    parser.scope.borrow_mut().code_paks = paks;
-    Ok((out, parser.scope.clone()))
+    // Plan 091: code_paks temporarily disabled during Universe removal
+    Ok(out)
 }

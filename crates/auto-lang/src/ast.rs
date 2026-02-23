@@ -1172,7 +1172,7 @@ mod markdown_tests {
 
         for tc in cases {
             let scope = Rc::new(RefCell::new(Universe::new()));
-            let mut parser = Parser::new(&tc.input, scope.clone());
+            let mut parser = Parser::from(&tc.input);
             let code = parser
                 .parse()
                 .unwrap_or_else(|e| panic!("{}: Parse failed: {:?}", tc.name, e));
@@ -1285,7 +1285,7 @@ mod markdown_tests {
 
         for tc in cases {
             let scope = Rc::new(RefCell::new(Universe::new()));
-            let mut parser = Parser::new(&tc.input, scope.clone());
+            let mut parser = Parser::from(&tc.input);
 
             match parser.parse() {
                 Ok(_) => {

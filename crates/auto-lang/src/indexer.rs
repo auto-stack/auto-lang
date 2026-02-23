@@ -20,7 +20,7 @@ use crate::error::{AutoError, AutoResult};
 use crate::hash::FragmentHasher;
 use crate::parser::Parser;
 use crate::scope::{Sid, SID_PATH_GLOBAL};
-use crate::universe::SymbolLocation;
+use crate::symbols::SymbolLocation;
 use auto_val::AutoStr;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -440,7 +440,7 @@ impl<'db> Indexer<'db> {
 
         // Re-parse the source code
         let scope = Rc::new(std::cell::RefCell::new(crate::universe::Universe::new()));
-        let mut parser = Parser::new(new_code, scope.clone());
+        let mut parser = Parser::from(new_code);
         let ast = parser.parse()
             .map_err(|e| AutoError::Msg(format!("Parse error during re-indexing: {}", e)))?;
 
