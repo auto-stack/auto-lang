@@ -391,3 +391,167 @@ pub fn run(code: &str) -> AutoResult<String>  // 内部创建临时 session
 - [Plan 084: Unified TypeStore](./084-unified-type-context.md)
 - [Plan 085: Auto-use with AIE + AutoCache](./085-auto-use.md)
 - [Plan 090: Remove Universe from Parser](./090-remove-universe-from-parser.md)
+
+## 2026-02-24 更新: universe.rs 已删除
+
+### 完成状态
+
+| Phase | 状态 | 说明 |
+|-------|------|------|
+| Phase 1 | ✅ | 移除公开 Universe API |
+| Phase 2 | ✅ | 转译器迁移 |
+| Phase 3 | ✅ | Parser 使用 ScopeManager |
+| Phase 4 | ✅ | 删除 eval.rs/interp.rs |
+| Phase 5 | ✅ | config.rs 迁移 |
+| Phase 6 | ✅ | **删除 universe.rs** |
+
+### 提交记录
+
+| 提交 | 描述 |
+|------|------|
+| `77aedb0` | 恢复 HeapObject 实现和 ListData 方法 |
+| `a60d012` | 更新 vm_tests.rs |
+| `0afa9f5` | 删除 universe.rs |
+| `3e17383` | Parser 使用 ScopeManager |
+| `119b248` | 创建 vm/types.rs |
+
+### 新架构
+
+```
+vm/types.rs
+├── VmRefData (enum)
+├── ListData<T>
+│   ├── HeapObject implementations
+│   └── methods: get_storage, can_grow, max_capacity, try_grow
+├── StringBuilderData
+├── ObjectData
+└── Clone, PartialEq for ListData
+
+symbols.rs
+├── SymbolLocation
+└── CodePak
+
+scope_manager.rs
+└── ScopeManager (Parser.scope 类型)
+```
+
+### 删除的代码
+
+| 文件 | 行数 |
+|------|------|
+| eval.rs | ~7,000 |
+| interp.rs | ~1,500 |
+| universe.rs | ~2,000 |
+| repl.rs | ~500 |
+| **总计** | **~11,000** |
+
+---
+
+## 剩余问题 (测试编译)
+
+**Lib 编译**: ✅ 通过  
+**测试编译**: ❌ 49 errors
+
+### 错误分类
+
+| 类别 | 数量 | 文件 | 修复方案 |
+|------|------|------|----------|
+| type annotations | 12 | 多个测试文件 | 添加类型注解 |
+| CTrans.scope | 16 | trans/c.rs | 移除 scope 字段或使用 Database |
+| TypeTag comparison | 5 | listdata_heap_object_tests.rs | 已修复 HeapObject.type_tag() |
+| scope not found | 6 | 多个测试文件 | 使用 ScopeManager |
+| dereference | 7 | 多个测试文件 | 修复测试代码 |
+| Universe type | 3 | 多个测试文件 | 移除 Universe 引用 |
+
+### 修复优先级
+
+#### P0 - 阻塞测试编译
+
+1. **CTrans.scope (16 errors)**
+   - 文件: `trans/c.rs`
+   - 问题: CTrans 仍有 `scope: Shared<Universe>` 字段
+   - 方案: 
+     - 选项A: 移除 scope 字段，使用 Database
+     - 选项B: 改为 `scope: Option<ScopeManager>`
+
+2. **scope not found (6 errors)**
+   - 文件: `trans/c.rs`, 测试文件
+   - 问题: 代码中引用 `scope` 变量但未定义
+   - 方案: 使用 `ScopeManager::new()` 或移除相关代码
+
+#### P1 - 类型问题
+
+3. **type annotations (12 errors)**
+   - 文件: 多个
+   - 问题: 编译器无法推断类型
+   - 方案: 添加显式类型注解
+
+4. **dereference (7 errors)**
+   - 文件: 测试文件
+   - 问题: 对基本类型解引用
+   - 方案: 修复测试代码
+
+#### P2 - 清理
+
+5. **Universe type (3 errors)**
+   - 文件: `scope.rs`, 测试文件
+   - 问题: 仍引用 Universe 类型
+   - 方案: 移除或注释掉相关测试
+
+6. **ObjectData.set (2 errors)**
+   - 文件: 测试文件
+   - 问题: ObjectData 没有 set 方法
+   - 方案: 添加 `set()` 方法到 ObjectData
+
+---
+
+## 下次继续
+
+### 步骤 1: 修复 CTrans.scope
+
+```rust
+// trans/c.rs
+// 移除:
+scope: Option<Shared<Universe>>,
+
+// 改为:
+// scope removed - use Database instead
+```
+
+### 步骤 2: 修复测试文件
+
+```rust
+// 移除 Universe import
+// use crate::universe::Universe;
+
+// 使用 ScopeManager
+let scope = ScopeManager::new();
+```
+
+### 步骤 3: 添加 ObjectData.set
+
+```rust
+// vm/types.rs
+impl ObjectData {
+    pub fn set(&mut self, key: ValueKey, value: Value) {
+        self.fields.insert(key, value);
+    }
+}
+```
+
+### 步骤 4: 运行测试
+
+```bash
+cargo test -p auto-lang --lib
+```
+
+---
+
+## 成功标准 (更新)
+
+- [x] eval.rs 和 interp.rs 已删除
+- [x] Parser 使用 ScopeManager
+- [x] universe.rs 已删除
+- [x] Lib 编译通过
+- [ ] 测试编译通过 (49 errors)
+- [ ] 所有测试通过
