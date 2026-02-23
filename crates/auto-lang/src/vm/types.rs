@@ -170,3 +170,92 @@ pub enum VmRefData {
     List(ListData),
     Object(ObjectData),
 }
+
+
+impl<T: Clone> ListData<T> {
+    pub fn get_storage(&self) -> ListStorage {
+        self.storage.unwrap_or(ListStorage::Heap)
+    }
+
+    pub fn can_grow(&self) -> bool {
+        match self.get_storage() {
+            ListStorage::Heap => true,
+            ListStorage::InlineInt64 => false,
+        }
+    }
+
+    pub fn max_capacity(&self) -> Option<usize> {
+        match self.get_storage() {
+            ListStorage::Heap => None,
+            ListStorage::InlineInt64 => Some(64),
+        }
+    }
+
+    pub fn try_grow(&mut self, min_cap: usize) -> bool {
+        match self.get_storage() {
+            ListStorage::Heap => {
+                let new_cap = if self.elems.capacity() == 0 {
+                    std::cmp::max(8, min_cap)
+                } else {
+                    std::cmp::max(self.elems.capacity() * 2, min_cap)
+                };
+                self.elems.reserve(new_cap - self.elems.len());
+                true
+            }
+            ListStorage::InlineInt64 => min_cap <= 64,
+        }
+    }
+
+}
+
+impl<T: Clone> Clone for ListData<T> {
+    fn clone(&self) -> Self {
+        Self {
+            elems: self.elems.clone(),
+            storage: self.storage,
+        }
+    }
+}
+
+impl<T: PartialEq> PartialEq for ListData<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.elems == other.elems && self.storage == other.storage
+    }
+}
+
+// ============================================================================
+// HeapObject implementations (moved from universe.rs)
+// ============================================================================
+
+use crate::vm::heap_object::{HeapObject, TypeTag};
+use std::any::Any;
+
+impl HeapObject for ListData<i32> {
+    fn type_tag(&self) -> TypeTag { TypeTag::ListInt }
+    fn as_any(&self) -> &dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+}
+
+impl HeapObject for ListData<char> {
+    fn type_tag(&self) -> TypeTag { TypeTag::ListChar }
+    fn as_any(&self) -> &dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+}
+
+impl HeapObject for ListData<bool> {
+    fn type_tag(&self) -> TypeTag { TypeTag::ListBool }
+    fn as_any(&self) -> &dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+}
+
+impl HeapObject for ListData<std::string::String> {
+    fn type_tag(&self) -> TypeTag { TypeTag::ListString }
+    fn as_any(&self) -> &dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+}
+
+impl HeapObject for ListData<auto_val::Value> {
+    fn type_tag(&self) -> TypeTag { TypeTag::ListValue }
+    fn as_any(&self) -> &dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+}
