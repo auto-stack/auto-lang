@@ -259,8 +259,8 @@ impl InferenceContext {
             return Some(Rc::new(Meta::Store(Store {
                 name: crate::ast::Name::from(name),
                 ty,
-                // Store kind 默认为 Let（保守假设）
-                kind: StoreKind::Let,
+                // Store kind: 默认为 Var（Plan 091: 修复 var 赋值检查）
+                kind: StoreKind::Var,
                 // expr 使用默认值（空表达式）
                 expr: crate::ast::Expr::Nil,
             })));

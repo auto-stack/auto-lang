@@ -489,9 +489,13 @@ impl Codegen {
                 let name_str = store.name.to_string();
                 let scope = self.scope_stack.last_mut().expect("Scope stack should never be empty");
 
-                // Check if this is a reassignment (variable already exists in current scope)
-                if scope.contains_key(&name_str) {
-                    // This is a reassignment - check if variable is immutable
+                // Plan 091: Check if this is a new declaration or reassignment
+                // New declaration (let/var) allows shadowing
+                // Only assignment expressions should check immutability
+                let is_new_declaration = matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Var | crate::ast::StoreKind::CVar);
+                
+                if !is_new_declaration && scope.contains_key(&name_str) {
+                    // This is a reassignment (not a new declaration) - check if variable is immutable
                     if let Some(&is_mutable) = self.var_mutability.get(&name_str) {
                         if !is_mutable {
                             // Variable was declared with 'let' (immutable) - reject reassignment
@@ -502,7 +506,9 @@ impl Codegen {
                         }
                         // Variable is mutable - allow reassignment
                     }
-                } else {
+                }
+                
+                if is_new_declaration || !scope.contains_key(&name_str) {
                     // First-time declaration - track mutability based on StoreKind
                     let is_mutable = matches!(store.kind, crate::ast::StoreKind::Var | crate::ast::StoreKind::CVar);
                     self.var_mutability.insert(name_str.clone(), is_mutable);
