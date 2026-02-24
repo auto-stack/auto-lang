@@ -930,10 +930,11 @@ impl AutoVM {
                         if is_generic_instance {
                             if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
                                 if let Some(value) = instance.get_field(field_index) {
-                                    // Push field value onto stack using helper
+                                    // Pop instance_id (we already read it)
+                                    let _ = task.ram.pop_i32();
+                                    // Push field value onto stack
                                     Self::push_value(&mut task.ram, value, &self.strings);
                                     eprintln!("DEBUG: GET_GENERIC_FIELD: field value = {:?}", value);
-                                    // instance_id remains on stack below field value, DO NOT restore it here
                                 } else {
                                     return Err(VMError::RuntimeError(format!(
                                         "Field index {} out of bounds (instance has {} fields)",

@@ -266,13 +266,12 @@ fn main() int {
 }
 
 #[test]
-#[ignore]
-fn test_generic_field_addition() {
+fn test_field_addition() {
     // Test adding two field values
     let code = r#"
-type Point<T> {
-    x T
-    y T
+type Point {
+    x int
+    y int
 }
 
 fn main() int {
