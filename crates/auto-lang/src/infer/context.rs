@@ -28,7 +28,6 @@
 
 use crate::ast::{Fn, Name, SpecDecl, Store, StoreKind, Type};
 use crate::database::Database;
-use crate::scope::{Meta, Sid};
 use crate::error::{AutoError, TypeError, Warning};
 use crate::types;  // Plan 084 Phase 4: TypeStore integration
 use miette::SourceSpan;

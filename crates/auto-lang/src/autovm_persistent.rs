@@ -15,7 +15,6 @@ use crate::vm::task::TaskId;
 use crate::type_registry;
 use crate::vm::virt_memory::VirtualFlash;
 use crate::Parser;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Persistent AutoVM REPL session
@@ -61,7 +60,7 @@ impl AutovmReplSession {
         crate::vm::init_storage_module();
 
         // Create initial Codegen
-        let mut codegen = Codegen::new();
+        let codegen = Codegen::new();
 
         // Start with HALT opcode
         let bytecode = vec![OpCode::HALT as u8];

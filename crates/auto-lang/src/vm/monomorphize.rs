@@ -4,7 +4,6 @@
 use crate::ast::Type;
 use crate::vm::generic::{GenericInstance, GenericTable};
 use crate::vm::opcode::OpCode;
-use std::collections::HashMap;
 
 /// Monomorphization pass result
 /// Contains the specialized bytecode for each generic instantiation

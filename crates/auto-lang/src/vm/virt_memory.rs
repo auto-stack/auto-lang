@@ -23,7 +23,7 @@ impl Word {
     }
 
     pub fn with_f32(val: f32) -> Self {
-        Self { i: unsafe { std::mem::transmute(val) } }
+        Self { i: unsafe { f32::to_bits(val).cast_signed() } }
     }
 }
 
@@ -206,14 +206,14 @@ impl VirtualRAM {
     #[inline(always)]
     pub fn push_f32(&mut self, val: f32) {
         // Use bit transmute to store f32 in i32 slot
-        let bits: i32 = unsafe { std::mem::transmute(val) };
+        let bits: i32 = unsafe { f32::to_bits(val).cast_signed() };
         self.push_i32(bits);
     }
 
     #[inline(always)]
     pub fn pop_f32(&mut self) -> f32 {
         let bits = self.pop_i32();
-        unsafe { std::mem::transmute(bits) }
+        unsafe { f32::from_bits(i32::cast_unsigned(bits)) }
     }
 
     // Plan 073 Stage A: Double (f64) support
@@ -221,7 +221,7 @@ impl VirtualRAM {
     #[inline(always)]
     pub fn push_f64(&mut self, val: f64) {
         // Use bit transmute to split f64 into two i32 slots
-        let bits: u64 = unsafe { std::mem::transmute(val) };
+        let bits: u64 = unsafe { f64::to_bits(val) };
         let low = (bits & 0xFFFFFFFF) as i32;
         let high = ((bits >> 32) & 0xFFFFFFFF) as i32;
         self.push_i32(low);  // Push low part first
@@ -233,7 +233,7 @@ impl VirtualRAM {
         let high = self.pop_i32() as u64;
         let low = self.pop_i32() as u64;
         let bits = (high << 32) | low;
-        unsafe { std::mem::transmute(bits) }
+        unsafe { f64::from_bits(bits) }
     }
 
     // Plan 073 Stage A: Unsigned integer support

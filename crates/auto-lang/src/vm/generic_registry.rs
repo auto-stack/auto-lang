@@ -1,13 +1,13 @@
 // Plan 087 Phase 1: Generic Registry
 // Runtime metadata and instantiation support for user-defined generic types
 
-use crate::ast::{Fn, GenericParam, Member, Name, Type, TypeDecl};
+use crate::ast::{Fn, GenericParam, Name, Type};
 use crate::vm::heap_object::{HeapObject, TypeTag};
-use auto_val::{AutoStr, Value};
+use auto_val::Value;
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 // ============================================================================
 // Core Data Structures
@@ -328,21 +328,21 @@ impl SpecializedPair {
     /// Get field by index (0 = key, 1 = val)
     pub fn get_field(&self, index: usize) -> Option<Value> {
         match (self, index) {
-            (SpecializedPair::IntInt { key, val }, 0) => Some(Value::Int(*key)),
+            (SpecializedPair::IntInt { key, val: _ }, 0) => Some(Value::Int(*key)),
             (SpecializedPair::IntInt { val, .. }, 1) => Some(Value::Int(*val)),
-            (SpecializedPair::IntBool { key, val }, 0) => Some(Value::Int(*key)),
+            (SpecializedPair::IntBool { key, val: _ }, 0) => Some(Value::Int(*key)),
             (SpecializedPair::IntBool { val, .. }, 1) => Some(Value::Bool(*val)),
-            (SpecializedPair::BoolInt { key, val }, 0) => Some(Value::Bool(*key)),
+            (SpecializedPair::BoolInt { key, val: _ }, 0) => Some(Value::Bool(*key)),
             (SpecializedPair::BoolInt { val, .. }, 1) => Some(Value::Int(*val)),
-            (SpecializedPair::IntValue { key, val }, 0) => Some(Value::Int(*key)),
+            (SpecializedPair::IntValue { key, val: _ }, 0) => Some(Value::Int(*key)),
             (SpecializedPair::IntValue { val, .. }, 1) => Some(val.clone()),
-            (SpecializedPair::ValueInt { key, val }, 0) => Some(key.clone()),
+            (SpecializedPair::ValueInt { key, val: _ }, 0) => Some(key.clone()),
             (SpecializedPair::ValueInt { val, .. }, 1) => Some(Value::Int(*val)),
-            (SpecializedPair::BoolValue { key, val }, 0) => Some(Value::Bool(*key)),
+            (SpecializedPair::BoolValue { key, val: _ }, 0) => Some(Value::Bool(*key)),
             (SpecializedPair::BoolValue { val, .. }, 1) => Some(val.clone()),
-            (SpecializedPair::ValueBool { key, val }, 0) => Some(key.clone()),
+            (SpecializedPair::ValueBool { key, val: _ }, 0) => Some(key.clone()),
             (SpecializedPair::ValueBool { val, .. }, 1) => Some(Value::Bool(*val)),
-            (SpecializedPair::Generic { key, val }, 0) => Some(key.clone()),
+            (SpecializedPair::Generic { key, val: _ }, 0) => Some(key.clone()),
             (SpecializedPair::Generic { val, .. }, 1) => Some(val.clone()),
             _ => None,
         }
@@ -693,7 +693,7 @@ impl Default for GenericRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{ArrayType, Body, Fn as AstFn, FnKind, GenericParam, Type, TypeDeclKind, TypeParam};
+    use crate::ast::{ArrayType, Body, Fn as AstFn, FnKind, GenericParam, Type, TypeDecl, TypeDeclKind, TypeParam};
     use auto_val::AutoStr;
     use std::collections::HashMap;
 

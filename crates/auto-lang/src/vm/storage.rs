@@ -1,7 +1,7 @@
 // VM implementation of storage strategies (Plan 052)
 // This module provides VM-level implementations for Heap<T>, Inline<T>, etc.
 
-use auto_val::{Type, Value, Instance, Obj};
+use auto_val::{Value, Instance, Obj};
 use super::context::VmContext;
 
 // ============================================================================
@@ -10,7 +10,7 @@ use super::context::VmContext;
 
 /// Create a new empty Heap storage
 /// Returns an Instance with empty array and 0 capacity
-pub fn heap_new(ctx: &mut VmContext, _args: Value) -> Value {
+pub fn heap_new(_ctx: &mut VmContext, _args: Value) -> Value {
     
 
     // Start with empty array (no allocation yet)
@@ -30,7 +30,7 @@ pub fn heap_new(ctx: &mut VmContext, _args: Value) -> Value {
 
 /// Get the data pointer from Heap storage
 /// Returns the underlying array
-pub fn heap_data(ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn heap_data(_ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Value>) -> Value {
     // Extract .ptr field from the Heap instance (now stores actual array)
     match self_instance {
         Value::Instance(instance) => {
@@ -41,7 +41,7 @@ pub fn heap_data(ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Valu
 }
 
 /// Get the capacity from Heap storage
-pub fn heap_capacity(ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn heap_capacity(_ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Value>) -> Value {
     // Extract .cap field from the Heap instance
     match self_instance {
         Value::Instance(instance) => {
@@ -161,7 +161,7 @@ pub fn heap_drop(ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Valu
 
 /// Create a new InlineInt64 storage (64-element stack-allocated array for integers)
 /// Returns an Instance with buffer=[0]*64
-pub fn inline_int64_new(ctx: &mut VmContext, _args: Value) -> Value {
+pub fn inline_int64_new(_ctx: &mut VmContext, _args: Value) -> Value {
     // Create an InlineInt64 instance with a 64-element buffer initialized to 0
     let mut fields = Obj::new();
 
@@ -179,7 +179,7 @@ pub fn inline_int64_new(ctx: &mut VmContext, _args: Value) -> Value {
 
 /// Get the data pointer from InlineInt64 storage
 /// Returns the buffer field (which is an Array)
-pub fn inline_int64_data(ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn inline_int64_data(_ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Value>) -> Value {
     // Extract .buffer field from the InlineInt64 instance
     match self_instance {
         Value::Instance(instance) => {
@@ -191,13 +191,13 @@ pub fn inline_int64_data(ctx: &mut VmContext, self_instance: &mut Value, _args: 
 }
 
 /// Get the capacity from InlineInt64 storage (always 64)
-pub fn inline_int64_capacity(ctx: &mut VmContext, _self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn inline_int64_capacity(_ctx: &mut VmContext, _self_instance: &mut Value, _args: Vec<Value>) -> Value {
     // InlineInt64 always has capacity 64
     Value::Int(64)
 }
 
 /// Try to grow the InlineInt64 storage (only succeeds if min_cap <= 64)
-pub fn inline_int64_try_grow(ctx: &mut VmContext, _self_instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn inline_int64_try_grow(_ctx: &mut VmContext, _self_instance: &mut Value, args: Vec<Value>) -> Value {
     // Extract min_cap from args[0]
     if args.is_empty() {
         return Value::Error("inline_int64_try_grow requires min_cap argument".into());
@@ -214,7 +214,7 @@ pub fn inline_int64_try_grow(ctx: &mut VmContext, _self_instance: &mut Value, ar
 }
 
 /// Free the InlineInt64 storage (no-op for stack allocation)
-pub fn inline_int64_drop(ctx: &mut VmContext, _self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn inline_int64_drop(_ctx: &mut VmContext, _self_instance: &mut Value, _args: Vec<Value>) -> Value {
     // No-op for stack-allocated storage
     Value::Nil
 }

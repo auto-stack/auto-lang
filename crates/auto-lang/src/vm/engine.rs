@@ -580,7 +580,7 @@ impl AutoVM {
                     let start = task.ram.pop_i32();
 
                     // Create Range value (exclusive)
-                    let range_value = auto_val::Value::Range(start, end);
+                    let _range_value = auto_val::Value::Range(start, end);
 
                     // For now, we need to push a representation of the range onto the stack
                     // Since AutoVM stack only supports i32, we'll encode the range as a special value
@@ -603,7 +603,7 @@ impl AutoVM {
                     let start = task.ram.pop_i32();
 
                     // Create RangeEq value (inclusive)
-                    let range_value = auto_val::Value::RangeEq(start, end);
+                    let _range_value = auto_val::Value::RangeEq(start, end);
 
                     // For now, push start value as placeholder
                     // See CREATE_RANGE note above for proper implementation
@@ -842,7 +842,7 @@ impl AutoVM {
                     // Stack layout: [..., value1, value2, ..., valueN, instance_id, field_count]
                     // Stack after: [..., instance_id]  (instance_id left on stack for variable assignment)
                     use crate::vm::generic_registry::GenericInstanceData;
-                    use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+                    use crate::vm::heap_object::TypeTag;
 
                     eprintln!("DEBUG CONSTRUCT_INSTANCE: Stack depth before pop = {}", task.ram.sp);
 
@@ -1560,7 +1560,7 @@ impl AutoVM {
 
                     // Pop captured values from stack and build environment
                     let mut env = HashMap::new();
-                    for i in 0..capture_count {
+                    for _i in 0..capture_count {
                         // Read variable name from string table (stored in reverse order)
                         let var_name_idx = self.flash.read_u16(task.ip) as usize;
                         task.ip += 2;
@@ -1598,7 +1598,7 @@ impl AutoVM {
 
                     // Plan 073: Now uses RwLock for strings access
                     let strings = self.strings.read().unwrap();
-                    let var_name = if let Some(var_name_bytes) = strings.get(var_name_idx) {
+                    let _var_name = if let Some(var_name_bytes) = strings.get(var_name_idx) {
                         String::from_utf8_lossy(var_name_bytes).to_string()
                     } else {
                         return Err(VMError::RuntimeError(format!(
@@ -1690,7 +1690,7 @@ impl AutoVM {
                 OpCode::CALL_CLOSURE => {
                     // Stack: closure_id, [args...] -> result
                     // Immediate: arg_count (u8)
-                    let arg_count = self.flash.read_u8(task.ip) as usize;
+                    let _arg_count = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
 
                     let closure_id = task.ram.pop_i32() as u32;

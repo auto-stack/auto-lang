@@ -13,7 +13,6 @@
 
 use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::task::AutoTask;
-use crate::vm::native::ShimFunc;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;

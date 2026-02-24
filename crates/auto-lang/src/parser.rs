@@ -2161,7 +2161,7 @@ impl<'a> Parser<'a> {
             // This handles type construction syntax like Pair {x: 1, y: 2}
             if self.is_kind(TokenKind::LBrace) && is_type {
                 // Parse as node instance with the already-read identifier
-                let ident = Expr::Ident(name.clone());
+                let _ident = Expr::Ident(name.clone());
                 let primary_prop = None;
                 let args = Args::new();
 
@@ -3520,31 +3520,31 @@ impl<'a> Parser<'a> {
             }
 
             // Node - defer to infer module
-            Expr::Node(nd) => {
+            Expr::Node(_nd) => {
                 use crate::infer::infer_expr;
                 typ = infer_expr(&mut self.infer_ctx, expr);
             }
 
             // Array - defer to infer module
-            Expr::Array(arr) => {
+            Expr::Array(_arr) => {
                 use crate::infer::infer_expr;
                 typ = infer_expr(&mut self.infer_ctx, expr);
             }
 
             // Call - defer to infer module
-            Expr::Call(call) => {
+            Expr::Call(_call) => {
                 use crate::infer::infer_expr;
                 typ = infer_expr(&mut self.infer_ctx, expr);
             }
 
             // Index - defer to infer module
-            Expr::Index(arr, _idx) => {
+            Expr::Index(_arr, _idx) => {
                 use crate::infer::infer_expr;
                 typ = infer_expr(&mut self.infer_ctx, expr);
             }
 
             // Binary op - defer to infer module
-            Expr::Bina(lhs, op, rhs) => {
+            Expr::Bina(_lhs, _op, _rhs) => {
                 use crate::infer::infer_expr;
                 typ = infer_expr(&mut self.infer_ctx, expr);
             }
@@ -3800,7 +3800,7 @@ impl<'a> Parser<'a> {
 
         let mut is_vm = has_vm;
         let mut is_c = has_c;
-        let mut is_rs = has_rs;
+        let _is_rs = has_rs;
 
         // Backwards compatibility: check for fn.c and fn.vm after fn keyword
         if !is_vm && !is_c && self.is_kind(TokenKind::Dot) {
@@ -4014,7 +4014,7 @@ impl<'a> Parser<'a> {
 
         let is_c = has_c;
         let is_vm = has_vm;
-        let is_rs = has_rs;
+        let _is_rs = has_rs;
 
         // parse function name
         let name = self.parse_name()?;

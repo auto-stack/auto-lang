@@ -322,7 +322,7 @@ pub fn list_remove(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) 
 /// Create an iterator for the List
 /// Syntax: list.iter()
 /// Returns a ListIter instance
-pub fn list_iter(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn list_iter(_ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value>) -> Value {
     if let Value::Instance(inst) = instance {
         if let Type::User(ref_name) = &inst.ty {
             if ref_name == "List" {
@@ -421,7 +421,7 @@ pub fn list_iter_next(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Valu
 /// Create a Map iterator from ListIter
 /// Syntax: iter.map(func)
 /// Returns a MapIter instance
-pub fn list_iter_map(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_iter_map(_ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }
@@ -586,7 +586,7 @@ pub fn map_iter_next(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Value
 /// Create a Filter iterator from ListIter
 /// Syntax: iter.filter(predicate)
 /// Returns a FilterIter instance
-pub fn list_iter_filter(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn list_iter_filter(_ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }
@@ -1217,7 +1217,7 @@ pub fn list_iter_find(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value
 /// Map operation on FilterIter - chain map after filter
 /// Syntax: filter_iter.map(func)
 /// Returns a MapIter that wraps the FilterIter
-pub fn filter_iter_map(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn filter_iter_map(_ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }
@@ -1270,7 +1270,7 @@ pub fn filter_iter_map(ctx: &mut VmContext, instance: &mut Value, args: Vec<Valu
 /// Filter operation on MapIter - chain filter after map
 /// Syntax: map_iter.filter(predicate)
 /// Returns a FilterIter that wraps the MapIter
-pub fn map_iter_filter(ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn map_iter_filter(_ctx: &mut VmContext, instance: &mut Value, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Nil;
     }

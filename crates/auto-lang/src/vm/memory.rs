@@ -4,7 +4,7 @@ use super::context::VmContext;
 use auto_val::Value;
 
 /// Allocate a new array of the given size
-pub fn alloc_array(ctx: &mut VmContext, size_val: Value) -> Value {
+pub fn alloc_array(_ctx: &mut VmContext, size_val: Value) -> Value {
     let size = match size_val {
         Value::Uint(n) => n as usize,
         Value::Int(n) => n as usize,
@@ -20,7 +20,7 @@ pub fn alloc_array(ctx: &mut VmContext, size_val: Value) -> Value {
 
 /// Reallocate an existing array to a new size
 /// Returns a new array with copied data (or modified if owned)
-pub fn realloc_array(ctx: &mut VmContext, array: Value, size_val: Value) -> Value {
+pub fn realloc_array(_ctx: &mut VmContext, array: Value, size_val: Value) -> Value {
     let new_size = match size_val {
         Value::Uint(n) => n as usize,
         Value::Int(n) => n as usize,
@@ -40,7 +40,7 @@ pub fn realloc_array(ctx: &mut VmContext, array: Value, size_val: Value) -> Valu
 }
 
 /// Free an array (Hint to VM)
-pub fn free_array(ctx: &mut VmContext, _array: Value) -> Value {
+pub fn free_array(_ctx: &mut VmContext, _array: Value) -> Value {
     // No-op in this Rust-based VM as memory is managed by Rc/Drop
     Value::Nil
 }

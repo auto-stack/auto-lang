@@ -271,10 +271,10 @@ impl TypeStore {
                 return Type::Unknown;
             }
 
-            let mut field_ty = template.field_ty.clone();
+            let _field_ty = template.field_ty.clone();
 
             // 替换模板中的类型参数
-            for (i, arg) in type_args.iter().enumerate() {
+            for (i, _arg) in type_args.iter().enumerate() {
                 if let GenericParamType::Type = template.param_types[i] {
                     // TODO: 实现 substitute 方法
                     // field_ty = field_ty.substitute(&template.param_names[i], arg);

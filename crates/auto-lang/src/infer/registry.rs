@@ -3,7 +3,7 @@
 // This module provides a centralized type declaration management system
 // for the infer module, replacing the scattered storage across codegen and Database.
 
-use crate::ast::{Name, Type, TypeDecl};
+use crate::ast::TypeDecl;
 use crate::vm::generic_registry::{ClassTemplate, FieldDef};
 use auto_val::AutoStr;
 use std::collections::HashMap;

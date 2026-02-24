@@ -79,7 +79,7 @@ use crate::compile::CompileSession;
 use crate::trans::c::CTrans;
 pub use crate::symbols::SymbolLocation;
 use crate::{trans::Sink, trans::Trans};
-use auto_val::{AutoPath, Obj, Shared, Value};
+use auto_val::{AutoPath, Obj, Value};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -160,7 +160,7 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
 
     // Plan 089: Transfer type registry from parser to codegen
     // This ensures types registered during parsing are available during compilation
-    if let Some(type_registry) = parser.type_registry.clone() {
+    if let Some(_type_registry) = parser.type_registry.clone() {
         // TODO: Set type_registry in Codegen for field lookup support
         // Currently, Parser types are registered to Parser.type_registry
         // but Codegen needs access to them. For now, we keep this code
@@ -390,7 +390,7 @@ pub fn run_with_session_and_scope(
 
 pub fn parse(code: &str) -> AutoResult<ast::Code> {
     // Plan 091: Universe removed
-    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code);
     parser.parse().map_err(|e| e.to_string().into())
 }
@@ -399,7 +399,7 @@ pub fn parse(code: &str) -> AutoResult<ast::Code> {
 /// This is used by the LSP to get detailed error information
 pub fn parse_preserve_error(code: &str) -> Result<ast::Code, error::AutoError> {
     // Plan 091: Universe removed
-    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code);
     parser.parse()
 }
@@ -450,7 +450,7 @@ pub fn run_file(path: &str) -> AutoResult<String> {
 /// "#;
 /// let result = eval_config_with_vm(config, &Obj::new()).unwrap();
 /// ```
-pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
+pub fn eval_config_with_vm(code: &str, _args: &Obj) -> AutoResult<Value> {
     use crate::vm::config_codegen::ConfigCodegen;
     use crate::vm::engine::AutoVM;
     use crate::vm::opcode::OpCode;
@@ -569,7 +569,7 @@ pub fn trans_c_legacy(path: &str) -> AutoResult<String> {
     let fname = AutoPath::new(path).filename();
 
     // Plan 091: Universe removed
-    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code.as_str());
     let ast = parser.parse()?;
     let mut sink = Sink::new(fname);
@@ -600,7 +600,7 @@ pub fn trans_rust_legacy(path: &str) -> AutoResult<String> {
     let fname = AutoPath::new(path).filename();
 
     // Plan 091: Universe removed
-    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code.as_str());
     parser.set_dest(crate::parser::CompileDest::TransRust);
     let ast = parser.parse().map_err(|e| e.to_string())?;
@@ -766,7 +766,7 @@ pub fn trans_python(path: &str) -> AutoResult<String> {
 
     // Plan 091: PythonTrans no longer needs Universe, but Parser still requires it
     // Plan 091: Universe removed
-    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code.as_str());
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut sink = Sink::new(fname.clone());
@@ -791,7 +791,7 @@ pub fn trans_javascript(path: &str) -> AutoResult<String> {
 
     // Plan 091: JavaScriptTrans no longer needs Universe, but Parser still requires it
     // Plan 091: Universe removed
-    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code.as_str());
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut sink = Sink::new(fname.clone());

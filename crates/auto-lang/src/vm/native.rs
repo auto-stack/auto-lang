@@ -684,7 +684,7 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Returns: new list_id (lower 32 bits of u64 as i32)
 // Plan 077 Phase 6: Updated to use unified registry
 pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use std::sync::atomic::Ordering;
+    
     use crate::vm::engine::Iterator;
     use crate::vm::heap_object::HeapObject;
     use crate::vm::types::ListData;
@@ -837,7 +837,7 @@ pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Create a new HashMap
 /// Stack: -> hashmap_id
 pub fn shim_hashmap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::vm::heap_object::HeapObject;
+    
 
     let map = AutoVMHashMap::new();
     let map_id = vm.insert_heap_object(map);
@@ -857,7 +857,7 @@ pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
-        if let Some(map) = guard.as_any().downcast_ref::<AutoVMHashMap>() {
+        if let Some(_map) = guard.as_any().downcast_ref::<AutoVMHashMap>() {
             // Get string from strings pool
             let key_bytes = vm.strings.read().unwrap().get(key_str_id as usize).cloned()
                 .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;

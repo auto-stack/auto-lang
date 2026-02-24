@@ -9,12 +9,10 @@ use crate::AutoResult;
 use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::StrExt;
-use auto_val::{shared, Shared};
-use std::cell::RefCell;
+use auto_val::shared;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::io::Write;
-use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -122,7 +120,7 @@ impl CTrans {
     }
 
     /// Look up type by name (works with Universe or Database)
-    fn lookup_type(&self, type_name: &str) -> Type {
+    fn lookup_type(&self, _type_name: &str) -> Type {
         // Plan 091: Use Database only
         if let Some(_db) = &self.db {
             // New path: Database
@@ -135,7 +133,7 @@ impl CTrans {
     }
 
     /// Look up identifier type (works with Universe or Database)
-    fn lookup_ident_type(&self, name: &AutoStr) -> Option<Type> {
+    fn lookup_ident_type(&self, _name: &AutoStr) -> Option<Type> {
         // Plan 091: Use Database only
         if let Some(_db) = &self.db {
             // New path: Database

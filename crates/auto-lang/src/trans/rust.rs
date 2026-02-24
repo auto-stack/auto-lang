@@ -118,7 +118,7 @@ impl RustTrans {
     // =========================================================================
 
     /// Check if a type is an enum (works with Universe or Database)
-    fn is_enum_type(&self, type_name: &AutoStr) -> bool {
+    fn is_enum_type(&self, _type_name: &AutoStr) -> bool {
         // Plan 091: Use Database only
         if let Some(_db) = &self.db {
             // New path: Database
@@ -154,9 +154,9 @@ impl RustTrans {
 
     /// Look up type by name (works with Universe or Database)
     /// Phase 066: Unified helper for Database/Universe access
-    fn lookup_type(&self, type_name: &AutoStr) -> Type {
+    fn lookup_type(&self, _type_name: &AutoStr) -> Type {
         // Plan 091: Use Database only
-        if let Some(db) = &self.db {
+        if let Some(_db) = &self.db {
             // New path: Database
             // NOTE: TypeInfoStore doesn't store type kind (enum/struct/union)
             // Return Type::Unknown for now (conservative approach)
@@ -2748,7 +2748,7 @@ pub fn transpile_rust(
     code: &str,
 ) -> AutoResult<Sink> {
     let name = name.into();
-    let scope = shared(crate::scope_manager::ScopeManager::new());
+    let _scope = shared(crate::scope_manager::ScopeManager::new());
     let mut parser = Parser::from(code);
     parser.set_dest(crate::parser::CompileDest::TransRust);
     let ast = parser.parse().map_err(|e| e.to_string())?;
@@ -2762,7 +2762,7 @@ pub fn transpile_rust(
 
 /// Transpile code fragment for testing
 pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
-    let scope = shared(crate::scope_manager::ScopeManager::new());
+    let _scope = shared(crate::scope_manager::ScopeManager::new());
     let mut parser = Parser::from(code);
     let ast = parser.parse().map_err(|e| e.to_string())?;
     let mut out = Sink::new(AutoStr::from(""));

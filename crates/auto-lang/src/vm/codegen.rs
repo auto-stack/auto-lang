@@ -515,7 +515,7 @@ impl Codegen {
                         let type_args: Vec<Type> = inst.args.clone();
 
                         // Register or get the ClassType from GenericRegistry
-                        if let Ok(class_type) = self.generic_registry.get_or_create_type(
+                        if let Ok(_class_type) = self.generic_registry.get_or_create_type(
                             &inst.base_name.to_string(),
                             type_args
                         ) {
@@ -607,7 +607,7 @@ impl Codegen {
                             // Example: let c = Counter.new()
                             else if self.is_type(type_name) {
                                 // Get type info and create a synthetic TypeDecl
-                                if let Some(type_info) = self.get_type(type_name) {
+                                if let Some(_type_info) = self.get_type(type_name) {
                                     let type_decl = crate::ast::TypeDecl {
                                         name: crate::ast::Name::from(type_name),
                                         kind: crate::ast::TypeDeclKind::UserType,
@@ -636,7 +636,7 @@ impl Codegen {
                     if self.generic_registry.has_template(&type_name) {
                         // Get or create ClassType for this generic type
                         let type_args = Vec::new(); // No explicit type args provided
-                        if let Ok(class_type) = self.generic_registry.get_or_create_type(&type_name, type_args) {
+                        if let Ok(_class_type) = self.generic_registry.get_or_create_type(&type_name, type_args) {
                             // Create GenericInstance type to store in var_types
                             use crate::ast::GenericInstance;
                             let generic_inst = GenericInstance {
@@ -726,14 +726,14 @@ impl Codegen {
                     self.compile_stmt(&Stmt::Fn(method_fn))?;
                 }
             }
-            Stmt::EnumDecl(enum_decl) => {
+            Stmt::EnumDecl(_enum_decl) => {
                 // Plan 073 Phase 8.6: Enum declaration support
                 // Enum declarations don't generate bytecode at compile time
                 // They register metadata for use in pattern matching and type checking
                 // TODO: Register enum in type registry for future use
                 // For now, enums are handled by the Tag system (Plan 073 Phase 8.3.7)
             }
-            Stmt::SpecDecl(spec_decl) => {
+            Stmt::SpecDecl(_spec_decl) => {
                 // Plan 073 Phase 8.6: Spec declaration support
                 // Spec declarations (traits) don't generate bytecode at compile time
                 // They register method signatures for type checking and constraint validation
@@ -797,7 +797,7 @@ impl Codegen {
                             self.emit_i16(loop_start - current_pos);
 
                             // This is the loop exit point - patch all break jumps here
-                            let loop_exit = self.code.len();
+                            let _loop_exit = self.code.len();
 
                             // Patch exit jump (for loop condition)
                             self.patch_jump(jump_to_end);
@@ -810,7 +810,7 @@ impl Codegen {
                             for exit_placeholder in exits {
                                 self.patch_jump(exit_placeholder);
                             }
-                        } else if let Expr::Call(call) = &for_stmt.range {
+                        } else if let Expr::Call(_call) = &for_stmt.range {
                             // Plan 073: Iterator-based for loop: for x in list.iter() { ... }
                             // Compile the iterator call to get the iterator object
                             self.compile_expr(&for_stmt.range)?;
@@ -861,7 +861,7 @@ impl Codegen {
                             self.emit_i16(loop_start - current_pos);
 
                             // This is the loop exit point - patch all break jumps here
-                            let loop_exit = self.code.len();
+                            let _loop_exit = self.code.len();
 
                             // Patch exit jump (for loop condition)
                             self.patch_jump(jump_to_end);
@@ -942,7 +942,7 @@ impl Codegen {
                             self.emit_i16(loop_start - current_pos);
 
                             // This is the loop exit point - patch all break jumps here
-                            let loop_exit = self.code.len();
+                            let _loop_exit = self.code.len();
 
                             // Patch exit jump (for loop condition)
                             self.patch_jump(jump_to_end);
@@ -982,7 +982,7 @@ impl Codegen {
                         self.emit_i16(loop_start - current_pos);
 
                         // This is the loop exit point - patch all break jumps here
-                        let loop_exit = self.code.len();
+                        let _loop_exit = self.code.len();
 
                         // Patch exit jump (for loop condition)
                         self.patch_jump(jump_to_end);
@@ -1006,7 +1006,7 @@ impl Codegen {
                         self.emit_i16(loop_start - current_pos);
 
                         // This is the loop exit point - patch all break jumps here
-                        let loop_exit = self.code.len();
+                        let _loop_exit = self.code.len();
 
                         // Patch all break statements
                         let exits = self.loop_exits.pop().unwrap();
@@ -1072,7 +1072,7 @@ impl Codegen {
                         self.emit_i16(loop_start - current_pos);
 
                         // This is the loop exit point - patch all break jumps here
-                        let loop_exit = self.code.len();
+                        let _loop_exit = self.code.len();
 
                         // Patch exit jump (for loop condition)
                         self.patch_jump(jump_to_end);
@@ -1465,7 +1465,7 @@ impl Codegen {
                             crate::ast::Arg::Pos(expr) => {
                                 self.compile_expr(expr)?;
                             }
-                            crate::ast::Arg::Pair(key, expr) => {
+                            crate::ast::Arg::Pair(_key, expr) => {
                                 // For named args, compile the value
                                 self.compile_expr(expr)?;
                             }
@@ -1527,7 +1527,7 @@ impl Codegen {
                             crate::ast::Arg::Pos(expr) => {
                                 self.compile_expr(expr)?;
                             }
-                            crate::ast::Arg::Pair(key, expr) => {
+                            crate::ast::Arg::Pair(_key, expr) => {
                                 // For named args, compile the value
                                 self.compile_expr(expr)?;
                             }
@@ -2057,7 +2057,7 @@ impl Codegen {
                                             crate::ast::Arg::Pos(expr) => {
                                                 self.compile_expr(expr)?;
                                             }
-                                            crate::ast::Arg::Pair(key, expr) => {
+                                            crate::ast::Arg::Pair(_key, expr) => {
                                                 // Named argument: compile value only
                                                 self.compile_expr(expr)?;
                                             }
@@ -2107,7 +2107,7 @@ impl Codegen {
                 // Regular function/method call (existing code)
                 // Extract function name and determine if it's a method call
                 // Plan 073: Support both static methods (Type.method) and instance methods (obj.method)
-                let mut func_name = match call.name.as_ref() {
+                let func_name = match call.name.as_ref() {
                     Expr::Ident(name) => Some(name.to_string()),
                     Expr::Dot(obj, method) => {
                         // Method call: Type.method (static) or obj.method (instance)
@@ -3036,7 +3036,7 @@ impl Codegen {
             }
             Expr::Block(body) => {
                 // For block expressions, exclude local variables defined in the block
-                let mut inner_exclude = exclude.clone();
+                let inner_exclude = exclude.clone();
                 for stmt in &body.stmts {
                     if let Stmt::Expr(e) = stmt {
                         self.collect_free_vars(e, &inner_exclude, free_vars);
@@ -3506,7 +3506,7 @@ impl Codegen {
             // Create a ClassType for non-generic types using get_or_create_type
             // This allows get_type() to find non-generic types
             let type_args: Vec<Type> = vec![];  // Non-generic types have empty type args
-            if let Ok(class_type) = self.generic_registry.get_or_create_type(&type_decl.name.to_string(), type_args) {
+            if let Ok(_class_type) = self.generic_registry.get_or_create_type(&type_decl.name.to_string(), type_args) {
                 eprintln!("DEBUG: Registered non-generic type '{}' in generic_registry", type_decl.name);
             } else {
                 eprintln!("Warning: Failed to create ClassType for '{}'", type_decl.name);

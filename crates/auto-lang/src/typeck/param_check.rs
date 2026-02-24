@@ -1,7 +1,7 @@
 // Plan 088 Phase 6: Parameter immutability checking
 // Ensures that view (immutable) parameters cannot be modified
 
-use crate::ast::{Fn, Stmt, Expr, Name, ParamMode, Body, Type, Store, StoreKind};
+use crate::ast::{Fn, Stmt, Expr, Name, ParamMode, Body};
 use crate::error::{AutoError, TypeError};
 use miette::SourceSpan;
 use std::collections::HashSet;

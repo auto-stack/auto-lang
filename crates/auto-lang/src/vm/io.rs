@@ -171,12 +171,12 @@ pub fn read_char_method(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Va
     read_char(ctx, instance)
 }
 
-pub fn read_buf(ctx: &mut VmContext, _file: &mut Value, _buf: &mut Value, _size: i64) -> Value {
+pub fn read_buf(_ctx: &mut VmContext, _file: &mut Value, _buf: &mut Value, _size: i64) -> Value {
     // VM does not support read_buf with mutable string buffer yet for immutable str
     Value::Int(0)
 }
 
-pub fn read_buf_method(ctx: &mut VmContext, _instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn read_buf_method(_ctx: &mut VmContext, _instance: &mut Value, _args: Vec<Value>) -> Value {
     // Stub implementation
     Value::Int(0)
 }
