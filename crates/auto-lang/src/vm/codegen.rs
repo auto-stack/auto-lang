@@ -3691,7 +3691,7 @@ mod tests {
         let mut codegen = Codegen::new();
         // Test: x => x + n
         // This is a closure that captures variable 'n' from outer scope
-        use crate::ast::{Closure, ClosureParam, Body};
+        use crate::ast::{Closure, ClosureParam};
 
         let closure = Closure {
             params: vec![ClosureParam::new("x".into(), None)],

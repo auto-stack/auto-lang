@@ -6,7 +6,6 @@
 // - Param::with_mode() constructor
 
 use crate::ast::{Param, ParamMode, Type};
-use auto_val::AutoStr;
 
 #[cfg(test)]
 mod plan_088_tests {

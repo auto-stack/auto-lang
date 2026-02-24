@@ -693,9 +693,9 @@ impl Default for GenericRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{ArrayType, Body, Fn as AstFn, FnKind, GenericParam, Type, TypeDecl, TypeDeclKind, TypeParam};
+    use crate::ast::{Body, Fn as AstFn, FnKind, GenericParam, Type, TypeDecl, TypeDeclKind, TypeParam};
     use auto_val::AutoStr;
-    use std::collections::HashMap;
+    
 
     fn make_type_param(name: &str) -> GenericParam {
         GenericParam::Type(TypeParam {

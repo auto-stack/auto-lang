@@ -2,12 +2,11 @@
 // These tests verify that AutoVM bytecode execution works correctly
 // Starting with basic arithmetic, then progressing to generic types
 
-use crate::{ast, compile, run_autovm};
+use crate::run_autovm;
 use crate::error::AutoResult;
 use crate::vm::opcode::OpCode;
 use crate::vm::engine::AutoVM;
 use crate::vm::virt_memory::VirtualFlash;
-use std::io::Write;
 
 // ===== Helper Functions for Direct Bytecode Testing =====
 
@@ -19,14 +18,14 @@ fn create_bytecode(bytes: &[u8]) -> Vec<u8> {
 /// Run raw bytecode directly on the VM (bypassing parser/codegen)
 /// This is useful for testing specific opcode sequences
 fn run_bytecode(bytecode: &[u8]) -> AutoResult<String> {
-    use std::sync::Arc;
+    
     use tokio::runtime::Runtime;
 
     // Create virtual flash with the bytecode
     let flash = VirtualFlash::new_with_code(bytecode.to_vec());
 
     // Create VM
-    let mut vm = AutoVM::new(flash, 1024);
+    let vm = AutoVM::new(flash, 1024);
 
     // Create tokio runtime for async execution
     let rt = Runtime::new()?;

@@ -455,7 +455,7 @@ impl StackedScope {
 
 #[cfg(test)]
 mod tests {
-    use auto_val::ValueData;
+    
 
     use super::*;
 

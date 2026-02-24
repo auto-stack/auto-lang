@@ -181,6 +181,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unused_imports)]
     fn test_from_str_trait() {
         use std::str::FromStr;
 

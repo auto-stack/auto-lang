@@ -92,13 +92,13 @@ fn test_listdata_int_downcast_mut() {
 
 #[test]
 fn test_listdata_char_type_tag() {
-    let mut list: ListData<char> = ListData::new();
+    let list: ListData<char> = ListData::new();
     assert_eq!(list.type_tag(), TypeTag::ListChar);
 }
 
 #[test]
 fn test_listdata_char_is_list() {
-    let mut list: ListData<char> = ListData::new();
+    let list: ListData<char> = ListData::new();
     assert!(is_type(&list, TypeTag::ListChar));
     assert!(!is_type(&list, TypeTag::ListInt));
     assert!(!is_type(&list, TypeTag::ListBool));
@@ -106,7 +106,7 @@ fn test_listdata_char_is_list() {
 
 #[test]
 fn test_listdata_char_type_name() {
-    let mut list: ListData<char> = ListData::new();
+    let list: ListData<char> = ListData::new();
     assert_eq!(type_name(&list), "List<char>");
 }
 
@@ -130,13 +130,13 @@ fn test_listdata_char_downcast() {
 
 #[test]
 fn test_listdata_bool_type_tag() {
-    let mut list: ListData<bool> = ListData::new();
+    let list: ListData<bool> = ListData::new();
     assert_eq!(list.type_tag(), TypeTag::ListBool);
 }
 
 #[test]
 fn test_listdata_bool_is_list() {
-    let mut list: ListData<bool> = ListData::new();
+    let list: ListData<bool> = ListData::new();
     assert!(is_type(&list, TypeTag::ListBool));
     assert!(!is_type(&list, TypeTag::ListInt));
     assert!(!is_type(&list, TypeTag::ListChar));
@@ -144,7 +144,7 @@ fn test_listdata_bool_is_list() {
 
 #[test]
 fn test_listdata_bool_type_name() {
-    let mut list: ListData<bool> = ListData::new();
+    let list: ListData<bool> = ListData::new();
     assert_eq!(type_name(&list), "List<bool>");
 }
 
@@ -168,13 +168,13 @@ fn test_listdata_bool_downcast() {
 
 #[test]
 fn test_listdata_string_type_tag() {
-    let mut list: ListData<String> = ListData::new();
+    let list: ListData<String> = ListData::new();
     assert_eq!(list.type_tag(), TypeTag::ListString);
 }
 
 #[test]
 fn test_listdata_string_is_list() {
-    let mut list: ListData<String> = ListData::new();
+    let list: ListData<String> = ListData::new();
     assert!(is_type(&list, TypeTag::ListString));
     assert!(!is_type(&list, TypeTag::ListInt));
     assert!(!is_type(&list, TypeTag::ListChar));
@@ -182,7 +182,7 @@ fn test_listdata_string_is_list() {
 
 #[test]
 fn test_listdata_string_type_name() {
-    let mut list: ListData<String> = ListData::new();
+    let list: ListData<String> = ListData::new();
     assert_eq!(type_name(&list), "List<string>");
 }
 

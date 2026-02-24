@@ -211,8 +211,7 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    use crate::vm::heap_object::HeapObject;
-
+    
     let elem = task.ram.pop_i32();
     let list_id = task.ram.pop_i32() as u64;
 
@@ -233,8 +232,7 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    use crate::vm::heap_object::HeapObject;
-
+    
     let list_id = task.ram.pop_i32() as u64;
 
     if let Some(obj) = vm.get_heap_object(list_id) {
@@ -256,8 +254,7 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    use crate::vm::heap_object::HeapObject;
-
+    
     let list_id = task.ram.pop_i32() as u64;
 
     if let Some(obj) = vm.get_heap_object(list_id) {
@@ -278,8 +275,7 @@ pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    use crate::vm::heap_object::HeapObject;
-
+    
     let list_id = task.ram.pop_i32() as u64;
 
     if let Some(obj) = vm.get_heap_object(list_id) {
@@ -300,8 +296,7 @@ pub fn shim_list_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    use crate::vm::heap_object::HeapObject;
-
+    
     let list_id = task.ram.pop_i32() as u64;
 
     if let Some(obj) = vm.get_heap_object(list_id) {
@@ -321,8 +316,7 @@ pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    use crate::vm::heap_object::HeapObject;
-
+    
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
 
@@ -345,8 +339,7 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    use crate::vm::heap_object::HeapObject;
-
+    
     let elem = task.ram.pop_i32();
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
@@ -368,8 +361,7 @@ pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    use crate::vm::heap_object::HeapObject;
-
+    
     let elem = task.ram.pop_i32();
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
@@ -391,8 +383,7 @@ pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    use crate::vm::heap_object::HeapObject;
-
+    
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
 
@@ -460,8 +451,7 @@ pub fn shim_list_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
     use crate::vm::engine::Iterator;
-    use crate::vm::heap_object::HeapObject;
-
+    
     let iterator_id = task.ram.pop_i32() as u32;
 
     // Plan 076 Phase 3: Always return i32 by extracting Int from Value
@@ -686,8 +676,7 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     
     use crate::vm::engine::Iterator;
-    use crate::vm::heap_object::HeapObject;
-    use crate::vm::types::ListData;
+        use crate::vm::types::ListData;
 
     let iterator_id = task.ram.pop_i32() as u32;
 
@@ -743,8 +732,7 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// NOTE: For MVP, this just sums all elements without calling the function.
 pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::Iterator;
-    use crate::vm::heap_object::HeapObject;
-    use crate::vm::types::ListData;
+        use crate::vm::types::ListData;
 
     let iterator_id = task.ram.pop_i32() as u32;
     let _func_addr = task.ram.pop_i32() as u32; // Not used in MVP
@@ -791,8 +779,7 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 // Plan 077 Phase 6: Updated to use unified registry
 pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::Iterator;
-    use crate::vm::heap_object::HeapObject;
-    use crate::vm::types::ListData;
+        use crate::vm::types::ListData;
 
     let iterator_id = task.ram.pop_i32() as u32;
     let _func_addr = task.ram.pop_i32() as u32; // Not used in MVP
@@ -849,8 +836,7 @@ pub fn shim_hashmap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Insert a string key with i32 value
 /// Stack: hashmap_id, key_str_id, value -> result (0)
 pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::vm::heap_object::HeapObject;
-
+    
     let value = task.ram.pop_i32();
     let key_str_id = task.ram.pop_i32() as u64;
     let map_id = task.ram.pop_i32() as u64;
@@ -881,8 +867,7 @@ pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// Insert an integer key (as string) with i32 value
 /// Stack: hashmap_id, key_int, value -> result (0)
 pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::vm::heap_object::HeapObject;
-
+    
     let value = task.ram.pop_i32();
     let key_int = task.ram.pop_i32();
     let map_id = task.ram.pop_i32() as u64;
@@ -902,8 +887,7 @@ pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// Get value by string key
 /// Stack: hashmap_id, key_str_id -> value (0 if not found)
 pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::vm::heap_object::HeapObject;
-
+    
     let key_str_id = task.ram.pop_i32() as u64;
     let map_id = task.ram.pop_i32() as u64;
 
@@ -929,8 +913,7 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Get value by integer key (as string)
 /// Stack: hashmap_id, key_int -> value (0 if not found)
 pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::vm::heap_object::HeapObject;
-
+    
     let key_int = task.ram.pop_i32();
     let map_id = task.ram.pop_i32() as u64;
 
@@ -953,8 +936,7 @@ pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Check if key exists
 /// Stack: hashmap_id, key_str_id -> result (1 if exists, 0 otherwise)
 pub fn shim_hashmap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::vm::heap_object::HeapObject;
-
+    
     let key_str_id = task.ram.pop_i32() as u64;
     let map_id = task.ram.pop_i32() as u64;
 
@@ -980,8 +962,7 @@ pub fn shim_hashmap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// Remove a key-value pair
 /// Stack: hashmap_id, key_str_id -> result (0)
 pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::vm::heap_object::HeapObject;
-
+    
     let key_str_id = task.ram.pop_i32() as u64;
     let map_id = task.ram.pop_i32() as u64;
 
@@ -1003,8 +984,7 @@ pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Get the number of entries
 /// Stack: hashmap_id -> size
 pub fn shim_hashmap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::vm::heap_object::HeapObject;
-
+    
     let map_id = task.ram.pop_i32() as u64;
 
     let size = if let Some(obj) = vm.get_heap_object(map_id) {
@@ -1025,8 +1005,7 @@ pub fn shim_hashmap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Clear all entries
 /// Stack: hashmap_id -> result (0)
 pub fn shim_hashmap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::vm::heap_object::HeapObject;
-
+    
     let map_id = task.ram.pop_i32() as u64;
 
     if let Some(obj) = vm.get_heap_object(map_id) {

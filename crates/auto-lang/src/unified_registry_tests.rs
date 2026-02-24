@@ -3,9 +3,8 @@
 
 use crate::vm::types::{ListData, ListStorage};
 use crate::vm::engine::AutoVM;
-use crate::vm::heap_object::{HeapObject, TypeTag, downcast, downcast_mut, is_type};
+use crate::vm::heap_object::{TypeTag, downcast, downcast_mut, is_type};
 use crate::vm::virt_memory::VirtualFlash;
-use auto_val::Value;
 use std::sync::Arc;
 
 // ============================================================================

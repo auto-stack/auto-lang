@@ -526,7 +526,7 @@ mod tests {
     fn test_multiple_object_types_in_registry() {
         use dashmap::DashMap;
 
-        let mut registry: DashMap<u64, Arc<RwLock<dyn HeapObject>>> = DashMap::new();
+        let registry: DashMap<u64, Arc<RwLock<dyn HeapObject>>> = DashMap::new();
 
         // Insert different object types
         registry.insert(1, Arc::new(RwLock::new(MockIntList { elems: vec![1, 2, 3] })));

@@ -2,7 +2,7 @@
 //
 // Tests for parsing parameter modes (copy, view, mut, take)
 
-use crate::ast::{Param, ParamMode, Type};
+use crate::ast::{Param, ParamMode};
 use crate::Parser;
 
 #[cfg(test)]
@@ -17,7 +17,7 @@ mod plan_088_parser_tests {
         // Plan 091: Universe removed
 
         // Plan 091: Universe removed
-    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
         let full_source = format!("{})", source);  // Add closing parenthesis
         let mut parser = Parser::from(&full_source);
         parser.fn_params().unwrap()

@@ -539,7 +539,7 @@ fn main() -> int {
     0
 }
 "#;
-    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
     assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
     // Should have Float field types
@@ -555,7 +555,7 @@ fn main() -> int {
     0
 }
 "#;
-    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
     assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
     // Should have Double field types
@@ -571,7 +571,7 @@ fn main() -> int {
     0
 }
 "#;
-    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
     assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
     // Should have String field types
@@ -587,7 +587,7 @@ fn main() -> int {
     0
 }
 "#;
-    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
     assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
     // Should have Bool field types
@@ -603,7 +603,7 @@ fn main() -> int {
     0
 }
 "#;
-    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
     assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
     // Should have Char field types
@@ -624,7 +624,7 @@ fn main() -> int {
     0
 }
 "#;
-    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
     assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
     // Should have mixed field types
@@ -705,7 +705,7 @@ fn main() -> int {
     0
 }
 "#;
-    let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
+    let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
     assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
     // Should have String and Array field types

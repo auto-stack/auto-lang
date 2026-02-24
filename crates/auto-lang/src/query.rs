@@ -988,7 +988,7 @@ mod tests {
 
     #[test]
     fn test_get_type_query_hit() {
-        let mut db = Database::new();
+        let db = Database::new();
         let symbol_id = Sid::from("test_function");
 
         // Set a type in the database
@@ -1127,7 +1127,7 @@ mod tests {
 
     #[test]
     fn test_execute_uncached() {
-        let mut db = Database::new();
+        let db = Database::new();
         let symbol_id = Sid::from("test_function");
 
         db.set_type(symbol_id.clone(), Type::Int);
@@ -1180,7 +1180,7 @@ mod tests {
 
         // Create Arc for engine, but keep mutable db for testing
         let db_arc = Arc::new(RwLock::new(db));
-        let engine = QueryEngine::new(db_arc);
+        let _engine = QueryEngine::new(db_arc);
 
         // Note: Can't test dirty flag marking here since db was moved into Arc
         // Full test would require Database to implement Clone

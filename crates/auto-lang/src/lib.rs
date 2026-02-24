@@ -376,6 +376,7 @@ pub fn run_with_session(session: &mut CompileSession, code: &str) -> AutoResult<
 /// String representation of the result, or error message
 ///
 /// **Plan 091**: Now uses AutoVM internally. The scope parameter is deprecated.
+#[allow(deprecated)]
 pub fn run_with_session_and_scope(
     session: &mut CompileSession,
     // _scope: Shared<Universe>,  // Plan 091: removed

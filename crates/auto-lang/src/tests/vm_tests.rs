@@ -3,7 +3,6 @@
 use crate::config::AutoConfig;
 use crate::{ast, run};
 // Plan 091: Universe removed
-use auto_val::Value;
 
 #[test]
 fn test_uint() {

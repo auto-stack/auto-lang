@@ -631,7 +631,7 @@ mod tests {
     use super::*;
     use crate::parser::Parser;
     // Plan 091: Universe removed
-    use auto_val::shared;
+    
 
     fn test_a2j(case: &str) -> AutoResult<()> {
         let parts: Vec<&str> = case.split("_").collect();
@@ -645,7 +645,7 @@ mod tests {
 
         // Plan 091: JavaScriptTrans no longer needs Universe, but Parser still requires it
         // Plan 091: Universe removed
-    let scope = crate::scope_manager::ScopeManager::new();
+    let _scope = crate::scope_manager::ScopeManager::new();
         let mut parser = Parser::from(src.as_str());
         let ast = parser.parse()?;
         let mut sink = Sink::new(name.into());

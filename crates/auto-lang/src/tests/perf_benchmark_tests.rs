@@ -304,7 +304,7 @@ fn main() -> int {
 
 #[test]
 fn benchmark_downcast_performance() {
-    use crate::vm::heap_object::{try_downcast_checked, try_downcast_checked_mut, TypeTag};
+    use crate::vm::heap_object::{try_downcast_checked, TypeTag};
     use crate::vm::types::ListData;
     use std::time::Instant;
 

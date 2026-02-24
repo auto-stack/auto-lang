@@ -1171,7 +1171,7 @@ mod markdown_tests {
 
         for tc in cases {
             // Plan 091: Universe removed
-    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
             let mut parser = Parser::from(&tc.input);
             let code = parser
                 .parse()
@@ -1285,7 +1285,7 @@ mod markdown_tests {
 
         for tc in cases {
             // Plan 091: Universe removed
-    let scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
             let mut parser = Parser::from(&tc.input);
 
             match parser.parse() {
