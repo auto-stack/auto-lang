@@ -123,11 +123,8 @@ impl CTrans {
 
     /// Look up type by name (works with Universe or Database)
     fn lookup_type(&self, type_name: &str) -> Type {
-        if false {  // Plan 091: scope removed
-            let _ = self;
-            // Old path: Universe
-            // scope.lookup_type(type_name)
-        } else if let Some(_db) = &self.db {
+        // Plan 091: Use Database only
+        if let Some(_db) = &self.db {
             // New path: Database
             // NOTE: TypeInfoStore doesn't store type kind (enum/struct/union)
             // Return Type::Unknown for now (conservative approach)
@@ -139,11 +136,8 @@ impl CTrans {
 
     /// Look up identifier type (works with Universe or Database)
     fn lookup_ident_type(&self, name: &AutoStr) -> Option<Type> {
-        if false {  // Plan 091: scope removed
-            let _ = self;
-            // Old path: Universe
-            // scope.lookup_ident_type(name)
-        } else if let Some(_db) = &self.db {
+        // Plan 091: Use Database only
+        if let Some(_db) = &self.db {
             // New path: Database
             // TODO: Implement type lookup from Database symbol tables
             None

@@ -66,7 +66,6 @@ pub struct RustTrans {
 
     // Hybrid: Support both Universe (deprecated) and Database (new)
     // Phase 066: Migrating to Database-based architecture
-    scope: Option<Shared<crate::scope_manager::ScopeManager>>,     // Old (deprecated)
     db: Option<Arc<RwLock<Database>>>,   // New (Phase 066)
 
     edition: RustEdition,
@@ -81,7 +80,6 @@ impl RustTrans {
         Self {
             indent: 0,
             uses: HashSet::new(),
-            scope: Some(shared(crate::scope_manager::ScopeManager::new())),  // Old (deprecated)
             db: None,  // New (Phase 066)
             edition: RustEdition::E2021,
             current_fn: None,
@@ -94,7 +92,6 @@ impl RustTrans {
         Self {
             indent: 0,
             uses: HashSet::new(),
-            scope: None,  // Database mode
             db: Some(db),
             edition: RustEdition::E2021,
             current_fn: None,
@@ -103,9 +100,8 @@ impl RustTrans {
     }
 
     #[deprecated(note = "Use with_database() instead (Phase 066)")]
-    pub fn set_scope(&mut self, scope: Shared<crate::scope_manager::ScopeManager>) {
-        self.scope = Some(scope);
-        self.db = None;  // Clear Database if set
+    pub fn set_scope(&mut self, _scope: Shared<crate::scope_manager::ScopeManager>) {
+        // Plan 091: scope removed, no-op
     }
 
     pub fn set_edition(&mut self, edition: RustEdition) {
@@ -123,14 +119,8 @@ impl RustTrans {
 
     /// Check if a type is an enum (works with Universe or Database)
     fn is_enum_type(&self, type_name: &AutoStr) -> bool {
-        if let Some(scope) = &self.scope {
-            // Old path: Universe
-            match scope.borrow().lookup_type(type_name) {
-                Type::Enum(_) => true,
-                Type::Tag(_) => true,  // **Phase 1.3: Tags use enum syntax**
-                _ => false,
-            }
-        } else if let Some(_db) = &self.db {
+        // Plan 091: Use Database only
+        if let Some(_db) = &self.db {
             // New path: Database
             // NOTE: TypeInfoStore doesn't store type kind (enum/struct/union)
             // For transpilation purposes, assume false (conservative)
@@ -143,10 +133,8 @@ impl RustTrans {
     /// Look up metadata by name (works with Universe or Database)
     /// Phase 066: Unified helper for Database/Universe access
     fn lookup_meta(&self, name: &str) -> Option<Rc<crate::scope::Meta>> {
-        if let Some(scope) = &self.scope {
-            // Old path: Universe
-            scope.borrow().lookup_meta(name)
-        } else if let Some(db) = &self.db {
+        // Plan 091: Use Database only
+        if let Some(db) = &self.db {
             // New path: Database
             if let Ok(db) = db.try_read() {
                 // Search through symbol tables for the symbol
@@ -167,10 +155,8 @@ impl RustTrans {
     /// Look up type by name (works with Universe or Database)
     /// Phase 066: Unified helper for Database/Universe access
     fn lookup_type(&self, type_name: &AutoStr) -> Type {
-        if let Some(scope) = &self.scope {
-            // Old path: Universe
-            scope.borrow().lookup_type(type_name)
-        } else if let Some(db) = &self.db {
+        // Plan 091: Use Database only
+        if let Some(db) = &self.db {
             // New path: Database
             // NOTE: TypeInfoStore doesn't store type kind (enum/struct/union)
             // Return Type::Unknown for now (conservative approach)
@@ -1445,13 +1431,9 @@ impl RustTrans {
 
         // Function body
         write!(sink.body, " ")?;
-        if let Some(scope) = &self.scope {
-            scope.borrow_mut().enter_fn(fn_decl.name.clone());
-        }
+        // Plan 091: scope removed
         self.body(&fn_decl.body, sink, &fn_decl.ret, "")?;
-        if let Some(scope) = &self.scope {
-            scope.borrow_mut().exit_fn();
-        }
+        // Plan 091: scope removed
 
         Ok(())
     }
