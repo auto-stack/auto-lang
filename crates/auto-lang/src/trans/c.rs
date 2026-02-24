@@ -3943,7 +3943,7 @@ impl Trans for CTrans {
             let db_guard = db.try_read().unwrap();
             let mut tags = Vec::new();
             // Iterate through all scopes to find substituted tags
-            for (_sid, scope_data) in db_guard.scopes.iter() {
+            for (_sid, scope_data) in db_guard.get_all_symbol_tables() {
                 for (name, meta) in scope_data.symbols.iter() {
                     if let Meta::Type(Type::Tag(tag)) = &**meta {
                         // Check if this is a substituted tag (contains underscore and has no type params)
