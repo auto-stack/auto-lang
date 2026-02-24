@@ -817,7 +817,7 @@ mod tests {
         let template1 = ClassTemplate::new("Pair", vec![], vec![], vec![]);
         let template2 = ClassTemplate::new("Pair", vec![], vec![], vec![]);
 
-        registry.register_template(template1).unwrap();
+        let _ = registry.register_template(template1).unwrap();
         let result = registry.register_template(template2);
 
         assert!(result.is_err());
@@ -838,7 +838,7 @@ mod tests {
             vec![],
         );
 
-        registry.register_template(template).unwrap();
+        let _ = registry.register_template(template).unwrap();
 
         // First call should create
         let class_type1 = registry.get_or_create_type("Pair", vec![Type::Int, Type::Str(0)]).unwrap();
@@ -1262,7 +1262,7 @@ mod tests {
             vec![],
             vec![],
         );
-        registry.register_template(template1);
+        let _ = registry.register_template(template1);
 
         let template2 = ClassTemplate::new(
             "Triple",
@@ -1270,7 +1270,7 @@ mod tests {
             vec![],
             vec![],
         );
-        registry.register_template(template2);
+        let _ = registry.register_template(template2);
 
         // Create types from both templates
         let pair_type = registry.get_or_create_type("Pair", vec![Type::Int, Type::Str(0)]).unwrap();
@@ -1314,7 +1314,7 @@ mod tests {
             vec![],
             vec![],
         );
-        registry.register_template(template);
+        let _ = registry.register_template(template);
 
         // Create same type with different arguments
         let box_int = registry.get_or_create_type("Box", vec![Type::Int]).unwrap();

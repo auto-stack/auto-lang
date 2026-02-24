@@ -1,3 +1,5 @@
+#![allow(unused_unsafe)]
+
 /// Virtual Memory Model for AutoVM
 ///
 /// Implements the "Digital Twin" memory architecture:
