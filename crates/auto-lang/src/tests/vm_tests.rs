@@ -264,6 +264,7 @@ fn test_fstr_with_expr() {
 fn test_fstr_with_addition() {
     let code = r#"`[${no_tx_msgs + 1}u]`"#;
     let _scope = crate::scope_manager::ScopeManager::new();
+    let _ = _scope;
     scope.set_global("no_tx_msgs", Value::Int(9));
     let result = run_with_scope(code, scope).unwrap();
     assert_eq!(result, "[10u]");
@@ -310,6 +311,7 @@ fn test_for_loop_with_object() {
 //     let code = "#{x+1}";
 //     use crate::interp::Interpreter;
 //     let _scope = crate::scope_manager::ScopeManager::new();
+    let _ = _scope;
 //     scope.set_global("x", Value::Int(41));
 //     let mut interp = Interpreter::with_scope(scope);
 //     let result = interp.eval_template_with_note(code, '#').unwrap();
@@ -341,6 +343,7 @@ fn test_insert_global_fn() {
     }
 
     let _scope = crate::scope_manager::ScopeManager::new();
+    let _ = _scope;
     scope.add_global_fn("myjoin", myjoin);
     let code = "myjoin(1, 2, 3)";
     let result = run_with_scope(code, scope).unwrap();

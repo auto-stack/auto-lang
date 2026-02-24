@@ -81,8 +81,7 @@ impl CTrans {
             libs: HashSet::new(),
             header: Vec::new(),
             name: "".into(),  // Will be set later
-            scope: None,  // Database mode
-            db: Some(db),
+                        db: Some(db),
             last_out: OutKind::None,
             style: CStyle::Modern,
             closure_counter: 0,
@@ -90,12 +89,6 @@ impl CTrans {
         }
     }
 
-    /// DEPRECATED: Use with_database() instead (Phase 066)
-    #[deprecated(note = "Use with_database() instead (Phase 066)")]
-    pub fn set_scope(&mut self, scope: Shared<Universe>) {
-        self.scope = Some(scope);
-        self.db = None;
-    }
 
     pub fn set_stayle(&mut self, style: CStyle) {
         self.style = style;
@@ -111,10 +104,7 @@ impl CTrans {
 
     /// Look up metadata by name (works with Universe or Database)
     fn lookup_meta(&self, name: &str) -> Option<Rc<Meta>> {
-        if let Some(scope) = &self.scope {
-            // Old path: Universe
-            scope.borrow().lookup_meta(name)
-        } else if let Some(db) = &self.db {
+        if let Some(db) = &self.db {
             // New path: Database
             if let Ok(db) = db.try_read() {
                 for (_sid, table) in db.get_all_symbol_tables() {
@@ -133,9 +123,10 @@ impl CTrans {
 
     /// Look up type by name (works with Universe or Database)
     fn lookup_type(&self, type_name: &str) -> Type {
-        if let Some(scope) = &self.scope {
+        if false {  // Plan 091: scope removed
+            let _ = self;
             // Old path: Universe
-            scope.borrow().lookup_type(type_name)
+            // scope.lookup_type(type_name)
         } else if let Some(_db) = &self.db {
             // New path: Database
             // NOTE: TypeInfoStore doesn't store type kind (enum/struct/union)
@@ -148,9 +139,10 @@ impl CTrans {
 
     /// Look up identifier type (works with Universe or Database)
     fn lookup_ident_type(&self, name: &AutoStr) -> Option<Type> {
-        if let Some(scope) = &self.scope {
+        if false {  // Plan 091: scope removed
+            let _ = self;
             // Old path: Universe
-            scope.borrow().lookup_ident_type(name)
+            // scope.lookup_ident_type(name)
         } else if let Some(_db) = &self.db {
             // New path: Database
             // TODO: Implement type lookup from Database symbol tables
@@ -448,12 +440,14 @@ impl CTrans {
         }
 
         // Function body (drop the borrow before calling self.body)
-        if let Some(scope) = &self.scope {
-            scope.borrow_mut().enter_fn(method.name.clone());
+        if false {  // Plan 091: scope removed
+            let _ = self;
+            // scope.enter_fn(method.name.clone());
         }
         self.body(&method.body, sink, &method.ret, "", &method.name)?;
-        if let Some(scope) = &self.scope {
-            scope.borrow_mut().exit_fn();
+        if false {  // Plan 091: scope removed
+            let _ = self;
+            // scope.exit_fn();
         }
 
         // Write closing brace
@@ -1824,16 +1818,18 @@ impl CTrans {
             }
             _ => {
                 out.write(b" ").to()?;
-                if let Some(scope) = &self.scope {
-                    scope.borrow_mut().enter_fn(fn_decl.name.clone());
+                if false {  // Plan 091: scope removed
+            let _ = self;
+                    // scope.enter_fn(fn_decl.name.clone());
                 }
                 if fn_decl.name == "main" {
                     self.body(&fn_decl.body, sink, &Type::Int, "", &fn_decl.name)?;
                 } else {
                     self.body(&fn_decl.body, sink, &fn_decl.ret, "", &fn_decl.name)?;
                 }
-                if let Some(scope) = &self.scope {
-                    scope.borrow_mut().exit_fn();
+                if false {  // Plan 091: scope removed
+            let _ = self;
+                    // scope.exit_fn();
                 }
             }
         }
@@ -1926,8 +1922,9 @@ impl CTrans {
         let has_return = !matches!(ret_type, Type::Void | Type::Unknown { .. });
         let ret_is_array = matches!(ret_type, Type::Array(_) | Type::Slice(_));
 
-        if let Some(scope) = &self.scope {
-            scope.borrow_mut().enter_scope();
+        if false {  // Plan 091: scope removed
+            let _ = self;
+            // scope.enter_scope();
         }
         sink.body.write(b"{\n")?;
         self.indent();
@@ -2064,8 +2061,9 @@ impl CTrans {
         self.dedent();
         self.print_indent(&mut sink.body)?;
         sink.body.write(b"}")?;
-        if let Some(scope) = &self.scope {
-            scope.borrow_mut().exit_scope();
+        if false {  // Plan 091: scope removed
+            let _ = self;
+            // scope.exit_scope();
         }
         Ok(())
     }
@@ -2337,8 +2335,9 @@ impl CTrans {
         } else if matches!(store.ty, Type::Unknown) {
             if let Some(inferred_type) = self.infer_expr_type(&store.expr) {
                 // Update the scope with the inferred type for future lookups
-                if let Some(scope) = &self.scope {
-                    scope.borrow_mut().update_store_type(&store.name, inferred_type.clone());
+                if false {  // Plan 091: scope removed
+            let _ = self;
+                    // scope.update_store_type(&store.name, inferred_type.clone());
                 }
 
                 let type_name = self.c_type_name(&inferred_type);
@@ -3946,11 +3945,11 @@ impl Trans for CTrans {
 
         // Transpile substituted generic tags from scope
         // These are tags created during parsing when generic instances are used (e.g., May<int> → May_int)
-        let tags_to_transpile = if let Some(scope) = &self.scope {
-            let scope_borrowed = scope.borrow();
+        let tags_to_transpile = if let Some(db) = &self.db {
+            let db_guard = db.try_read().unwrap();
             let mut tags = Vec::new();
             // Iterate through all scopes to find substituted tags
-            for (_sid, scope_data) in scope_borrowed.scopes.iter() {
+            for (_sid, scope_data) in db_guard.scopes.iter() {
                 for (name, meta) in scope_data.symbols.iter() {
                     if let Meta::Type(Type::Tag(tag)) = &**meta {
                         // Check if this is a substituted tag (contains underscore and has no type params)
@@ -3962,7 +3961,7 @@ impl Trans for CTrans {
                     }
                 }
             }
-            drop(scope_borrowed);
+            drop(db_guard);
             tags
         } else {
             Vec::new()

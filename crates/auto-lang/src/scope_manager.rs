@@ -19,6 +19,18 @@ impl ScopeManager {
     pub fn new() -> Self {
         Self::default()
     }
+    
+    /// Lookup a type by name (stub - returns None for now)
+    pub fn lookup_type(&self, _name: &str) -> Option<crate::ast::Type> {
+        // Plan 091: This should integrate with TypeStore
+        None
+    }
+    
+    /// Lookup metadata by name (stub - returns None for now)
+    pub fn lookup_meta(&self, _name: &str) -> Option<crate::scope::Meta> {
+        // Plan 091: This should integrate with Database
+        None
+    }
 
     pub fn lookup_type_alias(&self, name: &str) -> Option<&TypeAliasDef> {
         self.type_aliases.get(name)

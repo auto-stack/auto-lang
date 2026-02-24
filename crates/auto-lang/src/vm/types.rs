@@ -145,6 +145,14 @@ impl ObjectData {
     pub fn new() -> Self {
         Self { fields: HashMap::new() }
     }
+    
+    pub fn set(&mut self, key: auto_val::ValueKey, value: auto_val::Value) {
+        self.fields.insert(key, value);
+    }
+    
+    pub fn get(&self, key: &auto_val::ValueKey) -> Option<&auto_val::Value> {
+        self.fields.get(key)
+    }
 }
 
 impl Default for ObjectData {
