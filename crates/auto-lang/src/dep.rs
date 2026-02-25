@@ -113,6 +113,7 @@ impl<'db> DepScanner<'db> {
             Stmt::Alias(_) => {}
             Stmt::TypeAlias(_) => {}
             Stmt::EmptyLine(_) => {}
+            Stmt::Dep(_) => {}  // Plan 092: Dependency declaration - no fragment deps
         }
     }
 

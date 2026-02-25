@@ -2449,6 +2449,7 @@ impl<'a> Parser<'a> {
             TokenKind::Break => self.break_stmt()?,
             TokenKind::Return => self.return_stmt()?,
             TokenKind::Use => self.use_stmt()?,
+            TokenKind::Dep => self.dep_stmt()?,  // Plan 092: Dependency declaration
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
             TokenKind::Is => self.is_stmt()?,
@@ -2951,12 +2952,46 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Use(uses))
     }
 
+    /// Parse `use.rust crate::module::{item1, item2}`
+    /// Plan 092: Rust FFI import
     pub fn use_rust_stmt(&mut self) -> AutoResult<Stmt> {
-        return Err(SyntaxError::Generic {
-            message: "Rust import not supported yet".to_string(),
-            span: pos_to_span(self.cur.pos),
+        // Already consumed: use . rust
+        // Now parse: crate::module::{items}
+
+        let mut paths = Vec::new();
+
+        // Get crate name (first identifier)
+        let name = self.expect_ident_str()?;
+        paths.push(name.into());
+
+        // Parse module path (:: separated)
+        while self.is_kind(TokenKind::Colon) {
+            self.next(); // skip first :
+            if !self.is_kind(TokenKind::Colon) {
+                // Single colon - might be type annotation, stop here
+                break;
+            }
+            self.next(); // skip second :
+
+            // Check for { which starts import items
+            if self.is_kind(TokenKind::LBrace) {
+                break;
+            }
+
+            let segment = self.expect_ident_str()?;
+            paths.push(segment.into());
         }
-        .into());
+
+        // Parse import items
+        let items = self.parse_use_items()?;
+
+        let uses = Use {
+            kind: UseKind::Rust,
+            paths,
+            items,
+        };
+
+        Ok(Stmt::Use(uses))
     }
 
     // There are three kinds of import
@@ -3002,6 +3037,99 @@ impl<'a> Parser<'a> {
             items,
         };
         Ok(Stmt::Use(uses))
+    }
+
+    /// Parse `dep crate_name(version: "...", features: [...])`
+    /// Plan 092: Dependency declaration
+    pub fn dep_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip 'dep'
+
+        // Get crate name
+        let name = self.expect_ident_str()?;
+
+        let mut version = None;
+        let mut features = Vec::new();
+        let mut path = None;
+        let mut git = None;
+        let mut git_ref = None;
+
+        // Check for optional properties in parentheses
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // skip '('
+
+            while !self.is_kind(TokenKind::RParen) {
+                let key = self.expect_ident_str()?;
+                self.expect(TokenKind::Colon)?;
+
+                match key.as_str() {
+                    "version" => {
+                        let v = self.parse_string_literal()?;
+                        version = Some(v.into());
+                    }
+                    "features" => {
+                        // Parse array: ["derive", "rc"]
+                        self.expect(TokenKind::LSquare)?;
+                        while !self.is_kind(TokenKind::RSquare) {
+                            let f = self.parse_string_literal()?;
+                            features.push(f.into());
+                            if self.is_kind(TokenKind::Comma) {
+                                self.next();
+                            }
+                        }
+                        self.expect(TokenKind::RSquare)?;
+                    }
+                    "path" => {
+                        let p = self.parse_string_literal()?;
+                        path = Some(p.into());
+                    }
+                    "git" => {
+                        let g = self.parse_string_literal()?;
+                        git = Some(g.into());
+                    }
+                    "branch" | "tag" | "rev" => {
+                        let r = self.parse_string_literal()?;
+                        git_ref = Some(r.into());
+                    }
+                    _ => {
+                        return Err(SyntaxError::Generic {
+                            message: format!("Unknown dep property: {}", key),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                }
+
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                }
+            }
+
+            self.expect(TokenKind::RParen)?;
+        }
+
+        let dep = DepStmt {
+            name: name.into(),
+            version,
+            features,
+            path,
+            git,
+            git_ref,
+        };
+
+        Ok(Stmt::Dep(dep))
+    }
+
+    /// Parse a string literal (returns the content without quotes)
+    fn parse_string_literal(&mut self) -> AutoResult<String> {
+        if !self.is_kind(TokenKind::Str) {
+            return Err(SyntaxError::UnexpectedToken {
+                expected: "string".to_string(),
+                found: self.cur.text.to_string(),
+                span: pos_to_span(self.cur.pos),
+            }.into());
+        }
+        let text = self.cur.text.to_string();
+        self.next();
+        Ok(text)
     }
 
     /// Get file extensions to load based on compile destination

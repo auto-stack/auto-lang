@@ -111,6 +111,7 @@ pub enum TokenKind {
     Impl,   // ADDED: impl keyword for trait implementations (Plan 059)
     And,    // ADDED: logical and keyword (Plan 066)
     Or,     // ADDED: logical or keyword (Plan 066)
+    Dep,    // ADDED: dep keyword for dependency declaration (Plan 092)
 
     // Property Keywords (Phase 3: postfix property syntax)
     DotView,  // .view
@@ -313,6 +314,7 @@ impl Token {
             "const" => Some(TokenKind::Const),
             "and" => Some(TokenKind::And),
             "or" => Some(TokenKind::Or),
+            "dep" => Some(TokenKind::Dep),  // Plan 092: dependency declaration
             _ => None,
         }
     }

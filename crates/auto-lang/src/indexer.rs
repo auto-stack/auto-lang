@@ -141,6 +141,11 @@ impl<'db> Indexer<'db> {
                     let frag_id = self.index_on_events(on, file_id)?;
                     frag_ids.push(frag_id);
                 }
+
+                // Plan 092: Dependency declarations
+                Stmt::Dep(dep) => {
+                    self.index_dep_stmt(dep, file_id)?;
+                }
             }
         }
 
@@ -286,6 +291,25 @@ impl<'db> Indexer<'db> {
         if !imported_files.is_empty() {
             self.db.dep_graph_mut().add_file_import(file_id, imported_files);
         }
+
+        Ok(())
+    }
+
+    /// Index a dependency declaration (Plan 092)
+    ///
+    /// Tracks Rust crate dependencies for FFI.
+    fn index_dep_stmt(&mut self, dep_stmt: &crate::ast::DepStmt, _file_id: FileId) -> Result<(), String> {
+        // Log the dependency for now
+        // Phase 5: Could register in sandbox registry
+        log::info!(
+            "Found dep declaration: {} (version: {:?}, features: {:?})",
+            dep_stmt.name,
+            dep_stmt.version,
+            dep_stmt.features
+        );
+
+        // TODO: Register with sandbox for later loading
+        // self.sandbox.register_dependency(dep_stmt)?;
 
         Ok(())
     }

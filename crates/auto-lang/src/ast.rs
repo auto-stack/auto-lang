@@ -8,6 +8,8 @@ mod call;
 pub use call::*;
 mod cover;
 pub use cover::*;
+mod dep_;
+pub use dep_::*;
 mod enums;
 pub use enums::*;
 mod ext;
@@ -167,6 +169,7 @@ pub enum Stmt {
     SpecDecl(SpecDecl),
     Node(Node),
     Use(Use),
+    Dep(DepStmt),  // Plan 092: Dependency declaration
     OnEvents(OnEvents),
     Comment(AutoStr),
     Alias(Alias),
@@ -234,6 +237,7 @@ impl fmt::Display for Stmt {
             Stmt::Break => write!(f, "(break)"),
             Stmt::Return(expr) => write!(f, "(return {})", expr),
             Stmt::Ext(ext) => write!(f, "{}", ext),
+            Stmt::Dep(dep) => write!(f, "{}", dep),
         }
     }
 }
@@ -830,8 +834,8 @@ impl ToNode for Stmt {
             }
             Stmt::Break => AutoNode::new("break"),
             Stmt::Return(_) => AutoNode::new("return"),
-
             Stmt::Ext(ext) => ext.to_node(),
+            Stmt::Dep(dep) => dep.to_node(),
         }
     }
 }
@@ -869,6 +873,7 @@ impl ToAtom for Stmt {
             Stmt::Break => "(break)".into(),
             Stmt::Return(expr) => format!("(return {})", expr.to_atom()).into(),
             Stmt::Ext(ext) => ext.to_atom(),
+            Stmt::Dep(dep) => dep.to_atom(),
         }
     }
 }

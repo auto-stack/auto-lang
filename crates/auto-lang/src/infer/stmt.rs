@@ -101,8 +101,8 @@ pub fn check_stmt(ctx: &mut InferenceContext, stmt: &Stmt) -> Result<Type, AutoE
         Stmt::Break => Ok(Type::Void),
         Stmt::Comment(_) | Stmt::EmptyLine(_) => Ok(Type::Void),
 
-        // Use, Node, OnEvents, Alias, Is - no type checking needed
-        Stmt::Use(_) | Stmt::Node(_) | Stmt::OnEvents(_) | Stmt::Alias(_) | Stmt::Is(_) => {
+        // Use, Node, OnEvents, Alias, Is, Dep - no type checking needed
+        Stmt::Use(_) | Stmt::Node(_) | Stmt::OnEvents(_) | Stmt::Alias(_) | Stmt::Is(_) | Stmt::Dep(_) => {
             Ok(Type::Void)
         }
     }
