@@ -18,6 +18,7 @@
 //! ```
 
 use crate::ast::Code;
+use crate::atom::Atom;
 use crate::AutoResult;
 use auto_val::Value;
 use std::collections::HashMap;
@@ -56,6 +57,9 @@ pub struct AutoInterpreter {
 
     /// Whether to preserve state between evaluations
     persistent: bool,
+
+    /// F-string note character (for template evaluation)
+    fstr_note: char,
 }
 
 impl AutoInterpreter {
@@ -65,6 +69,7 @@ impl AutoInterpreter {
             vm: VmInterpreter::new(),
             cache: HashMap::new(),
             persistent: true,
+            fstr_note: '$',
         }
     }
 
@@ -74,7 +79,17 @@ impl AutoInterpreter {
             vm: VmInterpreter::new(),
             cache: HashMap::new(),
             persistent: false,
+            fstr_note: '$',
         }
+    }
+
+    /// Set the F-string note character for template evaluation
+    ///
+    /// This character is used as the prefix for F-string expressions in templates.
+    /// Default is '$'.
+    pub fn with_fstr_note(mut self, note: char) -> Self {
+        self.fstr_note = note;
+        self
     }
 
     /// Evaluate code and return the result
@@ -86,6 +101,17 @@ impl AutoInterpreter {
     /// The result value of the evaluation
     pub fn eval(&mut self, code: &str) -> AutoResult<Value> {
         self.vm.run(code)
+    }
+
+    /// Evaluate a template with F-string support
+    ///
+    /// This is similar to `eval` but is intended for template evaluation
+    /// where F-strings with the configured note character are processed.
+    ///
+    /// Currently an alias for `eval` - F-string processing will be improved.
+    pub fn eval_template(&mut self, code: &str) -> AutoResult<Value> {
+        // TODO: Add F-string preprocessing based on self.fstr_note
+        self.eval(code)
     }
 
     /// Evaluate a function call with arguments
@@ -114,6 +140,53 @@ impl AutoInterpreter {
         self.vm.get_global(name)
     }
 
+    /// Merge an Atom's values into the interpreter scope
+    ///
+    /// This method extracts values from an Atom and sets them as global variables.
+    /// Used for passing data to templates in auto-gen.
+    ///
+    /// # Arguments
+    /// * `atom` - The Atom containing data to merge
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut interp = AutoInterpreter::new();
+    /// let atom = Atom::assemble(vec![
+    ///     Value::pair("name", "Alice"),
+    ///     Value::pair("age", 30),
+    /// ]).unwrap();
+    /// interp.merge_atom(&atom);
+    /// // Now "name" and "age" are available as globals
+    /// ```
+    pub fn merge_atom(&mut self, atom: &Atom) {
+        match atom {
+            Atom::Node(node) => {
+                // Set node properties as globals
+                for (key, value) in node.props_iter() {
+                    if let Some(name) = key.name() {
+                        self.set_global(name, value.clone());
+                    }
+                }
+            }
+            Atom::Obj(obj) => {
+                // Set object entries as globals
+                for (key, value) in obj.iter() {
+                    if let Some(name) = key.name() {
+                        self.set_global(name, value.clone());
+                    }
+                }
+            }
+            Atom::Array(arr) => {
+                // Set array elements as numbered globals
+                for (i, value) in arr.iter().enumerate() {
+                    self.set_global(&format!("item_{}", i), value.clone());
+                }
+            }
+            Atom::Empty => {}
+        }
+    }
+
     /// Clear all state
     pub fn reset(&mut self) {
         self.vm.reset();
@@ -136,8 +209,6 @@ impl Default for AutoInterpreter {
         Self::new()
     }
 }
-
-#[cfg(test)]
 
 #[cfg(test)]
 mod tests {
@@ -182,5 +253,19 @@ mod tests {
         // Should not error
         interp.eval("1 + 2").unwrap();
         interp.eval("fn main() { print(\"hello\") }").unwrap();
+    }
+
+    #[test]
+    fn test_merge_atom_obj() {
+        let mut interp = AutoInterpreter::new();
+        let obj = auto_val::Obj::new();
+        obj.set("name", Value::str("Alice"));
+        obj.set("age", Value::Int(30));
+        let atom = Atom::Obj(obj);
+
+        interp.merge_atom(&atom);
+
+        assert_eq!(interp.get_global("name"), Some(Value::str("Alice")));
+        assert_eq!(interp.get_global("age"), Some(Value::Int(30)));
     }
 }

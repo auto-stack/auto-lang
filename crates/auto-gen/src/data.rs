@@ -1,7 +1,6 @@
 use crate::error::{GenError, GenResult};
 use auto_lang::atom::Atom;
-use auto_lang::interp::Interpreter;
-use auto_lang::Universe;
+use auto_lang::interpreter::AutoInterpreter;
 use auto_val::{Shared, Value};
 use std::path::PathBuf;
 
@@ -15,12 +14,12 @@ pub enum DataSource {
 
 /// Loaded data with interpreter context
 pub struct LoadedData {
-    pub scope: Shared<Universe>,
+    pub interp: Shared<AutoInterpreter>,
 }
 
 /// Loads data from various sources
 pub struct DataLoader {
-    /// Library search paths for `use` statements
+    /// Library search paths for `use` statements (TODO: implement in AutoInterpreter)
     lib_paths: Vec<PathBuf>,
 }
 
@@ -54,11 +53,11 @@ impl DataLoader {
     pub fn load(&self, source: DataSource) -> GenResult<LoadedData> {
         match source {
             DataSource::Atom(atom) => {
-                // Create a universe and merge the atom data
-                let mut universe = Universe::new();
-                universe.merge_atom(&atom);
+                // Create an interpreter and merge the atom data
+                let mut interp = AutoInterpreter::new();
+                interp.merge_atom(&atom);
                 Ok(LoadedData {
-                    scope: auto_val::shared(universe),
+                    interp: auto_val::shared(interp),
                 })
             }
             DataSource::AutoFile(path) => {
@@ -77,16 +76,19 @@ impl DataLoader {
         eprintln!("DEBUG DataLoader: code starts with: {}", &code.chars().take(50).collect::<String>());
 
         // Evaluate the Auto code
-        let mut inter = Interpreter::new();
+        let mut interp = AutoInterpreter::new();
 
-        // Set library search paths for `use` statements
-        if !self.lib_paths.is_empty() {
-            inter.set_lib_paths(self.lib_paths.clone());
-        }
+        // TODO: Add lib_paths support to AutoInterpreter
+        // if !self.lib_paths.is_empty() {
+        //     interp.set_lib_paths(self.lib_paths.clone());
+        // }
 
-        let value = inter.eval(code);
+        let value = interp.eval(code);
 
-        eprintln!("DEBUG DataLoader: eval result is_error = {}", value.is_error());
+        eprintln!("DEBUG DataLoader: eval result = {:?}", value);
+
+        // Check for errors
+        let value = value.map_err(|e| GenError::Other(format!("Eval error: {}", e)))?;
 
         // Try to convert to Atom if it's a Node or Array
         let atom = match value {
@@ -94,20 +96,19 @@ impl DataLoader {
                 .map_err(|e| GenError::Other(format!("Failed to create atom from node: {}", e)))?,
             Value::Array(a) => Atom::new(Value::Array(a))
                 .map_err(|e| GenError::Other(format!("Failed to create atom from array: {}", e)))?,
-            // For other types, the data should be in the scope already
+            // For other types, the data should be in the interpreter already
             _ => {
                 return Ok(LoadedData {
-                    scope: inter.scope.clone(),
+                    interp: auto_val::shared(interp),
                 });
             }
         };
 
-        // Create a universe and merge the atom data
-        let mut universe = Universe::new();
-        universe.merge_atom(&atom);
+        // Merge the atom data into the interpreter
+        interp.merge_atom(&atom);
 
         Ok(LoadedData {
-            scope: auto_val::shared(universe),
+            interp: auto_val::shared(interp),
         })
     }
 }

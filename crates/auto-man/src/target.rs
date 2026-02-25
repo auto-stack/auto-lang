@@ -573,7 +573,7 @@ impl Target {
 
             // Transpile to C
             let fname = AutoPath::new(path).basename();
-            let (mut c_code, uni) = transpile_c(fname, &content)
+            let mut c_code = transpile_c(fname, &content)
                 .map_err(|e| format!("Failed to transpile '{}': {}", path, e))?;
 
             // Generate output file paths
@@ -603,14 +603,15 @@ impl Target {
                 info!("Generated {}", h_path);
             }
 
-            // Add code paks (additional generated files from dependencies)
-            for (_sid, pak) in uni.borrow().code_paks.iter() {
-                let inc = AutoPath::new(pak.header.clone()).parent().parent();
-                if inc.is_dir() {
-                    self.incs.insert(inc.to_astr());
-                }
-                self.srcs.insert(pak.cfile.clone());
-            }
+            // TODO: Plan 092 - Add code paks support with new AutoVM
+            // Previously: uni.borrow().code_paks
+            // for (_sid, pak) in uni.borrow().code_paks.iter() {
+            //     let inc = AutoPath::new(pak.header.clone()).parent().parent();
+            //     if inc.is_dir() {
+            //         self.incs.insert(inc.to_astr());
+            //     }
+            //     self.srcs.insert(pak.cfile.clone());
+            // }
 
             pb.inc(1);
         }
@@ -712,7 +713,7 @@ impl Target {
                     info!("[Cache Miss] {}", module_name);
 
                     let fname = AutoPath::new(path).basename();
-                    let (mut c_code, uni) = transpile_c(fname, &content)
+                    let mut c_code = transpile_c(fname, &content)
                         .map_err(|e| format!("Failed to transpile '{}': {}", path, e))?;
 
                     // Write C file
@@ -746,20 +747,21 @@ impl Target {
                         }
                     }
 
-                    // Add code paks (additional generated files from dependencies)
-                    for (_sid, pak) in uni.borrow().code_paks.iter() {
-                        let inc = AutoPath::new(pak.header.clone()).parent().parent();
-                        if inc.is_dir() {
-                            self.incs.insert(inc.to_astr());
-                        }
-                        self.srcs.insert(pak.cfile.clone());
-                    }
+                    // TODO: Plan 092 - Add code paks support with new AutoVM
+                    // Previously: uni.borrow().code_paks
+                    // for (_sid, pak) in uni.borrow().code_paks.iter() {
+                    //     let inc = AutoPath::new(pak.header.clone()).parent().parent();
+                    //     if inc.is_dir() {
+                    //         self.incs.insert(inc.to_astr());
+                    //     }
+                    //     self.srcs.insert(pak.cfile.clone());
+                    // }
                 }
                 Err(e) => {
                     // Cache error - fallback to normal transpilation
                     warn!("Cache error: {}, falling back to transpilation", e);
                     let fname = AutoPath::new(path).basename();
-                    let (mut c_code, uni) = transpile_c(fname, &content)
+                    let mut c_code = transpile_c(fname, &content)
                         .map_err(|e| format!("Failed to transpile '{}': {}", path, e))?;
 
                     let c_content = c_code.done()?;
@@ -780,13 +782,15 @@ impl Target {
                         }
                     }
 
-                    for (_sid, pak) in uni.borrow().code_paks.iter() {
-                        let inc = AutoPath::new(pak.header.clone()).parent().parent();
-                        if inc.is_dir() {
-                            self.incs.insert(inc.to_astr());
-                        }
-                        self.srcs.insert(pak.cfile.clone());
-                    }
+                    // TODO: Plan 092 - Add code paks support with new AutoVM
+                    // Previously: uni.borrow().code_paks
+                    // for (_sid, pak) in uni.borrow().code_paks.iter() {
+                    //     let inc = AutoPath::new(pak.header.clone()).parent().parent();
+                    //     if inc.is_dir() {
+                    //         self.incs.insert(inc.to_astr());
+                    //     }
+                    //     self.srcs.insert(pak.cfile.clone());
+                    // }
                 }
             }
 

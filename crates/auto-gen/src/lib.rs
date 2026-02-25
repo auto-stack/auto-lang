@@ -151,11 +151,10 @@ impl AutoGen {
     }
 
     fn gen_one_str(&self, mold: &Mold) -> AutoStr {
-        let mut universe = auto_lang::Universe::new();
-        universe.merge_atom(&self.data);
-        let mut inter =
-            auto_lang::interp::Interpreter::with_scope(universe).with_fstr_note(self.note);
-        let result = inter.eval_template(&mold.code);
+        let mut interp = auto_lang::interpreter::AutoInterpreter::new()
+            .with_fstr_note(self.note);
+        interp.merge_atom(&self.data);
+        let result = interp.eval_template(&mold.code);
         match result {
             Ok(result) => result.to_astr(),
             Err(e) => {
@@ -227,11 +226,10 @@ impl AutoGen {
     }
 
     fn gen_one(&self, mold: &Mold, out_file: &AutoPath) {
-        let mut universe = auto_lang::Universe::new();
-        universe.merge_atom(&self.data);
-        let mut inter =
-            auto_lang::interp::Interpreter::with_scope(universe).with_fstr_note(self.note);
-        let result = inter.eval_template(&mold.code);
+        let mut interp = auto_lang::interpreter::AutoInterpreter::new()
+            .with_fstr_note(self.note);
+        interp.merge_atom(&self.data);
+        let result = interp.eval_template(&mold.code);
         match result {
             Ok(result) => {
                 let out_str = result.to_astr();
@@ -304,11 +302,10 @@ impl OneGen {
     }
 
     pub fn gen(&self) -> AutoResult<()> {
-        let mut universe = auto_lang::Universe::new();
-        universe.merge_atom(&self.data);
-        let mut inter =
-            auto_lang::interp::Interpreter::with_scope(universe).with_fstr_note(self.note);
-        let result = inter.eval_template(&self.mold.code);
+        let mut interp = auto_lang::interpreter::AutoInterpreter::new()
+            .with_fstr_note(self.note);
+        interp.merge_atom(&self.data);
+        let result = interp.eval_template(&self.mold.code);
         match result {
             Ok(result) => {
                 let out_str = result.to_astr();

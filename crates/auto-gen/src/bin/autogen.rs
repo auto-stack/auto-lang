@@ -232,7 +232,7 @@ fn validate_templates(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> 
             .map_err(|e| format!("Failed to read template file: {}", e))?;
 
         // Try to parse as template
-        match auto_lang::interp::Interpreter::new().eval_template(&source) {
+        match auto_lang::interpreter::AutoInterpreter::new().eval_template(&source) {
             Ok(_) => {
                 println!("✓ {}", path.display());
             }
@@ -256,7 +256,7 @@ fn validate_templates(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> 
             if template_path.extension().and_then(|s| s.to_str()) == Some("at") {
                 match std::fs::read_to_string(&template_path) {
                     Ok(source) => {
-                        match auto_lang::interp::Interpreter::new().eval_template(&source) {
+                        match auto_lang::interpreter::AutoInterpreter::new().eval_template(&source) {
                             Ok(_) => {
                                 println!("✓ {}", template_path.display());
                                 valid_count += 1;

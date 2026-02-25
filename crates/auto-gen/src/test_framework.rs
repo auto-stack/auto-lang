@@ -183,20 +183,20 @@ fn convert_atom_to_let(data: &str) -> String {
 
 /// Run a single generation test case
 pub fn run_gen_test(test: &GenTestCase) -> Result<(), String> {
-    use auto_lang::interp::Interpreter;
+    use auto_lang::interpreter::AutoInterpreter;
 
     // Create interpreter and evaluate data code first
-    let mut inter = Interpreter::new();
+    let mut inter = AutoInterpreter::new();
 
     // Convert Atom format to let statements if needed
     let data_code = convert_atom_to_let(&test.data);
 
-    // Interpret the data code to populate the universe
+    // Interpret the data code to populate the interpreter
     inter
-        .interpret(&data_code)
+        .eval(&data_code)
         .map_err(|e| format!("Failed to interpret data: {}", e))?;
 
-    // Now evaluate the template with the populated universe
+    // Now evaluate the template with the populated interpreter
     let result = inter
         .eval_template(&test.template)
         .map_err(|e| format!("Failed to render template: {}", e))?;

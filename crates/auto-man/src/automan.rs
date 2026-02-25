@@ -5,7 +5,6 @@ use crate::Port;
 use crate::TargetKind;
 use crate::{Index, IndexStore};
 use auto_lang::config::AutoConfig;
-use auto_lang::Universe;
 use auto_val::shared;
 use auto_val::{AutoPath, AutoStr, Obj, Value};
 use log::*;
@@ -136,11 +135,8 @@ impl Automan {
 
         println!("port NAME: {}", port_name);
 
-        // use this port to reload config and make a pac
-        let mut env = Universe::new();
-        env.set_global("port", port_name.clone().into());
-
-        let config = AutoConfig::from_file(config_path.as_path(), &Obj::new(), env)?;
+        // Load config without port variable (port variable was used in old Universe-based code)
+        let config = AutoConfig::from_file(config_path.as_path(), &Obj::new())?;
         let mut index_used: Vec<AutoStr> = Vec::new();
         if config.root.has_prop("index") {
             index_used = config

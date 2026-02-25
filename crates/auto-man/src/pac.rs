@@ -13,7 +13,6 @@ use crate::{Index, PacInfo};
 use crate::{Target, TargetKind, TargetStatus};
 use auto_lang::config::AutoConfig;
 use auto_lang::Atom;
-use auto_lang::Universe;
 use auto_val::{pretty, Arg, Array, AutoPath, AutoStr, Kid, Node, Obj, Value, ValueKey};
 use auto_val::{shared, Shared};
 use log::*;
@@ -767,8 +766,6 @@ impl Pac {
                         target_path.path(),
                         // override dep props
                         &target.props,
-                        // env
-                        Universe::default(),
                     )?;
                     let mut pac = Pac::new(dep_config);
                     pac.index = self.index.clone();

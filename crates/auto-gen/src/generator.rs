@@ -124,10 +124,10 @@ impl CodeGenerator {
         // Load template
         let template = self.template_engine.load(&template_spec.template_path)?;
 
-        // Render template using the universe from loaded data
+        // Render template using the interpreter from loaded data
         let rendered = self
             .template_engine
-            .render_with_universe(&template, &data.scope)?;
+            .render_with_data(&template, data)?;
 
         // Determine output path
         let output_path = self.resolve_output_path(&template_spec, &template)?;
@@ -172,25 +172,21 @@ impl CodeGenerator {
         Ok(self.config.output_dir.join(&output_name))
     }
 
-    /// Load a library file (.at) and merge its definitions into the universe
+    /// Load a library file (.at) and merge its definitions into the interpreter
     fn load_lib_file(&self, lib_path: &PathBuf, loaded_data: &mut LoadedData) -> GenResult<()> {
-        use auto_lang::interp::Interpreter;
-
         // Read the library file
         let lib_code = std::fs::read_to_string(lib_path).map_err(|e| GenError::TemplateLoadError {
             path: lib_path.clone(),
             reason: e.to_string(),
         })?;
 
-        // Create an interpreter with the current scope
-        let mut inter = Interpreter::with_univ(loaded_data.scope.clone());
+        // Get mutable access to the shared interpreter
+        let mut interp = loaded_data.interp.borrow_mut();
 
         // Evaluate the library code to load function definitions
-        // Note: eval() returns Value, not Result - errors are stored in the interpreter
-        let _result = inter.eval(&lib_code);
+        let _result = interp.eval(&lib_code);
 
-        // The functions defined in the library are now in the shared universe/scope
-        // No need to explicitly merge - the interpreter uses the shared universe
+        // The functions defined in the library are now in the interpreter
 
         Ok(())
     }
