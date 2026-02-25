@@ -301,6 +301,20 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
             return Ok("false".to_string());
         }
 
+        // Check for range result (Plan 091: Range marker = -1000000 + range_id)
+        if result <= -1000000 && result > -2000000 {
+            let range_id = (result + 1000000) as usize;
+            // Access the task's ranges through the already locked task
+            if range_id < task.ram.ranges.len() {
+                let (start, end, is_inclusive) = task.ram.ranges[range_id];
+                if is_inclusive {
+                    return Ok(format!("{}..={}", start, end));
+                } else {
+                    return Ok(format!("{}..{}", start, end));
+                }
+            }
+        }
+
         // Default: return as integer
         Ok(format!("{}", result))
     } else {

@@ -579,22 +579,12 @@ impl AutoVM {
                     let end = task.ram.pop_i32();
                     let start = task.ram.pop_i32();
 
-                    // Create Range value (exclusive)
-                    let _range_value = auto_val::Value::Range(start, end);
-
-                    // For now, we need to push a representation of the range onto the stack
-                    // Since AutoVM stack only supports i32, we'll encode the range as a special value
-                    // Format: Encode as i32 with a marker (for simplicity, use start value for now)
-                    // TODO: Add proper Value support for ranges in stack
-
-                    // For now, just push the start value as a placeholder
-                    // The range semantics are encoded in the bytecode itself
-                    task.ram.push_i32(start);
-
-                    // Note: A proper implementation would either:
-                    // 1. Push a range ID (similar to arrays/objects)
-                    // 2. Extend the stack to support Value types directly
-                    // 3. Encode range in a way that preserves both start and end
+                    // Store range in ranges registry and push range_id
+                    let range_id = task.ram.ranges.len() as i32;
+                    task.ram.ranges.push((start, end, false)); // false = exclusive
+                    
+                    // Use special marker for range: -1000000 + range_id
+                    task.ram.push_i32(-1000000 + range_id);
                 }
                 OpCode::CREATE_RANGE_EQ => {
                     // Stack layout: [..., end, start]
@@ -605,9 +595,13 @@ impl AutoVM {
                     // Create RangeEq value (inclusive)
                     let _range_value = auto_val::Value::RangeEq(start, end);
 
-                    // For now, push start value as placeholder
-                    // See CREATE_RANGE note above for proper implementation
-                    task.ram.push_i32(start);
+                    // Store range in ranges registry and push range_id
+                    let range_id = task.ram.ranges.len() as i32;
+                    task.ram.ranges.push((start, end, true)); // true = inclusive
+                    eprintln!("DEBUG CREATE_RANGE_EQ: start={}, end={}, range_id={}", start, end, range_id);
+                    
+                    // Use special marker for range: -1000000 + range_id
+                    task.ram.push_i32(-1000000 + range_id);
                 }
                 // Plan 073: F-string support (f"hello $name")
                 OpCode::BUILD_FSTR => {

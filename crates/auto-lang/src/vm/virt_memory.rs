@@ -175,6 +175,8 @@ pub struct VirtualRAM {
     pub raw: Vec<i32>,
     pub sp: usize, // Stack Pointer (Index of the next free slot)
     pub bp: usize, // Base Pointer (Index of the current frame)
+    /// Range storage: (start, end, is_inclusive)
+    pub ranges: Vec<(i32, i32, bool)>,
 }
 
 impl VirtualRAM {
@@ -183,6 +185,7 @@ impl VirtualRAM {
             raw: vec![0; size],
             sp: 0,
             bp: 0,
+            ranges: Vec::new(),
         }
     }
 
