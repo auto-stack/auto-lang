@@ -259,6 +259,7 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
         }
 
         let result = task.ram.pop_i32();
+        eprintln!("DEBUG RESULT: result = {}, sp = {}", result, task.ram.sp);
 
         // Format result: check if it's an array ID, heap object ID, or regular value
         let result_u64 = result as u64;

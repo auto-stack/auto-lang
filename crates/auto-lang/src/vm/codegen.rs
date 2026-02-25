@@ -748,6 +748,7 @@ impl Codegen {
             }
             // Plan 073: For statement support
             Stmt::For(for_stmt) => {
+                eprintln!("DEBUG FOR: Compiling for loop");
                 // Push new loop exit tracking
                 self.loop_exits.push(Vec::new());
 
@@ -757,18 +758,25 @@ impl Codegen {
                     Iter::Named(var_name) => {
                         // Check if range is a Range expression (for x in 0..10)
                         if let Expr::Range(range) = &for_stmt.range {
+                            eprintln!("DEBUG FOR: Range-based loop, start={:?}, end={:?}, eq={}", range.start, range.end, range.eq);
                             // Compile start expression and initialize loop variable
                             self.compile_expr(&range.start)?;
+                            eprintln!("DEBUG FOR: After start expr, code len = {}", self.code.len());
 
                             // Store to loop variable
                             let var_str = var_name.to_string();
+                            eprintln!("DEBUG FOR: Loop var = {}", var_str);
                             self.push_scope(); // New scope for loop variable
-                            let var_index = self.scope_stack.last_mut().unwrap().len();
+                            // Calculate total index across all scopes
+                            let var_index: usize = self.scope_stack.iter().map(|s| s.len()).sum();
                             self.scope_stack.last_mut().unwrap().insert(var_str.clone(), var_index);
+                            eprintln!("DEBUG FOR: var_index = {}", var_index);
                             self.emit_store_loc(var_index);
+                            eprintln!("DEBUG FOR: After store_loc, code len = {}", self.code.len());
 
                             // Loop start label
                             let loop_start = self.code.len() as i16;
+                            eprintln!("DEBUG FOR: Loop start at {}", loop_start);
 
                             // Load loop variable
                             self.emit_load_loc(var_index);
@@ -800,7 +808,8 @@ impl Codegen {
                             // JMP back to loop start
                             self.emit(OpCode::JMP);
                             let current_pos = self.code.len() as i16;
-                            self.emit_i16(loop_start - current_pos);
+                            // Offset is from IP after reading the offset (current_pos + 2)
+                            self.emit_i16(loop_start - current_pos - 2);
 
                             // This is the loop exit point - patch all break jumps here
                             let _loop_exit = self.code.len();
@@ -864,7 +873,8 @@ impl Codegen {
                             // JMP back to loop start
                             self.emit(OpCode::JMP);
                             let current_pos = self.code.len() as i16;
-                            self.emit_i16(loop_start - current_pos);
+                            // Offset is from IP after reading the offset (current_pos + 2)
+                            self.emit_i16(loop_start - current_pos - 2);
 
                             // This is the loop exit point - patch all break jumps here
                             let _loop_exit = self.code.len();
@@ -945,7 +955,8 @@ impl Codegen {
                             // JMP back to loop start
                             self.emit(OpCode::JMP);
                             let current_pos = self.code.len() as i16;
-                            self.emit_i16(loop_start - current_pos);
+                            // Offset is from IP after reading the offset (current_pos + 2)
+                            self.emit_i16(loop_start - current_pos - 2);
 
                             // This is the loop exit point - patch all break jumps here
                             let _loop_exit = self.code.len();
@@ -2741,10 +2752,11 @@ impl Codegen {
 
     /// Add variable to current scope and return its index
     fn add_var(&mut self, name: &str) -> usize {
+        // Calculate total index across all scopes
+        let total_len: usize = self.scope_stack.iter().map(|s| s.len()).sum();
         let scope = self.scope_stack.last_mut().expect("Scope stack should never be empty");
-        let index = scope.len();
-        scope.insert(name.to_string(), index);
-        index
+        scope.insert(name.to_string(), total_len);
+        total_len
     }
 
     /// Push a new scope (for function entry, blocks, etc.)
