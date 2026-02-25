@@ -18,6 +18,12 @@
 // │   └── f9/
 // └── locks/           # Process locks
 
+// Plan 092: Rust FFI Sandbox
+pub mod sandbox;
+
+// Re-export main types for convenience
+pub use sandbox::{CrateMetadata, CrateSource, Sandbox, SandboxError};
+
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -51,12 +57,17 @@ pub struct ArtifactMetadata {
 
 /// Type of compiled artifact
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[repr(i32)]
 pub enum ArtifactType {
-    TranspiledC,        // .c files from a2c
-    TranspiledCHeader,  // .h files from a2c
-    TranspiledRust,     // .rs files from a2r
-    Bytecode,           // .bc files from AutoVM
-    CompiledObject,     // .o/.obj files from C compilation
+    TranspiledC = 0,        // .c files from a2c
+    TranspiledCHeader = 1,  // .h files from a2c
+    TranspiledRust = 2,     // .rs files from a2r
+    Bytecode = 3,           // .bc files from AutoVM
+    CompiledObject = 4,     // .o/.obj files from C compilation
+
+    // Plan 092: Rust FFI Sandbox
+    RustCrateLibrary = 5,   // Compiled .so/.dylib/.dll
+    RustCrateSource = 6,    // Source tarball (.crate)
 }
 
 /// Cache integrity verification report
@@ -77,6 +88,8 @@ impl std::fmt::Display for ArtifactType {
             ArtifactType::TranspiledRust => write!(f, "Rust"),
             ArtifactType::Bytecode => write!(f, "Bytecode"),
             ArtifactType::CompiledObject => write!(f, "Object"),
+            ArtifactType::RustCrateLibrary => write!(f, "Rust Crate Lib"),
+            ArtifactType::RustCrateSource => write!(f, "Rust Crate Src"),
         }
     }
 }
@@ -495,6 +508,8 @@ impl AutoCache {
                 2 => ArtifactType::TranspiledRust,
                 3 => ArtifactType::Bytecode,
                 4 => ArtifactType::CompiledObject,
+                5 => ArtifactType::RustCrateLibrary,
+                6 => ArtifactType::RustCrateSource,
                 _ => ArtifactType::TranspiledC,
             },
             file_size: row.get(3).unwrap(),
