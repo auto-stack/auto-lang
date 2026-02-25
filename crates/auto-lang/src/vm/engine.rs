@@ -65,6 +65,8 @@ pub enum VMError {
     Halt,
     MissingNative(u16),
     RuntimeError(String),
+    /// Plan 092: FFI-related errors (library loading, ABI incompatibility, etc.)
+    FFI(String),
 }
 
 pub struct AutoVM {

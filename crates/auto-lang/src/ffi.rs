@@ -14,7 +14,7 @@
 use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::task::AutoTask;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// FFI bridge for C-transpiled modules
@@ -466,6 +466,288 @@ pub fn register_extern_c_function(
         .register_c_function(library, function_name, signature, library_path)
 }
 
+// =============================================================================
+// Plan 092: Rust FFI Bridge with Sandbox Integration
+// =============================================================================
+
+use auto_cache::{CrateMetadata, CrateRegistry, Sandbox};
+
+/// Rust FFI Bridge with Sandbox integration
+///
+/// **Plan 092**: Enables loading Rust crates dynamically with ABI safety.
+///
+/// This bridge:
+/// 1. Uses Sandbox to manage compiled Rust crates
+/// 2. Verifies ABI compatibility before loading
+/// 3. Registers crate functions as native functions
+pub struct RustFfiBridge {
+    /// The sandbox managing Rust crate compilation
+    sandbox: Sandbox,
+
+    /// Crate registry for metadata
+    registry: Option<CrateRegistry>,
+
+    /// Loaded libraries (library name -> Library handle)
+    loaded_libraries: HashMap<String, libloading::Library>,
+
+    /// Registered functions (crate::function -> native_id)
+    functions: HashMap<String, u16>,
+
+    /// Next native ID (use 300+ for dynamically loaded Rust crates)
+    next_native_id: u16,
+
+    /// Native interface for registering shims
+    native_interface: crate::vm::native::NativeInterface,
+}
+
+impl RustFfiBridge {
+    /// Create a new Rust FFI bridge with sandbox
+    pub fn new() -> Result<Self, VMError> {
+        let sandbox = Sandbox::new()
+            .map_err(|e| VMError::FFI(format!("Failed to create sandbox: {}", e)))?;
+
+        Ok(Self {
+            sandbox,
+            registry: None,
+            loaded_libraries: HashMap::new(),
+            functions: HashMap::new(),
+            next_native_id: 300, // Reserve 300+ for dynamic Rust FFI
+            native_interface: crate::vm::native::NativeInterface::new(),
+        })
+    }
+
+    /// Create bridge with registry
+    pub fn with_registry(registry_path: &Path) -> Result<Self, VMError> {
+        let mut bridge = Self::new()?;
+        let registry = CrateRegistry::new(registry_path)
+            .map_err(|e| VMError::FFI(format!("Failed to create registry: {}", e)))?;
+        bridge.registry = Some(registry);
+        Ok(bridge)
+    }
+
+    /// Get the sandbox
+    pub fn sandbox(&self) -> &Sandbox {
+        &self.sandbox
+    }
+
+    /// Get the native interface
+    pub fn native_interface(&self) -> &crate::vm::native::NativeInterface {
+        &self.native_interface
+    }
+
+    /// Get native interface as Arc
+    pub fn into_native_interface_arc(self) -> Arc<crate::vm::native::NativeInterface> {
+        Arc::new(self.native_interface)
+    }
+
+    /// Load a Rust crate through the sandbox
+    ///
+    /// # Arguments
+    /// * `crate_name` - Name of the crate (e.g., "serde", "serde_json")
+    /// * `version` - Version string (e.g., "1.0.193") or "latest"
+    ///
+    /// # Returns
+    /// * `Ok(())` - Crate loaded successfully
+    /// * `Err(VMError)` - Loading failed
+    pub fn load_rust_crate(&mut self, crate_name: &str, version: &str) -> Result<(), VMError> {
+        // Check if already loaded
+        if self.loaded_libraries.contains_key(crate_name) {
+            log::debug!("Crate {} already loaded", crate_name);
+            return Ok(());
+        }
+
+        // Check registry for metadata (if available)
+        if let Some(ref registry) = self.registry {
+            if let Some(metadata) = registry.lookup(crate_name)
+                .map_err(|e| VMError::FFI(format!("Registry error: {}", e)))?
+            {
+                // Verify ABI compatibility
+                self.sandbox.verify_abi(&metadata)
+                    .map_err(|e| VMError::FFI(format!("ABI error: {}", e)))?;
+            }
+        }
+
+        // Load the library
+        let library = unsafe {
+            self.sandbox.load_crate(crate_name, version)
+                .map_err(|e| VMError::FFI(format!("Failed to load crate: {}", e)))?
+        };
+
+        self.loaded_libraries.insert(crate_name.to_string(), library);
+        log::info!("Loaded Rust crate: {} v{}", crate_name, version);
+
+        Ok(())
+    }
+
+    /// Load a Rust crate from a pre-compiled library file
+    ///
+    /// This is useful for user libraries that are compiled separately.
+    pub fn load_rust_library(&mut self, crate_name: &str, library_path: &Path) -> Result<(), VMError> {
+        // Check if already loaded
+        if self.loaded_libraries.contains_key(crate_name) {
+            return Ok(());
+        }
+
+        let library = unsafe {
+            libloading::Library::new(library_path)
+                .map_err(|e| VMError::FFI(format!("Failed to load {}: {}", library_path.display(), e)))?
+        };
+
+        self.loaded_libraries.insert(crate_name.to_string(), library);
+        log::info!("Loaded Rust library: {} from {}", crate_name, library_path.display());
+
+        Ok(())
+    }
+
+    /// Register a function from a loaded crate
+    ///
+    /// # Arguments
+    /// * `crate_name` - Name of the loaded crate
+    /// * `function_name` - Name of the function to register
+    /// * `signature` - Function signature for marshaling
+    ///
+    /// # Returns
+    /// * `Ok(native_id)` - Assigned native ID for CALL_NAT
+    pub fn register_function(
+        &mut self,
+        crate_name: &str,
+        function_name: &str,
+        signature: RustSignature,
+    ) -> Result<u16, VMError> {
+        let key = format!("{}::{}", crate_name, function_name);
+
+        // Check if already registered
+        if let Some(&id) = self.functions.get(&key) {
+            return Ok(id);
+        }
+
+        // Verify crate is loaded
+        if !self.loaded_libraries.contains_key(crate_name) {
+            return Err(VMError::FFI(format!("Crate {} not loaded", crate_name)));
+        }
+
+        let native_id = self.next_native_id;
+        self.next_native_id += 1;
+
+        // Create shim for this function
+        let shim = self.create_rust_shim(crate_name, function_name, signature.clone());
+        self.native_interface.register(native_id, shim);
+        self.functions.insert(key.clone(), native_id);
+
+        log::info!("Registered Rust function: {} (native_id={})", key, native_id);
+
+        Ok(native_id)
+    }
+
+    /// Get the native ID for a registered function
+    pub fn get_function_id(&self, crate_name: &str, function_name: &str) -> Option<u16> {
+        let key = format!("{}::{}", crate_name, function_name);
+        self.functions.get(&key).copied()
+    }
+
+    /// Get all registered functions
+    pub fn get_functions(&self) -> &HashMap<String, u16> {
+        &self.functions
+    }
+
+    /// Create a native shim for calling a Rust function
+    fn create_rust_shim(
+        &self,
+        crate_name: &str,
+        function_name: &str,
+        signature: RustSignature,
+    ) -> impl Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static {
+        let crate_name = crate_name.to_string();
+        let function_name = function_name.to_string();
+        let signature = signature.clone();
+
+        move |task: &mut AutoTask, _vm: &AutoVM| {
+            // TODO: Actually call the Rust function via loaded library
+            // For now, log and return dummy value
+            log::warn!(
+                "Rust FFI call to {}::{} with {} params (not yet fully implemented)",
+                crate_name,
+                function_name,
+                signature.params.len()
+            );
+
+            // Push dummy return value based on return type
+            match &signature.returns {
+                RustType::Int => task.ram.push_i32(0),
+                RustType::Float => task.ram.push_f32(0.0),
+                RustType::Bool => task.ram.push_i32(0), // false = 0, true = 1
+                RustType::Void => {}
+                _ => task.ram.push_i32(0),
+            }
+
+            Ok(())
+        }
+    }
+
+    /// Register crate metadata with the registry
+    pub fn register_crate(&mut self, metadata: &CrateMetadata) -> Result<(), VMError> {
+        if let Some(ref registry) = self.registry {
+            registry.register(metadata)
+                .map_err(|e| VMError::FFI(format!("Registry error: {}", e)))?;
+        }
+        Ok(())
+    }
+}
+
+impl Default for RustFfiBridge {
+    fn default() -> Self {
+        Self::new().expect("Failed to create RustFfiBridge")
+    }
+}
+
+/// Rust function signature for FFI
+#[derive(Debug, Clone)]
+pub struct RustSignature {
+    pub params: Vec<RustType>,
+    pub returns: RustType,
+}
+
+impl RustSignature {
+    /// Create a new signature
+    pub fn new() -> Self {
+        Self {
+            params: Vec::new(),
+            returns: RustType::Void,
+        }
+    }
+
+    /// Add a parameter
+    pub fn param(mut self, param_type: RustType) -> Self {
+        self.params.push(param_type);
+        self
+    }
+
+    /// Set return type
+    pub fn returns(mut self, return_type: RustType) -> Self {
+        self.returns = return_type;
+        self
+    }
+}
+
+impl Default for RustSignature {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Rust type for FFI marshaling
+#[derive(Debug, Clone, PartialEq)]
+pub enum RustType {
+    Void,
+    Bool,
+    Int,
+    Float,
+    Double,
+    String,
+    /// Pointer type (for complex types)
+    Pointer,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -544,5 +826,54 @@ mod tests {
             Some(200)
         );
         assert_eq!(bridge.get_function_id("hal", "nonexistent"), None);
+    }
+
+    // =================================================================
+    // Plan 092: Rust FFI Bridge Tests
+    // =================================================================
+
+    #[test]
+    fn test_rust_ffi_bridge_creation() {
+        let bridge = RustFfiBridge::new();
+        assert!(bridge.is_ok());
+
+        let bridge = bridge.unwrap();
+        assert_eq!(bridge.next_native_id, 300);
+        assert!(bridge.functions.is_empty());
+        assert!(bridge.loaded_libraries.is_empty());
+    }
+
+    #[test]
+    fn test_rust_signature_creation() {
+        let sig = RustSignature::new()
+            .param(RustType::Int)
+            .param(RustType::Float)
+            .returns(RustType::Bool);
+
+        assert_eq!(sig.params, vec![RustType::Int, RustType::Float]);
+        assert_eq!(sig.returns, RustType::Bool);
+    }
+
+    #[test]
+    fn test_rust_ffi_bridge_sandbox() {
+        let bridge = RustFfiBridge::new().unwrap();
+
+        // Should have detected rustc version and target
+        let sandbox = bridge.sandbox();
+        assert!(!sandbox.rustc_version().is_empty());
+        assert!(!sandbox.target().is_empty());
+
+        // Check library name generation
+        let lib_name = sandbox.crate_library_path("serde", "1.0.193");
+        assert!(lib_name.to_string_lossy().contains("serde"));
+    }
+
+    #[test]
+    fn test_rust_ffi_get_function_id() {
+        let mut bridge = RustFfiBridge::new().unwrap();
+
+        // Simulate loading a crate (in reality would load actual library)
+        // For testing, we just check the function ID lookup logic
+        assert_eq!(bridge.get_function_id("nonexistent", "func"), None);
     }
 }
