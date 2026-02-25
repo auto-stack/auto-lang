@@ -292,11 +292,12 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
             }
         }
 
-        // Check for boolean result (1 = true, 0 = false from comparisons)
-        // Plan 091: Format comparison results as true/false
-        if result == 1 {
+        // Check for boolean result from comparisons
+        // Plan 091: Comparison operators use special values
+        // i32::MIN = true, i32::MIN+1 = false
+        if result == -2147483648 {
             return Ok("true".to_string());
-        } else if result == 0 {
+        } else if result == -2147483647 {
             return Ok("false".to_string());
         }
 

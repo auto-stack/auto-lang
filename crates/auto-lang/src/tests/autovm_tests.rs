@@ -379,7 +379,7 @@ fn main() int {
 
 #[test]
 fn test_eq() {
-    // Test equality operator
+    // Test equality operator - returns "true" for true
     let code = r#"
 fn main() int {
     1 == 1
@@ -387,12 +387,12 @@ fn main() int {
 "#;
     let result = run_autovm(code);
     assert!(result.is_ok(), "Equality should work: {:?}", result);
-    assert_eq!(result.unwrap(), "1", "Should return 1");
+    assert_eq!(result.unwrap(), "true", "Should return true");
 }
 
 #[test]
 fn test_eq_false() {
-    // Test inequality
+    // Test inequality - returns "false" for false
     let code = r#"
 fn main() int {
     1 == 2
@@ -400,7 +400,7 @@ fn main() int {
 "#;
     let result = run_autovm(code);
     assert!(result.is_ok(), "Inequality should work: {:?}", result);
-    assert_eq!(result.unwrap(), "0", "Should return 0");
+    assert_eq!(result.unwrap(), "false", "Should return false");
 }
 
 // ===== Level3: Variable and Assignment Tests =====

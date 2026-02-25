@@ -2054,32 +2054,34 @@ impl AutoVM {
                 OpCode::EQ => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(if a == b { 1 } else { 0 });
+                    // Plan 091: Use special values for boolean results
+                    // i32::MIN = true, i32::MIN+1 = false
+                    task.ram.push_i32(if a == b { -2147483648 } else { -2147483647 });
                 }
                 OpCode::NE => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(if a != b { 1 } else { 0 });
+                    task.ram.push_i32(if a != b { -2147483648 } else { -2147483647 });
                 }
                 OpCode::LT => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(if a < b { 1 } else { 0 });
+                    task.ram.push_i32(if a < b { -2147483648 } else { -2147483647 });
                 }
                 OpCode::GT => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(if a > b { 1 } else { 0 });
+                    task.ram.push_i32(if a > b { -2147483648 } else { -2147483647 });
                 }
                 OpCode::LE => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(if a <= b { 1 } else { 0 });
+                    task.ram.push_i32(if a <= b { -2147483648 } else { -2147483647 });
                 }
                 OpCode::GE => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(if a >= b { 1 } else { 0 });
+                    task.ram.push_i32(if a >= b { -2147483648 } else { -2147483647 });
                 }
 
                 // === Control Flow ===
@@ -2100,7 +2102,10 @@ impl AutoVM {
                     task.ip += 2;
 
                     let cond = task.ram.pop_i32();
-                    if cond == 0 {
+                    // Plan 091: Handle boolean values
+                    // false = -2147483647 (i32::MIN + 1)
+                    // Also treat 0 as false for backward compatibility
+                    if cond == 0 || cond == -2147483647 {
                         let new_ip = (task.ip as isize) + offset;
                         if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
                             return Err(VMError::InvalidOpCode(0xFF));
@@ -2113,7 +2118,10 @@ impl AutoVM {
                     task.ip += 2;
 
                     let cond = task.ram.pop_i32();
-                    if cond != 0 {
+                    // Plan 091: Handle boolean values
+                    // true = -2147483648 (i32::MIN)
+                    // Jump if true (or any other non-zero, non-false value)
+                    if cond != 0 && cond != -2147483647 {
                         let new_ip = (task.ip as isize) + offset;
                         if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
                             return Err(VMError::InvalidOpCode(0xFF));
