@@ -292,6 +292,14 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
             }
         }
 
+        // Check for boolean result (1 = true, 0 = false from comparisons)
+        // Plan 091: Format comparison results as true/false
+        if result == 1 {
+            return Ok("true".to_string());
+        } else if result == 0 {
+            return Ok("false".to_string());
+        }
+
         // Default: return as integer
         Ok(format!("{}", result))
     } else {

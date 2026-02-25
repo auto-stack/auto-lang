@@ -353,7 +353,7 @@ fn main() int {
 
 #[test]
 fn test_comp() {
-    // Test comparison operator - returns 1 for true
+    // Test comparison operator - returns "true" for true
     let code = r#"
 fn main() int {
     1 < 2
@@ -361,12 +361,12 @@ fn main() int {
 "#;
     let result = run_autovm(code);
     assert!(result.is_ok(), "Comparison should work: {:?}", result);
-    assert_eq!(result.unwrap(), "1", "Should return 1 for true");
+    assert_eq!(result.unwrap(), "true", "Should return true");
 }
 
 #[test]
 fn test_comp_false() {
-    // Test comparison that returns false - returns 0 for false
+    // Test comparison that returns false - returns "false"
     let code = r#"
 fn main() int {
     2 < 1
@@ -374,7 +374,7 @@ fn main() int {
 "#;
     let result = run_autovm(code);
     assert!(result.is_ok(), "Comparison false should work: {:?}", result);
-    assert_eq!(result.unwrap(), "0", "Should return 0 for false");
+    assert_eq!(result.unwrap(), "false", "Should return false");
 }
 
 #[test]
