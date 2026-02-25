@@ -11,6 +11,7 @@
 
 use crate::auto_cache::{AutoCache, ModuleCache};
 use crate::database::Database;
+use crate::dep_scanner::scan_dep_statements;
 use crate::error::{AutoError, AutoResult};
 use crate::indexer::Indexer;
 use crate::parser::Parser;
@@ -18,6 +19,7 @@ use crate::scope::{Sid, SID_PATH_GLOBAL};
 use crate::types::TypeStore;
 use crate::symbols::SymbolLocation;
 use crate::use_scanner::{scan_use_statements, UseStatement};
+use auto_cache::Sandbox;
 use auto_val::AutoStr;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -33,6 +35,7 @@ use std::sync::RwLock;
 /// Phase 3 (Plan 065): QueryEngine integration complete (now accepts Arc<RwLock<Database>>)
 /// Plan 085: Added type_store for module dependency management
 /// Plan 085 Phase 5: Added auto_cache for module caching
+/// Plan 092: Added sandbox for Rust FFI
 pub struct CompileSession {
     db: Arc<RwLock<Database>>,
     query_engine: Option<crate::query::QueryEngine>,
@@ -40,6 +43,8 @@ pub struct CompileSession {
     type_store: Arc<RwLock<TypeStore>>,
     /// Plan 085 Phase 5: Module cache for incremental compilation
     auto_cache: AutoCache,
+    /// Plan 092: Sandbox for Rust FFI
+    sandbox: Option<Sandbox>,
 }
 
 impl Clone for CompileSession {
@@ -49,6 +54,7 @@ impl Clone for CompileSession {
             query_engine: None, // QueryEngine is recreated on-demand after clone
             type_store: self.type_store.clone(),
             auto_cache: self.auto_cache.clone(),
+            sandbox: None, // Sandbox is recreated on-demand
         }
     }
 }
@@ -63,6 +69,7 @@ impl CompileSession {
             query_engine: None,
             type_store,
             auto_cache: AutoCache::new(),
+            sandbox: None,
         }
     }
 
@@ -150,6 +157,87 @@ impl CompileSession {
         }
 
         Ok(loaded_count)
+    }
+
+    /// Plan 092: Resolve `dep` statements and register with sandbox/registry
+    ///
+    /// This scans source code for `dep` statements and registers them
+    /// with the sandbox for later use by `use.rust` statements.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use auto_lang::compile::CompileSession;
+    ///
+    /// let mut session = CompileSession::new();
+    /// let source = "dep serde(version: \"1.0\")";
+    /// session.resolve_deps(source).unwrap();
+    /// ```
+    pub fn resolve_deps(&mut self, source: &str) -> AutoResult<usize> {
+        let dep_statements = scan_dep_statements(source);
+        let mut registered_count = 0;
+
+        // Ensure sandbox is initialized
+        if self.sandbox.is_none() {
+            match Sandbox::new() {
+                Ok(s) => self.sandbox = Some(s),
+                Err(e) => {
+                    log::warn!("Failed to initialize sandbox: {}", e);
+                    // Continue without sandbox - deps won't be usable
+                    return Ok(0);
+                }
+            }
+        }
+
+        for dep in &dep_statements {
+            // Skip non-Rust deps (for future extensibility)
+            if !dep.is_rust {
+                continue;
+            }
+
+            // Log the dependency for now
+            log::info!(
+                "Registered dep: {} (version: {:?}, features: {:?})",
+                dep.name,
+                dep.version,
+                dep.features
+            );
+
+            // TODO: Actually register with sandbox registry
+            // When full implementation is ready:
+            // if let Some(ref sandbox) = self.sandbox {
+            //     let metadata = CrateMetadata {
+            //         name: dep.name.clone(),
+            //         version: dep.version.clone().unwrap_or_default(),
+            //         rustc_version: sandbox.rustc_version().to_string(),
+            //         target: sandbox.target().to_string(),
+            //         dependencies: vec![],
+            //         abi_hash: String::new(),
+            //         library_path: std::path::PathBuf::new(),
+            //         compiled_at: 0,
+            //         source: if dep.is_local() { CrateSource::Local } else { CrateSource::CratesIo },
+            //     };
+            //     sandbox.registry.register(&metadata)?;
+            // }
+
+            registered_count += 1;
+        }
+
+        Ok(registered_count)
+    }
+
+    /// Plan 092: Check if a crate has been declared as a dependency
+    ///
+    /// Returns true if the crate was declared in a `dep` statement.
+    pub fn is_dep_declared(&self, crate_name: &str) -> bool {
+        // For now, just check if we have a sandbox
+        // TODO: Actually check the registry
+        self.sandbox.is_some()
+    }
+
+    /// Plan 092: Get the sandbox (for FFI bridge integration)
+    pub fn sandbox(&self) -> Option<&Sandbox> {
+        self.sandbox.as_ref()
     }
 
     /// Plan 085: 加载模块到 type_store

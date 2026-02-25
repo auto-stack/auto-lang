@@ -10,6 +10,8 @@ pub mod interpreter;
 pub mod parser_helpers;
 // Plan 085: Use statement scanner for AIE + AutoCache
 pub mod use_scanner;
+// Plan 092: Dep statement scanner for Rust FFI
+pub mod dep_scanner;
 // Plan 085 Phase 5: Module cache for incremental compilation
 pub mod atom_error;
 pub mod auto_cache;
