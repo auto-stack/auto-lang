@@ -1,6 +1,6 @@
 # Plan 092: Rust FFI via Sandbox Compilation
 
-## Status: Draft
+## Status: Phases 1-4 Complete, Phase 5 Pending
 
 ## Problem
 
@@ -24,6 +24,37 @@ Enable AutoVM to dynamically load Rust crates and call their functions at runtim
 
 When `libstd.so` is shared between AutoVM and loaded libraries, `Vec<T>` has the same layout everywhere!
 
+## Syntax Design (Final Decision)
+
+### `dep` Keyword (Declaration)
+
+```auto
+// Declare dependency - downloads/loads the library
+dep serde                          // Latest version
+dep serde(version: "1.0")          // Specific version
+dep serde(version: "1.0", features: ["derive"])  // With features
+dep my_lib(path: "../my_lib")      // Local crate
+dep tokio(git: "https://...", branch: "main")  // Git source
+```
+
+### `use.rust` Keyword (Import)
+
+```auto
+// Import items from declared dependency
+use.rust serde::json::{from_str, to_string}
+use.rust serde::Serialize
+use.rust my_lib::process
+```
+
+### Key Design Decisions
+
+1. **`use.rust` with dot** - Consistent with `use.c` syntax
+2. **`dep` as keyword** - Not a node, built into parser
+3. **Separation of concerns**:
+   - `dep` = declare + download/load
+   - `use.rust` = import into scope
+4. **Error if not declared**: `use.rust unknown` → Error: "Crate 'unknown' not declared"
+
 ## Architecture: AutoCache + Sandbox Unification
 
 ```
@@ -32,7 +63,7 @@ When `libstd.so` is shared between AutoVM and loaded libraries, `Vec<T>` has the
 │   ├── index.db              # SQLite metadata
 │   └── blobs/                # Content-addressable artifacts
 │
-├── sandbox/                  # NEW: Unified compilation sandbox
+├── sandbox/                  # Plan 092: Rust FFI
 │   ├── toolchain/            # Managed Rust toolchain
 │   │   └── rust-1.75.0/
 │   │
@@ -41,9 +72,8 @@ When `libstd.so` is shared between AutoVM and loaded libraries, `Vec<T>` has the
 │   │   ├── libserde-1.0.193.so    # Shared serde
 │   │   └── libmy_lib-0.1.0.so     # User libraries
 │   │
-│   └── registry/             # Crate metadata
-│       ├── serde.json
-│       └── my_lib.json
+│   └── registry/             # Crate metadata (SQLite)
+│       └── index.db
 │
 └── config/
     └── sandbox.toml
@@ -166,21 +196,84 @@ impl CFfiBridge {
 }
 ```
 
-### Phase 5: Parser Support
+### Phase 5: Parser Support (Pending)
 
-**File**: `crates/auto-lang/src/parser.rs`
+**Files**:
+- `crates/auto-lang/src/lexer.rs` - Add `Dep` token
+- `crates/auto-lang/src/parser.rs` - Implement `dep_stmt()` and `use_rust_stmt()`
+- `crates/auto-lang/src/ast.rs` - Add `DepStmt` struct
+
+#### 5.1 `dep` Keyword Implementation
 
 ```rust
-pub fn use_rust_stmt(&mut self) -> AutoResult<Stmt> {
-    // Parse: use rust serde::json::{from_str, to_string}
-    let crate_name = self.expect_ident_str()?;  // "serde"
-    let module = self.parse_module_path()?;     // ["json"]
-    let items = self.parse_import_items()?;     // ["from_str", "to_string"]
+// In lexer.rs - Add token kind
+TokenKind::Dep,  // "dep"
+
+// In parser.rs
+fn dep_stmt(&mut self) -> AutoResult<Stmt> {
+    self.next(); // skip 'dep'
+    let name = self.expect_ident_str()?;
+
+    // Optional properties: (version: "1.0", features: ["derive"])
+    let mut version = None;
+    let mut features = Vec::new();
+    let mut path = None;
+    let mut git = None;
+
+    if self.is_kind(TokenKind::LParen) {
+        self.next(); // skip '('
+        while !self.is_kind(TokenKind::RParen) {
+            let key = self.expect_ident_str()?;
+            self.expect(TokenKind::Colon)?;
+            match key.as_str() {
+                "version" => version = Some(self.parse_string_literal()?),
+                "features" => features = self.parse_string_array()?,
+                "path" => path = Some(self.parse_string_literal()?),
+                "git" => git = Some(self.parse_string_literal()?),
+                _ => return Err(SyntaxError::UnknownProperty(key).into()),
+            }
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+    }
+
+    Ok(Stmt::Dep(DepStmt {
+        name,
+        version,
+        features,
+        path,
+        git,
+    }))
+}
+```
+
+#### 5.2 `use.rust` Keyword Implementation
+
+```rust
+// In parser.rs - Called from use_stmt() when .rust is seen
+fn use_rust_stmt(&mut self) -> AutoResult<Stmt> {
+    // Already consumed: use . rust
+    // Parse: serde::json::{from_str, to_string}
+    let crate_name = self.expect_ident_str()?;
+    let mut paths = vec![crate_name];
+
+    // Parse module path
+    while self.is_kind(TokenKind::ColonColon) {
+        self.next();
+        if self.is_kind(TokenKind::LBrace) {
+            break;  // Start of import items
+        }
+        paths.push(self.expect_ident_str()?);
+    }
+
+    // Parse import items: {item1, item2}
+    let items = self.parse_import_items()?;
 
     Ok(Stmt::Use(Use {
         kind: UseKind::Rust,
-        crate_name: Some(crate_name),
-        module,
+        paths,
         items,
     }))
 }
@@ -189,24 +282,35 @@ pub fn use_rust_stmt(&mut self) -> AutoResult<Stmt> {
 ## Usage Example
 
 ```auto
-// Import Rust crate
-use rust serde_json::{from_str, to_string}
+// === Dependency Declaration ===
+dep serde(version: "1.0", features: ["derive"])
+dep serde_json(version: "1.0")
+dep my_lib(path: "../my_lib")
 
+// === Import into Scope ===
+use.rust serde::json::{from_str, to_string}
+use.rust serde::Serialize
+use.rust my_lib::process
+
+// === Usage ===
 fn main() {
     let json = "{ \"name\": \"Auto\" }"
-    let data = from_str(json)
-    print(data.name)  // "Auto"
+    let data: User = from_str(json)
+    print(data.name)
 }
 ```
 
 ## Critical Files
 
-| File | Purpose |
-|------|---------|
-| `crates/auto-cache/src/lib.rs` | Extend ArtifactType |
-| `crates/auto-cache/src/sandbox.rs` | NEW - Sandbox management |
-| `crates/auto-cache/src/registry.rs` | NEW - Crate registry |
-| `crates/auto-lang/src/ffi.rs` | Complete library loading |
+| File | Purpose | Status |
+|------|---------|--------|
+| `crates/auto-cache/src/lib.rs` | Extend ArtifactType | ✅ Complete |
+| `crates/auto-cache/src/sandbox.rs` | Sandbox management | ✅ Complete |
+| `crates/auto-cache/src/registry.rs` | Crate registry | ✅ Complete |
+| `crates/auto-lang/src/ffi.rs` | RustFfiBridge | ✅ Complete |
+| `crates/auto-lang/src/lexer.rs` | Add `Dep` token | ⏳ Pending |
+| `crates/auto-lang/src/parser.rs` | Implement `dep` and `use.rust` | ⏳ Pending |
+| `crates/auto-lang/src/ast.rs` | Add `DepStmt` | ⏳ Pending |
 | `crates/auto-lang/src/parser.rs` | Implement `use_rust_stmt()` |
 | `crates/auto-lang/src/vm/codegen.rs` | Handle Rust imports |
 
