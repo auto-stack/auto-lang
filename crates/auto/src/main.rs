@@ -1,5 +1,4 @@
 use auto_lang::error::AutoError;
-use auto_lang::repl;
 use clap::{Parser, Subcommand, ValueEnum};
 use miette::{Diagnostic, MietteHandlerOpts, Result};
 use serde_json::{json, Value};
@@ -296,20 +295,21 @@ fn main() -> Result<()> {
             println!("{}", result);
         }
         Some(Commands::OldRepl) => {
-            repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
+            // Plan 092: Use autovm_repl instead of old repl module
+            auto_lang::autovm_repl::main_loop().map_err(|e| miette::miette!("{}", e))?;
         }
         Some(Commands::Config { path }) => {
             let code = std::fs::read_to_string(path.as_str())
                 .map_err(|e| miette::miette!("Failed to read file: {}", e))?;
             let args = auto_val::Obj::new();
-            let c = auto_lang::eval_config(code.as_str(), &args).map_err(|e| {
+            let c = auto_lang::eval_config_with_vm(code.as_str(), &args).map_err(|e| {
                 if matches!(format, OutputFormat::Json) {
                     eprintln!("{}", format_error_json(&e));
                     std::process::exit(1);
                 }
                 to_miette_err(e)
             })?;
-            println!("{}", c.result.repr());
+            println!("{}", c.repr());
         }
         Some(Commands::C { path, target }) => {
             // Set target environment variable if specified

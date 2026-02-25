@@ -1,12 +1,11 @@
 use auto_lang::{
     parser::Parser,
     trans::{c::CTrans, Sink, Trans},
-    Universe,
 };
 use auto_val::AutoPath;
 
 use miette::{IntoDiagnostic, Result};
-use std::{cell::RefCell, fs, path::Path, rc::Rc};
+use std::{fs, path::Path};
 use walkdir::WalkDir;
 
 pub fn run() -> Result<()> {
@@ -60,8 +59,8 @@ pub fn run() -> Result<()> {
 
         let fname = AutoPath::new(path_str.as_ref()).filename();
 
-        let scope = Rc::new(RefCell::new(Universe::new()));
-        let mut parser = Parser::new(&code, scope.clone());
+        // Plan 092: Use new Parser API without Universe
+        let mut parser = Parser::new(&code);
         let ast = match parser.parse() {
             Ok(ast) => ast,
             Err(e) => {
@@ -70,9 +69,8 @@ pub fn run() -> Result<()> {
             }
         };
 
-        let mut sink = Sink::new(fname);
-        let mut trans = CTrans::new(c_path_str.clone().into());
-        trans.set_scope(parser.scope.clone());
+        let mut sink = Sink::new(fname.clone());
+        let mut trans = CTrans::new(fname);
 
         trans
             .trans(ast, &mut sink)
