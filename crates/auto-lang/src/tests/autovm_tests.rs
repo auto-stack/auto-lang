@@ -287,6 +287,29 @@ fn main() int {
     assert_eq!(result.unwrap(), "300", "Should return sum");
 }
 
+
+#[test]
+fn test_generic_field_addition() {
+    // Test adding two field values
+    let code = r#"
+type Point<T> {
+    x T
+    y T
+}
+
+fn main() int {
+    let p = Point { x: 100, y: 200 }
+    p.x + p.y
+}
+"#;
+
+    let result = run_autovm(code);
+
+    // Should return 300
+    assert!(result.is_ok(), "Field addition should work: {:?}", result);
+    assert_eq!(result.unwrap(), "300", "Should return sum");
+}
+
 // ===== Level 2: Conditional Tests =====
 
 #[test]
@@ -330,7 +353,7 @@ fn main() int {
 
 #[test]
 fn test_comp() {
-    // Test comparison operator
+    // Test comparison operator - returns 1 for true
     let code = r#"
 fn main() int {
     1 < 2
@@ -338,12 +361,12 @@ fn main() int {
 "#;
     let result = run_autovm(code);
     assert!(result.is_ok(), "Comparison should work: {:?}", result);
-    assert_eq!(result.unwrap(), "1", "Should return 1");
+    assert_eq!(result.unwrap(), "1", "Should return 1 for true");
 }
 
 #[test]
 fn test_comp_false() {
-    // Test comparison that returns false
+    // Test comparison that returns false - returns 0 for false
     let code = r#"
 fn main() int {
     2 < 1
@@ -351,7 +374,7 @@ fn main() int {
 "#;
     let result = run_autovm(code);
     assert!(result.is_ok(), "Comparison false should work: {:?}", result);
-    assert_eq!(result.unwrap(), "0", "Should return 0");
+    assert_eq!(result.unwrap(), "0", "Should return 0 for false");
 }
 
 #[test]

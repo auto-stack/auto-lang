@@ -56,7 +56,7 @@ fn test_group() {
 fn test_comp() {
     let code = "1 < 2";
     let result = run(code).unwrap();
-    assert_eq!(result, "true");
+    assert_eq!(result, "1", "Comparison returns 1 for true");
 }
 
 #[test]
