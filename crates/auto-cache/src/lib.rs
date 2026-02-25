@@ -20,9 +20,11 @@
 
 // Plan 092: Rust FFI Sandbox
 pub mod sandbox;
+pub mod registry;
 
 // Re-export main types for convenience
 pub use sandbox::{CrateMetadata, CrateSource, Sandbox, SandboxError};
+pub use registry::{CrateRegistry, RegistryError};
 
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};

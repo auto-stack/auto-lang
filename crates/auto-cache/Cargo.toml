@@ -9,6 +9,7 @@ rusqlite = { version = "0.30", features = ["bundled"] }
 blake3 = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 bincode = { workspace = true }
 dirs = { workspace = true }
 log = { workspace = true }
