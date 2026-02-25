@@ -32,6 +32,8 @@ use std::sync::RwLock;
 /// compile source code with incremental support.
 ///
 /// Phase 4.5: Database is now wrapped in Arc<RwLock<>> for sharing with Evaler
+use std::collections::HashSet;
+
 /// Phase 3 (Plan 065): QueryEngine integration complete (now accepts Arc<RwLock<Database>>)
 /// Plan 085: Added type_store for module dependency management
 /// Plan 085 Phase 5: Added auto_cache for module caching
@@ -45,6 +47,8 @@ pub struct CompileSession {
     auto_cache: AutoCache,
     /// Plan 092: Sandbox for Rust FFI
     sandbox: Option<Sandbox>,
+    /// Plan 092: Declared crate names (from dep statements)
+    declared_crates: HashSet<String>,
 }
 
 impl Clone for CompileSession {
@@ -55,6 +59,7 @@ impl Clone for CompileSession {
             type_store: self.type_store.clone(),
             auto_cache: self.auto_cache.clone(),
             sandbox: None, // Sandbox is recreated on-demand
+            declared_crates: self.declared_crates.clone(),
         }
     }
 }
@@ -70,6 +75,7 @@ impl CompileSession {
             type_store,
             auto_cache: AutoCache::new(),
             sandbox: None,
+            declared_crates: HashSet::new(),
         }
     }
 
@@ -152,6 +158,29 @@ impl CompileSession {
                 continue;
             }
 
+            // Plan 092: Check Rust imports
+            if use_stmt.is_rust_import {
+                // Extract crate name from module path (first segment)
+                let crate_name = use_stmt.module.split("::").next().unwrap_or(&use_stmt.module);
+
+                if !self.is_dep_declared(crate_name) {
+                    return Err(AutoError::Msg(format!(
+                        "Crate '{}' not declared. Add `dep {}` before `use.rust`.",
+                        crate_name, crate_name
+                    )));
+                }
+
+                log::info!(
+                    "Rust import validated: {} (crate: {})",
+                    use_stmt.module,
+                    crate_name
+                );
+
+                // Skip loading - Rust imports are handled by FFI bridge at runtime
+                loaded_count += 1;
+                continue;
+            }
+
             self.load_module(use_stmt)?;
             loaded_count += 1;
         }
@@ -195,6 +224,9 @@ impl CompileSession {
                 continue;
             }
 
+            // Register crate name
+            self.declared_crates.insert(dep.name.clone());
+
             // Log the dependency for now
             log::info!(
                 "Registered dep: {} (version: {:?}, features: {:?})",
@@ -230,9 +262,7 @@ impl CompileSession {
     ///
     /// Returns true if the crate was declared in a `dep` statement.
     pub fn is_dep_declared(&self, crate_name: &str) -> bool {
-        // For now, just check if we have a sandbox
-        // TODO: Actually check the registry
-        self.sandbox.is_some()
+        self.declared_crates.contains(crate_name)
     }
 
     /// Plan 092: Get the sandbox (for FFI bridge integration)

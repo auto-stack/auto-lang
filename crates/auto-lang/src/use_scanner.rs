@@ -34,6 +34,8 @@ pub struct UseStatement {
     pub is_c_import: bool,
     /// C 头文件路径 (仅当 is_c_import 为 true)
     pub c_header: Option<String>,
+    /// Plan 092: 是否是 Rust 导入 (use.rust serde::json)
+    pub is_rust_import: bool,
 }
 
 impl UseStatement {
@@ -46,6 +48,7 @@ impl UseStatement {
             alias: None,
             is_c_import: false,
             c_header: None,
+            is_rust_import: false,
         }
     }
 
@@ -58,6 +61,7 @@ impl UseStatement {
             alias: None,
             is_c_import: false,
             c_header: None,
+            is_rust_import: false,
         }
     }
 
@@ -70,6 +74,7 @@ impl UseStatement {
             alias: None,
             is_c_import: false,
             c_header: None,
+            is_rust_import: false,
         }
     }
 
@@ -82,6 +87,20 @@ impl UseStatement {
             alias: None,
             is_c_import: true,
             c_header: Some(header.into()),
+            is_rust_import: false,
+        }
+    }
+
+    /// Plan 092: 创建 Rust crate 导入
+    pub fn rust_import(module: impl Into<String>, items: Vec<String>) -> Self {
+        Self {
+            module: module.into(),
+            items,
+            is_wildcard: false,
+            alias: None,
+            is_c_import: false,
+            c_header: None,
+            is_rust_import: true,
         }
     }
 }
@@ -128,6 +147,13 @@ pub fn scan_use_statements(source: &str) -> Vec<UseStatement> {
                     statements.push(stmt);
                 }
             }
+        } else if let Some(rest) = trimmed.strip_prefix("use.") {
+            // Plan 092: Handle use.rust without space
+            if let Some(stmt) = parse_use_line(&format!(".{}", rest)) {
+                if seen_modules.insert(stmt.module.clone()) {
+                    statements.push(stmt);
+                }
+            }
         }
     }
 
@@ -148,6 +174,12 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
 
     if line.is_empty() {
         return None;
+    }
+
+    // Plan 092: Rust crate 导入: use.rust serde::json::{from_str, to_string}
+    if line.starts_with(".rust ") || line.starts_with(".rust\t") {
+        let rest = line[5..].trim();  // Skip ".rust "
+        return parse_rust_import(rest);
     }
 
     // C 头文件导入: use c <stdio.h>
@@ -197,6 +229,7 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
                 alias,
                 is_c_import: false,
                 c_header: None,
+                is_rust_import: false,
             });
         }
 
@@ -207,6 +240,7 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
             alias,
             is_c_import: false,
             c_header: None,
+            is_rust_import: false,
         });
     }
 
@@ -221,6 +255,7 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
             alias,
             is_c_import: false,
             c_header: None,
+            is_rust_import: false,
         });
     }
 
@@ -231,7 +266,50 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
         alias,
         is_c_import: false,
         c_header: None,
+        is_rust_import: false,
     })
+}
+
+/// Plan 092: Parse Rust crate import
+///
+/// Parses: `serde::json::{from_str, to_string}` or `serde::json`
+fn parse_rust_import(line: &str) -> Option<UseStatement> {
+    let line = line.trim();
+
+    if line.is_empty() {
+        return None;
+    }
+
+    // Find items in braces: {item1, item2}
+    let (module_part, items) = if let Some(brace_start) = line.find('{') {
+        let module = line[..brace_start].trim();
+        let rest = &line[brace_start + 1..];
+
+        let items_str = if let Some(brace_end) = rest.find('}') {
+            &rest[..brace_end]
+        } else {
+            rest
+        };
+
+        // Remove trailing :: before items
+        let module = module.trim_end_matches(':').trim();
+
+        let items: Vec<String> = items_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        (module, items)
+    } else {
+        // No braces - just module path
+        (line, Vec::new())
+    };
+
+    // Remove trailing :: from module
+    let module = module_part.trim_end_matches(':').trim();
+
+    Some(UseStatement::rust_import(module, items))
 }
 
 #[cfg(test)]
@@ -339,5 +417,59 @@ use std.io
         let uses = scan_use_statements(source);
         assert_eq!(uses.len(), 1);
         assert_eq!(uses[0].module, "std.io");
+    }
+
+    // Plan 092: Rust import tests
+
+    #[test]
+    fn test_rust_import_simple() {
+        let source = "use.rust serde::json";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 1);
+        assert!(uses[0].is_rust_import);
+        assert_eq!(uses[0].module, "serde::json");
+        assert!(uses[0].items.is_empty());
+    }
+
+    #[test]
+    fn test_rust_import_with_items() {
+        let source = "use.rust serde::json::{from_str, to_string}";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 1);
+        assert!(uses[0].is_rust_import);
+        assert_eq!(uses[0].module, "serde::json");
+        assert_eq!(uses[0].items, vec!["from_str", "to_string"]);
+    }
+
+    #[test]
+    fn test_rust_import_deep_path() {
+        let source = "use.rust tokio::net::TcpStream";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 1);
+        assert!(uses[0].is_rust_import);
+        assert_eq!(uses[0].module, "tokio::net::TcpStream");
+    }
+
+    #[test]
+    fn test_mixed_imports() {
+        let source = r#"
+use std.io
+use.rust serde::json::{from_str}
+use c <stdio.h>
+"#;
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 3);
+
+        // First is Auto import
+        assert!(!uses[0].is_rust_import);
+        assert!(!uses[0].is_c_import);
+
+        // Second is Rust import
+        assert!(uses[1].is_rust_import);
+        assert!(!uses[1].is_c_import);
+
+        // Third is C import
+        assert!(!uses[2].is_rust_import);
+        assert!(uses[2].is_c_import);
     }
 }
