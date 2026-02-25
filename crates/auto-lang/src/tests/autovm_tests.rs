@@ -195,7 +195,6 @@ fn test_vm_const_i32_add() {
 // ===== Generic Type Field Access Tests =====
 
 #[test]
-#[ignore]
 fn test_generic_type_instantiation() {
     // Test basic generic type instantiation
     let code = r#"
@@ -210,18 +209,12 @@ fn main() int {
 }
 "#;
 
-    // Compile and run
     let result = run_autovm(code);
-
-    // Check result
-    assert!(result.is_ok(), "Generic type instantiation should work");
-    let output = result.unwrap();
-    assert!(output.contains("Point"), "Type name should be in exports");
-    assert!(output.contains("300"), "Should return sum of fields (100 + 200 = 300)");
+    assert!(result.is_ok(), "Generic type instantiation should work: {:?}", result);
+    assert_eq!(result.unwrap(), "300", "Should return sum of fields (100 + 200 = 300)");
 }
 
 #[test]
-#[ignore]
 fn test_generic_field_access_x() {
     // Test accessing x field of generic type
     let code = r#"
