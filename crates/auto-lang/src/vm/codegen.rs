@@ -2528,6 +2528,16 @@ impl Codegen {
         let opcode = op as u8;
         self.code.push(opcode);
     }
+    
+    /// Public method to emit an opcode (for script setup)
+    pub fn emit_op(&mut self, op: OpCode) {
+        self.emit(op);
+    }
+    
+    /// Public method to emit a byte (for script setup)
+    pub fn emit_byte(&mut self, byte: u8) {
+        self.code.push(byte);
+    }
 
     fn emit_i32(&mut self, val: i32) {
         self.code.extend_from_slice(&val.to_le_bytes());

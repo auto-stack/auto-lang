@@ -141,7 +141,7 @@ fn test_range() {
 }
 
 #[test]
-#[ignore = "For loop bytecode needs fix"]
+#[ignore = "TODO: capture stdout"]
 fn test_range_print() {
     let code = r#"for i in 0..10 { print(i) }"#;
     let result = run(code).unwrap();
@@ -150,7 +150,6 @@ fn test_range_print() {
 }
 
 #[test]
-#[ignore = "For loop bytecode needs fix"]
 fn test_range_eq() {
     let code = "var sum = 0; for i in 0..=10 { sum = sum + i }; sum";
     let result = run(code).unwrap();
@@ -158,12 +157,15 @@ fn test_range_eq() {
 }
 
 #[test]
-#[ignore = "For loop bytecode needs fix"]
 fn test_for() {
     let code = "var sum = 0; for i in 0..10 { sum = sum + i }; sum";
     let result = run(code).unwrap();
     assert_eq!(result, "45");
+}
 
+#[test]
+#[ignore = "Indexed for loops with arrays not supported yet"]
+fn test_for_array() {
     let code = "var arr = [1, 2, 3]; var sum = 0; for i, x in arr { sum = sum + x + i }; sum";
     let result = run(code).unwrap();
     assert_eq!(result, "9");

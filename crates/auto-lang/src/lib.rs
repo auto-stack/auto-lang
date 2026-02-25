@@ -156,6 +156,7 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
     let ast = parser.parse()?;
 
     // 2. Compile to bytecode
+    // Plan 091: Wrap script-level code with FN_PROLOG/RESERVE_STACK for proper local variable support
     let mut codegen = Codegen::new();
 
     // Plan 089: Transfer type registry from parser to codegen
@@ -166,8 +167,38 @@ async fn execute_autovm(code: &str) -> AutoResult<String> {
         // but Codegen needs access to them. For now, we keep this code
         // but it doesn't fully solve the problem without more refactoring.
     }
-    for stmt in ast.stmts {
-        codegen.compile_stmt(&stmt)?;
+    
+    // Separate type declarations from other statements
+    // Type declarations stay at global level, other code goes into script wrapper
+    let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
+        matches!(stmt, crate::ast::Stmt::TypeDecl(_))
+    });
+    
+    // First, compile type declarations at global level
+    for stmt in &type_decls {
+        codegen.compile_stmt(stmt)?;
+    }
+    
+    // Then, compile other statements with proper local variable setup
+    if !other_stmts.is_empty() {
+        eprintln!("DEBUG: Compiling {} script statements", other_stmts.len());
+        
+        // Reserve space for locals (Plan 091)
+        let n_locals = 16; // Reserve space for up to 16 locals
+        
+        // Emit FN_PROLOG to set up BP
+        codegen.emit_op(crate::vm::opcode::OpCode::FN_PROLOG);
+        codegen.emit_byte(0); // n_args
+        codegen.emit_byte(n_locals as u8); // n_locals
+        
+        // Emit RESERVE_STACK to reserve space for locals
+        codegen.emit_op(crate::vm::opcode::OpCode::RESERVE_STACK);
+        codegen.emit_byte(n_locals as u8);
+        
+        // Now compile the statements
+        for stmt in &other_stmts {
+            codegen.compile_stmt(stmt)?;
+        }
     }
 
     // Add explicit HALT at the end
