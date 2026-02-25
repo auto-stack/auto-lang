@@ -50,7 +50,7 @@ use crate::database::Database;
 use crate::{AutoResult, Rc};
 use auto_val::{shared, Shared};
 use auto_val::{AutoStr, Op};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -73,6 +73,12 @@ pub struct RustTrans {
     // Transpiler internal state (not from Database or Universe)
     current_fn: Option<AutoStr>,
     current_scope: Option<crate::scope::Sid>,
+
+    // Cache for struct field names (for positional arg mapping)
+    struct_fields: HashMap<AutoStr, Vec<AutoStr>>,
+
+    // Cache for tag type names (for tag construction detection)
+    tag_types: HashSet<AutoStr>,
 }
 
 impl RustTrans {
@@ -84,6 +90,8 @@ impl RustTrans {
             edition: RustEdition::E2021,
             current_fn: None,
             current_scope: None,
+            struct_fields: HashMap::new(),
+            tag_types: HashSet::new(),
         }
     }
 
@@ -96,6 +104,8 @@ impl RustTrans {
             edition: RustEdition::E2021,
             current_fn: None,
             current_scope: None,
+            struct_fields: HashMap::new(),
+            tag_types: HashSet::new(),
         }
     }
 
@@ -257,6 +267,16 @@ impl RustTrans {
         }
     }
 
+    /// Emit a2r standard library import
+    /// Uses the crate's a2r_std module instead of embedding
+    fn emit_a2r_stdlib(&self, out: &mut impl Write) -> AutoResult<()> {
+        writeln!(out, "// a2r Standard Library (from crate)")?;
+        writeln!(out, "#[allow(unused_imports)]")?;
+        writeln!(out, "use auto_lang::a2r_std::*;")?;
+        writeln!(out)?;
+        Ok(())
+    }
+
     // is_enum_type() moved to unified helper methods (line 83)
     // Old implementation removed in Phase 066
 
@@ -340,6 +360,7 @@ impl RustTrans {
                             _ => {
                                 // Check if this is enum variant access: Type::Variant
                                 // Use :: if rhs is an identifier starting with uppercase (enum variant convention)
+                                // OR if lhs starts with uppercase (type name for static method: Type.method())
                                 let is_enum_variant = if let Expr::Ident(rhs_name) = rhs.as_ref() {
                                     rhs_name
                                         .chars()
@@ -350,7 +371,19 @@ impl RustTrans {
                                     false
                                 };
 
-                                if matches!(lhs.as_ref(), Expr::Ident(_)) && is_enum_variant {
+                                // Check if lhs is a type name (starts with uppercase)
+                                let is_type_name = if let Expr::Ident(lhs_name) = lhs.as_ref() {
+                                    lhs_name
+                                        .chars()
+                                        .next()
+                                        .map(|c| c.is_uppercase())
+                                        .unwrap_or(false)
+                                } else {
+                                    false
+                                };
+
+                                if matches!(lhs.as_ref(), Expr::Ident(_)) && (is_enum_variant || is_type_name) {
+                                    // Type::Variant or Type::method()
                                     self.expr(lhs, out)?;
                                     write!(out, "::")?;
                                     self.expr(rhs, out)?;
@@ -590,19 +623,15 @@ impl RustTrans {
                         write!(out, " ")?;
                     }
 
-                    // Try to get type declaration to map positional args to field names
-                    let type_decl = self.lookup_type(&node.name);
+                    // Get cached field names for this type (same as struct_init)
+                    let field_names = self.struct_fields.get(&node.name).cloned().unwrap_or_default();
 
                     for (i, arg) in node.args.args.iter().enumerate() {
                         match arg {
                             Arg::Pos(expr) => {
-                                // Positional arg - map to actual field name from type definition
-                                let field_name = if let Type::User(decl) = &type_decl {
-                                    if i < decl.members.len() {
-                                        decl.members[i].name.clone()
-                                    } else {
-                                        format!("field{}", i).into()
-                                    }
+                                // Positional arg - map to actual field name from cached field names
+                                let field_name = if i < field_names.len() {
+                                    field_names[i].clone()
                                 } else {
                                     format!("field{}", i).into()
                                 };
@@ -949,9 +978,14 @@ impl RustTrans {
                 }
 
                 // Check if this is an enum access: Enum.Value -> Enum::Value (Rust syntax)
+                // Use heuristic: if object is an identifier and field starts with uppercase, treat as enum
                 if let Expr::Ident(type_name) = object.as_ref() {
-                    // Check if type_name is an enum
-                    if self.is_enum_type(type_name) {
+                    let is_enum_variant = field
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false);
+                    if is_enum_variant {
                         // Generate Rust enum syntax: Color::BLUE instead of Color.BLUE
                         write!(out, "{}::{}", type_name, field)?;
                         return Ok(());
@@ -966,10 +1000,11 @@ impl RustTrans {
 
             Expr::NullCoalesce(lhs, rhs) => {
                 // Null coalescing: lhs ?? rhs
-                // Plan 067: May system support
+                // In Rust, this becomes: lhs.unwrap_or(rhs)
                 self.expr(lhs, out)?;
-                write!(out, " ?? ")?;
+                write!(out, ".unwrap_or(")?;
                 self.expr(rhs, out)?;
+                write!(out, ")")?;
                 Ok(())
             }
 
@@ -1000,8 +1035,7 @@ impl RustTrans {
             if matches!(op, Op::Dot) {
                 if let Expr::Ident(type_name) = lhs.as_ref() {
                     if let Expr::Ident(variant_name) = rhs.as_ref() {
-                        let type_decl = self.lookup_type(type_name);
-                        if matches!(type_decl, Type::Tag(_)) {
+                        if self.tag_types.contains(type_name) {
                             // Tag construction: TypeName::VariantName(arg)
                             write!(out, "{}::{}", type_name, variant_name)?;
                             write!(out, "(")?;
@@ -1017,10 +1051,15 @@ impl RustTrans {
         }
 
         // Check if this is a struct construction call: Type(args)
-        // If the callee name matches a type name, generate struct initialization syntax
+        // Heuristic: If the callee name starts with uppercase, treat as type construction
+        // This works because Rust convention: TypeNames are CamelCase, functions are snake_case
         if let Expr::Ident(type_name) = call.name.as_ref() {
-            let type_decl = self.lookup_type(type_name);
-            if !matches!(type_decl, Type::Unknown) {
+            let is_type = type_name
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false);
+            if is_type {
                 // This is a struct construction: Type { field1: value1, ... }
                 return self.struct_init(type_name, &call.args, out);
             }
@@ -1048,19 +1087,15 @@ impl RustTrans {
 
         write!(out, "{} {{ ", type_name)?;
 
-        // Try to get type declaration to map positional args to field names
-        let type_decl = self.lookup_type(type_name);
+        // Get cached field names for this type
+        let field_names = self.struct_fields.get(type_name).cloned().unwrap_or_default();
 
         for (i, arg) in args.args.iter().enumerate() {
             match arg {
                 Arg::Pos(expr) => {
-                    // Positional arg - map to actual field name from type definition
-                    let field_name = if let Type::User(decl) = &type_decl {
-                        if i < decl.members.len() {
-                            decl.members[i].name.clone()
-                        } else {
-                            format!("field{}", i).into()
-                        }
+                    // Positional arg - map to actual field name from cached field names
+                    let field_name = if i < field_names.len() {
+                        field_names[i].clone()
                     } else {
                         format!("field{}", i).into()
                     };
@@ -1900,6 +1935,10 @@ impl RustTrans {
             }
         }
 
+        // Cache struct field names for positional arg mapping in struct_init
+        let field_names: Vec<AutoStr> = all_members.iter().map(|m| m.name.clone()).collect();
+        self.struct_fields.insert(type_decl.name.clone(), field_names);
+
         // Add delegation members to seen_fields and generate them separately
         for delegation in &type_decl.delegations {
             seen_fields.insert(delegation.member_name.clone());
@@ -2368,6 +2407,9 @@ impl RustTrans {
 
     // **Phase 1.3: Tag Types (test: 014_tag)**
     fn tag_decl(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
+        // Cache tag type name for tag construction detection
+        self.tag_types.insert(tag.name.clone());
+
         // Generate enum definition for tag
         // AutoLang tags are algebraic data types that map to Rust enums
         write!(sink.body, "enum {}", tag.name)?;
@@ -2637,8 +2679,11 @@ impl RustTrans {
 
 impl Trans for RustTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
-        // Phase 1: Emit file header
-        // sink.body.write(b"//! Auto-generated Rust code\n\n")?;
+        // Phase 1: Emit file header with a2r standard library
+        sink.body.write(b"// Auto-generated by a2r transpiler\n\n")?;
+
+        // Emit a2r standard library (List, May, etc.)
+        self.emit_a2r_stdlib(&mut sink.body)?;
 
         // Phase 2: Split into declarations and main
         let mut decls: Vec<Stmt> = Vec::new();
@@ -2770,288 +2815,4 @@ pub fn transpile_part(code: &str) -> AutoResult<AutoStr> {
     transpiler.trans(ast, &mut out)?;
     let src = out.done()?.clone();
     Ok(String::from_utf8(src).unwrap().into())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs::read_to_string;
-    use std::path::PathBuf;
-
-    fn test_a2r(case: &str) -> AutoResult<()> {
-        // Parse test case name: "000_hello" -> "hello"
-        let parts: Vec<&str> = case.split("_").collect();
-        let name = parts[1..].join("_");
-
-        let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let src_path = format!("test/a2r/{}/{}.at", case, name);
-        let src_path = d.join(src_path);
-        let src = read_to_string(src_path.as_path())?;
-
-        let exp_path = format!("test/a2r/{}/{}.expected.rs", case, name);
-        let exp_path = d.join(exp_path);
-        let expected = if !exp_path.is_file() {
-            "".to_string()
-        } else {
-            read_to_string(exp_path.as_path())?
-        };
-
-        let mut rcode = transpile_rust(&name, &src)?;
-        let rs_code = rcode.done()?;
-
-        if rs_code != expected.as_bytes() {
-            // Generate .wrong.rs for comparison
-            let gen_path = format!("test/a2r/{}/{}.wrong.rs", case, name);
-            let gen_path = d.join(gen_path);
-            std::fs::write(&gen_path, rs_code)?;
-        }
-
-        assert_eq!(String::from_utf8_lossy(rs_code), expected);
-        Ok(())
-    }
-
-    #[test]
-    fn test_000_hello() {
-        test_a2r("000_hello").unwrap();
-    }
-
-    #[test]
-    fn test_001_sqrt() {
-        test_a2r("001_sqrt").unwrap();
-    }
-
-    #[test]
-    fn test_002_array() {
-        test_a2r("002_array").unwrap();
-    }
-
-    #[test]
-    fn test_003_func() {
-        test_a2r("003_func").unwrap();
-    }
-
-    #[test]
-    fn test_005_pointer() {
-        test_a2r("005_pointer").unwrap();
-    }
-
-    #[test]
-    fn test_006_struct() {
-        test_a2r("006_struct").unwrap();
-    }
-
-    #[test]
-    fn test_007_enum() {
-        test_a2r("007_enum").unwrap();
-    }
-
-    #[test]
-    fn test_008_method() {
-        test_a2r("008_method").unwrap();
-    }
-
-    #[test]
-    fn test_010_if() {
-        test_a2r("010_if").unwrap();
-    }
-
-    #[test]
-    fn test_011_for() {
-        test_a2r("011_for").unwrap();
-    }
-
-    #[test]
-    fn test_012_is() {
-        test_a2r("012_is").unwrap();
-    }
-
-    #[test]
-    fn test_013_while() {
-        test_a2r("013_while").unwrap();
-    }
-
-    #[test]
-    fn test_014_closure() {
-        test_a2r("014_closure").unwrap();
-    }
-
-    #[test]
-    fn test_015_nested_if() {
-        test_a2r("015_nested_if").unwrap();
-    }
-
-    #[test]
-    fn test_016_complex() {
-        test_a2r("016_complex").unwrap();
-    }
-
-    #[test]
-    fn test_017_struct_methods() {
-        test_a2r("017_struct_methods").unwrap();
-    }
-
-    #[test]
-    fn test_018_enum_pattern() {
-        test_a2r("018_enum_pattern").unwrap();
-    }
-
-    #[test]
-    fn test_019_blocks() {
-        test_a2r("019_blocks").unwrap();
-    }
-
-    #[test]
-    fn test_020_comprehensive() {
-        test_a2r("020_comprehensive").unwrap();
-    }
-
-    #[test]
-    fn test_021_indexing() {
-        test_a2r("021_indexing").unwrap();
-    }
-
-    #[test]
-    fn test_022_unary() {
-        test_a2r("022_unary").unwrap();
-    }
-
-    #[test]
-    fn test_023_arithmetic() {
-        test_a2r("023_arithmetic").unwrap();
-    }
-
-    #[test]
-    fn test_024_fstring() {
-        test_a2r("024_fstring").unwrap();
-    }
-
-    #[test]
-    fn test_025_fstring_edge() {
-        test_a2r("025_fstring_edge").unwrap();
-    }
-
-    #[test]
-    fn test_026_ref_expr() {
-        test_a2r("026_ref_expr").unwrap();
-    }
-
-    #[test]
-    fn test_027_range_expr() {
-        test_a2r("027_range_expr").unwrap();
-    }
-
-    #[test]
-    fn test_028_object() {
-        test_a2r("028_object").unwrap();
-    }
-
-    #[test]
-    fn test_029_composition() {
-        test_a2r("029_composition").unwrap();
-    }
-
-    #[test]
-    fn test_030_field_composition() {
-        test_a2r("030_field_composition").unwrap();
-    }
-
-    #[test]
-    fn test_031_spec() {
-        test_a2r("031_spec").unwrap();
-    }
-
-    #[test]
-    fn test_032_delegation() {
-        test_a2r("032_delegation").unwrap();
-    }
-
-    #[test]
-    fn test_033_multi_delegation() {
-        test_a2r("033_multi_delegation").unwrap();
-    }
-
-    #[test]
-    fn test_034_delegation_params() {
-        test_a2r("034_delegation_params").unwrap();
-    }
-
-    #[test]
-    fn test_111_generic_alias() {
-        test_a2r("111_generic_alias").unwrap();
-    }
-
-    #[test]
-    fn test_126_generic_field() {
-        test_a2r("126_generic_field").unwrap();
-    }
-
-    #[test]
-    fn test_127_generic_ptr_field() {
-        test_a2r("127_generic_ptr_field").unwrap();
-    }
-
-    #[test]
-    fn test_110_const_generics() {
-        test_a2r("110_const_generics").unwrap();
-    }
-
-    #[test]
-    fn test_109_generic_tag() {
-        test_a2r("109_generic_tag").unwrap();
-    }
-
-    #[test]
-    fn test_035_inheritance() {
-        test_a2r("035_inheritance").unwrap();
-    }
-
-    #[test]
-    fn test_055_union() {
-        test_a2r("055_union").unwrap();
-    }
-
-    #[test]
-    fn test_014_tag() {
-        test_a2r("014_tag").unwrap();
-    }
-
-    #[test]
-    fn test_004_cstr() {
-        test_a2r("004_cstr").unwrap();
-    }
-
-    #[test]
-    fn test_023_borrow_view() {
-        test_a2r("023_borrow_view").unwrap();
-    }
-
-    #[test]
-    fn test_024_borrow_mut() {
-        test_a2r("024_borrow_mut").unwrap();
-    }
-
-    #[test]
-    fn test_025_borrow_take() {
-        test_a2r("025_borrow_take").unwrap();
-    }
-
-    #[test]
-    fn test_026_borrow_conflicts() {
-        test_a2r("026_borrow_conflicts").unwrap();
-    }
-
-    #[test]
-    fn test_016_basic_spec() {
-        test_a2r("016_basic_spec").unwrap();
-    }
-
-    #[test]
-    fn test_017_spec() {
-        test_a2r("017_spec").unwrap();
-    }
-
-    #[test]
-    fn test_117_list_storage() {
-        test_a2r("117_list_storage").unwrap();
-    }
 }

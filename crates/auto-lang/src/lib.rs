@@ -1,5 +1,7 @@
 pub mod ast;
 pub mod atom;
+// a2r Standard Library - Rust implementations of AutoLang standard types
+pub mod a2r_std;
 // Plan 084: Unified TypeStore for type declaration management
 pub mod types;
 // Plan 091: AutoVM-based interpreter interface

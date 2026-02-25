@@ -1,0 +1,283 @@
+use crate::{
+    error::AutoResult,
+    trans::rust::transpile_rust,
+};
+use std::fs::read_to_string;
+use std::path::PathBuf;
+
+fn test_a2r(case: &str) -> AutoResult<()> {
+    // Parse test case name: "000_hello" -> "hello"
+    let parts: Vec<&str> = case.split("_").collect();
+    let name = parts[1..].join("_");
+
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let src_path = format!("test/a2r/{}/{}.at", case, name);
+    let src_path = d.join(src_path);
+    let src = read_to_string(src_path.as_path())?;
+
+    let exp_path = format!("test/a2r/{}/{}.expected.rs", case, name);
+    let exp_path = d.join(exp_path);
+    let expected = if !exp_path.is_file() {
+        "".to_string()
+    } else {
+        read_to_string(exp_path.as_path())?
+    };
+
+    let mut rcode = transpile_rust(&name, &src)?;
+    let rs_code = rcode.done()?;
+
+    if rs_code != expected.as_bytes() {
+        // Generate .wrong.rs for comparison
+        let gen_path = format!("test/a2r/{}/{}.wrong.rs", case, name);
+        let gen_path = d.join(gen_path);
+        std::fs::write(&gen_path, rs_code)?;
+    }
+
+    assert_eq!(String::from_utf8_lossy(rs_code), expected);
+    Ok(())
+}
+
+#[test]
+fn test_000_hello() {
+    test_a2r("000_hello").unwrap();
+}
+
+#[test]
+fn test_001_sqrt() {
+    test_a2r("001_sqrt").unwrap();
+}
+
+#[test]
+fn test_002_array() {
+    test_a2r("002_array").unwrap();
+}
+
+#[test]
+fn test_003_func() {
+    test_a2r("003_func").unwrap();
+}
+
+#[test]
+fn test_005_pointer() {
+    test_a2r("005_pointer").unwrap();
+}
+
+#[test]
+fn test_006_struct() {
+    test_a2r("006_struct").unwrap();
+}
+
+#[test]
+fn test_007_enum() {
+    test_a2r("007_enum").unwrap();
+}
+
+#[test]
+fn test_008_method() {
+    test_a2r("008_method").unwrap();
+}
+
+#[test]
+fn test_010_if() {
+    test_a2r("010_if").unwrap();
+}
+
+#[test]
+fn test_011_for() {
+    test_a2r("011_for").unwrap();
+}
+
+#[test]
+fn test_012_is() {
+    test_a2r("012_is").unwrap();
+}
+
+#[test]
+fn test_013_while() {
+    test_a2r("013_while").unwrap();
+}
+
+#[test]
+fn test_014_closure() {
+    test_a2r("014_closure").unwrap();
+}
+
+#[test]
+fn test_015_nested_if() {
+    test_a2r("015_nested_if").unwrap();
+}
+
+#[test]
+fn test_016_complex() {
+    test_a2r("016_complex").unwrap();
+}
+
+#[test]
+fn test_017_struct_methods() {
+    test_a2r("017_struct_methods").unwrap();
+}
+
+#[test]
+fn test_018_enum_pattern() {
+    test_a2r("018_enum_pattern").unwrap();
+}
+
+#[test]
+fn test_019_blocks() {
+    test_a2r("019_blocks").unwrap();
+}
+
+#[test]
+fn test_020_comprehensive() {
+    test_a2r("020_comprehensive").unwrap();
+}
+
+#[test]
+fn test_021_indexing() {
+    test_a2r("021_indexing").unwrap();
+}
+
+#[test]
+fn test_022_unary() {
+    test_a2r("022_unary").unwrap();
+}
+
+#[test]
+fn test_023_arithmetic() {
+    test_a2r("023_arithmetic").unwrap();
+}
+
+#[test]
+fn test_024_fstring() {
+    test_a2r("024_fstring").unwrap();
+}
+
+#[test]
+fn test_025_fstring_edge() {
+    test_a2r("025_fstring_edge").unwrap();
+}
+
+#[test]
+fn test_026_ref_expr() {
+    test_a2r("026_ref_expr").unwrap();
+}
+
+#[test]
+fn test_027_range_expr() {
+    test_a2r("027_range_expr").unwrap();
+}
+
+#[test]
+fn test_028_object() {
+    test_a2r("028_object").unwrap();
+}
+
+#[test]
+fn test_029_composition() {
+    test_a2r("029_composition").unwrap();
+}
+
+#[test]
+fn test_030_field_composition() {
+    test_a2r("030_field_composition").unwrap();
+}
+
+#[test]
+fn test_031_spec() {
+    test_a2r("031_spec").unwrap();
+}
+
+#[test]
+fn test_032_delegation() {
+    test_a2r("032_delegation").unwrap();
+}
+
+#[test]
+fn test_033_multi_delegation() {
+    test_a2r("033_multi_delegation").unwrap();
+}
+
+#[test]
+fn test_034_delegation_params() {
+    test_a2r("034_delegation_params").unwrap();
+}
+
+#[test]
+fn test_111_generic_alias() {
+    test_a2r("111_generic_alias").unwrap();
+}
+
+#[test]
+fn test_126_generic_field() {
+    test_a2r("126_generic_field").unwrap();
+}
+
+#[test]
+fn test_127_generic_ptr_field() {
+    test_a2r("127_generic_ptr_field").unwrap();
+}
+
+#[test]
+fn test_110_const_generics() {
+    test_a2r("110_const_generics").unwrap();
+}
+
+#[test]
+fn test_109_generic_tag() {
+    test_a2r("109_generic_tag").unwrap();
+}
+
+#[test]
+fn test_035_inheritance() {
+    test_a2r("035_inheritance").unwrap();
+}
+
+#[test]
+fn test_055_union() {
+    test_a2r("055_union").unwrap();
+}
+
+#[test]
+fn test_014_tag() {
+    test_a2r("014_tag").unwrap();
+}
+
+#[test]
+fn test_004_cstr() {
+    test_a2r("004_cstr").unwrap();
+}
+
+#[test]
+fn test_023_borrow_view() {
+    test_a2r("023_borrow_view").unwrap();
+}
+
+#[test]
+fn test_024_borrow_mut() {
+    test_a2r("024_borrow_mut").unwrap();
+}
+
+#[test]
+fn test_025_borrow_take() {
+    test_a2r("025_borrow_take").unwrap();
+}
+
+#[test]
+fn test_026_borrow_conflicts() {
+    test_a2r("026_borrow_conflicts").unwrap();
+}
+
+#[test]
+fn test_016_basic_spec() {
+    test_a2r("016_basic_spec").unwrap();
+}
+
+#[test]
+fn test_017_spec() {
+    test_a2r("017_spec").unwrap();
+}
+
+#[test]
+fn test_117_list_storage() {
+    test_a2r("117_list_storage").unwrap();
+}

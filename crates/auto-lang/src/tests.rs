@@ -1,4 +1,5 @@
 mod a2c_tests;
+mod a2r_tests;
 mod atom_tests;
 // Plan 075: Unified API tests
 mod unified_api_tests;

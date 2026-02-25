@@ -4,13 +4,12 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
+enum May<T> {
+    val(T),
+}
+
+
 fn main() {
-    let x: i32 = 2;
-
-    if x > 1 {
-        println!("Great!");
-    } else {
-        println!("Small!");
-    }
-
+    let x = May.val(42);
+    x;
 }

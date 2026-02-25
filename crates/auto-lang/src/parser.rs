@@ -531,6 +531,12 @@ impl<'a> Parser<'a> {
                         if let Ok(mut store) = self.type_store.write() {
                             store.register_type_decl(type_decl);
                         }
+                    } else if let Type::Tag(ref tag) = ty {
+                        // Register tag types to InferenceContext's global type_env so lookup_type() can find them
+                        // Use type_env directly to ensure global visibility (not affected by scopes)
+                        use crate::ast::Name;
+                        let name_obj = Name::from(name);
+                        self.infer_ctx.type_env.insert(name_obj, Type::Tag(tag.clone()));
                     }
                 } else if let Meta::Enum(ref enum_decl) = meta {
                     // EnumDecl is similar to TypeDecl, register it with minimal fields
@@ -2271,15 +2277,27 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Dot)?;
         // tag field
         let tag_field = self.parse_name()?;
-        self.expect(TokenKind::LParen)?;
-        let elem = self.parse_name()?;
-        self.expect(TokenKind::RParen)?;
-        // define elem
-        return Ok(Expr::Cover(Cover::Tag(TagCover {
-            kind: tag_name.clone(),
-            tag: tag_field,
-            elem,
-        })));
+
+        // Check if there's a parentheses (for variants with values like May.val(v))
+        // or no parentheses (for nil variants like May.nil)
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // consume (
+            let elem = self.parse_name()?;
+            self.expect(TokenKind::RParen)?;
+            // define elem
+            return Ok(Expr::Cover(Cover::Tag(TagCover {
+                kind: tag_name.clone(),
+                tag: tag_field,
+                elem,
+            })));
+        } else {
+            // Nil variant without value binding - use underscore as placeholder
+            return Ok(Expr::Cover(Cover::Tag(TagCover {
+                kind: tag_name.clone(),
+                tag: tag_field,
+                elem: Name::from("_"),
+            })));
+        }
     }
 
     pub fn is_branch_cond_expr(&mut self) -> AutoResult<Expr> {
