@@ -8,11 +8,11 @@
 // - Reuse the same Codegen object (preserves locals, exports, strings, etc.)
 
 use crate::error::{AutoError, AutoResult};
+use crate::type_registry;
 use crate::vm::codegen::Codegen;
 use crate::vm::engine::AutoVM;
 use crate::vm::opcode::OpCode;
 use crate::vm::task::TaskId;
-use crate::type_registry;
 use crate::vm::virt_memory::VirtualFlash;
 use crate::Parser;
 use std::sync::Arc;
@@ -84,12 +84,12 @@ impl AutovmReplSession {
         Self {
             vm,
             main_task_id: task_id,
-            codegen: Some(codegen),  // Store Codegen for reuse
-            type_registry: type_registry::new_type_registry(),  // Plan 087: Type registry for REPL
+            codegen: Some(codegen), // Store Codegen for reuse
+            type_registry: type_registry::new_type_registry(), // Plan 087: Type registry for REPL
             bytecode,
             object_keys: Vec::new(),
             object_types: Vec::new(),
-            last_result: None,  // Plan 080: Initialize last_result
+            last_result: None, // Plan 080: Initialize last_result
         }
     }
 
@@ -112,7 +112,11 @@ impl AutovmReplSession {
         let ast = parser.parse()?;
 
         // Debug: Print AST
-        eprintln!("DEBUG: Parsed {} statements from: '{}'", ast.stmts.len(), code);
+        eprintln!(
+            "DEBUG: Parsed {} statements from: '{}'",
+            ast.stmts.len(),
+            code
+        );
         for (i, stmt) in ast.stmts.iter().enumerate() {
             eprintln!("DEBUG:   Stmt {}: {:?}", i, stmt);
         }
@@ -125,7 +129,10 @@ impl AutovmReplSession {
         let mut codegen = self.codegen.take().unwrap();
 
         // Debug: Print scope_stack before compilation
-        eprintln!("DEBUG: Before compilation, scope_stack = {:?}", codegen.scope_stack);
+        eprintln!(
+            "DEBUG: Before compilation, scope_stack = {:?}",
+            codegen.scope_stack
+        );
 
         // Clear previous bytecode (IMPORTANT: don't accumulate!)
         codegen.code.clear();
@@ -156,8 +163,10 @@ impl AutovmReplSession {
         while i < codegen.code.len() {
             // If we're in NEW_INSTANCE data bytes, just print them as data
             if new_instance_data_bytes_remaining > 0 {
-                eprintln!("DEBUG:   [{:04x}] {:02x} <NEW_INSTANCE data: '{}'>",
-                    i, codegen.code[i], codegen.code[i] as char);
+                eprintln!(
+                    "DEBUG:   [{:04x}] {:02x} <NEW_INSTANCE data: '{}'>",
+                    i, codegen.code[i], codegen.code[i] as char
+                );
                 new_instance_data_bytes_remaining -= 1;
                 i += 1;
                 continue;
@@ -168,7 +177,10 @@ impl AutovmReplSession {
             let opcode = match opcode {
                 Ok(op) => op,
                 Err(_) => {
-                    eprintln!("DEBUG:   [{:04x}] {:02x} <invalid opcode>", i, codegen.code[i]);
+                    eprintln!(
+                        "DEBUG:   [{:04x}] {:02x} <invalid opcode>",
+                        i, codegen.code[i]
+                    );
                     i += 1;
                     continue;
                 }
@@ -193,14 +205,24 @@ impl AutovmReplSession {
 
                     // Print the name length
                     if i + 1 < codegen.code.len() {
-                        eprint!("DEBUG:   [{:04x}] {:02x} <name_len: {}>", i + 1, codegen.code[i + 1], name_len);
+                        eprint!(
+                            "DEBUG:   [{:04x}] {:02x} <name_len: {}>",
+                            i + 1,
+                            codegen.code[i + 1],
+                            name_len
+                        );
                         i += 1;
                     }
 
                     // Print each name byte as data
                     for j in 0..name_len {
                         if i + 2 + j < codegen.code.len() {
-                            eprintln!("DEBUG:   [{:04x}] {:02x} <name_byte: '{}'>", i + 2 + j, codegen.code[i + 2 + j], codegen.code[i + 2 + j] as char);
+                            eprintln!(
+                                "DEBUG:   [{:04x}] {:02x} <name_byte: '{}'>",
+                                i + 2 + j,
+                                codegen.code[i + 2 + j],
+                                codegen.code[i + 2 + j] as char
+                            );
                             i += 1;
                         }
                     }
@@ -212,14 +234,21 @@ impl AutovmReplSession {
             // Special handling for CONST_STR (followed by string bytes)
             match opcode {
                 // 1-byte immediates
-                OpCode::CONST_U8 | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL | OpCode::CALL_CLOSURE => {
+                OpCode::CONST_U8
+                | OpCode::LOAD_LOCAL
+                | OpCode::STORE_LOCAL
+                | OpCode::CALL_CLOSURE => {
                     if i < codegen.code.len() {
                         eprint!(" (imm: {:02x})", codegen.code[i]);
                         i += 1;
                     }
                 }
                 // 2-byte immediates (i16 for jumps, u16 for native ID)
-                OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ | OpCode::JMP_L | OpCode::CALL_NAT => {
+                OpCode::JMP
+                | OpCode::JMP_IF_Z
+                | OpCode::JMP_IF_NZ
+                | OpCode::JMP_L
+                | OpCode::CALL_NAT => {
                     if i + 1 < codegen.code.len() {
                         let val = u16::from_le_bytes([codegen.code[i], codegen.code[i + 1]]);
                         eprint!(" (imm: {:04x})", val);
@@ -273,7 +302,9 @@ impl AutovmReplSession {
 
         // 5. Check if all relocations can be resolved (before modifying code)
         // Collect symbols to check first
-        let undefined_symbols: Vec<String> = codegen.relocs.iter()
+        let undefined_symbols: Vec<String> = codegen
+            .relocs
+            .iter()
             .filter(|reloc| !codegen.exports.contains_key(&reloc.symbol_name))
             .map(|reloc| reloc.symbol_name.clone())
             .collect();
@@ -304,11 +335,18 @@ impl AutovmReplSession {
         }
 
         // 6. Update bytecode
-        eprintln!("DEBUG: Before bytecode update - bytecode.len()={}", self.bytecode.len());
+        eprintln!(
+            "DEBUG: Before bytecode update - bytecode.len()={}",
+            self.bytecode.len()
+        );
         self.bytecode.pop();
         let new_code_start = self.bytecode.len();
         self.bytecode.extend_from_slice(&new_code);
-        eprintln!("DEBUG: After bytecode update - bytecode.len()={}, new_code_start={}", self.bytecode.len(), new_code_start);
+        eprintln!(
+            "DEBUG: After bytecode update - bytecode.len()={}, new_code_start={}",
+            self.bytecode.len(),
+            new_code_start
+        );
 
         // 7. Update metadata (clone to avoid move)
         self.object_keys.extend(codegen.object_keys.clone());
@@ -327,7 +365,10 @@ impl AutovmReplSession {
         self.codegen = Some(codegen);
 
         // 10. Reuse the same task (DO NOT create new task - preserves stack!)
-        let task_arc = self.vm.tasks.get(&self.main_task_id)
+        let task_arc = self
+            .vm
+            .tasks
+            .get(&self.main_task_id)
             .ok_or_else(|| AutoError::Msg("Main task not found".to_string()))?
             .clone();
 
@@ -342,7 +383,9 @@ impl AutovmReplSession {
         // Local variables occupy bp+1 to bp+num_locals
         // Stack temps MUST start AFTER all locals: at bp + 1 + num_locals
         // NOT at bp + num_locals (which would overlap with the last variable!)
-        let num_locals = self.codegen.as_ref()
+        let num_locals = self
+            .codegen
+            .as_ref()
             .and_then(|c| c.scope_stack.last())
             .map(|scope| scope.len())
             .unwrap_or(0);
@@ -350,8 +393,14 @@ impl AutovmReplSession {
         task.ram.sp = task.bp + 1 + num_locals;
 
         // Debug: Print state BEFORE execution
-        eprintln!("DEBUG: BEFORE execution - bp={}, sp={}, ip={}, num_locals={}, raw[0..5]={:?}",
-            task.bp, task.ram.sp, task.ip, num_locals, &task.ram.raw[0..5]);
+        eprintln!(
+            "DEBUG: BEFORE execution - bp={}, sp={}, ip={}, num_locals={}, raw[0..5]={:?}",
+            task.bp,
+            task.ram.sp,
+            task.ip,
+            num_locals,
+            &task.ram.raw[0..5]
+        );
 
         // 12. Update IP to point to new code, but KEEP STACK (bp, sp, ram unchanged)
         task.ip = new_code_start;
@@ -364,18 +413,28 @@ impl AutovmReplSession {
         });
 
         // 13. Get result from the task (re-acquire lock after execution)
-        let task_arc = self.vm.tasks.get(&self.main_task_id)
+        let task_arc = self
+            .vm
+            .tasks
+            .get(&self.main_task_id)
             .ok_or_else(|| AutoError::Msg("Main task not found after execution".to_string()))?
             .clone();
 
         let mut task = task_arc.blocking_lock();
 
         // Debug: Print stack state AFTER execution
-        eprintln!("DEBUG: AFTER execution - bp={}, sp={}, ip={}, raw[0..5]={:?}",
-            task.bp, task.ram.sp, task.ip, &task.ram.raw[0..5]);
+        eprintln!(
+            "DEBUG: AFTER execution - bp={}, sp={}, ip={}, raw[0..5]={:?}",
+            task.bp,
+            task.ram.sp,
+            task.ip,
+            &task.ram.raw[0..5]
+        );
 
         // Plan 080: Get number of local variables
-        let num_locals = self.codegen.as_ref()
+        let num_locals = self
+            .codegen
+            .as_ref()
             .and_then(|c| c.scope_stack.last())
             .map(|scope| scope.len())
             .unwrap_or(0);
@@ -387,8 +446,10 @@ impl AutovmReplSession {
         // Stack temps start at bp + 1 + num_locals (NOT bp + num_locals!)
         let target_sp = task.bp + 1 + num_locals;
 
-        eprintln!("DEBUG: num_locals={}, bp={}, target_sp={}, current_sp={}",
-            num_locals, task.bp, target_sp, task.ram.sp);
+        eprintln!(
+            "DEBUG: num_locals={}, bp={}, target_sp={}, current_sp={}",
+            num_locals, task.bp, target_sp, task.ram.sp
+        );
 
         // Check if there's a temporary result on stack (sp > target_sp)
         if task.ram.sp > target_sp {
@@ -405,24 +466,21 @@ impl AutovmReplSession {
         // Reset stack pointer to target_sp (clear all temporary values)
         task.ram.sp = target_sp;
 
-        eprintln!("DEBUG: After stack cleanup - sp={}, raw[0..5]={:?}", task.ram.sp, &task.ram.raw[0..5]);
+        eprintln!(
+            "DEBUG: After stack cleanup - sp={}, raw[0..5]={:?}",
+            task.ram.sp,
+            &task.ram.raw[0..5]
+        );
 
         // Return empty string (REPL will display last_result)
         Ok(String::new())
-
     }
 
     /// Get session statistics
     pub fn stats(&self) -> AutovmReplStats {
-        let total_locals = self.codegen.as_ref()
-            .map(|c| c.locals.len())
-            .unwrap_or(0);
-        let total_exports = self.codegen.as_ref()
-            .map(|c| c.exports.len())
-            .unwrap_or(0);
-        let total_strings = self.codegen.as_ref()
-            .map(|c| c.strings.len())
-            .unwrap_or(0);
+        let total_locals = self.codegen.as_ref().map(|c| c.locals.len()).unwrap_or(0);
+        let total_exports = self.codegen.as_ref().map(|c| c.exports.len()).unwrap_or(0);
+        let total_strings = self.codegen.as_ref().map(|c| c.strings.len()).unwrap_or(0);
 
         AutovmReplStats {
             total_functions: total_exports,
@@ -456,14 +514,16 @@ impl AutovmReplSession {
 
     /// Get list of defined functions
     pub fn functions(&self) -> Vec<String> {
-        self.codegen.as_ref()
+        self.codegen
+            .as_ref()
             .map(|c| c.exports.keys().cloned().collect())
             .unwrap_or_default()
     }
 
     /// Get list of local variables
     pub fn locals(&self) -> Vec<String> {
-        self.codegen.as_ref()
+        self.codegen
+            .as_ref()
             .map(|c| c.locals.keys().cloned().collect())
             .unwrap_or_default()
     }
@@ -652,7 +712,10 @@ mod tests {
             Ok(s) => {
                 // If this is "11", variable persistence works!
                 // If this is "1", variable is not persisted (current bug)
-                assert_eq!(s, "11", "Variable x should persist with value 10, so x+1=11");
+                assert_eq!(
+                    s, "11",
+                    "Variable x should persist with value 10, so x+1=11"
+                );
             }
             Err(e) => {
                 panic!("x + 1 failed: {:?}", e);
@@ -675,8 +738,14 @@ mod tests {
         // Verify error message contains "Undefined variable"
         if let Err(e) = r2 {
             let error_msg = e.to_string();
-            assert!(error_msg.contains("Undefined variable"), "Error should mention undefined variable");
-            assert!(error_msg.contains("y"), "Error should mention variable name 'y'");
+            assert!(
+                error_msg.contains("Undefined variable"),
+                "Error should mention undefined variable"
+            );
+            assert!(
+                error_msg.contains("y"),
+                "Error should mention variable name 'y'"
+            );
         }
 
         // Plan 080: After error, session should still be usable (codegen was returned)
@@ -690,5 +759,22 @@ mod tests {
         } else {
             panic!("Expected last_result to be Some(7)");
         }
+    }
+
+    #[test]
+    fn test_autovm_repl_list_type_preservation() {
+        let mut session = AutovmReplSession::new();
+        let r1 = session.run("let l = List.new(1,2,3)");
+        assert!(r1.is_ok());
+        println!(
+            "DEBUG: var_types after l = {:?}",
+            session.codegen.as_ref().unwrap().var_types
+        );
+
+        let r2 = session.run("l.get(2)");
+        if let Err(e) = &r2 {
+            println!("DEBUG: Error on get: {}", e);
+        }
+        assert!(r2.is_ok());
     }
 }

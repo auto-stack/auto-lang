@@ -44,8 +44,8 @@
 
 use super::{Sink, Trans};
 use crate::ast::*;
-use crate::parser::Parser;
 use crate::database::Database;
+use crate::parser::Parser;
 // Plan 091: Universe removed
 use crate::{AutoResult, Rc};
 use auto_val::{shared, Shared};
@@ -66,13 +66,13 @@ pub struct RustTrans {
 
     // Hybrid: Support both Universe (deprecated) and Database (new)
     // Phase 066: Migrating to Database-based architecture
-    db: Option<Arc<RwLock<Database>>>,   // New (Phase 066)
+    db: Option<Arc<RwLock<Database>>>, // New (Phase 066)
 
     edition: RustEdition,
 
     // Transpiler internal state (not from Database or Universe)
-    current_fn: Option<AutoStr>,
-    current_scope: Option<crate::scope::Sid>,
+    _current_fn: Option<AutoStr>,
+    _current_scope: Option<crate::scope::Sid>,
 
     // Cache for struct field names (for positional arg mapping)
     struct_fields: HashMap<AutoStr, Vec<AutoStr>>,
@@ -86,10 +86,10 @@ impl RustTrans {
         Self {
             indent: 0,
             uses: HashSet::new(),
-            db: None,  // New (Phase 066)
+            db: None, // New (Phase 066)
             edition: RustEdition::E2021,
-            current_fn: None,
-            current_scope: None,
+            _current_fn: None,
+            _current_scope: None,
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
         }
@@ -102,8 +102,8 @@ impl RustTrans {
             uses: HashSet::new(),
             db: Some(db),
             edition: RustEdition::E2021,
-            current_fn: None,
-            current_scope: None,
+            _current_fn: None,
+            _current_scope: None,
             struct_fields: HashMap::new(),
             tag_types: HashSet::new(),
         }
@@ -128,6 +128,7 @@ impl RustTrans {
     // =========================================================================
 
     /// Check if a type is an enum (works with Universe or Database)
+    #[allow(dead_code)]
     fn is_enum_type(&self, _type_name: &AutoStr) -> bool {
         // Plan 091: Use Database only
         if let Some(_db) = &self.db {
@@ -164,6 +165,7 @@ impl RustTrans {
 
     /// Look up type by name (works with Universe or Database)
     /// Phase 066: Unified helper for Database/Universe access
+    #[allow(dead_code)]
     fn lookup_type(&self, _type_name: &AutoStr) -> Type {
         // Plan 091: Use Database only
         if let Some(_db) = &self.db {
@@ -203,7 +205,7 @@ impl RustTrans {
             Type::Char => "char".to_string(),
             Type::Str(_) => "String".to_string(),
             Type::CStr => "&str".to_string(),
-            Type::StrSlice => "&str".to_string(),  // Borrowed string slice (Phase 3)
+            Type::StrSlice => "&str".to_string(), // Borrowed string slice (Phase 3)
             Type::Array(arr) => {
                 format!("[{}; {}]", self.rust_type_name(&arr.elem), arr.len)
             }
@@ -226,15 +228,16 @@ impl RustTrans {
                 // This is for raw pointer operations like @ (address-of) and .* (dereference)
                 format!("*mut {}", self.rust_type_name(&*ptr.of.borrow()))
             }
-            Type::Reference(inner) => {  // Plan 052: Reference transpiles to &T in Rust
+            Type::Reference(inner) => {
+                // Plan 052: Reference transpiles to &T in Rust
                 format!("&{}", self.rust_type_name(inner))
             }
             Type::User(usr) => usr.name.to_string(),
             Type::Enum(en) => en.borrow().name.to_string(),
-            Type::Spec(spec) => format!("dyn {}", spec.borrow().name),  // Spec 作为 trait object
+            Type::Spec(spec) => format!("dyn {}", spec.borrow().name), // Spec 作为 trait object
             Type::Union(u) => u.name.to_string(),
             Type::Tag(t) => t.borrow().name.to_string(),
-            Type::Variadic => "...".to_string(),  // C variadic, not used in Rust
+            Type::Variadic => "...".to_string(), // C variadic, not used in Rust
             Type::Void => "()".to_string(),
             Type::Unknown => "/* unknown */".to_string(),
             Type::CStruct(decl) => decl.name.to_string(),
@@ -246,16 +249,17 @@ impl RustTrans {
             Type::Fn(params, ret) => {
                 // Function type: fn(param1, param2) ret_type
                 // Transpile to Rust: fn(param1_type, param2_type) -> ret_type
-                let param_str: Vec<String> = params.iter()
-                    .map(|p| self.rust_type_name(p))
-                    .collect();
-                format!("fn({}) -> {}", param_str.join(", "), self.rust_type_name(ret))
+                let param_str: Vec<String> =
+                    params.iter().map(|p| self.rust_type_name(p)).collect();
+                format!(
+                    "fn({}) -> {}",
+                    param_str.join(", "),
+                    self.rust_type_name(ret)
+                )
             }
             Type::GenericInstance(inst) => {
                 // Generic instances: MyType<int> -> MyType<int>
-                let args: Vec<String> = inst.args.iter()
-                    .map(|t| self.rust_type_name(t))
-                    .collect();
+                let args: Vec<String> = inst.args.iter().map(|t| self.rust_type_name(t)).collect();
                 format!("{}<{}>", inst.base_name, args.join(", "))
             }
             Type::Storage(storage) => {
@@ -382,7 +386,9 @@ impl RustTrans {
                                     false
                                 };
 
-                                if matches!(lhs.as_ref(), Expr::Ident(_)) && (is_enum_variant || is_type_name) {
+                                if matches!(lhs.as_ref(), Expr::Ident(_))
+                                    && (is_enum_variant || is_type_name)
+                                {
                                     // Type::Variant or Type::method()
                                     self.expr(lhs, out)?;
                                     write!(out, "::")?;
@@ -429,8 +435,8 @@ impl RustTrans {
             Expr::Unary(op, expr) => {
                 // Plan 052: Unary operators - handle address-of and dereference
                 let op_str = match op {
-                    Op::Add => "&",  // Unary & for address-of
-                    Op::Mul => "*",  // Unary * for dereference
+                    Op::Add => "&", // Unary & for address-of
+                    Op::Mul => "*", // Unary * for dereference
                     _ => op.op(),
                 };
                 write!(out, "{}", op_str)?;
@@ -538,7 +544,12 @@ impl RustTrans {
                     crate::ast::Cover::Tag(tag_cover) => {
                         // **Phase 1.3: Tag Types**
                         // Tag patterns: Atom.Int(i) -> Atom::Int(i)
-                        write!(out, "{}::{}({})", tag_cover.kind, tag_cover.tag, tag_cover.elem).map_err(Into::into)
+                        write!(
+                            out,
+                            "{}::{}({})",
+                            tag_cover.kind, tag_cover.tag, tag_cover.elem
+                        )
+                        .map_err(Into::into)
                     }
                 }
             }
@@ -624,7 +635,11 @@ impl RustTrans {
                     }
 
                     // Get cached field names for this type (same as struct_init)
-                    let field_names = self.struct_fields.get(&node.name).cloned().unwrap_or_default();
+                    let field_names = self
+                        .struct_fields
+                        .get(&node.name)
+                        .cloned()
+                        .unwrap_or_default();
 
                     for (i, arg) in node.args.args.iter().enumerate() {
                         match arg {
@@ -682,7 +697,8 @@ impl RustTrans {
                         write!(out, " ")?;
                     }
                     write!(out, "}}")
-                }.map_err(Into::into)
+                }
+                .map_err(Into::into)
             }
 
             // Function calls
@@ -945,7 +961,7 @@ impl RustTrans {
                         // In Rust, we need to cast reference to raw pointer
                         // x as *mut T
                         self.expr(object, out)?;
-                        write!(out, " as *mut _")?;  // Use _ for type inference
+                        write!(out, " as *mut _")?; // Use _ for type inference
                         return Ok(());
                     }
                     "*" => {
@@ -1077,7 +1093,12 @@ impl RustTrans {
         write!(out, ")").map_err(Into::into)
     }
 
-    fn struct_init(&mut self, type_name: &AutoStr, args: &Args, out: &mut impl Write) -> AutoResult<()> {
+    fn struct_init(
+        &mut self,
+        type_name: &AutoStr,
+        args: &Args,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
         // Generate struct initialization: Type { field1: value1, field2: value2 }
         if args.args.is_empty() {
             // Empty struct: Type {}
@@ -1088,7 +1109,11 @@ impl RustTrans {
         write!(out, "{} {{ ", type_name)?;
 
         // Get cached field names for this type
-        let field_names = self.struct_fields.get(type_name).cloned().unwrap_or_default();
+        let field_names = self
+            .struct_fields
+            .get(type_name)
+            .cloned()
+            .unwrap_or_default();
 
         for (i, arg) in args.args.iter().enumerate() {
             match arg {
@@ -1823,7 +1848,12 @@ impl RustTrans {
 
                     // Parameters (skip self which is already added)
                     for (i, param) in method.params.iter().enumerate() {
-                        write!(sink.body, ", {}: {}", param.name, self.rust_type_name(&param.ty))?;
+                        write!(
+                            sink.body,
+                            ", {}: {}",
+                            param.name,
+                            self.rust_type_name(&param.ty)
+                        )?;
                         if i < method.params.len() - 1 {
                             write!(sink.body, ", ")?;
                         }
@@ -1844,7 +1874,11 @@ impl RustTrans {
 
                 // If this is a trait-only type (no struct definition), also generate a default impl
                 if is_trait_only && !has_decl.methods.is_empty() {
-                    write!(sink.body, "impl {} for {} {{\n", has_decl.name, has_decl.name)?;
+                    write!(
+                        sink.body,
+                        "impl {} for {} {{\n",
+                        has_decl.name, has_decl.name
+                    )?;
                     self.indent();
 
                     for method in &has_decl.methods {
@@ -1853,7 +1887,12 @@ impl RustTrans {
 
                         // Parameters
                         for (i, param) in method.params.iter().enumerate() {
-                            write!(sink.body, ", {}: {}", param.name, self.rust_type_name(&param.ty))?;
+                            write!(
+                                sink.body,
+                                ", {}: {}",
+                                param.name,
+                                self.rust_type_name(&param.ty)
+                            )?;
                             if i < method.params.len() - 1 {
                                 write!(sink.body, ", ")?;
                             }
@@ -1869,7 +1908,11 @@ impl RustTrans {
                         write!(sink.body, " {{\n")?;
                         self.indent();
                         self.print_indent(&mut sink.body)?;
-                        write!(sink.body, "// Method implementation for {}\n", has_decl.name)?;
+                        write!(
+                            sink.body,
+                            "// Method implementation for {}\n",
+                            has_decl.name
+                        )?;
                         self.dedent();
                         self.print_indent(&mut sink.body)?;
                         write!(sink.body, "}}\n")?;
@@ -1893,7 +1936,9 @@ impl RustTrans {
                 }
                 match param {
                     GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                    GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                    GenericParam::Const(cp) => {
+                        write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                    }
                 }
             }
             write!(sink.body, ">")?;
@@ -1937,7 +1982,8 @@ impl RustTrans {
 
         // Cache struct field names for positional arg mapping in struct_init
         let field_names: Vec<AutoStr> = all_members.iter().map(|m| m.name.clone()).collect();
-        self.struct_fields.insert(type_decl.name.clone(), field_names);
+        self.struct_fields
+            .insert(type_decl.name.clone(), field_names);
 
         // Add delegation members to seen_fields and generate them separately
         for delegation in &type_decl.delegations {
@@ -1993,7 +2039,9 @@ impl RustTrans {
                         }
                         match param {
                             GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                            GenericParam::Const(cp) => {
+                                write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                            }
                         }
                     }
                     write!(sink.body, ">")?;
@@ -2010,7 +2058,9 @@ impl RustTrans {
                         }
                         match param {
                             GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                            GenericParam::Const(cp) => {
+                                write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                            }
                         }
                     }
                     write!(sink.body, ">")?;
@@ -2025,7 +2075,12 @@ impl RustTrans {
 
                     // Parameters
                     for (i, param) in method.params.iter().enumerate() {
-                        write!(sink.body, ", {}: {}", param.name, self.rust_type_name(&param.ty))?;
+                        write!(
+                            sink.body,
+                            ", {}: {}",
+                            param.name,
+                            self.rust_type_name(&param.ty)
+                        )?;
                         if i < method.params.len() - 1 {
                             write!(sink.body, ", ")?;
                         }
@@ -2041,7 +2096,11 @@ impl RustTrans {
                     write!(sink.body, " {{\n")?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    write!(sink.body, "// TODO: Implement {} method body from {}\n", method.name, has_decl.name)?;
+                    write!(
+                        sink.body,
+                        "// TODO: Implement {} method body from {}\n",
+                        method.name, has_decl.name
+                    )?;
                     self.dedent();
                     self.print_indent(&mut sink.body)?;
                     write!(sink.body, "}}\n")?;
@@ -2082,7 +2141,9 @@ impl RustTrans {
                         }
                         match param {
                             GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                            GenericParam::Const(cp) => {
+                                write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                            }
                         }
                     }
                     write!(sink.body, ">")?;
@@ -2099,7 +2160,9 @@ impl RustTrans {
                         }
                         match param {
                             GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                            GenericParam::Const(cp) => {
+                                write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                            }
                         }
                     }
                     write!(sink.body, ">")?;
@@ -2115,7 +2178,12 @@ impl RustTrans {
 
                     // Parameters
                     for param in &spec_method.params {
-                        write!(sink.body, ", {}: {}", param.name, self.rust_type_name(&param.ty))?;
+                        write!(
+                            sink.body,
+                            ", {}: {}",
+                            param.name,
+                            self.rust_type_name(&param.ty)
+                        )?;
                     }
 
                     // Return type
@@ -2163,7 +2231,9 @@ impl RustTrans {
                     }
                     match param {
                         GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                        GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                        GenericParam::Const(cp) => {
+                            write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                        }
                     }
                 }
                 write!(sink.body, ">")?;
@@ -2185,17 +2255,21 @@ impl RustTrans {
         // Generate trait implementations for specs
         if !type_decl.specs.is_empty() {
             // Collect spec declarations from scope
-            let spec_decls: Vec<_> = type_decl.specs.iter().filter_map(|spec_name| {
-                if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
-                    if let crate::scope::Meta::Spec(spec_decl) = meta.as_ref() {
-                        Some(spec_decl.clone())
+            let spec_decls: Vec<_> = type_decl
+                .specs
+                .iter()
+                .filter_map(|spec_name| {
+                    if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
+                        if let crate::scope::Meta::Spec(spec_decl) = meta.as_ref() {
+                            Some(spec_decl.clone())
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
-                } else {
-                    None
-                }
-            }).collect();
+                })
+                .collect();
 
             // Generate impl block for each spec
             for spec_decl in spec_decls {
@@ -2213,7 +2287,9 @@ impl RustTrans {
                         }
                         match param {
                             GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                            GenericParam::Const(cp) => {
+                                write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                            }
                         }
                     }
                     write!(sink.body, ">")?;
@@ -2230,7 +2306,9 @@ impl RustTrans {
                         }
                         match param {
                             GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                            GenericParam::Const(cp) => {
+                                write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                            }
                         }
                     }
                     write!(sink.body, ">")?;
@@ -2242,7 +2320,11 @@ impl RustTrans {
                 // Find methods in type_decl that match spec methods
                 for spec_method in &spec_decl.methods {
                     // Find the implementation in type_decl
-                    if let Some(method) = type_decl.methods.iter().find(|m| m.name == spec_method.name) {
+                    if let Some(method) = type_decl
+                        .methods
+                        .iter()
+                        .find(|m| m.name == spec_method.name)
+                    {
                         self.print_indent(&mut sink.body)?;
 
                         // Method signature
@@ -2250,7 +2332,12 @@ impl RustTrans {
 
                         // Parameters
                         for param in &method.params {
-                            write!(sink.body, ", {}: {}", param.name, self.rust_type_name(&param.ty))?;
+                            write!(
+                                sink.body,
+                                ", {}: {}",
+                                param.name,
+                                self.rust_type_name(&param.ty)
+                            )?;
                         }
 
                         // Return type
@@ -2307,12 +2394,13 @@ impl RustTrans {
             let args: Vec<String> = if !type_alias.params.is_empty() {
                 type_alias.params.iter().map(|p| p.to_string()).collect()
             } else {
-                inst.args.iter().map(|t| {
-                    match t {
+                inst.args
+                    .iter()
+                    .map(|t| match t {
                         Type::Unknown => "_".to_string(),
                         _ => self.rust_type_name(t),
-                    }
-                }).collect()
+                    })
+                    .collect()
             };
             write!(sink.body, "{}>;", args.join(", "))?;
         } else {
@@ -2423,7 +2511,9 @@ impl RustTrans {
                 }
                 match param {
                     GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                    GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                    GenericParam::Const(cp) => {
+                        write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                    }
                 }
             }
             write!(sink.body, ">")?;
@@ -2470,7 +2560,9 @@ impl RustTrans {
                 }
                 match param {
                     GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                    GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                    GenericParam::Const(cp) => {
+                        write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                    }
                 }
             }
             write!(sink.body, ">")?;
@@ -2506,7 +2598,9 @@ impl RustTrans {
                 }
                 match param {
                     GenericParam::Type(tp) => write!(sink.body, "{}", tp.name)?,
-                    GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                    GenericParam::Const(cp) => {
+                        write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                    }
                 }
             }
             write!(sink.body, ">")?;
@@ -2521,7 +2615,12 @@ impl RustTrans {
 
             // Parameters (skip self which is already added as &self)
             for param in &method.params {
-                write!(sink.body, ", {}: {}", param.name, self.rust_type_name(&param.ty))?;
+                write!(
+                    sink.body,
+                    ", {}: {}",
+                    param.name,
+                    self.rust_type_name(&param.ty)
+                )?;
             }
 
             // Return type
@@ -2646,7 +2745,8 @@ impl RustTrans {
         let dirty_frags = {
             let db_read = db.read().unwrap();
             let all_frags = db_read.get_fragments_by_file(file_id);
-            all_frags.into_iter()
+            all_frags
+                .into_iter()
                 .filter(|frag| db_read.is_fragment_dirty(frag))
                 .collect::<Vec<_>>()
         };
@@ -2680,7 +2780,8 @@ impl RustTrans {
 impl Trans for RustTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
         // Phase 1: Emit file header with a2r standard library
-        sink.body.write(b"// Auto-generated by a2r transpiler\n\n")?;
+        sink.body
+            .write(b"// Auto-generated by a2r transpiler\n\n")?;
 
         // Emit a2r standard library (List, May, etc.)
         self.emit_a2r_stdlib(&mut sink.body)?;
@@ -2788,10 +2889,7 @@ impl Trans for RustTrans {
 }
 
 /// Transpile AutoLang code to Rust
-pub fn transpile_rust(
-    name: impl Into<AutoStr>,
-    code: &str,
-) -> AutoResult<Sink> {
+pub fn transpile_rust(name: impl Into<AutoStr>, code: &str) -> AutoResult<Sink> {
     let name = name.into();
     let _scope = shared(crate::scope_manager::ScopeManager::new());
     let mut parser = Parser::from(code);

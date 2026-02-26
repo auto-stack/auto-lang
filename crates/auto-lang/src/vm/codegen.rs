@@ -1,23 +1,23 @@
-use crate::ast::{Expr, ParamMode, Stmt, Closure, Iter, Type, TypeDecl};
-use crate::error::{AutoResult, AutoError};
+use crate::ast::{Closure, Expr, Iter, ParamMode, Stmt, Type, TypeDecl};
 use crate::error::SyntaxError;
+use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::native::{NATIVE_PRINT_F32, NATIVE_PRINT_I32, NATIVE_PRINT_STR};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 // Plan 076 Phase 1: Generic type support
-use crate::vm::generic::{GenericTable, extract_generic_instance};
+use crate::vm::generic::{extract_generic_instance, GenericTable};
 // Plan 076 Phase 2: Monomorphization support
-use crate::vm::monomorphize::{Monomorphizer, MonomorphizedModule};
+use crate::vm::monomorphize::{MonomorphizedModule, Monomorphizer};
 // Plan 087 Phase 3: Use infer module for type inference
-use crate::infer::{InferenceContext, infer_expr};
+use crate::infer::{infer_expr, InferenceContext};
 // Plan 084 Phase 3: Unified TypeStore for type management
 use crate::types;
 use auto_val::Op;
+use miette::SourceSpan;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use miette::SourceSpan;
 
 /// Plan 073: Type tags for object field values
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,15 +37,15 @@ pub enum ObjectType {
 /// Plan 073: Type information for TypeDecl
 /// Stores type metadata needed for instance construction
 #[derive(Debug, Clone)]
-struct TypeInfo {
-    pub name: String,
-    pub member_names: Vec<String>,  // Member names in order
+pub struct TypeInfo {
+    pub _name: String,             // prefixed with _ to fix unused warning
+    pub member_names: Vec<String>, // Member names in order
 }
 
 /// Plan 088 Phase 4: Parameter information for function signatures
 /// Stores parameter type and mode for smart parameter passing
 #[derive(Debug, Clone)]
-struct ParamInfo {
+pub struct ParamInfo {
     pub ty: Type,
     pub mode: ParamMode,
 }
@@ -168,7 +168,7 @@ impl Codegen {
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(), // Plan 087 Phase 1
             fn_params: HashMap::new(), // Plan 088 Phase 4: function parameter information
             fn_return_types: HashMap::new(), // Plan 087 Phase 3: function return types for .type
-            current_fn_n_args: 0, // Plan 087 Phase 3: Initialize to 0
+            current_fn_n_args: 0,      // Plan 087 Phase 3: Initialize to 0
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
             type_store: Arc::new(types::TypeStore::new()), // Plan 084 Phase 3: Unified TypeStore
             jump_placeholders: Vec::new(), // Plan 088 Phase 4: Initialize empty jump placeholder tracking
@@ -255,7 +255,11 @@ impl Codegen {
 
     /// Get all List instantiations (e.g., List<int>, List<string>)
     pub fn get_list_instantiations(&self) -> Vec<crate::vm::generic::GenericInstance> {
-        self.generics.list_instantiations().into_iter().cloned().collect()
+        self.generics
+            .list_instantiations()
+            .into_iter()
+            .cloned()
+            .collect()
     }
 
     // Plan 076 Phase 2: Monomorphization methods
@@ -346,7 +350,10 @@ impl Codegen {
                 // 2. Record function entry point (export)
                 // Entry point is HERE (after JMP instruction)
                 let entry_point = self.code.len() as u32;
-                eprintln!("DEBUG: Exporting function '{}' at address {:#04x}", fn_decl.name, entry_point);
+                eprintln!(
+                    "DEBUG: Exporting function '{}' at address {:#04x}",
+                    fn_decl.name, entry_point
+                );
                 self.exports.insert(fn_decl.name.to_string(), entry_point);
 
                 // 3. Push new scope for function locals
@@ -354,18 +361,22 @@ impl Codegen {
 
                 // 4. Compile function parameters
                 // Plan 088 Phase 4: Store parameter types and modes for smart parameter passing
-                let param_infos: Vec<ParamInfo> = fn_decl.params.iter().map(|param| {
-                    ParamInfo {
+                let param_infos: Vec<ParamInfo> = fn_decl
+                    .params
+                    .iter()
+                    .map(|param| ParamInfo {
                         ty: param.ty.clone(),
                         mode: param.mode,
-                    }
-                }).collect();
+                    })
+                    .collect();
 
                 // Store parameter information in fn_params map
-                self.fn_params.insert(fn_decl.name.to_string(), param_infos.clone());
+                self.fn_params
+                    .insert(fn_decl.name.to_string(), param_infos.clone());
 
                 // Plan 087 Phase 3: Store function return type for .type property support
-                self.fn_return_types.insert(fn_decl.name.to_string(), fn_decl.ret.clone());
+                self.fn_return_types
+                    .insert(fn_decl.name.to_string(), fn_decl.ret.clone());
 
                 // Plan 087 Phase 3: Set current function parameter count
                 self.current_fn_n_args = fn_decl.params.len();
@@ -395,7 +406,8 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                 };
-                                self.var_types.insert("self".to_string(), Type::User(type_decl));
+                                self.var_types
+                                    .insert("self".to_string(), Type::User(type_decl));
                             }
                         }
                     }
@@ -407,7 +419,7 @@ impl Codegen {
                 // 6. Get number of locals and INSERT stack reservation at function entry
                 let n_args = fn_decl.params.len();
                 let total_vars = self.scope_stack.last().unwrap().len();
-                let n_locals = total_vars - n_args;  // Pure local vars (excluding parameters)
+                let n_locals = total_vars - n_args; // Pure local vars (excluding parameters)
 
                 // Plan 088 Phase 4: Always emit FN_PROLOG at function entry
                 // This provides function metadata for dynamic parameter counting
@@ -416,7 +428,8 @@ impl Codegen {
                 // NOTE: Current function (at entry_point) should NOT be adjusted!
                 let mut adjusted_exports = std::collections::HashMap::new();
                 for (name, &addr) in &self.exports {
-                    if addr > entry_point {  // Note: > not >=
+                    if addr > entry_point {
+                        // Note: > not >=
                         let shift = if n_locals > 0 { 5 } else { 3 }; // FN_PROLOG (3 bytes) + optional RESERVE_STACK (2 bytes)
                         adjusted_exports.insert(name.clone(), addr + shift);
                     }
@@ -449,9 +462,12 @@ impl Codegen {
 
                 // Insert FN_PROLOG at entry_point (before function body)
                 // This is 3 bytes: 1 byte opcode + 1 byte n_args + 1 byte n_locals
-                eprintln!("DEBUG: Emitting FN_PROLOG at address {}, n_args={}, n_locals={}",
-                    entry_point, n_args, n_locals);
-                self.code.insert(entry_point as usize, OpCode::FN_PROLOG as u8);
+                eprintln!(
+                    "DEBUG: Emitting FN_PROLOG at address {}, n_args={}, n_locals={}",
+                    entry_point, n_args, n_locals
+                );
+                self.code
+                    .insert(entry_point as usize, OpCode::FN_PROLOG as u8);
                 self.code.insert(entry_point as usize + 1, n_args as u8);
                 self.code.insert(entry_point as usize + 2, n_locals as u8);
 
@@ -459,7 +475,8 @@ impl Codegen {
                 if n_locals > 0 {
                     // Insert RESERVE_STACK at entry_point + 3 (after FN_PROLOG)
                     // This is 2 bytes: 1 byte opcode + 1 byte operand
-                    self.code.insert(entry_point as usize + 3, OpCode::RESERVE_STACK as u8);
+                    self.code
+                        .insert(entry_point as usize + 3, OpCode::RESERVE_STACK as u8);
                     self.code.insert(entry_point as usize + 4, n_locals as u8);
                 }
 
@@ -487,13 +504,21 @@ impl Codegen {
                 // - x = 7: reassignment (error if x was declared with let)
 
                 let name_str = store.name.to_string();
-                let scope = self.scope_stack.last_mut().expect("Scope stack should never be empty");
+                let scope = self
+                    .scope_stack
+                    .last_mut()
+                    .expect("Scope stack should never be empty");
 
                 // Plan 091: Check if this is a new declaration or reassignment
                 // New declaration (let/var) allows shadowing
                 // Only assignment expressions should check immutability
-                let is_new_declaration = matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Var | crate::ast::StoreKind::CVar);
-                
+                let is_new_declaration = matches!(
+                    store.kind,
+                    crate::ast::StoreKind::Let
+                        | crate::ast::StoreKind::Var
+                        | crate::ast::StoreKind::CVar
+                );
+
                 if !is_new_declaration && scope.contains_key(&name_str) {
                     // This is a reassignment (not a new declaration) - check if variable is immutable
                     if let Some(&is_mutable) = self.var_mutability.get(&name_str) {
@@ -507,10 +532,13 @@ impl Codegen {
                         // Variable is mutable - allow reassignment
                     }
                 }
-                
+
                 if is_new_declaration || !scope.contains_key(&name_str) {
                     // First-time declaration - track mutability based on StoreKind
-                    let is_mutable = matches!(store.kind, crate::ast::StoreKind::Var | crate::ast::StoreKind::CVar);
+                    let is_mutable = matches!(
+                        store.kind,
+                        crate::ast::StoreKind::Var | crate::ast::StoreKind::CVar
+                    );
                     self.var_mutability.insert(name_str.clone(), is_mutable);
 
                     // Plan 087 Phase 1: Handle generic type instantiations
@@ -521,14 +549,17 @@ impl Codegen {
                         let type_args: Vec<Type> = inst.args.clone();
 
                         // Register or get the ClassType from GenericRegistry
-                        if let Ok(_class_type) = self.generic_registry.get_or_create_type(
-                            &inst.base_name.to_string(),
-                            type_args
-                        ) {
+                        if let Ok(_class_type) = self
+                            .generic_registry
+                            .get_or_create_type(&inst.base_name.to_string(), type_args)
+                        {
                             // Store the complete type in var_types
                             self.var_types.insert(name_str.clone(), store.ty.clone());
                         } else {
-                            eprintln!("Warning: Failed to register generic instance '{}'", inst.base_name);
+                            eprintln!(
+                                "Warning: Failed to register generic instance '{}'",
+                                inst.base_name
+                            );
                         }
                     }
                 }
@@ -544,7 +575,10 @@ impl Codegen {
                             // Check if this is a known type (List, HashMap, etc.)
                             if type_name == "List" && method == "new" {
                                 // Variable is being assigned a List
-                                self.var_types.insert(store.name.to_string(), Type::List(Box::new(Type::Int)));
+                                self.var_types.insert(
+                                    store.name.to_string(),
+                                    Type::List(Box::new(Type::Int)),
+                                );
                             }
                             // Plan 086: Add collection type constructors
                             else if type_name == "HashMap" && method == "new" {
@@ -562,9 +596,9 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                 };
-                                self.var_types.insert(store.name.to_string(), Type::User(type_decl));
-                            }
-                            else if type_name == "HashSet" && method == "new" {
+                                self.var_types
+                                    .insert(store.name.to_string(), Type::User(type_decl));
+                            } else if type_name == "HashSet" && method == "new" {
                                 let type_decl = crate::ast::TypeDecl {
                                     name: crate::ast::Name::from("HashSet"),
                                     kind: crate::ast::TypeDeclKind::UserType,
@@ -577,9 +611,9 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                 };
-                                self.var_types.insert(store.name.to_string(), Type::User(type_decl));
-                            }
-                            else if type_name == "VecDeque" && method == "new" {
+                                self.var_types
+                                    .insert(store.name.to_string(), Type::User(type_decl));
+                            } else if type_name == "VecDeque" && method == "new" {
                                 let type_decl = crate::ast::TypeDecl {
                                     name: crate::ast::Name::from("VecDeque"),
                                     kind: crate::ast::TypeDeclKind::UserType,
@@ -592,9 +626,9 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                 };
-                                self.var_types.insert(store.name.to_string(), Type::User(type_decl));
-                            }
-                            else if type_name == "BTreeMap" && method == "new" {
+                                self.var_types
+                                    .insert(store.name.to_string(), Type::User(type_decl));
+                            } else if type_name == "BTreeMap" && method == "new" {
                                 let type_decl = crate::ast::TypeDecl {
                                     name: crate::ast::Name::from("BTreeMap"),
                                     kind: crate::ast::TypeDeclKind::UserType,
@@ -607,7 +641,8 @@ impl Codegen {
                                     delegations: vec![],
                                     methods: vec![],
                                 };
-                                self.var_types.insert(store.name.to_string(), Type::User(type_decl));
+                                self.var_types
+                                    .insert(store.name.to_string(), Type::User(type_decl));
                             }
                             // Plan 087 Phase 3: Track user-defined type instances
                             // Example: let c = Counter.new()
@@ -626,13 +661,13 @@ impl Codegen {
                                         delegations: vec![],
                                         methods: vec![],
                                     };
-                                    self.var_types.insert(store.name.to_string(), Type::User(type_decl));
+                                    self.var_types
+                                        .insert(store.name.to_string(), Type::User(type_decl));
                                 }
                             }
                         }
                     }
                 }
-
                 // Plan 087 Phase 3: Track type instances from Node literals
                 // Example: let c = Counter{count: 0}
                 else if let Expr::Node(node) = &store.expr {
@@ -642,15 +677,24 @@ impl Codegen {
                     if self.generic_registry.has_template(&type_name) {
                         // Get or create ClassType for this generic type
                         let type_args = Vec::new(); // No explicit type args provided
-                        if let Ok(_class_type) = self.generic_registry.get_or_create_type(&type_name, type_args) {
+                        if let Ok(_class_type) = self
+                            .generic_registry
+                            .get_or_create_type(&type_name, type_args)
+                        {
                             // Create GenericInstance type to store in var_types
                             use crate::ast::GenericInstance;
                             let generic_inst = GenericInstance {
                                 base_name: crate::ast::Name::from(type_name),
                                 args: vec![],
                             };
-                            self.var_types.insert(store.name.to_string(), Type::GenericInstance(generic_inst));
-                            eprintln!("DEBUG: Stored generic type for '{}' in var_types", store.name);
+                            self.var_types.insert(
+                                store.name.to_string(),
+                                Type::GenericInstance(generic_inst),
+                            );
+                            eprintln!(
+                                "DEBUG: Stored generic type for '{}' in var_types",
+                                store.name
+                            );
                         }
                     } else if self.is_type(&type_name) {
                         // Built-in type (List, HashMap, etc.)
@@ -668,7 +712,8 @@ impl Codegen {
                                 delegations: vec![],
                                 methods: vec![],
                             };
-                            self.var_types.insert(store.name.to_string(), Type::User(type_decl));
+                            self.var_types
+                                .insert(store.name.to_string(), Type::User(type_decl));
                         }
                     }
                 }
@@ -679,10 +724,15 @@ impl Codegen {
                     let ty = self.infer_expr_type(&store.expr);
                     // Only store if we could infer a non-Unknown type
                     if !matches!(ty, crate::ast::Type::Unknown) {
-                        eprintln!("DEBUG: Inferred type for '{}' from expression: {:?}", name_str, ty);
+                        eprintln!(
+                            "DEBUG: Inferred type for '{}' from expression: {:?}",
+                            name_str, ty
+                        );
                         self.var_types.insert(name_str.clone(), ty.clone());
                         // Sync with infer_ctx
-                        self.infer_ctx.type_env.insert(crate::ast::Name::from(&name_str), ty);
+                        self.infer_ctx
+                            .type_env
+                            .insert(crate::ast::Name::from(&name_str), ty);
                     }
                 }
 
@@ -758,18 +808,27 @@ impl Codegen {
                     Iter::Named(var_name) => {
                         // Check if range is a Range expression (for x in 0..10)
                         if let Expr::Range(range) = &for_stmt.range {
-                            eprintln!("DEBUG FOR: Range-based loop, start={:?}, end={:?}, eq={}", range.start, range.end, range.eq);
+                            eprintln!(
+                                "DEBUG FOR: Range-based loop, start={:?}, end={:?}, eq={}",
+                                range.start, range.end, range.eq
+                            );
                             // Compile start expression and initialize loop variable
                             self.compile_expr(&range.start)?;
-                            eprintln!("DEBUG FOR: After start expr, code len = {}", self.code.len());
+                            eprintln!(
+                                "DEBUG FOR: After start expr, code len = {}",
+                                self.code.len()
+                            );
 
                             // Store to loop variable
                             let var_str = var_name.to_string();
                             eprintln!("DEBUG FOR: Loop var = {}", var_str);
                             self.push_scope(); // New scope for loop variable
-                            // Calculate total index across all scopes
+                                               // Calculate total index across all scopes
                             let var_index: usize = self.scope_stack.iter().map(|s| s.len()).sum();
-                            self.scope_stack.last_mut().unwrap().insert(var_str.clone(), var_index);
+                            self.scope_stack
+                                .last_mut()
+                                .unwrap()
+                                .insert(var_str.clone(), var_index);
                             eprintln!("DEBUG FOR: var_index = {}", var_index);
                             self.emit_store_loc(var_index);
                             eprintln!("DEBUG FOR: After store_loc, code len = {}", self.code.len());
@@ -833,7 +892,10 @@ impl Codegen {
                             // Store iterator in a local variable
                             self.push_scope(); // New scope for loop variable and iterator
                             let iter_index = self.scope_stack.last_mut().unwrap().len();
-                            self.scope_stack.last_mut().unwrap().insert("_iterator".to_string(), iter_index);
+                            self.scope_stack
+                                .last_mut()
+                                .unwrap()
+                                .insert("_iterator".to_string(), iter_index);
                             self.emit_store_loc(iter_index);
 
                             // Loop start label
@@ -844,11 +906,15 @@ impl Codegen {
 
                             // Emit CALL_NAT for Iterator.next
                             // Look up the native function ID
-                            let native_id = if let Some(id) = BIGVM_NATIVES.lock().unwrap().get_id("Iterator.next") {
+                            let native_id = if let Some(id) =
+                                BIGVM_NATIVES.lock().unwrap().get_id("Iterator.next")
+                            {
                                 id
                             } else {
                                 self.loop_exits.pop();
-                                return Err(AutoError::Msg("Iterator.next native function not found".to_string()));
+                                return Err(AutoError::Msg(
+                                    "Iterator.next native function not found".to_string(),
+                                ));
                             };
                             self.emit(OpCode::CALL_NAT);
                             self.code.extend_from_slice(&native_id.to_le_bytes());
@@ -864,7 +930,10 @@ impl Codegen {
                             // Store the element to the loop variable
                             let var_str = var_name.to_string();
                             let var_index = self.scope_stack.last_mut().unwrap().len();
-                            self.scope_stack.last_mut().unwrap().insert(var_str.clone(), var_index);
+                            self.scope_stack
+                                .last_mut()
+                                .unwrap()
+                                .insert(var_str.clone(), var_index);
                             self.emit_store_loc(var_index);
 
                             // Compile loop body
@@ -910,12 +979,18 @@ impl Codegen {
 
                             // Store to index variable
                             let index_index = self.scope_stack.last_mut().unwrap().len();
-                            self.scope_stack.last_mut().unwrap().insert(index_str.clone(), index_index);
+                            self.scope_stack
+                                .last_mut()
+                                .unwrap()
+                                .insert(index_str.clone(), index_index);
                             self.emit_store_loc(index_index);
 
                             // Store same value to iter variable
                             let iter_index = self.scope_stack.last_mut().unwrap().len();
-                            self.scope_stack.last_mut().unwrap().insert(iter_str.clone(), iter_index);
+                            self.scope_stack
+                                .last_mut()
+                                .unwrap()
+                                .insert(iter_str.clone(), iter_index);
                             self.emit_store_loc(iter_index);
 
                             // Loop start label
@@ -975,7 +1050,10 @@ impl Codegen {
                         } else {
                             // For now, only support range expressions
                             self.loop_exits.pop();
-                            return Err(AutoError::Msg("Indexed for loops with non-range expressions not supported yet".to_string()));
+                            return Err(AutoError::Msg(
+                                "Indexed for loops with non-range expressions not supported yet"
+                                    .to_string(),
+                            ));
                         }
                     }
                     Iter::Cond => {
@@ -1039,7 +1117,10 @@ impl Codegen {
                         // Store iterator in a local variable
                         self.push_scope(); // New scope for loop variable and iterator
                         let iter_index = self.scope_stack.last_mut().unwrap().len();
-                        self.scope_stack.last_mut().unwrap().insert("_iterator".to_string(), iter_index);
+                        self.scope_stack
+                            .last_mut()
+                            .unwrap()
+                            .insert("_iterator".to_string(), iter_index);
                         self.emit_store_loc(iter_index);
 
                         // Loop start label
@@ -1077,7 +1158,10 @@ impl Codegen {
                         // Get variable name from context - for now, use "x" as default
                         let var_str = "x"; // TODO: Extract actual variable name from AST
                         let var_index = self.scope_stack.last_mut().unwrap().len();
-                        self.scope_stack.last_mut().unwrap().insert(var_str.to_string(), var_index);
+                        self.scope_stack
+                            .last_mut()
+                            .unwrap()
+                            .insert(var_str.to_string(), var_index);
                         self.emit_store_loc(var_index);
 
                         // Compile loop body
@@ -1115,7 +1199,9 @@ impl Codegen {
                     let exit_placeholder = self.emit_placeholder_i16();
                     self.loop_exits.last_mut().unwrap().push(exit_placeholder);
                 } else {
-                    return Err(AutoError::Msg("Break statement outside of loop".to_string()));
+                    return Err(AutoError::Msg(
+                        "Break statement outside of loop".to_string(),
+                    ));
                 }
             }
             // Plan 073: Is pattern matching statement
@@ -1273,15 +1359,17 @@ impl Codegen {
                 }
 
                 // Store keys in the object_keys pool
-                let keys: Vec<auto_val::ValueKey> = pairs.iter().map(|pair| {
-                    self.ast_key_to_value_key(&pair.key)
-                }).collect();
+                let keys: Vec<auto_val::ValueKey> = pairs
+                    .iter()
+                    .map(|pair| self.ast_key_to_value_key(&pair.key))
+                    .collect();
                 let key_index = self.object_keys.len() as u16;
 
                 // Plan 073: Track field types for runtime conversion
-                let types: Vec<ObjectType> = pairs.iter().map(|pair| {
-                    self.infer_object_type(&pair.value)
-                }).collect();
+                let types: Vec<ObjectType> = pairs
+                    .iter()
+                    .map(|pair| self.infer_object_type(&pair.value))
+                    .collect();
                 self.object_types.push(types.clone());
 
                 self.object_keys.push(keys);
@@ -1348,10 +1436,17 @@ impl Codegen {
 
                     // Get ClassType to determine mono_name and field count
                     let type_args = Vec::new(); // Non-generic types have empty type args
-                    if let Ok(class_type) = self.generic_registry.get_or_create_type(&type_name, type_args) {
+                    if let Ok(class_type) = self
+                        .generic_registry
+                        .get_or_create_type(&type_name, type_args)
+                    {
                         let field_count = class_type.template.fields.len();
                         let mono_name = class_type.mono_name.clone();
-                        eprintln!("DEBUG: mono_name = '{}' ({} bytes)", mono_name, mono_name.len());
+                        eprintln!(
+                            "DEBUG: mono_name = '{}' ({} bytes)",
+                            mono_name,
+                            mono_name.len()
+                        );
                         eprintln!("DEBUG: mono_name bytes = {:?}", mono_name.as_bytes());
                         let name_bytes = mono_name.as_bytes();
                         let name_len = name_bytes.len();
@@ -1406,7 +1501,11 @@ impl Codegen {
                         for (i, value_expr) in field_values.iter().enumerate() {
                             eprintln!("DEBUG codegen: Compiling field value {}", i);
                             self.compile_expr(value_expr)?;
-                            eprintln!("DEBUG codegen: code.len() = 0x{:04x} after field value {}", self.code.len(), i);
+                            eprintln!(
+                                "DEBUG codegen: code.len() = 0x{:04x} after field value {}",
+                                self.code.len(),
+                                i
+                            );
                         }
 
                         // 2. Push mono_name length onto stack (for NEW_INSTANCE to pop)
@@ -1431,9 +1530,15 @@ impl Codegen {
                         // 6. Emit CONSTRUCT_INSTANCE
                         // Stack layout: [..., value1, value2, ..., valueN, instance_id, field_count]
                         self.emit(OpCode::CONSTRUCT_INSTANCE);
-                        eprintln!("DEBUG codegen: code.len() = 0x{:04x} after CONSTRUCT_INSTANCE", self.code.len());
+                        eprintln!(
+                            "DEBUG codegen: code.len() = 0x{:04x} after CONSTRUCT_INSTANCE",
+                            self.code.len()
+                        );
                     } else {
-                        eprintln!("Warning: Failed to get/create ClassType for '{}'", type_name);
+                        eprintln!(
+                            "Warning: Failed to get/create ClassType for '{}'",
+                            type_name
+                        );
                         // Fallback to CREATE_OBJ (regular object)
                         let member_names = vec!["count".to_string()]; // Fallback
 
@@ -1496,7 +1601,7 @@ impl Codegen {
                     // Positional args map to type members in order
                     let keys: Vec<auto_val::ValueKey> = member_names
                         .iter()
-                        .take(arg_count as usize)  // Only take as many as we have args
+                        .take(arg_count as usize) // Only take as many as we have args
                         .map(|name| auto_val::ValueKey::Str(name.clone().into()))
                         .collect();
 
@@ -1506,21 +1611,21 @@ impl Codegen {
 
                     // Plan 087: Infer field types from node args
                     // For Node instances like Point{x: 1, y: 2}, infer types from args
-                    let types: Vec<ObjectType> = node.args.args.iter()
+                    let types: Vec<ObjectType> = node
+                        .args
+                        .args
+                        .iter()
                         .take(arg_count as usize)
                         .map(|arg| {
                             match arg {
-                                crate::ast::Arg::Pos(expr) => {
-                                    self.infer_object_type(expr)
-                                }
-                                crate::ast::Arg::Pair(_, expr) => {
-                                    self.infer_object_type(expr)
-                                }
+                                crate::ast::Arg::Pos(expr) => self.infer_object_type(expr),
+                                crate::ast::Arg::Pair(_, expr) => self.infer_object_type(expr),
                                 crate::ast::Arg::Name(_) => {
-                                    ObjectType::Int  // Default to Int
+                                    ObjectType::Int // Default to Int
                                 }
                             }
-                        }).collect();
+                        })
+                        .collect();
 
                     // Register types in object_types pool
                     self.object_types.push(types);
@@ -1604,7 +1709,10 @@ impl Codegen {
                     // Emit LOAD_STR instruction
                     self.emit(OpCode::LOAD_STR);
                     self.code.extend_from_slice(&str_idx.to_le_bytes());
-                    eprintln!("DEBUG: .type property: obj={:?}, type_name={}", obj, type_name);
+                    eprintln!(
+                        "DEBUG: .type property: obj={:?}, type_name={}",
+                        obj, type_name
+                    );
                     return Ok(());
                 }
 
@@ -1633,7 +1741,10 @@ impl Codegen {
                 };
 
                 if is_user_type_instance || is_generic_instance {
-                    eprintln!("DEBUG: Compiling field access: obj={:?}, field={}", obj, field);
+                    eprintln!(
+                        "DEBUG: Compiling field access: obj={:?}, field={}",
+                        obj, field
+                    );
                     // Plan 087 Phase 2/3: Generic instance or user-defined type field access
                     // Compile object expression (pushes instance_id onto stack)
                     self.compile_expr(obj)?;
@@ -1645,14 +1756,18 @@ impl Codegen {
                                 Type::User(type_decl) => type_decl.name.to_string(),
                                 Type::GenericInstance(inst) => {
                                     // Generate mono_name from base_name and args
-                                    self.generic_registry.get_template(&inst.base_name.to_string())
+                                    self.generic_registry
+                                        .get_template(&inst.base_name.to_string())
                                         .map(|t| t.mono_name_from_args(&inst.args))
                                         .unwrap_or_else(|| format!("{}_unknown", inst.base_name))
                                 }
                                 _ => var_name.to_string(),
                             };
 
-                            eprintln!("DEBUG: Looking up type '{}' for field '{}'", type_name, field);
+                            eprintln!(
+                                "DEBUG: Looking up type '{}' for field '{}'",
+                                type_name, field
+                            );
                             // Get ClassType to find field index
                             if let Some(class_type) = self.generic_registry.get_type(&type_name) {
                                 let field_str = field.to_string();
@@ -1662,8 +1777,10 @@ impl Codegen {
                                     self.emit(OpCode::GET_GENERIC_FIELD);
                                     self.emit_u32(field_index as u32);
                                 } else {
-                                    eprintln!("Warning: Field '{}' not found in type '{}'",
-                                        field, type_name);
+                                    eprintln!(
+                                        "Warning: Field '{}' not found in type '{}'",
+                                        field, type_name
+                                    );
                                     // Fallback: emit placeholder
                                     self.emit(OpCode::GET_GENERIC_FIELD);
                                     self.emit_u32(0);
@@ -1714,7 +1831,10 @@ impl Codegen {
             }
             Expr::Bina(lhs, op, rhs) => {
                 // Assignment is special: compile RHS first, then store to LHS
-                if matches!(op, Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq) {
+                if matches!(
+                    op,
+                    Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq
+                ) {
                     // For a += b, compile: LOAD_LOC(a), LOAD_CONST(b), ADD, STORE_LOC(a)
                     // IMPORTANT: Order matters! Stack must have [a, b] so DIV computes a/b (not b/a)
                     // Since binary ops pop b then a, we need a pushed before b
@@ -1749,14 +1869,15 @@ impl Codegen {
                             self.emit_store_loc(var_index);
                         } else {
                             // Variable not found - error
-                            return Err(crate::error::AutoError::Msg(
-                                format!("Undefined variable '{}' in compound assignment", name_str)
-                            ));
+                            return Err(crate::error::AutoError::Msg(format!(
+                                "Undefined variable '{}' in compound assignment",
+                                name_str
+                            )));
                         }
                     } else {
                         // LHS is not an identifier - error for compound assignment
                         return Err(crate::error::AutoError::Msg(
-                            "Compound assignment requires a variable on left side".to_string()
+                            "Compound assignment requires a variable on left side".to_string(),
                         ));
                     }
                 } else if *op == Op::Asn {
@@ -1857,7 +1978,7 @@ impl Codegen {
                         // But that's a bigger change...
 
                         // Quick fix: Accept the current order and change SET_ELEM to expect [value, array, index]
-                        self.emit(OpCode::SET_ELEM);  // Expects: value, array_id, index
+                        self.emit(OpCode::SET_ELEM); // Expects: value, array_id, index
                     } else if let Expr::Dot(obj, field) = lhs.as_ref() {
                         // Plan 075: Field assignment: obj.field = value
                         // Plan 087 Phase 2: Support generic instance field assignment
@@ -1883,16 +2004,24 @@ impl Codegen {
 
                             // Get field index from generic registry
                             if let Expr::Ident(var_name) = obj.as_ref() {
-                                if let Some(Type::GenericInstance(ref inst)) = self.var_types.get(var_name.as_ref()) {
+                                if let Some(Type::GenericInstance(ref inst)) =
+                                    self.var_types.get(var_name.as_ref())
+                                {
                                     // Generate mono_name from base_name and args
-                                    let mono_name = self.generic_registry.get_template(&inst.base_name.to_string())
+                                    let mono_name = self
+                                        .generic_registry
+                                        .get_template(&inst.base_name.to_string())
                                         .map(|t| t.mono_name_from_args(&inst.args))
                                         .unwrap_or_else(|| format!("{}_unknown", inst.base_name));
 
                                     // Get ClassType to find field index
-                                    if let Some(class_type) = self.generic_registry.get_type(&mono_name) {
+                                    if let Some(class_type) =
+                                        self.generic_registry.get_type(&mono_name)
+                                    {
                                         let field_str = field.to_string();
-                                        if let Some(field_index) = class_type.field_index(&field_str) {
+                                        if let Some(field_index) =
+                                            class_type.field_index(&field_str)
+                                        {
                                             // Emit SET_GENERIC_FIELD: expects value, instance_id, field_index
                                             self.emit_u32(field_index as u32);
                                             self.emit(OpCode::SET_GENERIC_FIELD);
@@ -2060,10 +2189,10 @@ impl Codegen {
                         if let Expr::Ident(type_name) = obj.as_ref() {
                             // Get or create ClassType to determine mono_name and field count
                             let type_args = Vec::new(); // For Phase 2, use empty type args (no inference)
-                            if let Ok(class_type) = self.generic_registry.get_or_create_type(
-                                type_name.as_ref(),
-                                type_args
-                            ) {
+                            if let Ok(class_type) = self
+                                .generic_registry
+                                .get_or_create_type(type_name.as_ref(), type_args)
+                            {
                                 let field_count = class_type.template.fields.len();
 
                                 // Compile arguments (push values onto stack)
@@ -2081,10 +2210,10 @@ impl Codegen {
                                             crate::ast::Arg::Name(name) => {
                                                 // Named argument without value - treat as string
                                                 self.emit(OpCode::LOAD_STR);
-                                                        let s_bytes = name.to_string().as_bytes().to_vec();
-                                                        let s_idx = self.strings.len() as u16;
-                                                        self.strings.push(s_bytes);
-                                                        self.code.extend_from_slice(&s_idx.to_le_bytes());
+                                                let s_bytes = name.to_string().as_bytes().to_vec();
+                                                let s_idx = self.strings.len() as u16;
+                                                self.strings.push(s_bytes);
+                                                self.code.extend_from_slice(&s_idx.to_le_bytes());
                                             }
                                         }
                                     }
@@ -2112,7 +2241,10 @@ impl Codegen {
 
                                 return Ok(());
                             } else {
-                                eprintln!("Warning: Failed to get/create generic type '{}'", type_name);
+                                eprintln!(
+                                    "Warning: Failed to get/create generic type '{}'",
+                                    type_name
+                                );
                                 // Fallback to regular call
                             }
                         }
@@ -2138,35 +2270,57 @@ impl Codegen {
                                 } else {
                                     // Instance method call: obj.method
                                     // Plan 087 Phase 3: Check if obj is a generic instance
-                                    let func_name = if let Some(ty) = self.var_types.get(obj_name.as_ref()) {
+                                    let func_name = if let Some(ty) =
+                                        self.var_types.get(obj_name.as_ref())
+                                    {
                                         if let Type::GenericInstance(inst) = ty {
                                             // Generate monomorphic method name for generic instance
                                             // Example: p.get_key() where p: Pair<int, string>
                                             //          → "Pair_int_str.get_key"
-                                            let mono_name = self.generic_registry.get_template(&inst.base_name.to_string())
+                                            let mono_name = self
+                                                .generic_registry
+                                                .get_template(&inst.base_name.to_string())
                                                 .map(|t| t.mono_name_from_args(&inst.args))
-                                                .unwrap_or_else(|| format!("{}_unknown", inst.base_name));
+                                                .unwrap_or_else(|| {
+                                                    format!("{}_unknown", inst.base_name)
+                                                });
 
                                             Some(format!("{}.{}", mono_name, method))
                                         } else {
                                             // Not a generic instance, use regular inference
                                             eprintln!("DEBUG: Instance method call: obj={}, method={}, var_types={:?}", obj_name, method, self.var_types);
-                                            if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
-                                                eprintln!("DEBUG: Inferred type name: {}", type_name);
+                                            if let Some(type_name) =
+                                                self.infer_type_from_var(obj_name.as_ref())
+                                            {
+                                                eprintln!(
+                                                    "DEBUG: Inferred type name: {}",
+                                                    type_name
+                                                );
                                                 Some(format!("{}.{}", type_name, method))
                                             } else {
-                                                eprintln!("DEBUG: Failed to infer type for {}", obj_name);
+                                                eprintln!(
+                                                    "DEBUG: Failed to infer type for {}",
+                                                    obj_name
+                                                );
                                                 Some(format!("{}.{}", obj_name, method))
                                             }
                                         }
                                     } else {
                                         // No type info, use regular inference
-                                        eprintln!("DEBUG: No type info for obj={}, var_types empty", obj_name);
-                                        if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
+                                        eprintln!(
+                                            "DEBUG: No type info for obj={}, var_types empty",
+                                            obj_name
+                                        );
+                                        if let Some(type_name) =
+                                            self.infer_type_from_var(obj_name.as_ref())
+                                        {
                                             eprintln!("DEBUG: Inferred type name: {}", type_name);
                                             Some(format!("{}.{}", type_name, method))
                                         } else {
-                                            eprintln!("DEBUG: Failed to infer type for {}", obj_name);
+                                            eprintln!(
+                                                "DEBUG: Failed to infer type for {}",
+                                                obj_name
+                                            );
                                             Some(format!("{}.{}", obj_name, method))
                                         }
                                     };
@@ -2180,8 +2334,13 @@ impl Codegen {
                                 // For now, generate a generic name that may fail at link time
                                 // Special case: for len() method, try str.len/String.len first (most common)
                                 if method.as_str() == "len" {
-                                    if BIGVM_NATIVES.lock().unwrap().get_id("str.len").is_some() ||
-                                       BIGVM_NATIVES.lock().unwrap().get_id("String.len").is_some() {
+                                    if BIGVM_NATIVES.lock().unwrap().get_id("str.len").is_some()
+                                        || BIGVM_NATIVES
+                                            .lock()
+                                            .unwrap()
+                                            .get_id("String.len")
+                                            .is_some()
+                                    {
                                         Some("str.len".to_string())
                                     } else {
                                         Some(format!("Unknown_{}", method))
@@ -2215,7 +2374,10 @@ impl Codegen {
                     // Native function call
                     // For instance methods, compile receiver (self) FIRST, then arguments
                     // This ensures stack order: [self, arg1, arg2, ...]
-                    eprintln!("DEBUG: Native function call: func_name={:?}, native_id={}", func_name, id);
+                    eprintln!(
+                        "DEBUG: Native function call: func_name={:?}, native_id={}",
+                        func_name, id
+                    );
                     if let Expr::Dot(obj, _method) = call.name.as_ref() {
                         // Check if it's a static method call (Type.method with capital T)
                         let is_static_method = match obj.as_ref() {
@@ -2231,7 +2393,11 @@ impl Codegen {
                             eprintln!("DEBUG: Compiling receiver for instance method");
                             // Check if this method needs 'id' field extraction
                             if let Some(ref method_name) = func_name {
-                                eprintln!("DEBUG: method_name={}, needs_id_extraction={}", method_name, self.needs_id_extraction(method_name));
+                                eprintln!(
+                                    "DEBUG: method_name={}, needs_id_extraction={}",
+                                    method_name,
+                                    self.needs_id_extraction(method_name)
+                                );
                                 if self.needs_id_extraction(method_name) {
                                     // Compile object expression
                                     self.compile_expr(obj)?;
@@ -2258,12 +2424,15 @@ impl Codegen {
                     // Compile arguments (left-to-right)
                     // Plan 088 Phase 4: Smart parameter passing for native functions
                     if !call.args.is_empty() {
-                        let func_name_for_params = func_name.as_ref().map(|s| s.as_str()).unwrap_or("");
+                        let func_name_for_params =
+                            func_name.as_ref().map(|s| s.as_str()).unwrap_or("");
                         for (i, arg) in call.args.args.iter().enumerate() {
                             match arg {
                                 crate::ast::Arg::Pos(expr) => {
                                     // Use smart parameter passing if we have function info
-                                    if !func_name_for_params.is_empty() && self.fn_params.contains_key(func_name_for_params) {
+                                    if !func_name_for_params.is_empty()
+                                        && self.fn_params.contains_key(func_name_for_params)
+                                    {
                                         self.compile_call_arg(expr, func_name_for_params, i)?;
                                     } else {
                                         // No parameter info, compile normally
@@ -2301,7 +2470,10 @@ impl Codegen {
 
                         // Plan 088 Phase 4: Compile receiver as first argument (index 0)
                         if let Some(ref method_name) = func_name {
-                            eprintln!("DEBUG: Compiling instance method call: receiver is arg 0 for '{}'", method_name);
+                            eprintln!(
+                                "DEBUG: Compiling instance method call: receiver is arg 0 for '{}'",
+                                method_name
+                            );
 
                             // Check if this method needs 'id' field extraction
                             if self.needs_id_extraction(method_name) {
@@ -2319,19 +2491,26 @@ impl Codegen {
                             } else {
                                 // Plan 088 Phase 4: Smart parameter passing for receiver
                                 // Use compile_call_arg to support Copy/View/Mut/Take modes
-                                eprintln!("DEBUG: Checking fn_params for '{}': found={}",
+                                eprintln!(
+                                    "DEBUG: Checking fn_params for '{}': found={}",
                                     method_name,
                                     self.fn_params.contains_key(method_name)
                                 );
-                                eprintln!("DEBUG: Available fn_params: {:?}",
+                                eprintln!(
+                                    "DEBUG: Available fn_params: {:?}",
                                     self.fn_params.keys().collect::<Vec<_>>()
                                 );
 
                                 if self.fn_params.contains_key(method_name) {
-                                    eprintln!("DEBUG:   Receiver (arg 0): smart param passing for '{}'", method_name);
+                                    eprintln!(
+                                        "DEBUG:   Receiver (arg 0): smart param passing for '{}'",
+                                        method_name
+                                    );
                                     self.compile_call_arg(obj, method_name, 0)?;
                                 } else {
-                                    eprintln!("DEBUG:   Receiver (arg 0): normal compile (no param info)");
+                                    eprintln!(
+                                        "DEBUG:   Receiver (arg 0): normal compile (no param info)"
+                                    );
                                     self.compile_expr(obj)?;
                                 }
                             }
@@ -2346,7 +2525,11 @@ impl Codegen {
                 // Plan 088 Phase 4: Smart parameter passing based on type and mode
                 let call_display = format!("{:?}", call.name);
                 eprintln!("DEBUG: ===== Compiling call: {} =====", call_display);
-                eprintln!("DEBUG: Before compiling args, code.len()={:04x} ({})", self.code.len(), self.code.len());
+                eprintln!(
+                    "DEBUG: Before compiling args, code.len()={:04x} ({})",
+                    self.code.len(),
+                    self.code.len()
+                );
 
                 // For instance methods, receiver is arg 0, so other args start from index 1
                 let arg_offset = if is_instance_method_call { 1 } else { 0 };
@@ -2357,8 +2540,13 @@ impl Codegen {
                         match arg {
                             crate::ast::Arg::Pos(expr) => {
                                 let param_index = i + arg_offset;
-                                if !func_name_for_params.is_empty() && self.fn_params.contains_key(func_name_for_params) {
-                                    eprintln!("DEBUG:   Arg {}: smart param passing for '{}'", param_index, func_name_for_params);
+                                if !func_name_for_params.is_empty()
+                                    && self.fn_params.contains_key(func_name_for_params)
+                                {
+                                    eprintln!(
+                                        "DEBUG:   Arg {}: smart param passing for '{}'",
+                                        param_index, func_name_for_params
+                                    );
                                     self.compile_call_arg(expr, func_name_for_params, param_index)?;
                                 } else {
                                     eprintln!("DEBUG:   Arg {}: normal compile", param_index);
@@ -2369,8 +2557,13 @@ impl Codegen {
                                 // Named argument (e.g., add(a: 12, b: 2))
                                 // Extract the value expression and compile it like a positional arg
                                 let param_index = i + arg_offset;
-                                if !func_name_for_params.is_empty() && self.fn_params.contains_key(func_name_for_params) {
-                                    eprintln!("DEBUG:   Named arg {}: smart param passing for '{}'", param_index, func_name_for_params);
+                                if !func_name_for_params.is_empty()
+                                    && self.fn_params.contains_key(func_name_for_params)
+                                {
+                                    eprintln!(
+                                        "DEBUG:   Named arg {}: smart param passing for '{}'",
+                                        param_index, func_name_for_params
+                                    );
                                     self.compile_call_arg(expr, func_name_for_params, param_index)?;
                                 } else {
                                     eprintln!("DEBUG:   Named arg {}: normal compile", param_index);
@@ -2381,9 +2574,18 @@ impl Codegen {
                                 // Name-only argument (e.g., add(a) where a is both name and value)
                                 // Convert to expression by wrapping in Ident
                                 let param_index = i + arg_offset;
-                                if !func_name_for_params.is_empty() && self.fn_params.contains_key(func_name_for_params) {
-                                    eprintln!("DEBUG:   Named arg {}: smart param passing for '{}'", param_index, func_name_for_params);
-                                    self.compile_call_arg(&Expr::Ident(name.clone()), func_name_for_params, param_index)?;
+                                if !func_name_for_params.is_empty()
+                                    && self.fn_params.contains_key(func_name_for_params)
+                                {
+                                    eprintln!(
+                                        "DEBUG:   Named arg {}: smart param passing for '{}'",
+                                        param_index, func_name_for_params
+                                    );
+                                    self.compile_call_arg(
+                                        &Expr::Ident(name.clone()),
+                                        func_name_for_params,
+                                        param_index,
+                                    )?;
                                 } else {
                                     eprintln!("DEBUG:   Named arg {}: normal compile", param_index);
                                     self.compile_expr(&Expr::Ident(name.clone()))?;
@@ -2400,15 +2602,19 @@ impl Codegen {
                 self.code.extend_from_slice(&0u32.to_le_bytes());
 
                 // 4. Create Relocation Entry
-                let reloc_name = func_name.unwrap_or_else(|| {
-                    match call.name.as_ref() {
-                        Expr::Ident(name) => name.to_string(),
-                        _ => unimplemented!("Dynamic call (computed function name) not supported yet"),
-                    }
+                let reloc_name = func_name.unwrap_or_else(|| match call.name.as_ref() {
+                    Expr::Ident(name) => name.to_string(),
+                    _ => unimplemented!("Dynamic call (computed function name) not supported yet"),
                 });
 
-                eprintln!("DEBUG: Creating reloc for function '{}' at offset 0x{:04x}", reloc_name, placeholder_idx);
-                eprintln!("DEBUG: Available exports: {:?}", self.exports.keys().collect::<Vec<_>>());
+                eprintln!(
+                    "DEBUG: Creating reloc for function '{}' at offset 0x{:04x}",
+                    reloc_name, placeholder_idx
+                );
+                eprintln!(
+                    "DEBUG: Available exports: {:?}",
+                    self.exports.keys().collect::<Vec<_>>()
+                );
 
                 self.relocs.push(RelocEntry {
                     offset: placeholder_idx as u32,
@@ -2528,12 +2734,12 @@ impl Codegen {
         let opcode = op as u8;
         self.code.push(opcode);
     }
-    
+
     /// Public method to emit an opcode (for script setup)
     pub fn emit_op(&mut self, op: OpCode) {
         self.emit(op);
     }
-    
+
     /// Public method to emit a byte (for script setup)
     pub fn emit_byte(&mut self, byte: u8) {
         self.code.push(byte);
@@ -2581,18 +2787,10 @@ impl Codegen {
     // Plan 073: Convert AST Key to ValueKey
     fn ast_key_to_value_key(&self, key: &crate::ast::Key) -> auto_val::ValueKey {
         match key {
-            crate::ast::Key::NamedKey(name) => {
-                auto_val::ValueKey::Str(name.to_string().into())
-            }
-            crate::ast::Key::IntKey(i) => {
-                auto_val::ValueKey::Int(*i)
-            }
-            crate::ast::Key::BoolKey(b) => {
-                auto_val::ValueKey::Bool(*b)
-            }
-            crate::ast::Key::StrKey(s) => {
-                auto_val::ValueKey::Str(s.clone())
-            }
+            crate::ast::Key::NamedKey(name) => auto_val::ValueKey::Str(name.to_string().into()),
+            crate::ast::Key::IntKey(i) => auto_val::ValueKey::Int(*i),
+            crate::ast::Key::BoolKey(b) => auto_val::ValueKey::Bool(*b),
+            crate::ast::Key::StrKey(s) => auto_val::ValueKey::Str(s.clone()),
         }
     }
 
@@ -2610,16 +2808,26 @@ impl Codegen {
             match &obj_ty {
                 // User-defined types (type A { x int })
                 Type::User(type_decl) => {
-                    if let Some(member) = type_decl.members.iter().find(|m| m.name.as_ref() == field_name) {
+                    if let Some(member) = type_decl
+                        .members
+                        .iter()
+                        .find(|m| m.name.as_ref() == field_name)
+                    {
                         return member.ty.clone();
                     }
                 }
                 // Generic instances (Point<int>, List<int>, etc.)
                 Type::GenericInstance(inst) => {
-                    if let Some(template) = self.generic_registry.get_template(&inst.base_name.to_string()) {
-                        if let Some(field_def) = template.fields.iter().find(|f| f.name == field_name) {
+                    if let Some(template) = self
+                        .generic_registry
+                        .get_template(&inst.base_name.to_string())
+                    {
+                        if let Some(field_def) =
+                            template.fields.iter().find(|f| f.name == field_name)
+                        {
                             // Substitute type parameters with actual types
-                            let generic_params: Vec<crate::ast::Name> = template.generic_params
+                            let generic_params: Vec<crate::ast::Name> = template
+                                .generic_params
                                 .iter()
                                 .filter_map(|p| match p {
                                     crate::ast::GenericParam::Type(tp) => Some(tp.name.clone()),
@@ -2732,8 +2940,10 @@ impl Codegen {
         let anchor = placeholder_idx + 2;
         let offset = (target as isize) - (anchor as isize);
 
-        eprintln!("DEBUG patch_jump: placeholder_idx={}, target={}, anchor={}, offset={}",
-            placeholder_idx, target, anchor, offset);
+        eprintln!(
+            "DEBUG patch_jump: placeholder_idx={}, target={}, anchor={}, offset={}",
+            placeholder_idx, target, anchor, offset
+        );
 
         // Check bounds
         if offset > i16::MAX as isize || offset < i16::MIN as isize {
@@ -2764,7 +2974,10 @@ impl Codegen {
     fn add_var(&mut self, name: &str) -> usize {
         // Calculate total index across all scopes
         let total_len: usize = self.scope_stack.iter().map(|s| s.len()).sum();
-        let scope = self.scope_stack.last_mut().expect("Scope stack should never be empty");
+        let scope = self
+            .scope_stack
+            .last_mut()
+            .expect("Scope stack should never be empty");
         scope.insert(name.to_string(), total_len);
         total_len
     }
@@ -2815,7 +3028,10 @@ impl Codegen {
     /// Locals: index >= current_fn_n_args, stored at BP + 1 + (index - n_args)
     /// Uses dedicated opcodes for locals 0-2 for performance
     fn emit_load_loc(&mut self, index: usize) {
-        eprintln!("DEBUG: emit_load_loc called with index={}, n_args={}", index, self.current_fn_n_args);
+        eprintln!(
+            "DEBUG: emit_load_loc called with index={}, n_args={}",
+            index, self.current_fn_n_args
+        );
 
         let n_args = self.current_fn_n_args;
 
@@ -2824,22 +3040,29 @@ impl Codegen {
             // Stack layout: [..., args(0), args(1), ..., return_addr, old_bp, locals...]
             //                        ^- BP-n_args     ^- BP-1    ^- BP
             // Parameter i is at BP - n_args + i
-            let offset = (n_args - index) as i32;  // Positive offset going backwards from BP
-            eprintln!("DEBUG: Loading parameter {} at BP-{} (BP-{}={})",
-                index, offset, offset, "calculate at runtime");
+            let offset = (n_args - index) as i32; // Positive offset going backwards from BP
+            eprintln!(
+                "DEBUG: Loading parameter {} at BP-{} (BP-{}={})",
+                index, offset, offset, "calculate at runtime"
+            );
 
             // Load parameter using LOAD_LOCAL with negative offset logic
             // For now, use LOAD_LOCAL with special encoding
             self.emit(OpCode::LOAD_LOCAL);
             // Encode as negative offset (0x80..0xFF means parameter)
-            let encoded_index = 0x80 + index as u8;  // 0x80 means param 0, 0x81 means param 1, etc.
+            let encoded_index = 0x80 + index as u8; // 0x80 means param 0, 0x81 means param 1, etc.
             self.code.push(encoded_index);
-            eprintln!("DEBUG: Emitting LOAD_LOCAL with encoded parameter index 0x{:02x}", encoded_index);
+            eprintln!(
+                "DEBUG: Emitting LOAD_LOCAL with encoded parameter index 0x{:02x}",
+                encoded_index
+            );
         } else {
             // This is a local variable, stored after BP
             let local_index = index - n_args;
-            eprintln!("DEBUG: Loading local variable {} at BP+1+{}",
-                local_index, local_index);
+            eprintln!(
+                "DEBUG: Loading local variable {} at BP+1+{}",
+                local_index, local_index
+            );
 
             match local_index {
                 0 => {
@@ -2857,7 +3080,10 @@ impl Codegen {
                 _ => {
                     self.emit(OpCode::LOAD_LOCAL);
                     self.code.push(local_index as u8);
-                    eprintln!("DEBUG: Emitting LOAD_LOCAL with local index {}", local_index);
+                    eprintln!(
+                        "DEBUG: Emitting LOAD_LOCAL with local index {}",
+                        local_index
+                    );
                 }
             }
         }
@@ -2870,6 +3096,7 @@ impl Codegen {
     }
 
     /// Plan 088 Phase 4: Emit STORE_REF for immutable reference
+    #[allow(dead_code)]
     fn emit_store_ref(&mut self, index: usize) {
         self.emit(OpCode::STORE_REF);
         self.code.extend_from_slice(&(index as u32).to_le_bytes());
@@ -2880,11 +3107,15 @@ impl Codegen {
         eprintln!("DEBUG: emit_load_mut_ref called with index={}", index);
         self.emit(OpCode::LOAD_MUT_REF);
         let bytes = (index as u32).to_le_bytes();
-        eprintln!("DEBUG: emit_load_mut_ref bytes: {:02x} {:02x} {:02x} {:02x}", bytes[0], bytes[1], bytes[2], bytes[3]);
+        eprintln!(
+            "DEBUG: emit_load_mut_ref bytes: {:02x} {:02x} {:02x} {:02x}",
+            bytes[0], bytes[1], bytes[2], bytes[3]
+        );
         self.code.extend_from_slice(&bytes);
     }
 
     /// Plan 088 Phase 4: Emit STORE_MUT_REF for mutable reference
+    #[allow(dead_code)]
     fn emit_store_mut_ref(&mut self, index: usize) {
         self.emit(OpCode::STORE_MUT_REF);
         self.code.extend_from_slice(&(index as u32).to_le_bytes());
@@ -2920,7 +3151,12 @@ impl Codegen {
 
     /// Compile a single argument for a function call with smart parameter passing
     /// This implements the Plan 088 ABO-01 strategy: "Semantic View, Implementation Copy"
-    fn compile_call_arg(&mut self, arg: &Expr, func_name: &str, param_index: usize) -> AutoResult<()> {
+    fn compile_call_arg(
+        &mut self,
+        arg: &Expr,
+        func_name: &str,
+        param_index: usize,
+    ) -> AutoResult<()> {
         // Get target parameter info (type and mode)
         let param_info = self.get_param_info(func_name, param_index);
 
@@ -2990,16 +3226,17 @@ impl Codegen {
     /// Get the current captured_vars map (top of stack)
     /// Plan 071 Phase 6.2: Helper for accessing captured variables
     fn current_captured_vars(&self) -> &HashMap<String, usize> {
-        self.captured_vars_stack.last()
-            .unwrap_or_else(|| {
-                // If stack is empty, return empty map (not in a closure)
-                static EMPTY_MAP: std::sync::OnceLock<std::collections::HashMap<String, usize>> = std::sync::OnceLock::new();
-                EMPTY_MAP.get_or_init(|| HashMap::new())
-            })
+        self.captured_vars_stack.last().unwrap_or_else(|| {
+            // If stack is empty, return empty map (not in a closure)
+            static EMPTY_MAP: std::sync::OnceLock<std::collections::HashMap<String, usize>> =
+                std::sync::OnceLock::new();
+            EMPTY_MAP.get_or_init(|| HashMap::new())
+        })
     }
 
     /// Get mutable reference to current captured_vars map (top of stack)
     /// Plan 071 Phase 6.2: Helper for modifying captured variables
+    #[allow(dead_code)]
     fn current_captured_vars_mut(&mut self) -> &mut HashMap<String, usize> {
         if self.captured_vars_stack.is_empty() {
             // If stack is empty, push a new map
@@ -3033,7 +3270,12 @@ impl Codegen {
     }
 
     /// Recursively collect free variables from an expression
-    fn collect_free_vars(&self, expr: &Expr, exclude: &HashSet<String>, free_vars: &mut HashSet<String>) {
+    fn collect_free_vars(
+        &self,
+        expr: &Expr,
+        exclude: &HashSet<String>,
+        free_vars: &mut HashSet<String>,
+    ) {
         match expr {
             Expr::Ident(name) => {
                 let name_str = name.to_string();
@@ -3105,7 +3347,12 @@ impl Codegen {
                 self.collect_free_vars(idx, exclude, free_vars);
             }
             // Primitives - no identifiers to collect
-            Expr::Int(_) | Expr::Float(_, _) | Expr::Str(_) | Expr::Bool(_) | Expr::Nil | Expr::Byte(_) => {}
+            Expr::Int(_)
+            | Expr::Float(_, _)
+            | Expr::Str(_)
+            | Expr::Bool(_)
+            | Expr::Nil
+            | Expr::Byte(_) => {}
             // Other expressions - add more cases as needed
             _ => {}
         }
@@ -3172,9 +3419,7 @@ impl Codegen {
             }
 
             // Unary expressions - check operand
-            Expr::Unary(_op, rhs) => {
-                self.check_unsafe_capture(var_name, rhs)
-            }
+            Expr::Unary(_op, rhs) => self.check_unsafe_capture(var_name, rhs),
 
             // Function calls - check arguments
             Expr::Call(call) => {
@@ -3284,7 +3529,11 @@ impl Codegen {
 
     /// Check for unsafe captures in a Body (block)
     /// Plan 071 Phase 6.1: Helper for checking if/branch bodies
-    fn check_unsafe_capture_in_body<'a>(&'a self, var_name: &str, body: &'a crate::ast::Body) -> Option<&'a Expr> {
+    fn check_unsafe_capture_in_body<'a>(
+        &'a self,
+        var_name: &str,
+        body: &'a crate::ast::Body,
+    ) -> Option<&'a Expr> {
         for stmt in &body.stmts {
             if let Stmt::Expr(expr) = stmt {
                 if let Some(found) = self.check_unsafe_capture(var_name, expr) {
@@ -3298,9 +3547,8 @@ impl Codegen {
     /// Compile closure expression (Plan 071)
     pub fn compile_closure(&mut self, closure: &Closure) -> AutoResult<()> {
         // Step 1: Find free variables to capture
-        let param_names: HashSet<String> = closure.params.iter()
-            .map(|p| p.name.to_string())
-            .collect();
+        let param_names: HashSet<String> =
+            closure.params.iter().map(|p| p.name.to_string()).collect();
         let free_vars = self.find_free_vars(&closure.body, &param_names);
 
         // Plan 071 Phase 6.1: Borrow Checking - Check for unsafe captures
@@ -3318,7 +3566,8 @@ impl Codegen {
                         var_name
                     ),
                     span,
-                }.into());
+                }
+                .into());
             }
         }
 
@@ -3391,7 +3640,12 @@ impl Codegen {
         // Step 5: Back-fill the func_addr in the CLOSURE opcode
         // Now we know the actual function address, so we can fill it in
         let func_addr_bytes = func_addr.to_le_bytes();
-        eprintln!("DEBUG: Closure back-fill: func_addr_offset={}, func_addr={}, writing {} bytes", func_addr_offset, func_addr, func_addr_bytes.len());
+        eprintln!(
+            "DEBUG: Closure back-fill: func_addr_offset={}, func_addr={}, writing {} bytes",
+            func_addr_offset,
+            func_addr,
+            func_addr_bytes.len()
+        );
         for (i, byte) in func_addr_bytes.iter().enumerate() {
             let idx = func_addr_offset as usize + i;
             eprintln!("DEBUG:   code[{}] = {} (was {})", idx, byte, self.code[idx]);
@@ -3449,7 +3703,7 @@ impl Codegen {
             match var_name {
                 "list" | "arr" | "array" | "vec" => Some("List".to_string()),
                 "str" | "string" | "s" => Some("String".to_string()),
-                "map" | "dict" | "hashmap" | "m" => Some("HashMap".to_string()),  // Plan 086: Added "m" for common map variable name
+                "map" | "dict" | "hashmap" | "m" => Some("HashMap".to_string()), // Plan 086: Added "m" for common map variable name
                 "set" => Some("HashSet".to_string()),
                 "opt" | "option" => Some("Option".to_string()),
                 "file" => Some("File".to_string()),
@@ -3483,8 +3737,12 @@ impl Codegen {
         if method_name.starts_with("Iterator.") {
             return matches!(
                 method_name,
-                "Iterator.next" | "Iterator.map" | "Iterator.filter"
-                    | "Iterator.collect" | "Iterator.reduce" | "Iterator.find"
+                "Iterator.next"
+                    | "Iterator.map"
+                    | "Iterator.filter"
+                    | "Iterator.collect"
+                    | "Iterator.reduce"
+                    | "Iterator.find"
             );
         }
 
@@ -3515,17 +3773,19 @@ impl Codegen {
             self.register_generic_template(type_decl);
         } else {
             // Register as regular type
-            let member_names: Vec<String> = type_decl.members
+            let member_names: Vec<String> = type_decl
+                .members
                 .iter()
                 .map(|m| m.name.to_string())
                 .collect();
 
             let type_info = TypeInfo {
-                name: type_decl.name.to_string(),
+                _name: type_decl.name.to_string(),
                 member_names,
             };
 
-            self.types.insert(type_decl.name.to_string(), type_info.clone());
+            self.types
+                .insert(type_decl.name.to_string(), type_info.clone());
 
             // Plan 087 Phase 3: Also register non-generic types in generic_registry
             // This enables field access lookup for user-defined types
@@ -3533,11 +3793,20 @@ impl Codegen {
 
             // Create a ClassType for non-generic types using get_or_create_type
             // This allows get_type() to find non-generic types
-            let type_args: Vec<Type> = vec![];  // Non-generic types have empty type args
-            if let Ok(_class_type) = self.generic_registry.get_or_create_type(&type_decl.name.to_string(), type_args) {
-                eprintln!("DEBUG: Registered non-generic type '{}' in generic_registry", type_decl.name);
+            let type_args: Vec<Type> = vec![]; // Non-generic types have empty type args
+            if let Ok(_class_type) = self
+                .generic_registry
+                .get_or_create_type(&type_decl.name.to_string(), type_args)
+            {
+                eprintln!(
+                    "DEBUG: Registered non-generic type '{}' in generic_registry",
+                    type_decl.name
+                );
             } else {
-                eprintln!("Warning: Failed to create ClassType for '{}'", type_decl.name);
+                eprintln!(
+                    "Warning: Failed to create ClassType for '{}'",
+                    type_decl.name
+                );
             }
         }
     }
@@ -3550,7 +3819,8 @@ impl Codegen {
         use crate::vm::generic_registry::{ClassTemplate, FieldDef, MethodInfo};
 
         // Convert members to FieldDef
-        let fields: Vec<FieldDef> = type_decl.members
+        let fields: Vec<FieldDef> = type_decl
+            .members
             .iter()
             .map(|m| FieldDef::new(m.name.to_string(), m.ty.clone()))
             .collect();
@@ -3572,7 +3842,10 @@ impl Codegen {
 
         // Register in GenericRegistry
         if let Err(e) = self.generic_registry.register_template(template) {
-            eprintln!("Warning: Failed to register generic template '{}': {}", type_decl.name, e);
+            eprintln!(
+                "Warning: Failed to register generic template '{}': {}",
+                type_decl.name, e
+            );
         }
     }
 
@@ -3586,9 +3859,11 @@ impl Codegen {
 
     /// Check if a name is a registered type or a variable with a type
     ///
-    /// Plan 087 Phase 3: Also checks var_types for generic instances like Point<int>
+    /// Plan 087 Phase 3 incorrectly added `|| self.var_types.contains_key(name)` here,
+    /// which caused variables (like "l" for a List) to be treated as Types,
+    /// breaking instance method calls (treated as static method calls).
     pub fn is_type(&self, name: &str) -> bool {
-        self.types.contains_key(name) || self.var_types.contains_key(name)
+        self.types.contains_key(name)
     }
 
     /// Get type information by name
@@ -3742,7 +4017,10 @@ mod tests {
         // - var_name_idx (2 bytes, index of "n" in strings)
 
         // Find CLOSURE opcode
-        let closure_pos = codegen.code.iter().position(|&b| b == OpCode::CLOSURE as u8);
+        let closure_pos = codegen
+            .code
+            .iter()
+            .position(|&b| b == OpCode::CLOSURE as u8);
         assert!(closure_pos.is_some(), "CLOSURE opcode should be emitted");
 
         let closure_pos = closure_pos.unwrap();
@@ -3752,7 +4030,10 @@ mod tests {
         assert_eq!(capture_count, 1, "Should capture 1 variable ('n')");
 
         // Verify string constant was added for "n"
-        assert!(codegen.strings.iter().any(|s| s == b"n"), "String pool should contain 'n'");
+        assert!(
+            codegen.strings.iter().any(|s| s == b"n"),
+            "String pool should contain 'n'"
+        );
     }
 
     #[test]
@@ -3779,7 +4060,10 @@ mod tests {
         codegen.compile_expr(&Expr::Closure(closure)).unwrap();
 
         // Find CLOSURE opcode
-        let closure_pos = codegen.code.iter().position(|&b| b == OpCode::CLOSURE as u8);
+        let closure_pos = codegen
+            .code
+            .iter()
+            .position(|&b| b == OpCode::CLOSURE as u8);
         assert!(closure_pos.is_some(), "CLOSURE opcode should be emitted");
 
         let closure_pos = closure_pos.unwrap();
@@ -3789,8 +4073,14 @@ mod tests {
         assert_eq!(capture_count, 2, "Should capture 2 variables ('a' and 'b')");
 
         // Verify both strings were added
-        assert!(codegen.strings.iter().any(|s| s == b"a"), "String pool should contain 'a'");
-        assert!(codegen.strings.iter().any(|s| s == b"b"), "String pool should contain 'b'");
+        assert!(
+            codegen.strings.iter().any(|s| s == b"a"),
+            "String pool should contain 'a'"
+        );
+        assert!(
+            codegen.strings.iter().any(|s| s == b"b"),
+            "String pool should contain 'b'"
+        );
     }
 
     // Plan 073 Stage A: Type System Expansion Tests
@@ -3850,7 +4140,9 @@ mod tests {
     #[test]
     fn test_codegen_float_literal() {
         let mut codegen = Codegen::new();
-        codegen.compile_expr(&Expr::Float(3.14, "3.14".into())).unwrap();
+        codegen
+            .compile_expr(&Expr::Float(3.14, "3.14".into()))
+            .unwrap();
 
         // Should emit CONST_F32 (0x14) followed by 4 bytes
         assert_eq!(codegen.code[0], OpCode::CONST_F32 as u8);
@@ -3860,7 +4152,9 @@ mod tests {
     #[test]
     fn test_codegen_double_literal() {
         let mut codegen = Codegen::new();
-        codegen.compile_expr(&Expr::Double(2.718281828, "2.718281828".into())).unwrap();
+        codegen
+            .compile_expr(&Expr::Double(2.718281828, "2.718281828".into()))
+            .unwrap();
 
         // Should emit CONST_F64 (0x15) followed by 8 bytes
         assert_eq!(codegen.code[0], OpCode::CONST_F64 as u8);
@@ -3967,7 +4261,7 @@ mod tests {
 
     #[test]
     fn test_codegen_variable_lookup_persists_after_code_clear() {
-        use crate::ast::{Name, Type, StoreKind};
+        use crate::ast::{Name, StoreKind, Type};
 
         let mut codegen = Codegen::new();
 
@@ -4007,4 +4301,3 @@ mod tests {
         assert_eq!(codegen.code[1], OpCode::CONST_I32 as u8);
     }
 }
-

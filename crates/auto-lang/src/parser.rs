@@ -5,10 +5,10 @@ use crate::infer::{check_field_type, InferenceContext};
 use crate::lexer::Lexer;
 use crate::parser_helpers::{LambdaIdGenerator, ModuleTracker};
 use crate::scope::Meta;
+use crate::scope_manager::ScopeManager;
+use crate::symbols::SymbolLocation;
 use crate::token::{Pos, Token, TokenKind};
 use crate::types;
-use crate::symbols::SymbolLocation;
-use crate::scope_manager::ScopeManager;
 use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::{shared, Shared};
@@ -63,7 +63,7 @@ const PREC_ASN: InfixPrec = infix_prec(1);
 const PREC_ADDEQ: InfixPrec = infix_prec(2);
 const PREC_MULEQ: InfixPrec = infix_prec(3);
 const PREC_PAIR: PostfixPrec = postfix_prec(4);
-const PREC_OR: InfixPrec = infix_prec(5);  // Logical or (Plan 072)
+const PREC_OR: InfixPrec = infix_prec(5); // Logical or (Plan 072)
 const PREC_AND: InfixPrec = infix_prec(6); // Logical and (Plan 072)
 const PREC_EQ: InfixPrec = infix_prec(7);
 const PREC_CMP: InfixPrec = infix_prec(8);
@@ -223,7 +223,7 @@ impl<'a> Parser<'a> {
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
             infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
-            type_registry: None, // Plan 087: Type registry for REPL
+            type_registry: None,                // Plan 087: Type registry for REPL
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
             module_tracker: ModuleTracker::new(), // Plan 090
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
@@ -283,7 +283,7 @@ impl<'a> Parser<'a> {
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
             infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
-            type_registry: None, // Plan 087: Type registry for REPL
+            type_registry: None,                // Plan 087: Type registry for REPL
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
             module_tracker: ModuleTracker::new(), // Plan 090
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
@@ -322,7 +322,7 @@ impl<'a> Parser<'a> {
             current_type_params: Vec::new(),
             current_const_params: HashMap::new(),
             infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
-            type_registry: None, // Plan 087: Type registry for REPL
+            type_registry: None,                // Plan 087: Type registry for REPL
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
             module_tracker: ModuleTracker::new(), // Plan 090
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
@@ -536,7 +536,9 @@ impl<'a> Parser<'a> {
                         // Use type_env directly to ensure global visibility (not affected by scopes)
                         use crate::ast::Name;
                         let name_obj = Name::from(name);
-                        self.infer_ctx.type_env.insert(name_obj, Type::Tag(tag.clone()));
+                        self.infer_ctx
+                            .type_env
+                            .insert(name_obj, Type::Tag(tag.clone()));
                     }
                 } else if let Meta::Enum(ref enum_decl) = meta {
                     // EnumDecl is similar to TypeDecl, register it with minimal fields
@@ -571,6 +573,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn define_rc(&mut self, name: &str, meta: Rc<Meta>) {
         // Plan 090: Register to TypeStore + infer_ctx based on meta type
         match meta.as_ref() {
@@ -1332,7 +1335,8 @@ impl<'a> Parser<'a> {
                     || self.is_kind(TokenKind::True)
                     || self.is_kind(TokenKind::False)
                     || self.is_kind(TokenKind::Nil)
-                    || self.is_kind(TokenKind::Type) // Allow .type property
+                    || self.is_kind(TokenKind::Type)
+                // Allow .type property
                 {
                     self.next();
                     // Use Expr::Dot for semantic clarity
@@ -2034,6 +2038,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn parse_u64(&mut self) -> AutoResult<Expr> {
         if self.cur.text.starts_with("0x") {
             // trim 0x
@@ -2449,7 +2454,7 @@ impl<'a> Parser<'a> {
             TokenKind::Break => self.break_stmt()?,
             TokenKind::Return => self.return_stmt()?,
             TokenKind::Use => self.use_stmt()?,
-            TokenKind::Dep => self.dep_stmt()?,  // Plan 092: Dependency declaration
+            TokenKind::Dep => self.dep_stmt()?, // Plan 092: Dependency declaration
             TokenKind::If => self.if_stmt()?,
             TokenKind::For => self.for_stmt()?,
             TokenKind::Is => self.is_stmt()?,
@@ -2510,7 +2515,14 @@ impl<'a> Parser<'a> {
                     if is_static {
                         self.next(); // skip static keyword
                     }
-                    self.fn_decl_stmt_with_annotations("", has_c, has_vm, has_rs, is_static, with_params)?
+                    self.fn_decl_stmt_with_annotations(
+                        "",
+                        has_c,
+                        has_vm,
+                        has_rs,
+                        is_static,
+                        with_params,
+                    )?
                 } else if self.is_kind(TokenKind::Type) {
                     // Type declaration
                     self.type_decl_stmt_with_annotation(has_c)?
@@ -2685,9 +2697,9 @@ impl<'a> Parser<'a> {
                 CompileDest::TransC if has_vm && !has_c => true, // Skip #[vm] in C transpiler
                 CompileDest::TransC if has_rs && !has_c => true, // Skip #[rs] in C transpiler
                 CompileDest::TransRust if has_vm && !has_rs => true, // Skip #[vm] in Rust transpiler
-                CompileDest::TransRust if has_c && !has_rs => true, // Skip #[c] in Rust transpiler
-                CompileDest::Interp if has_c && !has_vm => true, // Skip #[c] in interpreter
-                CompileDest::Interp if has_rs && !has_vm => true, // Skip #[rs] in interpreter
+                CompileDest::TransRust if has_c && !has_rs => true,  // Skip #[c] in Rust transpiler
+                CompileDest::Interp if has_c && !has_vm => true,     // Skip #[c] in interpreter
+                CompileDest::Interp if has_rs && !has_vm => true,    // Skip #[rs] in interpreter
                 _ => false,
             };
 
@@ -3094,7 +3106,8 @@ impl<'a> Parser<'a> {
                         return Err(SyntaxError::Generic {
                             message: format!("Unknown dep property: {}", key),
                             span: pos_to_span(self.cur.pos),
-                        }.into());
+                        }
+                        .into());
                     }
                 }
 
@@ -3125,7 +3138,8 @@ impl<'a> Parser<'a> {
                 expected: "string".to_string(),
                 found: self.cur.text.to_string(),
                 span: pos_to_span(self.cur.pos),
-            }.into());
+            }
+            .into());
         }
         let text = self.cur.text.to_string();
         self.next();
@@ -3134,6 +3148,7 @@ impl<'a> Parser<'a> {
 
     /// Get file extensions to load based on compile destination
     /// Plan 036: Returns extensions in load order (bottom layer first, then top layer)
+    #[allow(dead_code)]
     fn get_file_extensions(&self) -> Vec<&'static str> {
         match self.compile_dest {
             CompileDest::Interp => vec![".at", ".vm.at"], // Interpreter: Interface (first) → VM implementation (second)
@@ -4378,7 +4393,7 @@ impl<'a> Parser<'a> {
         // Loop until we hit a non-parameter (non-ident or non-mode keyword)
         loop {
             // 1. Check for parameter mode keyword (optional, defaults to View)
-            let mut mode = ParamMode::default();  // Default: View
+            let mut mode = ParamMode::default(); // Default: View
 
             if self.is_kind(TokenKind::Copy) {
                 mode = ParamMode::Copy;
@@ -4401,7 +4416,8 @@ impl<'a> Parser<'a> {
                     return Err(SyntaxError::Generic {
                         message: format!("Expected parameter name after '{}'", mode),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
                 // No mode keyword and no ident means we're done with parameters
                 break;
@@ -4449,7 +4465,12 @@ impl<'a> Parser<'a> {
             self.define_symbol_location(name.clone(), loc);
 
             // 6. Plan 088: Create parameter with explicit mode
-            params.push(Param { name, ty, default, mode });
+            params.push(Param {
+                name,
+                ty,
+                default,
+                mode,
+            });
             self.sep_params()?;
         }
 
@@ -4565,10 +4586,15 @@ impl<'a> Parser<'a> {
         let body = if self.is_kind(TokenKind::LBrace) {
             Some(Box::new(crate::ast::Expr::Block(self.body()?)))
         } else {
-            None  // Just signature, no default implementation
+            None // Just signature, no default implementation
         };
 
-        Ok(SpecMethod { name, params, ret, body })
+        Ok(SpecMethod {
+            name,
+            params,
+            ret,
+            body,
+        })
     }
 
     /// Parse a type alias statement: `type List<T> = List<T, DefaultStorage>;`
@@ -4758,7 +4784,9 @@ impl<'a> Parser<'a> {
 
         // Plan 087: Also register to type_registry for REPL support
         if let Some(ref registry) = self.type_registry {
-            registry.borrow_mut().register_type(name.to_string(), Type::User(decl.clone()));
+            registry
+                .borrow_mut()
+                .register_type(name.to_string(), Type::User(decl.clone()));
         }
 
         // Register symbol location for LSP
@@ -4890,9 +4918,9 @@ impl<'a> Parser<'a> {
                 CompileDest::TransC if has_vm && !has_c => true, // Skip #[vm] in C transpiler
                 CompileDest::TransC if has_rs && !has_c => true, // Skip #[rs] in C transpiler
                 CompileDest::TransRust if has_vm && !has_rs => true, // Skip #[vm] in Rust transpiler
-                CompileDest::TransRust if has_c && !has_rs => true, // Skip #[c] in Rust transpiler
-                CompileDest::Interp if has_c && !has_vm => true, // Skip #[c] in interpreter
-                CompileDest::Interp if has_rs && !has_vm => true, // Skip #[rs] in interpreter
+                CompileDest::TransRust if has_c && !has_rs => true,  // Skip #[c] in Rust transpiler
+                CompileDest::Interp if has_c && !has_vm => true,     // Skip #[c] in interpreter
+                CompileDest::Interp if has_rs && !has_vm => true,    // Skip #[rs] in interpreter
                 _ => false,
             };
 
@@ -6536,7 +6564,8 @@ impl<'a> Parser<'a> {
                 || self.is_kind(TokenKind::True)
                 || self.is_kind(TokenKind::False)
                 || self.is_kind(TokenKind::Nil)
-                || self.is_kind(TokenKind::Type) // Allow .type property
+                || self.is_kind(TokenKind::Type)
+            // Allow .type property
             {
                 let text = self.cur.text.clone();
                 self.next();

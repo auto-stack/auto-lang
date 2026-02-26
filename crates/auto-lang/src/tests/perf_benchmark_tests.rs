@@ -11,8 +11,8 @@ struct BenchmarkResult {
     evaluator_time_us: u128,
     bigvm_time_us: u128,
     speedup: f64,
-    evaluator_result: String,
-    bigvm_result: String,
+    _evaluator_result: String,
+    _bigvm_result: String,
 }
 
 /// Run a benchmark comparing evaluator vs AutoVM
@@ -40,8 +40,8 @@ fn run_benchmark(name: &str, source: &str) -> BenchmarkResult {
         evaluator_time_us: eval_duration,
         bigvm_time_us: vm_duration,
         speedup,
-        evaluator_result: eval_result,
-        bigvm_result: vm_result,
+        _evaluator_result: eval_result,
+        _bigvm_result: vm_result,
     }
 }
 
@@ -224,7 +224,9 @@ fn benchmark_comprehensive() {
 
     let benchmarks = vec![
         ("Simple arithmetic", "1 + 2 * 3 - 4 / 2"),
-        ("Loop 1000", r#"
+        (
+            "Loop 1000",
+            r#"
 fn main() -> int {
     let mut sum = 0
     for i in 0..1000 {
@@ -232,8 +234,11 @@ fn main() -> int {
     }
     sum
 }
-"#),
-        ("Function calls", r#"
+"#,
+        ),
+        (
+            "Function calls",
+            r#"
 fn add(a int, b int) int { a + b }
 fn main() -> int {
     let mut sum = 0
@@ -242,14 +247,20 @@ fn main() -> int {
     }
     sum
 }
-"#),
-        ("Recursion factorial(10)", r#"
+"#,
+        ),
+        (
+            "Recursion factorial(10)",
+            r#"
 fn factorial(n int) int {
     if n <= 1 { 1 } else { n * factorial(n - 1) }
 }
 fn main() -> int { factorial(10) }
-"#),
-        ("List operations", r#"
+"#,
+        ),
+        (
+            "List operations",
+            r#"
 fn main() -> int {
     let list = List.new()
     for i in 0..50 { list.push(i) }
@@ -257,7 +268,8 @@ fn main() -> int {
     for i in 0..50 { sum = sum + list.get(i) }
     sum
 }
-"#),
+"#,
+        ),
     ];
 
     let mut results = Vec::new();
@@ -273,21 +285,21 @@ fn main() -> int {
     println!("├────────────────────────────────┼──────────────┼──────────────┼──────────┤");
 
     for result in &results {
-        println!("│ {:30}│ {:12} │ {:12} │ {:8.2} │",
-            result.name,
-            result.evaluator_time_us,
-            result.bigvm_time_us,
-            result.speedup
+        println!(
+            "│ {:30}│ {:12} │ {:12} │ {:8.2} │",
+            result.name, result.evaluator_time_us, result.bigvm_time_us, result.speedup
         );
     }
 
     println!("└────────────────────────────────┴──────────────┴──────────────┴──────────┘");
 
     // Calculate average speedup
-    let avg_speedup: f64 = results.iter()
+    let avg_speedup: f64 = results
+        .iter()
         .map(|r| r.speedup)
         .filter(|&s| s.is_finite() && s > 0.0)
-        .sum::<f64>() / results.len() as f64;
+        .sum::<f64>()
+        / results.len() as f64;
 
     println!("\n📊 Average Speedup: {:.2}x", avg_speedup);
 
@@ -341,22 +353,36 @@ fn benchmark_downcast_performance() {
 
     // Analysis
     println!("\n📊 Analysis:");
-    println!("  Optimized overhead: {} ns", optimized_ns.saturating_sub(direct_ns));
+    println!(
+        "  Optimized overhead: {} ns",
+        optimized_ns.saturating_sub(direct_ns)
+    );
     println!("  Type check overhead: {} ns", baseline_ns);
 
     // Verify target met
     if optimized_ns < 10 {
-        println!("  ✅ TARGET MET: Optimized downcast < 10ns (actual: {}ns)", optimized_ns);
+        println!(
+            "  ✅ TARGET MET: Optimized downcast < 10ns (actual: {}ns)",
+            optimized_ns
+        );
     } else {
-        println!("  ⚠️  TARGET NOT MET: Optimized downcast > 10ns (actual: {}ns)", optimized_ns);
+        println!(
+            "  ⚠️  TARGET NOT MET: Optimized downcast > 10ns (actual: {}ns)",
+            optimized_ns
+        );
     }
 
     // Assert optimized is not slower than direct by more than 2x (or both are 0)
     if direct_ns > 0 {
-        assert!(optimized_ns < direct_ns * 2, "Optimized downcast is too slow");
+        assert!(
+            optimized_ns < direct_ns * 2,
+            "Optimized downcast is too slow"
+        );
     } else {
         // In release mode, both might be 0 due to optimization
-        println!("  ℹ️  Note: Results are 0ns due to compiler optimization (expected in release mode)");
+        println!(
+            "  ℹ️  Note: Results are 0ns due to compiler optimization (expected in release mode)"
+        );
     }
 }
 
@@ -396,7 +422,9 @@ fn benchmark_unified_registry_operations() {
     for i in 0..iterations {
         if let Some(obj) = registry.get(&list_id) {
             let mut guard = obj.write().unwrap();
-            if let Some(list) = try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt) {
+            if let Some(list) =
+                try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt)
+            {
                 list.push(i);
             }
         }
@@ -414,9 +442,14 @@ fn benchmark_unified_registry_operations() {
 
     // Performance target: read + downcast < 20ns
     if read_ns < 20 {
-        println!("  ✅ TARGET MET: Read + downcast < 20ns (actual: {}ns)", read_ns);
+        println!(
+            "  ✅ TARGET MET: Read + downcast < 20ns (actual: {}ns)",
+            read_ns
+        );
     } else {
-        println!("  ⚠️  TARGET NOT MET: Read + downcast > 20ns (actual: {}ns)", read_ns);
+        println!(
+            "  ⚠️  TARGET NOT MET: Read + downcast > 20ns (actual: {}ns)",
+            read_ns
+        );
     }
 }
-

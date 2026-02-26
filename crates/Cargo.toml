@@ -49,3 +49,4 @@ toml = "0.8"
 indicatif = "0.17"
 rust-embed = { version = "8.5", features = ["compression"] }
 tempfile = "3.14"
+chrono = "0.4"

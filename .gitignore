@@ -28,7 +28,10 @@ history.txt
 .am/
 build/
 
+*.log
+
 *.o
+*.exe
 
 # Temporary test files
 tmp/

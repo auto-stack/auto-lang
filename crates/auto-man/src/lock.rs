@@ -4,11 +4,10 @@
 //! of all dependencies used in a build, ensuring reproducible builds.
 
 use crate::target::Target;
-use crate::version::Version;
+
 use auto_val::{AutoPath, AutoStr};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
 
 /// Lock file entry for a single dependency
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,8 +74,7 @@ impl LockFile {
                 .map_err(|e| format!("Failed to parse lock file JSON: {}", e))
         } else {
             // Default to TOML
-            toml::from_str(&content)
-                .map_err(|e| format!("Failed to parse lock file TOML: {}", e))
+            toml::from_str(&content).map_err(|e| format!("Failed to parse lock file TOML: {}", e))
         }
     }
 
@@ -128,10 +126,7 @@ impl LockFile {
                     }
                 }
                 None => {
-                    errors.push(format!(
-                        "Dependency '{}' not found in lock file",
-                        name
-                    ));
+                    errors.push(format!("Dependency '{}' not found in lock file", name));
                 }
             }
         }

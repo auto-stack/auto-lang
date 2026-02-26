@@ -1,8 +1,8 @@
 // Plan 076 Phase 4: AutoVM List Storage with Strategy Support
 // Unified list storage that supports both Heap and InlineInt64 strategies
 
+use crate::vm::list_storage::{HeapStorage, InlineInt64Storage, ListStorage};
 use auto_val::Value;
-use crate::vm::list_storage::{ListStorage, HeapStorage, InlineInt64Storage};
 
 /// AutoVM list storage with pluggable storage strategy
 /// This replaces `crate::vm::types::ListData` for AutoVM-specific lists
@@ -156,9 +156,7 @@ impl AutoVMListStorage {
     pub fn to_vec(&self) -> Vec<Value> {
         match self {
             AutoVMListStorage::Heap(storage) => storage.elems.clone(),
-            AutoVMListStorage::InlineInt64(storage) => {
-                storage.buffer[..storage.len].to_vec()
-            }
+            AutoVMListStorage::InlineInt64(storage) => storage.buffer[..storage.len].to_vec(),
         }
     }
 
@@ -181,7 +179,10 @@ impl AutoVMListStorage {
                 // This is a limitation - InlineInt64 can't return &mut Vec<Value>
                 // Callers should use the typed methods instead
                 static mut DUMMY: Vec<Value> = Vec::new();
-                unsafe { &mut DUMMY }
+                #[allow(static_mut_refs)]
+                unsafe {
+                    &mut DUMMY
+                }
             }
         }
     }
@@ -303,8 +304,8 @@ mod tests {
         assert!(heap_list.capacity() >= Some(16));
 
         let mut inline_list = AutoVMListStorage::new(ListStorage::InlineInt64);
-        assert!(inline_list.try_grow(32));  // <= 64, should succeed
-        assert!(inline_list.try_grow(64));  // == 64, should succeed
+        assert!(inline_list.try_grow(32)); // <= 64, should succeed
+        assert!(inline_list.try_grow(64)); // == 64, should succeed
         assert!(!inline_list.try_grow(65)); // > 64, should fail
     }
 

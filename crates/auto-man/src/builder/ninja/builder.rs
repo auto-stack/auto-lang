@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use crate::builder::Builder;
 use auto_gen::AutoGen;
 use auto_val::{AutoPath, AutoStr};
@@ -73,7 +74,10 @@ impl NinjaBuilder {
             Ok(())
         } else {
             // 如果没有配置编译器，使用默认配置
-            warn!("No compiler configured for port {}, using default", port.name);
+            warn!(
+                "No compiler configured for port {}, using default",
+                port.name
+            );
             let default_config = CompilerConfig::gcc_default();
             self.compiler = Some(default_config);
             Ok(())
@@ -106,7 +110,10 @@ impl NinjaBuilder {
 
     fn build_source(&mut self, target: &Target, objs: &mut Vec<AutoStr>) -> AutoResult<()> {
         // 使用编译器配置获取对象文件扩展名
-        let compiler = self.compiler.as_ref().expect("Compiler config should be loaded");
+        let compiler = self
+            .compiler
+            .as_ref()
+            .expect("Compiler config should be loaded");
         let obj_ext = compiler.get_object_extension();
 
         // build rule for each source file
@@ -130,7 +137,8 @@ impl NinjaBuilder {
 
     /// 构建include标志
     fn build_includes(_compiler: &CompilerConfig, paths: Vec<AutoStr>) -> String {
-        let includes: Vec<String> = paths.iter()
+        let includes: Vec<String> = paths
+            .iter()
             .map(|p| format!("-I../{}", AutoPath::new(p.as_str())))
             .collect();
         includes.join(" ")
@@ -143,7 +151,9 @@ impl NinjaBuilder {
 
     /// 构建编译标志
     fn build_cflags(compiler: &CompilerConfig) -> String {
-        let flags = compiler.default_cflags.iter()
+        let flags = compiler
+            .default_cflags
+            .iter()
             .map(|f| f.as_str())
             .collect::<Vec<_>>()
             .join(" ");
@@ -195,7 +205,11 @@ impl Builder for NinjaBuilder {
         let pac_name = pac.name.clone();
 
         // 获取编译器配置的克隆，以便在 reset_ninja_file 之外使用
-        let compiler = self.compiler.as_ref().expect("Compiler config should be loaded").clone();
+        let compiler = self
+            .compiler
+            .as_ref()
+            .expect("Compiler config should be loaded")
+            .clone();
 
         // 解析编译器路径
         let cc_path = CompilerResolver::resolve_executable(&compiler, ExecutableType::Compiler);
@@ -224,7 +238,7 @@ impl Builder for NinjaBuilder {
             &includes,
             &cflags,
             "$out",
-            "$in"
+            "$in",
         );
         let cc_cmd = templates.render_compile(
             cc_path.to_astr().as_str(),
@@ -233,20 +247,16 @@ impl Builder for NinjaBuilder {
             &defines_flags,
             &cflags,
             "$out",
-            "$in"
+            "$in",
         );
         let link_cmd = templates.render_link(
             link_path.to_astr().as_str(),
             "$out",
             "$in",
             "$ldflags",
-            "$libs"
+            "$libs",
         );
-        let lib_cmd = templates.render_archive(
-            ar_path.to_astr().as_str(),
-            "$out",
-            "$in"
-        );
+        let lib_cmd = templates.render_archive(ar_path.to_astr().as_str(), "$out", "$in");
 
         // 写入build.ninja头部
         self.out.write(

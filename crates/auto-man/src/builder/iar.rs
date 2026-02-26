@@ -1,8 +1,9 @@
+#![allow(deprecated)]
 use super::Builder;
 use crate::asset::IARTemplate;
-use crate::Pac;  // Changed from crate::pac::Pac (pac.rs not migrated yet)
 use crate::target::{Target, TargetKind};
 use crate::AutoResult;
+use crate::Pac; // Changed from crate::pac::Pac (pac.rs not migrated yet)
 use auto_gen::*;
 use auto_val::AutoPath;
 use log::*;

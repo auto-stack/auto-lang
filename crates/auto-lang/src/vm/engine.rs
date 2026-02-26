@@ -24,14 +24,14 @@ pub struct ListIterator {
 #[derive(Debug, Clone)]
 pub struct MapIterator {
     pub source_iterator_id: u32,
-    pub func_addr: u32,  // Address of the function to call
+    pub func_addr: u32, // Address of the function to call
 }
 
 /// Filter iterator state - wraps a source iterator and applies a predicate
 #[derive(Debug, Clone)]
 pub struct FilterIterator {
     pub source_iterator_id: u32,
-    pub func_addr: u32,  // Address of the predicate function
+    pub func_addr: u32, // Address of the predicate function
 }
 
 /// Unified iterator type
@@ -51,10 +51,9 @@ use auto_val::Value;
 /// Closure - a function value with directly captured environment (Plan 071: Direct Capture)
 #[derive(Debug, Clone)]
 pub struct Closure {
-    pub func_addr: u32,                        // Bytecode address
-    pub env: HashMap<String, Value>,           // Direct captured values (no upvalues!)
+    pub func_addr: u32,              // Bytecode address
+    pub env: HashMap<String, Value>, // Direct captured values (no upvalues!)
 }
-
 
 #[derive(Debug)]
 pub enum VMError {
@@ -233,7 +232,11 @@ impl AutoVM {
     /// Push a Value onto the stack based on its type
     ///
     /// For Phase 2, supports: Int, Uint, Float, Double, Bool, Char, Nil, Str
-    fn push_value(ram: &mut VirtualRAM, value: &Value, strings: &std::sync::Arc<RwLock<Vec<Vec<u8>>>>) {
+    fn push_value(
+        ram: &mut VirtualRAM,
+        value: &Value,
+        strings: &std::sync::Arc<RwLock<Vec<Vec<u8>>>>,
+    ) {
         match value {
             Value::Int(i) => ram.push_i32(*i),
             Value::Uint(u) => ram.push_i32(*u as i32),
@@ -261,21 +264,25 @@ impl AutoVM {
     /// Pop a basic value from the stack as i32
     ///
     /// For Phase 2, assumes the value is a basic type (int, bool, char, nil)
+    #[allow(dead_code)]
     fn pop_value_as_int(ram: &mut VirtualRAM) -> i32 {
         ram.pop_i32()
     }
 
     /// Pop a float value from the stack as f32
+    #[allow(dead_code)]
     fn pop_value_as_float(ram: &mut VirtualRAM) -> f32 {
         ram.pop_f32()
     }
 
     /// Pop a double value from the stack as f64
+    #[allow(dead_code)]
     fn pop_value_as_double(ram: &mut VirtualRAM) -> f64 {
         ram.pop_f64()
     }
 
     /// Pop a string value from the stack (returns string index)
+    #[allow(dead_code)]
     fn pop_value_as_string_index(ram: &mut VirtualRAM) -> i32 {
         ram.pop_i32()
     }
@@ -425,9 +432,16 @@ impl AutoVM {
                 OpCode::CONST_I32 => {
                     let val = self.flash.read_i32(task.ip);
                     task.ip += 4;
-                    eprintln!("DEBUG: CONST_I32: val={}, sp before push={}", val, task.ram.sp);
+                    eprintln!(
+                        "DEBUG: CONST_I32: val={}, sp before push={}",
+                        val, task.ram.sp
+                    );
                     task.ram.push_i32(val);
-                    eprintln!("DEBUG: CONST_I32: sp after push={}, wrote to address {}", task.ram.sp, task.ram.sp - 1);
+                    eprintln!(
+                        "DEBUG: CONST_I32: sp after push={}, wrote to address {}",
+                        task.ram.sp,
+                        task.ram.sp - 1
+                    );
                 }
                 OpCode::CONST_F32 => {
                     // Plan 073: Fixed to use push_f32 instead of push_i32
@@ -584,7 +598,7 @@ impl AutoVM {
                     // Store range in ranges registry and push range_id
                     let range_id = task.ram.ranges.len() as i32;
                     task.ram.ranges.push((start, end, false)); // false = exclusive
-                    
+
                     // Use special marker for range: -1000000 + range_id
                     task.ram.push_i32(-1000000 + range_id);
                 }
@@ -600,8 +614,11 @@ impl AutoVM {
                     // Store range in ranges registry and push range_id
                     let range_id = task.ram.ranges.len() as i32;
                     task.ram.ranges.push((start, end, true)); // true = inclusive
-                    eprintln!("DEBUG CREATE_RANGE_EQ: start={}, end={}, range_id={}", start, end, range_id);
-                    
+                    eprintln!(
+                        "DEBUG CREATE_RANGE_EQ: start={}, end={}, range_id={}",
+                        start, end, range_id
+                    );
+
                     // Use special marker for range: -1000000 + range_id
                     task.ram.push_i32(-1000000 + range_id);
                 }
@@ -710,14 +727,18 @@ impl AutoVM {
                         String::from_utf8_lossy(bytes).to_string()
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid string index: {}", left_idx)));
+                            "Invalid string index: {}",
+                            left_idx
+                        )));
                     };
 
                     let right_str = if let Some(bytes) = strings.get(right_idx) {
                         String::from_utf8_lossy(bytes).to_string()
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid string index: {}", right_idx)));
+                            "Invalid string index: {}",
+                            right_idx
+                        )));
                     };
                     drop(strings);
 
@@ -736,7 +757,7 @@ impl AutoVM {
                 OpCode::CREATE_LIST_INT => {
                     // Plan 077 Phase 5: Create List<int> in unified registry
                     use crate::vm::types::ListData;
-                    let list_data: ListData<i32> = ListData::new();  // Heap storage (default)
+                    let list_data: ListData<i32> = ListData::new(); // Heap storage (default)
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
@@ -745,7 +766,7 @@ impl AutoVM {
                 OpCode::CREATE_LIST_STR => {
                     // Plan 077 Phase 5: Create List<String> in unified registry
                     use crate::vm::types::ListData;
-                    let list_data: ListData<String> = ListData::new();  // Heap storage (default)
+                    let list_data: ListData<String> = ListData::new(); // Heap storage (default)
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
@@ -754,7 +775,7 @@ impl AutoVM {
                 OpCode::CREATE_LIST_BOOL => {
                     // Plan 077 Phase 5: Create List<bool> in unified registry
                     use crate::vm::types::ListData;
-                    let list_data: ListData<bool> = ListData::new();  // Heap storage (default)
+                    let list_data: ListData<bool> = ListData::new(); // Heap storage (default)
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
@@ -800,7 +821,10 @@ impl AutoVM {
                     // Stack after: [..., instance_id]
                     use crate::vm::generic_registry::GenericInstanceData;
 
-                    eprintln!("DEBUG NEW_INSTANCE: Stack depth before pop = {}", task.ram.sp);
+                    eprintln!(
+                        "DEBUG NEW_INSTANCE: Stack depth before pop = {}",
+                        task.ram.sp
+                    );
 
                     // Read mono_name length from stack
                     let name_len = task.ram.pop_i32() as usize;
@@ -817,8 +841,9 @@ impl AutoVM {
                     // Advance IP past the name bytes
                     task.ip = task.ip.wrapping_add(name_len);
 
-                    let mono_name = String::from_utf8(name_bytes)
-                        .map_err(|e| VMError::RuntimeError(format!("Invalid UTF-8 in mono_name: {}", e)))?;
+                    let mono_name = String::from_utf8(name_bytes).map_err(|e| {
+                        VMError::RuntimeError(format!("Invalid UTF-8 in mono_name: {}", e))
+                    })?;
                     eprintln!("DEBUG NEW_INSTANCE: mono_name = '{}'", mono_name);
 
                     // Create instance with no fields (uninitialized)
@@ -828,9 +853,14 @@ impl AutoVM {
                     // Push instance ID onto stack
                     eprintln!("DEBUG NEW_INSTANCE: Pushing instance_id = {}", instance_id);
                     task.ram.push_i32(instance_id as i32);
-                    eprintln!("DEBUG NEW_INSTANCE: Stack depth after push = {}, top value = {}",
+                    eprintln!(
+                        "DEBUG NEW_INSTANCE: Stack depth after push = {}, top value = {}",
                         task.ram.sp,
-                        if task.ram.sp > 0 { task.ram.raw[(task.ram.sp - 1) as usize] } else { 0 }
+                        if task.ram.sp > 0 {
+                            task.ram.raw[(task.ram.sp - 1) as usize]
+                        } else {
+                            0
+                        }
                     );
                 }
                 OpCode::CONSTRUCT_INSTANCE => {
@@ -840,21 +870,35 @@ impl AutoVM {
                     use crate::vm::generic_registry::GenericInstanceData;
                     use crate::vm::heap_object::TypeTag;
 
-                    eprintln!("DEBUG CONSTRUCT_INSTANCE: Stack depth before pop = {}", task.ram.sp);
+                    eprintln!(
+                        "DEBUG CONSTRUCT_INSTANCE: Stack depth before pop = {}",
+                        task.ram.sp
+                    );
 
                     // Pop field_count (top of stack)
                     let field_count = task.ram.pop_i32() as usize;
-                    eprintln!("DEBUG CONSTRUCT_INSTANCE: Popped field_count = {}", field_count);
+                    eprintln!(
+                        "DEBUG CONSTRUCT_INSTANCE: Popped field_count = {}",
+                        field_count
+                    );
 
                     // Pop instance_id (next on stack)
                     let instance_id = task.ram.pop_i32() as u64;
-                    eprintln!("DEBUG CONSTRUCT_INSTANCE: Popped instance_id = {}", instance_id);
+                    eprintln!(
+                        "DEBUG CONSTRUCT_INSTANCE: Popped instance_id = {}",
+                        instance_id
+                    );
 
                     // Pop values from stack (in reverse order)
                     // For Phase 2, we assume all values are basic types (int, float, bool, etc.)
                     let mut field_values = Vec::with_capacity(field_count);
                     for i in 0..field_count {
-                        eprintln!("DEBUG CONSTRUCT_INSTANCE: Popping value {}/{}, stack depth = {}", i+1, field_count, task.ram.sp);
+                        eprintln!(
+                            "DEBUG CONSTRUCT_INSTANCE: Popping value {}/{}, stack depth = {}",
+                            i + 1,
+                            field_count,
+                            task.ram.sp
+                        );
                         // Pop value as i32 (basic type)
                         let val_i32 = task.ram.pop_i32();
                         eprintln!("DEBUG CONSTRUCT_INSTANCE: Popped value = {}", val_i32);
@@ -863,39 +907,59 @@ impl AutoVM {
                     }
                     field_values.reverse(); // Reverse to get correct order
 
-                    eprintln!("DEBUG CONSTRUCT_INSTANCE: Field values (reversed): {:?}", field_values);
+                    eprintln!(
+                        "DEBUG CONSTRUCT_INSTANCE: Field values (reversed): {:?}",
+                        field_values
+                    );
 
                     // Get instance and populate fields
                     if let Some(obj) = self.get_heap_object(instance_id) {
                         let mut guard = obj.write().unwrap();
 
                         // Check if this is a GenericInstance by checking the type tag
-                        let is_generic_instance = matches!(guard.type_tag(), TypeTag::GenericInstance(_));
+                        let is_generic_instance =
+                            matches!(guard.type_tag(), TypeTag::GenericInstance(_));
 
                         if is_generic_instance {
                             // Use as_any_mut for downcasting (works without exact TypeTag match)
-                            if let Some(instance) = guard.as_any_mut().downcast_mut::<GenericInstanceData>() {
+                            if let Some(instance) =
+                                guard.as_any_mut().downcast_mut::<GenericInstanceData>()
+                            {
                                 let field_count = field_values.len();
                                 instance.fields = field_values;
-                                eprintln!("DEBUG CONSTRUCT_INSTANCE: Successfully populated {} fields", field_count);
+                                eprintln!(
+                                    "DEBUG CONSTRUCT_INSTANCE: Successfully populated {} fields",
+                                    field_count
+                                );
                             } else {
                                 return Err(VMError::RuntimeError(format!(
-                                    "Type error: Failed to downcast GenericInstance")));
+                                    "Type error: Failed to downcast GenericInstance"
+                                )));
                             }
                         } else {
                             return Err(VMError::RuntimeError(format!(
-                                "Type error: CONSTRUCT_INSTANCE expected GenericInstance, got {:?}", guard.type_tag())));
+                                "Type error: CONSTRUCT_INSTANCE expected GenericInstance, got {:?}",
+                                guard.type_tag()
+                            )));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid instance ID: {}", instance_id)));
+                            "Invalid instance ID: {}",
+                            instance_id
+                        )));
                     }
 
                     // Push instance_id back onto stack for variable assignment
                     // Stack layout after: [..., instance_id]
-                    eprintln!("DEBUG CONSTRUCT_INSTANCE: Pushing instance_id back to stack: {}", instance_id);
+                    eprintln!(
+                        "DEBUG CONSTRUCT_INSTANCE: Pushing instance_id back to stack: {}",
+                        instance_id
+                    );
                     task.ram.push_i32(instance_id as i32);
-                    eprintln!("DEBUG CONSTRUCT_INSTANCE: Stack depth after = {}", task.ram.sp);
+                    eprintln!(
+                        "DEBUG CONSTRUCT_INSTANCE: Stack depth after = {}",
+                        task.ram.sp
+                    );
                 }
                 OpCode::GET_GENERIC_FIELD => {
                     // Plan 087 Phase 2: Get field value from generic instance
@@ -913,28 +977,38 @@ impl AutoVM {
                     // Stack: [..., instance_id, ...]
                     let instance_id = task.ram.read_i32(task.ram.sp - 1) as u64;
 
-                    eprintln!("DEBUG: GET_GENERIC_FIELD: instance_id={}, field_index={}",
-                        instance_id, field_index);
+                    eprintln!(
+                        "DEBUG: GET_GENERIC_FIELD: instance_id={}, field_index={}",
+                        instance_id, field_index
+                    );
 
                     // Get instance and read field
                     if let Some(obj) = self.get_heap_object(instance_id) {
                         let guard = obj.read().unwrap();
 
                         // Check if this is a GenericInstance (any variant)
-                        let is_generic_instance = matches!(guard.type_tag(), TypeTag::GenericInstance(_));
+                        let is_generic_instance =
+                            matches!(guard.type_tag(), TypeTag::GenericInstance(_));
 
                         if is_generic_instance {
-                            if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                            if let Some(instance) =
+                                guard.as_any().downcast_ref::<GenericInstanceData>()
+                            {
                                 if let Some(value) = instance.get_field(field_index) {
                                     // Pop instance_id (we already read it)
                                     let _ = task.ram.pop_i32();
                                     // Push field value onto stack
                                     Self::push_value(&mut task.ram, value, &self.strings);
-                                    eprintln!("DEBUG: GET_GENERIC_FIELD: field value = {:?}", value);
+                                    eprintln!(
+                                        "DEBUG: GET_GENERIC_FIELD: field value = {:?}",
+                                        value
+                                    );
                                 } else {
                                     return Err(VMError::RuntimeError(format!(
                                         "Field index {} out of bounds (instance has {} fields)",
-                                        field_index, instance.field_count())));
+                                        field_index,
+                                        instance.field_count()
+                                    )));
                                 }
                             } else {
                                 return Err(VMError::RuntimeError(format!(
@@ -943,11 +1017,14 @@ impl AutoVM {
                         } else {
                             return Err(VMError::RuntimeError(format!(
                                 "Type error: GET_GENERIC_FIELD expected GenericInstance, got {:?}",
-                                guard.type_tag())));
+                                guard.type_tag()
+                            )));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid instance ID: {}", instance_id)));
+                            "Invalid instance ID: {}",
+                            instance_id
+                        )));
                     }
                 }
                 OpCode::SET_GENERIC_FIELD => {
@@ -969,23 +1046,31 @@ impl AutoVM {
                     // Pop instance_id
                     let instance_id = task.ram.pop_i32() as u64;
 
-                    eprintln!("DEBUG: SET_GENERIC_FIELD: instance_id={}, field_index={}, value={}",
-                        instance_id, field_index, val_i32);
+                    eprintln!(
+                        "DEBUG: SET_GENERIC_FIELD: instance_id={}, field_index={}, value={}",
+                        instance_id, field_index, val_i32
+                    );
 
                     // Get instance and set field
                     if let Some(obj) = self.get_heap_object(instance_id) {
                         let mut guard = obj.write().unwrap();
 
                         // Check if this is a GenericInstance (any variant)
-                        let is_generic_instance = matches!(guard.type_tag(), TypeTag::GenericInstance(_));
+                        let is_generic_instance =
+                            matches!(guard.type_tag(), TypeTag::GenericInstance(_));
 
                         if is_generic_instance {
-                            if let Some(instance) = guard.as_any_mut().downcast_mut::<GenericInstanceData>() {
-                                let value_repr = format!("{:?}", value);  // Capture before move
-                                instance.set_field(field_index, value)
-                                    .map_err(|e| VMError::RuntimeError(format!("Failed to set field: {}", e)))?;
-                                eprintln!("DEBUG: SET_GENERIC_FIELD: successfully set field {} to {}",
-                                    field_index, value_repr);
+                            if let Some(instance) =
+                                guard.as_any_mut().downcast_mut::<GenericInstanceData>()
+                            {
+                                let value_repr = format!("{:?}", value); // Capture before move
+                                instance.set_field(field_index, value).map_err(|e| {
+                                    VMError::RuntimeError(format!("Failed to set field: {}", e))
+                                })?;
+                                eprintln!(
+                                    "DEBUG: SET_GENERIC_FIELD: successfully set field {} to {}",
+                                    field_index, value_repr
+                                );
                             } else {
                                 return Err(VMError::RuntimeError(format!(
                                     "Type error: SET_GENERIC_FIELD failed to downcast GenericInstance")));
@@ -993,11 +1078,14 @@ impl AutoVM {
                         } else {
                             return Err(VMError::RuntimeError(format!(
                                 "Type error: SET_GENERIC_FIELD expected GenericInstance, got {:?}",
-                                guard.type_tag())));
+                                guard.type_tag()
+                            )));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid instance ID: {}", instance_id)));
+                            "Invalid instance ID: {}",
+                            instance_id
+                        )));
                     }
                 }
                 OpCode::LIST_PUSH_INT => {
@@ -1008,25 +1096,31 @@ impl AutoVM {
                     let list_id = task.ram.pop_i32() as u64;
 
                     // Get list from unified registry and downcast to ListData<i32>
-                    use crate::vm::types::ListData;
                     use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+                    use crate::vm::types::ListData;
 
                     if let Some(obj) = self.get_heap_object(list_id) {
                         let mut guard = obj.write().unwrap();
 
                         // Optimized: single type check + downcast (inline)
-                        if let Some(list) = try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt) {
+                        if let Some(list) =
+                            try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt)
+                        {
                             if !list.push(value) {
                                 return Err(VMError::RuntimeError(format!(
-                                    "List capacity exceeded (InlineInt64 limit: 64)")));
+                                    "List capacity exceeded (InlineInt64 limit: 64)"
+                                )));
                             }
                         } else {
                             return Err(VMError::RuntimeError(format!(
-                                "Type error: LIST_PUSH_INT expected ListInt")));
+                                "Type error: LIST_PUSH_INT expected ListInt"
+                            )));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid list ID: {}", list_id)));
+                            "Invalid list ID: {}",
+                            list_id
+                        )));
                     }
                 }
                 OpCode::LIST_POP_INT => {
@@ -1036,23 +1130,28 @@ impl AutoVM {
                     let list_id = task.ram.pop_i32() as u64;
 
                     // Get list from unified registry and downcast to ListData<i32>
-                    use crate::vm::types::ListData;
                     use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+                    use crate::vm::types::ListData;
 
                     if let Some(obj) = self.get_heap_object(list_id) {
                         let mut guard = obj.write().unwrap();
 
                         // Optimized: single type check + downcast (inline)
-                        if let Some(list) = try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt) {
+                        if let Some(list) =
+                            try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt)
+                        {
                             let value = list.pop().unwrap_or(0);
                             task.ram.push_i32(value);
                         } else {
                             return Err(VMError::RuntimeError(format!(
-                                "Type error: LIST_POP_INT expected ListInt")));
+                                "Type error: LIST_POP_INT expected ListInt"
+                            )));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid list ID: {}", list_id)));
+                            "Invalid list ID: {}",
+                            list_id
+                        )));
                     }
                 }
                 OpCode::LIST_GET_INT => {
@@ -1063,23 +1162,28 @@ impl AutoVM {
                     let list_id = task.ram.pop_i32() as u64;
 
                     // Get list from unified registry and downcast to ListData<i32>
-                    use crate::vm::types::ListData;
                     use crate::vm::heap_object::{try_downcast_checked, TypeTag};
+                    use crate::vm::types::ListData;
 
                     if let Some(obj) = self.get_heap_object(list_id) {
                         let guard = obj.read().unwrap();
 
                         // Optimized: single type check + downcast (inline)
-                        if let Some(list) = try_downcast_checked::<ListData<i32>>(&*guard, TypeTag::ListInt) {
+                        if let Some(list) =
+                            try_downcast_checked::<ListData<i32>>(&*guard, TypeTag::ListInt)
+                        {
                             let value = list.get(index).copied().unwrap_or(0);
                             task.ram.push_i32(value);
                         } else {
                             return Err(VMError::RuntimeError(format!(
-                                "Type error: LIST_GET_INT expected ListInt")));
+                                "Type error: LIST_GET_INT expected ListInt"
+                            )));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid list ID: {}", list_id)));
+                            "Invalid list ID: {}",
+                            list_id
+                        )));
                     }
                 }
                 OpCode::LIST_SET_INT => {
@@ -1091,25 +1195,32 @@ impl AutoVM {
                     let list_id = task.ram.pop_i32() as u64;
 
                     // Get list from unified registry and downcast to ListData<i32>
-                    use crate::vm::types::ListData;
                     use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+                    use crate::vm::types::ListData;
 
                     if let Some(obj) = self.get_heap_object(list_id) {
                         let mut guard = obj.write().unwrap();
 
                         // Optimized: single type check + downcast (inline)
-                        if let Some(list) = try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt) {
+                        if let Some(list) =
+                            try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt)
+                        {
                             if !list.set(index, value) {
                                 return Err(VMError::RuntimeError(format!(
-                                    "List index out of bounds: {}", index)));
+                                    "List index out of bounds: {}",
+                                    index
+                                )));
                             }
                         } else {
                             return Err(VMError::RuntimeError(format!(
-                                "Type error: LIST_SET_INT expected ListInt")));
+                                "Type error: LIST_SET_INT expected ListInt"
+                            )));
                         }
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid list ID: {}", list_id)));
+                            "Invalid list ID: {}",
+                            list_id
+                        )));
                     }
                 }
                 // Plan 073: Node creation (for type instances and tree structures)
@@ -1174,7 +1285,10 @@ impl AutoVM {
 
                         // Try List<int>
                         if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
-                            eprintln!("DEBUG GET_ELEM: Found List<int> with {} elems", list.elems.len());
+                            eprintln!(
+                                "DEBUG GET_ELEM: Found List<int> with {} elems",
+                                list.elems.len()
+                            );
                             if let Some(&elem) = list.elems.get(index) {
                                 eprintln!("DEBUG GET_ELEM: Returning elem[{}]={}", index, elem);
                                 task.ram.push_i32(elem);
@@ -1184,7 +1298,8 @@ impl AutoVM {
                             }
                         }
                         // Try List<String>
-                        else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+                        else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>()
+                        {
                             eprintln!("DEBUG GET_ELEM: Found List<String>");
                             if let Some(_elem) = list.elems.get(index) {
                                 // TODO: Support string elements (currently push placeholder)
@@ -1201,8 +1316,7 @@ impl AutoVM {
                             } else {
                                 task.ram.push_i32(0); // Out of bounds
                             }
-                        }
-                        else {
+                        } else {
                             eprintln!("DEBUG GET_ELEM: Unknown heap object type");
                             task.ram.push_i32(0); // Unknown heap object type
                         }
@@ -1222,7 +1336,9 @@ impl AutoVM {
                                 auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
                                 auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
                                 auto_val::Value::Double(d) => task.ram.push_f64(*d),
-                                auto_val::Value::Bool(b) => task.ram.push_i32(if *b { 1 } else { 0 }),
+                                auto_val::Value::Bool(b) => {
+                                    task.ram.push_i32(if *b { 1 } else { 0 })
+                                }
                                 auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
                                 auto_val::Value::Nil => task.ram.push_i32(0),
                                 _ => {
@@ -1286,7 +1402,9 @@ impl AutoVM {
                         String::from_utf8_lossy(field_bytes).to_string()
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid string index: {}", field_idx)));
+                            "Invalid string index: {}",
+                            field_idx
+                        )));
                     };
                     drop(strings); // Release lock before writing
 
@@ -1315,7 +1433,9 @@ impl AutoVM {
                         String::from_utf8_lossy(field_bytes).to_string()
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid string index: {}", field_idx)));
+                            "Invalid string index: {}",
+                            field_idx
+                        )));
                     };
                     drop(strings); // Release lock before potentially writing below
 
@@ -1332,7 +1452,9 @@ impl AutoVM {
                                 auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
                                 auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
                                 auto_val::Value::Double(d) => task.ram.push_f64(*d),
-                                auto_val::Value::Bool(b) => task.ram.push_i32(if *b { 1 } else { 0 }),
+                                auto_val::Value::Bool(b) => {
+                                    task.ram.push_i32(if *b { 1 } else { 0 })
+                                }
                                 auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
                                 auto_val::Value::Str(s) => {
                                     // Plan 073: Add string to mutable pool and push index
@@ -1476,9 +1598,16 @@ impl AutoVM {
                     // New BP points to the saved BP location (SP - 1)
                     task.bp = task.ram.sp - 1;
 
-                    eprintln!("DEBUG CALL: Stack depth after setup = {}, BP = {}", task.ram.sp, task.bp);
-                    eprintln!("DEBUG CALL: Stack[0] = {}, [1] = {}, [2] = {}",
-                        task.ram.read_i32(0), task.ram.read_i32(1), task.ram.read_i32(2));
+                    eprintln!(
+                        "DEBUG CALL: Stack depth after setup = {}, BP = {}",
+                        task.ram.sp, task.bp
+                    );
+                    eprintln!(
+                        "DEBUG CALL: Stack[0] = {}, [1] = {}, [2] = {}",
+                        task.ram.read_i32(0),
+                        task.ram.read_i32(1),
+                        task.ram.read_i32(2)
+                    );
 
                     // Jump
                     task.ip = target;
@@ -1599,7 +1728,9 @@ impl AutoVM {
                         String::from_utf8_lossy(var_name_bytes).to_string()
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid string index: {}", var_name_idx)));
+                            "Invalid string index: {}",
+                            var_name_idx
+                        )));
                     };
                     drop(strings);
 
@@ -1617,7 +1748,9 @@ impl AutoVM {
 
                     // Use current_closure_id instead of popping from stack
                     let closure_id = task.current_closure_id.ok_or_else(|| {
-                        VMError::RuntimeError("LOAD_CAPTURED called outside of closure context".to_string())
+                        VMError::RuntimeError(
+                            "LOAD_CAPTURED called outside of closure context".to_string(),
+                        )
                     })?;
 
                     // Plan 073: Now uses RwLock for strings access
@@ -1626,7 +1759,9 @@ impl AutoVM {
                         String::from_utf8_lossy(var_name_bytes).to_string()
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid string index: {}", var_name_idx)));
+                            "Invalid string index: {}",
+                            var_name_idx
+                        )));
                     };
                     drop(strings);
 
@@ -1662,7 +1797,9 @@ impl AutoVM {
 
                     // Use current_closure_id instead of popping from stack
                     let closure_id = task.current_closure_id.ok_or_else(|| {
-                        VMError::RuntimeError("STORE_CAPTURED called outside of closure context".to_string())
+                        VMError::RuntimeError(
+                            "STORE_CAPTURED called outside of closure context".to_string(),
+                        )
                     })?;
 
                     // Plan 073: Now uses RwLock for strings access
@@ -1671,7 +1808,9 @@ impl AutoVM {
                         String::from_utf8_lossy(var_name_bytes).to_string()
                     } else {
                         return Err(VMError::RuntimeError(format!(
-                            "Invalid string index: {}", var_name_idx)));
+                            "Invalid string index: {}",
+                            var_name_idx
+                        )));
                     };
                     drop(strings);
 
@@ -1934,22 +2073,24 @@ impl AutoVM {
                     // Plan 087 Phase 3: Check if this is a parameter (idx >= 0x80)
                     if idx >= 0x80 {
                         // Parameter: decode parameter index
-                        let param_idx = idx - 0x80;  // 0x80 -> param 0, 0x81 -> param 1, etc.
-                        // Stack layout: [..., args(0), args(1), ..., return_addr, old_bp, locals...]
-                        //                        ^- BP-n_args           ^- BP-1    ^- BP
+                        let param_idx = idx - 0x80; // 0x80 -> param 0, 0x81 -> param 1, etc.
+                                                    // Stack layout: [..., args(0), args(1), ..., return_addr, old_bp, locals...]
+                                                    //                        ^- BP-n_args           ^- BP-1    ^- BP
 
                         // Plan 088 Phase 4: Read n_args from function metadata (set by FN_PROLOG)
                         let n_args = task.current_fn_n_args;
-                        let offset = n_args - param_idx;  // For n_args=1, param 0: offset=1
+                        let offset = n_args - param_idx; // For n_args=1, param 0: offset=1
 
                         // Stack layout for n_args=1: [arg0, ret_addr, old_bp, ...]
                         //                                    ^-BP-2 ^-BP-1  ^-BP
                         // For n_args=2:             [arg0, arg1, ret_addr, old_bp, ...]
                         //                                    ^-BP-3 ^-BP-2 ^-BP-1  ^-BP
-                        let actual_offset = offset + 1;  // +1 for return_addr
+                        let actual_offset = offset + 1; // +1 for return_addr
                         let val = task.ram.read_i32(task.bp - actual_offset);
-                        eprintln!("DEBUG: LOAD_LOCAL param {}: BP-{} (n_args={}, offset={}) = {}",
-                            param_idx, actual_offset, n_args, offset, val);
+                        eprintln!(
+                            "DEBUG: LOAD_LOCAL param {}: BP-{} (n_args={}, offset={}) = {}",
+                            param_idx, actual_offset, n_args, offset, val
+                        );
                         task.ram.push_i32(val);
                     } else {
                         // Local variable: load from bp+1+idx (bp+1 is first local variable)
@@ -1966,20 +2107,21 @@ impl AutoVM {
                     // Plan 088 Phase 4: Check if this is a parameter (idx >= 0x80)
                     if idx >= 0x80 {
                         // Parameter: decode parameter index
-                        let param_idx = idx - 0x80;  // 0x80 -> param 0, 0x81 -> param 1, etc.
+                        let param_idx = idx - 0x80; // 0x80 -> param 0, 0x81 -> param 1, etc.
                         let n_args = task.current_fn_n_args;
                         let offset = n_args - param_idx;
-                        let actual_offset = offset + 1;  // +1 for return_addr
+                        let actual_offset = offset + 1; // +1 for return_addr
 
                         // Store to parameter location
                         task.ram.write_i32(task.bp - actual_offset, val);
-                        eprintln!("DEBUG: STORE_LOCAL param {}: BP-{} = {}",
-                            param_idx, actual_offset, val);
+                        eprintln!(
+                            "DEBUG: STORE_LOCAL param {}: BP-{} = {}",
+                            param_idx, actual_offset, val
+                        );
                     } else {
                         // Local variable: store to bp+1+idx (bp+1 is first local variable)
                         task.ram.write_i32(task.bp + 1 + idx, val);
-                        eprintln!("DEBUG: STORE_LOCAL local {}: BP+1+{} = {}",
-                            idx, idx, val);
+                        eprintln!("DEBUG: STORE_LOCAL local {}: BP+1+{} = {}", idx, idx, val);
                     }
                 }
                 OpCode::LOAD_LOC_0 => {
@@ -2052,32 +2194,38 @@ impl AutoVM {
                     let a = task.ram.pop_i32();
                     // Plan 091: Use special values for boolean results
                     // i32::MIN = true, i32::MIN+1 = false
-                    task.ram.push_i32(if a == b { -2147483648 } else { -2147483647 });
+                    task.ram
+                        .push_i32(if a == b { -2147483648 } else { -2147483647 });
                 }
                 OpCode::NE => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(if a != b { -2147483648 } else { -2147483647 });
+                    task.ram
+                        .push_i32(if a != b { -2147483648 } else { -2147483647 });
                 }
                 OpCode::LT => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(if a < b { -2147483648 } else { -2147483647 });
+                    task.ram
+                        .push_i32(if a < b { -2147483648 } else { -2147483647 });
                 }
                 OpCode::GT => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(if a > b { -2147483648 } else { -2147483647 });
+                    task.ram
+                        .push_i32(if a > b { -2147483648 } else { -2147483647 });
                 }
                 OpCode::LE => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(if a <= b { -2147483648 } else { -2147483647 });
+                    task.ram
+                        .push_i32(if a <= b { -2147483648 } else { -2147483647 });
                 }
                 OpCode::GE => {
                     let b = task.ram.pop_i32();
                     let a = task.ram.pop_i32();
-                    task.ram.push_i32(if a >= b { -2147483648 } else { -2147483647 });
+                    task.ram
+                        .push_i32(if a >= b { -2147483648 } else { -2147483647 });
                 }
 
                 // === Control Flow ===
@@ -2158,7 +2306,10 @@ impl AutoVM {
                     // Store to bp+1+var_index (same as LOAD_LOCAL logic)
                     task.ram.write_i32(task.bp + 1 + var_index as usize, val);
 
-                    eprintln!("DEBUG: STORE_REF: var_index={}, val={}, bp={}", var_index, val, task.bp);
+                    eprintln!(
+                        "DEBUG: STORE_REF: var_index={}, val={}, bp={}",
+                        var_index, val, task.bp
+                    );
                 }
                 OpCode::LOAD_MUT_REF => {
                     // Plan 088 Phase 5: Load mutable reference
@@ -2181,7 +2332,10 @@ impl AutoVM {
                     // Store to bp+1+var_index (same as STORE_LOCAL logic)
                     task.ram.write_i32(task.bp + 1 + var_index as usize, val);
 
-                    eprintln!("DEBUG: STORE_MUT_REF: var_index={}, val={}, bp={}", var_index, val, task.bp);
+                    eprintln!(
+                        "DEBUG: STORE_MUT_REF: var_index={}, val={}, bp={}",
+                        var_index, val, task.bp
+                    );
                 }
 
                 _ => {

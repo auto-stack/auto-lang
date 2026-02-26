@@ -34,7 +34,7 @@ use std::sync::Arc;
 /// 2. **Registration Phase**:
 ///    ```rust
 ///    ffi_bridge.register_c_function(
-    //     "hal",
+//     "hal",
 ///     "gpio_init",
 ///     c_signature!("int(int)"),
 ///     library_path: "target/hal.dll"
@@ -160,12 +160,7 @@ impl CFfiBridge {
         // 3. Call C function
         // 4. Convert return value to AutoVM type
         // 5. Push result onto AutoVM stack
-        let shim = self.create_c_shim(
-            library,
-            function_name,
-            signature,
-            library_path.clone(),
-        );
+        let shim = self.create_c_shim(library, function_name, signature, library_path.clone());
 
         // Register the shim with AutoVM
         self.native_interface.register(native_id, shim);
@@ -173,7 +168,9 @@ impl CFfiBridge {
 
         log::info!(
             "Registered C function: {}::{} (native_id={})",
-            library, function_name, native_id
+            library,
+            function_name,
+            native_id
         );
 
         Ok(native_id)
@@ -205,7 +202,9 @@ impl CFfiBridge {
 
         // Reserve IDs 100-199 for Rust FFI
         let native_id = if self.next_native_id >= 200 {
-            return Err(VMError::RuntimeError("Rust FFI ID space exhausted (100-199)".to_string()));
+            return Err(VMError::RuntimeError(
+                "Rust FFI ID space exhausted (100-199)".to_string(),
+            ));
         } else {
             self.next_native_id
         };
@@ -213,19 +212,16 @@ impl CFfiBridge {
         self.next_native_id += 1;
 
         // Create native shim for this Rust function
-        let shim = self.create_rust_shim(
-            library,
-            function_name,
-            signature,
-            library_path.clone(),
-        );
+        let shim = self.create_rust_shim(library, function_name, signature, library_path.clone());
 
         self.native_interface.register(native_id, shim);
         self.functions.insert(key, native_id);
 
         log::info!(
             "Registered Rust function: {}::{} (native_id={})",
-            library, function_name, native_id
+            library,
+            function_name,
+            native_id
         );
 
         Ok(native_id)
@@ -314,7 +310,9 @@ impl CFfiBridge {
 
     /// Get the native ID for a registered function
     pub fn get_function_id(&self, library: &str, function_name: &str) -> Option<u16> {
-        self.functions.get(&(library.to_string(), function_name.to_string())).copied()
+        self.functions
+            .get(&(library.to_string(), function_name.to_string()))
+            .copied()
     }
 
     /// Get all registered functions
@@ -504,8 +502,8 @@ pub struct RustFfiBridge {
 impl RustFfiBridge {
     /// Create a new Rust FFI bridge with sandbox
     pub fn new() -> Result<Self, VMError> {
-        let sandbox = Sandbox::new()
-            .map_err(|e| VMError::FFI(format!("Failed to create sandbox: {}", e)))?;
+        let sandbox =
+            Sandbox::new().map_err(|e| VMError::FFI(format!("Failed to create sandbox: {}", e)))?;
 
         Ok(Self {
             sandbox,
@@ -559,22 +557,26 @@ impl RustFfiBridge {
 
         // Check registry for metadata (if available)
         if let Some(ref registry) = self.registry {
-            if let Some(metadata) = registry.lookup(crate_name)
+            if let Some(metadata) = registry
+                .lookup(crate_name)
                 .map_err(|e| VMError::FFI(format!("Registry error: {}", e)))?
             {
                 // Verify ABI compatibility
-                self.sandbox.verify_abi(&metadata)
+                self.sandbox
+                    .verify_abi(&metadata)
                     .map_err(|e| VMError::FFI(format!("ABI error: {}", e)))?;
             }
         }
 
         // Load the library
         let library = unsafe {
-            self.sandbox.load_crate(crate_name, version)
+            self.sandbox
+                .load_crate(crate_name, version)
                 .map_err(|e| VMError::FFI(format!("Failed to load crate: {}", e)))?
         };
 
-        self.loaded_libraries.insert(crate_name.to_string(), Arc::new(library));
+        self.loaded_libraries
+            .insert(crate_name.to_string(), Arc::new(library));
         log::info!("Loaded Rust crate: {} v{}", crate_name, version);
 
         Ok(())
@@ -583,19 +585,29 @@ impl RustFfiBridge {
     /// Load a Rust crate from a pre-compiled library file
     ///
     /// This is useful for user libraries that are compiled separately.
-    pub fn load_rust_library(&mut self, crate_name: &str, library_path: &Path) -> Result<(), VMError> {
+    pub fn load_rust_library(
+        &mut self,
+        crate_name: &str,
+        library_path: &Path,
+    ) -> Result<(), VMError> {
         // Check if already loaded
         if self.loaded_libraries.contains_key(crate_name) {
             return Ok(());
         }
 
         let library = unsafe {
-            libloading::Library::new(library_path)
-                .map_err(|e| VMError::FFI(format!("Failed to load {}: {}", library_path.display(), e)))?
+            libloading::Library::new(library_path).map_err(|e| {
+                VMError::FFI(format!("Failed to load {}: {}", library_path.display(), e))
+            })?
         };
 
-        self.loaded_libraries.insert(crate_name.to_string(), Arc::new(library));
-        log::info!("Loaded Rust library: {} from {}", crate_name, library_path.display());
+        self.loaded_libraries
+            .insert(crate_name.to_string(), Arc::new(library));
+        log::info!(
+            "Loaded Rust library: {} from {}",
+            crate_name,
+            library_path.display()
+        );
 
         Ok(())
     }
@@ -623,7 +635,9 @@ impl RustFfiBridge {
         }
 
         // Get the loaded library
-        let library = self.loaded_libraries.get(crate_name)
+        let library = self
+            .loaded_libraries
+            .get(crate_name)
             .ok_or_else(|| VMError::FFI(format!("Crate {} not loaded", crate_name)))?;
 
         // Get the symbol from the library
@@ -652,7 +666,11 @@ impl RustFfiBridge {
         self.native_interface.register(native_id, shim);
         self.functions.insert(key.clone(), native_id);
 
-        log::info!("Registered Rust function: {} (native_id={})", key, native_id);
+        log::info!(
+            "Registered Rust function: {} (native_id={})",
+            key,
+            native_id
+        );
 
         Ok(native_id)
     }
@@ -777,13 +795,17 @@ impl RustFfiBridge {
                     }
                     // f32 fn()
                     (&[], RustType::Float) => {
-                        let func: fn() -> f32 = std::mem::transmute(func_ptr);
+                        let _func: fn() -> f32 = std::mem::transmute(func_ptr);
                         return Ok(()); // Handle separately
                     }
                     // bool fn()
                     (&[], RustType::Bool) => {
                         let func: fn() -> bool = std::mem::transmute(func_ptr);
-                        if func() { 1 } else { 0 }
+                        if func() {
+                            1
+                        } else {
+                            0
+                        }
                     }
                     // i32 fn(i32)
                     (&[RustType::Int], RustType::Int) => {
@@ -833,28 +855,35 @@ impl RustFfiBridge {
                     // void fn(*const c_char)
                     (&[RustType::String], RustType::Void) => {
                         let func: fn(*const std::ffi::c_char) = std::mem::transmute(func_ptr);
-                        func(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char);
+                        func(args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char);
                         return Ok(());
                     }
                     // i32 fn(*const c_char) - e.g., strlen, parse_int
                     (&[RustType::String], RustType::Int) => {
-                        let func: fn(*const std::ffi::c_char) -> i32 = std::mem::transmute(func_ptr);
-                        func(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char)
+                        let func: fn(*const std::ffi::c_char) -> i32 =
+                            std::mem::transmute(func_ptr);
+                        func(args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char)
                     }
                     // i32 fn(*const c_char, i32) - e.g., strncmp, substring
                     (&[RustType::String, RustType::Int], RustType::Int) => {
-                        let func: fn(*const std::ffi::c_char, i32) -> i32 = std::mem::transmute(func_ptr);
+                        let func: fn(*const std::ffi::c_char, i32) -> i32 =
+                            std::mem::transmute(func_ptr);
                         func(
-                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                                as *const std::ffi::c_char,
                             args_i32.get(0).copied().unwrap_or(0),
                         )
                     }
                     // i32 fn(i32, *const c_char) - e.g., fprintf patterns
                     (&[RustType::Int, RustType::String], RustType::Int) => {
-                        let func: fn(i32, *const std::ffi::c_char) -> i32 = std::mem::transmute(func_ptr);
+                        let func: fn(i32, *const std::ffi::c_char) -> i32 =
+                            std::mem::transmute(func_ptr);
                         func(
                             args_i32.get(0).copied().unwrap_or(0),
-                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                                as *const std::ffi::c_char,
                         )
                     }
                     // void fn(i32, *const c_char) - e.g., config setter
@@ -862,16 +891,20 @@ impl RustFfiBridge {
                         let func: fn(i32, *const std::ffi::c_char) = std::mem::transmute(func_ptr);
                         func(
                             args_i32.get(0).copied().unwrap_or(0),
-                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                                as *const std::ffi::c_char,
                         );
                         return Ok(());
                     }
                     // i32 fn(*const c_char, *const c_char) - e.g., strcmp
                     (&[RustType::String, RustType::String], RustType::Int) => {
-                        let func: fn(*const std::ffi::c_char, *const std::ffi::c_char) -> i32 = std::mem::transmute(func_ptr);
+                        let func: fn(*const std::ffi::c_char, *const std::ffi::c_char) -> i32 =
+                            std::mem::transmute(func_ptr);
                         func(
-                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
-                            args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                                as *const std::ffi::c_char,
+                            args_ptr.get(1).copied().unwrap_or(std::ptr::null())
+                                as *const std::ffi::c_char,
                         )
                     }
 
@@ -879,13 +912,15 @@ impl RustFfiBridge {
                     // void fn(*mut T)
                     (&[RustType::Pointer], RustType::Void) => {
                         let func: fn(*mut std::ffi::c_void) = std::mem::transmute(func_ptr);
-                        func(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void);
+                        func(args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *mut std::ffi::c_void);
                         return Ok(());
                     }
                     // i32 fn(*mut T)
                     (&[RustType::Pointer], RustType::Int) => {
                         let func: fn(*mut std::ffi::c_void) -> i32 = std::mem::transmute(func_ptr);
-                        func(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void)
+                        func(args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *mut std::ffi::c_void)
                     }
                     // *mut T fn() - e.g., constructor returning pointer
                     (&[], RustType::Pointer) => {
@@ -905,34 +940,43 @@ impl RustFfiBridge {
                     (&[RustType::Pointer, RustType::Int], RustType::Void) => {
                         let func: fn(*mut std::ffi::c_void, i32) = std::mem::transmute(func_ptr);
                         func(
-                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                                as *mut std::ffi::c_void,
                             args_i32.get(0).copied().unwrap_or(0),
                         );
                         return Ok(());
                     }
                     // i32 fn(*mut T, i32) - method returning int
                     (&[RustType::Pointer, RustType::Int], RustType::Int) => {
-                        let func: fn(*mut std::ffi::c_void, i32) -> i32 = std::mem::transmute(func_ptr);
+                        let func: fn(*mut std::ffi::c_void, i32) -> i32 =
+                            std::mem::transmute(func_ptr);
                         func(
-                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                                as *mut std::ffi::c_void,
                             args_i32.get(0).copied().unwrap_or(0),
                         )
                     }
                     // void fn(*mut T, *const c_char) - method with string param
                     (&[RustType::Pointer, RustType::String], RustType::Void) => {
-                        let func: fn(*mut std::ffi::c_void, *const std::ffi::c_char) = std::mem::transmute(func_ptr);
+                        let func: fn(*mut std::ffi::c_void, *const std::ffi::c_char) =
+                            std::mem::transmute(func_ptr);
                         func(
-                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
-                            args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                                as *mut std::ffi::c_void,
+                            args_ptr.get(1).copied().unwrap_or(std::ptr::null())
+                                as *const std::ffi::c_char,
                         );
                         return Ok(());
                     }
                     // i32 fn(*mut T, *const c_char) - method with string returning int
                     (&[RustType::Pointer, RustType::String], RustType::Int) => {
-                        let func: fn(*mut std::ffi::c_void, *const std::ffi::c_char) -> i32 = std::mem::transmute(func_ptr);
+                        let func: fn(*mut std::ffi::c_void, *const std::ffi::c_char) -> i32 =
+                            std::mem::transmute(func_ptr);
                         func(
-                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
-                            args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                                as *mut std::ffi::c_void,
+                            args_ptr.get(1).copied().unwrap_or(std::ptr::null())
+                                as *const std::ffi::c_char,
                         )
                     }
 
@@ -1025,7 +1069,7 @@ impl RustFfiBridge {
             // Push return value (for non-void, non-float returns)
             match &signature.returns {
                 RustType::Int | RustType::Bool => task.ram.push_i32(result),
-                RustType::Void => {} // Already returned above
+                RustType::Void => {}  // Already returned above
                 RustType::Float => {} // Handled separately above
                 _ => task.ram.push_i32(0),
             }
@@ -1037,7 +1081,8 @@ impl RustFfiBridge {
     /// Register crate metadata with the registry
     pub fn register_crate(&mut self, metadata: &CrateMetadata) -> Result<(), VMError> {
         if let Some(ref registry) = self.registry {
-            registry.register(metadata)
+            registry
+                .register(metadata)
                 .map_err(|e| VMError::FFI(format!("Registry error: {}", e)))?;
         }
         Ok(())
@@ -1141,23 +1186,20 @@ mod tests {
         // We increment the ID in the first bridge, and it should reflect in the second
         hal_bridge.next_native_id = 250;
         let hal_bridge2 = registry.get_bridge("hal");
-        assert_eq!(hal_bridge2.next_native_id, 250, "Same bridge should be returned");
+        assert_eq!(
+            hal_bridge2.next_native_id, 250,
+            "Same bridge should be returned"
+        );
     }
 
     #[test]
     fn test_register_c_function() {
         let mut bridge = CFfiBridge::new();
 
-        let sig = CSignature::new()
-            .param(CType::Int)
-            .returns(CType::Int);
+        let sig = CSignature::new().param(CType::Int).returns(CType::Int);
 
-        let native_id = bridge.register_c_function(
-            "hal",
-            "gpio_init",
-            sig,
-            PathBuf::from("target/hal.dll")
-        );
+        let native_id =
+            bridge.register_c_function("hal", "gpio_init", sig, PathBuf::from("target/hal.dll"));
 
         assert!(native_id.is_ok());
         let id = native_id.unwrap();
@@ -1169,21 +1211,13 @@ mod tests {
     fn test_get_function_id() {
         let mut bridge = CFfiBridge::new();
 
-        let sig = CSignature::new()
-            .param(CType::Int)
-            .returns(CType::Int);
+        let sig = CSignature::new().param(CType::Int).returns(CType::Int);
 
-        let _ = bridge.register_c_function(
-            "hal",
-            "gpio_init",
-            sig,
-            PathBuf::from("target/hal.dll")
-        ).unwrap();
+        let _ = bridge
+            .register_c_function("hal", "gpio_init", sig, PathBuf::from("target/hal.dll"))
+            .unwrap();
 
-        assert_eq!(
-            bridge.get_function_id("hal", "gpio_init"),
-            Some(200)
-        );
+        assert_eq!(bridge.get_function_id("hal", "gpio_init"), Some(200));
         assert_eq!(bridge.get_function_id("hal", "nonexistent"), None);
     }
 
@@ -1229,7 +1263,7 @@ mod tests {
 
     #[test]
     fn test_rust_ffi_get_function_id() {
-        let mut bridge = RustFfiBridge::new().unwrap();
+        let bridge = RustFfiBridge::new().unwrap();
 
         // Simulate loading a crate (in reality would load actual library)
         // For testing, we just check the function ID lookup logic

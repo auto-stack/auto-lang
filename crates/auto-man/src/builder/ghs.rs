@@ -1,7 +1,8 @@
+#![allow(deprecated)]
 use super::Builder;
 use crate::asset::GHSTemplate;
-use crate::Pac;  // Changed from crate::pac::Pac (pac.rs not migrated yet)
 use crate::target::{Target, TargetKind};
+use crate::Pac; // Changed from crate::pac::Pac (pac.rs not migrated yet)
 use crate::{AutoResult, Dir};
 use auto_gen::*;
 use auto_lang::Atom;

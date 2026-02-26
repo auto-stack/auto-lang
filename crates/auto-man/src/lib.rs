@@ -28,26 +28,26 @@ pub mod lock;
 pub mod builder;
 
 // Phase 4: Target & Scanner (from ../auto-man)
-pub mod target;
-pub mod scanner;
 pub mod cache;
 pub mod dir;
+pub mod scanner;
+pub mod target;
 
 // Phase 2B: Package management (completed - depends on Phase 3 & 4)
-pub mod pac;
 pub mod automan;
+pub mod pac;
 
 // NOTE: stubs.rs removed in Phase 6 - all types migrated
 
 // Re-exports (Plan 078 + Phase 1)
-pub use error::*;
-pub use resolver::AutoManResolver;
 pub use asset::*;
+pub use error::*;
 pub use file_types::*;
 pub use group::*;
 pub use node_ext::*;
 pub use port::*;
-pub use pull::*;
+pub use resolver::AutoManResolver;
+
 pub use up::*;
 pub use util::*;
 pub use version::*;
@@ -59,15 +59,15 @@ pub use lock::*;
 // Re-exports (Phase 3)
 pub use builder::*;
 // Re-exports (Phase 4)
-pub use target::*;
-pub use scanner::*;
 pub use cache::*;
 pub use dir::*;
+pub use scanner::*;
+pub use target::*;
 // Re-exports from Phase 3 (builder/ninja/config)
 pub use builder::ninja::config::CompilerConfig;
 // Re-exports (Phase 2B)
-pub use pac::*;
 pub use automan::*;
+pub use pac::*;
 
 // NOTE: All types migrated in Phases 1-5
 // NOTE: stubs.rs removed in Phase 6 (cleanup)

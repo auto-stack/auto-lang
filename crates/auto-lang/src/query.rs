@@ -9,9 +9,9 @@
 // Phase 2.4: Basic query engine with caching (no type erasure)
 // Phase 3.4: Incremental query engine with dependency tracking and smart invalidation
 
+use crate::ast::Type;
 use crate::database::{Database, FragId};
 use crate::error::{AutoError, AutoResult};
-use crate::ast::Type;
 use crate::scope::Sid;
 use dashmap::DashMap;
 use std::sync::Arc;
@@ -55,6 +55,7 @@ impl CacheEntry {
     }
 
     /// Update the last access timestamp (called on cache hit)
+    #[allow(dead_code)]
     fn touch(&mut self) {
         self.last_access = std::time::Instant::now();
     }
@@ -239,7 +240,10 @@ impl QueryEngine {
         let key = query.cache_key();
 
         // Get or create type-specific cache
-        let cache = self.type_cache.entry(type_name.to_string()).or_insert_with(DashMap::new);
+        let cache = self
+            .type_cache
+            .entry(type_name.to_string())
+            .or_insert_with(DashMap::new);
 
         // Check cache
         if let Some(entry) = cache.get(&key) {
@@ -252,7 +256,9 @@ impl QueryEngine {
                 // track access counts if needed.
                 //
                 // Cache hit and valid - downcast and return
-                let result = entry.data.downcast_ref::<Q::Output>()
+                let result = entry
+                    .data
+                    .downcast_ref::<Q::Output>()
                     .ok_or_else(|| AutoError::Msg("Cache type mismatch".to_string()))?;
 
                 return Ok(result.clone());
@@ -340,7 +346,11 @@ impl QueryEngine {
     /// # Returns
     ///
     /// The FragId if found, None otherwise
-    fn find_fragment_by_offset_with_db(db: &Database, file_id: crate::database::FileId, offset: usize) -> Option<crate::database::FragId> {
+    fn find_fragment_by_offset_with_db(
+        db: &Database,
+        file_id: crate::database::FileId,
+        offset: usize,
+    ) -> Option<crate::database::FragId> {
         // Get all fragments in the file
         let frag_ids = db.get_fragments_in_file(file_id);
 
@@ -381,7 +391,8 @@ impl QueryEngine {
         // GetBytecodeQuery: Directly depends on the fragment
         if type_name.contains("GetBytecodeQuery") {
             // Extract frag_id from query using downcast
-            if let Some(bc_query) = (query as &dyn std::any::Any).downcast_ref::<GetBytecodeQuery>() {
+            if let Some(bc_query) = (query as &dyn std::any::Any).downcast_ref::<GetBytecodeQuery>()
+            {
                 let frag_id = bc_query.frag_id.clone();
                 if let Some(hash) = db.get_fragment_iface_hash(&frag_id) {
                     deps.push(FragDep::new(frag_id, hash));
@@ -460,7 +471,10 @@ impl QueryEngine {
 
             for entry in cache.value().iter() {
                 // Check if this cache entry depends on the fragment
-                let depends = entry.value().dependencies.iter()
+                let depends = entry
+                    .value()
+                    .dependencies
+                    .iter()
                     .any(|dep| dep.matches(&frag_id));
 
                 if depends {
@@ -512,10 +526,18 @@ impl QueryEngine {
 
     /// Get cache statistics
     pub fn cache_stats(&self) -> CacheStats {
-        let entries: usize = self.type_cache.iter().map(|cache| cache.value().len()).sum();
-        let total_size_bytes: usize = self.type_cache.iter()
+        let entries: usize = self
+            .type_cache
+            .iter()
+            .map(|cache| cache.value().len())
+            .sum();
+        let total_size_bytes: usize = self
+            .type_cache
+            .iter()
             .map(|cache| -> usize {
-                cache.value().iter()
+                cache
+                    .value()
+                    .iter()
                     .map(|_entry| 0) // Can't easily size Box<dyn Any>
                     .sum()
             })
@@ -583,7 +605,11 @@ impl Query for GetBytecodeQuery {
     }
 
     fn cache_key(&self) -> String {
-        format!("bytecode:{}:{}", self.frag_id.file.as_u64(), self.frag_id.offset)
+        format!(
+            "bytecode:{}:{}",
+            self.frag_id.file.as_u64(),
+            self.frag_id.offset
+        )
     }
 }
 
@@ -608,7 +634,11 @@ impl Query for EvalResultQuery {
     }
 
     fn cache_key(&self) -> String {
-        format!("eval_result:{}:{}", self.frag_id.file.as_u64(), self.frag_id.offset)
+        format!(
+            "eval_result:{}:{}",
+            self.frag_id.file.as_u64(),
+            self.frag_id.offset
+        )
     }
 }
 
@@ -908,7 +938,7 @@ impl Query for GetCompletionsQuery {
                         crate::database::FragKind::Enum => CompletionKind::Type,   // Enum is a type
                         crate::database::FragKind::Const => CompletionKind::Constant,
                         crate::database::FragKind::Spec => CompletionKind::Spec,
-                        crate::database::FragKind::Impl => CompletionKind::Type,   // Impl is type-related
+                        crate::database::FragKind::Impl => CompletionKind::Type, // Impl is type-related
                     };
 
                     completions.push(Completion {
@@ -924,7 +954,8 @@ impl Query for GetCompletionsQuery {
     }
 
     fn cache_key(&self) -> String {
-        format!("completions:{}:{}:{}:{}",
+        format!(
+            "completions:{}:{}:{}:{}",
             self.file_id.as_u64(),
             self.line,
             self.column,
@@ -983,7 +1014,7 @@ mod tests {
         let query = GetTypeQuery { symbol_id };
 
         let result = engine.execute(&query).unwrap();
-        assert!(result.is_none());  // No type cached
+        assert!(result.is_none()); // No type cached
     }
 
     #[test]
@@ -1122,7 +1153,7 @@ mod tests {
         let query = GetFileDepsQuery { file_id };
 
         let result = engine.execute(&query).unwrap();
-        assert_eq!(result.len(), 0);  // No dependencies
+        assert_eq!(result.len(), 0); // No dependencies
     }
 
     #[test]
@@ -1173,9 +1204,7 @@ mod tests {
 
         // Compute and store interface hash
         use crate::hash::FragmentHasher;
-        let iface_hash = FragmentHasher::hash_interface(
-            &db.get_fragment(&frag_id).unwrap()
-        );
+        let iface_hash = FragmentHasher::hash_interface(&db.get_fragment(&frag_id).unwrap());
         db.set_fragment_iface_hash(frag_id.clone(), iface_hash);
 
         // Create Arc for engine, but keep mutable db for testing
@@ -1197,7 +1226,10 @@ mod tests {
         use crate::hash::FragmentHasher;
 
         let mut db = Database::new();
-        let file_id = db.insert_source("test.at", AutoStr::from("fn add(a int, b int) int { a + b }"));
+        let file_id = db.insert_source(
+            "test.at",
+            AutoStr::from("fn add(a int, b int) int { a + b }"),
+        );
 
         // Create a fragment
         let frag_span = FragSpan {
@@ -1223,16 +1255,16 @@ mod tests {
         );
 
         // Compute and store initial interface hash
-        let iface_hash_v1 = FragmentHasher::hash_interface(
-            &db.get_fragment(&frag_id).unwrap()
-        );
+        let iface_hash_v1 = FragmentHasher::hash_interface(&db.get_fragment(&frag_id).unwrap());
         db.set_fragment_iface_hash(frag_id.clone(), iface_hash_v1);
 
         let db_arc = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db_arc);
 
         // Execute query to populate cache
-        let query = GetBytecodeQuery { frag_id: frag_id.clone() };
+        let query = GetBytecodeQuery {
+            frag_id: frag_id.clone(),
+        };
         let _ = engine.execute(&query);
 
         // Get cache stats
@@ -1258,7 +1290,10 @@ mod tests {
         use crate::hash::FragmentHasher;
 
         let mut db = Database::new();
-        let file_id = db.insert_source("test.at", AutoStr::from("fn add(a int, b int) int { a + b }"));
+        let file_id = db.insert_source(
+            "test.at",
+            AutoStr::from("fn add(a int, b int) int { a + b }"),
+        );
 
         // Create a fragment
         let frag_span = FragSpan {
@@ -1284,16 +1319,16 @@ mod tests {
         );
 
         // Compute and store initial interface hash
-        let iface_hash_v1 = FragmentHasher::hash_interface(
-            &db.get_fragment(&frag_id).unwrap()
-        );
+        let iface_hash_v1 = FragmentHasher::hash_interface(&db.get_fragment(&frag_id).unwrap());
         db.set_fragment_iface_hash(frag_id.clone(), iface_hash_v1);
 
         let db_arc = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db_arc);
 
         // Execute query to populate cache
-        let query = GetBytecodeQuery { frag_id: frag_id.clone() };
+        let query = GetBytecodeQuery {
+            frag_id: frag_id.clone(),
+        };
         let _ = engine.execute(&query);
 
         // Get cache stats
@@ -1348,16 +1383,16 @@ mod tests {
 
         // Compute and store interface hash
         use crate::hash::FragmentHasher;
-        let iface_hash = FragmentHasher::hash_interface(
-            &db.get_fragment(&frag_id).unwrap()
-        );
+        let iface_hash = FragmentHasher::hash_interface(&db.get_fragment(&frag_id).unwrap());
         db.set_fragment_iface_hash(frag_id.clone(), iface_hash);
 
         let db = Arc::new(RwLock::new(db));
         let engine = QueryEngine::new(db);
 
         // Execute query to populate cache
-        let query = GetBytecodeQuery { frag_id: frag_id.clone() };
+        let query = GetBytecodeQuery {
+            frag_id: frag_id.clone(),
+        };
         let _ = engine.execute(&query);
 
         // Get cache stats before invalidation
@@ -1406,10 +1441,7 @@ mod tests {
         bindings.insert("x".to_string(), Type::Int);
 
         let expr = Expr::Ident(Name::from("x"));
-        let query = InferExprTypeQuery {
-            expr,
-            bindings,
-        };
+        let query = InferExprTypeQuery { expr, bindings };
 
         let result = engine.execute(&query).unwrap();
         assert!(matches!(result, Type::Int));
@@ -1435,7 +1467,10 @@ mod tests {
     #[test]
     fn test_get_completions_query() {
         let mut db = Database::new();
-        let file_id = db.insert_source("test.at", AutoStr::from("fn foo() int { 1 } fn bar() int { 2 }"));
+        let file_id = db.insert_source(
+            "test.at",
+            AutoStr::from("fn foo() int { 1 } fn bar() int { 2 }"),
+        );
 
         // Create fragments
         let frag_span = FragSpan {

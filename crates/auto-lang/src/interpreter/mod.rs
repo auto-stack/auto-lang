@@ -56,7 +56,7 @@ pub struct AutoInterpreter {
     cache: HashMap<String, Code>,
 
     /// Whether to preserve state between evaluations
-    persistent: bool,
+    _persistent: bool,
 
     /// F-string note character (for template evaluation)
     fstr_note: char,
@@ -68,7 +68,7 @@ impl AutoInterpreter {
         Self {
             vm: VmInterpreter::new(),
             cache: HashMap::new(),
-            persistent: true,
+            _persistent: true,
             fstr_note: '$',
         }
     }
@@ -78,7 +78,7 @@ impl AutoInterpreter {
         Self {
             vm: VmInterpreter::new(),
             cache: HashMap::new(),
-            persistent: false,
+            _persistent: false,
             fstr_note: '$',
         }
     }
@@ -237,12 +237,18 @@ mod tests {
     #[ignore = "Function calling not yet implemented"]
     fn test_function_call() {
         let mut interp = AutoInterpreter::new();
-        interp.eval(r#"
+        interp
+            .eval(
+                r#"
             fn add(a int, b int) int {
                 a + b
             }
-        "#).unwrap();
-        let result = interp.call("add", vec![Value::Int(3), Value::Int(4)]).unwrap();
+        "#,
+            )
+            .unwrap();
+        let result = interp
+            .call("add", vec![Value::Int(3), Value::Int(4)])
+            .unwrap();
         assert_eq!(result, Value::Int(7));
     }
 

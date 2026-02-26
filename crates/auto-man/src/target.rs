@@ -13,7 +13,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
 use std::path::Path;
-use std::path::PathBuf;
 use tabled::Tabled;
 
 // Plan 082: AutoCache integration
@@ -38,7 +37,10 @@ impl TargetKind {
             "dep" => Ok(TargetKind::Dep),
             "device" => Ok(TargetKind::Device),
             "test" => Ok(TargetKind::Test),
-            _ => Err(format!("Invalid target kind: {}. Valid options are: app, lib, bag, dep, device, test", s)),
+            _ => Err(format!(
+                "Invalid target kind: {}. Valid options are: app, lib, bag, dep, device, test",
+                s
+            )),
         }
     }
 }
@@ -286,7 +288,12 @@ impl Target {
     }
 
     /// Calculate the target location and rename
-    fn calculate_location(node: &Node, name: &AutoStr, kind: &TargetKind, pac: &AutoStr) -> (AutoStr, AutoStr) {
+    fn calculate_location(
+        node: &Node,
+        name: &AutoStr,
+        kind: &TargetKind,
+        pac: &AutoStr,
+    ) -> (AutoStr, AutoStr) {
         // Get parent property if exists
         let parent = if node.has_prop("parent") {
             node.get_prop("parent").to_astr()
@@ -316,7 +323,12 @@ impl Target {
     }
 
     /// Extract and process directory information from node
-    fn extract_directories(node: &Node, at: &AutoStr, rename: &AutoStr, kind: &TargetKind) -> HashMap<AutoStr, Dir> {
+    fn extract_directories(
+        node: &Node,
+        at: &AutoStr,
+        rename: &AutoStr,
+        kind: &TargetKind,
+    ) -> HashMap<AutoStr, Dir> {
         let selects = Self::extract_selects(node);
         let skips = node.get_prop("skips").to_str_vec().to_set();
 
@@ -343,9 +355,7 @@ impl Target {
         }
 
         // Convert to hashmap
-        dirs.into_iter()
-            .map(|d| (d.name.clone(), d))
-            .collect()
+        dirs.into_iter().map(|d| (d.name.clone(), d)).collect()
     }
 
     /// Extract selects and defaults from node
@@ -618,7 +628,6 @@ impl Target {
 
         pb.finish_with_message("Transpilation complete");
 
-
         // Recursively transpile dependencies
         for dep in self.deps.iter_mut() {
             dep.transpile_auto()?;
@@ -642,7 +651,7 @@ impl Target {
         let cache_enabled = std::env::var("AUTO_CACHE_ENABLED")
             .ok()
             .and_then(|v| v.parse::<bool>().ok())
-            .unwrap_or(true);  // Default: enabled
+            .unwrap_or(true); // Default: enabled
 
         if !cache_enabled {
             // Fallback to non-cached transpilation
@@ -685,12 +694,7 @@ impl Target {
             let module_name = module_name.replace("/", ":");
 
             // Check cache
-            let cached = cache.get_or_link(
-                &module_name,
-                &content,
-                c_path,
-                Some(h_path),
-            );
+            let cached = cache.get_or_link(&module_name, &content, c_path, Some(h_path));
 
             match cached {
                 Ok(true) => {
@@ -719,8 +723,9 @@ impl Target {
                     // Write C file
                     let c_content = c_code.done()?;
                     if !c_content.is_empty() {
-                        std::fs::write(c_path, c_content)
-                            .map_err(|e| format!("Failed to write C file '{}': {}", c_path_str, e))?;
+                        std::fs::write(c_path, c_content).map_err(|e| {
+                            format!("Failed to write C file '{}': {}", c_path_str, e)
+                        })?;
                         self.srcs.insert(AutoStr::from(c_path_str.clone()));
                         info!("Generated {}", c_path_str);
                     }
@@ -728,8 +733,9 @@ impl Target {
                     // Write header file
                     let h_content = c_code.header;
                     if !h_content.is_empty() {
-                        std::fs::write(h_path, h_content)
-                            .map_err(|e| format!("Failed to write header file '{}': {}", h_path_str, e))?;
+                        std::fs::write(h_path, h_content).map_err(|e| {
+                            format!("Failed to write header file '{}': {}", h_path_str, e)
+                        })?;
 
                         if let Some(d) = h_path.parent() {
                             let d: AutoStr = d.to_str().unwrap().into();
@@ -741,7 +747,9 @@ impl Target {
 
                         // Store in cache (only if both .c and .h were generated)
                         if c_path.exists() && h_path.exists() {
-                            if let Err(e) = cache.store(&module_name, &content, c_path, Some(h_path)) {
+                            if let Err(e) =
+                                cache.store(&module_name, &content, c_path, Some(h_path))
+                            {
                                 warn!("Failed to cache artifact '{}': {}", module_name, e);
                             }
                         }
@@ -766,14 +774,16 @@ impl Target {
 
                     let c_content = c_code.done()?;
                     if !c_content.is_empty() {
-                        std::fs::write(c_path, c_content)
-                            .map_err(|e| format!("Failed to write C file '{}': {}", c_path_str, e))?;
+                        std::fs::write(c_path, c_content).map_err(|e| {
+                            format!("Failed to write C file '{}': {}", c_path_str, e)
+                        })?;
                         self.srcs.insert(AutoStr::from(c_path_str.clone()));
                     }
 
                     if !c_code.header.is_empty() {
-                        std::fs::write(h_path, c_code.header)
-                            .map_err(|e| format!("Failed to write header file '{}': {}", h_path_str, e))?;
+                        std::fs::write(h_path, c_code.header).map_err(|e| {
+                            format!("Failed to write header file '{}': {}", h_path_str, e)
+                        })?;
                         if let Some(d) = h_path.parent() {
                             let d: AutoStr = d.to_str().unwrap().into();
                             if !d.is_empty() {
@@ -1326,10 +1336,11 @@ mod tests {
 
     #[test]
     fn test_extract_sources_and_includes() {
-        use auto_val::AutoStr;
         use crate::node_ext::NodeExt;
+        use auto_val::AutoStr;
 
-        let code = r#"name: "test"; app("test") { srcs: ["main.c", "utils.c"], incs: ["header.h"] }"#;
+        let code =
+            r#"name: "test"; app("test") { srcs: ["main.c", "utils.c"], incs: ["header.h"] }"#;
         let config = auto_lang::config::AutoConfig::new(code).unwrap();
         let node = config.root.nodes("app").first().unwrap().clone();
 

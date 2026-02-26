@@ -15,12 +15,12 @@ use std::fmt::Display;
 use std::path::Path;
 
 // Plan 082: AutoCache integration
-use auto_cache::{AutoManCache, ArtifactType, ArtifactMetadata, CacheStatistics, CompilationTarget, IntegrityReport};
+use auto_cache::{ArtifactType, AutoManCache};
 
 pub struct Automan {
     pac: Pac,
     index_store: IndexStore,
-    cache: Option<AutoManCache>,  // Optional cache for builds
+    cache: Option<AutoManCache>, // Optional cache for builds
 }
 
 // Static API
@@ -159,7 +159,11 @@ impl Automan {
         pac.set_port(port_name.clone())?;
         pac.save_port(port_name.clone())?;
 
-        Ok(Self { pac, index_store, cache: None })
+        Ok(Self {
+            pac,
+            index_store,
+            cache: None,
+        })
     }
 
     fn select_port(ports: &Vec<AutoStr>) -> AutoResult<AutoStr> {
@@ -206,7 +210,7 @@ impl Automan {
         let cache_enabled = env::var("AUTO_CACHE_ENABLED")
             .ok()
             .and_then(|v| v.parse::<bool>().ok())
-            .unwrap_or(true);  // Default: enabled
+            .unwrap_or(true); // Default: enabled
 
         if cache_enabled {
             match AutoManCache::in_home_dir(am.pac.name.to_string()) {
@@ -380,22 +384,30 @@ impl Automan {
 
     /// Display cache statistics
     pub fn cache_stats(&self) -> AutoResult<()> {
-        let cache = self.cache.as_ref()
+        let cache = self
+            .cache
+            .as_ref()
             .ok_or("AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.")?;
 
         let stats = cache.get_statistics();
 
         println!("\n=== AutoCache Statistics ===");
         println!("Total Artifacts: {}", stats.count);
-        println!("Total Size: {:.2} GB / {} GB", stats.size_gb, stats.max_size_gb);
+        println!(
+            "Total Size: {:.2} GB / {} GB",
+            stats.size_gb, stats.max_size_gb
+        );
         println!("Hit Rate: {:.1}%", stats.hit_rate * 100.0);
-        println!("Status: {}", if stats.size_gb > stats.max_size_gb as f64 {
-            "⚠️  Exceeds limit (GC needed)"
-        } else if stats.size_gb > (stats.max_size_gb as f64 * 0.8) {
-            "⚠️  Near limit"
-        } else {
-            "✓ Healthy"
-        });
+        println!(
+            "Status: {}",
+            if stats.size_gb > stats.max_size_gb as f64 {
+                "⚠️  Exceeds limit (GC needed)"
+            } else if stats.size_gb > (stats.max_size_gb as f64 * 0.8) {
+                "⚠️  Near limit"
+            } else {
+                "✓ Healthy"
+            }
+        );
         println!("============================\n");
 
         Ok(())
@@ -403,18 +415,23 @@ impl Automan {
 
     /// Run garbage collection manually
     pub fn cache_prune(&mut self) -> AutoResult<()> {
-        let cache = self.cache.as_mut()
+        let cache = self
+            .cache
+            .as_mut()
             .ok_or("AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.")?;
 
         println!("Running cache garbage collection...");
-        let freed_bytes = cache.run_gc()
-            .map_err(|e| format!("GC failed: {}", e))?;
+        let freed_bytes = cache.run_gc().map_err(|e| format!("GC failed: {}", e))?;
 
         let freed_mb = freed_bytes / (1024 * 1024);
         let freed_gb = freed_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
 
-        println!("Freed {} artifacts ({} MB, {:.2} GB)",
-                 freed_bytes > 0, freed_mb, freed_gb);
+        println!(
+            "Freed {} artifacts ({} MB, {:.2} GB)",
+            freed_bytes > 0,
+            freed_mb,
+            freed_gb
+        );
 
         // Show updated stats
         self.cache_stats()?;
@@ -424,7 +441,9 @@ impl Automan {
 
     /// Clear all cached artifacts
     pub fn cache_clear(&mut self) -> AutoResult<()> {
-        let cache = self.cache.as_mut()
+        let cache = self
+            .cache
+            .as_mut()
             .ok_or("AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.")?;
 
         print!("⚠️  This will clear ALL cached artifacts. Continue? [y/N] ");
@@ -432,7 +451,8 @@ impl Automan {
         std::io::stdout().flush().ok();
 
         let mut input = String::new();
-        std::io::stdin().read_line(&mut input)
+        std::io::stdin()
+            .read_line(&mut input)
             .map_err(|e| format!("Failed to read input: {}", e))?;
 
         if !input.trim().eq_ignore_ascii_case("y") {
@@ -441,7 +461,8 @@ impl Automan {
         }
 
         println!("Clearing all cache...");
-        cache.clear_all()
+        cache
+            .clear_all()
             .map_err(|e| format!("Failed to clear cache: {}", e))?;
 
         println!("Cache cleared successfully.");
@@ -450,7 +471,9 @@ impl Automan {
 
     /// Inspect a specific cache entry by module name or hash key
     pub fn cache_inspect(&self, name_or_hash: &str) -> AutoResult<()> {
-        let cache = self.cache.as_ref()
+        let cache = self
+            .cache
+            .as_ref()
             .ok_or("AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.")?;
 
         // Try to find artifact by hash key first
@@ -461,10 +484,12 @@ impl Automan {
 
         // If not found by hash, search by module name
         // This requires listing artifacts and filtering by module name
-        let artifacts = cache.list_artifacts(None, 1000)  // Get up to 1000 artifacts
+        let artifacts = cache
+            .list_artifacts(None, 1000) // Get up to 1000 artifacts
             .map_err(|e| format!("Failed to search artifacts: {}", e))?;
 
-        let matching: Vec<_> = artifacts.iter()
+        let matching: Vec<_> = artifacts
+            .iter()
             .filter(|a| a.module_name.contains(name_or_hash))
             .collect();
 
@@ -478,13 +503,19 @@ impl Automan {
             println!("\n=== Cache Entry: {} ===\n", matching[0].module_name);
             Self::display_metadata(matching[0]);
         } else {
-            println!("\nFound {} cache entries matching '{}':\n", matching.len(), name_or_hash);
+            println!(
+                "\nFound {} cache entries matching '{}':\n",
+                matching.len(),
+                name_or_hash
+            );
             for artifact in matching {
-                println!("  [{}] {} - {} ({})",
-                         &artifact.hash_key[..16],
-                         artifact.module_name,
-                         artifact.artifact_type,
-                         Self::format_size(artifact.file_size));
+                println!(
+                    "  [{}] {} - {} ({})",
+                    &artifact.hash_key[..16],
+                    artifact.module_name,
+                    artifact.artifact_type,
+                    Self::format_size(artifact.file_size)
+                );
             }
             println!("\nUse specific hash key for full details.\n");
         }
@@ -494,14 +525,19 @@ impl Automan {
 
     /// List all cached artifacts with optional filtering
     pub fn cache_list(&self, type_filter: Option<String>, limit: usize) -> AutoResult<()> {
-        let cache = self.cache.as_ref()
+        let cache = self
+            .cache
+            .as_ref()
             .ok_or("AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.")?;
 
         let stats = cache.get_statistics();
         let count = stats.count as usize;
 
-        println!("\n=== Cached Artifacts (showing {} of {}) ===\n",
-                 limit.min(count), count);
+        println!(
+            "\n=== Cached Artifacts (showing {} of {}) ===\n",
+            limit.min(count),
+            count
+        );
 
         if stats.count == 0 {
             println!("Cache is empty.\n");
@@ -523,7 +559,8 @@ impl Automan {
         };
 
         // List artifacts
-        let artifacts = cache.list_artifacts(artifact_type, limit)
+        let artifacts = cache
+            .list_artifacts(artifact_type, limit)
             .map_err(|e| format!("Failed to list artifacts: {}", e))?;
 
         if artifacts.is_empty() {
@@ -532,10 +569,14 @@ impl Automan {
         }
 
         // Display header
-        println!("{:<35} {:<12} {:>10} {:>12} {:>8}",
-                 "Module", "Type", "Size", "Last Used", "Access");
-        println!("{:-<35} {:-<12} {:->10} {:->12} {:->8}",
-                 "-", "-", "-", "-", "-");
+        println!(
+            "{:<35} {:<12} {:>10} {:>12} {:>8}",
+            "Module", "Type", "Size", "Last Used", "Access"
+        );
+        println!(
+            "{:-<35} {:-<12} {:->10} {:->12} {:->8}",
+            "-", "-", "-", "-", "-"
+        );
 
         // Display artifacts
         for artifact in &artifacts {
@@ -544,8 +585,10 @@ impl Automan {
             let last_used = Self::format_time_ago(artifact.last_used_at);
             let access_count = artifact.access_count;
 
-            println!("{:<35} {:<12} {:>10} {:>12} {:>8}",
-                     module_name, artifact.artifact_type, size_str, last_used, access_count);
+            println!(
+                "{:<35} {:<12} {:>10} {:>12} {:>8}",
+                module_name, artifact.artifact_type, size_str, last_used, access_count
+            );
         }
 
         println!("\n(Top {} artifacts shown)", artifacts.len());
@@ -556,7 +599,9 @@ impl Automan {
 
     /// Verify cache integrity
     pub fn cache_verify(&self) -> AutoResult<()> {
-        let cache = self.cache.as_ref()
+        let cache = self
+            .cache
+            .as_ref()
             .ok_or("AutoCache is not available. Set AUTO_CACHE_ENABLED=true to enable.")?;
 
         println!("\n=== Verifying Cache Integrity ===\n");
@@ -565,7 +610,8 @@ impl Automan {
         println!("Checking blob files...");
         println!("Verifying file integrity...");
 
-        let report = cache.verify_integrity()
+        let report = cache
+            .verify_integrity()
             .map_err(|e| format!("Failed to verify cache: {}", e))?;
 
         println!();
@@ -646,11 +692,20 @@ impl Automan {
         println!("Hash Key:         {}", metadata.hash_key);
         println!("Module:           {}", metadata.module_name);
         println!("Type:             {}", metadata.artifact_type);
-        println!("Size:             {}", Self::format_size(metadata.file_size));
+        println!(
+            "Size:             {}",
+            Self::format_size(metadata.file_size)
+        );
         println!("Source Hash:      {}", metadata.source_hash);
         println!("Project:          {}", metadata.project_name);
-        println!("Created:          {}", Self::format_timestamp(metadata.created_at));
-        println!("Last Used:        {}", Self::format_timestamp(metadata.last_used_at));
+        println!(
+            "Created:          {}",
+            Self::format_timestamp(metadata.created_at)
+        );
+        println!(
+            "Last Used:        {}",
+            Self::format_timestamp(metadata.last_used_at)
+        );
         println!("Access Count:     {}", metadata.access_count);
         println!("Blob Path:        {}", metadata.blob_path.display());
         println!();

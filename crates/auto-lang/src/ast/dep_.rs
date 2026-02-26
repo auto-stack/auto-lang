@@ -3,8 +3,8 @@
 // Plan 092: Rust FFI - `dep` keyword for declaring Rust crate dependencies
 
 use crate::ast::{AtomWriter, ToAtom, ToAtomStr, ToNode};
-use auto_val::{Arg as AutoValArg, Array, Node as AutoNode, Value};
 use auto_val::AutoStr;
+use auto_val::{Array, Node as AutoNode, Value};
 use std::{fmt, io as stdio};
 
 /// Dependency declaration statement
@@ -102,7 +102,9 @@ impl ToNode for DepStmt {
         }
 
         if !self.features.is_empty() {
-            let features: Vec<Value> = self.features.iter()
+            let features: Vec<Value> = self
+                .features
+                .iter()
                 .map(|s| Value::str(s.as_str()))
                 .collect();
             node.set_prop("features", Value::array(Array::from_vec(features)));
