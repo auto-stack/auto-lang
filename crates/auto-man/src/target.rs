@@ -70,6 +70,7 @@ pub struct Target {
     pub name: AutoStr,
     pub version: AutoStr,
     pub kind: TargetKind,
+    pub lang: AutoStr,
     pub origin: TargetOrigin,
     pub from: AutoStr, // where the target is downloaded from
     pub at: AutoStr,   // root dir of the target, including its name
@@ -150,6 +151,7 @@ impl Target {
             name: name.into(),
             version: AutoStr::new(),
             kind,
+            lang: "c".into(),
             origin: TargetOrigin::Index,
             from: AutoStr::new(),
             at: AutoStr::new(),
@@ -208,10 +210,14 @@ impl Target {
 
         let is_main = name == pac;
 
+        // Extract language property, defaulting to "c"
+        let lang = node.get_str_or("lang", "c").into();
+
         Self {
             name,
             version,
             kind,
+            lang,
             origin,
             from,
             at,
@@ -581,36 +587,53 @@ impl Target {
             let content = std::fs::read_to_string(path.as_str())
                 .map_err(|e| format!("Failed to read Auto file '{}': {}", path, e))?;
 
-            // Transpile to C
+            // Transpile based on target language
             let fname = AutoPath::new(path).basename();
-            let mut c_code = transpile_c(fname, &content)
-                .map_err(|e| format!("Failed to transpile '{}': {}", path, e))?;
 
-            // Generate output file paths
-            let c_path = path.as_str().replace(".at", ".c");
-            let h_path = path.as_str().replace(".at", ".h");
+            if self.lang.as_str() == "rust" {
+                let mut rust_code = auto_lang::trans::rust::transpile_rust(fname, &content)
+                    .map_err(|e| format!("Failed to transpile '{}' to rust: {}", path, e))?;
 
-            // Write C file
-            let c_content = c_code.done()?;
-            if !c_content.is_empty() {
-                std::fs::write(Path::new(c_path.as_str()), c_content)
-                    .map_err(|e| format!("Failed to write C file '{}': {}", c_path, e))?;
-                self.srcs.insert(AutoStr::from(c_path.clone()));
-                info!("Generated {}", c_path);
-            }
+                let rs_path = path.as_str().replace(".at", ".rs");
+                let rs_content = rust_code.done()?;
 
-            // Write header file
-            if !c_code.header.is_empty() {
-                std::fs::write(Path::new(h_path.as_str()), c_code.header)
-                    .map_err(|e| format!("Failed to write header file '{}': {}", h_path, e))?;
-
-                if let Some(d) = Path::new(h_path.as_str()).parent() {
-                    let d: AutoStr = d.to_str().unwrap().into();
-                    if !d.is_empty() {
-                        self.incs.insert(d);
-                    }
+                if !rs_content.is_empty() {
+                    std::fs::write(Path::new(rs_path.as_str()), rs_content)
+                        .map_err(|e| format!("Failed to write Rust file '{}': {}", rs_path, e))?;
+                    self.srcs.insert(AutoStr::from(rs_path.clone()));
+                    info!("Generated {}", rs_path);
                 }
-                info!("Generated {}", h_path);
+            } else {
+                // Default to C transpilation
+                let mut c_code = transpile_c(fname, &content)
+                    .map_err(|e| format!("Failed to transpile '{}' to c: {}", path, e))?;
+
+                // Generate output file paths
+                let c_path = path.as_str().replace(".at", ".c");
+                let h_path = path.as_str().replace(".at", ".h");
+
+                // Write C file
+                let c_content = c_code.done()?;
+                if !c_content.is_empty() {
+                    std::fs::write(Path::new(c_path.as_str()), c_content)
+                        .map_err(|e| format!("Failed to write C file '{}': {}", c_path, e))?;
+                    self.srcs.insert(AutoStr::from(c_path.clone()));
+                    info!("Generated {}", c_path);
+                }
+
+                // Write header file
+                if !c_code.header.is_empty() {
+                    std::fs::write(Path::new(h_path.as_str()), c_code.header)
+                        .map_err(|e| format!("Failed to write header file '{}': {}", h_path, e))?;
+
+                    if let Some(d) = Path::new(h_path.as_str()).parent() {
+                        let d: AutoStr = d.to_str().unwrap().into();
+                        if !d.is_empty() {
+                            self.incs.insert(d);
+                        }
+                    }
+                    info!("Generated {}", h_path);
+                }
             }
 
             // TODO: Plan 092 - Add code paks support with new AutoVM

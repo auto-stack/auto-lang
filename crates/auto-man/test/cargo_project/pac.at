@@ -1,0 +1,7 @@
+name: "hello_rust"
+version: "0.1.0"
+lang: "rust"
+
+app("main") {
+  srcs: ["main.at"]
+}

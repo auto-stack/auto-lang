@@ -8,6 +8,8 @@ pub mod ninja;
 pub use ninja::*;
 mod tool;
 pub use tool::*;
+mod cargo;
+pub use cargo::*;
 
 use crate::AutoResult;
 use crate::{Pac, Target};
@@ -40,6 +42,7 @@ pub enum BuilderKind {
     IAR(AutoPath),   // IAR with path to project folder
     GHS(AutoPath),   // GHS with path to project folder
     Ninja(AutoPath), // Ninja with path to build folder
+    Cargo(AutoPath), // Cargo with path to Cargo.toml directory
 }
 
 impl BuilderKind {
@@ -56,6 +59,10 @@ impl BuilderKind {
                 let path = path.join("build.ninja");
                 Some(BuilderKind::Ninja(path))
             }
+            "cargo" => {
+                let path = path.join("Cargo.toml");
+                Some(BuilderKind::Cargo(path))
+            }
             _ => None,
         }
     }
@@ -67,6 +74,7 @@ impl BuilderKind {
             BuilderKind::IAR(path) => Box::new(IARBuilder::new(path.clone())),
             BuilderKind::GHS(path) => Box::new(GHSBuilder::new(path.clone())),
             BuilderKind::Ninja(path) => Box::new(NinjaBuilder::new(path.clone())),
+            BuilderKind::Cargo(path) => Box::new(CargoBuilder::new(path.clone())),
         }
     }
 }

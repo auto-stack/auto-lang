@@ -63,7 +63,19 @@ impl Pac {
         let defines = config.root.get_str_vec_or("defines");
 
         // target related properties
-        let target_props = vec!["at"];
+        let target_props = vec!["at", "lang"];
+
+        let mut default_builder: AutoStr = "ninja".into();
+        if target_props.contains(&"lang") {
+            let lang_val = config.args.get("lang");
+            let lang_str = match lang_val {
+                Some(v) => v.to_astr(),
+                None => "c".into(),
+            };
+            if lang_str == "rust" {
+                default_builder = "cargo".into();
+            }
+        }
 
         // targets, NOTE: ports are not targets
         let mut targets = vec![];
@@ -89,10 +101,13 @@ impl Pac {
             }
         }
 
+        let mut port = Port::default();
+        port.builder = default_builder;
+
         Self {
             name: pac_name,
             version,
-            port: Port::default(),
+            port,
             ports,
             builder,
             targets,
@@ -352,9 +367,7 @@ impl Pac {
     ///
     /// For each target, if all its direct and transitive dependencies are resolved,
     /// collect the complete set of links (transitive closure).
-    fn build_resolved_links(
-        targets_map: &HashMap<AutoStr, Target>,
-    ) -> HashMap<AutoStr, Vec<Node>> {
+    fn build_resolved_links(targets_map: &HashMap<AutoStr, Target>) -> HashMap<AutoStr, Vec<Node>> {
         let mut resolved_links: HashMap<AutoStr, Vec<Node>> = HashMap::new();
 
         for target in targets_map.values() {
@@ -545,7 +558,10 @@ impl Pac {
 
     fn merge_port(&mut self, port_name: AutoStr) -> AutoResult<()> {
         // reload config with said port
-        let port_node = self.ports.iter().find(|p| p.main_arg().to_astr() == port_name);
+        let port_node = self
+            .ports
+            .iter()
+            .find(|p| p.main_arg().to_astr() == port_name);
 
         let Some(port_node) = port_node else {
             self.port = Port::default();
@@ -570,16 +586,23 @@ impl Pac {
         port.at = port_node.get_prop("at").to_astr();
 
         // 解析完整的编译器配置
-        use crate::builder::ninja::config::{CompilerConfig, CompilerLocation, FlagFormat, FlagMappings};
+        use crate::builder::ninja::config::{
+            CompilerConfig, CompilerLocation, FlagFormat, FlagMappings,
+        };
         use crate::node_ext::NodeExt;
         use auto_val::{Kid, ValueKey};
 
-        if let Some(Kid::Node(compiler_node)) = port_node.get_kid(&ValueKey::Str("compiler".into())) {
+        if let Some(Kid::Node(compiler_node)) = port_node.get_kid(&ValueKey::Str("compiler".into()))
+        {
             // 解析编译器类型
             let kind_str = compiler_node.get_prop("kind").to_astr();
-            if let Some(kind) = crate::builder::ninja::config::CompilerKind::from_str(kind_str.as_str()) {
+            if let Some(kind) =
+                crate::builder::ninja::config::CompilerKind::from_str(kind_str.as_str())
+            {
                 // 解析 location
-                let location = if let Some(Kid::Node(location_node)) = compiler_node.get_kid(&ValueKey::Str("location".into())) {
+                let location = if let Some(Kid::Node(location_node)) =
+                    compiler_node.get_kid(&ValueKey::Str("location".into()))
+                {
                     let location_type = location_node.main_arg().to_astr();
                     match location_type.as_str() {
                         "Env" => CompilerLocation::Env,
@@ -589,15 +612,19 @@ impl Pac {
                         }
                         "Executable" => {
                             let exec_type_str = location_node.get_prop("type").to_astr();
-                            let exec_type = crate::builder::ninja::config::ExecutableType::from_str(exec_type_str.as_str());
+                            let exec_type = crate::builder::ninja::config::ExecutableType::from_str(
+                                exec_type_str.as_str(),
+                            );
                             if let Some(exec_type) = exec_type {
-                                let path = auto_val::AutoPath::new(location_node.get_prop("path").to_astr().as_str());
+                                let path = auto_val::AutoPath::new(
+                                    location_node.get_prop("path").to_astr().as_str(),
+                                );
                                 CompilerLocation::Executable(exec_type, path)
                             } else {
                                 CompilerLocation::Env
                             }
                         }
-                        _ => CompilerLocation::Env
+                        _ => CompilerLocation::Env,
                     }
                 } else {
                     CompilerLocation::Env
@@ -605,27 +632,41 @@ impl Pac {
 
                 // 解析 executables
                 let mut executables = std::collections::HashMap::new();
-                if let Some(Kid::Node(execs_node)) = compiler_node.get_kid(&ValueKey::Str("executables".into())) {
+                if let Some(Kid::Node(execs_node)) =
+                    compiler_node.get_kid(&ValueKey::Str("executables".into()))
+                {
                     if execs_node.has_prop("cc") {
-                        let cc = auto_val::AutoPath::new(execs_node.get_prop("cc").to_astr().as_str());
-                        executables.insert(crate::builder::ninja::config::ExecutableType::Compiler, cc);
+                        let cc =
+                            auto_val::AutoPath::new(execs_node.get_prop("cc").to_astr().as_str());
+                        executables
+                            .insert(crate::builder::ninja::config::ExecutableType::Compiler, cc);
                     }
                     if execs_node.has_prop("ar") {
-                        let ar = auto_val::AutoPath::new(execs_node.get_prop("ar").to_astr().as_str());
-                        executables.insert(crate::builder::ninja::config::ExecutableType::Archiver, ar);
+                        let ar =
+                            auto_val::AutoPath::new(execs_node.get_prop("ar").to_astr().as_str());
+                        executables
+                            .insert(crate::builder::ninja::config::ExecutableType::Archiver, ar);
                     }
                     if execs_node.has_prop("link") {
-                        let link = auto_val::AutoPath::new(execs_node.get_prop("link").to_astr().as_str());
-                        executables.insert(crate::builder::ninja::config::ExecutableType::Linker, link);
+                        let link =
+                            auto_val::AutoPath::new(execs_node.get_prop("link").to_astr().as_str());
+                        executables
+                            .insert(crate::builder::ninja::config::ExecutableType::Linker, link);
                     }
                     if execs_node.has_prop("as") {
-                        let as_cmd = auto_val::AutoPath::new(execs_node.get_prop("as").to_astr().as_str());
-                        executables.insert(crate::builder::ninja::config::ExecutableType::Assembler, as_cmd);
+                        let as_cmd =
+                            auto_val::AutoPath::new(execs_node.get_prop("as").to_astr().as_str());
+                        executables.insert(
+                            crate::builder::ninja::config::ExecutableType::Assembler,
+                            as_cmd,
+                        );
                     }
                 }
 
                 // 解析 flags
-                let flags = if let Some(Kid::Node(flags_node)) = compiler_node.get_kid(&ValueKey::Str("flags".into())) {
+                let flags = if let Some(Kid::Node(flags_node)) =
+                    compiler_node.get_kid(&ValueKey::Str("flags".into()))
+                {
                     let parse_flag_format = |flag_name: &str| -> FlagFormat {
                         let flag_value = flags_node.get_str_or(flag_name, "-");
                         if flag_value.contains('(') {
@@ -663,18 +704,34 @@ impl Pac {
                 } else {
                     // 使用默认 flags
                     match kind {
-                        crate::builder::ninja::config::CompilerKind::MSVC => FlagMappings::msvc_default(),
-                        crate::builder::ninja::config::CompilerKind::GCC => FlagMappings::gcc_default(),
-                        crate::builder::ninja::config::CompilerKind::Clang => FlagMappings::clang_default(),
-                        crate::builder::ninja::config::CompilerKind::IAR => FlagMappings::iar_default(),
-                        crate::builder::ninja::config::CompilerKind::GHS => FlagMappings::ghs_default(),
-                        crate::builder::ninja::config::CompilerKind::Targeting => FlagMappings::targeting_default(),
-                        crate::builder::ninja::config::CompilerKind::Hightec => FlagMappings::hightec_default(),
+                        crate::builder::ninja::config::CompilerKind::MSVC => {
+                            FlagMappings::msvc_default()
+                        }
+                        crate::builder::ninja::config::CompilerKind::GCC => {
+                            FlagMappings::gcc_default()
+                        }
+                        crate::builder::ninja::config::CompilerKind::Clang => {
+                            FlagMappings::clang_default()
+                        }
+                        crate::builder::ninja::config::CompilerKind::IAR => {
+                            FlagMappings::iar_default()
+                        }
+                        crate::builder::ninja::config::CompilerKind::GHS => {
+                            FlagMappings::ghs_default()
+                        }
+                        crate::builder::ninja::config::CompilerKind::Targeting => {
+                            FlagMappings::targeting_default()
+                        }
+                        crate::builder::ninja::config::CompilerKind::Hightec => {
+                            FlagMappings::hightec_default()
+                        }
                     }
                 };
 
                 // 解析 default_cflags
-                let default_cflags = if let Some(Kid::Node(cflags_node)) = compiler_node.get_kid(&ValueKey::Str("default_cflags".into())) {
+                let default_cflags = if let Some(Kid::Node(cflags_node)) =
+                    compiler_node.get_kid(&ValueKey::Str("default_cflags".into()))
+                {
                     cflags_node.get_str_vec_or("value")
                 } else {
                     Vec::new()

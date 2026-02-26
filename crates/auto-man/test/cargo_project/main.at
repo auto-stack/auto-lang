@@ -1,0 +1,3 @@
+fn start() {
+    print("Hello from Auto/Rust integration!")
+}

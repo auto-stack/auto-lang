@@ -2,8 +2,8 @@
 //!
 //! 集中管理硬编码的文件扩展名检查逻辑，提供类型安全的文件类型识别。
 
-use auto_val::AutoStr;
 use crate::TargetKind;
+use auto_val::AutoStr;
 use std::collections::HashSet;
 
 /// 文件类型枚举
@@ -23,6 +23,8 @@ pub enum FileType {
     GhsProject,
     /// RH850 汇编文件 (.850)
     Rh850,
+    /// Rust 源文件 (.rs)
+    RustSource,
 }
 
 impl FileType {
@@ -35,6 +37,7 @@ impl FileType {
             FileType::Asm => &["s", "S"],
             FileType::GhsProject => &["gpj"],
             FileType::Rh850 => &["850"],
+            FileType::RustSource => &["rs"],
         }
     }
 
@@ -49,6 +52,7 @@ impl FileType {
             "s" | "S" => Some(FileType::Asm),
             "gpj" => Some(FileType::GhsProject),
             "850" => Some(FileType::Rh850),
+            "rs" => Some(FileType::RustSource),
             _ => None,
         }
     }
@@ -62,7 +66,11 @@ impl FileType {
     pub fn is_source(&self) -> bool {
         matches!(
             self,
-            FileType::Auto | FileType::CSource | FileType::Asm | FileType::Rh850
+            FileType::Auto
+                | FileType::CSource
+                | FileType::Asm
+                | FileType::Rh850
+                | FileType::RustSource
         )
     }
 }
@@ -98,6 +106,7 @@ impl FileFilter {
                 FileType::CHeader,
                 FileType::Asm,
                 FileType::Rh850,
+                FileType::RustSource,
             ],
         };
 
@@ -161,6 +170,7 @@ mod tests {
         assert_eq!(FileType::Asm.extensions(), &["s", "S"]);
         assert_eq!(FileType::GhsProject.extensions(), &["gpj"]);
         assert_eq!(FileType::Rh850.extensions(), &["850"]);
+        assert_eq!(FileType::RustSource.extensions(), &["rs"]);
     }
 
     #[test]
@@ -172,6 +182,7 @@ mod tests {
         assert_eq!(FileType::from_extension("S"), Some(FileType::Asm));
         assert_eq!(FileType::from_extension("gpj"), Some(FileType::GhsProject));
         assert_eq!(FileType::from_extension("850"), Some(FileType::Rh850));
+        assert_eq!(FileType::from_extension("rs"), Some(FileType::RustSource));
         assert_eq!(FileType::from_extension("cpp"), None);
     }
 
@@ -188,6 +199,7 @@ mod tests {
         assert!(FileType::CSource.is_source());
         assert!(FileType::Asm.is_source());
         assert!(FileType::Rh850.is_source());
+        assert!(FileType::RustSource.is_source());
         assert!(!FileType::CHeader.is_source());
         assert!(!FileType::GhsProject.is_source());
     }
