@@ -22,6 +22,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use thiserror::Error;
 
+use super::registry::CrateRegistry;
+
 // =============================================================================
 // Crate Metadata Types
 // =============================================================================
@@ -139,6 +141,9 @@ pub struct Sandbox {
     /// Path to registry database
     registry_path: PathBuf,
 
+    /// Crate registry (SQLite-backed metadata store)
+    registry: CrateRegistry,
+
     /// Current toolchain version
     rustc_version: String,
 
@@ -164,6 +169,11 @@ impl Sandbox {
         std::fs::create_dir_all(&crates_path)?;
         std::fs::create_dir_all(&registry_path)?;
 
+        // Initialize crate registry
+        let db_path = registry_path.join("index.db");
+        let registry = CrateRegistry::new(&db_path)
+            .map_err(|e| SandboxError::Registry(e.to_string()))?;
+
         // Detect current toolchain info
         let rustc_version = Self::detect_rustc_version()?;
         let target = Self::detect_target()?;
@@ -173,6 +183,7 @@ impl Sandbox {
             toolchain_path,
             crates_path,
             registry_path,
+            registry,
             rustc_version,
             target,
         })
@@ -241,6 +252,16 @@ impl Sandbox {
     /// Get the path to compiled crates
     pub fn crates_path(&self) -> &Path {
         &self.crates_path
+    }
+
+    /// Get the crate registry
+    pub fn registry(&self) -> &CrateRegistry {
+        &self.registry
+    }
+
+    /// Get mutable access to the crate registry
+    pub fn registry_mut(&mut self) -> &mut CrateRegistry {
+        &mut self.registry
     }
 
     /// Get the path for a specific crate's library

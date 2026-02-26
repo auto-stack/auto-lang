@@ -13,7 +13,7 @@ serde_json = { workspace = true }
 bincode = { workspace = true }
 dirs = { workspace = true }
 log = { workspace = true }
-chrono = { workspace = true }
+chrono = "0.4"
 
 # Plan 092: Rust FFI Sandbox
 libloading = "0.8"

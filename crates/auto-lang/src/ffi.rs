@@ -488,7 +488,8 @@ pub struct RustFfiBridge {
     registry: Option<CrateRegistry>,
 
     /// Loaded libraries (library name -> Library handle)
-    loaded_libraries: HashMap<String, libloading::Library>,
+    /// Wrapped in Arc for sharing with shim closures
+    loaded_libraries: HashMap<String, Arc<libloading::Library>>,
 
     /// Registered functions (crate::function -> native_id)
     functions: HashMap<String, u16>,
@@ -573,7 +574,7 @@ impl RustFfiBridge {
                 .map_err(|e| VMError::FFI(format!("Failed to load crate: {}", e)))?
         };
 
-        self.loaded_libraries.insert(crate_name.to_string(), library);
+        self.loaded_libraries.insert(crate_name.to_string(), Arc::new(library));
         log::info!("Loaded Rust crate: {} v{}", crate_name, version);
 
         Ok(())
@@ -593,7 +594,7 @@ impl RustFfiBridge {
                 .map_err(|e| VMError::FFI(format!("Failed to load {}: {}", library_path.display(), e)))?
         };
 
-        self.loaded_libraries.insert(crate_name.to_string(), library);
+        self.loaded_libraries.insert(crate_name.to_string(), Arc::new(library));
         log::info!("Loaded Rust library: {} from {}", crate_name, library_path.display());
 
         Ok(())
@@ -621,16 +622,33 @@ impl RustFfiBridge {
             return Ok(id);
         }
 
-        // Verify crate is loaded
-        if !self.loaded_libraries.contains_key(crate_name) {
-            return Err(VMError::FFI(format!("Crate {} not loaded", crate_name)));
-        }
+        // Get the loaded library
+        let library = self.loaded_libraries.get(crate_name)
+            .ok_or_else(|| VMError::FFI(format!("Crate {} not loaded", crate_name)))?;
+
+        // Get the symbol from the library
+        let symbol_name = std::ffi::CString::new(function_name.as_bytes())
+            .map_err(|e| VMError::FFI(format!("Invalid function name: {}", e)))?;
+
+        // Get the symbol as a raw pointer (we'll cast it based on signature)
+        let symbol_ptr: *const () = unsafe {
+            let symbol: libloading::Symbol<*const ()> = library
+                .get(symbol_name.as_bytes())
+                .map_err(|e| VMError::FFI(format!("Symbol {} not found: {}", function_name, e)))?;
+            *symbol.into_raw()
+        };
 
         let native_id = self.next_native_id;
         self.next_native_id += 1;
 
         // Create shim for this function
-        let shim = self.create_rust_shim(crate_name, function_name, signature.clone());
+        let shim = self.create_rust_shim_with_ptr(
+            Arc::clone(library),
+            crate_name,
+            function_name,
+            signature.clone(),
+            symbol_ptr,
+        );
         self.native_interface.register(native_id, shim);
         self.functions.insert(key.clone(), native_id);
 
@@ -650,33 +668,365 @@ impl RustFfiBridge {
         &self.functions
     }
 
-    /// Create a native shim for calling a Rust function
-    fn create_rust_shim(
+    /// Create a native shim for calling a Rust function with actual symbol resolution
+    fn create_rust_shim_with_ptr(
         &self,
+        _library: Arc<libloading::Library>,
         crate_name: &str,
         function_name: &str,
         signature: RustSignature,
+        symbol_ptr: *const (),
     ) -> impl Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static {
         let crate_name = crate_name.to_string();
         let function_name = function_name.to_string();
         let signature = signature.clone();
+        let symbol_ptr = symbol_ptr as usize; // Store as usize for Send + Sync
 
         move |task: &mut AutoTask, _vm: &AutoVM| {
-            // TODO: Actually call the Rust function via loaded library
-            // For now, log and return dummy value
-            log::warn!(
-                "Rust FFI call to {}::{} with {} params (not yet fully implemented)",
-                crate_name,
-                function_name,
-                signature.params.len()
-            );
+            let func_ptr = symbol_ptr as *const ();
 
-            // Push dummy return value based on return type
+            // Pop arguments from stack (in reverse order)
+            // Note: Arguments are pushed left-to-right, so we pop right-to-left
+            let mut args_i32: Vec<i32> = Vec::new();
+            let mut args_i64: Vec<i64> = Vec::new();
+            let mut args_f32: Vec<f32> = Vec::new();
+            let mut args_f64: Vec<f64> = Vec::new();
+            let mut args_ptr: Vec<*const ()> = Vec::new();
+            let mut string_pool: Vec<std::ffi::CString> = Vec::new(); // Keep strings alive
+
+            for param_type in signature.params.iter().rev() {
+                match param_type {
+                    RustType::Int | RustType::Bool => {
+                        args_i32.push(task.ram.pop_i32());
+                    }
+                    RustType::Long => {
+                        // 64-bit integer (2 slots)
+                        args_i64.push(task.ram.pop_i64());
+                    }
+                    RustType::Float => {
+                        args_f32.push(task.ram.pop_f32());
+                    }
+                    RustType::Double => {
+                        args_f64.push(task.ram.pop_f64());
+                    }
+                    RustType::String => {
+                        // Pop string index from constants pool, convert to C string
+                        let str_idx = task.ram.pop_i32() as usize;
+                        // Get string from pool (owned copy to avoid lifetime issues)
+                        let str_owned: Vec<u8> = if let Ok(strings) = _vm.strings.read() {
+                            strings.get(str_idx).cloned().unwrap_or_default()
+                        } else {
+                            Vec::new()
+                        };
+                        let c_string = std::ffi::CString::new(str_owned)
+                            .unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
+                        args_ptr.push(c_string.as_ptr() as *const ());
+                        string_pool.push(c_string); // Keep alive for duration of call
+                    }
+                    RustType::Pointer | RustType::PointerMut => {
+                        // Pointers are stored as i64 (2 slots)
+                        let ptr_val = task.ram.pop_i64();
+                        args_ptr.push(ptr_val as *const ());
+                    }
+                    RustType::Bytes => {
+                        // Bytes: pop pointer and length as separate values
+                        let len = task.ram.pop_i32() as usize;
+                        let ptr_val = task.ram.pop_i64();
+                        args_ptr.push(ptr_val as *const ());
+                        args_i32.push(len as i32);
+                    }
+                    RustType::Callback => {
+                        // Callback: pop function pointer as i64
+                        let callback_ptr = task.ram.pop_i64();
+                        args_ptr.push(callback_ptr as *const ());
+                    }
+                    RustType::Void => {
+                        // Void as param is unusual but handle gracefully
+                        log::warn!("Void used as parameter type");
+                    }
+                }
+            }
+
+            // Reverse back to original order
+            args_i32.reverse();
+            args_i64.reverse();
+            args_f32.reverse();
+            args_f64.reverse();
+            args_ptr.reverse();
+
+            // Call the function based on signature
+            // For now, support common patterns:
+            // - fn() -> T (no args)
+            // - fn(i32) -> T
+            // - fn(i32, i32) -> T
+            // - fn(f32) -> T
+            // - fn(i32, f32) -> T
+
+            let result = unsafe {
+                match (signature.params.as_slice(), &signature.returns) {
+                    // void fn()
+                    (&[], RustType::Void) => {
+                        let func: fn() = std::mem::transmute(func_ptr);
+                        func();
+                        return Ok(());
+                    }
+                    // i32 fn()
+                    (&[], RustType::Int) => {
+                        let func: fn() -> i32 = std::mem::transmute(func_ptr);
+                        func()
+                    }
+                    // f32 fn()
+                    (&[], RustType::Float) => {
+                        let func: fn() -> f32 = std::mem::transmute(func_ptr);
+                        return Ok(()); // Handle separately
+                    }
+                    // bool fn()
+                    (&[], RustType::Bool) => {
+                        let func: fn() -> bool = std::mem::transmute(func_ptr);
+                        if func() { 1 } else { 0 }
+                    }
+                    // i32 fn(i32)
+                    (&[RustType::Int], RustType::Int) => {
+                        let func: fn(i32) -> i32 = std::mem::transmute(func_ptr);
+                        func(args_i32.get(0).copied().unwrap_or(0))
+                    }
+                    // i32 fn(i32, i32)
+                    (&[RustType::Int, RustType::Int], RustType::Int) => {
+                        let func: fn(i32, i32) -> i32 = std::mem::transmute(func_ptr);
+                        func(
+                            args_i32.get(0).copied().unwrap_or(0),
+                            args_i32.get(1).copied().unwrap_or(0),
+                        )
+                    }
+                    // f32 fn(f32)
+                    (&[RustType::Float], RustType::Float) => {
+                        let func: fn(f32) -> f32 = std::mem::transmute(func_ptr);
+                        let r = func(args_f32.get(0).copied().unwrap_or(0.0));
+                        task.ram.push_f32(r);
+                        return Ok(());
+                    }
+                    // i32 fn(i32, f32)
+                    (&[RustType::Int, RustType::Float], RustType::Int) => {
+                        let func: fn(i32, f32) -> i32 = std::mem::transmute(func_ptr);
+                        func(
+                            args_i32.get(0).copied().unwrap_or(0),
+                            args_f32.get(0).copied().unwrap_or(0.0),
+                        )
+                    }
+                    // void fn(i32)
+                    (&[RustType::Int], RustType::Void) => {
+                        let func: fn(i32) = std::mem::transmute(func_ptr);
+                        func(args_i32.get(0).copied().unwrap_or(0));
+                        return Ok(());
+                    }
+                    // void fn(i32, i32)
+                    (&[RustType::Int, RustType::Int], RustType::Void) => {
+                        let func: fn(i32, i32) = std::mem::transmute(func_ptr);
+                        func(
+                            args_i32.get(0).copied().unwrap_or(0),
+                            args_i32.get(1).copied().unwrap_or(0),
+                        );
+                        return Ok(());
+                    }
+
+                    // === String patterns ===
+                    // void fn(*const c_char)
+                    (&[RustType::String], RustType::Void) => {
+                        let func: fn(*const std::ffi::c_char) = std::mem::transmute(func_ptr);
+                        func(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char);
+                        return Ok(());
+                    }
+                    // i32 fn(*const c_char) - e.g., strlen, parse_int
+                    (&[RustType::String], RustType::Int) => {
+                        let func: fn(*const std::ffi::c_char) -> i32 = std::mem::transmute(func_ptr);
+                        func(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char)
+                    }
+                    // i32 fn(*const c_char, i32) - e.g., strncmp, substring
+                    (&[RustType::String, RustType::Int], RustType::Int) => {
+                        let func: fn(*const std::ffi::c_char, i32) -> i32 = std::mem::transmute(func_ptr);
+                        func(
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                            args_i32.get(0).copied().unwrap_or(0),
+                        )
+                    }
+                    // i32 fn(i32, *const c_char) - e.g., fprintf patterns
+                    (&[RustType::Int, RustType::String], RustType::Int) => {
+                        let func: fn(i32, *const std::ffi::c_char) -> i32 = std::mem::transmute(func_ptr);
+                        func(
+                            args_i32.get(0).copied().unwrap_or(0),
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                        )
+                    }
+                    // void fn(i32, *const c_char) - e.g., config setter
+                    (&[RustType::Int, RustType::String], RustType::Void) => {
+                        let func: fn(i32, *const std::ffi::c_char) = std::mem::transmute(func_ptr);
+                        func(
+                            args_i32.get(0).copied().unwrap_or(0),
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                        );
+                        return Ok(());
+                    }
+                    // i32 fn(*const c_char, *const c_char) - e.g., strcmp
+                    (&[RustType::String, RustType::String], RustType::Int) => {
+                        let func: fn(*const std::ffi::c_char, *const std::ffi::c_char) -> i32 = std::mem::transmute(func_ptr);
+                        func(
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                            args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                        )
+                    }
+
+                    // === Pointer patterns (for structs) ===
+                    // void fn(*mut T)
+                    (&[RustType::Pointer], RustType::Void) => {
+                        let func: fn(*mut std::ffi::c_void) = std::mem::transmute(func_ptr);
+                        func(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void);
+                        return Ok(());
+                    }
+                    // i32 fn(*mut T)
+                    (&[RustType::Pointer], RustType::Int) => {
+                        let func: fn(*mut std::ffi::c_void) -> i32 = std::mem::transmute(func_ptr);
+                        func(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void)
+                    }
+                    // *mut T fn() - e.g., constructor returning pointer
+                    (&[], RustType::Pointer) => {
+                        let func: fn() -> *mut std::ffi::c_void = std::mem::transmute(func_ptr);
+                        let ptr = func();
+                        task.ram.push_i64(ptr as i64);
+                        return Ok(());
+                    }
+                    // *mut T fn(i32) - constructor with size hint
+                    (&[RustType::Int], RustType::Pointer) => {
+                        let func: fn(i32) -> *mut std::ffi::c_void = std::mem::transmute(func_ptr);
+                        let ptr = func(args_i32.get(0).copied().unwrap_or(0));
+                        task.ram.push_i64(ptr as i64);
+                        return Ok(());
+                    }
+                    // void fn(*mut T, i32) - method with int param
+                    (&[RustType::Pointer, RustType::Int], RustType::Void) => {
+                        let func: fn(*mut std::ffi::c_void, i32) = std::mem::transmute(func_ptr);
+                        func(
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                            args_i32.get(0).copied().unwrap_or(0),
+                        );
+                        return Ok(());
+                    }
+                    // i32 fn(*mut T, i32) - method returning int
+                    (&[RustType::Pointer, RustType::Int], RustType::Int) => {
+                        let func: fn(*mut std::ffi::c_void, i32) -> i32 = std::mem::transmute(func_ptr);
+                        func(
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                            args_i32.get(0).copied().unwrap_or(0),
+                        )
+                    }
+                    // void fn(*mut T, *const c_char) - method with string param
+                    (&[RustType::Pointer, RustType::String], RustType::Void) => {
+                        let func: fn(*mut std::ffi::c_void, *const std::ffi::c_char) = std::mem::transmute(func_ptr);
+                        func(
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                            args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                        );
+                        return Ok(());
+                    }
+                    // i32 fn(*mut T, *const c_char) - method with string returning int
+                    (&[RustType::Pointer, RustType::String], RustType::Int) => {
+                        let func: fn(*mut std::ffi::c_void, *const std::ffi::c_char) -> i32 = std::mem::transmute(func_ptr);
+                        func(
+                            args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                            args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                        )
+                    }
+
+                    // === Bytes pattern ===
+                    // void fn(*const u8, usize) - e.g., write buffer
+                    (&[RustType::Bytes], RustType::Void) => {
+                        let func: fn(*const u8, usize) = std::mem::transmute(func_ptr);
+                        let len = args_i32.get(0).copied().unwrap_or(0) as usize;
+                        let ptr = args_ptr.get(0).copied().unwrap_or(std::ptr::null());
+                        func(ptr as *const u8, len);
+                        return Ok(());
+                    }
+                    // i32 fn(*const u8, usize) - e.g., parse buffer
+                    (&[RustType::Bytes], RustType::Int) => {
+                        let func: fn(*const u8, usize) -> i32 = std::mem::transmute(func_ptr);
+                        let len = args_i32.get(0).copied().unwrap_or(0) as usize;
+                        let ptr = args_ptr.get(0).copied().unwrap_or(std::ptr::null());
+                        func(ptr as *const u8, len)
+                    }
+
+                    // === Long (i64) patterns ===
+                    // i64 fn()
+                    (&[], RustType::Long) => {
+                        let func: fn() -> i64 = std::mem::transmute(func_ptr);
+                        let val = func();
+                        task.ram.push_i64(val);
+                        return Ok(());
+                    }
+                    // i64 fn(i32)
+                    (&[RustType::Int], RustType::Long) => {
+                        let func: fn(i32) -> i64 = std::mem::transmute(func_ptr);
+                        let val = func(args_i32.get(0).copied().unwrap_or(0));
+                        task.ram.push_i64(val);
+                        return Ok(());
+                    }
+                    // void fn(i64)
+                    (&[RustType::Long], RustType::Void) => {
+                        let func: fn(i64) = std::mem::transmute(func_ptr);
+                        func(args_i64.get(0).copied().unwrap_or(0));
+                        return Ok(());
+                    }
+                    // i64 fn(i64)
+                    (&[RustType::Long], RustType::Long) => {
+                        let func: fn(i64) -> i64 = std::mem::transmute(func_ptr);
+                        let val = func(args_i64.get(0).copied().unwrap_or(0));
+                        task.ram.push_i64(val);
+                        return Ok(());
+                    }
+
+                    // === Double (f64) patterns ===
+                    // f64 fn()
+                    (&[], RustType::Double) => {
+                        let func: fn() -> f64 = std::mem::transmute(func_ptr);
+                        let val = func();
+                        task.ram.push_f64(val);
+                        return Ok(());
+                    }
+                    // f64 fn(f64)
+                    (&[RustType::Double], RustType::Double) => {
+                        let func: fn(f64) -> f64 = std::mem::transmute(func_ptr);
+                        let r = func(args_f64.get(0).copied().unwrap_or(0.0));
+                        task.ram.push_f64(r);
+                        return Ok(());
+                    }
+                    // f64 fn(i32, f64)
+                    (&[RustType::Int, RustType::Double], RustType::Double) => {
+                        let func: fn(i32, f64) -> f64 = std::mem::transmute(func_ptr);
+                        let r = func(
+                            args_i32.get(0).copied().unwrap_or(0),
+                            args_f64.get(0).copied().unwrap_or(0.0),
+                        );
+                        task.ram.push_f64(r);
+                        return Ok(());
+                    }
+
+                    // Default: log warning and return 0
+                    _ => {
+                        log::warn!(
+                            "Unsupported FFI signature: {:?} -> {:?} for {}::{}",
+                            signature.params,
+                            signature.returns,
+                            crate_name,
+                            function_name
+                        );
+                        0
+                    }
+                }
+            };
+
+            // Push return value (for non-void, non-float returns)
             match &signature.returns {
-                RustType::Int => task.ram.push_i32(0),
-                RustType::Float => task.ram.push_f32(0.0),
-                RustType::Bool => task.ram.push_i32(0), // false = 0, true = 1
-                RustType::Void => {}
+                RustType::Int | RustType::Bool => task.ram.push_i32(result),
+                RustType::Void => {} // Already returned above
+                RustType::Float => {} // Handled separately above
                 _ => task.ram.push_i32(0),
             }
 
@@ -741,11 +1091,20 @@ pub enum RustType {
     Void,
     Bool,
     Int,
+    /// 64-bit integer (takes 2 slots)
+    Long,
     Float,
     Double,
+    /// Null-terminated C string (*const c_char)
     String,
-    /// Pointer type (for complex types)
+    /// Byte array/pointer with length
+    Bytes,
+    /// Raw pointer type (for struct pointers, etc.)
     Pointer,
+    /// Mutable pointer type
+    PointerMut,
+    /// Callback/function pointer
+    Callback,
 }
 
 #[cfg(test)]

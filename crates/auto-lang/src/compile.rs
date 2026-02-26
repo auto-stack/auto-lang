@@ -19,7 +19,7 @@ use crate::scope::{Sid, SID_PATH_GLOBAL};
 use crate::types::TypeStore;
 use crate::symbols::SymbolLocation;
 use crate::use_scanner::{scan_use_statements, UseStatement};
-use auto_cache::Sandbox;
+use auto_cache::{Sandbox, CrateMetadata, CrateSource};
 use auto_val::AutoStr;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -227,7 +227,7 @@ impl CompileSession {
             // Register crate name
             self.declared_crates.insert(dep.name.clone());
 
-            // Log the dependency for now
+            // Log the dependency
             log::info!(
                 "Registered dep: {} (version: {:?}, features: {:?})",
                 dep.name,
@@ -235,22 +235,27 @@ impl CompileSession {
                 dep.features
             );
 
-            // TODO: Actually register with sandbox registry
-            // When full implementation is ready:
-            // if let Some(ref sandbox) = self.sandbox {
-            //     let metadata = CrateMetadata {
-            //         name: dep.name.clone(),
-            //         version: dep.version.clone().unwrap_or_default(),
-            //         rustc_version: sandbox.rustc_version().to_string(),
-            //         target: sandbox.target().to_string(),
-            //         dependencies: vec![],
-            //         abi_hash: String::new(),
-            //         library_path: std::path::PathBuf::new(),
-            //         compiled_at: 0,
-            //         source: if dep.is_local() { CrateSource::Local } else { CrateSource::CratesIo },
-            //     };
-            //     sandbox.registry.register(&metadata)?;
-            // }
+            // Register with sandbox registry (Plan 092 Phase 6)
+            if let Some(ref mut sandbox) = self.sandbox {
+                let metadata = CrateMetadata {
+                    name: dep.name.to_string(),
+                    version: dep.version.as_ref().map(|v| v.to_string()).unwrap_or_default(),
+                    rustc_version: sandbox.rustc_version().to_string(),
+                    target: sandbox.target().to_string(),
+                    dependencies: vec![],
+                    abi_hash: String::new(),
+                    library_path: std::path::PathBuf::new(),
+                    compiled_at: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    source: if dep.is_local() { CrateSource::Local } else { CrateSource::CratesIo },
+                };
+
+                if let Err(e) = sandbox.registry().register(&metadata) {
+                    log::warn!("Failed to register crate {} in sandbox registry: {}", dep.name, e);
+                }
+            }
 
             registered_count += 1;
         }
@@ -268,6 +273,32 @@ impl CompileSession {
     /// Plan 092: Get the sandbox (for FFI bridge integration)
     pub fn sandbox(&self) -> Option<&Sandbox> {
         self.sandbox.as_ref()
+    }
+
+    /// Plan 092 Phase 6: Create a RustFfiBridge for loading Rust crates
+    ///
+    /// Returns a RustFfiBridge that can be used to:
+    /// 1. Load compiled Rust crates dynamically
+    /// 2. Register Rust functions as native functions
+    /// 3. Call Rust functions from AutoVM bytecode
+    ///
+    /// # Example
+    /// ```ignore
+    /// let session = CompileSession::new();
+    /// let bridge = session.create_rust_ffi_bridge()?;
+    /// bridge.load_rust_crate("serde", "1.0.193")?;
+    /// bridge.register_function("serde", "from_str", signature)?;
+    /// ```
+    pub fn create_rust_ffi_bridge(&self) -> Result<crate::ffi::RustFfiBridge, AutoError> {
+        crate::ffi::RustFfiBridge::new()
+            .map_err(|e| AutoError::Msg(format!("Failed to create Rust FFI bridge: {:?}", e)))
+    }
+
+    /// Plan 092 Phase 6: Get list of declared crates
+    ///
+    /// Returns the names of all crates declared via `dep` statements.
+    pub fn get_declared_crates(&self) -> &HashSet<String> {
+        &self.declared_crates
     }
 
     /// Plan 085: 加载模块到 type_store

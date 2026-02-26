@@ -258,7 +258,7 @@ mod tests {
     #[test]
     fn test_merge_atom_obj() {
         let mut interp = AutoInterpreter::new();
-        let obj = auto_val::Obj::new();
+        let mut obj = auto_val::Obj::new();
         obj.set("name", Value::str("Alice"));
         obj.set("age", Value::Int(30));
         let atom = Atom::Obj(obj);

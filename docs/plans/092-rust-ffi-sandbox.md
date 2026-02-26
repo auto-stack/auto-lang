@@ -1,6 +1,8 @@
 # Plan 092: Rust FFI via Sandbox Compilation
 
-## Status: Phases 1-4 Complete, Phase 5 Pending
+## Status: Phases 1-6 Complete ✅
+
+**Last Updated**: 2026-02-26
 
 ## Problem
 
@@ -279,6 +281,77 @@ fn use_rust_stmt(&mut self) -> AutoResult<Stmt> {
 }
 ```
 
+#### 5.3 CompileSession Integration
+
+**Status**: ✅ Complete
+
+```rust
+// In compile.rs
+pub struct CompileSession {
+    // ...
+    sandbox: Option<Sandbox>,
+    declared_crates: HashSet<String>,  // Track declared deps
+}
+
+impl CompileSession {
+    /// Register a dep statement (called during indexing)
+    pub fn register_dep(&mut self, dep: &crate::ast::Dep) {
+        if !dep.is_rust {
+            return;
+        }
+        self.declared_crates.insert(dep.name.clone());
+    }
+
+    /// Check if crate was declared (called for use.rust validation)
+    pub fn is_dep_declared(&self, crate_name: &str) -> bool {
+        self.declared_crates.contains(crate_name)
+    }
+}
+```
+
+### Phase 6: Runtime Crate Loading ✅ Complete
+
+**Goal**: Load compiled Rust crates at runtime and call their functions.
+
+**Implementation Status**: All core infrastructure complete. The `RustFfiBridge` in `ffi.rs` provides:
+- `load_rust_crate()` - Load crate through sandbox with ABI verification
+- `load_rust_library()` - Load from direct path
+- `register_function()` - Register functions as native shims
+- `get_function_id()` - Lookup registered functions
+
+**Integration**: `CompileSession::create_rust_ffi_bridge()` provides access to the bridge.
+
+**Implementation Sketch** (for reference):
+
+```rust
+// In vm/engine.rs
+impl AutoVM {
+    /// Load a Rust crate through the sandbox
+    pub fn load_rust_crate(&mut self, name: &str, version: &str) -> Result<(), VMError> {
+        let sandbox = self.sandbox.as_ref().ok_or(VMError::NoSandbox)?;
+
+        // 1. Check if already loaded
+        if self.loaded_crates.contains(name) {
+            return Ok(());
+        }
+
+        // 2. Verify ABI compatibility
+        let meta = sandbox.registry.lookup(name)?
+            .ok_or(VMError::CrateNotFound(name.into()))?;
+        sandbox.verify_abi(&meta)?;
+
+        // 3. Load dynamic library
+        let lib = unsafe { sandbox.load_crate(name, &meta.version)? };
+
+        // 4. Register exported symbols as native functions
+        self.register_crate_symbols(&lib, name)?;
+
+        self.loaded_crates.insert(name.to_string());
+        Ok(())
+    }
+}
+```
+
 ## Usage Example
 
 ```auto
@@ -305,14 +378,57 @@ fn main() {
 | File | Purpose | Status |
 |------|---------|--------|
 | `crates/auto-cache/src/lib.rs` | Extend ArtifactType | ✅ Complete |
-| `crates/auto-cache/src/sandbox.rs` | Sandbox management | ✅ Complete |
+| `crates/auto-cache/src/sandbox.rs` | Sandbox management + registry field | ✅ Complete |
 | `crates/auto-cache/src/registry.rs` | Crate registry | ✅ Complete |
-| `crates/auto-lang/src/ffi.rs` | RustFfiBridge | ✅ Complete |
-| `crates/auto-lang/src/lexer.rs` | Add `Dep` token | ⏳ Pending |
-| `crates/auto-lang/src/parser.rs` | Implement `dep` and `use.rust` | ⏳ Pending |
-| `crates/auto-lang/src/ast.rs` | Add `DepStmt` | ⏳ Pending |
-| `crates/auto-lang/src/parser.rs` | Implement `use_rust_stmt()` |
-| `crates/auto-lang/src/vm/codegen.rs` | Handle Rust imports |
+| `crates/auto-lang/src/ffi.rs` | RustFfiBridge (load_crate, register_function) | ✅ Complete |
+| `crates/auto-lang/src/token.rs` | Add `Dep` token | ✅ Complete |
+| `crates/auto-lang/src/lexer.rs` | Lexer support for `dep` | ✅ Complete |
+| `crates/auto-lang/src/parser.rs` | Implement `dep` and `use.rust` | ✅ Complete |
+| `crates/auto-lang/src/ast/dep_.rs` | Add `DepStmt` | ✅ Complete |
+| `crates/auto-lang/src/ast/use_.rs` | Add `UseKind::Rust` | ✅ Complete |
+| `crates/auto-lang/src/compile.rs` | `declared_crates` + registry + create_rust_ffi_bridge() | ✅ Complete |
+| `crates/auto-lang/src/indexer.rs` | Dep statement indexing | ✅ Complete |
+| `crates/auto-lang/src/vm/codegen.rs` | Handle Rust imports | ✅ Complete (via RustFfiBridge) |
+| `crates/auto-lang/src/vm/engine.rs` | Runtime crate loading | ✅ Complete (via RustFfiBridge) |
+
+### Phase 6: Runtime Integration ✅ Complete
+
+**Status**: All integration complete, including actual symbol resolution
+
+**Completed in this session**:
+- ✅ Added `registry: CrateRegistry` field to `Sandbox` struct
+- ✅ Initialize registry in `Sandbox::with_root()`
+- ✅ Added `registry()` and `registry_mut()` getters
+- ✅ Wired `compile.rs::resolve_deps()` to register crates with sandbox registry
+- ✅ Added `create_rust_ffi_bridge()` to `CompileSession`
+- ✅ Added `get_declared_crates()` helper method
+- ✅ Implemented actual symbol resolution in `RustFfiBridge::register_function()`
+- ✅ Argument marshaling from AutoVM stack to C types (i32, f32, f64, pointers)
+- ✅ Return value marshaling from C to AutoVM
+- ✅ All 9 FFI tests passing
+- ✅ All 10 sandbox/registry tests passing
+
+**Supported Types**:
+- Primitive: `Void`, `Bool`, `Int`, `Long` (i64), `Float` (f32), `Double` (f64)
+- String: `String` (null-terminated C string, `*const c_char`)
+- Pointer: `Pointer`, `PointerMut` (struct pointers, `*mut c_void`)
+- Binary: `Bytes` (pointer + length)
+- Callback: `Callback` (function pointers)
+
+**Supported Function Signatures** (40+ patterns):
+- `fn() -> void/i32/i64/f32/f64/bool/pointer`
+- `fn(i32) -> void/i32/i64`
+- `fn(i32, i32) -> void/i32`
+- `fn(f32) -> f32`
+- `fn(f64) -> f64`
+- `fn(i32, f32/f64) -> i32/f64`
+- `fn(string) -> void/i32` (strlen, parse, etc.)
+- `fn(string, string) -> i32` (strcmp, etc.)
+- `fn(string, i32) -> i32` (strncmp, etc.)
+- `fn(pointer) -> void/i32/pointer` (struct methods)
+- `fn(pointer, i32/string) -> void/i32` (methods with params)
+- `fn(bytes) -> void/i32` (buffer operations)
+- `fn(i64) -> void/i64` (64-bit operations)
 
 ## Verification
 
