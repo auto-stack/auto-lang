@@ -1,0 +1,22 @@
+/// VM function declarations for Process operations
+/// These are implemented in Rust in crates/auto-lang/src/vm/ffi/stdlib.rs
+
+/// Get command line arguments
+#[vm]
+fn args() []str
+
+/// Get current working directory
+#[vm]
+fn current_dir() str
+
+/// Set current working directory
+#[vm]
+fn set_current_dir(path str) int
+
+/// Spawn an external process and wait for completion
+#[vm]
+fn spawn(cmd_args []str) int
+
+/// Exit the process with an exit code
+#[vm]
+fn exit(code int)

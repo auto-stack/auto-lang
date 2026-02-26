@@ -11,6 +11,8 @@ mod const_generic_tests; // Plan 052: Const generic parameter tests
 mod default_storage_tests; // Plan 052: DefaultStorage type alias tests
 mod dstr_tests;
 mod error_tests;
+// Plan 094: Hybrid FFI Bridge tests
+mod ffi_tests;
 mod field_access_tests; // Plan 056: Field access tests
 mod generic_spec_tests; // Plan 057: Generic spec tests
 mod list_growth_tests;

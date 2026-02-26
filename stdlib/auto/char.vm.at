@@ -1,0 +1,30 @@
+/// VM function declarations for Char operations
+/// These are implemented in Rust in crates/auto-lang/src/vm/ffi/stdlib.rs
+
+/// Check if a character is alphabetic (letter)
+#[vm]
+fn is_alpha(c int) bool
+
+/// Check if a character is a digit (0-9)
+#[vm]
+fn is_digit(c int) bool
+
+/// Check if a character is alphanumeric (letter or digit)
+#[vm]
+fn is_alphanum(c int) bool
+
+/// Check if a character is whitespace
+#[vm]
+fn is_whitespace(c int) bool
+
+/// Check if a character is a valid Auto identifier character
+#[vm]
+fn is_ident(c int) bool
+
+/// Convert a character to lowercase
+#[vm]
+fn to_lower(c int) int
+
+/// Convert a character to uppercase
+#[vm]
+fn to_upper(c int) int

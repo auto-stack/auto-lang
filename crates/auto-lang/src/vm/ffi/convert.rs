@@ -1,0 +1,401 @@
+//! VMConvertible trait for automatic type conversion between Rust and AutoVM
+//!
+//! This trait enables seamless conversion between Rust types and VM values,
+//! reducing boilerplate in FFI shims.
+
+use super::error::FFIError;
+use crate::vm::engine::AutoVM;
+use crate::vm::task::AutoTask;
+
+/// Trait for types that can cross the FFI boundary
+///
+/// This trait provides automatic conversion between Rust types and AutoVM values.
+/// Implementations are provided for common types like String, i32, bool, etc.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use auto_lang::vm::ffi::VMConvertible;
+///
+/// // Convert from VM to Rust
+/// let path: String = String::from_vm(&vm_value, &vm)?;
+///
+/// // Convert from Rust to VM
+/// let result = "hello".to_string();
+/// let vm_value = result.to_vm(&mut vm)?;
+/// ```
+pub trait VMConvertible: Sized {
+    /// Convert from AutoVM stack to Rust type
+    ///
+    /// Pops values from the stack and converts them to the Rust type.
+    fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError>;
+
+    /// Convert from Rust type to AutoVM stack
+    ///
+    /// Pushes the converted values onto the stack.
+    fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError>;
+}
+
+// ============================================================================
+// Primitive Type Implementations
+// ============================================================================
+
+impl VMConvertible for i32 {
+    fn pop_from_stack(task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
+        Ok(task.ram.pop_i32())
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
+        task.ram.push_i32(*self);
+        Ok(())
+    }
+}
+
+impl VMConvertible for i64 {
+    fn pop_from_stack(task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
+        Ok(task.ram.pop_i64())
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
+        task.ram.push_i64(*self);
+        Ok(())
+    }
+}
+
+impl VMConvertible for u32 {
+    fn pop_from_stack(task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
+        Ok(task.ram.pop_u32())
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
+        task.ram.push_u32(*self);
+        Ok(())
+    }
+}
+
+impl VMConvertible for u64 {
+    fn pop_from_stack(task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
+        Ok(task.ram.pop_u64())
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
+        task.ram.push_u64(*self);
+        Ok(())
+    }
+}
+
+impl VMConvertible for f32 {
+    fn pop_from_stack(task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
+        Ok(task.ram.pop_f32())
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
+        task.ram.push_f32(*self);
+        Ok(())
+    }
+}
+
+impl VMConvertible for f64 {
+    fn pop_from_stack(task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
+        Ok(task.ram.pop_f64())
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
+        task.ram.push_f64(*self);
+        Ok(())
+    }
+}
+
+impl VMConvertible for bool {
+    fn pop_from_stack(task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
+        let val = task.ram.pop_i32();
+        Ok(val != 0)
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
+        task.ram.push_i32(if *self { 1 } else { 0 });
+        Ok(())
+    }
+}
+
+impl VMConvertible for () {
+    fn pop_from_stack(_task: &mut AutoTask, _vm: &AutoVM) -> Result<Self, FFIError> {
+        Ok(())
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), FFIError> {
+        // Push unit (0) as return value
+        task.ram.push_i32(0);
+        Ok(())
+    }
+}
+
+// ============================================================================
+// String Implementation
+// ============================================================================
+
+impl VMConvertible for String {
+    fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
+        let str_idx = task.ram.pop_i32() as u16;
+
+        let bytes = vm
+            .get_string(str_idx)
+            .ok_or(FFIError::InvalidStringIndex(str_idx))?;
+
+        let s = String::from_utf8_lossy(&bytes).to_string();
+        Ok(s)
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
+        // Add string to the VM's string pool
+        let strings = vm.strings.read().unwrap();
+        let len = strings.len();
+        drop(strings);
+
+        // We need to add the string - but vm.strings is Arc<RwLock>
+        // For now, we'll store the string index if it already exists
+        // or create a new entry
+        {
+            let mut strings = vm.strings.write().unwrap();
+            strings.push(self.as_bytes().to_vec());
+        }
+
+        // Push the index as the string reference
+        task.ram.push_i32(len as i32);
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Option Implementation
+// ============================================================================
+
+impl<T: VMConvertible> VMConvertible for Option<T> {
+    fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
+        // Option is represented as: tag (i32) + value (if Some)
+        let tag = task.ram.pop_i32();
+
+        if tag == 0 {
+            // None - no value follows
+            Ok(None)
+        } else {
+            // Some - value follows
+            let value = T::pop_from_stack(task, vm)?;
+            Ok(Some(value))
+        }
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
+        match self {
+            None => {
+                // Push None tag
+                task.ram.push_i32(0);
+            }
+            Some(value) => {
+                // Push value first, then Some tag
+                value.push_to_stack(task, vm)?;
+                task.ram.push_i32(1);
+            }
+        }
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Result Implementation
+// ============================================================================
+
+impl<T: VMConvertible, E: std::fmt::Display> VMConvertible for Result<T, E> {
+    fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
+        // Result is represented as: tag (i32) + value (if Ok)
+        // For now, we'll just try to pop the Ok value
+        // Error handling would need more infrastructure
+        let value = T::pop_from_stack(task, vm)?;
+        Ok(Ok(value))
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
+        match self {
+            Ok(value) => {
+                // Push value, then Ok tag
+                value.push_to_stack(task, vm)?;
+                task.ram.push_i32(0); // Ok tag
+            }
+            Err(e) => {
+                // Push error as string representation
+                let err_str = e.to_string();
+                err_str.push_to_stack(task, vm)?;
+                task.ram.push_i32(1); // Err tag
+
+                // Also return an FFI error for the caller to handle
+                return Err(FFIError::RuntimeError(e.to_string()));
+            }
+        }
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Vec<i32> Implementation (List) - MVP
+// ============================================================================
+
+impl VMConvertible for Vec<i32> {
+    fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
+        // List is represented as list_id (i32/u64)
+        let list_id = task.ram.pop_i32() as u64;
+
+        // Get list from heap
+        let obj = vm
+            .get_heap_object(list_id)
+            .ok_or(FFIError::InvalidListId(list_id))?;
+
+        let guard = obj.read().unwrap();
+
+        // Try to downcast to ListData<i32>
+        if let Some(list_data) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<i32>>()
+        {
+            let mut result = Vec::new();
+            for i in 0..list_data.len() {
+                let elem = list_data.get(i).copied().unwrap_or(0);
+                result.push(elem);
+            }
+            return Ok(result);
+        }
+
+        Err(FFIError::InvalidListId(list_id))
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
+        use crate::vm::types::ListData;
+
+        // Create a new list
+        let mut list: ListData<i32> = ListData::new();
+
+        // Push all elements
+        for &elem in self.iter() {
+            list.push(elem);
+        }
+
+        // Register list in heap
+        let list_id = vm.insert_heap_object(list);
+
+        // Push list_id to stack
+        task.ram.push_i32(list_id as i32);
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Vec<String> Implementation (List of Strings)
+// ============================================================================
+
+impl VMConvertible for Vec<String> {
+    fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
+        // List is represented as list_id (i32/u64)
+        let list_id = task.ram.pop_i32() as u64;
+
+        // Get list from heap
+        let obj = vm
+            .get_heap_object(list_id)
+            .ok_or(FFIError::InvalidListId(list_id))?;
+
+        let guard = obj.read().unwrap();
+
+        // Try to downcast to ListData<auto_val::Value>
+        // String lists are stored as ListData<Value::String>
+        if let Some(list_data) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+        {
+            let mut result = Vec::new();
+            for i in 0..list_data.len() {
+                if let Some(auto_val::Value::Str(s)) = list_data.get(i) {
+                    result.push(s.as_str().to_string());
+                }
+            }
+            return Ok(result);
+        }
+
+        Err(FFIError::InvalidListId(list_id))
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
+        use crate::vm::types::ListData;
+
+        // Create a new list of Values
+        let mut list: ListData<auto_val::Value> = ListData::new();
+
+        // Push all elements as String values
+        for s in self.iter() {
+            let val = auto_val::Value::Str(auto_val::AutoStr::from(s.as_str()));
+            list.push(val);
+        }
+
+        // Register list in heap
+        let list_id = vm.insert_heap_object(list);
+
+        // Push list_id to stack
+        task.ram.push_i32(list_id as i32);
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Tuple Implementations
+// ============================================================================
+
+impl<T1: VMConvertible, T2: VMConvertible> VMConvertible for (T1, T2) {
+    fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
+        // Tuples are pushed in order, so we pop in reverse order
+        let t2 = T2::pop_from_stack(task, vm)?;
+        let t1 = T1::pop_from_stack(task, vm)?;
+        Ok((t1, t2))
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
+        self.0.push_to_stack(task, vm)?;
+        self.1.push_to_stack(task, vm)?;
+        Ok(())
+    }
+}
+
+impl<T1: VMConvertible, T2: VMConvertible, T3: VMConvertible> VMConvertible
+    for (T1, T2, T3)
+{
+    fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
+        let t3 = T3::pop_from_stack(task, vm)?;
+        let t2 = T2::pop_from_stack(task, vm)?;
+        let t1 = T1::pop_from_stack(task, vm)?;
+        Ok((t1, t2, t3))
+    }
+
+    fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
+        self.0.push_to_stack(task, vm)?;
+        self.1.push_to_stack(task, vm)?;
+        self.2.push_to_stack(task, vm)?;
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Pop N arguments from the stack as a tuple
+///
+/// This helper function is used by the #[rust_fn] macro to pop
+/// multiple arguments from the stack.
+pub fn pop_args<const N: usize>(task: &mut AutoTask) -> Result<[i32; N], FFIError> {
+    let mut args = [0i32; N];
+    for i in (0..N).rev() {
+        args[i] = task.ram.pop_i32();
+    }
+    Ok(args)
+}
+
+/// Push a unit value (void return) to the stack
+pub fn push_unit(task: &mut AutoTask) {
+    task.ram.push_i32(0);
+}

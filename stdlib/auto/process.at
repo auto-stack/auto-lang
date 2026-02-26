@@ -1,0 +1,32 @@
+/// Process module - Process management operations
+///
+/// This module provides functions for working with the current process.
+
+/// Get command line arguments
+/// Returns a list of arguments (first element is the program name)
+/// Example: let args = args()
+#[pub]
+fn args() []str;
+
+/// Get current working directory
+/// Example: let cwd = current_dir()
+#[pub]
+fn current_dir() str;
+
+/// Set current working directory
+/// Returns 0 on success, -1 on error
+/// Example: set_current_dir("/home/user")
+#[pub]
+fn set_current_dir(path str) int;
+
+/// Spawn an external process and wait for completion
+/// Takes a list of arguments: [command, arg1, arg2, ...]
+/// Returns the exit code, or -1 on error
+/// Example: spawn(["ls", "-la", "/home"])
+#[pub]
+fn spawn(cmd_args []str) int;
+
+/// Exit the process with an exit code
+/// Example: exit(0)
+#[pub]
+fn exit(code int);

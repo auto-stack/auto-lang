@@ -1,0 +1,42 @@
+/// Char module - Character classification and manipulation
+///
+/// This module provides functions for working with Unicode characters.
+/// Characters are represented as their Unicode code point (int).
+
+/// Check if a character is alphabetic (letter)
+/// Example: is_alpha(65)  // 'A' -> returns true
+#[pub]
+fn is_alpha(c int) bool;
+
+/// Check if a character is a digit (0-9)
+/// Example: is_digit(48)  // '0' -> returns true
+#[pub]
+fn is_digit(c int) bool;
+
+/// Check if a character is alphanumeric (letter or digit)
+/// Example: is_alphanum(65)  // 'A' -> returns true
+#[pub]
+fn is_alphanum(c int) bool;
+
+/// Check if a character is whitespace
+/// Example: is_whitespace(32)  // ' ' -> returns true
+#[pub]
+fn is_whitespace(c int) bool;
+
+/// Check if a character is a valid Auto identifier character
+/// (letters, digits, underscore)
+/// Example: is_ident(95)  // '_' -> returns true
+#[pub]
+fn is_ident(c int) bool;
+
+/// Convert a character to lowercase
+/// Returns the lowercase code point, or the original if not alphabetic
+/// Example: to_lower(65)  // 'A' -> returns 97 ('a')
+#[pub]
+fn to_lower(c int) int;
+
+/// Convert a character to uppercase
+/// Returns the uppercase code point, or the original if not alphabetic
+/// Example: to_upper(97)  // 'a' -> returns 65 ('A')
+#[pub]
+fn to_upper(c int) int;

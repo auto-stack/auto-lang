@@ -138,7 +138,7 @@ impl Codegen {
         crate::vm::native_registry::register_builtin_natives();
 
         let mut intrinsics = HashMap::new();
-        // Register intrinsics
+        // Register intrinsics - only built-in print functions
         intrinsics.insert("print".to_string(), NATIVE_PRINT_I32);
         intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
         intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);
@@ -182,7 +182,7 @@ impl Codegen {
         crate::vm::native_registry::register_builtin_natives();
 
         let mut intrinsics = HashMap::new();
-        // Register intrinsics
+        // Register intrinsics - only built-in print functions
         intrinsics.insert("print".to_string(), NATIVE_PRINT_I32);
         intrinsics.insert("print_i32".to_string(), NATIVE_PRINT_I32);
         intrinsics.insert("print_f32".to_string(), NATIVE_PRINT_F32);

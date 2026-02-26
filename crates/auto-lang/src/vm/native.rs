@@ -4,28 +4,109 @@ use crate::vm::task::AutoTask;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+// Plan 094: ID ranges for hybrid FFI
+/// Maximum ID for static FFI bindings
+pub const STATIC_ID_MAX: u16 = 10000;
+/// Starting ID for dynamic FFI bindings
+pub const DYNAMIC_ID_START: u16 = 10000;
+
 pub type ShimFunc = Arc<dyn Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync>;
 
+/// Plan 094: NativeInterface with hybrid lookup support
+///
+/// Supports two types of native functions:
+/// - **Static** (IDs 0-9999): Built into VM, registered at compile time
+/// - **Dynamic** (IDs 10000+): Loaded via `use.rust`, registered at runtime
 pub struct NativeInterface {
-    registry: HashMap<u16, ShimFunc>,
+    /// Static shims: direct array lookup for maximum performance
+    static_shims: Vec<Option<ShimFunc>>,
+    /// Dynamic shims: HashMap for flexibility
+    dynamic_shims: HashMap<u16, ShimFunc>,
+    /// Next available dynamic ID
+    next_dynamic_id: u16,
 }
 
 impl NativeInterface {
     pub fn new() -> Self {
         Self {
-            registry: HashMap::new(),
+            static_shims: vec![None; STATIC_ID_MAX as usize],
+            dynamic_shims: HashMap::new(),
+            next_dynamic_id: DYNAMIC_ID_START,
         }
     }
 
+    /// Register a static shim (IDs 0-9999)
+    ///
+    /// Used by VM intrinsics and built-in stdlib functions.
+    /// Panics if ID is out of range.
+    pub fn register_static<F>(&mut self, id: u16, func: F)
+    where
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
+    {
+        assert!(id < STATIC_ID_MAX, "Static ID must be < {}", STATIC_ID_MAX);
+        self.static_shims[id as usize] = Some(Arc::new(func));
+    }
+
+    /// Register a dynamic shim (IDs 10000+)
+    ///
+    /// Used by `use.rust` for runtime-loaded crates.
+    /// Returns the assigned ID.
+    pub fn register_dynamic<F>(&mut self, func: F) -> u16
+    where
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
+    {
+        let id = self.next_dynamic_id;
+        self.next_dynamic_id += 1;
+        self.dynamic_shims.insert(id, Arc::new(func));
+        id
+    }
+
+    /// Register a dynamic shim with a specific ID
+    ///
+    /// Used when the caller wants to control the ID assignment.
+    pub fn register_dynamic_with_id<F>(&mut self, id: u16, func: F)
+    where
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
+    {
+        assert!(id >= DYNAMIC_ID_START, "Dynamic ID must be >= {}", DYNAMIC_ID_START);
+        self.dynamic_shims.insert(id, Arc::new(func));
+        if id >= self.next_dynamic_id {
+            self.next_dynamic_id = id + 1;
+        }
+    }
+
+    /// Unified lookup - used by CALL_NAT opcode
+    ///
+    /// Checks static array first (fast path), then dynamic HashMap.
+    pub fn get(&self, id: u16) -> Option<&ShimFunc> {
+        if id < STATIC_ID_MAX {
+            self.static_shims.get(id as usize)?.as_ref()
+        } else {
+            self.dynamic_shims.get(&id)
+        }
+    }
+
+    /// Check if an ID is static or dynamic
+    pub fn is_static(&self, id: u16) -> bool {
+        id < STATIC_ID_MAX
+    }
+
+    /// Get the next available dynamic ID
+    pub fn next_dynamic_id(&self) -> u16 {
+        self.next_dynamic_id
+    }
+
+    /// Legacy method for backwards compatibility
+    /// Routes to register_static for IDs < 10000, register_dynamic otherwise
     pub fn register<F>(&mut self, id: u16, func: F)
     where
         F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
     {
-        self.registry.insert(id, Arc::new(func));
-    }
-
-    pub fn get(&self, id: u16) -> Option<&ShimFunc> {
-        self.registry.get(&id)
+        if id < STATIC_ID_MAX {
+            self.register_static(id, func);
+        } else {
+            self.register_dynamic_with_id(id, func);
+        }
     }
 
     pub fn register_std_shims(&mut self) {

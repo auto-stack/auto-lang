@@ -113,6 +113,8 @@ impl AutoVM {
     pub fn new(flash: VirtualFlash, _ram_size: usize) -> Self {
         let mut native_interface = NativeInterface::new();
         native_interface.register_std_shims();
+        // Plan 094: Register static FFI stdlib functions (File, Env, Time, etc.)
+        crate::vm::ffi::register_stdlib_ffi(&mut native_interface);
         Self {
             flash: Arc::new(flash),
             native_interface: Arc::new(native_interface),

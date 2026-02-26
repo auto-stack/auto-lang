@@ -1,6 +1,7 @@
 // AutoVM Persistent Session (Revised - Efficient)
 //
 // **Plan 068 Phase 9.6**: Persistent AutoVM REPL with state management
+// **Plan 094**: Use statement resolution for FFI shims
 //
 // **Architecture**:
 // - Keep a single AutoVM instance across inputs (preserves heap_objects, arrays, etc.)
@@ -9,8 +10,10 @@
 
 use crate::error::{AutoError, AutoResult};
 use crate::type_registry;
+use crate::use_scanner::{scan_use_statements, UseStatement};
 use crate::vm::codegen::Codegen;
 use crate::vm::engine::AutoVM;
+use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 use crate::vm::task::TaskId;
 use crate::vm::virt_memory::VirtualFlash;
@@ -93,10 +96,143 @@ impl AutovmReplSession {
         }
     }
 
+    /// Plan 094: Resolve use statements and register imported functions
+    ///
+    /// This scans for `use` statements, loads the corresponding module files,
+    /// and registers the imported functions in BIGVM_NATIVES.
+    fn resolve_use_statements(&mut self, code: &str) -> AutoResult<()> {
+        let use_statements = scan_use_statements(code);
+
+        for use_stmt in &use_statements {
+            // Skip C imports - they're handled differently
+            if use_stmt.is_c_import {
+                continue;
+            }
+
+            eprintln!(
+                "DEBUG: Processing use statement: module={}, items={:?}",
+                use_stmt.module, use_stmt.items
+            );
+
+            // Load module and register functions
+            self.load_and_register_module(use_stmt)?;
+        }
+
+        Ok(())
+    }
+
+    /// Load a module and register its #[vm] functions in BIGVM_NATIVES
+    fn load_and_register_module(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
+        // Convert module path to file path
+        let module_path = use_stmt.module.replace(".", "/");
+
+        // Find the module root file (.at)
+        let stdlib_path = std::path::Path::new("stdlib/auto");
+        let root_file = stdlib_path.join(&module_path).with_extension("at");
+
+        if !root_file.exists() {
+            return Err(AutoError::Msg(format!(
+                "Module not found: {} (looked for {})",
+                use_stmt.module,
+                root_file.display()
+            )));
+        }
+
+        // Read root file
+        let mut module_source = std::fs::read_to_string(&root_file).map_err(|e| {
+            AutoError::Msg(format!(
+                "Failed to read module {}: {}",
+                root_file.display(),
+                e
+            ))
+        })?;
+
+        // Try to load context file (.vm.at)
+        let context_file = stdlib_path.join(&format!("{}.vm", module_path)).with_extension("at");
+        if context_file.exists() {
+            let context_source = std::fs::read_to_string(&context_file).map_err(|e| {
+                AutoError::Msg(format!(
+                    "Failed to read context file {}: {}",
+                    context_file.display(),
+                    e
+                ))
+            })?;
+            module_source.push('\n');
+            module_source.push_str(&context_source);
+            eprintln!("DEBUG: Loaded context file: {}", context_file.display());
+        }
+
+        // Parse the combined module source
+        let mut parser = Parser::from(&module_source);
+        let ast = parser.parse().map_err(|e| {
+            AutoError::Msg(format!(
+                "Failed to parse module {}: {:?}",
+                use_stmt.module, e
+            ))
+        })?;
+
+        eprintln!(
+            "DEBUG: Parsed module {} with {} statements",
+            use_stmt.module,
+            ast.stmts.len()
+        );
+
+        // Extract #[vm] function declarations and register them
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::Fn(fn_decl) = stmt {
+                // Check if this function is a VM function (has #[vm] attribute)
+                let is_vm = matches!(fn_decl.kind, crate::ast::FnKind::VmFunction);
+
+                if is_vm {
+                    let fn_name: &str = fn_decl.name.as_str();
+
+                    // Build the full path (e.g., "auto.math.sqrt")
+                    let full_path = format!("{}.{}", use_stmt.module, fn_name);
+
+                    // Check if this function is in the import list (if selective import)
+                    let should_import = if use_stmt.is_wildcard {
+                        true
+                    } else if use_stmt.items.is_empty() {
+                        true
+                    } else {
+                        use_stmt.items.iter().any(|item| item == fn_name)
+                    };
+
+                    if should_import {
+                        // Look up the full path in BIGVM_NATIVES to get the native ID
+                        if let Some(native_id) =
+                            BIGVM_NATIVES.lock().unwrap().get_id(&full_path)
+                        {
+                            // Register with short name for easy access
+                            BIGVM_NATIVES
+                                .lock()
+                                .unwrap()
+                                .register_with_id(fn_name, native_id);
+                            eprintln!(
+                                "DEBUG: Registered '{}' -> {} (ID: {})",
+                                fn_name, full_path, native_id
+                            );
+                        } else {
+                            eprintln!(
+                                "DEBUG: Warning: '{}' not found in native registry (path: {})",
+                                fn_name, full_path
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Execute code with persistent state
     ///
     /// **Efficient**: Reuses Codegen and TypeRegistry to avoid allocations
     pub fn run(&mut self, code: &str) -> AutoResult<String> {
+        // 0. Plan 094: Resolve use statements first (loads modules, registers functions)
+        self.resolve_use_statements(code)?;
+
         // 1. Parse the code
         let mut parser = Parser::from(code);
 

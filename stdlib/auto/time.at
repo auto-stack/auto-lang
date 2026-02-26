@@ -1,0 +1,18 @@
+/// Time module - Time-related operations
+///
+/// This module provides functions for working with time.
+
+/// Get current time in milliseconds since Unix epoch
+/// Example: let ms = now_ms()
+#[pub]
+fn now_ms() i64;
+
+/// Get current time in seconds since Unix epoch
+/// Example: let sec = now_sec()
+#[pub]
+fn now_sec() i64;
+
+/// Sleep for specified milliseconds
+/// Example: sleep_ms(1000)  // Sleep 1 second
+#[pub]
+fn sleep_ms(ms int);

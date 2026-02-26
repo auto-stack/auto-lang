@@ -1,0 +1,76 @@
+/// File module - File system operations
+///
+/// This module provides standalone file operations like reading,
+/// writing, and managing files.
+
+// ============================================================================
+// File Read/Write Operations
+// ============================================================================
+
+/// Read text content from a file
+/// Returns the file content as a string, or empty string on error
+/// Example: let content = read_text("hello.txt")
+#[pub]
+fn read_text(path str) str;
+
+/// Write text content to a file
+/// Returns 0 on success, -1 on error
+/// Example: write_text("output.txt", "Hello World")
+#[pub]
+fn write_text(path str, content str) int;
+
+/// Read file contents as bytes
+/// Returns a list of bytes (integers 0-255)
+/// Example: let bytes = read_bytes("binary.dat")
+#[pub]
+fn read_bytes(path str) []int;
+
+/// Write bytes to a file
+/// Returns 0 on success, -1 on error
+/// Example: write_bytes("output.bin", [1, 2, 3, 4])
+#[pub]
+fn write_bytes(path str, bytes []int) int;
+
+// ============================================================================
+// File Management Operations
+// ============================================================================
+
+/// Check if a file exists
+/// Returns true if the file exists, false otherwise
+/// Example: if exists("config.txt") { ... }
+#[pub]
+fn exists(path str) bool;
+
+/// Delete a file
+/// Returns 0 on success, -1 on error
+/// Example: delete("temp.txt")
+#[pub]
+fn delete(path str) int;
+
+/// Copy a file from source to destination
+/// Returns 0 on success, -1 on error
+/// Example: copy("source.txt", "dest.txt")
+#[pub]
+fn copy(src str, dst str) int;
+
+/// Get the size of a file in bytes
+/// Returns the file size, or -1 on error
+/// Example: let sz = size("data.bin")
+#[pub]
+fn size(path str) i64;
+
+// ============================================================================
+// Directory Operations
+// ============================================================================
+
+/// Create a directory (including parent directories)
+/// Returns 0 on success, -1 on error
+/// Example: create_dir("output/subdir")
+#[pub]
+fn create_dir(path str) int;
+
+/// Check if a path is a directory
+/// Returns true if the path is a directory, false otherwise
+/// Example: if is_dir("src") { ... }
+#[pub]
+fn is_dir(path str) bool;

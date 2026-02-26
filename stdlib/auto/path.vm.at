@@ -1,0 +1,22 @@
+/// VM function declarations for Path operations
+/// These are implemented in Rust in crates/auto-lang/src/vm/ffi/stdlib.rs
+
+/// Join path components together
+#[vm]
+fn join(parts ...str) str
+
+/// Get the parent directory of a path
+#[vm]
+fn parent(path str) str
+
+/// Get the file extension of a path
+#[vm]
+fn extension(path str) str
+
+/// Get the filename from a path
+#[vm]
+fn filename(path str) str
+
+/// Canonicalize a path (resolve symlinks, .., .)
+#[vm]
+fn canonicalize(path str) str

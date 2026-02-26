@@ -40,6 +40,9 @@ pub mod virt_memory;
 // Plan 091: Extracted from universe.rs
 pub mod object_data;
 
+// Plan 094: Hybrid FFI Bridge
+pub mod ffi;
+
 // #[cfg(test)]
 // mod tests_concurrency; // TODO: Create tests_concurrency.rs
 

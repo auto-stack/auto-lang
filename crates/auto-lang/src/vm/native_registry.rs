@@ -194,6 +194,74 @@ pub fn register_builtin_natives() {
     // Use explicit IDs to match NATIVE_* constants in native.rs
     registry.register_with_id("str.len", 132);    // NATIVE_STR_LEN
     registry.register_with_id("String.len", 133);  // NATIVE_STRING_LEN
+
+    // =========================================================================
+    // FFI Shim Registrations (Plan 094)
+    // These map Auto function names to their native IDs
+    // =========================================================================
+
+    // File functions (1000-1009)
+    registry.register_with_id("auto.file.read_text", 1000);
+    registry.register_with_id("auto.file.write_text", 1001);
+    registry.register_with_id("auto.file.exists", 1002);
+    registry.register_with_id("auto.file.delete", 1003);
+    registry.register_with_id("auto.file.create_dir", 1004);
+    registry.register_with_id("auto.file.read_bytes", 1005);
+    registry.register_with_id("auto.file.write_bytes", 1006);
+    registry.register_with_id("auto.file.copy", 1007);
+    registry.register_with_id("auto.file.size", 1008);
+    registry.register_with_id("auto.file.is_dir", 1009);
+
+    // Env functions (1100-1102)
+    registry.register_with_id("auto.env.get", 1100);
+    registry.register_with_id("auto.env.set", 1101);
+    registry.register_with_id("auto.env.remove", 1102);
+
+    // Time functions (1200-1202)
+    registry.register_with_id("auto.time.now_ms", 1200);
+    registry.register_with_id("auto.time.now_sec", 1201);
+    registry.register_with_id("auto.time.sleep_ms", 1202);
+
+    // Process functions (1300-1304)
+    registry.register_with_id("auto.process.exit", 1300);
+    registry.register_with_id("auto.process.args", 1301);
+    registry.register_with_id("auto.process.current_dir", 1302);
+    registry.register_with_id("auto.process.set_current_dir", 1303);
+    registry.register_with_id("auto.process.spawn", 1304);
+
+    // Path functions (1400-1404)
+    registry.register_with_id("auto.path.join", 1400);
+    registry.register_with_id("auto.path.parent", 1401);
+    registry.register_with_id("auto.path.extension", 1402);
+    registry.register_with_id("auto.path.filename", 1403);
+    registry.register_with_id("auto.path.canonicalize", 1404);
+
+    // String functions (1500-1509)
+    registry.register_with_id("auto.str.len", 1500);
+    registry.register_with_id("auto.str.is_empty", 1501);
+    registry.register_with_id("auto.str.char_at", 1502);
+    registry.register_with_id("auto.str.substr", 1503);
+    registry.register_with_id("auto.str.contains", 1504);
+    registry.register_with_id("auto.str.starts_with", 1505);
+    registry.register_with_id("auto.str.ends_with", 1506);
+    registry.register_with_id("auto.str.trim", 1507);
+    registry.register_with_id("auto.str.split", 1508);
+    registry.register_with_id("auto.str.repeat", 1509);
+
+    // Char functions (1600-1606)
+    registry.register_with_id("auto.char.is_alpha", 1600);
+    registry.register_with_id("auto.char.is_digit", 1601);
+    registry.register_with_id("auto.char.is_alphanum", 1602);
+    registry.register_with_id("auto.char.is_whitespace", 1603);
+    registry.register_with_id("auto.char.is_ident", 1604);
+    registry.register_with_id("auto.char.to_lower", 1605);
+    registry.register_with_id("auto.char.to_upper", 1606);
+
+    // Math functions (1700-1703)
+    registry.register_with_id("auto.math.abs", 1700);
+    registry.register_with_id("auto.math.min", 1701);
+    registry.register_with_id("auto.math.max", 1702);
+    registry.register_with_id("auto.math.sqrt", 1703);
 }
 
 #[cfg(test)]

@@ -1,0 +1,18 @@
+/// VM function declarations for Math operations
+/// These are implemented in Rust in crates/auto-lang/src/vm/ffi/stdlib.rs
+
+/// Returns the absolute value of a number
+#[vm]
+fn abs(n i64) i64
+
+/// Returns the minimum of two numbers
+#[vm]
+fn min(a i64, b i64) i64
+
+/// Returns the maximum of two numbers
+#[vm]
+fn max(a i64, b i64) i64
+
+/// Returns the square root of a number
+#[vm]
+fn sqrt(d double) double

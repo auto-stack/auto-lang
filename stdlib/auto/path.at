@@ -1,0 +1,33 @@
+/// Path module - Path manipulation operations
+///
+/// This module provides functions for working with file paths.
+
+/// Join path components together
+/// Takes multiple path parts and joins them with the OS path separator
+/// Example: join("home", "user", "docs")  // Returns "home/user/docs" on Unix
+#[pub]
+fn join(parts ...str) str;
+
+/// Get the parent directory of a path
+/// Returns the parent directory, or empty string if no parent
+/// Example: parent("/home/user/docs")  // Returns "/home/user"
+#[pub]
+fn parent(path str) str;
+
+/// Get the file extension of a path
+/// Returns the extension without the dot, or empty string if no extension
+/// Example: extension("file.txt")  // Returns "txt"
+#[pub]
+fn extension(path str) str;
+
+/// Get the filename from a path
+/// Returns the last component of the path
+/// Example: filename("/home/user/file.txt")  // Returns "file.txt"
+#[pub]
+fn filename(path str) str;
+
+/// Canonicalize a path (resolve symlinks, .., .)
+/// Returns the absolute canonical path, or empty string on error
+/// Example: canonicalize("../docs")  // Returns "/home/user/docs"
+#[pub]
+fn canonicalize(path str) str;

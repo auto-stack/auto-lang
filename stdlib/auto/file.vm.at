@@ -1,0 +1,54 @@
+/// VM function declarations for File operations
+/// These are implemented in Rust in crates/auto-lang/src/vm/ffi/stdlib.rs
+
+// ============================================================================
+// File Read/Write Operations
+// ============================================================================
+
+/// Read text content from a file
+#[vm]
+fn read_text(path str) str
+
+/// Write text content to a file
+#[vm]
+fn write_text(path str, content str) int
+
+/// Read file contents as bytes
+#[vm]
+fn read_bytes(path str) []int
+
+/// Write bytes to a file
+#[vm]
+fn write_bytes(path str, bytes []int) int
+
+// ============================================================================
+// File Management Operations
+// ============================================================================
+
+/// Check if a file exists
+#[vm]
+fn exists(path str) bool
+
+/// Delete a file
+#[vm]
+fn delete(path str) int
+
+/// Copy a file from source to destination
+#[vm]
+fn copy(src str, dst str) int
+
+/// Get the size of a file in bytes
+#[vm]
+fn size(path str) i64
+
+// ============================================================================
+// Directory Operations
+// ============================================================================
+
+/// Create a directory (including parent directories)
+#[vm]
+fn create_dir(path str) int
+
+/// Check if a path is a directory
+#[vm]
+fn is_dir(path str) bool

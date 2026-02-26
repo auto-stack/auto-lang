@@ -1,0 +1,14 @@
+/// VM function declarations for Time operations
+/// These are implemented in Rust in crates/auto-lang/src/vm/ffi/stdlib.rs
+
+/// Get current time in milliseconds since Unix epoch
+#[vm]
+fn now_ms() i64
+
+/// Get current time in seconds since Unix epoch
+#[vm]
+fn now_sec() i64
+
+/// Sleep for specified milliseconds
+#[vm]
+fn sleep_ms(ms int)

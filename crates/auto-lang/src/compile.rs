@@ -305,6 +305,7 @@ impl CompileSession {
     ///
     /// 根据模块路径查找并加载模块，将符号合并到 type_store。
     /// Plan 085 Phase 5: 支持模块缓存，避免重复解析。
+    /// Plan 094: 同时加载 .at (root) 和 .vm.at (context) 文件，合并处理。
     fn load_module(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
         // Phase 5: 检查 AutoCache
         if self.auto_cache.is_cached_and_valid(&use_stmt.module) {
@@ -325,7 +326,7 @@ impl CompileSession {
         // 将模块路径转换为文件路径
         let module_path = use_stmt.module.replace(".", "/");
 
-        // 尝试找到模块文件
+        // 尝试找到模块根文件 (.at)
         let extensions = [".at", ".auto"];
         let mut found_path: Option<std::path::PathBuf> = None;
 
@@ -343,22 +344,53 @@ impl CompileSession {
             }
         }
 
-        let path = found_path.ok_or_else(|| {
+        let root_path = found_path.ok_or_else(|| {
             AutoError::Msg(format!("Module not found: {}", use_stmt.module))
         })?;
 
-        // 读取并解析模块
-        let module_source = std::fs::read_to_string(&path)
-            .map_err(|e| AutoError::Io(format!("Failed to read module {}: {}", path.display(), e)))?;
+        // 读取模块根文件
+        let mut module_source = std::fs::read_to_string(&root_path)
+            .map_err(|e| AutoError::Io(format!("Failed to read module {}: {}", root_path.display(), e)))?;
 
-        // 解析模块获取 type_store
-        let module_type_store = self.parse_module_to_type_store(&module_source, &path.to_string_lossy())?;
+        // Plan 094: 尝试加载上下文文件 (.vm.at)
+        // 根据编译引擎类型选择上下文文件后缀
+        let context_ext = ".vm.at"; // AutoVM 使用 .vm.at
+        let context_path = root_path.with_file_name({
+            let name = root_path.file_name().unwrap().to_str().unwrap();
+            format!("{}{}", name.strip_suffix(".at").unwrap_or(name), context_ext)
+        });
+
+        // 检查上下文文件是否存在
+        let full_context_path = if context_path.exists() {
+            Some(context_path.clone())
+        } else {
+            // 也尝试 stdlib/auto 路径
+            let stdlib_context = std::path::Path::new("stdlib/auto").join(&context_path);
+            if stdlib_context.exists() {
+                Some(stdlib_context)
+            } else {
+                None
+            }
+        };
+
+        // 如果上下文文件存在，读取并合并
+        if let Some(ctx_path) = full_context_path {
+            let context_source = std::fs::read_to_string(&ctx_path)
+                .map_err(|e| AutoError::Io(format!("Failed to read context file {}: {}", ctx_path.display(), e)))?;
+
+            // 合并两个文件的内容（用换行分隔）
+            module_source.push('\n');
+            module_source.push_str(&context_source);
+        }
+
+        // 解析合并后的模块获取 type_store
+        let module_type_store = self.parse_module_to_type_store(&module_source, &root_path.to_string_lossy())?;
 
         // Phase 5: 存入 AutoCache
         let cache_entry = ModuleCache::with_file(
             &use_stmt.module,
             module_type_store.clone(),
-            path.to_string_lossy(),
+            root_path.to_string_lossy(),
             &module_source,
         );
         self.auto_cache.store(&use_stmt.module, cache_entry);
