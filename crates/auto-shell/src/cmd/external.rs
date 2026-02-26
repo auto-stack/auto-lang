@@ -1,4 +1,4 @@
-use miette::{IntoDiagnostic, Result, miette};
+use miette::{miette, IntoDiagnostic, Result};
 use std::path::Path;
 use std::process::Command;
 
@@ -35,7 +35,8 @@ pub fn execute_external(input: &str, current_dir: &Path) -> Result<Option<String
         {
             // Unix: Try sh, then bash, then zsh
             for shell in &["sh", "bash", "zsh"] {
-                if let Ok(shell_result) = try_execute_with_shell(cmd_name, args, current_dir, shell) {
+                if let Ok(shell_result) = try_execute_with_shell(cmd_name, args, current_dir, shell)
+                {
                     return Ok(shell_result);
                 }
             }
@@ -75,11 +76,14 @@ fn try_execute_with_shell(
     shell: &str,
 ) -> Result<Option<String>> {
     // Build shell command: sh -c "cmd arg1 arg2..."
-    let shell_cmd = format!("{} {}", cmd_name,
+    let shell_cmd = format!(
+        "{} {}",
+        cmd_name,
         args.iter()
             .map(|arg| format!("\"{}\"", arg.replace('"', "\\\"")))
             .collect::<Vec<_>>()
-            .join(" "));
+            .join(" ")
+    );
 
     let output = Command::new(shell)
         .arg("-c")
@@ -106,11 +110,14 @@ fn try_execute_powershell(
 ) -> Result<Option<String>> {
     // Build PowerShell command
     // Use -Command with encoded arguments
-    let ps_cmd = format!("{}{}", cmd_name,
+    let ps_cmd = format!(
+        "{}{}",
+        cmd_name,
         args.iter()
             .map(|arg| format!(" \"{arg}\""))
             .collect::<Vec<_>>()
-            .join(" "));
+            .join(" ")
+    );
 
     // Execute via PowerShell
     let output = Command::new("powershell")
@@ -125,35 +132,6 @@ fn try_execute_powershell(
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         Err(miette!("PowerShell command failed: {}", stderr.trim()))
-    }
-}
-
-/// Try to execute a command via CMD on Windows (fallback)
-#[cfg(windows)]
-fn try_execute_cmd(
-    cmd_name: &str,
-    args: &[String],
-    current_dir: &Path,
-) -> Result<Option<String>> {
-    // Build CMD command
-    let cmd_args = format!("/C {}{}", cmd_name,
-        args.iter()
-            .map(|arg| format!(" \"{}\"", arg))
-            .collect::<Vec<_>>()
-            .join(" "));
-
-    let output = Command::new("cmd")
-        .args(["/C", &cmd_args])
-        .current_dir(current_dir)
-        .output()
-        .into_diagnostic()?;
-
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        Ok(Some(stdout.trim().to_string()))
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        Err(miette!("CMD command failed: {}", stderr.trim()))
     }
 }
 

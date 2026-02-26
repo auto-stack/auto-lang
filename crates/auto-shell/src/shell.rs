@@ -1,11 +1,8 @@
 use miette::{IntoDiagnostic, Result};
-use std::cell::RefCell;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use crate::parser::pipeline::parse_pipeline;
-use auto_lang::interp::Interpreter;
-use auto_lang::Universe;
+use auto_lang::autovm_persistent::AutovmReplSession;
 use auto_val::Value;
 
 pub mod vars;
@@ -18,7 +15,7 @@ use vars::ShellVars;
 pub struct Shell {
     current_dir: PathBuf,
     vars: ShellVars,
-    interpreter: Interpreter, // Persistent AutoLang interpreter
+    session: AutovmReplSession, // Persistent AutoVM REPL session
     bookmarks: BookmarkManager,
 
     previous_dir: Option<PathBuf>,
@@ -28,9 +25,8 @@ pub struct Shell {
 impl Shell {
     /// Create a new shell instance
     pub fn new() -> Self {
-        // Create persistent interpreter with shared universe
-        let universe = Rc::new(RefCell::new(Universe::new()));
-        let interpreter = Interpreter::with_univ(universe);
+        // Create persistent session (AutoVM based)
+        let session = AutovmReplSession::new();
 
         let registry = {
             let mut reg = CommandRegistry::new();
@@ -50,7 +46,7 @@ impl Shell {
         Self {
             current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
             vars: ShellVars::new(),
-            interpreter,
+            session,
             bookmarks: BookmarkManager::new(),
 
             previous_dir: None,
@@ -141,7 +137,7 @@ impl Shell {
     /// Execute a pipeline with Auto function support
     fn execute_pipeline_with_auto(&mut self, commands: &[String]) -> Result<Option<String>> {
         use crate::cmd::{auto, builtin, external, PipelineData};
-        
+
         use crate::parser::quote::parse_args;
 
         if commands.is_empty() {
@@ -170,16 +166,18 @@ impl Shell {
                 let input = input_pipeline.take().unwrap_or_else(PipelineData::empty);
 
                 match crate::cmd::parser::parse_args(&signature, args) {
-                    Ok(parsed_args) => {
-                        Some(registered_cmd.run(&parsed_args, input, self)?)
-                    }
+                    Ok(parsed_args) => Some(registered_cmd.run(&parsed_args, input, self)?),
                     Err(e) => return Err(e),
                 }
             } else {
                 // Non-registered command (builtins, auto functions, external)
                 // Convert PipelineData to text for legacy commands
                 let input_str = input_pipeline.take().and_then(|p| {
-                    if p.is_empty() { None } else { Some(p.into_text()) }
+                    if p.is_empty() {
+                        None
+                    } else {
+                        Some(p.into_text())
+                    }
                 });
 
                 if let Some(input) = &input_str {
@@ -189,7 +187,8 @@ impl Shell {
                     {
                         Some(PipelineData::from_text(output))
                     } else if self.has_auto_function(cmd_name) {
-                        let output = auto::execute_auto_function(self, cmd_name, args, Some(input))?;
+                        let output =
+                            auto::execute_auto_function(self, cmd_name, args, Some(input))?;
                         output.map(|s| PipelineData::from_text(s))
                     } else {
                         let output = external::execute_external(cmd, &self.current_dir)?;
@@ -308,12 +307,12 @@ impl Shell {
 
     /// Execute an AutoLang expression using persistent interpreter
     fn execute_auto(&mut self, input: &str) -> Result<Option<String>> {
-        match self.interpreter.interpret(input) {
+        match self.session.run(input) {
             Ok(_) => {
-                let result = self.interpreter.result.repr().to_string();
+                let result = self.session.format_last_result().unwrap_or_default();
                 Ok(Some(result))
             }
-            Err(e) => Err(e.into()),
+            Err(e) => Err(miette::miette!("{}", e)),
         }
     }
 
@@ -400,16 +399,18 @@ impl Shell {
 
     /// Check if a name is a registered Auto function
     pub fn has_auto_function(&self, name: &str) -> bool {
-        self.interpreter
-            .scope
-            .borrow()
-            .lookup_val_id(name)
-            .is_some()
+        self.session.functions().contains(&name.to_string())
     }
 
     /// Get Auto function by name
     pub fn get_auto_function(&self, name: &str) -> Option<Value> {
-        self.interpreter.scope.borrow().lookup_val(name)
+        // Note: AutovmReplSession doesn't easily expose the Value itself yet,
+        // but we can check if it exists. For now return Nil if it exists.
+        if self.has_auto_function(name) {
+            Some(Value::Nil)
+        } else {
+            None
+        }
     }
 
     /// Execute Auto function with arguments
@@ -429,9 +430,9 @@ impl Shell {
     fn import_module(&mut self, module: &str) -> Result<Option<String>> {
         // Try to import from stdlib
         let module_path = format!("use auto:{}:*", module);
-        match self.interpreter.interpret(&module_path) {
+        match self.session.run(&module_path) {
             Ok(_) => Ok(None),
-            Err(e) => Err(e.into()),
+            Err(e) => Err(miette::miette!("{}", e)),
         }
     }
 

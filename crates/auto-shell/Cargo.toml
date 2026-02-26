@@ -8,8 +8,8 @@ license = "MIT"
 
 [dependencies]
 # AutoLang integration
-auto-lang = { path = "../crates/auto-lang" }
-auto-val = { path = "../crates/auto-val" }
+auto-lang = { path = "../auto-lang" }
+auto-val = { path = "../auto-val" }
 
 # Terminal and REPL
 reedline = "0.44.0"

@@ -9,6 +9,7 @@ members = [
     # "crates/auto-lsp",  # Temporarily disabled due to Cargo.toml issues
     "crates/auto-val",
     "crates/auto-vm",
+    "crates/auto-shell",
     # "crates/auto-xml",  # Temporarily disabled due to Cargo.toml issues
     # Plan 082: AutoCache global build cache
     "crates/auto-cache",
