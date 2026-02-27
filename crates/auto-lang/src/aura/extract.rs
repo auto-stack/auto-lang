@@ -528,16 +528,100 @@ fn extract_body_stmts(body: &Body) -> ExtractResult<Vec<AuraStmt>> {
     body.stmts.iter()
         .filter_map(|stmt| {
             match stmt {
+                // 1. let x = value / var x = value
                 Stmt::Store(store) => {
                     Some(Ok(AuraStmt::Assign {
                         target: store.name.as_str().to_string(),
                         value: extract_expr(&store.expr).ok()?,
                     }))
                 }
+
+                // 2. x = value (expression statement with assignment)
+                Stmt::Expr(expr) => {
+                    extract_assignment_from_expr(expr)
+                }
+
                 _ => None,
             }
         })
         .collect()
+}
+
+/// Extract assignment from expression (e.g., count = count + 1)
+fn extract_assignment_from_expr(expr: &Expr) -> Option<ExtractResult<AuraStmt>> {
+    match expr {
+        // Binary expression with assignment operator: lhs = rhs
+        Expr::Bina(lhs, op, rhs) => {
+            use auto_val::Op;
+
+            match op {
+                // Simple assignment: x = value
+                Op::Asn => {
+                    if let Expr::Ident(name) = lhs.as_ref() {
+                        Some(Ok(AuraStmt::Assign {
+                            target: name.as_str().to_string(),
+                            value: extract_expr(rhs).ok()?,
+                        }))
+                    } else {
+                        None
+                    }
+                }
+
+                // Compound assignment: x += value, x -= value, etc.
+                Op::AddEq => {
+                    if let Expr::Ident(name) = lhs.as_ref() {
+                        Some(Ok(AuraStmt::Update {
+                            target: name.as_str().to_string(),
+                            op: AuraUpdateOp::AddAssign,
+                            value: extract_expr(rhs).ok()?,
+                        }))
+                    } else {
+                        None
+                    }
+                }
+
+                Op::SubEq => {
+                    if let Expr::Ident(name) = lhs.as_ref() {
+                        Some(Ok(AuraStmt::Update {
+                            target: name.as_str().to_string(),
+                            op: AuraUpdateOp::SubAssign,
+                            value: extract_expr(rhs).ok()?,
+                        }))
+                    } else {
+                        None
+                    }
+                }
+
+                Op::MulEq => {
+                    if let Expr::Ident(name) = lhs.as_ref() {
+                        Some(Ok(AuraStmt::Update {
+                            target: name.as_str().to_string(),
+                            op: AuraUpdateOp::MulAssign,
+                            value: extract_expr(rhs).ok()?,
+                        }))
+                    } else {
+                        None
+                    }
+                }
+
+                Op::DivEq => {
+                    if let Expr::Ident(name) = lhs.as_ref() {
+                        Some(Ok(AuraStmt::Update {
+                            target: name.as_str().to_string(),
+                            op: AuraUpdateOp::DivAssign,
+                            value: extract_expr(rhs).ok()?,
+                        }))
+                    } else {
+                        None
+                    }
+                }
+
+                _ => None,
+            }
+        }
+
+        _ => None,
+    }
 }
 
 /// Extract prop declaration
