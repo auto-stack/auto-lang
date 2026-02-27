@@ -108,7 +108,9 @@
       "Bash(sort:*)",
       "Bash(./target/release/auto-vm.exe:*)",
       "Bash(awk:*)",
-      "Bash(./auto/target/debug/auto.exe:*)"
+      "Bash(./auto/target/debug/auto.exe:*)",
+      "Bash(rtk cargo build -p auto-lang)",
+      "Bash(rtk cargo test -p auto-lang -- ffi)"
     ]
   }
 }

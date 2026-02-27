@@ -12,5 +12,7 @@ union MyUnion {
 
 fn main() {
     let my_union = MyUnion { i: 42 };
-    println!("int value: {}", my_union.i);
+    unsafe {
+        println!("int value: {}", my_union.i);
+    }
 }

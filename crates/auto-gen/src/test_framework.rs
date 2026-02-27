@@ -199,7 +199,7 @@ pub fn run_gen_test(test: &GenTestCase) -> Result<(), String> {
     // Now evaluate the template with the populated interpreter
     let result = inter
         .eval_template(&test.template)
-        .map_err(|e| format!("Failed to render template: {}", e))?;
+        .map_err(|e| format!("Failed to render template: {:#?}", e))?;
 
     let output = result.to_astr();
 

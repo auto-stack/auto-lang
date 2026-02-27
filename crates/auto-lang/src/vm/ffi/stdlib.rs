@@ -84,222 +84,71 @@ pub const NATIVE_CHAR_TO_UPPER: u16 = 1606;
 // ============================================================================
 
 /// Read text content from a file
-///
-/// Stack: path_str_idx -> content_str_idx (or -1 on error)
-pub fn shim_file_read_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    // Pop path from stack
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    // Read file
-    match fs::read_to_string(&path) {
-        Ok(content) => {
-            // Push content to stack
-            content
-                .push_to_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-        }
-        Err(e) => {
-            // Push error indicator (-1)
-            task.ram.push_i32(-1);
-            log::error!("File.read_text failed: {} - {}", path, e);
-        }
-    }
-
-    Ok(())
+#[auto_macros::rust_fn("File.read_text")]
+pub fn shim_file_read_text(path: String) -> Result<String, String> {
+    fs::read_to_string(&path).map_err(|e| format!("File.read_text failed: {} - {}", path, e))
 }
 
 /// Write text content to a file
-///
-/// Stack: path_str_idx, content_str_idx -> result (0 success, -1 error)
-pub fn shim_file_write_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    // Pop content first (LIFO)
-    let content: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    // Pop path
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    // Write file
-    match fs::write(&path, &content) {
-        Ok(()) => {
-            task.ram.push_i32(0); // Success
-        }
-        Err(e) => {
-            task.ram.push_i32(-1); // Error
-            log::error!("File.write_text failed: {} - {}", path, e);
-        }
-    }
-
-    Ok(())
+#[auto_macros::rust_fn("File.write_text")]
+pub fn shim_file_write_text(path: String, content: String) -> Result<(), String> {
+    fs::write(&path, &content).map_err(|e| format!("File.write_text failed: {} - {}", path, e))
 }
 
 /// Check if a file exists
-///
-/// Stack: path_str_idx -> bool (1 exists, 0 not exists)
-pub fn shim_file_exists(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let exists = fs::metadata(&path).is_ok();
-    task.ram.push_i32(if exists { 1 } else { 0 });
-
-    Ok(())
+#[auto_macros::rust_fn("File.exists")]
+pub fn shim_file_exists(path: String) -> bool {
+    fs::metadata(&path).is_ok()
 }
 
 /// Delete a file
-///
-/// Stack: path_str_idx -> result (0 success, -1 error)
-pub fn shim_file_delete(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    match fs::remove_file(&path) {
-        Ok(()) => {
-            task.ram.push_i32(0);
-        }
-        Err(e) => {
-            task.ram.push_i32(-1);
-            log::error!("File.delete failed: {} - {}", path, e);
-        }
-    }
-
-    Ok(())
+#[auto_macros::rust_fn("File.delete")]
+pub fn shim_file_delete(path: String) -> Result<(), String> {
+    fs::remove_file(&path).map_err(|e| format!("File.delete failed: {} - {}", path, e))
 }
 
 /// Create a directory
-///
-/// Stack: path_str_idx -> result (0 success, -1 error)
-pub fn shim_file_create_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    match fs::create_dir_all(&path) {
-        Ok(()) => {
-            task.ram.push_i32(0);
-        }
-        Err(e) => {
-            task.ram.push_i32(-1);
-            log::error!("File.create_dir failed: {} - {}", path, e);
-        }
-    }
-
-    Ok(())
+#[auto_macros::rust_fn("File.create_dir")]
+pub fn shim_file_create_dir(path: String) -> Result<(), String> {
+    fs::create_dir_all(&path).map_err(|e| format!("File.create_dir failed: {} - {}", path, e))
 }
 
 /// Read file contents as bytes
-///
-/// Stack: path_str -> bytes_list_id (Vec<i32>)
-pub fn shim_file_read_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
+#[auto_macros::rust_fn("File.read_bytes")]
+pub fn shim_file_read_bytes(path: String) -> Result<Vec<i32>, String> {
     match fs::read(&path) {
-        Ok(bytes) => {
-            // Convert bytes to Vec<i32>
-            let byte_list: Vec<i32> = bytes.into_iter().map(|b| b as i32).collect();
-            byte_list
-                .push_to_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-        }
-        Err(e) => {
-            log::error!("File.read_bytes failed: {} - {}", path, e);
-            // Return empty list on error
-            let empty: Vec<i32> = Vec::new();
-            empty
-                .push_to_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-        }
+        Ok(bytes) => Ok(bytes.into_iter().map(|b| b as i32).collect()),
+        Err(e) => Err(format!("File.read_bytes failed: {} - {}", path, e)),
     }
-
-    Ok(())
 }
 
 /// Write bytes to a file
-///
-/// Stack: path_str, bytes_list_id -> result (0 success, -1 error)
-pub fn shim_file_write_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let byte_list: Vec<i32> = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    // Convert Vec<i32> to bytes
+#[auto_macros::rust_fn("File.write_bytes")]
+pub fn shim_file_write_bytes(path: String, byte_list: Vec<i32>) -> Result<(), String> {
     let bytes: Vec<u8> = byte_list.into_iter().map(|b| b as u8).collect();
-
-    match fs::write(&path, &bytes) {
-        Ok(()) => {
-            task.ram.push_i32(0);
-        }
-        Err(e) => {
-            task.ram.push_i32(-1);
-            log::error!("File.write_bytes failed: {} - {}", path, e);
-        }
-    }
-
-    Ok(())
+    fs::write(&path, &bytes).map_err(|e| format!("File.write_bytes failed: {} - {}", path, e))
 }
 
 /// Copy a file
-///
-/// Stack: src_str, dst_str -> result (0 success, -1 error)
-pub fn shim_file_copy(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let dst: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let src: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    match fs::copy(&src, &dst) {
-        Ok(_) => {
-            task.ram.push_i32(0);
-        }
-        Err(e) => {
-            task.ram.push_i32(-1);
-            log::error!("File.copy failed: {} -> {} - {}", src, dst, e);
-        }
-    }
-
-    Ok(())
+#[auto_macros::rust_fn("File.copy")]
+pub fn shim_file_copy(src: String, dst: String) -> Result<(), String> {
+    fs::copy(&src, &dst)
+        .map(|_| ())
+        .map_err(|e| format!("File.copy failed: {} -> {} - {}", src, dst, e))
 }
 
 /// Get file size in bytes
-///
-/// Stack: path_str -> size (i64) or -1 on error
-pub fn shim_file_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    match fs::metadata(&path) {
-        Ok(meta) => {
-            let size = meta.len() as i64;
-            task.ram.push_i64(size);
-        }
-        Err(e) => {
-            log::error!("File.size failed: {} - {}", path, e);
-            task.ram.push_i64(-1);
-        }
-    }
-
-    Ok(())
+#[auto_macros::rust_fn("File.size")]
+pub fn shim_file_size(path: String) -> Result<i64, String> {
+    fs::metadata(&path)
+        .map(|meta| meta.len() as i64)
+        .map_err(|e| format!("File.size failed: {} - {}", path, e))
 }
 
 /// Check if path is a directory
-///
-/// Stack: path_str -> bool (1 is dir, 0 not dir or error)
-pub fn shim_file_is_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let is_dir = fs::metadata(&path)
-        .map(|m| m.is_dir())
-        .unwrap_or(false);
-
-    task.ram.push_i32(if is_dir { 1 } else { 0 });
-
-    Ok(())
+#[auto_macros::rust_fn("File.is_dir")]
+pub fn shim_file_is_dir(path: String) -> bool {
+    fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false)
 }
 
 // ============================================================================
@@ -307,48 +156,21 @@ pub fn shim_file_is_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 // ============================================================================
 
 /// Get an environment variable
-///
-/// Stack: key_str_idx -> value_str_idx (or empty string if not set)
-pub fn shim_env_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let key: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let value = std::env::var(&key).unwrap_or_default();
-
-    value
-        .push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    Ok(())
+#[auto_macros::rust_fn("Env.get")]
+pub fn shim_env_get(key: String) -> String {
+    std::env::var(&key).unwrap_or_default()
 }
 
 /// Set an environment variable
-///
-/// Stack: key_str_idx, value_str_idx -> result (0 success, -1 error)
-pub fn shim_env_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let value: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let key: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
+#[auto_macros::rust_fn("Env.set")]
+pub fn shim_env_set(key: String, value: String) {
     std::env::set_var(&key, &value);
-    task.ram.push_i32(0);
-
-    Ok(())
 }
 
 /// Remove an environment variable
-///
-/// Stack: key_str_idx -> result (0 success, -1 error)
-pub fn shim_env_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let key: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
+#[auto_macros::rust_fn("Env.remove")]
+pub fn shim_env_remove(key: String) {
     std::env::remove_var(&key);
-    task.ram.push_i32(0);
-
-    Ok(())
 }
 
 // ============================================================================
@@ -356,44 +178,27 @@ pub fn shim_env_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 // ============================================================================
 
 /// Get current time in milliseconds since Unix epoch
-///
-/// Stack: -> time_ms (i64 as two i32 slots)
-pub fn shim_time_now_ms(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let now = SystemTime::now()
+#[auto_macros::rust_fn("Time.now_ms")]
+pub fn shim_time_now_ms() -> i64 {
+    SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_millis() as i64;
-
-    task.ram.push_i64(now);
-
-    Ok(())
+        .as_millis() as i64
 }
 
 /// Get current time in seconds since Unix epoch
-///
-/// Stack: -> time_sec (i64 as two i32 slots)
-pub fn shim_time_now_sec(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let now = SystemTime::now()
+#[auto_macros::rust_fn("Time.now_sec")]
+pub fn shim_time_now_sec() -> i64 {
+    SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_secs() as i64;
-
-    task.ram.push_i64(now);
-
-    Ok(())
+        .as_secs() as i64
 }
 
 /// Sleep for specified milliseconds
-///
-/// Stack: ms (i32) -> ()
-pub fn shim_time_sleep_ms(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let ms = task.ram.pop_i32();
-
+#[auto_macros::rust_fn("Time.sleep_ms")]
+pub fn shim_time_sleep_ms(ms: i32) {
     std::thread::sleep(std::time::Duration::from_millis(ms as u64));
-
-    task.ram.push_i32(0); // Return unit
-
-    Ok(())
 }
 
 // ============================================================================
@@ -401,85 +206,46 @@ pub fn shim_time_sleep_ms(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
 // ============================================================================
 
 /// Exit the process with a code
-///
-/// Stack: code (i32) -> (never returns)
-pub fn shim_process_exit(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let code = task.ram.pop_i32();
+#[auto_macros::rust_fn("Process.exit")]
+pub fn shim_process_exit(code: i32) {
     std::process::exit(code);
 }
 
 /// Get command line arguments
-///
-/// Stack: -> list_id (Vec<String>)
-pub fn shim_process_args(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let args: Vec<String> = std::env::args().collect();
-    args.push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    Ok(())
+#[auto_macros::rust_fn("Process.args")]
+pub fn shim_process_args() -> Vec<String> {
+    std::env::args().collect()
 }
 
 /// Get current working directory
-///
-/// Stack: -> dir_str
-pub fn shim_process_current_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let dir = std::env::current_dir()
+#[auto_macros::rust_fn("Process.current_dir")]
+pub fn shim_process_current_dir() -> String {
+    std::env::current_dir()
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    dir.push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    Ok(())
+        .unwrap_or_default()
 }
 
 /// Set current working directory
-///
-/// Stack: path_str -> result (0 success, -1 error)
-pub fn shim_process_set_current_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    match std::env::set_current_dir(&path) {
-        Ok(()) => {
-            task.ram.push_i32(0);
-        }
-        Err(e) => {
-            task.ram.push_i32(-1);
-            log::error!("Process.set_current_dir failed: {} - {}", path, e);
-        }
-    }
-
-    Ok(())
+#[auto_macros::rust_fn("Process.set_current_dir")]
+pub fn shim_process_set_current_dir(path: String) -> Result<(), String> {
+    std::env::set_current_dir(&path)
+        .map_err(|e| format!("Process.set_current_dir failed: {} - {}", path, e))
 }
 
 /// Spawn an external process and wait for it to complete
-///
-/// Stack: args_list_id -> exit_code (i32)
-/// The args list should contain: [cmd, arg1, arg2, ...]
-pub fn shim_process_spawn(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let args: Vec<String> = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
+#[auto_macros::rust_fn("Process.spawn")]
+pub fn shim_process_spawn(args: Vec<String>) -> Result<i32, String> {
     if args.is_empty() {
-        task.ram.push_i32(-1);
-        return Ok(());
+        return Err("Process.spawn failed: empty arguments".to_string());
     }
 
     let cmd = &args[0];
     let cmd_args: Vec<&str> = args.iter().skip(1).map(|s| s.as_str()).collect();
 
     match std::process::Command::new(cmd).args(&cmd_args).status() {
-        Ok(status) => {
-            let code = status.code().unwrap_or(-1);
-            task.ram.push_i32(code);
-        }
-        Err(e) => {
-            log::error!("Process.spawn failed: {} - {}", cmd, e);
-            task.ram.push_i32(-1);
-        }
+        Ok(status) => Ok(status.code().unwrap_or(-1)),
+        Err(e) => Err(format!("Process.spawn failed: {} - {}", cmd, e)),
     }
-
-    Ok(())
 }
 
 // ============================================================================
@@ -487,108 +253,70 @@ pub fn shim_process_spawn(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 // ============================================================================
 
 /// Join path components together
-///
-/// Stack: n, part_n, ..., part_0 -> result_str
-pub fn shim_path_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    // Pop number of parts
+pub fn __shim_Path_join(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), crate::vm::engine::VMError> {
+    // 1. Pop argument count
     let n = task.ram.pop_i32() as usize;
 
-    // Pop parts in reverse order
+    // 2. Pop arguments in reverse order
     let mut parts: Vec<String> = Vec::with_capacity(n);
     for _ in 0..n {
-        let part: String = VMConvertible::pop_from_stack(task, vm)
-            .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+        let part: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
+            .map_err(|e| crate::vm::engine::VMError::RuntimeError(e.to_string()))?;
         parts.push(part);
     }
     parts.reverse();
 
-    // Join using PathBuf
+    // 3. Join using PathBuf
     let mut result = std::path::PathBuf::new();
     for part in parts {
         result.push(part);
     }
 
     let joined = result.to_string_lossy().to_string();
-    joined
-        .push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    // 4. Push result
+    crate::vm::ffi::convert::VMConvertible::push_to_stack(&joined, task, vm)
+        .map_err(|e| crate::vm::engine::VMError::RuntimeError(e.to_string()))?;
 
     Ok(())
 }
 
 /// Get parent directory of a path
-///
-/// Stack: path_str -> parent_str (or empty string if no parent)
-pub fn shim_path_parent(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let parent = Path::new(&path)
+#[auto_macros::rust_fn("Path.parent")]
+pub fn shim_path_parent(path: String) -> String {
+    Path::new(&path)
         .parent()
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    parent
-        .push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    Ok(())
+        .unwrap_or_default()
 }
 
 /// Get file extension of a path
-///
-/// Stack: path_str -> extension_str (or empty string if no extension)
-pub fn shim_path_extension(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let extension = Path::new(&path)
+#[auto_macros::rust_fn("Path.extension")]
+pub fn shim_path_extension(path: String) -> String {
+    Path::new(&path)
         .extension()
         .map(|e| e.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    extension
-        .push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    Ok(())
+        .unwrap_or_default()
 }
 
 /// Get filename from a path
-///
-/// Stack: path_str -> filename_str (or empty string if no filename)
-pub fn shim_path_filename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let filename = Path::new(&path)
+#[auto_macros::rust_fn("Path.filename")]
+pub fn shim_path_filename(path: String) -> String {
+    Path::new(&path)
         .file_name()
         .map(|f| f.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    filename
-        .push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    Ok(())
+        .unwrap_or_default()
 }
 
 /// Canonicalize a path (resolve symlinks, .., .)
-///
-/// Stack: path_str -> canonical_str (or empty string on error)
-pub fn shim_path_canonicalize(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let path: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let canonical = std::fs::canonicalize(&path)
+#[auto_macros::rust_fn("Path.canonicalize")]
+pub fn shim_path_canonicalize(path: String) -> String {
+    std::fs::canonicalize(&path)
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    canonical
-        .push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    Ok(())
+        .unwrap_or_default()
 }
 
 // ============================================================================
@@ -596,185 +324,76 @@ pub fn shim_path_canonicalize(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 // ============================================================================
 
 /// Get string length in bytes
-///
-/// Stack: str -> len (i32)
-pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let s: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    task.ram.push_i32(s.len() as i32);
-
-    Ok(())
+#[auto_macros::rust_fn("Str.len")]
+pub fn shim_str_len(s: String) -> i32 {
+    s.len() as i32
 }
 
 /// Check if string is empty
-///
-/// Stack: str -> bool
-pub fn shim_str_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let s: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    task.ram.push_i32(if s.is_empty() { 1 } else { 0 });
-
-    Ok(())
+#[auto_macros::rust_fn("Str.is_empty")]
+pub fn shim_str_is_empty(s: String) -> bool {
+    s.is_empty()
 }
 
 /// Get character at byte index (returns unicode codepoint)
-///
-/// Stack: str, index -> codepoint (i32) or -1 on error
-pub fn shim_str_char_at(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let index: i32 = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let s: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    // Get character at byte index
+#[auto_macros::rust_fn("Str.char_at")]
+pub fn shim_str_char_at(s: String, index: i32) -> i32 {
     if index < 0 || index as usize >= s.len() {
-        task.ram.push_i32(-1);
-        return Ok(());
+        return -1;
     }
-
-    // Find the character at the byte position
     match s[index as usize..].chars().next() {
-        Some(c) => task.ram.push_i32(c as i32),
-        None => task.ram.push_i32(-1),
+        Some(c) => c as i32,
+        None => -1,
     }
-
-    Ok(())
 }
 
 /// Get substring (byte indices)
-///
-/// Stack: str, start, end -> substr_str (or empty on error)
-pub fn shim_str_substr(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let end: i32 = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let start: i32 = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let s: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    // Validate indices
+#[auto_macros::rust_fn("Str.substr")]
+pub fn shim_str_substr(s: String, start: i32, end: i32) -> String {
     if start < 0 || end < start || start as usize > s.len() || end as usize > s.len() {
-        String::new().push_to_stack(task, vm)
-            .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-        return Ok(());
+        return String::new();
     }
-
-    let substr = s[start as usize..end as usize].to_string();
-    substr
-        .push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    Ok(())
+    s[start as usize..end as usize].to_string()
 }
 
 /// Check if string contains substring
-///
-/// Stack: str, needle -> bool
-pub fn shim_str_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let needle: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let s: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    task.ram.push_i32(if s.contains(&needle) { 1 } else { 0 });
-
-    Ok(())
+#[auto_macros::rust_fn("Str.contains")]
+pub fn shim_str_contains(s: String, needle: String) -> bool {
+    s.contains(&needle)
 }
 
 /// Check if string starts with prefix
-///
-/// Stack: str, prefix -> bool
-pub fn shim_str_starts_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let prefix: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let s: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    task.ram.push_i32(if s.starts_with(&prefix) { 1 } else { 0 });
-
-    Ok(())
+#[auto_macros::rust_fn("Str.starts_with")]
+pub fn shim_str_starts_with(s: String, prefix: String) -> bool {
+    s.starts_with(&prefix)
 }
 
 /// Check if string ends with suffix
-///
-/// Stack: str, suffix -> bool
-pub fn shim_str_ends_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let suffix: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let s: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    task.ram.push_i32(if s.ends_with(&suffix) { 1 } else { 0 });
-
-    Ok(())
+#[auto_macros::rust_fn("Str.ends_with")]
+pub fn shim_str_ends_with(s: String, suffix: String) -> bool {
+    s.ends_with(&suffix)
 }
 
 /// Trim whitespace from string
-///
-/// Stack: str -> trimmed_str
-pub fn shim_str_trim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let s: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let trimmed = s.trim().to_string();
-    trimmed
-        .push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    Ok(())
+#[auto_macros::rust_fn("Str.trim")]
+pub fn shim_str_trim(s: String) -> String {
+    s.trim().to_string()
 }
 
 /// Split string by delimiter
-///
-/// Stack: str, delimiter -> list_id
-pub fn shim_str_split(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let delimiter: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let s: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    // Split and collect into Vec<String>
-    let parts: Vec<String> = s.split(&delimiter).map(|p| p.to_string()).collect();
-
-    // Push as list
-    parts
-        .push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    Ok(())
+#[auto_macros::rust_fn("Str.split")]
+pub fn shim_str_split(s: String, delimiter: String) -> Vec<String> {
+    s.split(&delimiter).map(|p| p.to_string()).collect()
 }
 
 /// Repeat string n times
-///
-/// Stack: str, n -> repeated_str
-pub fn shim_str_repeat(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let n: i32 = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    let s: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
+#[auto_macros::rust_fn("Str.repeat")]
+pub fn shim_str_repeat(s: String, n: i32) -> String {
     if n < 0 {
-        String::new().push_to_stack(task, vm)
-            .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-        return Ok(());
+        String::new()
+    } else {
+        s.repeat(n as usize)
     }
-
-    let repeated = s.repeat(n as usize);
-    repeated
-        .push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-
-    Ok(())
 }
 
 // ============================================================================
@@ -782,124 +401,55 @@ pub fn shim_str_repeat(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 // ============================================================================
 
 /// Check if character is alphabetic
-///
-/// Stack: codepoint (i32) -> bool
-pub fn shim_char_is_alpha(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let codepoint = task.ram.pop_i32();
-
-    let is_alpha = if let Some(c) = char::from_u32(codepoint as u32) {
-        c.is_alphabetic()
-    } else {
-        false
-    };
-
-    task.ram.push_i32(if is_alpha { 1 } else { 0 });
-
-    Ok(())
+#[auto_macros::rust_fn("Char.is_alpha")]
+pub fn shim_char_is_alpha(codepoint: i32) -> bool {
+    char::from_u32(codepoint as u32).map_or(false, |c| c.is_alphabetic())
 }
 
 /// Check if character is a digit
-///
-/// Stack: codepoint (i32) -> bool
-pub fn shim_char_is_digit(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let codepoint = task.ram.pop_i32();
-
-    let is_digit = if let Some(c) = char::from_u32(codepoint as u32) {
-        c.is_ascii_digit()
-    } else {
-        false
-    };
-
-    task.ram.push_i32(if is_digit { 1 } else { 0 });
-
-    Ok(())
+#[auto_macros::rust_fn("Char.is_digit")]
+pub fn shim_char_is_digit(codepoint: i32) -> bool {
+    char::from_u32(codepoint as u32).map_or(false, |c| c.is_ascii_digit())
 }
 
 /// Check if character is alphanumeric
-///
-/// Stack: codepoint (i32) -> bool
-pub fn shim_char_is_alphanum(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let codepoint = task.ram.pop_i32();
-
-    let is_alphanum = if let Some(c) = char::from_u32(codepoint as u32) {
-        c.is_alphanumeric()
-    } else {
-        false
-    };
-
-    task.ram.push_i32(if is_alphanum { 1 } else { 0 });
-
-    Ok(())
+#[auto_macros::rust_fn("Char.is_alphanum")]
+pub fn shim_char_is_alphanum(codepoint: i32) -> bool {
+    char::from_u32(codepoint as u32).map_or(false, |c| c.is_alphanumeric())
 }
 
 /// Check if character is whitespace
-///
-/// Stack: codepoint (i32) -> bool
-pub fn shim_char_is_whitespace(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let codepoint = task.ram.pop_i32();
-
-    let is_whitespace = if let Some(c) = char::from_u32(codepoint as u32) {
-        c.is_whitespace()
-    } else {
-        false
-    };
-
-    task.ram.push_i32(if is_whitespace { 1 } else { 0 });
-
-    Ok(())
+#[auto_macros::rust_fn("Char.is_whitespace")]
+pub fn shim_char_is_whitespace(codepoint: i32) -> bool {
+    char::from_u32(codepoint as u32).map_or(false, |c| c.is_whitespace())
 }
 
-/// Check if character is a valid AutoLang identifier character
-///
-/// Stack: codepoint (i32) -> bool
-pub fn shim_char_is_ident(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let codepoint = task.ram.pop_i32();
-
-    let is_ident = if let Some(c) = char::from_u32(codepoint as u32) {
-        // AutoLang identifiers: start with letter or underscore,
-        // continue with letters, digits, or underscores
-        c.is_alphanumeric() || c == '_'
-    } else {
-        false
-    };
-
-    task.ram.push_i32(if is_ident { 1 } else { 0 });
-
-    Ok(())
+/// Check if character is valid for an identifier start or continue
+#[auto_macros::rust_fn("Char.is_ident")]
+pub fn shim_char_is_ident(codepoint: i32) -> bool {
+    char::from_u32(codepoint as u32).map_or(false, |c| c.is_alphanumeric() || c == '_')
 }
 
 /// Convert character to lowercase
-///
-/// Stack: codepoint (i32) -> lowercase_codepoint (i32)
-pub fn shim_char_to_lower(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let codepoint = task.ram.pop_i32();
-
-    let lower = if let Some(c) = char::from_u32(codepoint as u32) {
-        c.to_lowercase().next().unwrap_or(c) as i32
-    } else {
-        codepoint
-    };
-
-    task.ram.push_i32(lower);
-
-    Ok(())
+#[auto_macros::rust_fn("Char.to_lower")]
+pub fn shim_char_to_lower(codepoint: i32) -> i32 {
+    if let Some(c) = char::from_u32(codepoint as u32) {
+        if let Some(lower) = c.to_lowercase().next() {
+            return lower as i32;
+        }
+    }
+    codepoint
 }
 
 /// Convert character to uppercase
-///
-/// Stack: codepoint (i32) -> uppercase_codepoint (i32)
-pub fn shim_char_to_upper(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let codepoint = task.ram.pop_i32();
-
-    let upper = if let Some(c) = char::from_u32(codepoint as u32) {
-        c.to_uppercase().next().unwrap_or(c) as i32
-    } else {
-        codepoint
-    };
-
-    task.ram.push_i32(upper);
-
-    Ok(())
+#[auto_macros::rust_fn("Char.to_upper")]
+pub fn shim_char_to_upper(codepoint: i32) -> i32 {
+    if let Some(c) = char::from_u32(codepoint as u32) {
+        if let Some(upper) = c.to_uppercase().next() {
+            return upper as i32;
+        }
+    }
+    codepoint
 }
 
 // ============================================================================
@@ -951,61 +501,64 @@ pub fn shim_math_sqrt(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
 /// Register all stdlib FFI functions with the NativeInterface
 pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // File functions
-    natives.register_static(NATIVE_FILE_READ_TEXT, shim_file_read_text);
-    natives.register_static(NATIVE_FILE_WRITE_TEXT, shim_file_write_text);
-    natives.register_static(NATIVE_FILE_EXISTS, shim_file_exists);
-    natives.register_static(NATIVE_FILE_DELETE, shim_file_delete);
-    natives.register_static(NATIVE_FILE_CREATE_DIR, shim_file_create_dir);
-    natives.register_static(NATIVE_FILE_READ_BYTES, shim_file_read_bytes);
-    natives.register_static(NATIVE_FILE_WRITE_BYTES, shim_file_write_bytes);
-    natives.register_static(NATIVE_FILE_COPY, shim_file_copy);
-    natives.register_static(NATIVE_FILE_SIZE, shim_file_size);
-    natives.register_static(NATIVE_FILE_IS_DIR, shim_file_is_dir);
+    natives.register_static(NATIVE_FILE_READ_TEXT, __shim_File_read_text);
+    natives.register_static(NATIVE_FILE_WRITE_TEXT, __shim_File_write_text);
+    natives.register_static(NATIVE_FILE_EXISTS, __shim_File_exists);
+    natives.register_static(NATIVE_FILE_DELETE, __shim_File_delete);
+    natives.register_static(NATIVE_FILE_CREATE_DIR, __shim_File_create_dir);
+    natives.register_static(NATIVE_FILE_READ_BYTES, __shim_File_read_bytes);
+    natives.register_static(NATIVE_FILE_WRITE_BYTES, __shim_File_write_bytes);
+    natives.register_static(NATIVE_FILE_COPY, __shim_File_copy);
+    natives.register_static(NATIVE_FILE_SIZE, __shim_File_size);
+    natives.register_static(NATIVE_FILE_IS_DIR, __shim_File_is_dir);
 
     // Env functions
-    natives.register_static(NATIVE_ENV_GET, shim_env_get);
-    natives.register_static(NATIVE_ENV_SET, shim_env_set);
-    natives.register_static(NATIVE_ENV_REMOVE, shim_env_remove);
+    natives.register_static(NATIVE_ENV_GET, __shim_Env_get);
+    natives.register_static(NATIVE_ENV_SET, __shim_Env_set);
+    natives.register_static(NATIVE_ENV_REMOVE, __shim_Env_remove);
 
     // Time functions
-    natives.register_static(NATIVE_TIME_NOW_MS, shim_time_now_ms);
-    natives.register_static(NATIVE_TIME_NOW_SEC, shim_time_now_sec);
-    natives.register_static(NATIVE_TIME_SLEEP_MS, shim_time_sleep_ms);
+    natives.register_static(NATIVE_TIME_NOW_MS, __shim_Time_now_ms);
+    natives.register_static(NATIVE_TIME_NOW_SEC, __shim_Time_now_sec);
+    natives.register_static(NATIVE_TIME_SLEEP_MS, __shim_Time_sleep_ms);
 
     // Process functions
-    natives.register_static(NATIVE_PROCESS_EXIT, shim_process_exit);
-    natives.register_static(NATIVE_PROCESS_ARGS, shim_process_args);
-    natives.register_static(NATIVE_PROCESS_CURRENT_DIR, shim_process_current_dir);
-    natives.register_static(NATIVE_PROCESS_SET_CURRENT_DIR, shim_process_set_current_dir);
-    natives.register_static(NATIVE_PROCESS_SPAWN, shim_process_spawn);
+    natives.register_static(NATIVE_PROCESS_EXIT, __shim_Process_exit);
+    natives.register_static(NATIVE_PROCESS_ARGS, __shim_Process_args);
+    natives.register_static(NATIVE_PROCESS_CURRENT_DIR, __shim_Process_current_dir);
+    natives.register_static(
+        NATIVE_PROCESS_SET_CURRENT_DIR,
+        __shim_Process_set_current_dir,
+    );
+    natives.register_static(NATIVE_PROCESS_SPAWN, __shim_Process_spawn);
 
     // Path functions
-    natives.register_static(NATIVE_PATH_JOIN, shim_path_join);
-    natives.register_static(NATIVE_PATH_PARENT, shim_path_parent);
-    natives.register_static(NATIVE_PATH_EXTENSION, shim_path_extension);
-    natives.register_static(NATIVE_PATH_FILENAME, shim_path_filename);
-    natives.register_static(NATIVE_PATH_CANONICALIZE, shim_path_canonicalize);
+    natives.register_static(NATIVE_PATH_JOIN, __shim_Path_join);
+    natives.register_static(NATIVE_PATH_PARENT, __shim_Path_parent);
+    natives.register_static(NATIVE_PATH_EXTENSION, __shim_Path_extension);
+    natives.register_static(NATIVE_PATH_FILENAME, __shim_Path_filename);
+    natives.register_static(NATIVE_PATH_CANONICALIZE, __shim_Path_canonicalize);
 
     // String functions
-    natives.register_static(NATIVE_STR_LEN, shim_str_len);
-    natives.register_static(NATIVE_STR_IS_EMPTY, shim_str_is_empty);
-    natives.register_static(NATIVE_STR_CHAR_AT, shim_str_char_at);
-    natives.register_static(NATIVE_STR_SUBSTR, shim_str_substr);
-    natives.register_static(NATIVE_STR_CONTAINS, shim_str_contains);
-    natives.register_static(NATIVE_STR_STARTS_WITH, shim_str_starts_with);
-    natives.register_static(NATIVE_STR_ENDS_WITH, shim_str_ends_with);
-    natives.register_static(NATIVE_STR_TRIM, shim_str_trim);
-    natives.register_static(NATIVE_STR_SPLIT, shim_str_split);
-    natives.register_static(NATIVE_STR_REPEAT, shim_str_repeat);
+    natives.register_static(NATIVE_STR_LEN, __shim_Str_len);
+    natives.register_static(NATIVE_STR_IS_EMPTY, __shim_Str_is_empty);
+    natives.register_static(NATIVE_STR_CHAR_AT, __shim_Str_char_at);
+    natives.register_static(NATIVE_STR_SUBSTR, __shim_Str_substr);
+    natives.register_static(NATIVE_STR_CONTAINS, __shim_Str_contains);
+    natives.register_static(NATIVE_STR_STARTS_WITH, __shim_Str_starts_with);
+    natives.register_static(NATIVE_STR_ENDS_WITH, __shim_Str_ends_with);
+    natives.register_static(NATIVE_STR_TRIM, __shim_Str_trim);
+    natives.register_static(NATIVE_STR_SPLIT, __shim_Str_split);
+    natives.register_static(NATIVE_STR_REPEAT, __shim_Str_repeat);
 
     // Char functions
-    natives.register_static(NATIVE_CHAR_IS_ALPHA, shim_char_is_alpha);
-    natives.register_static(NATIVE_CHAR_IS_DIGIT, shim_char_is_digit);
-    natives.register_static(NATIVE_CHAR_IS_ALPHANUM, shim_char_is_alphanum);
-    natives.register_static(NATIVE_CHAR_IS_WHITESPACE, shim_char_is_whitespace);
-    natives.register_static(NATIVE_CHAR_IS_IDENT, shim_char_is_ident);
-    natives.register_static(NATIVE_CHAR_TO_LOWER, shim_char_to_lower);
-    natives.register_static(NATIVE_CHAR_TO_UPPER, shim_char_to_upper);
+    natives.register_static(NATIVE_CHAR_IS_ALPHA, __shim_Char_is_alpha);
+    natives.register_static(NATIVE_CHAR_IS_DIGIT, __shim_Char_is_digit);
+    natives.register_static(NATIVE_CHAR_IS_ALPHANUM, __shim_Char_is_alphanum);
+    natives.register_static(NATIVE_CHAR_IS_WHITESPACE, __shim_Char_is_whitespace);
+    natives.register_static(NATIVE_CHAR_IS_IDENT, __shim_Char_is_ident);
+    natives.register_static(NATIVE_CHAR_TO_LOWER, __shim_Char_to_lower);
+    natives.register_static(NATIVE_CHAR_TO_UPPER, __shim_Char_to_upper);
 
     // Math functions
     natives.register_static(NATIVE_MATH_ABS, shim_math_abs);

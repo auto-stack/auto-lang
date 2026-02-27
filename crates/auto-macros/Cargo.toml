@@ -1,0 +1,17 @@
+[package]
+name = "auto-macros"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+inventory = "0.3.22"
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full"] }
+
+[dev-dependencies]
+auto-lang = { path = "../auto-lang" }
+auto-val = { path = "../auto-val" }

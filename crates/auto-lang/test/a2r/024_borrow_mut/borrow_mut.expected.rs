@@ -5,7 +5,7 @@
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let s = str_new("hello", 10);
+    let mut s = str_new("hello", 10);
     let mut_ref = &mut s;
     str_append(mut_ref, " world");
     println!("{}", s);

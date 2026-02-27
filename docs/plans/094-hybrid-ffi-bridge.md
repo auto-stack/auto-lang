@@ -1,6 +1,6 @@
 # Plan 094: Hybrid FFI Bridge
 
-> **Status**: ✅ Phase 1-3 Complete (All 43 Shims Implemented), Phase 4 Ready
+> **Status**: ✅ Phase 1-5 Complete (All 43 Shims Implemented, #[rust_fn] macro working)
 > **Priority**: High (blocks Plan 095: CTEE)
 > **Dependencies**: Plan 092 (Dynamic FFI via use.rust)
 > **Consumers**: Plan 095 (Compile-Time Execution Engine)
@@ -10,10 +10,10 @@
 | Phase | Status | Description |
 |-------|--------|-------------|
 | Phase 1 | ✅ Complete | `VMConvertible` trait + primitive types |
-| Phase 2 | ⏸️ Deferred | `#[rust_fn]` macro (using manual shims for now) |
+| Phase 2 | ✅ Complete | `#[rust_fn]` macro (using macro shims for all basic native functions) |
 | Phase 3 | ✅ Complete | Unified `NativeInterface` lookup |
 | Phase 4 | ✅ Complete | All 43 built-in stdlib shims |
-| Phase 5 | 🔄 In Progress | Tests and documentation |
+| Phase 5 | ✅ Complete | Tests and documentation |
 | Phase 6 | ⏳ Future | JIT inline cache support |
 
 ### Files Created

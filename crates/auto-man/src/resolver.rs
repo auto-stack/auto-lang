@@ -533,7 +533,7 @@ use std.fs
 
         // Test exists() for standard library modules
         // Note: These return false if the files don't actually exist
-        let exists = resolver.exists("std.io");
+        let _exists = resolver.exists("std.io");
         // Result depends on whether stdlib/auto/io.at exists
 
         let not_exists = resolver.exists("nonexistent.module");

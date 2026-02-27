@@ -198,7 +198,7 @@ impl CompilerResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auto_val::AutoStr;
+    
 
     #[test]
     fn test_resolve_executable_env() {

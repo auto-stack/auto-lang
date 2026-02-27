@@ -361,9 +361,7 @@ impl<T1: VMConvertible, T2: VMConvertible> VMConvertible for (T1, T2) {
     }
 }
 
-impl<T1: VMConvertible, T2: VMConvertible, T3: VMConvertible> VMConvertible
-    for (T1, T2, T3)
-{
+impl<T1: VMConvertible, T2: VMConvertible, T3: VMConvertible> VMConvertible for (T1, T2, T3) {
     fn pop_from_stack(task: &mut AutoTask, vm: &AutoVM) -> Result<Self, FFIError> {
         let t3 = T3::pop_from_stack(task, vm)?;
         let t2 = T2::pop_from_stack(task, vm)?;
@@ -377,25 +375,4 @@ impl<T1: VMConvertible, T2: VMConvertible, T3: VMConvertible> VMConvertible
         self.2.push_to_stack(task, vm)?;
         Ok(())
     }
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Pop N arguments from the stack as a tuple
-///
-/// This helper function is used by the #[rust_fn] macro to pop
-/// multiple arguments from the stack.
-pub fn pop_args<const N: usize>(task: &mut AutoTask) -> Result<[i32; N], FFIError> {
-    let mut args = [0i32; N];
-    for i in (0..N).rev() {
-        args[i] = task.ram.pop_i32();
-    }
-    Ok(args)
-}
-
-/// Push a unit value (void return) to the stack
-pub fn push_unit(task: &mut AutoTask) {
-    task.ram.push_i32(0);
 }

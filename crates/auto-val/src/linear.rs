@@ -79,7 +79,9 @@ impl<T: Linear> MoveTracker<T> {
             "Use after move: value has already been taken"
         );
         self.state = MoveState::Moved;
-        self.value.take().expect("Value should be Some when available")
+        self.value
+            .take()
+            .expect("Value should be Some when available")
     }
 
     /// Get a reference to the value without taking ownership
@@ -123,6 +125,7 @@ mod tests {
     use super::*;
 
     // Test linear type
+    #[allow(dead_code)]
     struct TestString {
         data: String,
         dropped: bool,

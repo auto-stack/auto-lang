@@ -11,8 +11,8 @@
 // This module provides high-level cache operations for transpilers,
 // building on AutoManCache and AieBridge.
 
-use crate::{AutoManCache, ArtifactType, CacheError};
-use crate::fingerprint::{CompilationTarget, TranspilationLang, Fingerprint};
+use crate::fingerprint::{CompilationTarget, Fingerprint, TranspilationLang};
+use crate::{ArtifactType, AutoManCache, CacheError};
 use std::path::{Path, PathBuf};
 
 /// C Transpilation Cache
@@ -141,8 +141,12 @@ impl CTranspilationCache {
             .map(|m| m.len())
             .unwrap_or(0);
 
-        log::info!("[C Cache Store] {} (C: {} bytes, H: {} bytes)",
-                  module_name, c_size, h_size);
+        log::info!(
+            "[C Cache Store] {} (C: {} bytes, H: {} bytes)",
+            module_name,
+            c_size,
+            h_size
+        );
 
         Ok(())
     }
@@ -237,11 +241,7 @@ impl RustTranspilationCache {
     /// # Returns
     /// - Some(rs_path) if cache hit
     /// - None if cache miss
-    pub fn query(
-        &self,
-        module_name: &str,
-        source_code: &str,
-    ) -> Option<PathBuf> {
+    pub fn query(&self, module_name: &str, source_code: &str) -> Option<PathBuf> {
         let content_hash = Fingerprint::compute_content_hash(source_code);
         let target = CompilationTarget::transpilation(TranspilationLang::Rust);
 
@@ -284,9 +284,11 @@ impl RustTranspilationCache {
             &target,
         )?;
 
-        log::info!("[Rust Cache Store] {} ({} bytes)",
-                  module_name,
-                  std::fs::metadata(rs_path).map(|m| m.len()).unwrap_or(0));
+        log::info!(
+            "[Rust Cache Store] {} ({} bytes)",
+            module_name,
+            std::fs::metadata(rs_path).map(|m| m.len()).unwrap_or(0)
+        );
 
         Ok(())
     }
@@ -343,20 +345,13 @@ impl BytecodeCache {
     /// # Returns
     /// - Some(bc_path) if cache hit
     /// - None if cache miss
-    pub fn query(
-        &self,
-        module_name: &str,
-        source_code: &str,
-    ) -> Option<PathBuf> {
+    pub fn query(&self, module_name: &str, source_code: &str) -> Option<PathBuf> {
         let content_hash = Fingerprint::compute_content_hash(source_code);
         let target = CompilationTarget::transpilation(TranspilationLang::Bytecode);
 
-        let result = self.inner.query_transpiled(
-            module_name,
-            content_hash,
-            ArtifactType::Bytecode,
-            &target,
-        );
+        let result =
+            self.inner
+                .query_transpiled(module_name, content_hash, ArtifactType::Bytecode, &target);
 
         if result.is_some() {
             log::info!("[Bytecode Cache Hit] {}", module_name);
@@ -390,9 +385,11 @@ impl BytecodeCache {
             &target,
         )?;
 
-        log::info!("[Bytecode Cache Store] {} ({} bytes)",
-                  module_name,
-                  std::fs::metadata(bc_path).map(|m| m.len()).unwrap_or(0));
+        log::info!(
+            "[Bytecode Cache Store] {} ({} bytes)",
+            module_name,
+            std::fs::metadata(bc_path).map(|m| m.len()).unwrap_or(0)
+        );
 
         Ok(())
     }
@@ -473,9 +470,11 @@ impl BytecodeCache {
             &target,
         )?;
 
-        log::info!("[Bytecode Cache Store (AIE)] {} ({} bytes)",
-                  module_name,
-                  std::fs::metadata(bc_path).map(|m| m.len()).unwrap_or(0));
+        log::info!(
+            "[Bytecode Cache Store (AIE)] {} ({} bytes)",
+            module_name,
+            std::fs::metadata(bc_path).map(|m| m.len()).unwrap_or(0)
+        );
 
         Ok(())
     }
@@ -493,10 +492,8 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&cache_dir);
 
-        let cache = CTranspilationCache::with_cache_dir(
-            cache_dir.clone(),
-            "test_project".to_string(),
-        );
+        let cache =
+            CTranspilationCache::with_cache_dir(cache_dir.clone(), "test_project".to_string());
         assert!(cache.is_ok());
 
         let _ = std::fs::remove_dir_all(&cache_dir);
@@ -509,10 +506,8 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&cache_dir);
 
-        let cache = RustTranspilationCache::with_cache_dir(
-            cache_dir.clone(),
-            "test_project".to_string(),
-        );
+        let cache =
+            RustTranspilationCache::with_cache_dir(cache_dir.clone(), "test_project".to_string());
         assert!(cache.is_ok());
 
         let _ = std::fs::remove_dir_all(&cache_dir);
@@ -525,10 +520,7 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&cache_dir);
 
-        let cache = BytecodeCache::with_cache_dir(
-            cache_dir.clone(),
-            "test_project".to_string(),
-        );
+        let cache = BytecodeCache::with_cache_dir(cache_dir.clone(), "test_project".to_string());
         assert!(cache.is_ok());
 
         let _ = std::fs::remove_dir_all(&cache_dir);
@@ -539,10 +531,9 @@ mod tests {
         let temp_dir = std::env::temp_dir();
         let cache_dir = temp_dir.join(format!("test_c_roundtrip_{}", std::process::id()));
 
-        let cache = CTranspilationCache::with_cache_dir(
-            cache_dir.clone(),
-            "test_project".to_string(),
-        ).unwrap();
+        let cache =
+            CTranspilationCache::with_cache_dir(cache_dir.clone(), "test_project".to_string())
+                .unwrap();
 
         let source_code = r#"
 fn add(a int, b int) int {
@@ -557,7 +548,9 @@ fn add(a int, b int) int {
         let h_path = temp_dir.join("test_add.h");
 
         let mut c_file = std::fs::File::create(&c_path).unwrap();
-        c_file.write_all(b"int add(int a, int b) { return a + b; }").unwrap();
+        c_file
+            .write_all(b"int add(int a, int b) { return a + b; }")
+            .unwrap();
 
         let mut h_file = std::fs::File::create(&h_path).unwrap();
         h_file.write_all(b"int add(int a, int b);").unwrap();
@@ -586,10 +579,9 @@ fn add(a int, b int) int {
         let temp_dir = std::env::temp_dir();
         let cache_dir = temp_dir.join(format!("test_rust_roundtrip_{}", std::process::id()));
 
-        let cache = RustTranspilationCache::with_cache_dir(
-            cache_dir.clone(),
-            "test_project".to_string(),
-        ).unwrap();
+        let cache =
+            RustTranspilationCache::with_cache_dir(cache_dir.clone(), "test_project".to_string())
+                .unwrap();
 
         let source_code = "fn add(a int, b int) int { a + b }";
         let module_name = "test:add";
@@ -597,7 +589,8 @@ fn add(a int, b int) int {
         // Create test .rs file
         let rs_path = temp_dir.join("test_add.rs");
         let mut file = std::fs::File::create(&rs_path).unwrap();
-        file.write_all(b"pub fn add(a: i32, b: i32) -> i32 { a + b }").unwrap();
+        file.write_all(b"pub fn add(a: i32, b: i32) -> i32 { a + b }")
+            .unwrap();
 
         // Store in cache
         let result = cache.store(module_name, source_code, &rs_path);
@@ -618,10 +611,8 @@ fn add(a int, b int) int {
         let temp_dir = std::env::temp_dir();
         let cache_dir = temp_dir.join(format!("test_bc_roundtrip_{}", std::process::id()));
 
-        let cache = BytecodeCache::with_cache_dir(
-            cache_dir.clone(),
-            "test_project".to_string(),
-        ).unwrap();
+        let cache =
+            BytecodeCache::with_cache_dir(cache_dir.clone(), "test_project".to_string()).unwrap();
 
         let source_code = "fn main() { 42 }";
         let module_name = "test:main";
@@ -650,10 +641,8 @@ fn add(a int, b int) int {
         let temp_dir = std::env::temp_dir();
         let cache_dir = temp_dir.join(format!("test_bc_aie_{}", std::process::id()));
 
-        let cache = BytecodeCache::with_cache_dir(
-            cache_dir.clone(),
-            "test_project".to_string(),
-        ).unwrap();
+        let cache =
+            BytecodeCache::with_cache_dir(cache_dir.clone(), "test_project".to_string()).unwrap();
 
         let module_name = "test:module";
         let interface_hash = [42u8; 32];
@@ -682,10 +671,9 @@ fn add(a int, b int) int {
         let temp_dir = std::env::temp_dir();
         let cache_dir = temp_dir.join(format!("test_c_link_{}", std::process::id()));
 
-        let cache = CTranspilationCache::with_cache_dir(
-            cache_dir.clone(),
-            "test_project".to_string(),
-        ).unwrap();
+        let cache =
+            CTranspilationCache::with_cache_dir(cache_dir.clone(), "test_project".to_string())
+                .unwrap();
 
         let source_code = "fn test() int { 42 }";
         let module_name = "test:link";
@@ -701,7 +689,9 @@ fn add(a int, b int) int {
         h_file.write_all(b"int test();").unwrap();
 
         // Store in cache
-        cache.store(module_name, source_code, &c_path, Some(&h_path)).unwrap();
+        cache
+            .store(module_name, source_code, &c_path, Some(&h_path))
+            .unwrap();
 
         // Test get_or_link
         let output_c = temp_dir.join("output.c");

@@ -4,27 +4,21 @@
 #[allow(unused_imports)]
 use auto_lang::a2r_std::*;
 
-struct Wing {}
+struct WingStruct {}
 
-impl Wing {
+impl WingStruct {
     fn fly(&self) {
         println!("flying");
     }
 }
 
-trait Wing {
+trait WingTrait {
     fn fly(&self);
 }
 
 struct Duck {}
 
-impl Wing for Duck {
-    fn fly(&self) {
-        // TODO: Implement fly method body from Wing
-    }
-}
-
-impl Duck {
+impl WingTrait for Duck {
     fn fly(&self) {
         println!("flying");
     }

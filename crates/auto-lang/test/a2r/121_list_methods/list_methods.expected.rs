@@ -9,13 +9,13 @@ fn main() {
     let list: List<i32> = List::new();
 
 
-    let len = list.len();
-    let is_empty = list.is_empty();
+    let _len = list.len();
+    let _is_empty = list.is_empty();
 
 
     list.push(10);
     list.push(20);
     list.push(30);
 
-    let new_len = list.len();
+    let _new_len = list.len();
 }

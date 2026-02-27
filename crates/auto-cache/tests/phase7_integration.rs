@@ -6,10 +6,9 @@
 // - Cache inspection by hash and module name
 // - Cache integrity verification
 
-use auto_cache::{AutoCache, ArtifactMetadata, ArtifactType, CompilationTarget};
+use auto_cache::{ArtifactMetadata, ArtifactType, AutoCache};
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::{Path, PathBuf};
 
 #[test]
 fn test_hit_rate_calculation() {
@@ -67,7 +66,11 @@ fn test_list_artifacts_without_filter() {
         let metadata = ArtifactMetadata {
             hash_key: format!("test{}", i),
             blob_path: test_file.clone(),
-            artifact_type: if i % 2 == 0 { ArtifactType::TranspiledC } else { ArtifactType::TranspiledRust },
+            artifact_type: if i % 2 == 0 {
+                ArtifactType::TranspiledC
+            } else {
+                ArtifactType::TranspiledRust
+            },
             file_size: 8 + i,
             created_at: 1000 + i * 100,
             last_used_at: 2000 + i * 100,
@@ -77,7 +80,9 @@ fn test_list_artifacts_without_filter() {
             module_name: format!("module{}", i),
         };
 
-        cache.put(&format!("test{}", i), &test_file, &metadata).unwrap();
+        cache
+            .put(&format!("test{}", i), &test_file, &metadata)
+            .unwrap();
     }
 
     // List all artifacts
@@ -136,14 +141,21 @@ fn test_list_artifacts_with_type_filter() {
     cache.put("test_rust", &rust_file, &rust_metadata).unwrap();
 
     // Filter by C type
-    let c_artifacts = cache.list_artifacts(Some(ArtifactType::TranspiledC), 10).unwrap();
+    let c_artifacts = cache
+        .list_artifacts(Some(ArtifactType::TranspiledC), 10)
+        .unwrap();
     assert_eq!(c_artifacts.len(), 1);
     assert_eq!(c_artifacts[0].artifact_type, ArtifactType::TranspiledC);
 
     // Filter by Rust type
-    let rust_artifacts = cache.list_artifacts(Some(ArtifactType::TranspiledRust), 10).unwrap();
+    let rust_artifacts = cache
+        .list_artifacts(Some(ArtifactType::TranspiledRust), 10)
+        .unwrap();
     assert_eq!(rust_artifacts.len(), 1);
-    assert_eq!(rust_artifacts[0].artifact_type, ArtifactType::TranspiledRust);
+    assert_eq!(
+        rust_artifacts[0].artifact_type,
+        ArtifactType::TranspiledRust
+    );
 
     // Cleanup
     let _ = fs::remove_dir_all(&temp_dir);
@@ -297,7 +309,9 @@ fn test_list_respects_limit() {
             module_name: format!("module{}", i),
         };
 
-        cache.put(&format!("test{}", i), &test_file, &metadata).unwrap();
+        cache
+            .put(&format!("test{}", i), &test_file, &metadata)
+            .unwrap();
     }
 
     // List with limit of 3

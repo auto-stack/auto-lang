@@ -5,8 +5,8 @@
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let s: String = "hello";
-    let slice: String = &s;
+    let s: String = "hello".to_string();
+    let slice: &str = &s;
     println!("{}", str_len(slice));
     println!("{}", s);
 }

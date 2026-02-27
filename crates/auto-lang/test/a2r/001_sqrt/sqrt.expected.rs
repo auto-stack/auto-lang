@@ -8,6 +8,6 @@ fn square(x: f64) -> f64 {
     x * x
 }
 
-fn main() -> i32 {
-    square(2)
+fn main() {
+    let _ = square(2.0);
 }

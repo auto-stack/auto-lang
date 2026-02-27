@@ -5,17 +5,19 @@
 use auto_lang::a2r_std::*;
 
 fn inc(a: *mut i32) {
-    *a += 1;
+    unsafe { *a += 1; }
 }
 
 fn main() {
     let mut x: i32 = 5;
     println!("x =  {}", x);
-    let mut y: *mut i32 = x as *mut _;
-    println!("y =  {}", *y);
-    *y += 1;
+    let y: *mut i32 = &mut x as *mut _;
+    unsafe {
+        println!("y =  {}", *y);
+        *y += 1;
+    }
     println!("now x is {}", x);
 
-    inc(x as *mut _);
+    inc(&mut x as *mut _);
     println!("now x is {}", x);
 }

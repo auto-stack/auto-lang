@@ -5,11 +5,11 @@
 use auto_lang::a2r_std::*;
 
 fn main() {
-    let s: String = "hello";
+    let s: &str = "hello";
 
 
-    let v1: String = &s;
-    let v2: String = &s;
+    let v1: &str = &s;
+    let v2: &str = &s;
 
 
 

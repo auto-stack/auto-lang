@@ -12,6 +12,6 @@ fn main() {
     list.push(30);
 
 
-    let first = list[0]?;
-    let second = list[1]?;
+    let _first: Option<i32> = list.get(0);
+    let _second: Option<i32> = list.get(1);
 }

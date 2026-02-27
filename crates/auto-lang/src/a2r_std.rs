@@ -165,12 +165,43 @@ impl<T: Clone> From<Vec<T>> for List<T> {
 /// May<T> - AutoLang's optional type (alias for Option<T>)
 pub type May<T> = Option<T>;
 
+// Type aliases for May<T> with specific types (for a2r transpiler)
+pub type MayInt = Option<i32>;
+pub type MayUint = Option<u32>;
+pub type MayFloat = Option<f64>;
+pub type MayDouble = Option<f64>;
+pub type MayChar = Option<char>;
+pub type MayBool = Option<bool>;
+pub type MayStr = Option<String>;
+
 /// Nil - AutoLang's nil value type marker
 pub struct Nil;
 
 /// Create a Nil value (None)
 pub fn nil<T>() -> Option<T> {
     None
+}
+
+// =============================================================================
+// String functions for a2r transpiler
+// =============================================================================
+
+/// Create a new string with initial capacity
+/// In AutoLang: str_new("hello", 10)
+pub fn str_new(s: &str, _capacity: usize) -> String {
+    s.to_string()
+}
+
+/// Get string length
+/// In AutoLang: str_len(s)
+pub fn str_len(s: &str) -> usize {
+    s.len()
+}
+
+/// Append to string
+/// In AutoLang: str_append(s, " world")
+pub fn str_append(s: &mut String, other: &str) {
+    s.push_str(other);
 }
 
 #[cfg(test)]

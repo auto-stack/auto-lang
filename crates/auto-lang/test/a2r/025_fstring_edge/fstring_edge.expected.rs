@@ -17,6 +17,6 @@ fn main() {
     println!("{}", expr);
 
 
-    let name: String = "World";
+    let name: &str = "World";
     println!("Hello {}", name);
 }

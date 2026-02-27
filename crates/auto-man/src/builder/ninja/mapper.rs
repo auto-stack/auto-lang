@@ -141,7 +141,7 @@ impl FlagMapper {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::builder::ninja::config::{CompilerLocation, ExecutableType};
+    
 
     fn create_test_msvc_config() -> CompilerConfig {
         CompilerConfig::msvc_default()

@@ -3,7 +3,7 @@ members = [
     "crates/auto",
     "crates/auto-gen",
     "crates/auto-lang",
-    "crates/auto-lang-macros",
+    "crates/auto-macros",
     # Plan 078: AutoMan migration from ../auto-man
     "crates/auto-man",
     # "crates/auto-lsp",  # Temporarily disabled due to Cargo.toml issues

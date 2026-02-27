@@ -7,5 +7,5 @@ use auto_lang::a2r_std::*;
 
 fn main() {
 
-    let list: List<i32> = List::new();
+    let _list: List<i32> = List::new();
 }

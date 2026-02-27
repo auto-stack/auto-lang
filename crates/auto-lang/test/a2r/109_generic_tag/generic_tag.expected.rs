@@ -5,11 +5,11 @@
 use auto_lang::a2r_std::*;
 
 enum May<T> {
-    val(T),
+    Val(T),
 }
 
 
 fn main() {
-    let x = May.val(42);
+    let x = May::Val(42);
     x;
 }

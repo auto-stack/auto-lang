@@ -3,7 +3,9 @@
 // This benchmark measures the performance improvement of incremental transpilation
 // compared to full transpilation.
 
-use auto_lang::{trans_c, trans_c_with_session, trans_rust, trans_rust_with_session, compile::CompileSession};
+use auto_lang::{
+    compile::CompileSession, trans_c, trans_c_with_session, trans_rust, trans_rust_with_session,
+};
 use std::fs;
 use std::path::PathBuf;
 
@@ -113,7 +115,10 @@ mod bench_tests {
         println!("\n=== C Transpilation Benchmark ===");
         println!("Full transpilation: {:?}", full_duration);
         println!("Incremental (no changes): {:?}", incremental_duration);
-        println!("Speedup: {:.2}x", full_duration.as_nanos() as f64 / incremental_duration.as_nanos() as f64);
+        println!(
+            "Speedup: {:.2}x",
+            full_duration.as_nanos() as f64 / incremental_duration.as_nanos() as f64
+        );
 
         // Verify output is identical
         assert!(result1.contains("[trans]"));
@@ -121,7 +126,11 @@ mod bench_tests {
 
         // Expected: incremental should be faster (at least 1.5x)
         let speedup = full_duration.as_nanos() as f64 / incremental_duration.as_nanos() as f64;
-        assert!(speedup >= 1.0, "Incremental should be at least as fast as full (got {:.2}x)", speedup);
+        assert!(
+            speedup >= 1.0,
+            "Incremental should be at least as fast as full (got {:.2}x)",
+            speedup
+        );
     }
 
     #[test]
@@ -146,7 +155,10 @@ mod bench_tests {
         println!("\n=== Rust Transpilation Benchmark ===");
         println!("Full transpilation: {:?}", full_duration);
         println!("Incremental (no changes): {:?}", incremental_duration);
-        println!("Speedup: {:.2}x", full_duration.as_nanos() as f64 / incremental_duration.as_nanos() as f64);
+        println!(
+            "Speedup: {:.2}x",
+            full_duration.as_nanos() as f64 / incremental_duration.as_nanos() as f64
+        );
 
         // Verify output is generated
         assert!(result1.contains("[trans]"));
@@ -154,7 +166,11 @@ mod bench_tests {
 
         // Expected: incremental should be faster (at least 1.5x)
         let speedup = full_duration.as_nanos() as f64 / incremental_duration.as_nanos() as f64;
-        assert!(speedup >= 1.0, "Incremental should be at least as fast as full (got {:.2}x)", speedup);
+        assert!(
+            speedup >= 1.0,
+            "Incremental should be at least as fast as full (got {:.2}x)",
+            speedup
+        );
     }
 
     #[test]
@@ -182,13 +198,16 @@ mod bench_tests {
 
         // Extract statistics from result2
         if let Some(start) = result2.find("(") {
-            if let Some(end) = result2.find(")")) {
+            if let Some(end) = result2.find(")") {
                 let stats = &result2[start + 1..end];
                 println!("Statistics: {}", stats);
             }
         }
 
         // Second transpilation should use cached results (dirty = 0)
-        assert!(result2.contains("0 dirty"), "Second run should have 0 dirty fragments");
+        assert!(
+            result2.contains("0 dirty"),
+            "Second run should have 0 dirty fragments"
+        );
     }
 }
