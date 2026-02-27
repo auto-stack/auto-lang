@@ -21,6 +21,10 @@ pub mod config;
 pub mod database;
 pub mod dep;
 pub mod error;
+// Plan 096 Phase 0: Scenario-based compilation
+pub mod session;
+// Plan 096 Phase 0: AURA (Auto UI Representation Abstract)
+pub mod aura;
 // Plan 081 Phase 2: Execution mode selection (autovm, evaluator, c, rust)
 pub mod mode;
 // Plan 081 Phase 4: Multi-mode compilation pipeline

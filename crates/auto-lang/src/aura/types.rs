@@ -1,0 +1,498 @@
+//! AURA Core Types - Data structures for UI intermediate representation
+//!
+//! This module defines the core data structures for AURA (Auto UI Representation Abstract).
+//! These types represent the extracted, structured form of UI components.
+
+use std::collections::HashMap;
+use std::fmt;
+
+// Re-export Type from ast for convenience
+pub use crate::ast::Type;
+
+// ============================================================================
+// AURA Widget - Core Component Definition
+// ============================================================================
+
+/// AURA Widget: The core component definition
+///
+/// This is the primary structure extracted from a `widget` declaration.
+/// It contains:
+/// - State variables (model)
+/// - View tree (pure layout, no logic)
+/// - Event handlers (logic payload)
+#[derive(Debug, Clone)]
+pub struct AuraWidget {
+    /// Widget name (e.g., "Counter")
+    pub name: String,
+
+    /// State variable definitions
+    pub state_vars: Vec<AuraStateDef>,
+
+    /// Message type definitions
+    pub messages: Vec<AuraMessage>,
+
+    /// View tree: pure layout and bindings, no logic
+    pub view_tree: AuraNode,
+
+    /// Event handlers: mapped by event pattern (e.g., "Msg::Inc")
+    pub handlers: HashMap<String, LogicPayload>,
+
+    /// Props for reusable components
+    pub props: Vec<AuraProp>,
+}
+
+// ============================================================================
+// State Definition
+// ============================================================================
+
+/// State variable definition
+#[derive(Debug, Clone)]
+pub struct AuraStateDef {
+    /// Variable name (e.g., "count")
+    pub name: String,
+
+    /// Type information (e.g., Type::Int)
+    pub type_info: Type,
+
+    /// Initial value expression
+    pub initial: AuraExpr,
+}
+
+/// Prop definition for reusable components
+#[derive(Debug, Clone)]
+pub struct AuraProp {
+    /// Prop name
+    pub name: String,
+
+    /// Type information
+    pub type_info: Type,
+
+    /// Default value (if any)
+    pub default: Option<AuraExpr>,
+}
+
+// ============================================================================
+// Message Definition
+// ============================================================================
+
+/// Message type definition (for MVU pattern)
+#[derive(Debug, Clone)]
+pub struct AuraMessage {
+    /// Message type name (e.g., "Msg")
+    pub name: String,
+
+    /// Message variants
+    pub variants: Vec<AuraMsgVariant>,
+}
+
+/// Message variant
+#[derive(Debug, Clone)]
+pub struct AuraMsgVariant {
+    /// Variant name (e.g., "Inc", "Dec")
+    pub name: String,
+
+    /// Optional payload type
+    pub payload: Option<Type>,
+}
+
+// ============================================================================
+// View Tree
+// ============================================================================
+
+/// View node: element or text
+#[derive(Debug, Clone)]
+pub enum AuraNode {
+    /// Element node with tag, props, events, and children
+    Element {
+        /// Tag name (e.g., "col", "button", "h2")
+        tag: String,
+
+        /// Properties (key-value pairs, values can be dynamic)
+        props: HashMap<String, AuraExpr>,
+
+        /// Event handlers (event name -> message pattern)
+        events: HashMap<String, String>,
+
+        /// Child nodes
+        children: Vec<AuraNode>,
+    },
+
+    /// Text node (literal or interpolated)
+    Text(AuraTextContent),
+}
+
+/// Text content: can be literal or contain interpolations
+#[derive(Debug, Clone)]
+pub enum AuraTextContent {
+    /// Literal text
+    Literal(String),
+
+    /// Interpolated text with state references
+    /// Format: "Current Count: ${.count}"
+    Interpolated {
+        /// Raw text with ${...} placeholders
+        template: String,
+
+        /// Extracted state references (e.g., ["count"])
+        bindings: Vec<String>,
+    },
+}
+
+impl AuraNode {
+    /// Create a new element node
+    pub fn element(tag: impl Into<String>) -> Self {
+        AuraNode::Element {
+            tag: tag.into(),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            children: Vec::new(),
+        }
+    }
+
+    /// Create a text node
+    pub fn text(content: impl Into<String>) -> Self {
+        AuraNode::Text(AuraTextContent::Literal(content.into()))
+    }
+
+    /// Add a prop
+    pub fn with_prop(mut self, key: impl Into<String>, value: AuraExpr) -> Self {
+        if let AuraNode::Element { props, .. } = &mut self {
+            props.insert(key.into(), value);
+        }
+        self
+    }
+
+    /// Add an event handler
+    pub fn with_event(mut self, event: impl Into<String>, handler: impl Into<String>) -> Self {
+        if let AuraNode::Element { events, .. } = &mut self {
+            events.insert(event.into(), handler.into());
+        }
+        self
+    }
+
+    /// Add a child node
+    pub fn with_child(mut self, child: AuraNode) -> Self {
+        if let AuraNode::Element { children, .. } = &mut self {
+            children.push(child);
+        }
+        self
+    }
+}
+
+// ============================================================================
+// Logic Payload
+// ============================================================================
+
+/// Logic payload: supports both AOT and dynamic execution
+///
+/// This allows handlers to be:
+/// - Transpiled to target language (React/Compose)
+/// - Executed by AutoVM (GPUI dynamic)
+#[derive(Debug, Clone)]
+pub enum LogicPayload {
+    /// AST block for AOT transpilers (React, Compose)
+    /// Contains the original statement nodes
+    AstBlock(Vec<AuraStmt>),
+
+    /// Bytecode for AutoVM dynamic execution (GPUI)
+    /// Pre-compiled bytecode that can be executed at runtime
+    Bytecode(Vec<u8>),
+}
+
+// ============================================================================
+// Expressions
+// ============================================================================
+
+/// AURA expression: simplified expression types for UI
+#[derive(Debug, Clone)]
+pub enum AuraExpr {
+    /// Literal string
+    Literal(String),
+
+    /// Integer literal
+    Int(i64),
+
+    /// Float literal
+    Float(f64),
+
+    /// Boolean literal
+    Bool(bool),
+
+    /// State reference (e.g., "count" from "${.count}")
+    /// The "." prefix indicates it's a state variable reference
+    StateRef(String),
+
+    /// Message variant reference (e.g., "Msg::Inc")
+    MsgVariant {
+        /// Message type name
+        msg_type: String,
+        /// Variant name
+        variant: String,
+    },
+
+    /// Binary operation
+    Binary {
+        left: Box<AuraExpr>,
+        op: AuraBinOp,
+        right: Box<AuraExpr>,
+    },
+
+    /// Unary operation
+    Unary {
+        op: AuraUnaryOp,
+        operand: Box<AuraExpr>,
+    },
+}
+
+/// Binary operators
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuraBinOp {
+    // Arithmetic
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+
+    // Comparison
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+
+    // Logical
+    And,
+    Or,
+}
+
+/// Unary operators
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuraUnaryOp {
+    Neg,
+    Not,
+}
+
+// ============================================================================
+// Statements
+// ============================================================================
+
+/// AURA statement: simplified statement types for handlers
+#[derive(Debug, Clone)]
+pub enum AuraStmt {
+    /// Assignment: target = value
+    Assign {
+        target: String,
+        value: AuraExpr,
+    },
+
+    /// Update with operator: target op= value (e.g., count += 1)
+    Update {
+        target: String,
+        op: AuraUpdateOp,
+        value: AuraExpr,
+    },
+}
+
+/// Update operators
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuraUpdateOp {
+    AddAssign,  // +=
+    SubAssign, // -=
+    MulAssign, // *=
+    DivAssign, // /=
+}
+
+impl fmt::Display for AuraUpdateOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AuraUpdateOp::AddAssign => write!(f, "+="),
+            AuraUpdateOp::SubAssign => write!(f, "-="),
+            AuraUpdateOp::MulAssign => write!(f, "*="),
+            AuraUpdateOp::DivAssign => write!(f, "/="),
+        }
+    }
+}
+
+// ============================================================================
+// AURA Module
+// ============================================================================
+
+/// AURA Module: contains multiple widgets and app definition
+#[derive(Debug, Clone)]
+pub struct AuraModule {
+    /// Module name
+    pub name: String,
+
+    /// Widgets defined in this module
+    pub widgets: Vec<AuraWidget>,
+
+    /// Messages defined at module level
+    pub messages: Vec<AuraMessage>,
+
+    /// App definition (entry point)
+    pub app: Option<AuraApp>,
+}
+
+/// App definition: the entry point for UI applications
+#[derive(Debug, Clone)]
+pub struct AuraApp {
+    /// App name
+    pub name: String,
+
+    /// Root widget
+    pub root: String,
+
+    /// Window properties
+    pub window: AuraWindow,
+}
+
+/// Window properties
+#[derive(Debug, Clone)]
+pub struct AuraWindow {
+    /// Window title
+    pub title: String,
+
+    /// Window width
+    pub width: u32,
+
+    /// Window height
+    pub height: u32,
+}
+
+impl Default for AuraWindow {
+    fn default() -> Self {
+        AuraWindow {
+            title: "Auto App".to_string(),
+            width: 800,
+            height: 600,
+        }
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_aura_node_element() {
+        let node = AuraNode::element("col")
+            .with_prop("gap", AuraExpr::Int(16))
+            .with_child(AuraNode::text("Hello"));
+
+        match node {
+            AuraNode::Element { tag, props, children, .. } => {
+                assert_eq!(tag, "col");
+                assert_eq!(props.len(), 1);
+                assert_eq!(children.len(), 1);
+            }
+            _ => panic!("Expected Element node"),
+        }
+    }
+
+    #[test]
+    fn test_aura_node_text() {
+        let node = AuraNode::text("Hello World");
+
+        match node {
+            AuraNode::Text(AuraTextContent::Literal(s)) => {
+                assert_eq!(s, "Hello World");
+            }
+            _ => panic!("Expected Text node"),
+        }
+    }
+
+    #[test]
+    fn test_aura_state_def() {
+        let state = AuraStateDef {
+            name: "count".to_string(),
+            type_info: Type::Int,
+            initial: AuraExpr::Int(0),
+        };
+
+        assert_eq!(state.name, "count");
+        assert!(matches!(state.type_info, Type::Int));
+    }
+
+    #[test]
+    fn test_aura_message() {
+        let msg = AuraMessage {
+            name: "Msg".to_string(),
+            variants: vec![
+                AuraMsgVariant {
+                    name: "Inc".to_string(),
+                    payload: None,
+                },
+                AuraMsgVariant {
+                    name: "Set".to_string(),
+                    payload: Some(Type::Int),
+                },
+            ],
+        };
+
+        assert_eq!(msg.variants.len(), 2);
+    }
+
+    #[test]
+    fn test_aura_expr_state_ref() {
+        let expr = AuraExpr::StateRef("count".to_string());
+        match expr {
+            AuraExpr::StateRef(name) => assert_eq!(name, "count"),
+            _ => panic!("Expected StateRef"),
+        }
+    }
+
+    #[test]
+    fn test_aura_stmt_update() {
+        let stmt = AuraStmt::Update {
+            target: "count".to_string(),
+            op: AuraUpdateOp::AddAssign,
+            value: AuraExpr::Int(1),
+        };
+
+        match stmt {
+            AuraStmt::Update { target, op, value } => {
+                assert_eq!(target, "count");
+                assert_eq!(op, AuraUpdateOp::AddAssign);
+                match value {
+                    AuraExpr::Int(v) => assert_eq!(v, 1),
+                    _ => panic!("Expected Int"),
+                }
+            }
+            _ => panic!("Expected Update"),
+        }
+    }
+
+    #[test]
+    fn test_aura_widget() {
+        let widget = AuraWidget {
+            name: "Counter".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: AuraExpr::Int(0),
+            }],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: HashMap::new(),
+            props: vec![],
+        };
+
+        assert_eq!(widget.name, "Counter");
+        assert_eq!(widget.state_vars.len(), 1);
+    }
+
+    #[test]
+    fn test_logic_payload() {
+        let ast_payload = LogicPayload::AstBlock(vec![]);
+        let bytecode_payload = LogicPayload::Bytecode(vec![0x01, 0x02, 0x03]);
+
+        assert!(matches!(ast_payload, LogicPayload::AstBlock(_)));
+        assert!(matches!(bytecode_payload, LogicPayload::Bytecode(_)));
+    }
+}
