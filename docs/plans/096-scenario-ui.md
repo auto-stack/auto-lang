@@ -527,7 +527,9 @@ fn on(&mut self, msg: Self::Msg) {
 
 ---
 
-### 问题 2: View Tree 子节点未生成
+### 问题 2: View Tree 子节点未生成 ✅ 正常工作
+
+**状态**: ✅ 正常工作 (语法问题)
 
 **现象**:
 ```auto
@@ -545,19 +547,13 @@ fn view(&self) -> View<Self::Msg> {
 }
 ```
 
-**原因**:
-`extract_view_node()` 正确提取了 children，但 `RustGenerator::generate_view_tree()` 可能没有正确处理子节点。
+**实际原因**: 语法问题，不是代码问题
 
-**位置**:
-- `auto-lang/src/aura/extract.rs` - 提取逻辑
-- `auto-lang/src/ui_gen/rust.rs` - 生成逻辑
+**正确语法**:
+- 使用 `> "text"` 生成文本节点
+- 子节点应该放在第二个 `{}` 块中
 
-**修复方案**:
-1. 检查 `AuraNode::Element { children }` 是否正确填充
-2. 检查 `RustGenerator::generate_view_tree()` 是否递归处理 children
-3. 确保 `.child()` 调用被正确生成
-
-**优先级**: 高
+**验证**: `examples/counter_full.at` 正确生成子节点
 
 ---
 
@@ -589,7 +585,9 @@ on {
 
 ---
 
-### 问题 4: 事件绑定 (`onclick: .Inc`) 未正确提取
+### 问题 4: 事件绑定 (`onclick: .Inc`) 未正确提取 ✅ 正常工作
+
+**状态**: ✅ 正常工作 (语法问题)
 
 **现象**:
 ```auto
@@ -600,15 +598,13 @@ view {
 
 `onclick` 事件应该生成 `.on_click(|_| Msg::Inc)` 调用。
 
-**位置**:
-- `auto-lang/src/aura/extract.rs` - 事件提取
-- `auto-lang/src/ui_gen/rust.rs` - 事件生成
+**实际原因**: 语法问题
 
-**修复方案**:
-1. 确保 `ViewEvent { name, handler }` 正确提取
-2. 在 `RustGenerator` 中处理事件绑定生成
+**正确语法**:
+- `onclick: Inc` ✅ (不带 `.` 前缀)
+- `onclick: .Inc` ❌ (解析错误)
 
-**优先级**: 中
+**验证**: `View::button().on_click(|_| Msg::Inc).build()`
 
 ---
 
@@ -677,9 +673,9 @@ impl Component for Counter {
 
 ### 修复进度
 
-| 问题 | 优先级 | 状态 | 负责人 |
-|------|--------|------|--------|
+| 问题 | 优先级 | 状态 | 说明 |
+|------|--------|------|------|
 | Handler Body 提取 | 高 | ✅ 已修复 | commit 724b85e |
 | 状态引用转换 | 中 | ✅ 已修复 | commit 724b85e |
-| View Tree 子节点 | 高 | ⏳ 待修复 | - |
-| 事件绑定生成 | 中 | ⏳ 待修复 | - |
+| View Tree 子节点 | 高 | ✅ 正常工作 | 语法正确即可 |
+| 事件绑定生成 | 中 | ✅ 正常工作 | 使用 `onclick: Inc` (不带 `.`) |

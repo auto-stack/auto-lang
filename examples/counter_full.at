@@ -1,0 +1,28 @@
+// Counter Widget - Working syntax
+// Note: onclick handlers should NOT use dot prefix
+widget Counter {
+    msg Msg { Inc, Dec }
+
+    model {
+        count int = 0
+    }
+
+    view {
+        col {} {
+            > "Count: "
+            row {} {
+                button { text: "-", onclick: Dec }
+                button { text: "+", onclick: Inc }
+            }
+        }
+    }
+
+    on {
+        Inc => {
+            count = count + 1
+        }
+        Dec => {
+            count = count - 1
+        }
+    }
+}

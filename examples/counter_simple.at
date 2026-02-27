@@ -1,19 +1,20 @@
-widget Counter {
-    msg Msg { Inc, Dec }
+// Minimal Button Test - without dot prefix
+widget Test {
+    msg Msg { Click }
 
     model {
-        count int = 0
+        x int = 0
     }
 
     view {
-        col {
-            button "+" { onclick: .Inc }
+        col {} {
+            button { text: "Click", onclick: Click }
         }
     }
 
     on {
-        .Inc => {
-            count += 1
+        Click => {
+            x = 1
         }
     }
 }
