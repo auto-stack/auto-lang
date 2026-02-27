@@ -1,0 +1,21 @@
+// Counter Widget for Iced Backend Test
+widget Counter {
+    msg Msg { Inc, Dec }
+
+    model {
+        count int = 0
+    }
+
+    view {
+        col {} {}
+    }
+
+    on {
+        Inc => {
+            count = count + 1
+        }
+        Dec => {
+            count = count - 1
+        }
+    }
+}

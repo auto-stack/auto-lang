@@ -427,12 +427,13 @@ impl RustGenerator {
 |-------|---------|------|--------|
 | Phase 0 | 2-3天 | ✅ 已完成 | AURA 核心 + CompilerSession |
 | Phase 1 | 3-4天 | ✅ 已完成 | 上下文关键字解析 |
-| Phase 2 | 4-5天 | ⏳ 待开始 | Vue3 生成器 |
-| Phase 3 | 3-4天 | ⏳ 待开始 | Rust 生成器迁移 |
-| Phase 4 | 2-3天 | ⏳ 待开始 | CLI 集成 |
-| Phase 5 | 2-3天 | ⏳ 待开始 | 清理与迁移 |
+| Phase 2 | 4-5天 | ✅ 已完成 | Vue3 生成器 |
+| Phase 3 | 3-4天 | ✅ 已完成 | Rust 生成器迁移 |
+| Phase 4 | 2-3天 | ✅ 已完成 | CLI 集成 |
+| Phase 5 | 2-3天 | ✅ 已完成 | 清理与迁移 |
+| Phase 6 | 2-3天 | ⏳ 待开始 | 修复已知问题 |
 
-**总计**: 16-22 天
+**总计**: 18-24 天
 
 ---
 
@@ -486,3 +487,199 @@ impl RustGenerator {
 2. **复用现有转译器**: Vue3 生成器复用 a2js，减少重复工作
 3. **统一后端位置**: 所有 UI 后端生成器集中在 `auto-lang/src/ui_gen/`
 4. **auto-ui 简化**: auto-ui 框架层只需调用新生成器，无需了解 AURA 细节
+
+---
+
+## Phase 6: 已知问题与待修复（Todo）
+
+### 问题 1: Handler Body 提取不完整
+
+**现象**:
+```auto
+on {
+    Inc => {
+        count = count + 1
+    }
+}
+```
+
+生成的 Rust 代码中 handler body 为空：
+```rust
+fn on(&mut self, msg: Self::Msg) {
+    match msg {
+        Msg::Inc => { }  // 空！
+        _ => {}
+    }
+}
+```
+
+**原因**:
+`aura/extract.rs` 中的 `extract_body_stmts()` 只处理 `Stmt::Store`，但 `count = count + 1` 不是 Store 语句。
+
+**位置**: `auto-lang/src/aura/extract.rs` 第 511-526 行
+
+**修复方案**:
+1. 检查 `count = count + 1` 的 AST 节点类型
+2. 扩展 `extract_body_stmts()` 处理更多语句类型：
+   - `Stmt::Expr` - 表达式语句
+   - `Stmt::Store` - 赋值语句
+   - 其他可能的语句类型
+
+**优先级**: 高
+
+---
+
+### 问题 2: View Tree 子节点未生成
+
+**现象**:
+```auto
+view {
+    col {} {
+        text {} { text: "Hello" }
+    }
+}
+```
+
+生成的 Rust 代码：
+```rust
+fn view(&self) -> View<Self::Msg> {
+    View::col().build()  // 子节点丢失！
+}
+```
+
+**原因**:
+`extract_view_node()` 正确提取了 children，但 `RustGenerator::generate_view_tree()` 可能没有正确处理子节点。
+
+**位置**:
+- `auto-lang/src/aura/extract.rs` - 提取逻辑
+- `auto-lang/src/ui_gen/rust.rs` - 生成逻辑
+
+**修复方案**:
+1. 检查 `AuraNode::Element { children }` 是否正确填充
+2. 检查 `RustGenerator::generate_view_tree()` 是否递归处理 children
+3. 确保 `.child()` 调用被正确生成
+
+**优先级**: 高
+
+---
+
+### 问题 3: 状态引用 (`.count`) 未正确转换
+
+**现象**:
+```auto
+model {
+    count int = 0
+}
+
+on {
+    Inc => {
+        count = count + 1  // .count 前缀可选
+    }
+}
+```
+
+在 handler body 中，`count` 应该转换为 `self.count`。
+
+**位置**: `auto-lang/src/ui_gen/rust.rs` - `expr_to_rust()` 函数
+
+**修复方案**:
+扩展 `AuraExpr::StateRef(name)` 处理，确保生成 `self.name`
+
+**优先级**: 中
+
+---
+
+### 问题 4: 事件绑定 (`onclick: .Inc`) 未正确提取
+
+**现象**:
+```auto
+view {
+    button {} { onclick: .Inc }
+}
+```
+
+`onclick` 事件应该生成 `.on_click(|_| Msg::Inc)` 调用。
+
+**位置**:
+- `auto-lang/src/aura/extract.rs` - 事件提取
+- `auto-lang/src/ui_gen/rust.rs` - 事件生成
+
+**修复方案**:
+1. 确保 `ViewEvent { name, handler }` 正确提取
+2. 在 `RustGenerator` 中处理事件绑定生成
+
+**优先级**: 中
+
+---
+
+### 测试用例
+
+创建完整的端到端测试：
+
+```auto
+// examples/counter_full.at
+widget Counter {
+    msg Msg { Inc, Dec }
+
+    model {
+        count int = 0
+    }
+
+    view {
+        col {} {
+            text {} { text: "Count: " }
+            text {} { text: .count }
+            row {} {
+                button {} { text: "-", onclick: .Dec }
+                button {} { text: "+", onclick: .Inc }
+            }
+        }
+    }
+
+    on {
+        Inc => {
+            count = count + 1
+        }
+        Dec => {
+            count = count - 1
+        }
+    }
+}
+```
+
+预期生成的 Rust 代码：
+```rust
+impl Component for Counter {
+    type Msg = Msg;
+
+    fn on(&mut self, msg: Self::Msg) {
+        match msg {
+            Msg::Inc => { self.count += 1; }
+            Msg::Dec => { self.count -= 1; }
+            _ => {}
+        }
+    }
+
+    fn view(&self) -> View<Self::Msg> {
+        View::col()
+            .child(View::text("Count: "))
+            .child(View::text(&self.count.to_string()))
+            .child(View::row()
+                .child(View::button("-").on_click(|_| Msg::Dec))
+                .child(View::button("+").on_click(|_| Msg::Inc))
+            )
+            .build()
+    }
+}
+```
+
+---
+
+### 修复进度
+
+| 问题 | 优先级 | 状态 | 负责人 |
+|------|--------|------|--------|
+| Handler Body 提取 | 高 | ⏳ 待修复 | - |
+| View Tree 子节点 | 高 | ⏳ 待修复 | - |
+| 状态引用转换 | 中 | ⏳ 待修复 | - |
+| 事件绑定生成 | 中 | ⏳ 待修复 | - |
