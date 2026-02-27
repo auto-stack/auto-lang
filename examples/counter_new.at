@@ -1,0 +1,48 @@
+// Counter Widget - Plan 096 AURA Example
+//
+// This demonstrates the new widget syntax that is parsed
+// directly by the AURA pipeline without DSL preprocessing.
+//
+// Syntax: tag { props } { children }
+// - First {} contains props/events
+// - Second {} contains children
+
+widget Counter {
+    // Message declarations
+    msg Msg { Inc, Dec, Reset }
+
+    // Model (state variables)
+    model {
+        count int = 0
+    }
+
+    // View tree
+    view {
+        col {} {
+            text {} {
+                text: "Counter: "
+            }
+            text {} {
+                text: .count
+            }
+            row {} {
+                button { text: "-", onclick: .Dec }
+                button { text: "+", onclick: .Inc }
+            }
+            button { text: "Reset", onclick: .Reset }
+        }
+    }
+
+    // Event handlers
+    on {
+        .Inc => {
+            count = count + 1
+        }
+        .Dec => {
+            count = count - 1
+        }
+        .Reset => {
+            count = 0
+        }
+    }
+}

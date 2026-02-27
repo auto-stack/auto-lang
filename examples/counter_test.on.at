@@ -1,0 +1,18 @@
+// Minimal Counter Widget - without dot prefix
+widget Counter {
+    msg Msg { Inc }
+
+    model {
+        count int = 0
+    }
+
+    view {
+        col {} {}
+    }
+
+    on {
+        Inc => {
+            count = 1
+        }
+    }
+}

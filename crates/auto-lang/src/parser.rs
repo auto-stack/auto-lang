@@ -7245,11 +7245,16 @@ impl<'a> Parser<'a> {
             let pattern = self.cur.text.to_string();
             self.next();
 
-            // Expect => (might be Asn followed by Gt, or just Gt)
-            if self.is_kind(TokenKind::Asn) {
+            // Expect => (might be DoubleArrow, or Asn followed by Gt)
+            if self.is_kind(TokenKind::DoubleArrow) {
+                self.next();
+            } else if self.is_kind(TokenKind::Asn) {
+                self.next();
+                self.expect(TokenKind::Gt)?;
+            } else if self.is_kind(TokenKind::Gt) {
+                // Allow just > for simplicity
                 self.next();
             }
-            self.expect(TokenKind::Gt)?;
 
             // Parse body
             let body = self.body()?;

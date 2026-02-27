@@ -392,11 +392,15 @@ fn main() -> Result<()> {
             match auto_lang::ui_build(&path, &scenario, &backend, output.as_deref()) {
                 Ok(code) => println!("{}", code),
                 Err(e) => {
+                    // Print full error with diagnostics
                     if matches!(format, OutputFormat::Json) {
                         eprintln!("{}", format_error_json(&e));
                         std::process::exit(1);
                     }
-                    return Err(to_miette_err(e));
+                    // Use miette to print full diagnostic
+                    let report = miette::Report::new(e);
+                    eprintln!("{:?}", report);
+                    std::process::exit(1);
                 }
             }
         }

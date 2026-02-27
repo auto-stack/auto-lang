@@ -908,7 +908,9 @@ pub fn ui_build(
     // Parse with scenario
     let mut parser = Parser::from(code.as_str());
     parser = parser.with_session(session.clone());
-    let ast = parser.parse().map_err(|e| e.to_string())?;
+    let ast = parser.parse().map_err(|e| {
+        format!("Parse error: {:?}", e)
+    })?;
 
     // Extract AURA widgets from AST
     let mut widgets = Vec::new();

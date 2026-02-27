@@ -1,0 +1,19 @@
+widget Counter {
+    msg Msg { Inc, Dec }
+
+    model {
+        count int = 0
+    }
+
+    view {
+        col {
+            button "+" { onclick: .Inc }
+        }
+    }
+
+    on {
+        .Inc => {
+            count += 1
+        }
+    }
+}
