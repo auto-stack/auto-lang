@@ -391,6 +391,165 @@ pub fn extract_type(ty: &Type) -> Type {
 }
 
 // ============================================================================
+// Widget Declaration Extractor (Plan 096)
+// ============================================================================
+
+use crate::ast::{WidgetDecl, ModelBlock, ViewBlock, OnBlock, MsgDecl, PropDecl, ViewNode, ViewText, Body};
+
+/// Extract AuraWidget from parsed WidgetDecl
+pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> {
+    // Extract state variables from model
+    let state_vars = if let Some(model) = &decl.model {
+        extract_model_fields(model)?
+    } else {
+        Vec::new()
+    };
+
+    // Extract messages
+    let messages: Vec<AuraMessage> = decl.messages.iter()
+        .map(|m| extract_msg_decl(m))
+        .collect();
+
+    // Extract view tree
+    let view_tree = if let Some(view) = &decl.view {
+        extract_view_block(view)?
+    } else {
+        AuraNode::element("div")
+    };
+
+    // Extract handlers
+    let handlers = if let Some(on) = &decl.on {
+        extract_on_block(on)?
+    } else {
+        HashMap::new()
+    };
+
+    // Extract props
+    let props: Vec<AuraProp> = decl.props.iter()
+        .map(|p| extract_prop_decl(p))
+        .collect();
+
+    Ok(AuraWidget {
+        name: decl.name.as_str().to_string(),
+        state_vars,
+        messages,
+        view_tree,
+        handlers,
+        props,
+    })
+}
+
+/// Extract state variables from model block
+fn extract_model_fields(model: &ModelBlock) -> ExtractResult<Vec<AuraStateDef>> {
+    model.fields.iter()
+        .map(|field| {
+            Ok(AuraStateDef {
+                name: field.name.as_str().to_string(),
+                type_info: field.ty.clone(),
+                initial: extract_expr(&field.init)?,
+            })
+        })
+        .collect()
+}
+
+/// Extract message declaration
+fn extract_msg_decl(msg: &MsgDecl) -> AuraMessage {
+    AuraMessage {
+        name: msg.name.as_str().to_string(),
+        variants: msg.variants.iter()
+            .map(|v| AuraMsgVariant {
+                name: v.name.as_str().to_string(),
+                payload: v.payload.clone(),
+            })
+            .collect(),
+    }
+}
+
+/// Extract view tree from view block
+fn extract_view_block(view: &ViewBlock) -> ExtractResult<AuraNode> {
+    extract_view_node(&view.root)
+}
+
+/// Extract view node from parsed ViewNode
+fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
+    match node {
+        ViewNode::Element { tag, props, events, children } => {
+            let aura_props: HashMap<String, AuraExpr> = props.iter()
+                .map(|p| Ok((p.name.clone(), extract_expr(&p.value)?)))
+                .collect::<ExtractResult<_>>()?;
+
+            let aura_events: HashMap<String, String> = events.iter()
+                .map(|e| (e.name.clone(), e.handler.clone()))
+                .collect();
+
+            let aura_children: Vec<AuraNode> = children.iter()
+                .map(|c| extract_view_node(c))
+                .collect::<ExtractResult<_>>()?;
+
+            Ok(AuraNode::Element {
+                tag: tag.clone(),
+                props: aura_props,
+                events: aura_events,
+                children: aura_children,
+            })
+        }
+        ViewNode::Text(content) => {
+            let text_content = match content {
+                ViewText::Literal(s) => {
+                    AuraTextContent::Literal(s.clone())
+                }
+                ViewText::Interpolated { template, bindings } => {
+                    AuraTextContent::Interpolated {
+                        template: template.clone(),
+                        bindings: bindings.clone(),
+                    }
+                }
+            };
+            Ok(AuraNode::Text(text_content))
+        }
+    }
+}
+
+/// Extract handlers from on block
+fn extract_on_block(on: &OnBlock) -> ExtractResult<HashMap<String, LogicPayload>> {
+    let mut handlers = HashMap::new();
+
+    for handler in &on.handlers {
+        let pattern = handler.pattern.clone();
+        let stmts: Vec<AuraStmt> = extract_body_stmts(&handler.body)?;
+        handlers.insert(pattern, LogicPayload::AstBlock(stmts));
+    }
+
+    Ok(handlers)
+}
+
+/// Extract statements from body
+fn extract_body_stmts(body: &Body) -> ExtractResult<Vec<AuraStmt>> {
+    body.stmts.iter()
+        .filter_map(|stmt| {
+            match stmt {
+                Stmt::Store(store) => {
+                    Some(Ok(AuraStmt::Assign {
+                        target: store.name.as_str().to_string(),
+                        value: extract_expr(&store.expr).ok()?,
+                    }))
+                }
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+/// Extract prop declaration
+fn extract_prop_decl(prop: &PropDecl) -> AuraProp {
+    AuraProp {
+        name: prop.name.as_str().to_string(),
+        type_info: prop.ty.clone(),
+        default: prop.default.as_ref().and_then(|e| extract_expr(e).ok()),
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

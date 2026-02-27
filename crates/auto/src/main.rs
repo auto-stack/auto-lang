@@ -163,6 +163,26 @@ enum Commands {
     #[command(about = "Transpile stdlib to C")]
     A2cStdlib,
 
+    // ========== UI Commands ==========
+
+    #[command(about = "Build UI components from Auto files")]
+    Ui {
+        /// Input file or directory
+        path: String,
+
+        /// Compilation scenario (core, ui, shell)
+        #[arg(short, long, default_value = "ui")]
+        scenario: String,
+
+        /// Backend target (vue, rust, gpui)
+        #[arg(short, long, default_value = "vue")]
+        backend: String,
+
+        /// Output directory
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+
     // ========== Build System Commands ==========
 
     #[command(about = "Create a new Auto application package", alias = "a")]
@@ -358,6 +378,27 @@ fn main() -> Result<()> {
         }
         Some(Commands::A2cStdlib) => {
             cmd_a2c_stdlib::run()?;
+        }
+
+        // ========== UI Commands ==========
+
+        Some(Commands::Ui { path, scenario, backend, output }) => {
+            init_logger();
+            println!("{}", "---------------------------".bright_yellow().bold());
+            println!("{}", "AURA UI Builder".bright_yellow().bold());
+            println!("{}", "---------------------------".bright_yellow().bold());
+
+            // Build UI components using AURA pipeline
+            match auto_lang::ui_build(&path, &scenario, &backend, output.as_deref()) {
+                Ok(code) => println!("{}", code),
+                Err(e) => {
+                    if matches!(format, OutputFormat::Json) {
+                        eprintln!("{}", format_error_json(&e));
+                        std::process::exit(1);
+                    }
+                    return Err(to_miette_err(e));
+                }
+            }
         }
 
         // ========== Build System Commands ==========

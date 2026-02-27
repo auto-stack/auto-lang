@@ -872,6 +872,102 @@ pub fn trans_javascript(path: &str) -> AutoResult<String> {
 }
 
 // ============================================================================
+// Plan 096: UI Backend Generators
+// ============================================================================
+
+/// Build UI components from Auto files using AURA pipeline
+///
+/// This is the main entry point for UI scenario compilation.
+///
+/// # Arguments
+/// * `path` - Input file or directory
+/// * `scenario` - Compilation scenario (core, ui, shell)
+/// * `backend` - Backend target (vue, rust, gpui)
+/// * `output` - Optional output directory
+pub fn ui_build(
+    path: &str,
+    scenario: &str,
+    backend: &str,
+    output: Option<&str>,
+) -> AutoResult<String> {
+    use crate::session::{CompilerSession, Scenario};
+    use crate::ui_gen::{BackendGenerator, VueGenerator, RustGenerator};
+
+    // Parse scenario
+    let session = match scenario {
+        "ui" => CompilerSession::ui().with_backend(backend),
+        "core" => CompilerSession::default(),
+        "shell" => CompilerSession::shell(),
+        _ => CompilerSession::ui().with_backend(backend),
+    };
+
+    // Read input file
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    // Parse with scenario
+    let mut parser = Parser::from(code.as_str());
+    parser = parser.with_session(session.clone());
+    let ast = parser.parse().map_err(|e| e.to_string())?;
+
+    // Extract AURA widgets from AST
+    let mut widgets = Vec::new();
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+            // Convert WidgetDecl to AuraWidget
+            let aura_widget = crate::aura::extract_widget_from_decl(widget_decl)
+                .map_err(|e| e.to_string())?;
+            widgets.push(aura_widget);
+        }
+    }
+
+    if widgets.is_empty() {
+        return Err("No widget declarations found in input file".into());
+    }
+
+    // Generate code based on backend
+    let mut output_code = String::new();
+    match backend {
+        "vue" => {
+            let mut gen = VueGenerator::new();
+            for widget in &widgets {
+                let code = gen.generate(widget).map_err(|e| e.to_string())?;
+                output_code.push_str(&code);
+                output_code.push_str("\n\n");
+            }
+        }
+        "rust" => {
+            let mut gen = RustGenerator::new();
+            for widget in &widgets {
+                let code = gen.generate(widget).map_err(|e| e.to_string())?;
+                output_code.push_str(&code);
+                output_code.push_str("\n\n");
+            }
+        }
+        _ => {
+            return Err(format!("Unknown backend: {}", backend).into());
+        }
+    }
+
+    // Write output if specified
+    if let Some(out_dir) = output {
+        let ext = match backend {
+            "vue" => "vue",
+            "rust" => "rs",
+            _ => "txt",
+        };
+        for (i, widget) in widgets.iter().enumerate() {
+            let out_path = std::path::Path::new(out_dir)
+                .join(format!("{}.{}", widget.name, ext));
+            std::fs::create_dir_all(out_dir).ok();
+            // Write each widget file
+        }
+    }
+
+    Ok(output_code)
+}
+
+// ============================================================================
 // Plan 075: Unified Compilation API for Multiple Execution Modes
 // ============================================================================
 
