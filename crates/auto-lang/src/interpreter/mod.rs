@@ -105,13 +105,41 @@ impl AutoInterpreter {
 
     /// Evaluate a template with F-string support
     ///
-    /// This is similar to `eval` but is intended for template evaluation
-    /// where F-strings with the configured note character are processed.
+    /// The template is preprocessed using a "Flip" process:
+    /// - Lines starting with `{fstr_note} ` (e.g., `$ `) are treated as pure Auto code.
+    /// - All other lines are treated as TEXT with embedded expressions and wrapped in
+    ///   backticks to form an AutoLang F-string.
     ///
-    /// Currently an alias for `eval` - F-string processing will be improved.
-    pub fn eval_template(&mut self, code: &str) -> AutoResult<Value> {
-        // TODO: Add F-string preprocessing based on self.fstr_note
-        self.eval(code)
+    /// An optional prelude string can be provided, which is evaluated in the same scope
+    /// before the generated template code. This allows variables to be injected.
+    pub fn eval_template(&mut self, prelude: &str, template: &str) -> AutoResult<Value> {
+        let mut flipped_code = String::from(prelude);
+        // Ensure prelude ends with a newline to prevent concatenation issues
+        if !prelude.is_empty() && !prelude.ends_with('\n') {
+            flipped_code.push('\n');
+        }
+        let prefix = format!("{} ", self.fstr_note);
+
+        flipped_code.push_str("let __out__ = \"\"\n");
+
+        for line in template.lines() {
+            if line.starts_with(&prefix) {
+                // Code line: strip the prefix and append as is
+                flipped_code.push_str(&line[prefix.len()..]);
+                flipped_code.push('\n');
+            } else {
+                // Text line: wrap in F-string backticks
+                // Note: we need to escape existing backticks in the text to be safe
+                let escaped_line = line.replace("`", "\\`");
+                flipped_code.push_str(&format!("__out__ = __out__ + `{}`\n", escaped_line));
+            }
+        }
+
+        flipped_code.push_str("__out__\n");
+        eprintln!("DEBUG flipped_code:\n{}", flipped_code);
+
+        // Evaluate the generated code
+        self.eval(&flipped_code)
     }
 
     /// Evaluate a function call with arguments

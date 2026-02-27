@@ -2086,6 +2086,7 @@ impl Codegen {
                     // Plan 073 Stage A.5: Check if this is a float/double operation
                     let is_float = self.is_float_operation(lhs, rhs);
                     let is_double = self.is_double_operation(lhs, rhs);
+                    let is_string = self.is_string_operation(lhs, rhs);
 
                     // Normal binary operation: compile both operands, then apply operator
                     self.compile_expr(lhs)?;
@@ -2094,7 +2095,9 @@ impl Codegen {
                     // For arithmetic operations, use float/double opcodes if operands are floats
                     match op {
                         Op::Add => {
-                            if is_double {
+                            if is_string {
+                                self.emit(OpCode::STR_CAT);
+                            } else if is_double {
                                 self.emit(OpCode::ADD_D);
                             } else if is_float {
                                 self.emit(OpCode::ADD_F);
@@ -2887,6 +2890,24 @@ impl Codegen {
     fn is_double_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
         // If either operand is double, use double precision
         matches!(lhs, Expr::Double(_, _)) || matches!(rhs, Expr::Double(_, _))
+    }
+
+    // Check if this is a string operation (either operand is a string type)
+    // Used to emit STR_CAT instead of ADD for string concatenation
+    fn is_string_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
+        self.is_string_expr(lhs) || self.is_string_expr(rhs)
+    }
+
+    fn is_string_expr(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => true,
+            Expr::Ident(name) => {
+                // Check inferred type for the variable
+                let ty = self.infer_ctx.type_env.get(name);
+                matches!(ty, Some(Type::Str(_)))
+            }
+            _ => false,
+        }
     }
 
     // Plan 073: Convert expression to ObjectType for object field tracking

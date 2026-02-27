@@ -1,5 +1,5 @@
-use crate::error::{GenError, GenResult, SourceLocation};
 use crate::data::LoadedData;
+use crate::error::{GenError, GenResult, SourceLocation};
 use auto_lang::ast::Code;
 use auto_lang::atom::Atom;
 use auto_lang::interpreter::AutoInterpreter;
@@ -76,22 +76,20 @@ impl TemplateEngine {
 
     /// Render a template with the given data
     pub fn render(&self, template: &Template, data: &Atom) -> GenResult<AutoStr> {
-        let mut interp = AutoInterpreter::new()
-            .with_fstr_note(self.fstr_note);
+        let mut interp = AutoInterpreter::new().with_fstr_note(self.fstr_note);
         interp.merge_atom(data);
 
         // Execute the Auto script as a template
-        let result =
-            interp
-                .eval_template(&template.source)
-                .map_err(|e| GenError::TemplateSyntaxError {
-                    location: SourceLocation::new(
-                        PathBuf::from(format!("template:{}", template.name)),
-                        0,
-                        0,
-                    ),
-                    message: e.to_string(),
-                })?;
+        let result = interp.eval_template("", &template.source).map_err(|e| {
+            GenError::TemplateSyntaxError {
+                location: SourceLocation::new(
+                    PathBuf::from(format!("template:{}", template.name)),
+                    0,
+                    0,
+                ),
+                message: e.to_string(),
+            }
+        })?;
 
         Ok(result.to_astr())
     }
@@ -114,17 +112,16 @@ impl TemplateEngine {
         // }
 
         // Use the interpreter to evaluate the template
-        let result =
-            interp
-                .eval_template(&template.source)
-                .map_err(|e| GenError::TemplateSyntaxError {
-                    location: SourceLocation::new(
-                        PathBuf::from(format!("template:{}", template.name)),
-                        0,
-                        0,
-                    ),
-                    message: e.to_string(),
-                })?;
+        let result = interp.eval_template("", &template.source).map_err(|e| {
+            GenError::TemplateSyntaxError {
+                location: SourceLocation::new(
+                    PathBuf::from(format!("template:{}", template.name)),
+                    0,
+                    0,
+                ),
+                message: e.to_string(),
+            }
+        })?;
 
         eprintln!("DEBUG TemplateEngine: eval_template result = {:?}", result);
 
@@ -137,7 +134,8 @@ impl TemplateEngine {
     /// Filter out `use` statement lines from the output
     fn filter_use_statements(&self, output: AutoStr) -> AutoStr {
         let output_string = output.to_string();
-        let lines: Vec<&str> = output_string.lines()
+        let lines: Vec<&str> = output_string
+            .lines()
             .filter(|line| {
                 let trimmed = line.trim();
                 // Filter out lines that are exactly `use` statements (not template expressions)

@@ -191,15 +191,13 @@ pub fn run_gen_test(test: &GenTestCase) -> Result<(), String> {
     // Convert Atom format to let statements if needed
     let data_code = convert_atom_to_let(&test.data);
 
-    // Interpret the data code to populate the interpreter
-    inter
-        .eval(&data_code)
-        .map_err(|e| format!("Failed to interpret data: {}", e))?;
-
-    // Now evaluate the template with the populated interpreter
+    // Now evaluate the template with the populated interpreter by providing the prior let declarations
     let result = inter
-        .eval_template(&test.template)
-        .map_err(|e| format!("Failed to render template: {:#?}", e))?;
+        .eval_template(&data_code, &test.template)
+        .map_err(|e| {
+            let report = miette::Report::new(e).with_source_code(test.template.clone());
+            format!("Failed to render template:\n{:?}", report)
+        })?;
 
     let output = result.to_astr();
 

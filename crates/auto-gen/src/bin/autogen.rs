@@ -119,8 +119,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let spec = GenerationSpec {
                 data_source: DataSource::AutoFile(data),
                 templates,
-                lib_files: Vec::new(),  // No library files by default
-                lib_paths: Vec::new(),  // No library search paths by default
+                lib_files: Vec::new(), // No library files by default
+                lib_paths: Vec::new(), // No library search paths by default
             };
 
             match generator.generate(&spec) {
@@ -232,7 +232,7 @@ fn validate_templates(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> 
             .map_err(|e| format!("Failed to read template file: {}", e))?;
 
         // Try to parse as template
-        match auto_lang::interpreter::AutoInterpreter::new().eval_template(&source) {
+        match auto_lang::interpreter::AutoInterpreter::new().eval_template("", &source) {
             Ok(_) => {
                 println!("✓ {}", path.display());
             }
@@ -256,7 +256,9 @@ fn validate_templates(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> 
             if template_path.extension().and_then(|s| s.to_str()) == Some("at") {
                 match std::fs::read_to_string(&template_path) {
                     Ok(source) => {
-                        match auto_lang::interpreter::AutoInterpreter::new().eval_template(&source) {
+                        match auto_lang::interpreter::AutoInterpreter::new()
+                            .eval_template("", &source)
+                        {
                             Ok(_) => {
                                 println!("✓ {}", template_path.display());
                                 valid_count += 1;

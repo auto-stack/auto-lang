@@ -248,13 +248,14 @@ impl AutoVM {
             Value::Char(c) => ram.push_i32(*c as i32),
             Value::Nil => ram.push_i32(0),
             Value::Str(s) => {
-                // Store string in constant pool and push its index
+                // Store string in constant pool and push its tagged index
+                // String indices are stored as -(index+1) to distinguish from integers
                 let s_bytes = s.as_bytes().to_vec();
                 let mut strings = strings.write().unwrap();
                 let idx = strings.len();
                 strings.push(s_bytes);
                 drop(strings);
-                ram.push_i32(idx as i32);
+                ram.push_i32(-(idx as i32) - 1);
             }
             _ => {
                 eprintln!("WARNING: push_value unsupported type: {:?}", value);
@@ -478,7 +479,8 @@ impl AutoVM {
                 OpCode::LOAD_STR => {
                     let str_idx = self.flash.read_u16(task.ip);
                     task.ip += 2;
-                    task.ram.push_i32(str_idx as i32);
+                    // Tag string indices as negative: -(index+1)
+                    task.ram.push_i32(-(str_idx as i32) - 1);
                 }
                 // Plan 073: Object literal support
                 OpCode::CREATE_OBJ => {
@@ -517,7 +519,13 @@ impl AutoVM {
                                 auto_val::Value::Double(bits)
                             }
                             ObjectType::String => {
-                                let str_idx = task.ram.pop_i32() as usize;
+                                let tagged = task.ram.pop_i32();
+                                // Decode negative-tagged string index
+                                let str_idx = if tagged < 0 {
+                                    (-tagged - 1) as usize
+                                } else {
+                                    tagged as usize
+                                };
                                 let strings = self.strings.read().unwrap();
                                 if let Some(str_bytes) = strings.get(str_idx) {
                                     let s = String::from_utf8_lossy(str_bytes).to_string();
@@ -631,25 +639,37 @@ impl AutoVM {
 
                     // Pop parts from stack (in reverse order)
                     let mut parts = Vec::with_capacity(part_count as usize);
-                    for i in 0..part_count {
-                        let idx = (part_count - 1 - i) as usize;
+                    let strings = self.strings.read().unwrap();
+                    for _i in 0..part_count {
                         let bits = task.ram.pop_i32();
 
-                        // Convert each part to Value and then to string
-                        // For now, we treat all parts as integers
-                        // TODO: Support proper Value types when stack supports them
-                        let value = auto_val::Value::Int(bits);
-                        parts.insert(idx, value.to_astr().to_string());
+                        // Negative values are tagged string indices: actual index = -(bits+1)
+                        // Non-negative values are integers/booleans: convert to string
+                        let s = if bits < 0 {
+                            let idx = (-bits - 1) as usize;
+                            if idx < strings.len() {
+                                String::from_utf8_lossy(&strings[idx]).to_string()
+                            } else {
+                                format!("<invalid_str_idx:{}>", idx)
+                            }
+                        } else {
+                            bits.to_string()
+                        };
+                        parts.push(s);
                     }
+                    drop(strings);
+                    parts.reverse();
 
                     // Join all parts into a single string
                     let result = parts.join("");
 
-                    // For now, we can't push a full string onto the stack
-                    // Push the string length as a placeholder
-                    // The f-string semantics are encoded in the bytecode itself
-                    // TODO: Add proper string support when stack supports Value types
-                    task.ram.push_i32(result.len() as i32);
+                    // Add to strings pool and push tagged index
+                    let mut strings = self.strings.write().unwrap();
+                    let result_idx = strings.len();
+                    strings.push(result.into_bytes());
+                    drop(strings);
+
+                    task.ram.push_i32(-(result_idx as i32) - 1);
                 }
                 // Plan 073: May<T> null coalesce operator: left ?? right
                 OpCode::NULL_COALESCE => {
@@ -692,18 +712,21 @@ impl AutoVM {
                     // Pop value from stack
                     let value_bits = task.ram.pop_i32();
 
-                    // Convert to string based on type
-                    // For now, we'll treat all values as their string representation
-                    // TODO: Proper type-based conversion
-                    let string_value = format!("{}", value_bits);
+                    // If already a tagged string, just push it back
+                    if value_bits < 0 {
+                        task.ram.push_i32(value_bits);
+                    } else {
+                        // Convert integer to its string representation
+                        let string_value = format!("{}", value_bits);
 
-                    // Add to strings pool and push index
-                    let mut strings = self.strings.write().unwrap();
-                    let str_idx = strings.len() as u16;
-                    strings.push(string_value.into_bytes());
-                    drop(strings);
+                        // Add to strings pool and push tagged index
+                        let mut strings = self.strings.write().unwrap();
+                        let str_idx = strings.len();
+                        strings.push(string_value.into_bytes());
+                        drop(strings);
 
-                    task.ram.push_i32(str_idx as i32);
+                        task.ram.push_i32(-(str_idx as i32) - 1);
+                    }
                 }
                 // Plan 075: Check if value is nil
                 OpCode::IS_NIL => {
@@ -717,43 +740,45 @@ impl AutoVM {
                 }
                 // Plan 075: Concatenate two strings
                 OpCode::STR_CAT => {
-                    // Pop right string index first (top of stack)
-                    let right_idx = task.ram.pop_i32() as usize;
-                    // Pop left string index
-                    let left_idx = task.ram.pop_i32() as usize;
+                    // Pop right value first (top of stack)
+                    let right_bits = task.ram.pop_i32();
+                    // Pop left value
+                    let left_bits = task.ram.pop_i32();
 
-                    // Get strings from pool
+                    // Decode values: negative = tagged string index, non-negative = integer
                     let strings = self.strings.read().unwrap();
 
-                    let left_str = if let Some(bytes) = strings.get(left_idx) {
-                        String::from_utf8_lossy(bytes).to_string()
+                    let left_str = if left_bits < 0 {
+                        let idx = (-left_bits - 1) as usize;
+                        strings
+                            .get(idx)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                            .unwrap_or_default()
                     } else {
-                        return Err(VMError::RuntimeError(format!(
-                            "Invalid string index: {}",
-                            left_idx
-                        )));
+                        left_bits.to_string()
                     };
 
-                    let right_str = if let Some(bytes) = strings.get(right_idx) {
-                        String::from_utf8_lossy(bytes).to_string()
+                    let right_str = if right_bits < 0 {
+                        let idx = (-right_bits - 1) as usize;
+                        strings
+                            .get(idx)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                            .unwrap_or_default()
                     } else {
-                        return Err(VMError::RuntimeError(format!(
-                            "Invalid string index: {}",
-                            right_idx
-                        )));
+                        right_bits.to_string()
                     };
                     drop(strings);
 
                     // Concatenate strings
                     let result = format!("{}{}", left_str, right_str);
 
-                    // Add result to strings pool and push index
+                    // Add result to strings pool and push tagged index
                     let mut strings = self.strings.write().unwrap();
-                    let result_idx = strings.len() as u16;
+                    let result_idx = strings.len();
                     strings.push(result.into_bytes());
                     drop(strings);
 
-                    task.ram.push_i32(result_idx as i32);
+                    task.ram.push_i32(-(result_idx as i32) - 1);
                 }
                 // Plan 076 Phase 3 & 4: Generic List opcodes with storage strategies
                 OpCode::CREATE_LIST_INT => {
@@ -1459,13 +1484,13 @@ impl AutoVM {
                                 }
                                 auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
                                 auto_val::Value::Str(s) => {
-                                    // Plan 073: Add string to mutable pool and push index
+                                    // Push tagged string index (negative to distinguish from integers)
                                     let str_bytes = s.as_bytes().to_vec();
                                     let mut strings = self.strings.write().unwrap();
-                                    let str_idx = strings.len() as u16;
+                                    let str_idx = strings.len();
                                     strings.push(str_bytes);
                                     drop(strings);
-                                    task.ram.push_i32(str_idx as i32);
+                                    task.ram.push_i32(-(str_idx as i32) - 1);
                                 }
                                 auto_val::Value::Nil => task.ram.push_i32(0),
                                 // Plan 073: Nested objects/arrays - push their ID

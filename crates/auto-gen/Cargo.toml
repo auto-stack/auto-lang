@@ -19,6 +19,7 @@ auto-lang = { path = "../auto-lang" }
 auto-val = { path = "../auto-val" }
 regex = { workspace = true }
 thiserror = { workspace = true }
+miette = { workspace = true }
 notify = { version = "7.0", optional = true }
 
 [features]

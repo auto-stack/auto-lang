@@ -40,7 +40,7 @@ impl Templates {
                 // 替换模板中的 ${name} 为 pac_name
                 let mut interp = AutoInterpreter::new();
                 interp.set_global("name", Value::from(pac_name));
-                let auto_code = interp.eval_template(&code);
+                let auto_code = interp.eval_template("", &code);
                 let result = auto_code.unwrap();
                 let code = result.repr();
                 println!("code: {}", code);
