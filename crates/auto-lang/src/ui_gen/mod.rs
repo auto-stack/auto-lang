@@ -7,10 +7,12 @@
 //! All generators take `AuraWidget` as input and produce target-specific code.
 
 pub mod vue;
+pub mod rust;
 pub mod style;
 
 // Re-export main types
 pub use vue::VueGenerator;
+pub use rust::RustGenerator;
 pub use style::StyleGenerator;
 
 use crate::aura::AuraWidget;
