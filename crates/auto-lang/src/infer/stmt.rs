@@ -105,6 +105,11 @@ pub fn check_stmt(ctx: &mut InferenceContext, stmt: &Stmt) -> Result<Type, AutoE
         Stmt::Use(_) | Stmt::Node(_) | Stmt::OnEvents(_) | Stmt::Alias(_) | Stmt::Is(_) | Stmt::Dep(_) => {
             Ok(Type::Void)
         }
+
+        // Plan 096: UI scenario statements - no type checking needed
+        Stmt::WidgetDecl(_) | Stmt::MsgDecl(_) | Stmt::ModelBlock(_) | Stmt::ViewBlock(_) => {
+            Ok(Type::Void)
+        }
     }
 }
 

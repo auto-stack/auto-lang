@@ -48,6 +48,8 @@ mod use_;
 pub use use_::*;
 mod range;
 pub use range::*;
+mod ui;
+pub use ui::*;
 
 mod atom_helpers;
 pub use atom_helpers::*;
@@ -178,6 +180,11 @@ pub enum Stmt {
     Break,
     Return(Box<Expr>),  // Return statement with value
     Ext(Ext),  // Type extension (like Rust's impl)
+    // Plan 096: UI scenario statements
+    WidgetDecl(WidgetDecl),
+    MsgDecl(MsgDecl),
+    ModelBlock(ModelBlock),
+    ViewBlock(ViewBlock),
 }
 
 impl Stmt {
@@ -238,6 +245,11 @@ impl fmt::Display for Stmt {
             Stmt::Return(expr) => write!(f, "(return {})", expr),
             Stmt::Ext(ext) => write!(f, "{}", ext),
             Stmt::Dep(dep) => write!(f, "{}", dep),
+            // Plan 096: UI scenario statements
+            Stmt::WidgetDecl(widget) => write!(f, "(widget {})", widget.name),
+            Stmt::MsgDecl(msg) => write!(f, "(msg {})", msg.name),
+            Stmt::ModelBlock(model) => write!(f, "(model {} fields)", model.fields.len()),
+            Stmt::ViewBlock(view) => write!(f, "(view)"),
         }
     }
 }
@@ -836,6 +848,23 @@ impl ToNode for Stmt {
             Stmt::Return(_) => AutoNode::new("return"),
             Stmt::Ext(ext) => ext.to_node(),
             Stmt::Dep(dep) => dep.to_node(),
+            // Plan 096: UI scenario statements
+            Stmt::WidgetDecl(widget) => {
+                let mut node = AutoNode::new("widget");
+                node.add_arg(auto_val::Arg::Pos(Value::str(widget.name.as_str())));
+                node
+            }
+            Stmt::MsgDecl(msg) => {
+                let mut node = AutoNode::new("msg");
+                node.add_arg(auto_val::Arg::Pos(Value::str(msg.name.as_str())));
+                node
+            }
+            Stmt::ModelBlock(model) => {
+                let mut node = AutoNode::new("model");
+                node.set_prop("fields", Value::Int(model.fields.len() as i32));
+                node
+            }
+            Stmt::ViewBlock(_) => AutoNode::new("view"),
         }
     }
 }
@@ -874,6 +903,11 @@ impl ToAtom for Stmt {
             Stmt::Return(expr) => format!("(return {})", expr.to_atom()).into(),
             Stmt::Ext(ext) => ext.to_atom(),
             Stmt::Dep(dep) => dep.to_atom(),
+            // Plan 096: UI scenario statements
+            Stmt::WidgetDecl(widget) => format!("(widget {})", widget.name).into(),
+            Stmt::MsgDecl(msg) => format!("(msg {})", msg.name).into(),
+            Stmt::ModelBlock(model) => format!("(model {} fields)", model.fields.len()).into(),
+            Stmt::ViewBlock(_) => "(view)".into(),
         }
     }
 }

@@ -114,6 +114,12 @@ impl<'db> DepScanner<'db> {
             Stmt::TypeAlias(_) => {}
             Stmt::EmptyLine(_) => {}
             Stmt::Dep(_) => {}  // Plan 092: Dependency declaration - no fragment deps
+
+            // Plan 096: UI scenario statements
+            Stmt::WidgetDecl(_) => {}
+            Stmt::MsgDecl(_) => {}
+            Stmt::ModelBlock(_) => {}
+            Stmt::ViewBlock(_) => {}
         }
     }
 

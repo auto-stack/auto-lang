@@ -146,6 +146,12 @@ impl<'db> Indexer<'db> {
                 Stmt::Dep(dep) => {
                     self.index_dep_stmt(dep, file_id)?;
                 }
+
+                // Plan 096: UI scenario statements
+                Stmt::WidgetDecl(_) | Stmt::MsgDecl(_) | Stmt::ModelBlock(_) | Stmt::ViewBlock(_) => {
+                    // For now, skip UI declarations
+                    // Phase 2: Could index widget declarations
+                }
             }
         }
 

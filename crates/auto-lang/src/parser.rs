@@ -187,6 +187,8 @@ pub struct Parser<'a> {
     pub module_tracker: ModuleTracker,
     /// Plan 090: Lambda ID 生成器
     pub lambda_id_gen: LambdaIdGenerator,
+    /// Plan 096: Compiler session for scenario-based parsing
+    pub session: crate::session::CompilerSession,
 }
 
 impl<'a> Parser<'a> {
@@ -227,6 +229,7 @@ impl<'a> Parser<'a> {
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
             module_tracker: ModuleTracker::new(), // Plan 090
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
+            session: crate::session::CompilerSession::default(), // Plan 096: Default session
         };
         parser.skip_comments();
         parser
@@ -287,6 +290,7 @@ impl<'a> Parser<'a> {
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
             module_tracker: ModuleTracker::new(), // Plan 090
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
+            session: crate::session::CompilerSession::default(), // Plan 096: Default session
         };
         parser.skip_comments();
         parser
@@ -326,6 +330,7 @@ impl<'a> Parser<'a> {
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
             module_tracker: ModuleTracker::new(), // Plan 090
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
+            session: crate::session::CompilerSession::default(), // Plan 096: Default session
         };
         parser.skip_comments();
         parser
@@ -334,6 +339,32 @@ impl<'a> Parser<'a> {
     pub fn skip_check(mut self) -> Self {
         self.skip_check = true;
         self
+    }
+
+    /// Set the compiler session (Plan 096)
+    ///
+    /// This enables scenario-based parsing where keywords like
+    /// `widget`, `view`, `model`, `msg`, `on` are only keywords
+    /// in UI scenario.
+    pub fn with_session(mut self, session: crate::session::CompilerSession) -> Self {
+        self.session = session;
+        self
+    }
+
+    /// Check if current scenario is UI (Plan 096)
+    pub fn is_ui_scenario(&self) -> bool {
+        self.session.scenario == crate::session::Scenario::UI
+    }
+
+    /// Check if identifier is a contextual keyword in current scenario (Plan 096)
+    ///
+    /// In UI scenario, these are keywords:
+    /// - widget, view, model, msg, on
+    fn is_contextual_keyword(&self, ident: &str) -> bool {
+        if !self.is_ui_scenario() {
+            return false;
+        }
+        matches!(ident, "widget" | "view" | "model" | "msg" | "on")
     }
 
     /// Create a new parser with an external type_store (Plan 085)
@@ -2585,8 +2616,23 @@ impl<'a> Parser<'a> {
             TokenKind::Tag => self.tag_stmt()?,
             TokenKind::Spec => self.spec_decl_stmt()?,
             TokenKind::LBrace => Stmt::Block(self.body()?),
-            // Node Instance?
-            TokenKind::Ident => self.parse_node_or_call_stmt()?,
+            // Node Instance or UI contextual keywords
+            TokenKind::Ident => {
+                // Plan 096: Check for UI contextual keywords
+                let ident = self.cur.text.as_str();
+                if self.is_contextual_keyword(ident) {
+                    match ident {
+                        "widget" => self.parse_widget_decl()?,
+                        "msg" => self.parse_msg_decl()?,
+                        "model" => self.parse_model_block()?,
+                        "view" => self.parse_view_block()?,
+                        "on" => Stmt::OnEvents(self.parse_on_events()?),
+                        _ => self.parse_node_or_call_stmt()?,
+                    }
+                } else {
+                    self.parse_node_or_call_stmt()?
+                }
+            }
             // Enum Definition
             TokenKind::Enum => self.enum_stmt()?,
             // On Events Switch
@@ -6892,6 +6938,341 @@ impl<'a> Parser<'a> {
             branches.push(self.parse_goto_branch()?);
         }
         Ok(OnEvents::new(branches))
+    }
+
+    // ========================================================================
+    // Plan 096: UI Contextual Keyword Parsing
+    // ========================================================================
+
+    /// Parse widget declaration (UI scenario only)
+    ///
+    /// ```auto
+    /// widget Counter {
+    ///     msg Msg { Inc, Dec }
+    ///     model { count int = 0 }
+    ///     view { col { ... } }
+    ///     on { .Inc => { .count += 1 } }
+    /// }
+    /// ```
+    pub fn parse_widget_decl(&mut self) -> AutoResult<Stmt> {
+        self.expect_ident("widget")?;
+        let name = self.cur.text.clone();
+        self.next();
+
+        // Parse props if present: widget Name(prop: type, ...)
+        let props = if self.is_kind(TokenKind::LParen) {
+            self.parse_widget_props()?
+        } else {
+            Vec::new()
+        };
+
+        // Parse body
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut messages = Vec::new();
+        let mut model = None;
+        let mut view = None;
+        let mut on = None;
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            let ident = self.cur.text.as_str();
+            match ident {
+                "msg" => {
+                    messages.push(self.parse_msg_decl_inner()?);
+                }
+                "model" => {
+                    model = Some(self.parse_model_block_inner()?);
+                }
+                "view" => {
+                    view = Some(self.parse_view_block_inner()?);
+                }
+                "on" => {
+                    on = Some(self.parse_on_block()?);
+                }
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected 'msg', 'model', 'view', or 'on' in widget, got '{}'", ident),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            }
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(Stmt::WidgetDecl(WidgetDecl {
+            name,
+            messages,
+            model,
+            view,
+            on,
+            props,
+        }))
+    }
+
+    /// Parse widget props: (name: type, name: type = default, ...)
+    fn parse_widget_props(&mut self) -> AutoResult<Vec<PropDecl>> {
+        self.expect(TokenKind::LParen)?;
+        let mut props = Vec::new();
+
+        while !self.is_kind(TokenKind::RParen) {
+            let name = self.cur.text.clone();
+            self.next();
+            self.expect(TokenKind::Colon)?;
+            let ty = self.parse_type()?;
+            let default = if self.is_kind(TokenKind::Asn) {
+                self.next();
+                Some(self.parse_expr()?)
+            } else {
+                None
+            };
+            props.push(PropDecl { name, ty, default });
+
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+        Ok(props)
+    }
+
+    /// Parse msg declaration (UI scenario only)
+    pub fn parse_msg_decl(&mut self) -> AutoResult<Stmt> {
+        let msg = self.parse_msg_decl_inner()?;
+        Ok(Stmt::MsgDecl(msg))
+    }
+
+    /// Parse msg declaration, returning the MsgDecl directly
+    fn parse_msg_decl_inner(&mut self) -> AutoResult<MsgDecl> {
+        self.expect_ident("msg")?;
+        let name = self.cur.text.clone();
+        self.next();
+
+        self.expect(TokenKind::LBrace)?;
+        let mut variants = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            let variant_name = self.cur.text.clone();
+            self.next();
+
+            // Check for payload type
+            let payload = if self.is_kind(TokenKind::LParen) {
+                self.next();
+                let ty = self.parse_type()?;
+                self.expect(TokenKind::RParen)?;
+                Some(ty)
+            } else {
+                None
+            };
+
+            variants.push(MsgVariant {
+                name: variant_name,
+                payload,
+            });
+
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(MsgDecl { name, variants })
+    }
+
+    /// Parse model block (UI scenario only)
+    pub fn parse_model_block(&mut self) -> AutoResult<Stmt> {
+        let model = self.parse_model_block_inner()?;
+        Ok(Stmt::ModelBlock(model))
+    }
+
+    /// Parse model block, returning the ModelBlock directly
+    fn parse_model_block_inner(&mut self) -> AutoResult<ModelBlock> {
+        self.expect_ident("model")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut fields = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            let name = self.cur.text.clone();
+            self.next();
+            let ty = self.parse_type()?;
+            let init = if self.is_kind(TokenKind::Asn) {
+                self.next();
+                self.parse_expr()?
+            } else {
+                Expr::Nil
+            };
+            fields.push(ModelField { name, ty, init });
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(ModelBlock { fields })
+    }
+
+    /// Parse view block (UI scenario only)
+    pub fn parse_view_block(&mut self) -> AutoResult<Stmt> {
+        let view = self.parse_view_block_inner()?;
+        Ok(Stmt::ViewBlock(view))
+    }
+
+    /// Parse view block, returning the ViewBlock directly
+    fn parse_view_block_inner(&mut self) -> AutoResult<ViewBlock> {
+        self.expect_ident("view")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        // Parse view tree
+        let root = self.parse_view_node()?;
+
+        self.skip_empty_lines();
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(ViewBlock { root })
+    }
+
+    /// Parse a single view node
+    fn parse_view_node(&mut self) -> AutoResult<ViewNode> {
+        self.skip_empty_lines();
+
+        // Check for text with '>' prefix: h2 > Text content
+        if self.is_kind(TokenKind::Gt) {
+            self.next();
+            let text = self.cur.text.to_string();
+            self.next();
+            return Ok(ViewNode::text(text));
+        }
+
+        // Parse element tag
+        let tag = self.cur.text.to_string();
+        self.next();
+
+        let mut props = Vec::new();
+        let mut events = Vec::new();
+        let mut children = Vec::new();
+
+        // Check for special text suffix: button +, button -
+        if tag == "+" || tag == "-" {
+            return Ok(ViewNode::text(tag));
+        }
+
+        // Parse props/events in braces
+        if self.is_kind(TokenKind::LBrace) {
+            self.next();
+            self.skip_empty_lines();
+
+            while !self.is_kind(TokenKind::RBrace) {
+                self.skip_empty_lines();
+                if self.is_kind(TokenKind::RBrace) {
+                    break;
+                }
+
+                let key = self.cur.text.to_string();
+                self.next();
+
+                // Check if it's an event (onclick, etc.)
+                if key.starts_with("on") {
+                    self.expect(TokenKind::Colon)?;
+                    let handler = self.cur.text.to_string();
+                    self.next();
+                    events.push(ViewEvent { name: key, handler });
+                } else {
+                    self.expect(TokenKind::Colon)?;
+                    let value = self.parse_expr()?;
+                    props.push(ViewProp { name: key, value });
+                }
+
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                }
+            }
+            self.expect(TokenKind::RBrace)?;
+        }
+
+        // Parse children in nested braces
+        if self.is_kind(TokenKind::LBrace) {
+            self.next();
+            self.skip_empty_lines();
+
+            while !self.is_kind(TokenKind::RBrace) {
+                self.skip_empty_lines();
+                if self.is_kind(TokenKind::RBrace) {
+                    break;
+                }
+                let child = self.parse_view_node()?;
+                children.push(child);
+                self.skip_empty_lines();
+            }
+            self.expect(TokenKind::RBrace)?;
+        }
+
+        Ok(ViewNode::Element {
+            tag,
+            props,
+            events,
+            children,
+        })
+    }
+
+    /// Parse on block for widget (returns OnBlock, not OnEvents)
+    fn parse_on_block(&mut self) -> AutoResult<OnBlock> {
+        self.expect_ident("on")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut handlers = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            // Parse pattern (e.g., .Inc or Msg::Inc)
+            let pattern = self.cur.text.to_string();
+            self.next();
+
+            // Expect => (might be Asn followed by Gt, or just Gt)
+            if self.is_kind(TokenKind::Asn) {
+                self.next();
+            }
+            self.expect(TokenKind::Gt)?;
+
+            // Parse body
+            let body = self.body()?;
+
+            handlers.push(OnHandler { pattern, body });
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(OnBlock { handlers })
+    }
+
+    /// Helper: expect an identifier with specific text
+    fn expect_ident(&mut self, expected: &str) -> AutoResult<()> {
+        if self.cur.text.as_str() == expected {
+            self.next();
+            Ok(())
+        } else {
+            Err(SyntaxError::Generic {
+                message: format!("Expected '{}', got '{}'", expected, self.cur.text),
+                span: pos_to_span(self.cur.pos),
+            }.into())
+        }
     }
 }
 
