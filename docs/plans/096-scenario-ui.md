@@ -492,7 +492,9 @@ impl RustGenerator {
 
 ## Phase 6: 已知问题与待修复（Todo）
 
-### 问题 1: Handler Body 提取不完整
+### 问题 1: Handler Body 提取不完整 ✅ 已修复
+
+**状态**: ✅ 已修复 (commit 724b85e)
 
 **现象**:
 ```auto
@@ -516,16 +518,12 @@ fn on(&mut self, msg: Self::Msg) {
 **原因**:
 `aura/extract.rs` 中的 `extract_body_stmts()` 只处理 `Stmt::Store`，但 `count = count + 1` 不是 Store 语句。
 
-**位置**: `auto-lang/src/aura/extract.rs` 第 511-526 行
-
 **修复方案**:
-1. 检查 `count = count + 1` 的 AST 节点类型
-2. 扩展 `extract_body_stmts()` 处理更多语句类型：
-   - `Stmt::Expr` - 表达式语句
-   - `Stmt::Store` - 赋值语句
-   - 其他可能的语句类型
-
-**优先级**: 高
+扩展 `extract_body_stmts()` 处理 `Stmt::Expr` 中的赋值表达式：
+- `Op::Asn` → `AuraStmt::Assign`
+- `Op::AddEq` → `AuraStmt::Update { AddAssign }`
+- `Op::SubEq` → `AuraStmt::Update { SubAssign }`
+- 等等
 
 ---
 
@@ -563,7 +561,9 @@ fn view(&self) -> View<Self::Msg> {
 
 ---
 
-### 问题 3: 状态引用 (`.count`) 未正确转换
+### 问题 3: 状态引用 (`.count`) 未正确转换 ✅ 已修复
+
+**状态**: ✅ 已修复 (commit 724b85e)
 
 **现象**:
 ```auto
@@ -580,12 +580,12 @@ on {
 
 在 handler body 中，`count` 应该转换为 `self.count`。
 
-**位置**: `auto-lang/src/ui_gen/rust.rs` - `expr_to_rust()` 函数
+**修复说明**:
+修复问题 1 时，`extract_expr()` 正确地将 `count` 标识符转换为 `AuraExpr::StateRef("count")`，
+然后 `RustGenerator::expr_to_rust()` 将其转换为 `self.count`。
 
-**修复方案**:
-扩展 `AuraExpr::StateRef(name)` 处理，确保生成 `self.name`
-
-**优先级**: 中
+**验证**:
+生成的代码 `self.count = self.count + 1` 是正确的。
 
 ---
 
@@ -679,7 +679,7 @@ impl Component for Counter {
 
 | 问题 | 优先级 | 状态 | 负责人 |
 |------|--------|------|--------|
-| Handler Body 提取 | 高 | ⏳ 待修复 | - |
+| Handler Body 提取 | 高 | ✅ 已修复 | commit 724b85e |
+| 状态引用转换 | 中 | ✅ 已修复 | commit 724b85e |
 | View Tree 子节点 | 高 | ⏳ 待修复 | - |
-| 状态引用转换 | 中 | ⏳ 待修复 | - |
 | 事件绑定生成 | 中 | ⏳ 待修复 | - |
