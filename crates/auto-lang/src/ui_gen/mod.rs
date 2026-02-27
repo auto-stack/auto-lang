@@ -1,0 +1,56 @@
+//! UI Backend Generators
+//!
+//! This module provides code generators for various UI backends:
+//! - **Vue3/JavaScript**: Vue3 SFC (Single File Component) generator
+//! - **Rust/GPUI**: Rust Component trait generator (migrated from auto-ui)
+//!
+//! All generators take `AuraWidget` as input and produce target-specific code.
+
+pub mod vue;
+pub mod style;
+
+// Re-export main types
+pub use vue::VueGenerator;
+pub use style::StyleGenerator;
+
+use crate::aura::AuraWidget;
+
+/// Generation error
+#[derive(Debug, Clone)]
+pub enum GenError {
+    /// Unsupported expression type
+    UnsupportedExpr(String),
+
+    /// Unsupported statement type
+    UnsupportedStmt(String),
+
+    /// Invalid state reference
+    InvalidStateRef(String),
+
+    /// IO error
+    Io(String),
+}
+
+impl std::fmt::Display for GenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GenError::UnsupportedExpr(msg) => write!(f, "Unsupported expression: {}", msg),
+            GenError::UnsupportedStmt(msg) => write!(f, "Unsupported statement: {}", msg),
+            GenError::InvalidStateRef(msg) => write!(f, "Invalid state reference: {}", msg),
+            GenError::Io(msg) => write!(f, "IO error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for GenError {}
+
+pub type GenResult<T> = Result<T, GenError>;
+
+/// Backend generator trait
+pub trait BackendGenerator {
+    /// Generate code from an AuraWidget
+    fn generate(&mut self, widget: &AuraWidget) -> GenResult<String>;
+
+    /// Get the file extension for generated code
+    fn extension(&self) -> &'static str;
+}

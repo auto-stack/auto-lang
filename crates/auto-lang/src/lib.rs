@@ -25,6 +25,8 @@ pub mod error;
 pub mod session;
 // Plan 096 Phase 0: AURA (Auto UI Representation Abstract)
 pub mod aura;
+// Plan 096 Phase 2: UI Backend Generators (Vue, Rust)
+pub mod ui_gen;
 // Plan 081 Phase 2: Execution mode selection (autovm, evaluator, c, rust)
 pub mod mode;
 // Plan 081 Phase 4: Multi-mode compilation pipeline
