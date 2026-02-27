@@ -679,3 +679,67 @@ impl Component for Counter {
 | 状态引用转换 | 中 | ✅ 已修复 | commit 724b85e |
 | View Tree 子节点 | 高 | ✅ 正常工作 | 语法正确即可 |
 | 事件绑定生成 | 中 | ✅ 正常工作 | 使用 `onclick: Inc` (不带 `.`) |
+
+---
+
+## 已知限制: View 事件处理器不支持 `.` 前缀
+
+### 问题描述
+
+在 view 块的事件处理器中，使用 `.` 前缀会导致解析错误：
+
+```auto
+// ❌ 错误 - 会导致解析失败
+button { onclick: .Inc }
+
+// ✅ 正确 - 不带 `.` 前缀
+button { onclick: Inc }
+```
+
+### 错误信息
+
+```
+Parse error: UnexpectedToken { expected: "Colon", found: "}" }
+```
+
+### 原因分析
+
+Parser 在解析 view 属性时：
+1. 解析 `onclick` 作为 key
+2. 期望 `:` 后跟一个表达式
+3. `.` 被解析为单独的 token，导致 `.Inc` 无法被识别为有效表达式
+
+**位置**: `auto-lang/src/parser.rs` - `parse_view_node()` 函数
+
+### 临时解决方案
+
+使用不带 `.` 前缀的消息名称：
+
+```auto
+view {
+    button { onclick: Inc }  // ✅
+}
+```
+
+### 永久修复方案 (待实现)
+
+扩展 `parse_view_node()` 中的表达式解析，支持 `.` 前缀标识符：
+
+```rust
+// 在解析 view prop value 时
+if self.is_kind(TokenKind::Dot) {
+    self.next();
+    let ident = self.cur.text.to_string();
+    self.next();
+    // 返回 Expr::Ident 或特殊标记
+}
+```
+
+### 影响范围
+
+- view 块中的事件处理器
+- 不影响 on 块中的模式匹配 (`.Inc` 在 on 块中正常工作)
+
+### 优先级
+
+中 - 有简单的工作绕过方案
