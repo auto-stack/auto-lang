@@ -7,7 +7,7 @@
 // - tag (props) { children }    - Element with props and children
 // - tag { children }            - Element without props (parentheses optional)
 // - text `content ${.var}`      - Text node with interpolation
-// - button (text: "label") {}   - Button with text content
+// - button "-" { onclick: .Dec } - Button with text and event (simplified)
 
 widget Counter {
     // Message declarations
@@ -23,23 +23,23 @@ widget Counter {
         col {
             text `Counter: ${.count}`
             row {
-                button (text: "-", onclick: .Dec) {}
-                button (text: "+", onclick: .Inc) {}
+                button "-" { onclick: .Dec }
+                button "+" { onclick: .Inc }
             }
-            button (text: "Reset", onclick: .Reset) {}
+            button "Reset" { onclick: .Reset }
         }
     }
 
     // Event handlers
     on {
         Inc => {
-            count = count + 1
+            .count = .count + 1
         }
         Dec => {
-            count = count - 1
+            .count = .count - 1
         }
         Reset => {
-            count = 0
+            .count = 0
         }
     }
 }

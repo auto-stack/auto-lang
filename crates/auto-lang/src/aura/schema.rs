@@ -1,0 +1,620 @@
+//! AURA Widget Schema Definition
+//!
+//! This module defines the schema for AURA widgets, including:
+//! - Valid element tags and their categories
+//! - Props each element supports
+//! - Type constraints for props
+//! - Widget block requirements
+//!
+//! Used for:
+//! - Validation at parse time
+//! - LSP features (completion, hover, diagnostics)
+//! - Error messages with helpful suggestions
+
+use std::collections::HashMap;
+
+/// Element category for grouping and documentation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ElementCategory {
+    /// Layout containers: col, row, grid, stack, scroll, container
+    Layout,
+    /// Interactive content: button, input, checkbox, toggle, link
+    Content,
+    /// Text display: h1-h6, p, span, code, pre
+    Typography,
+    /// List structures: list, list_item, table, table_row, table_cell
+    List,
+    /// Media elements: image, icon
+    Media,
+    /// Utility elements: divider, spacer
+    Utility,
+}
+
+/// Type constraint for a prop value
+#[derive(Debug, Clone, PartialEq)]
+pub enum PropType {
+    /// String literal: "hello"
+    String,
+    /// Integer number: 42
+    Int,
+    /// Floating point: 3.14
+    Float,
+    /// Boolean: true, false
+    Bool,
+    /// Color value: "#FF0000", "red"
+    Color,
+    /// Reference to state: .count
+    StateRef,
+    /// Reference to message: .Click
+    MsgRef,
+    /// Any expression: .count + 1
+    Expr,
+    /// Lambda/closure: |x| x * 2
+    Closure,
+    /// Class binding object: { active: .isSelected }
+    ClassBinding,
+    /// Interpolated string: `Hello ${.name}`
+    Interpolated,
+    /// One of a set of string values (enum-like)
+    OneOf(Vec<&'static str>),
+    /// Union of multiple types
+    Union(Vec<PropType>),
+}
+
+impl PropType {
+    /// Check if a type matches this constraint
+    pub fn matches(&self, other: &PropType) -> bool {
+        match self {
+            PropType::Union(types) => types.iter().any(|t| t.matches(other)),
+            PropType::OneOf(options) => {
+                if let PropType::String = other {
+                    true // String might match, validated at runtime
+                } else {
+                    false
+                }
+            }
+            _ => self == other,
+        }
+    }
+
+    /// Get human-readable name for the type
+    pub fn name(&self) -> String {
+        match self {
+            PropType::String => "string".to_string(),
+            PropType::Int => "int".to_string(),
+            PropType::Float => "float".to_string(),
+            PropType::Bool => "bool".to_string(),
+            PropType::Color => "color".to_string(),
+            PropType::StateRef => "state_ref".to_string(),
+            PropType::MsgRef => "msg_ref".to_string(),
+            PropType::Expr => "expr".to_string(),
+            PropType::Closure => "closure".to_string(),
+            PropType::ClassBinding => "class_binding".to_string(),
+            PropType::Interpolated => "interpolated".to_string(),
+            PropType::OneOf(options) => format!("one_of({})", options.join(" | ")),
+            PropType::Union(types) => {
+                let names: Vec<_> = types.iter().map(|t| t.name()).collect();
+                names.join(" | ")
+            }
+        }
+    }
+}
+
+/// Definition of an element prop
+#[derive(Debug, Clone)]
+pub struct PropDef {
+    /// Prop name (e.g., "onclick", "text")
+    pub name: &'static str,
+    /// Type constraint
+    pub type_: PropType,
+    /// Whether this prop is required
+    pub required: bool,
+    /// Default value if not specified
+    pub default: Option<&'static str>,
+    /// Documentation for this prop
+    pub description: &'static str,
+}
+
+/// Definition of a view element
+#[derive(Debug, Clone)]
+pub struct ElementDef {
+    /// Element tag name (e.g., "button", "col")
+    pub tag: &'static str,
+    /// Element category
+    pub category: ElementCategory,
+    /// Props this element supports
+    pub props: Vec<PropDef>,
+    /// Whether this element can have children
+    pub allows_children: bool,
+    /// Documentation for this element
+    pub description: &'static str,
+}
+
+impl ElementDef {
+    /// Get a prop definition by name
+    pub fn get_prop(&self, name: &str) -> Option<&PropDef> {
+        self.props.iter().find(|p| p.name == name)
+    }
+
+    /// Get list of required props
+    pub fn required_props(&self) -> Vec<&PropDef> {
+        self.props.iter().filter(|p| p.required).collect()
+    }
+
+    /// Get list of optional props
+    pub fn optional_props(&self) -> Vec<&PropDef> {
+        self.props.iter().filter(|p| !p.required).collect()
+    }
+}
+
+/// Widget block constraints
+#[derive(Debug, Clone)]
+pub struct WidgetBlockSchema {
+    /// Blocks that must appear exactly once
+    pub required: Vec<&'static str>,
+    /// Blocks that are optional (0 or 1)
+    pub optional: Vec<&'static str>,
+}
+
+impl WidgetBlockSchema {
+    /// Check if a block name is valid for a widget
+    pub fn is_valid_block(&self, name: &str) -> bool {
+        self.required.contains(&name) || self.optional.contains(&name)
+    }
+
+    /// Check if a block is required
+    pub fn is_required(&self, name: &str) -> bool {
+        self.required.contains(&name)
+    }
+}
+
+/// The complete AURA schema
+pub struct AuraSchema {
+    /// Element definitions by tag name
+    pub elements: HashMap<&'static str, ElementDef>,
+    /// Widget block constraints
+    pub widget_blocks: WidgetBlockSchema,
+}
+
+impl AuraSchema {
+    /// Create the standard AURA schema
+    pub fn new() -> Self {
+        let mut elements = HashMap::new();
+
+        // Layout elements
+        Self::add_layout_elements(&mut elements);
+
+        // Content elements
+        Self::add_content_elements(&mut elements);
+
+        // Typography elements
+        Self::add_typography_elements(&mut elements);
+
+        // List elements
+        Self::add_list_elements(&mut elements);
+
+        // Media elements
+        Self::add_media_elements(&mut elements);
+
+        // Utility elements
+        Self::add_utility_elements(&mut elements);
+
+        AuraSchema {
+            elements,
+            widget_blocks: WidgetBlockSchema {
+                required: vec!["msg", "model", "view"],
+                optional: vec!["computed", "on"],
+            },
+        }
+    }
+
+    /// Get an element definition by tag
+    pub fn get_element(&self, tag: &str) -> Option<&ElementDef> {
+        self.elements.get(tag)
+    }
+
+    /// Check if a tag is a valid element
+    pub fn is_valid_element(&self, tag: &str) -> bool {
+        self.elements.contains_key(tag)
+    }
+
+    /// Get all element tags
+    pub fn all_tags(&self) -> Vec<&'static str> {
+        self.elements.keys().copied().collect()
+    }
+
+    /// Get elements by category
+    pub fn elements_by_category(&self, category: ElementCategory) -> Vec<&ElementDef> {
+        self.elements
+            .values()
+            .filter(|e| e.category == category)
+            .collect()
+    }
+
+    /// Find similar element tags (for error suggestions)
+    pub fn suggest_similar(&self, tag: &str) -> Option<&'static str> {
+        // Simple Levenshtein-like suggestion
+        let mut best_match: Option<&'static str> = None;
+        let mut best_score = usize::MAX;
+
+        for known_tag in self.elements.keys() {
+            let score = Self::levenshtein_distance(tag, known_tag);
+            if score < best_score && score <= 3 {
+                best_score = score;
+                best_match = Some(*known_tag);
+            }
+        }
+
+        best_match
+    }
+
+    /// Calculate Levenshtein distance between two strings
+    fn levenshtein_distance(a: &str, b: &str) -> usize {
+        let a_chars: Vec<char> = a.chars().collect();
+        let b_chars: Vec<char> = b.chars().collect();
+        let a_len = a_chars.len();
+        let b_len = b_chars.len();
+
+        if a_len == 0 {
+            return b_len;
+        }
+        if b_len == 0 {
+            return a_len;
+        }
+
+        let mut matrix = vec![vec![0; b_len + 1]; a_len + 1];
+
+        for (i, row) in matrix.iter_mut().enumerate() {
+            row[0] = i;
+        }
+
+        for j in 0..=b_len {
+            matrix[0][j] = j;
+        }
+
+        for (i, a_char) in a_chars.iter().enumerate() {
+            for (j, b_char) in b_chars.iter().enumerate() {
+                let cost = if a_char == b_char { 0 } else { 1 };
+                matrix[i + 1][j + 1] = (matrix[i][j + 1] + 1)
+                    .min(matrix[i + 1][j] + 1)
+                    .min(matrix[i][j] + cost);
+            }
+        }
+
+        matrix[a_len][b_len]
+    }
+
+    // Element registration helpers
+
+    fn add_layout_elements(elements: &mut HashMap<&'static str, ElementDef>) {
+        elements.insert("col", ElementDef {
+            tag: "col",
+            category: ElementCategory::Layout,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "gap", type_: PropType::Int, required: false, default: Some("0"), description: "Spacing between children" },
+                PropDef { name: "padding", type_: PropType::Union(vec![PropType::Int, PropType::String]), required: false, default: Some("0"), description: "Inner padding" },
+                PropDef { name: "align", type_: PropType::OneOf(vec!["start", "center", "end", "stretch"]), required: false, default: Some("start"), description: "Cross-axis alignment" },
+            ],
+            allows_children: true,
+            description: "Vertical layout container",
+        });
+
+        elements.insert("row", ElementDef {
+            tag: "row",
+            category: ElementCategory::Layout,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "gap", type_: PropType::Int, required: false, default: Some("0"), description: "Spacing between children" },
+                PropDef { name: "padding", type_: PropType::Union(vec![PropType::Int, PropType::String]), required: false, default: Some("0"), description: "Inner padding" },
+                PropDef { name: "align", type_: PropType::OneOf(vec!["start", "center", "end", "stretch"]), required: false, default: Some("center"), description: "Cross-axis alignment" },
+            ],
+            allows_children: true,
+            description: "Horizontal layout container",
+        });
+
+        elements.insert("grid", ElementDef {
+            tag: "grid",
+            category: ElementCategory::Layout,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "columns", type_: PropType::Int, required: false, default: Some("1"), description: "Number of columns" },
+                PropDef { name: "gap", type_: PropType::Int, required: false, default: Some("0"), description: "Cell spacing" },
+            ],
+            allows_children: true,
+            description: "Grid layout container",
+        });
+
+        elements.insert("scroll", ElementDef {
+            tag: "scroll",
+            category: ElementCategory::Layout,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "direction", type_: PropType::OneOf(vec!["vertical", "horizontal", "both"]), required: false, default: Some("vertical"), description: "Scroll direction" },
+            ],
+            allows_children: true,
+            description: "Scrollable container",
+        });
+
+        elements.insert("container", ElementDef {
+            tag: "container",
+            category: ElementCategory::Layout,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "max_width", type_: PropType::Int, required: false, default: None, description: "Maximum width in pixels" },
+                PropDef { name: "padding", type_: PropType::Union(vec![PropType::Int, PropType::String]), required: false, default: None, description: "Inner padding" },
+            ],
+            allows_children: true,
+            description: "Generic container with optional constraints",
+        });
+    }
+
+    fn add_content_elements(elements: &mut HashMap<&'static str, ElementDef>) {
+        elements.insert("button", ElementDef {
+            tag: "button",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Button label text" },
+                PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Message to send when clicked" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "disabled", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Whether button is disabled" },
+            ],
+            allows_children: false,
+            description: "A clickable button element",
+        });
+
+        elements.insert("input", ElementDef {
+            tag: "input",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Bound value (two-way binding)" },
+                PropDef { name: "placeholder", type_: PropType::String, required: false, default: None, description: "Placeholder text" },
+                PropDef { name: "type", type_: PropType::OneOf(vec!["text", "password", "email", "number"]), required: false, default: Some("text"), description: "Input type" },
+                PropDef { name: "onchange", type_: PropType::MsgRef, required: false, default: None, description: "Message on value change" },
+                PropDef { name: "onenter", type_: PropType::MsgRef, required: false, default: None, description: "Message on Enter key" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "disabled", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Whether input is disabled" },
+            ],
+            allows_children: false,
+            description: "Text input field",
+        });
+
+        elements.insert("checkbox", ElementDef {
+            tag: "checkbox",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "checked", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Checked state" },
+                PropDef { name: "onchange", type_: PropType::MsgRef, required: false, default: None, description: "Message on toggle" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "disabled", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Whether checkbox is disabled" },
+            ],
+            allows_children: false,
+            description: "Checkbox control",
+        });
+
+        elements.insert("toggle", ElementDef {
+            tag: "toggle",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "checked", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Checked state" },
+                PropDef { name: "onchange", type_: PropType::MsgRef, required: false, default: None, description: "Message on toggle" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Toggle switch",
+        });
+
+        elements.insert("link", ElementDef {
+            tag: "link",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "href", type_: PropType::String, required: true, default: None, description: "Link URL" },
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Link text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Hyperlink",
+        });
+    }
+
+    fn add_typography_elements(elements: &mut HashMap<&'static str, ElementDef>) {
+        // Add h1-h6
+        for (tag, level) in [("h1", 1), ("h2", 2), ("h3", 3), ("h4", 4), ("h5", 5), ("h6", 6)] {
+            elements.insert(tag, ElementDef {
+                tag,
+                category: ElementCategory::Typography,
+                props: vec![
+                    PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Heading text" },
+                    PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                ],
+                allows_children: false,
+                description: Box::leak(format!("Level {} heading", level).into_boxed_str()),
+            });
+        }
+
+        elements.insert("text", ElementDef {
+            tag: "text",
+            category: ElementCategory::Typography,
+            props: vec![
+                // Text content is inline, not a named prop
+            ],
+            allows_children: false,
+            description: "Text content (literal or interpolated)",
+        });
+
+        elements.insert("p", ElementDef {
+            tag: "p",
+            category: ElementCategory::Typography,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Paragraph text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Paragraph text",
+        });
+
+        elements.insert("span", ElementDef {
+            tag: "span",
+            category: ElementCategory::Typography,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Span text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Inline text span",
+        });
+    }
+
+    fn add_list_elements(elements: &mut HashMap<&'static str, ElementDef>) {
+        elements.insert("list", ElementDef {
+            tag: "list",
+            category: ElementCategory::List,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Generic list container",
+        });
+
+        elements.insert("list_item", ElementDef {
+            tag: "list_item",
+            category: ElementCategory::List,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Message when clicked" },
+            ],
+            allows_children: true,
+            description: "List item",
+        });
+    }
+
+    fn add_media_elements(elements: &mut HashMap<&'static str, ElementDef>) {
+        elements.insert("image", ElementDef {
+            tag: "image",
+            category: ElementCategory::Media,
+            props: vec![
+                PropDef { name: "src", type_: PropType::String, required: true, default: None, description: "Image URL" },
+                PropDef { name: "alt", type_: PropType::String, required: false, default: Some(""), description: "Alt text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "fit", type_: PropType::OneOf(vec!["cover", "contain", "fill", "none"]), required: false, default: Some("cover"), description: "Object fit mode" },
+            ],
+            allows_children: false,
+            description: "Image display",
+        });
+
+        elements.insert("icon", ElementDef {
+            tag: "icon",
+            category: ElementCategory::Media,
+            props: vec![
+                PropDef { name: "name", type_: PropType::String, required: true, default: None, description: "Icon name" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "size", type_: PropType::Int, required: false, default: Some("24"), description: "Icon size in pixels" },
+            ],
+            allows_children: false,
+            description: "Icon display",
+        });
+    }
+
+    fn add_utility_elements(elements: &mut HashMap<&'static str, ElementDef>) {
+        elements.insert("divider", ElementDef {
+            tag: "divider",
+            category: ElementCategory::Utility,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "direction", type_: PropType::OneOf(vec!["horizontal", "vertical"]), required: false, default: Some("horizontal"), description: "Divider direction" },
+            ],
+            allows_children: false,
+            description: "Horizontal or vertical divider line",
+        });
+
+        elements.insert("spacer", ElementDef {
+            tag: "spacer",
+            category: ElementCategory::Utility,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "size", type_: PropType::Int, required: false, default: None, description: "Spacer size in pixels (or flex if omitted)" },
+            ],
+            allows_children: false,
+            description: "Flexible or fixed space",
+        });
+    }
+}
+
+impl Default for AuraSchema {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_schema_creation() {
+        let schema = AuraSchema::new();
+        assert!(schema.get_element("button").is_some());
+        assert!(schema.get_element("col").is_some());
+        assert!(schema.get_element("input").is_some());
+        assert!(schema.get_element("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_element_props() {
+        let schema = AuraSchema::new();
+        let button = schema.get_element("button").unwrap();
+
+        assert!(button.get_prop("text").is_some());
+        assert!(button.get_prop("onclick").is_some());
+        assert!(button.get_prop("nonexistent").is_none());
+        assert!(!button.allows_children);
+    }
+
+    #[test]
+    fn test_widget_blocks() {
+        let schema = AuraSchema::new();
+
+        assert!(schema.widget_blocks.is_required("msg"));
+        assert!(schema.widget_blocks.is_required("model"));
+        assert!(schema.widget_blocks.is_required("view"));
+        assert!(!schema.widget_blocks.is_required("computed"));
+        assert!(!schema.widget_blocks.is_required("on"));
+
+        assert!(schema.widget_blocks.is_valid_block("msg"));
+        assert!(schema.widget_blocks.is_valid_block("on"));
+        assert!(!schema.widget_blocks.is_valid_block("invalid"));
+    }
+
+    #[test]
+    fn test_similar_suggestions() {
+        let schema = AuraSchema::new();
+
+        assert_eq!(schema.suggest_similar("buton"), Some("button"));
+        assert_eq!(schema.suggest_similar("buttn"), Some("button"));
+        assert_eq!(schema.suggest_similar("rw"), Some("row"));
+        assert_eq!(schema.suggest_similar("cl"), Some("col"));
+        // "xyz" is too far from any valid element
+        // Note: Levenshtein distance of 3 still matches, so we test something more distant
+        assert!(schema.suggest_similar("abcdefgh").is_none());
+    }
+
+    #[test]
+    fn test_elements_by_category() {
+        let schema = AuraSchema::new();
+
+        let layout = schema.elements_by_category(ElementCategory::Layout);
+        assert!(layout.iter().any(|e| e.tag == "col"));
+        assert!(layout.iter().any(|e| e.tag == "row"));
+
+        let content = schema.elements_by_category(ElementCategory::Content);
+        assert!(content.iter().any(|e| e.tag == "button"));
+        assert!(content.iter().any(|e| e.tag == "input"));
+    }
+
+    #[test]
+    fn test_prop_type_names() {
+        assert_eq!(PropType::String.name(), "string");
+        assert_eq!(PropType::MsgRef.name(), "msg_ref");
+        assert_eq!(PropType::OneOf(vec!["a", "b"]).name(), "one_of(a | b)");
+    }
+}

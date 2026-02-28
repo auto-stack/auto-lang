@@ -55,7 +55,11 @@
 mod types;
 mod extract;
 mod atom;
+pub mod schema;
+pub mod schema_loader;
 
 pub use types::*;
 pub use extract::*;
 pub use atom::*;
+pub use schema::*;
+pub use schema_loader::*;

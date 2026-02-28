@@ -1,0 +1,357 @@
+// AURA Schema Definition - Written in AutoLang itself!
+//
+// This file defines the schema for AURA widgets using AutoLang syntax.
+// Similar to how JSON Schema defines JSON structure in JSON format.
+//
+// Usage:
+// - The parser loads this schema to validate widgets
+// - LSP uses this for autocomplete and hover docs
+// - Error messages reference these definitions
+
+// ============================================================================
+// Schema Type Definitions
+// ============================================================================
+
+/// Prop type constraint - what values a prop can accept
+type PropType {
+    name str                           // Type name: "string", "int", "msg_ref", etc.
+    union List<str>? = nil             // For union types: ["string", "class_binding"]
+    one_of List<str>? = nil            // For enum types: ["text", "password", "email"]
+}
+
+/// Definition of a single prop on an element
+type PropDef {
+    name str                           // Prop name (e.g., "onclick")
+    type str                           // Type name or "union:..." or "one_of:..."
+    required bool = false              // Whether this prop is required
+    default str? = nil                 // Default value if not specified
+    description str = ""               // Documentation for this prop
+}
+
+/// Definition of a view element
+type ElementSchema {
+    tag str                            // Element tag name (e.g., "button")
+    category str                       // Category: "layout", "content", "typography", etc.
+    props List<PropDef> = []           // Props this element supports
+    allows_children bool = true        // Whether children are allowed
+    description str = ""               // Documentation for this element
+}
+
+/// Definition of a custom component (user-defined widget)
+type ComponentSchema {
+    name str                           // Component name
+    props List<PropDef> = []           // Props the component accepts
+    emits List<str> = []               // Events the component can emit
+    description str = ""               // Documentation
+}
+
+/// Widget block constraints
+type WidgetBlockSchema {
+    required List<str>                 // Blocks that must appear exactly once
+    optional List<str>                 // Blocks that are optional (0 or 1)
+}
+
+/// The complete AURA schema
+type AuraSchemaDef {
+    version str = "1.0"                // Schema version
+    elements List<ElementSchema>       // All element definitions
+    components List<ComponentSchema> = []  // User-defined components
+    widget WidgetBlockSchema           // Widget block constraints
+}
+
+// ============================================================================
+// Prop Type Definitions
+// ============================================================================
+
+// Primitive types
+const STRING_TYPE: str = "string"
+const INT_TYPE: str = "int"
+const FLOAT_TYPE: str = "float"
+const BOOL_TYPE: str = "bool"
+const COLOR_TYPE: str = "color"
+
+// Reference types
+const STATE_REF_TYPE: str = "state_ref"
+const MSG_REF_TYPE: str = "msg_ref"
+const EXPR_TYPE: str = "expr"
+const CLOSURE_TYPE: str = "closure"
+
+// Special types
+const CLASS_BINDING_TYPE: str = "class_binding"
+const INTERPOLATED_TYPE: str = "interpolated"
+
+// Union type helpers
+const CLASS_OR_STRING: str = "union:string,class_binding"
+const BOOL_OR_STATE: str = "union:bool,state_ref"
+
+// ============================================================================
+// Element Schemas
+// ============================================================================
+
+// --- Layout Elements ---
+
+element col {
+    tag: "col"
+    category: "layout"
+    props: [
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es), can be dynamic" }
+        { name: "gap", type: "int", description: "Spacing between children" }
+        { name: "padding", type: "int", description: "Inner padding" }
+        { name: "align", type: "one_of:start,center,end,stretch", description: "Cross-axis alignment" }
+        { name: "justify", type: "one_of:start,center,end,between,around", description: "Main-axis alignment" }
+    ]
+    allows_children: true
+    description: "Vertical layout container"
+}
+
+element row {
+    tag: "row"
+    category: "layout"
+    props: [
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es), can be dynamic" }
+        { name: "gap", type: "int", description: "Spacing between children" }
+        { name: "padding", type: "int", description: "Inner padding" }
+        { name: "align", type: "one_of:start,center,end,stretch", description: "Cross-axis alignment" }
+    ]
+    allows_children: true
+    description: "Horizontal layout container"
+}
+
+element grid {
+    tag: "grid"
+    category: "layout"
+    props: [
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "columns", type: "int", description: "Number of columns" }
+        { name: "gap", type: "int", description: "Cell spacing" }
+    ]
+    allows_children: true
+    description: "Grid layout container"
+}
+
+element scroll {
+    tag: "scroll"
+    category: "layout"
+    props: [
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "direction", type: "one_of:vertical,horizontal,both", description: "Scroll direction" }
+    ]
+    allows_children: true
+    description: "Scrollable container"
+}
+
+element container {
+    tag: "container"
+    category: "layout"
+    props: [
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "max_width", type: "int", description: "Maximum width in pixels" }
+        { name: "padding", type: "int", description: "Inner padding" }
+    ]
+    allows_children: true
+    description: "Generic container with optional constraints"
+}
+
+// --- Content Elements ---
+
+element button {
+    tag: "button"
+    category: "content"
+    props: [
+        { name: "text", type: "string", description: "Button label text" }
+        { name: "onclick", type: MSG_REF_TYPE, description: "Message to send when clicked" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "disabled", type: BOOL_OR_STATE, description: "Whether button is disabled" }
+    ]
+    allows_children: false
+    description: "A clickable button element"
+}
+
+element input {
+    tag: "input"
+    category: "content"
+    props: [
+        { name: "value", type: STATE_REF_TYPE, description: "Bound value (two-way binding)" }
+        { name: "placeholder", type: "string", description: "Placeholder text" }
+        { name: "type", type: "one_of:text,password,email,number", description: "Input type" }
+        { name: "onchange", type: MSG_REF_TYPE, description: "Message on value change" }
+        { name: "onenter", type: MSG_REF_TYPE, description: "Message on Enter key" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "disabled", type: BOOL_OR_STATE, description: "Whether input is disabled" }
+    ]
+    allows_children: false
+    description: "Text input field"
+}
+
+element checkbox {
+    tag: "checkbox"
+    category: "content"
+    props: [
+        { name: "checked", type: BOOL_OR_STATE, description: "Checked state" }
+        { name: "onchange", type: MSG_REF_TYPE, description: "Message on toggle" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "disabled", type: BOOL_OR_STATE, description: "Whether checkbox is disabled" }
+    ]
+    allows_children: false
+    description: "Checkbox control"
+}
+
+element toggle {
+    tag: "toggle"
+    category: "content"
+    props: [
+        { name: "checked", type: BOOL_OR_STATE, description: "Checked state" }
+        { name: "onchange", type: MSG_REF_TYPE, description: "Message on toggle" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Toggle switch"
+}
+
+element link {
+    tag: "link"
+    category: "content"
+    props: [
+        { name: "href", type: "string", required: true, description: "Link URL" }
+        { name: "text", type: "string", description: "Link text" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Hyperlink"
+}
+
+// --- Typography Elements ---
+
+element text {
+    tag: "text"
+    category: "typography"
+    props: []  // Content is inline, not a named prop
+    allows_children: false
+    description: "Text content (literal or interpolated)"
+}
+
+element h1 {
+    tag: "h1"
+    category: "typography"
+    props: [
+        { name: "text", type: "string", description: "Heading text" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Level 1 heading"
+}
+
+element h2 {
+    tag: "h2"
+    category: "typography"
+    props: [
+        { name: "text", type: "string", description: "Heading text" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Level 2 heading"
+}
+
+element p {
+    tag: "p"
+    category: "typography"
+    props: [
+        { name: "text", type: "string", description: "Paragraph text" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Paragraph text"
+}
+
+element span {
+    tag: "span"
+    category: "typography"
+    props: [
+        { name: "text", type: "string", description: "Span text" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Inline text span"
+}
+
+// --- Media Elements ---
+
+element image {
+    tag: "image"
+    category: "media"
+    props: [
+        { name: "src", type: "string", required: true, description: "Image URL" }
+        { name: "alt", type: "string", description: "Alt text" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "fit", type: "one_of:cover,contain,fill,none", description: "Object fit mode" }
+    ]
+    allows_children: false
+    description: "Image display"
+}
+
+element icon {
+    tag: "icon"
+    category: "media"
+    props: [
+        { name: "name", type: "string", required: true, description: "Icon name" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "size", type: "int", description: "Icon size in pixels" }
+    ]
+    allows_children: false
+    description: "Icon display"
+}
+
+// --- Utility Elements ---
+
+element divider {
+    tag: "divider"
+    category: "utility"
+    props: [
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "direction", type: "one_of:horizontal,vertical", description: "Divider direction" }
+    ]
+    allows_children: false
+    description: "Horizontal or vertical divider line"
+}
+
+element spacer {
+    tag: "spacer"
+    category: "utility"
+    props: [
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "size", type: "int", description: "Spacer size in pixels (or flex if omitted)" }
+    ]
+    allows_children: false
+    description: "Flexible or fixed space"
+}
+
+// ============================================================================
+// Widget Block Schema
+// ============================================================================
+
+widget_blocks {
+    required: ["msg", "model", "view"]
+    optional: ["computed", "on"]
+}
+
+// ============================================================================
+// Full Schema Export
+// ============================================================================
+
+// This is the complete schema that gets loaded by the parser
+schema aura {
+    version: "1.0.0"
+    elements: [
+        // Layout
+        col, row, grid, scroll, container
+        // Content
+        button, input, checkbox, toggle, link
+        // Typography
+        text, h1, h2, p, span
+        // Media
+        image, icon
+        // Utility
+        divider, spacer
+    ]
+    widget: widget_blocks
+}

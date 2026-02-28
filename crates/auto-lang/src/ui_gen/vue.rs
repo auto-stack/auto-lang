@@ -771,6 +771,7 @@ mod tests {
                 .with_child(AuraNode::text("Count: 0")),
             handlers: HashMap::new(),
             props: vec![],
+            computed: vec![],
         };
 
         let mut gen = VueGenerator::new();
