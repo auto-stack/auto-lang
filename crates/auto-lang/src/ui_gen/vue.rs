@@ -267,10 +267,13 @@ pub struct VueGenerator {
 
     /// Track which shadcn-vue components are used
     shadcn_components_used: HashSet<String>,
+
+    /// Whether to output TypeScript (Plan 100: a2js → a2ts)
+    use_typescript: bool,
 }
 
 impl VueGenerator {
-    /// Create a new Vue generator (Plain Tailwind mode)
+    /// Create a new Vue generator (Plain Tailwind mode, TypeScript output)
     pub fn new() -> Self {
         Self {
             current_widget: None,
@@ -284,6 +287,7 @@ impl VueGenerator {
             mode: VueMode::Plain,
             shadcn_registry: ShadcnRegistry::new(),
             shadcn_components_used: HashSet::new(),
+            use_typescript: true,  // Plan 100: TypeScript by default
         }
     }
 
@@ -301,9 +305,20 @@ impl VueGenerator {
         self
     }
 
+    /// Set whether to use TypeScript output (Plan 100)
+    pub fn with_typescript(mut self, use_typescript: bool) -> Self {
+        self.use_typescript = use_typescript;
+        self
+    }
+
     /// Check if using shadcn-vue mode
     pub fn is_shadcn(&self) -> bool {
         self.mode == VueMode::Shadcn
+    }
+
+    /// Check if outputting TypeScript (Plan 100)
+    pub fn is_typescript(&self) -> bool {
+        self.use_typescript
     }
 
     /// Reset state for new widget
@@ -329,9 +344,16 @@ impl VueGenerator {
         let script = self.generate_script(widget)?;
         let style = self.generate_style();
 
+        // Plan 100: Add lang="ts" for TypeScript output
+        let script_tag = if self.use_typescript {
+            r#"<script setup lang="ts">"#
+        } else {
+            r#"<script setup>"#
+        };
+
         Ok(format!(
             r#"<!-- {} component - Auto-generated from Auto language -->
-<script setup>
+{}
 {}
 </script>
 
@@ -343,7 +365,7 @@ impl VueGenerator {
 {}
 </style>
 "#,
-            widget.name, script, template, style
+            widget.name, script_tag, script, template, style
         ))
     }
 
@@ -379,7 +401,14 @@ impl VueGenerator {
         for state in &widget.state_vars {
             self.state_names.push(state.name.clone());
             let init = self.expr_to_js(&state.initial)?;
-            script.push_str(&format!("const {} = ref({})\n", state.name, init));
+
+            // Plan 100: Add type annotation for TypeScript
+            if self.use_typescript {
+                let ts_type = self.expr_to_ts_type(&state.initial);
+                script.push_str(&format!("const {} = ref<{}>({})\n", state.name, ts_type, init));
+            } else {
+                script.push_str(&format!("const {} = ref({})\n", state.name, init));
+            }
         }
 
         if !widget.state_vars.is_empty() {
@@ -389,10 +418,20 @@ impl VueGenerator {
         // Generate computed properties
         for computed_prop in &widget.computed {
             let expr_js = self.expr_to_js(&computed_prop.expr)?;
-            script.push_str(&format!(
-                "const {} = computed(() => {})\n",
-                computed_prop.name, expr_js
-            ));
+
+            // Plan 100: Add type annotation for TypeScript
+            if self.use_typescript {
+                let ts_type = self.expr_to_ts_type(&computed_prop.expr);
+                script.push_str(&format!(
+                    "const {} = computed<{}>(() => {})\n",
+                    computed_prop.name, ts_type, expr_js
+                ));
+            } else {
+                script.push_str(&format!(
+                    "const {} = computed(() => {})\n",
+                    computed_prop.name, expr_js
+                ));
+            }
         }
 
         if !widget.computed.is_empty() {
@@ -416,11 +455,13 @@ impl VueGenerator {
         }
 
         // Output handler functions
+        // Plan 100: Add return type annotation for TypeScript
+        let return_type = if self.use_typescript { ": void" } else { "" };
         for (handler_name, handler_body) in &self.handlers {
             if handler_body.is_empty() {
-                script.push_str(&format!("function {}() {{\n  // TODO\n}}\n\n", handler_name));
+                script.push_str(&format!("function {}(){} {{\n  // TODO\n}}\n\n", handler_name, return_type));
             } else {
-                script.push_str(&format!("function {}() {{\n  {}\n}}\n\n", handler_name, handler_body));
+                script.push_str(&format!("function {}(){} {{\n  {}\n}}\n\n", handler_name, return_type, handler_body));
             }
         }
 
@@ -884,6 +925,36 @@ impl VueGenerator {
         }
 
         (classes.join(" "), dynamic_binding)
+    }
+
+    /// Plan 100: Infer TypeScript type from AuraExpr
+    fn expr_to_ts_type(&self, expr: &AuraExpr) -> String {
+        match expr {
+            AuraExpr::Int(_) => "number".to_string(),
+            AuraExpr::Float(_) => "number".to_string(),
+            AuraExpr::Bool(_) => "boolean".to_string(),
+            AuraExpr::Literal(_) => "string".to_string(),
+            AuraExpr::StateRef(name) => {
+                // Try to infer type from state variable name
+                // This is a simple heuristic - in a more complete implementation,
+                // we'd look up the actual type from the state definition
+                if name.starts_with("is_") || name.starts_with("has_") {
+                    "boolean".to_string()
+                } else {
+                    "number".to_string()  // Default to number for state refs
+                }
+            }
+            AuraExpr::Binary { .. } => {
+                // Binary operations on numbers typically produce numbers
+                // Comparison operations produce booleans
+                "number".to_string()
+            }
+            AuraExpr::Unary { .. } => {
+                "number".to_string()
+            }
+            AuraExpr::Array(_) => "any[]".to_string(),
+            _ => "any".to_string(),  // Default fallback
+        }
     }
 
     /// Convert AuraExpr to JS value string

@@ -871,6 +871,27 @@ pub fn trans_javascript(path: &str) -> AutoResult<String> {
     Ok(format!("[trans] {} -> {}", path, jsname))
 }
 
+/// Transpile AutoLang file to TypeScript (Plan 100: a2js → a2ts)
+pub fn trans_typescript(path: &str) -> AutoResult<String> {
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let tsname = path.replace(".at", ".ts");
+    let fname = AutoPath::new(path).filename();
+
+    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+    let mut parser = Parser::from(code.as_str());
+    let ast = parser.parse().map_err(|e| e.to_string())?;
+    let mut sink = Sink::new(fname.clone());
+    let mut trans = crate::trans::typescript::TypeScriptTrans::new(fname);
+    trans.trans(ast, &mut sink)?;
+
+    // Write TypeScript file
+    std::fs::write(&tsname, sink.done()?)?;
+
+    Ok(format!("[trans] {} -> {}", path, tsname))
+}
+
 // ============================================================================
 // Plan 096: UI Backend Generators
 // ============================================================================

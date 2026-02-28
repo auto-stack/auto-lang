@@ -1,0 +1,8 @@
+type Point {
+    x int
+    y int
+}
+
+fn main() {
+    print("Struct defined")
+}
