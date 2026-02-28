@@ -416,67 +416,68 @@ impl VueGenerator {
             AuraNode::Element { tag, props, events, children } => {
                 let html_tag = self.map_tag(tag, children.is_empty());
 
+                // Check if this is a shadcn-vue component
+                let is_shadcn_component = self.is_shadcn() && self.shadcn_registry.has_component(tag);
+
                 // Build attributes
-                let mut attrs = Vec::new();
-                let mut text_content: Option<String> = None;
+                let (attrs, text_content) = if is_shadcn_component {
+                    // Use shadcn-specific attribute generation
+                    let (shadcn_attrs, slot_content) = self.generate_shadcn_attrs(tag, props, events);
+                    (shadcn_attrs, slot_content)
+                } else {
+                    // Use plain Tailwind attribute generation
+                    let mut attrs = Vec::new();
+                    let mut text_content: Option<String> = None;
 
-                // Class attribute (both static and dynamic)
-                let (static_classes, dynamic_classes) = self.extract_classes(tag, props);
-                if !static_classes.is_empty() {
-                    attrs.push(format!("class=\"{}\"", static_classes));
-                }
-                if let Some(dynamic) = dynamic_classes {
-                    attrs.push(format!(":class=\"{}\"", dynamic));
-                }
-
-                // Check for input type (for special handling)
-                let _input_type = props.get("type").and_then(|t| {
-                    if let AuraPropValue::Expr(AuraExpr::Literal(s)) = t {
-                        Some(s.clone())
-                    } else {
-                        None
+                    // Class attribute (both static and dynamic)
+                    let (static_classes, dynamic_classes) = self.extract_classes(tag, props);
+                    if !static_classes.is_empty() {
+                        attrs.push(format!("class=\"{}\"", static_classes));
                     }
-                });
-
-                // Props as attributes (except 'text' which becomes element content)
-                for (key, value) in props {
-                    if key == "class" {
-                        continue; // Already handled
-                    }
-                    if key == "text" {
-                        // Extract text content to render as element content
-                        text_content = Some(self.prop_to_text_content(value)?);
-                        continue;
+                    if let Some(dynamic) = dynamic_classes {
+                        attrs.push(format!(":class=\"{}\"", dynamic));
                     }
 
-                    // Handle two-way binding (bind:value -> v-model)
-                    if key.starts_with("bind:") {
-                        let bind_target = key.strip_prefix("bind:").unwrap();
-                        let model_value = match value {
-                            AuraPropValue::Expr(AuraExpr::StateRef(name)) => name.clone(),
-                            _ => "value".to_string(),
-                        };
-                        // For checkbox, use v-model for the checked state
-                        if tag == "input" && bind_target == "checked" {
-                            attrs.push(format!("v-model=\"{}\"", model_value));
-                        } else if tag == "input" && bind_target == "value" {
-                            attrs.push(format!("v-model=\"{}\"", model_value));
-                        } else {
-                            attrs.push(format!("v-model=\"{}\"", model_value));
+                    // Props as attributes
+                    for (key, value) in props {
+                        if key == "class" {
+                            continue; // Already handled
                         }
-                        continue;
+                        if key == "text" {
+                            text_content = Some(self.prop_to_text_content(value)?);
+                            continue;
+                        }
+
+                        // Handle two-way binding (bind:value -> v-model)
+                        if key.starts_with("bind:") {
+                            let bind_target = key.strip_prefix("bind:").unwrap();
+                            let model_value = match value {
+                                AuraPropValue::Expr(AuraExpr::StateRef(name)) => name.clone(),
+                                _ => "value".to_string(),
+                            };
+                            if tag == "input" && bind_target == "checked" {
+                                attrs.push(format!("v-model=\"{}\"", model_value));
+                            } else if tag == "input" && bind_target == "value" {
+                                attrs.push(format!("v-model=\"{}\"", model_value));
+                            } else {
+                                attrs.push(format!("v-model=\"{}\"", model_value));
+                            }
+                            continue;
+                        }
+
+                        let value_str = self.prop_to_attr_value(value)?;
+                        attrs.push(format!("{}={}", key, value_str));
                     }
 
-                    let value_str = self.prop_to_attr_value(value)?;
-                    attrs.push(format!("{}={}", key, value_str));
-                }
+                    // Event handlers
+                    for (event, aura_event) in events {
+                        let vue_event = self.auto_event_to_vue(event);
+                        let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                        attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
+                    }
 
-                // Event handlers
-                for (event, aura_event) in events {
-                    let vue_event = self.auto_event_to_vue(event);
-                    let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
-                    attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
-                }
+                    (attrs, text_content)
+                };
 
                 let attr_str = if attrs.is_empty() {
                     String::new()
@@ -980,6 +981,283 @@ impl VueGenerator {
         }
     }
 
+    // ========================================================================
+    // shadcn-vue Component-specific Prop Handling
+    // ========================================================================
+
+    /// Generate shadcn-vue component attributes based on element type
+    fn generate_shadcn_attrs(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+    ) -> (Vec<String>, Option<String>) {
+        let mut attrs = Vec::new();
+        let mut slot_content: Option<String> = None;
+
+        match tag {
+            // === Button ===
+            "button" => {
+                // Handle variant prop
+                if let Some(value) = props.get("variant") {
+                    let variant = self.extract_string_value(value).unwrap_or("default");
+                    attrs.push(format!("variant=\"{}\"", variant));
+                }
+                // Handle size prop
+                if let Some(value) = props.get("size") {
+                    let size = self.extract_string_value(value).unwrap_or("default");
+                    attrs.push(format!("size=\"{}\"", size));
+                }
+                // Handle disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+                // Text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === Input ===
+            "input" => {
+                // v-model for value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // type prop
+                if let Some(value) = props.get("type") {
+                    let type_val = self.extract_string_value(value).unwrap_or("text");
+                    attrs.push(format!("type=\"{}\"", type_val));
+                }
+                // placeholder
+                if let Some(value) = props.get("placeholder") {
+                    let placeholder = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("placeholder=\"{}\"", placeholder));
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+            }
+
+            // === Textarea ===
+            "textarea" => {
+                // v-model for value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // placeholder
+                if let Some(value) = props.get("placeholder") {
+                    let placeholder = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("placeholder=\"{}\"", placeholder));
+                }
+                // rows
+                if let Some(value) = props.get("rows") {
+                    let rows = self.extract_int_value(value).unwrap_or(3);
+                    attrs.push(format!(":rows=\"{}\"", rows));
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+            }
+
+            // === Checkbox ===
+            "checkbox" => {
+                // v-model:checked for checked state
+                if let Some(value) = props.get("checked") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:checked=\"{}\"", model));
+                    }
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+            }
+
+            // === Switch/Toggle ===
+            "toggle" | "switch" => {
+                // v-model:checked for checked state
+                if let Some(value) = props.get("checked") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:checked=\"{}\"", model));
+                    }
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+            }
+
+            // === Select ===
+            "select" => {
+                // v-model for value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+            }
+
+            // === Slider ===
+            "slider" => {
+                // v-model for value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // min/max/step
+                if let Some(value) = props.get("min") {
+                    let min = self.extract_int_value(value).unwrap_or(0);
+                    attrs.push(format!(":min=\"{}\"", min));
+                }
+                if let Some(value) = props.get("max") {
+                    let max = self.extract_int_value(value).unwrap_or(100);
+                    attrs.push(format!(":max=\"{}\"", max));
+                }
+                if let Some(value) = props.get("step") {
+                    let step = self.extract_int_value(value).unwrap_or(1);
+                    attrs.push(format!(":step=\"{}\"", step));
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+            }
+
+            // === Progress ===
+            "progress" => {
+                // v-model for value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    } else if let Some(int_val) = self.extract_int_value(value) {
+                        attrs.push(format!(":model-value=\"{}\"", int_val));
+                    }
+                }
+                // max
+                if let Some(value) = props.get("max") {
+                    let max = self.extract_int_value(value).unwrap_or(100);
+                    attrs.push(format!(":max=\"{}\"", max));
+                }
+            }
+
+            // === Badge ===
+            "badge" => {
+                // variant
+                if let Some(value) = props.get("type") {
+                    let variant = self.extract_string_value(value).unwrap_or("default");
+                    attrs.push(format!("variant=\"{}\"", variant));
+                }
+                // Text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === Card ===
+            "card" => {
+                // Cards use slots for header/content
+            }
+
+            // === Avatar ===
+            "avatar" => {
+                // src for image
+                if let Some(value) = props.get("src") {
+                    let src = self.extract_string_value(value).unwrap_or("");
+                    // AvatarImage component
+                    attrs.push(format!("src=\"{}\"", src));
+                }
+                // alt/fallback
+                if let Some(value) = props.get("name") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            _ => {
+                // Default handling for other components
+            }
+        }
+
+        // Add event handlers
+        for (event, aura_event) in events {
+            let vue_event = self.shadcn_event_to_vue(tag, event);
+            let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+            attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
+        }
+
+        (attrs, slot_content)
+    }
+
+    /// Convert AutoUI event to Vue event for shadcn-vue components
+    fn shadcn_event_to_vue(&self, _tag: &str, event: &str) -> String {
+        match event {
+            "onclick" | "onClick" | "on_click" => "@click".to_string(),
+            "oninput" | "onInput" => "@update:modelValue".to_string(),
+            "onchange" | "onChange" => "@update:modelValue".to_string(),
+            "onenter" | "onEnter" => "@keyup.enter".to_string(),
+            _ => format!("@{}", event.trim_start_matches("on")),
+        }
+    }
+
+    /// Extract string value from AuraPropValue
+    fn extract_string_value<'a>(&self, value: &'a AuraPropValue) -> Option<&'a str> {
+        match value {
+            AuraPropValue::Expr(AuraExpr::Literal(s)) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Extract boolean value from AuraPropValue
+    fn extract_bool_value(&self, value: &AuraPropValue) -> bool {
+        match value {
+            AuraPropValue::Expr(AuraExpr::Bool(b)) => *b,
+            AuraPropValue::Expr(AuraExpr::Literal(s)) => s == "true",
+            _ => false,
+        }
+    }
+
+    /// Extract integer value from AuraPropValue
+    fn extract_int_value(&self, value: &AuraPropValue) -> Option<i64> {
+        match value {
+            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n),
+            AuraPropValue::Expr(AuraExpr::Literal(s)) => s.parse().ok(),
+            _ => None,
+        }
+    }
+
+    /// Extract state reference from AuraPropValue
+    fn extract_state_ref(&self, value: &AuraPropValue) -> Option<String> {
+        match value {
+            AuraPropValue::Expr(AuraExpr::StateRef(name)) => Some(name.clone()),
+            _ => None,
+        }
+    }
+
     /// Convert AutoUI event name to Vue event
     fn auto_event_to_vue(&self, event: &str) -> String {
         match event {
@@ -1396,5 +1674,125 @@ mod tests {
         assert_eq!(gen.pattern_to_handler_name("Msg::Inc"), "onInc");
         assert_eq!(gen.pattern_to_handler_name(".Inc"), "onInc");
         assert_eq!(gen.pattern_to_handler_name("Dec"), "onDec");
+    }
+
+    #[test]
+    fn test_shadcn_mode() {
+        let gen = VueGenerator::new_shadcn();
+        assert!(gen.is_shadcn());
+
+        let gen = VueGenerator::new().with_mode(VueMode::Shadcn);
+        assert!(gen.is_shadcn());
+
+        let gen = VueGenerator::new();
+        assert!(!gen.is_shadcn());
+    }
+
+    #[test]
+    fn test_shadcn_map_tag() {
+        let mut gen = VueGenerator::new_shadcn();
+
+        // Should return shadcn component names
+        assert_eq!(gen.map_tag("button", false), "Button");
+        assert_eq!(gen.map_tag("input", true), "Input");
+        assert_eq!(gen.map_tag("textarea", true), "Textarea");
+        assert_eq!(gen.map_tag("checkbox", true), "Checkbox");
+        assert_eq!(gen.map_tag("toggle", true), "Switch");
+        assert_eq!(gen.map_tag("select", false), "Select");
+        assert_eq!(gen.map_tag("progress", true), "Progress");
+        assert_eq!(gen.map_tag("badge", true), "Badge");
+        assert_eq!(gen.map_tag("card", false), "Card");
+        assert_eq!(gen.map_tag("avatar", true), "Avatar");
+        assert_eq!(gen.map_tag("slider", true), "Slider");
+
+        // Layout elements should still return div
+        assert_eq!(gen.map_tag("col", false), "div");
+        assert_eq!(gen.map_tag("row", false), "div");
+    }
+
+    #[test]
+    fn test_shadcn_registry() {
+        let registry = ShadcnRegistry::new();
+
+        // Check component mappings exist
+        assert!(registry.has_component("button"));
+        assert!(registry.has_component("input"));
+        assert!(registry.has_component("checkbox"));
+        assert!(registry.has_component("modal"));
+        assert!(registry.has_component("tabs"));
+        assert!(registry.has_component("table"));
+
+        // Check primary component names
+        assert_eq!(registry.primary_component("button"), Some("Button"));
+        assert_eq!(registry.primary_component("input"), Some("Input"));
+        assert_eq!(registry.primary_component("toggle"), Some("Switch"));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_button() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test button with text
+        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Click me".to_string())));
+        let (attrs, slot_content) = gen.generate_shadcn_attrs("button", &props, &events);
+
+        assert!(slot_content.is_some());
+        assert_eq!(slot_content.unwrap(), "Click me");
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_input() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test input with v-model
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("name".to_string())));
+        props.insert("placeholder".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Enter name".to_string())));
+        let (attrs, _) = gen.generate_shadcn_attrs("input", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("v-model=\"name\"")));
+        assert!(attrs.iter().any(|a| a.contains("placeholder=\"Enter name\"")));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_checkbox() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test checkbox with v-model:checked
+        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("done".to_string())));
+        let (attrs, _) = gen.generate_shadcn_attrs("checkbox", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("v-model:checked=\"done\"")));
+    }
+
+    #[test]
+    fn test_generate_project_files() {
+        // Test scaffold file generation
+        let components_json = VueGenerator::generate_components_json();
+        assert!(components_json.contains("shadcn-vue"));
+        assert!(components_json.contains("tailwind"));
+
+        let package_json = VueGenerator::generate_package_json("test-project");
+        assert!(package_json.contains("test-project"));
+        assert!(package_json.contains("radix-vue"));
+        assert!(package_json.contains("tailwind-merge"));
+
+        let vite_config = VueGenerator::generate_vite_config();
+        assert!(vite_config.contains("@vitejs/plugin-vue"));
+        assert!(vite_config.contains("alias"));
+
+        let utils_ts = VueGenerator::generate_utils_ts();
+        assert!(utils_ts.contains("cn"));
+        assert!(utils_ts.contains("clsx"));
+        assert!(utils_ts.contains("tailwind-merge"));
+
+        let base_css = VueGenerator::generate_base_css();
+        assert!(base_css.contains("--background"));
+        assert!(base_css.contains("--primary"));
     }
 }
