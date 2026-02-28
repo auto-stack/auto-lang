@@ -568,12 +568,12 @@ schema aura {
 - [x] Resolve `const` references for type names
 - [x] Parse `widget_blocks` constraints
 
-**Phase 2: Validation** 🔄 NEXT
-- [ ] Load schema at parser startup
-- [ ] Validate widgets against schema
-- [ ] Check required/optional widget blocks
-- [ ] Validate view elements against schema
-- [ ] Generate helpful error messages
+**Phase 2: Validation** ✅ DONE
+- [x] Load schema at parser startup
+- [x] Validate widgets against schema
+- [x] Check required/optional widget blocks
+- [x] Validate view elements against schema
+- [x] Generate helpful error messages
 
 **Phase 3: LSP Integration**
 - [ ] Serve schema for completion
@@ -602,7 +602,8 @@ schema aura {
 - [x] Rust schema types implementation (`schema.rs`)
 - [x] AutoLang schema parser (`schema_loader.rs`)
 - [x] Schema loader tests (4 tests passing)
-- [ ] Validation logic
+- [x] Validation logic (`validate.rs`)
+- [x] Validation tests (7 tests passing)
 - [ ] LSP integration
 - [ ] Documentation generation
 
@@ -613,19 +614,36 @@ schema aura {
 | `schema/aura.at` | AutoLang-based schema definition (19 elements) |
 | `crates/auto-lang/src/aura/schema.rs` | Rust schema types (ElementDef, PropDef, PropType) |
 | `crates/auto-lang/src/aura/schema_loader.rs` | Schema parser (loads aura.at) |
+| `crates/auto-lang/src/aura/validate.rs` | Widget validation with error codes (E0981-E0986) |
 
 ## Usage
 
 ```rust
-use auto_lang::aura::load_default_schema;
+use auto_lang::aura::{load_default_schema, WidgetValidator};
 
 // Load schema from embedded schema/aura.at
 let schema = load_default_schema()?;
 
-// Use schema for validation
+// Use schema for element lookup
 assert!(schema.get_element("button").is_some());
 assert!(schema.widget_blocks.is_required("msg"));
 
 // Get suggestions for typos
 let suggestion = schema.suggest_similar("buton"); // Returns Some("button")
+
+// Validate a widget
+let validator = WidgetValidator::new()?;
+match validator.validate_widget(&widget) {
+    Ok(()) => println!("Widget is valid!"),
+    Err(errors) => {
+        for error in &errors {
+            eprintln!("{}", error);
+        }
+    }
+}
+
+// Validate a single element
+let validation = validator.validate_element("button");
+assert!(validation.is_valid());
+assert!(!validation.allows_children());
 ```
