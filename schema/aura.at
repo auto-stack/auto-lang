@@ -220,6 +220,120 @@ element link {
     description: "Hyperlink"
 }
 
+element textarea {
+    tag: "textarea"
+    category: "content"
+    props: [
+        { name: "value", type: STATE_REF_TYPE, description: "Bound value (two-way binding)" }
+        { name: "placeholder", type: "string", description: "Placeholder text" }
+        { name: "rows", type: "int", description: "Visible text lines" }
+        { name: "cols", type: "int", description: "Visible text width in columns" }
+        { name: "onchange", type: MSG_REF_TYPE, description: "Message on value change" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "disabled", type: BOOL_OR_STATE, description: "Whether textarea is disabled" }
+        { name: "maxlength", type: "int", description: "Maximum character count" }
+    ]
+    allows_children: false
+    description: "Multi-line text input"
+}
+
+element select {
+    tag: "select"
+    category: "content"
+    props: [
+        { name: "value", type: STATE_REF_TYPE, description: "Selected value (two-way binding)" }
+        { name: "onchange", type: MSG_REF_TYPE, description: "Message on selection change" }
+        { name: "placeholder", type: "string", description: "Placeholder text when nothing selected" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "disabled", type: BOOL_OR_STATE, description: "Whether select is disabled" }
+    ]
+    allows_children: true
+    description: "Dropdown selection (contains option elements)"
+}
+
+element option {
+    tag: "option"
+    category: "content"
+    props: [
+        { name: "value", type: "string", required: true, description: "Option value" }
+        { name: "text", type: "string", description: "Display text (defaults to value)" }
+        { name: "disabled", type: BOOL_OR_STATE, description: "Whether option is disabled" }
+    ]
+    allows_children: false
+    description: "Select dropdown option"
+}
+
+// --- Data Elements ---
+
+element table {
+    tag: "table"
+    category: "data"
+    props: [
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "bordered", type: "bool", description: "Whether table has borders" }
+        { name: "striped", type: "bool", description: "Whether rows are striped" }
+    ]
+    allows_children: true
+    description: "Table container (contains thead, tbody)"
+}
+
+element thead {
+    tag: "thead"
+    category: "data"
+    props: [
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Table header row container (contains tr)"
+}
+
+element tbody {
+    tag: "tbody"
+    category: "data"
+    props: [
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Table body container (contains tr)"
+}
+
+element tr {
+    tag: "tr"
+    category: "data"
+    props: [
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "onclick", type: MSG_REF_TYPE, description: "Message on row click" }
+    ]
+    allows_children: true
+    description: "Table row (contains th or td)"
+}
+
+element th {
+    tag: "th"
+    category: "data"
+    props: [
+        { name: "text", type: "string", description: "Header cell text" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "align", type: "one_of:left,center,right", description: "Text alignment" }
+        { name: "colspan", type: "int", description: "Number of columns to span" }
+    ]
+    allows_children: false
+    description: "Table header cell"
+}
+
+element td {
+    tag: "td"
+    category: "data"
+    props: [
+        { name: "text", type: "string", description: "Cell text" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "align", type: "one_of:left,center,right", description: "Text alignment" }
+        { name: "colspan", type: "int", description: "Number of columns to span" }
+    ]
+    allows_children: false
+    description: "Table data cell"
+}
+
 // --- Typography Elements ---
 
 element text {
@@ -345,7 +459,9 @@ schema aura {
         // Layout
         col, row, grid, scroll, container
         // Content
-        button, input, checkbox, toggle, link
+        button, input, checkbox, toggle, link, textarea, select, option
+        // Data
+        table, thead, tbody, tr, th, td
         // Typography
         text, h1, h2, p, span
         // Media

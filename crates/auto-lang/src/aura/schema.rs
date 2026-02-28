@@ -22,8 +22,10 @@ pub enum ElementCategory {
     Content,
     /// Text display: h1-h6, p, span, code, pre
     Typography,
-    /// List structures: list, list_item, table, table_row, table_cell
+    /// List structures: list, list_item
     List,
+    /// Data structures: table, thead, tbody, tr, th, td
+    Data,
     /// Media elements: image, icon
     Media,
     /// Utility elements: divider, spacer

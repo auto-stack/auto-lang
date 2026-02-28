@@ -41,6 +41,7 @@
 //!             AuraMsgVariant { name: "Dec".to_string(), payload: None },
 //!         ],
 //!     }],
+//!     computed: vec![],
 //!     view_tree: AuraNode::Element {
 //!         tag: "col".to_string(),
 //!         props: std::collections::HashMap::new(),

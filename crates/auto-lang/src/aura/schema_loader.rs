@@ -553,6 +553,7 @@ impl SchemaLoader {
                 "content" => ElementCategory::Content,
                 "typography" => ElementCategory::Typography,
                 "list" => ElementCategory::List,
+                "data" => ElementCategory::Data,
                 "media" => ElementCategory::Media,
                 "utility" => ElementCategory::Utility,
                 _ => ElementCategory::Content,
@@ -724,5 +725,55 @@ widget_blocks {
 
         assert_eq!(loader.resolve_type("MSG_REF_TYPE"), "msg_ref");
         assert_eq!(loader.resolve_type(r#""string""#), "string");
+    }
+
+    #[test]
+    fn test_new_elements() {
+        let schema = load_default_schema().expect("Failed to load schema");
+
+        // Check textarea element
+        let textarea = schema.get_element("textarea").expect("textarea element should exist");
+        assert_eq!(textarea.tag, "textarea");
+        assert!(!textarea.allows_children);
+        assert!(textarea.get_prop("value").is_some());
+        assert!(textarea.get_prop("rows").is_some());
+        assert!(textarea.get_prop("cols").is_some());
+
+        // Check select element
+        let select = schema.get_element("select").expect("select element should exist");
+        assert_eq!(select.tag, "select");
+        assert!(select.allows_children);  // Contains options
+        assert!(select.get_prop("value").is_some());
+        assert!(select.get_prop("onchange").is_some());
+
+        // Check option element
+        let option = schema.get_element("option").expect("option element should exist");
+        assert_eq!(option.tag, "option");
+        assert!(!option.allows_children);
+        assert!(option.get_prop("value").is_some());
+
+        // Check table elements
+        let table = schema.get_element("table").expect("table element should exist");
+        assert_eq!(table.tag, "table");
+        assert!(table.allows_children);
+
+        let thead = schema.get_element("thead").expect("thead element should exist");
+        assert!(thead.allows_children);
+
+        let tbody = schema.get_element("tbody").expect("tbody element should exist");
+        assert!(tbody.allows_children);
+
+        let tr = schema.get_element("tr").expect("tr element should exist");
+        assert!(tr.allows_children);
+
+        let th = schema.get_element("th").expect("th element should exist");
+        assert!(!th.allows_children);
+        assert!(th.get_prop("text").is_some());
+        assert!(th.get_prop("colspan").is_some());
+
+        let td = schema.get_element("td").expect("td element should exist");
+        assert!(!td.allows_children);
+        assert!(td.get_prop("text").is_some());
+        assert!(td.get_prop("align").is_some());
     }
 }
