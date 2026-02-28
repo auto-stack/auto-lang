@@ -362,12 +362,12 @@ impl RustGenerator {
 - `auto-lang/src/ui_gen/style.rs` - 新建
 
 **任务**:
-- [ ] 设计 Vue3 SFC 输出格式
-- [ ] 实现 `VueGenerator` 结构
-- [ ] 复用 a2js 转译器进行表达式转换
-- [ ] 实现 template 生成（view_tree → HTML）
-- [ ] 实现 script 生成（state → ref, handlers → functions）
-- [ ] 添加后端测试
+- [x] 设计 Vue3 SFC 输出格式
+- [x] 实现 `VueGenerator` 结构
+- [x] 复用 a2js 转译器进行表达式转换
+- [x] 实现 template 生成（view_tree → HTML）
+- [x] 实现 script 生成（state → ref, handlers → functions）
+- [x] 添加后端测试
 
 **验证点**: `Counter.at` → AURA → 有效的 Vue3 SFC
 
@@ -380,11 +380,11 @@ impl RustGenerator {
 - `auto-lang/src/ui_gen/rust.rs` - 新建
 
 **任务**:
-- [ ] 分析现有 `rust_gen.rs` 实现
-- [ ] 设计 AURA → Rust 映射规则
-- [ ] 实现 `RustGenerator` 从 AURA 生成
-- [ ] 保持与 auto-ui 框架的兼容性
-- [ ] 添加后端测试
+- [x] 分析现有 `rust_gen.rs` 实现
+- [x] 设计 AURA → Rust 映射规则
+- [x] 实现 `RustGenerator` 从 AURA 生成
+- [x] 保持与 auto-ui 框架的兼容性
+- [x] 添加后端测试
 
 **验证点**: `Counter.at` → AURA → 有效的 Rust Component
 
@@ -396,9 +396,9 @@ impl RustGenerator {
 - `auto-lang/src/cli.rs` - 修改
 
 **任务**:
-- [ ] 实现 pac.at 解析
-- [ ] CLI 支持 `-s <scenario>` 和 `-b <backend>`
-- [ ] 更新转译 API 入口
+- [x] 实现 pac.at 解析
+- [x] CLI 支持 `-s <scenario>` 和 `-b <backend>`
+- [x] 更新转译 API 入口
 - [ ] 热重载集成
 
 **验证点**: `auto build -s ui -b vue Counter.at` 工作
@@ -412,9 +412,9 @@ impl RustGenerator {
 - `auto-ui/trans/api.rs` - 修改为调用新生成器
 
 **任务**:
-- [ ] auto-ui 调用 `auto-lang::ui_gen::RustGenerator`
-- [ ] 标记旧 `rust_gen.rs` 为废弃
-- [ ] 更新文档
+- [x] auto-ui 调用 `auto-lang::ui_gen::RustGenerator`
+- [x] 标记旧 `rust_gen.rs` 为废弃
+- [x] 更新文档
 - [ ] 性能基准测试
 
 **验证点**: auto-ui 使用 AURA 路径，所有测试通过
@@ -431,7 +431,7 @@ impl RustGenerator {
 | Phase 3 | 3-4天 | ✅ 已完成 | Rust 生成器迁移 |
 | Phase 4 | 2-3天 | ✅ 已完成 | CLI 集成 |
 | Phase 5 | 2-3天 | ✅ 已完成 | 清理与迁移 |
-| Phase 6 | 2-3天 | ⏳ 待开始 | 修复已知问题 |
+| Phase 6 | 2-3天 | ✅ 已完成 | 修复已知问题 |
 
 **总计**: 18-24 天
 
@@ -447,18 +447,18 @@ impl RustGenerator {
 - [x] `src/aura/atom.rs` - Atom 格式序列化
 - [x] `src/ast/ui.rs` - UI AST 节点
 
-### 需要新建（auto-lang）
-- [ ] `src/ui_gen/mod.rs` - 后端生成器入口
-- [ ] `src/ui_gen/vue.rs` - Vue3 SFC 生成
-- [ ] `src/ui_gen/rust.rs` - Rust/GPUI 生成（迁移自 auto-ui）
-- [ ] `src/ui_gen/style.rs` - 样式处理
+### 已新建（auto-lang）
+- [x] `src/ui_gen/mod.rs` - 后端生成器入口
+- [x] `src/ui_gen/vue.rs` - Vue3 SFC 生成
+- [x] `src/ui_gen/rust.rs` - Rust/GPUI 生成（迁移自 auto-ui）
+- [x] `src/ui_gen/style.rs` - 样式处理
 
-### 需要修改
-- [ ] `auto-lang/src/cli.rs` - 添加 `-s` 和 `-b` 参数
-- [ ] `auto-ui/trans/api.rs` - 调用新 AURA 生成器
+### 已修改
+- [x] `auto-lang/src/cli.rs` - 添加 `-s` 和 `-b` 参数
+- [x] `auto-ui/trans/api.rs` - 调用新 AURA 生成器
 
-### 最终废弃
-- [ ] `auto-ui/trans/rust_gen.rs` - 旧 Rust 生成器
+### 已废弃
+- [x] `auto-ui/trans/rust_gen.rs` - 旧 Rust 生成器
 
 ---
 
@@ -473,10 +473,10 @@ impl RustGenerator {
 ### 功能要求
 - [x] `Counter.at` → WidgetDecl AST 解析正确
 - [x] WidgetDecl → AuraWidget 抽取正确
-- [ ] Vue3 后端生成可运行 SFC
-- [ ] Rust 后端生成可编译代码
-- [ ] auto-ui 框架与新后端兼容
-- [ ] 事件处理器正确绑定
+- [x] Vue3 后端生成可运行 SFC
+- [x] Rust 后端生成可编译代码
+- [x] auto-ui 框架与新后端兼容
+- [x] 事件处理器正确绑定
 - [ ] `${.state}` 插值正确处理
 
 ---
@@ -701,11 +701,18 @@ impl Component for Counter {
 | Handler Body 提取 | 高 | ✅ 已修复 | commit 724b85e |
 | 状态引用转换 | 中 | ✅ 已修复 | commit 724b85e |
 | View Tree 子节点 | 高 | ✅ 正常工作 | 语法正确即可 |
-| 事件绑定生成 | 中 | ✅ 正常工作 | 使用 `onclick: Inc` (不带 `.`) |
+| 事件绑定生成 | 中 | ✅ 已修复 | commit 0919441 - 支持 `.` 前缀 |
 
 ---
 
-## 已知限制: View 事件处理器不支持 `.` 前缀
+## ~~已知限制: View 事件处理器不支持 `.` 前缀~~ ✅ 已修复
+
+> **更新**: 此限制已在 commit 0919441 中修复。现在两种语法都支持：
+> - `onclick: Inc` ✅
+> - `onclick: .Inc` ✅
+
+<details>
+<summary>历史记录（已过时）</summary>
 
 ### 问题描述
 
@@ -766,3 +773,5 @@ if self.is_kind(TokenKind::Dot) {
 ### 优先级
 
 中 - 有简单的工作绕过方案
+
+</details>
