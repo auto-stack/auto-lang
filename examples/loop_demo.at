@@ -1,0 +1,45 @@
+// Loop Demo - Complete runnable example
+
+widget LoopDemo {
+    msg Msg { Increment, Reset }
+
+    model {
+        count int = 0
+    }
+
+    view {
+        col {
+            h1 (text: "Loop Demo") {}
+
+            // Simple for loop
+            text "Numbers 1-5:"
+            for i in .numbers {
+                text `Number: ${i}`
+            }
+
+            // For loop with index
+            text "Fruits with index:"
+            for idx, fruit in .fruits {
+                row {
+                    text `${idx}: ${fruit}`
+                }
+            }
+
+            // Counter
+            row {
+                text `Count: ${.count}`
+                button (text: "+", onclick: .Increment) {}
+                button (text: "Reset", onclick: .Reset) {}
+            }
+        }
+    }
+
+    on {
+        Increment => {
+            count = count + 1
+        }
+        Reset => {
+            count = 0
+        }
+    }
+}

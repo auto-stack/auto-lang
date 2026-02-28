@@ -891,7 +891,7 @@ pub fn ui_build(
     output: Option<&str>,
 ) -> AutoResult<String> {
     use crate::session::{CompilerSession, Scenario};
-    use crate::ui_gen::{BackendGenerator, VueGenerator, RustGenerator};
+    use crate::ui_gen::{BackendGenerator, VueGenerator, RustGenerator, IcedGenerator};
 
     // Parse scenario
     let session = match scenario {
@@ -946,6 +946,14 @@ pub fn ui_build(
                 output_code.push_str("\n\n");
             }
         }
+        "iced" => {
+            let mut gen = IcedGenerator::new();
+            for widget in &widgets {
+                let code = gen.generate(widget).map_err(|e| e.to_string())?;
+                output_code.push_str(&code);
+                output_code.push_str("\n\n");
+            }
+        }
         _ => {
             return Err(format!("Unknown backend: {}", backend).into());
         }
@@ -956,6 +964,7 @@ pub fn ui_build(
         let ext = match backend {
             "vue" => "vue",
             "rust" => "rs",
+            "iced" => "rs",
             _ => "txt",
         };
         std::fs::create_dir_all(out_dir).ok();
@@ -970,6 +979,10 @@ pub fn ui_build(
                 }
                 "rust" => {
                     let mut gen = RustGenerator::new();
+                    gen.generate(widget).map_err(|e| e.to_string())?
+                }
+                "iced" => {
+                    let mut gen = IcedGenerator::new();
                     gen.generate(widget).map_err(|e| e.to_string())?
                 }
                 _ => output_code.clone(),

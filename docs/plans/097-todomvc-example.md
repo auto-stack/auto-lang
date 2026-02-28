@@ -688,7 +688,7 @@ gpui = { git = "https://github.com/zed-industries/zed" }
 | Phase | Status | Completion |
 |-------|--------|------------|
 | Phase 1: Parser Extensions | ✅ Complete | 100% |
-| Phase 2: Vue.js Generator | 🔄 In Progress | 60% |
+| Phase 2: Vue.js Generator | ✅ Complete | 100% |
 | Phase 3: Iced Generator | Not Started | 0% |
 | Phase 4: GPUI Generator | Not Started | 0% |
 | Phase 5: Sub-components | Not Started | 0% |
@@ -705,8 +705,14 @@ gpui = { git = "https://github.com/zed-industries/zed" }
 - ✅ Rust generator iterator support
 - ✅ AURA atom serialization
 
+### Phase 2 Completed (2026-02-28)
+
+- ✅ Loop variable scoping for interpolations
+- ✅ Text node parsing with regular strings
+- ✅ Event parameter extraction (AuraEvent with params)
+- ✅ Input/checkbox element support (v-model)
+- ✅ For loop variable order (idx, item → v-for="(item, idx)")
+
 ### Known Issues
 
-1. **Loop variable scoping**: Loop variables (e.g., `i` in `for i in .items`) aren't registered in scope, so they can't be used in interpolations inside the loop body yet.
-2. **Text node parsing**: The `text` element with content needs improvement.
-3. **Event parameter extraction**: Parameters like `todo.id` aren't fully extracted yet.
+None - all Phase 1 and Phase 2 issues resolved.
