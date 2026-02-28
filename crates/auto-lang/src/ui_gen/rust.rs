@@ -312,14 +312,25 @@ impl RustGenerator {
                     }
                     AuraTextContent::Interpolated { template, bindings } => {
                         // Generate format! string
+                        // Template has ${.binding} format, convert to Rust format!({binding})
                         let mut format_str = template.clone();
-                        for binding in bindings {
+                        for binding in bindings.iter() {
+                            // Replace ${.binding} with {binding}
                             format_str = format_str.replace(
-                                &format!("{{{{ {} }}}}", binding),
+                                &format!("${{{}.{}}}", ".", binding),
+                                &format!("{{{}}}", binding)
+                            );
+                            // Also replace ${binding} with {binding}
+                            format_str = format_str.replace(
+                                &format!("${{{}}}", binding),
                                 &format!("{{{}}}", binding)
                             );
                         }
-                        format!("View::text(format!(\"{}\", {}))", format_str, bindings.join(", "))
+                        // Generate self.binding for state references
+                        let binding_refs: Vec<String> = bindings.iter()
+                            .map(|b| format!("self.{}", b))
+                            .collect();
+                        format!("View::text(format!(\"{}\", {}))", format_str, binding_refs.join(", "))
                     }
                 }
             }

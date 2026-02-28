@@ -477,7 +477,7 @@ impl RustGenerator {
 - [x] Rust 后端生成可编译代码
 - [x] auto-ui 框架与新后端兼容
 - [x] 事件处理器正确绑定
-- [ ] `${.state}` 插值正确处理
+- [x] `${.state}` 插值正确处理
 
 ---
 

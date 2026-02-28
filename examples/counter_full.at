@@ -1,4 +1,4 @@
-// Counter Widget - Full example with dot-prefix event handlers
+// Counter Widget - Full example with dot-prefix event handlers and state interpolation
 widget Counter {
     msg Msg { Inc, Dec }
 
@@ -8,7 +8,7 @@ widget Counter {
 
     view {
         col {} {
-            > "Count: "
+            > f"Count: ${.count}"
             row {} {
                 button { text: "-", onclick: .Dec }
                 button { text: "+", onclick: .Inc }

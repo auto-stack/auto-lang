@@ -7148,12 +7148,23 @@ impl<'a> Parser<'a> {
     fn parse_view_node(&mut self) -> AutoResult<ViewNode> {
         self.skip_empty_lines();
 
-        // Check for text with '>' prefix: h2 > Text content
+        // Check for text with '>' prefix: > "text" or > f"text ${.state}"
         if self.is_kind(TokenKind::Gt) {
             self.next();
-            let text = self.cur.text.to_string();
-            self.next();
-            return Ok(ViewNode::text(text));
+            self.skip_empty_lines();
+
+            // Check if it's an f-string
+            if self.is_kind(TokenKind::FStrStart) {
+                let fstr_expr = self.fstr()?;
+                // Extract template and bindings from f-string
+                let (template, bindings) = self.extract_fstr_template_and_bindings(&fstr_expr);
+                return Ok(ViewNode::Text(ViewText::Interpolated { template, bindings }));
+            } else {
+                // Plain string
+                let text = self.cur.text.to_string();
+                self.next();
+                return Ok(ViewNode::text(text));
+            }
         }
 
         // Parse element tag
@@ -7287,6 +7298,64 @@ impl<'a> Parser<'a> {
                 span: pos_to_span(self.cur.pos),
             }.into())
         }
+    }
+
+    /// Extract template and bindings from f-string expression
+    /// Returns (template_string, vec_of_binding_names)
+    fn extract_fstr_template_and_bindings(&self, expr: &Expr) -> (String, Vec<String>) {
+        let mut template = String::new();
+        let mut bindings = Vec::new();
+
+        // fstr() returns Expr::FStr with parts
+        if let Expr::FStr(fstr) = expr {
+            for part in &fstr.parts {
+                match part {
+                    Expr::Str(s) => {
+                        // Literal string part
+                        template.push_str(s.as_str());
+                    }
+                    Expr::Ident(name) => {
+                        // $ident interpolation
+                        let name_str = name.as_str();
+                        if name_str.starts_with('.') {
+                            // State reference: .count -> ${.count}
+                            let binding = name_str[1..].to_string();
+                            bindings.push(binding.clone());
+                            template.push_str(&format!("${{{}.{}}}", ".", binding));
+                        } else {
+                            // Variable reference: name -> ${name}
+                            bindings.push(name_str.to_string());
+                            template.push_str(&format!("${{{}}}", name_str));
+                        }
+                    }
+                    Expr::Dot(obj, field) => {
+                        // $obj.field interpolation (including .field which is parsed as self.field)
+                        let field_str = field.as_str();
+                        if let Expr::Ident(obj_name) = obj.as_ref() {
+                            if obj_name.as_str() == "." {
+                                // .count -> ${.count}
+                                bindings.push(field_str.to_string());
+                                template.push_str(&format!("${{{}.{}}}", ".", field_str));
+                            } else if obj_name.as_str() == "self" {
+                                // self.count -> ${.count} (state reference)
+                                bindings.push(field_str.to_string());
+                                template.push_str(&format!("${{{}.{}}}", ".", field_str));
+                            } else {
+                                // obj.field -> ${obj.field}
+                                bindings.push(format!("{}.{}", obj_name, field_str));
+                                template.push_str(&format!("${{{}.{}}}", obj_name, field_str));
+                            }
+                        }
+                    }
+                    _ => {
+                        // Complex expression - just use placeholder
+                        template.push_str("${...}");
+                    }
+                }
+            }
+        }
+
+        (template, bindings)
     }
 }
 
