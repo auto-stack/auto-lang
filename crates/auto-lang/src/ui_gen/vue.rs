@@ -461,16 +461,74 @@ impl VueGenerator {
     /// Map AutoUI tag to HTML tag
     fn map_tag(&mut self, tag: &str, self_closing: bool) -> String {
         match tag {
+            // Layout
             "col" | "column" => "div".to_string(),
             "row" => "div".to_string(),
+            "grid" => "div".to_string(),
+            "scroll" => "div".to_string(),
+            "container" => "div".to_string(),
             "center" => "div".to_string(),
+
+            // Content
             "button" => "button".to_string(),
+            "input" => "input".to_string(),
+            "textarea" => "textarea".to_string(),
+            "checkbox" => "input".to_string(),
+            "toggle" => "button".to_string(),
+            "select" => "select".to_string(),
+            "option" => "option".to_string(),
+            "link" => "a".to_string(),
+
+            // Typography
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => tag.to_string(),
             "text" | "label" | "span" => "span".to_string(),
-            "input" => "input".to_string(),
+            "p" => "p".to_string(),
+
+            // Data
+            "table" => "table".to_string(),
+            "thead" => "thead".to_string(),
+            "tbody" => "tbody".to_string(),
+            "tr" => "tr".to_string(),
+            "th" => "th".to_string(),
+            "td" => "td".to_string(),
+            "tree" => "ul".to_string(),
+            "tree_item" => "li".to_string(),
+
+            // Navigation
+            "tabs" => "div".to_string(),
+            "tab" => "button".to_string(),
+
+            // Overlay
+            "modal" => "div".to_string(),
+            "tooltip" => "span".to_string(),
+
+            // Form
+            "slider" => "input".to_string(),
+            "radio" => "input".to_string(),
+            "radiogroup" => "div".to_string(),
+
+            // Feedback
+            "progress" => "progress".to_string(),
+            "badge" => "span".to_string(),
+            "spinner" => "div".to_string(),
+
+            // Display
+            "card" => "div".to_string(),
+            "avatar" => "img".to_string(),
+
+            // Media
+            "image" => "img".to_string(),
+            "icon" => "span".to_string(),
+
+            // Utility
+            "divider" => "hr".to_string(),
+            "spacer" => "div".to_string(),
+
+            // Special
             "div" => "div".to_string(),
             "+" => if self_closing { "span".to_string() } else { "span".to_string() },
             "-" => if self_closing { "span".to_string() } else { "span".to_string() },
+
             _ => {
                 // Check if it's a PascalCase component name
                 if tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
@@ -491,9 +549,59 @@ impl VueGenerator {
 
         // Default classes based on tag
         match tag {
+            // Layout
             "col" | "column" => classes.push("flex flex-col".to_string()),
             "row" => classes.push("flex flex-row".to_string()),
+            "grid" => classes.push("grid".to_string()),
+            "scroll" => classes.push("overflow-auto".to_string()),
+            "container" => classes.push("max-w-7xl mx-auto".to_string()),
             "center" => classes.push("flex items-center justify-center".to_string()),
+
+            // Content
+            "button" => classes.push("px-4 py-2 rounded".to_string()),
+            "input" => classes.push("border rounded px-2 py-1".to_string()),
+            "textarea" => classes.push("border rounded px-2 py-1".to_string()),
+            "checkbox" => classes.push("w-4 h-4".to_string()),
+            "toggle" => classes.push("relative w-10 h-6 rounded-full".to_string()),
+            "select" => classes.push("border rounded px-2 py-1".to_string()),
+            "link" => classes.push("text-blue-600 underline".to_string()),
+
+            // Data
+            "table" => classes.push("min-w-full border".to_string()),
+            "thead" => classes.push("bg-gray-100".to_string()),
+            "th" => classes.push("px-4 py-2 text-left font-semibold".to_string()),
+            "td" => classes.push("px-4 py-2".to_string()),
+            "tree" => classes.push("list-none pl-4".to_string()),
+            "tree_item" => classes.push("py-1".to_string()),
+
+            // Navigation
+            "tabs" => classes.push("flex border-b".to_string()),
+            "tab" => classes.push("px-4 py-2 border-b-2 border-transparent".to_string()),
+
+            // Overlay
+            "modal" => classes.push("fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center".to_string()),
+
+            // Form
+            "slider" => classes.push("w-full".to_string()),
+            "radiogroup" => classes.push("flex flex-col gap-2".to_string()),
+
+            // Feedback
+            "progress" => classes.push("w-full h-2 rounded".to_string()),
+            "badge" => classes.push("px-2 py-1 text-xs rounded-full".to_string()),
+            "spinner" => classes.push("animate-spin w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full".to_string()),
+
+            // Display
+            "card" => classes.push("bg-white rounded-lg shadow p-4".to_string()),
+            "avatar" => classes.push("w-10 h-10 rounded-full".to_string()),
+
+            // Media
+            "image" => classes.push("max-w-full".to_string()),
+            "icon" => classes.push("w-5 h-5".to_string()),
+
+            // Utility
+            "divider" => classes.push("border-t border-gray-300".to_string()),
+            "spacer" => classes.push("flex-1".to_string()),
+
             _ => {}
         }
 

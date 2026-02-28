@@ -471,13 +471,68 @@ impl RustGenerator {
     /// Map tag to View builder function
     fn tag_to_view_fn(&self, tag: &str) -> &'static str {
         match tag {
+            // Layout
             "col" | "column" => "col",
             "row" => "row",
+            "grid" => "grid",
+            "scroll" => "scroll",
+            "container" => "container",
+
+            // Content
             "button" => "button",
-            "text" | "label" | "span" => "text",
-            "h1" | "h2" | "h3" => "text",
             "input" => "input",
-            "center" => "center",
+            "textarea" => "textarea",
+            "checkbox" => "checkbox",
+            "toggle" => "toggle",
+            "select" => "select",
+            "option" => "option",
+            "link" => "link",
+
+            // Typography
+            "text" | "label" | "span" => "text",
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => "text",
+            "p" => "text",
+
+            // Data
+            "table" => "table",
+            "thead" => "thead",
+            "tbody" => "tbody",
+            "tr" => "tr",
+            "th" => "th",
+            "td" => "td",
+            "tree" => "tree",
+            "tree_item" => "tree_item",
+
+            // Navigation
+            "tabs" => "tabs",
+            "tab" => "tab",
+
+            // Overlay
+            "modal" => "modal",
+            "tooltip" => "tooltip",
+
+            // Form
+            "slider" => "slider",
+            "radio" => "radio",
+            "radiogroup" => "radiogroup",
+
+            // Feedback
+            "progress" => "progress",
+            "badge" => "badge",
+            "spinner" => "spinner",
+
+            // Display
+            "card" => "card",
+            "avatar" => "avatar",
+
+            // Media
+            "image" => "image",
+            "icon" => "icon",
+
+            // Utility
+            "divider" => "divider",
+            "spacer" => "spacer",
+
             _ => "col",
         }
     }
