@@ -585,9 +585,9 @@ on {
 
 ---
 
-### 问题 4: 事件绑定 (`onclick: .Inc`) 未正确提取 ✅ 正常工作
+### 问题 4: 事件绑定 (`onclick: .Inc`) 解析支持 ✅ 已修复
 
-**状态**: ✅ 正常工作 (语法问题)
+**状态**: ✅ 已修复
 
 **现象**:
 ```auto
@@ -596,15 +596,38 @@ view {
 }
 ```
 
-`onclick` 事件应该生成 `.on_click(|_| Msg::Inc)` 调用。
+`onclick` 事件中的 `.Inc` 语法之前会导致解析错误。
 
-**实际原因**: 语法问题
+**原因**:
+Parser 的 `parse_view_node()` 函数在处理事件时，直接读取当前 token 文本作为 handler。
+但 `.Inc` 被词法分析器拆分为两个 token：`Dot` 和 `Ident("Inc")`。
 
-**正确语法**:
+**修复方案**:
+在 `parser.rs` 的事件处理逻辑中添加对 dot-prefix 的检测：
+```rust
+let handler = if self.is_kind(TokenKind::Dot) {
+    self.next(); // consume the dot
+    let name = self.cur.text.to_string();
+    self.next();
+    format!(".{}", name) // keep the dot prefix for semantic resolution
+} else {
+    let handler = self.cur.text.to_string();
+    self.next()
+    handler
+};
+```
+
+**正确语法** (两种都支持):
 - `onclick: Inc` ✅ (不带 `.` 前缀)
-- `onclick: .Inc` ❌ (解析错误)
+- `onclick: .Inc` ✅ (已修复，现在支持)
 
-**验证**: `View::button().on_click(|_| Msg::Inc).build()`
+**语义说明**:
+`.Inc` 表示"在当前 widget 的 scope 中，找到 scope.Msg 中的 Inc 符号"。
+Generator 会正确地将其转换为 `Msg::Inc`。
+
+**验证**:
+- Vue: `@click="onInc"`
+- Rust: `Msg::Inc`
 
 ---
 

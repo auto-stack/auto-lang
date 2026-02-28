@@ -1,5 +1,4 @@
-// Counter Widget - Working syntax
-// Note: onclick handlers should NOT use dot prefix
+// Counter Widget - Full example with dot-prefix event handlers
 widget Counter {
     msg Msg { Inc, Dec }
 
@@ -11,8 +10,8 @@ widget Counter {
         col {} {
             > "Count: "
             row {} {
-                button { text: "-", onclick: Dec }
-                button { text: "+", onclick: Inc }
+                button { text: "-", onclick: .Dec }
+                button { text: "+", onclick: .Inc }
             }
         }
     }

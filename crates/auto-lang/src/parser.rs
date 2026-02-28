@@ -7186,8 +7186,17 @@ impl<'a> Parser<'a> {
                 // Check if it's an event (onclick, etc.)
                 if key.starts_with("on") {
                     self.expect(TokenKind::Colon)?;
-                    let handler = self.cur.text.to_string();
-                    self.next();
+                    // Handle dot-prefixed handlers like .Inc (meaning Msg::Inc in widget scope)
+                    let handler = if self.is_kind(TokenKind::Dot) {
+                        self.next(); // consume the dot
+                        let name = self.cur.text.to_string();
+                        self.next();
+                        format!(".{}", name) // keep the dot prefix for semantic resolution
+                    } else {
+                        let handler = self.cur.text.to_string();
+                        self.next();
+                        handler
+                    };
                     events.push(ViewEvent { name: key, handler });
                 } else {
                     self.expect(TokenKind::Colon)?;

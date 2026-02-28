@@ -23,7 +23,8 @@
 //! ## Example
 //!
 //! ```rust
-//! use auto_lang::aura::{AuraWidget, AuraNode, AuraStateDef, LogicPayload};
+//! use auto_lang::aura::{AuraWidget, AuraNode, AuraStateDef, AuraMessage, AuraMsgVariant, AuraExpr, LogicPayload};
+//! use auto_lang::ast::Type;
 //!
 //! // Create a simple widget
 //! let widget = AuraWidget {
@@ -31,15 +32,23 @@
 //!     state_vars: vec![AuraStateDef {
 //!         name: "count".to_string(),
 //!         type_info: Type::Int,
-//!         initial: Expr::Int(0),
+//!         initial: AuraExpr::Int(0),
+//!     }],
+//!     messages: vec![AuraMessage {
+//!         name: "Msg".to_string(),
+//!         variants: vec![
+//!             AuraMsgVariant { name: "Inc".to_string(), payload: None },
+//!             AuraMsgVariant { name: "Dec".to_string(), payload: None },
+//!         ],
 //!     }],
 //!     view_tree: AuraNode::Element {
 //!         tag: "col".to_string(),
-//!         props: HashMap::new(),
-//!         events: HashMap::new(),
+//!         props: std::collections::HashMap::new(),
+//!         events: std::collections::HashMap::new(),
 //!         children: vec![],
 //!     },
-//!     handlers: HashMap::new(),
+//!     handlers: std::collections::HashMap::new(),
+//!     props: vec![],
 //! };
 //! ```
 

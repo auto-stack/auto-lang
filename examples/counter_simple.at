@@ -1,4 +1,4 @@
-// Minimal Button Test - without dot prefix
+// Minimal Button Test - with dot prefix for event handlers
 widget Test {
     msg Msg { Click }
 
@@ -8,7 +8,7 @@ widget Test {
 
     view {
         col {} {
-            button { text: "Click", onclick: Click }
+            button { text: "Click", onclick: .Click }
         }
     }
 

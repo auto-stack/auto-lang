@@ -4,7 +4,7 @@
 //!
 //! ## Output Format
 //!
-//! ```rust
+//! ```ignore
 //! // Auto-generated from Auto language
 //! // DO NOT EDIT - changes will be overwritten
 //!
