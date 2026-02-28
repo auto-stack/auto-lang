@@ -1,49 +1,73 @@
 // TodoMVC Test - Testing new AURA features
-// Tests: for loops, if/else, input/checkbox elements
+// Tests: for loops, if/else, input elements
 
 widget TodoApp {
-    msg Msg { Add, Delete, Toggle }
+    // Message declarations
+    msg Msg { Add, Delete, Toggle, Clear }
 
+    // Model (state variables)
     model {
+        input_text string = ""
         count int = 0
     }
 
+    // View tree
     view {
         col {
-            // Simple elements for testing
-            input (placeholder: "Add todo", onenter: .Add)
-            checkbox (checked: false, onchange: .Toggle)
+            // Header
+            h1 (text: "TodoMVC") {}
 
-            // For loop test
-            for item in .items {
+            // Input for new todos
+            row {
+                input (type: "text", placeholder: "What needs to be done?") {}
+                button (text: "Add", onclick: .Add) {}
+            }
+
+            // For loop test - iterate over items
+            // Auto syntax: for index, item in list
+            for idx, item in .todos {
                 row {
-                    text `Item: ${item}`
+                    // Checkbox for toggle
+                    input (type: "checkbox", onchange: .Toggle) {}
+
+                    // Text with interpolation
+                    text `${idx}: ${item}`
+
+                    // Delete button
+                    button (text: "X", onclick: .Delete) {}
                 }
             }
 
-            // Conditional test
-            if .count > 0 {
-                text `Count: ${.count}`
+            // Conditional tests
+            if .count == 0 {
+                text "No todos yet. Add one above!"
+            } else {
+                text `Total: ${.count} items`
             }
 
-            // If-else test
-            if .count == 0 {
-                text "No items"
-            } else {
-                text "Has items"
+            // Footer with conditional
+            if .count > 0 {
+                row {
+                    text "Items remaining"
+                    button (text: "Clear completed", onclick: .Clear) {}
+                }
             }
         }
     }
 
+    // Event handlers
     on {
         Add => {
             count = count + 1
         }
         Delete => {
-            count = 0
+            count = count - 1
         }
         Toggle => {
-            count = count - 1
+            // Toggle logic here
+        }
+        Clear => {
+            count = 0
         }
     }
 }

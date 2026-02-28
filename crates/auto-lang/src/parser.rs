@@ -7191,7 +7191,7 @@ impl<'a> Parser<'a> {
             return Ok(ViewNode::text(tag));
         }
 
-        // Check for "text `content`" syntax: text node with inline string
+        // Check for "text `content`" syntax: text node with inline f-string
         if tag == "text" && self.is_kind(TokenKind::FStrStart) {
             let fstr_expr = self.fstr()?;
             let (template, bindings) = self.extract_fstr_template_and_bindings(&fstr_expr);
@@ -7202,6 +7202,13 @@ impl<'a> Parser<'a> {
             } else {
                 return Ok(ViewNode::Text(ViewText::Interpolated { template, bindings }));
             }
+        }
+
+        // Check for "text "content"" syntax: text node with regular string
+        if tag == "text" && self.is_kind(TokenKind::Str) {
+            let content = self.cur.text.to_string();
+            self.next();
+            return Ok(ViewNode::text(content));
         }
 
         // Parse props/events in parentheses: tag (props) { children }
@@ -7270,7 +7277,9 @@ impl<'a> Parser<'a> {
         let first_var = self.cur.text.to_string();
         self.next();
 
-        // Check for index: for i, item in ...
+        // Check for index: for idx, item in ...
+        // Auto convention: first variable is index, second is value
+        // This differs from Vue's (item, index) order, so we swap in the generator
         let (index, var) = if self.is_kind(TokenKind::Comma) {
             self.next(); // consume comma
             let second_var = self.cur.text.to_string();
@@ -7295,6 +7304,19 @@ impl<'a> Parser<'a> {
             name
         };
 
+        // Enter new scope for loop body
+        self.enter_scope();
+
+        // Define loop variable in scope
+        let var_name = crate::ast::Name::from(var.as_str());
+        self.infer_ctx.bind_var(var_name, Type::Unknown);
+
+        // Define index variable if present
+        if let Some(ref idx) = index {
+            let idx_name = crate::ast::Name::from(idx.as_str());
+            self.infer_ctx.bind_var(idx_name, Type::Int);
+        }
+
         // Parse body
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
@@ -7310,6 +7332,9 @@ impl<'a> Parser<'a> {
             self.skip_empty_lines();
         }
         self.expect(TokenKind::RBrace)?;
+
+        // Exit scope
+        self.exit_scope();
 
         Ok(ViewNode::ForLoop {
             var,

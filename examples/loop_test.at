@@ -9,9 +9,14 @@ widget LoopTest {
 
     view {
         col {
-            // Simple for loop with static content
+            // For loop with loop variable
             for i in .items {
-                text "Static item"
+                text `Item ${i}`
+            }
+
+            // For loop with index
+            for idx, name in .names {
+                text `${idx}: ${name}`
             }
 
             // Conditional test with state

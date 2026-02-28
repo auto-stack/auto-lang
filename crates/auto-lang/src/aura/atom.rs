@@ -146,8 +146,13 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             // Events
             if !events.is_empty() {
                 output.push_str(&format!("{}    events: {{\n", ind));
-                for (event, handler) in events {
-                    output.push_str(&format!("{}        \"{}\": Dispatch(\"{}\"),\n", ind, event, handler));
+                for (event, aura_event) in events {
+                    if aura_event.params.is_empty() {
+                        output.push_str(&format!("{}        \"{}\": Dispatch(\"{}\"),\n", ind, event, aura_event.handler));
+                    } else {
+                        output.push_str(&format!("{}        \"{}\": Dispatch(\"{}\", params: [{}]),\n",
+                            ind, event, aura_event.handler, aura_event.params.join(", ")));
+                    }
                 }
                 output.push_str(&format!("{}    }},\n", ind));
             }
@@ -242,8 +247,13 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             }
             if !events.is_empty() {
                 output.push_str(&format!("{}    events: {{\n", ind));
-                for (event, handler) in events {
-                    output.push_str(&format!("{}        \"{}\": \"{}\",\n", ind, event, handler));
+                for (event, aura_event) in events {
+                    if aura_event.params.is_empty() {
+                        output.push_str(&format!("{}        \"{}\": \"{}\",\n", ind, event, aura_event.handler));
+                    } else {
+                        output.push_str(&format!("{}        \"{}\": \"{}({})\",\n",
+                            ind, event, aura_event.handler, aura_event.params.join(", ")));
+                    }
                 }
                 output.push_str(&format!("{}    }},\n", ind));
             }

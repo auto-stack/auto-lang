@@ -99,6 +99,16 @@ pub struct AuraMsgVariant {
 // View Tree
 // ============================================================================
 
+/// Event handler with optional parameters
+#[derive(Debug, Clone)]
+pub struct AuraEvent {
+    /// Handler pattern (e.g., ".Inc" or "Msg::Inc")
+    pub handler: String,
+
+    /// Optional parameters (e.g., ["todo.id"] for .Delete(todo.id))
+    pub params: Vec<String>,
+}
+
 /// View node: element or text
 #[derive(Debug, Clone)]
 pub enum AuraNode {
@@ -110,8 +120,8 @@ pub enum AuraNode {
         /// Properties (key-value pairs, values can be dynamic)
         props: HashMap<String, AuraExpr>,
 
-        /// Event handlers (event name -> message pattern)
-        events: HashMap<String, String>,
+        /// Event handlers (event name -> AuraEvent)
+        events: HashMap<String, AuraEvent>,
 
         /// Child nodes
         children: Vec<AuraNode>,
@@ -156,7 +166,7 @@ pub enum AuraNode {
         props: HashMap<String, AuraExpr>,
 
         /// Event handlers
-        events: HashMap<String, String>,
+        events: HashMap<String, AuraEvent>,
     },
 }
 
@@ -204,7 +214,10 @@ impl AuraNode {
     /// Add an event handler
     pub fn with_event(mut self, event: impl Into<String>, handler: impl Into<String>) -> Self {
         if let AuraNode::Element { events, .. } = &mut self {
-            events.insert(event.into(), handler.into());
+            events.insert(event.into(), AuraEvent {
+                handler: handler.into(),
+                params: Vec::new(),
+            });
         }
         self
     }

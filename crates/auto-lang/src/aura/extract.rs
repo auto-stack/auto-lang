@@ -306,16 +306,22 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
 }
 
 /// Extract event handler pattern from expression
-fn extract_event_handler(expr: &Expr) -> ExtractResult<String> {
+fn extract_event_handler(expr: &Expr) -> ExtractResult<AuraEvent> {
     match expr {
         // Identifier: could be ".Inc" or "Msg.Inc"
         Expr::Ident(name) => {
             let name_str = name.as_str();
             if name_str.starts_with('.') {
                 // Implicit member: .Inc -> Msg::Inc (need context)
-                Ok(format!("Msg::{}", &name_str[1..]))
+                Ok(AuraEvent {
+                    handler: format!("Msg::{}", &name_str[1..]),
+                    params: Vec::new(),
+                })
             } else {
-                Ok(name_str.to_string())
+                Ok(AuraEvent {
+                    handler: name_str.to_string(),
+                    params: Vec::new(),
+                })
             }
         }
         // Dot access: Msg.Inc
@@ -325,12 +331,53 @@ fn extract_event_handler(expr: &Expr) -> ExtractResult<String> {
                 _ => "Msg",
             };
             let field_name = field.as_str();
-            Ok(format!("{}::{}", obj_name, field_name))
+            Ok(AuraEvent {
+                handler: format!("{}::{}", obj_name, field_name),
+                params: Vec::new(),
+            })
+        }
+        // Call expression: could be .Delete(todo.id)
+        Expr::Call(call) => {
+            let handler = match call.name.as_ref() {
+                Expr::Ident(name) => {
+                    let name_str = name.as_str();
+                    if name_str.starts_with('.') {
+                        format!("Msg::{}", &name_str[1..])
+                    } else {
+                        name_str.to_string()
+                    }
+                }
+                _ => "Unknown".to_string(),
+            };
+            let params: Vec<String> = call.args.args.iter()
+                .filter_map(|arg| {
+                    if let crate::ast::Arg::Pos(expr) = arg {
+                        Some(expr_to_string(expr))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            Ok(AuraEvent { handler, params })
         }
         _ => Err(ExtractError::UnsupportedExpr(format!(
             "Cannot extract event handler from: {:?}",
             expr
         ))),
+    }
+}
+
+/// Convert expression to a simple string representation
+fn expr_to_string(expr: &Expr) -> String {
+    match expr {
+        Expr::Ident(name) => name.as_str().to_string(),
+        Expr::Int(n) => n.to_string(),
+        Expr::Str(s) => format!("\"{}\"", s.as_str()),
+        Expr::Dot(obj, field) => {
+            let obj_str = expr_to_string(obj);
+            format!("{}.{}", obj_str, field.as_str())
+        }
+        _ => format!("{:?}", expr),
     }
 }
 
@@ -478,8 +525,14 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 .map(|p| Ok((p.name.clone(), extract_expr(&p.value)?)))
                 .collect::<ExtractResult<_>>()?;
 
-            let aura_events: HashMap<String, String> = events.iter()
-                .map(|e| (e.name.clone(), e.handler.clone()))
+            let aura_events: HashMap<String, AuraEvent> = events.iter()
+                .map(|e| {
+                    let event = AuraEvent {
+                        handler: e.handler.clone(),
+                        params: e.params.clone(),
+                    };
+                    (e.name.clone(), event)
+                })
                 .collect();
 
             let aura_children: Vec<AuraNode> = children.iter()
@@ -544,8 +597,14 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 .map(|p| Ok((p.name.clone(), extract_expr(&p.value)?)))
                 .collect::<ExtractResult<_>>()?;
 
-            let aura_events: HashMap<String, String> = events.iter()
-                .map(|e| (e.name.clone(), e.handler.clone()))
+            let aura_events: HashMap<String, AuraEvent> = events.iter()
+                .map(|e| {
+                    let event = AuraEvent {
+                        handler: e.handler.clone(),
+                        params: e.params.clone(),
+                    };
+                    (e.name.clone(), event)
+                })
                 .collect();
 
             Ok(AuraNode::Component {

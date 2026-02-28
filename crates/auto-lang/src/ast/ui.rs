@@ -411,6 +411,7 @@ mod tests {
             view: None,
             on: None,
             props: vec![],
+            computed: None,
         };
 
         assert_eq!(widget.name.as_str(), "Counter");

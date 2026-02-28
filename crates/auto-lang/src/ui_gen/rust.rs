@@ -55,7 +55,7 @@
 //! Based on auto-ui/trans/rust_gen.rs, adapted for AuraWidget input.
 
 use super::{BackendGenerator, GenError, GenResult};
-use crate::aura::{AuraExpr, AuraMessage, AuraMsgVariant, AuraNode, AuraStateDef, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{AuraEvent, AuraExpr, AuraMessage, AuraMsgVariant, AuraNode, AuraStateDef, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
 use std::collections::HashMap;
 
 /// Rust/GPUI code generator
@@ -419,8 +419,8 @@ impl RustGenerator {
     }
 
     /// Add event to builder
-    fn add_event_to_builder(&self, builder: &str, event: &str, handler: &str) -> String {
-        let handler_fn = self.handler_to_rust_closure(handler);
+    fn add_event_to_builder(&self, builder: &str, event: &str, aura_event: &AuraEvent) -> String {
+        let handler_fn = self.handler_to_rust_closure_with_params(&aura_event.handler, &aura_event.params);
         match event {
             "onclick" | "onClick" | "on_click" => {
                 format!("{}.on_click({})", builder, handler_fn)
@@ -436,6 +436,16 @@ impl RustGenerator {
     fn handler_to_rust_closure(&self, handler: &str) -> String {
         let variant = self.extract_variant_name(handler);
         format!("|_| Msg::{}", variant)
+    }
+
+    /// Convert handler pattern to Rust closure with parameters
+    fn handler_to_rust_closure_with_params(&self, handler: &str, params: &[String]) -> String {
+        let variant = self.extract_variant_name(handler);
+        if params.is_empty() {
+            format!("|_| Msg::{}", variant)
+        } else {
+            format!("|_| Msg::{}({})", variant, params.join(", "))
+        }
     }
 
     /// Extract variant name from pattern (e.g., "Msg::Inc" or ".Inc" -> "Inc")

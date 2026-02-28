@@ -30,7 +30,7 @@
 //! ```
 
 use super::{BackendGenerator, GenError, GenResult};
-use crate::aura::{AuraExpr, AuraNode, AuraStateDef, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{AuraEvent, AuraExpr, AuraNode, AuraStateDef, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
 use std::collections::HashMap;
 
 /// Vue3 SFC generator
@@ -220,6 +220,15 @@ impl VueGenerator {
                     attrs.push(format!("class=\"{}\"", classes));
                 }
 
+                // Check for input type (for special handling)
+                let _input_type = props.get("type").and_then(|t| {
+                    if let AuraExpr::Literal(s) = t {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                });
+
                 // Props as attributes (except 'text' which becomes element content)
                 for (key, value) in props {
                     if key == "class" {
@@ -230,14 +239,33 @@ impl VueGenerator {
                         text_content = Some(self.prop_to_text_content(value)?);
                         continue;
                     }
+
+                    // Handle two-way binding (bind:value -> v-model)
+                    if key.starts_with("bind:") {
+                        let bind_target = key.strip_prefix("bind:").unwrap();
+                        let model_value = match value {
+                            AuraExpr::StateRef(name) => name.clone(),
+                            _ => "value".to_string(),
+                        };
+                        // For checkbox, use v-model for the checked state
+                        if tag == "input" && bind_target == "checked" {
+                            attrs.push(format!("v-model=\"{}\"", model_value));
+                        } else if tag == "input" && bind_target == "value" {
+                            attrs.push(format!("v-model=\"{}\"", model_value));
+                        } else {
+                            attrs.push(format!("v-model=\"{}\"", model_value));
+                        }
+                        continue;
+                    }
+
                     let value_str = self.prop_to_attr_value(value)?;
                     attrs.push(format!("{}={}", key, value_str));
                 }
 
                 // Event handlers
-                for (event, handler) in events {
+                for (event, aura_event) in events {
                     let vue_event = self.auto_event_to_vue(event);
-                    let handler_fn = self.handler_to_function_call(handler);
+                    let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                     attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
                 }
 
@@ -282,12 +310,17 @@ impl VueGenerator {
                         // Convert template to Vue interpolation
                         let mut vue_text = template.clone();
                         for binding in bindings {
-                            // Replace ${.binding} with {{ binding }}
+                            // Replace ${.binding} with {{ binding }} (state reference)
                             vue_text = vue_text.replace(
                                 &format!("${{{}.{}}}", ".", binding),
                                 &format!("{{{{ {} }}}}", binding)
                             );
-                            // Also handle $binding format
+                            // Replace ${binding} with {{ binding }} (variable reference)
+                            vue_text = vue_text.replace(
+                                &format!("${{{}}}", binding),
+                                &format!("{{{{ {} }}}}", binding)
+                            );
+                            // Also handle $binding format (without braces)
                             vue_text = vue_text.replace(
                                 &format!("${}", binding),
                                 &format!("{{{{ {} }}}}", binding)
@@ -300,8 +333,11 @@ impl VueGenerator {
 
             AuraNode::ForLoop { var, index, iterable, body } => {
                 // Generate v-for directive
+                // Auto syntax: for idx, item in list (index first, value second)
+                // Vue syntax: v-for="(item, index) in list" (value first, index second)
+                // So we need to swap the order for Vue
                 let v_for = if let Some(idx) = index {
-                    format!("v-for=\"({}, {}) in {}\"", idx, var, iterable.trim_start_matches('.'))
+                    format!("v-for=\"({}, {}) in {}\"", var, idx, iterable.trim_start_matches('.'))
                 } else {
                     format!("v-for=\"{} in {}\"", var, iterable.trim_start_matches('.'))
                 };
@@ -348,9 +384,9 @@ impl VueGenerator {
                 }
 
                 // Event handlers
-                for (event, handler) in events {
+                for (event, aura_event) in events {
                     let vue_event = self.auto_event_to_vue(event);
-                    let handler_fn = self.handler_to_function_call(handler);
+                    let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                     attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
                 }
 
@@ -580,6 +616,16 @@ impl VueGenerator {
             format!("on{}", variant)
         } else {
             format!("on{}", handler)
+        }
+    }
+
+    /// Convert handler to Vue function call with parameters
+    fn handler_to_function_call_with_params(&self, handler: &str, params: &[String]) -> String {
+        let func_name = self.handler_to_function_call(handler);
+        if params.is_empty() {
+            func_name
+        } else {
+            format!("{}({})", func_name, params.join(", "))
         }
     }
 }
