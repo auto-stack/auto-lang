@@ -30,7 +30,7 @@
 //! ```
 
 use super::{BackendGenerator, GenError, GenResult};
-use crate::aura::{AuraEvent, AuraExpr, AuraNode, AuraStateDef, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStateDef, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
 use std::collections::HashMap;
 
 /// Vue3 SFC generator
@@ -119,10 +119,18 @@ impl VueGenerator {
 
         // Determine needed imports
         let needs_ref = !widget.state_vars.is_empty();
-        let needs_computed = false; // TODO: detect computed properties
+        let needs_computed = !widget.computed.is_empty();
 
+        // Generate import statement
+        let mut imports = Vec::new();
         if needs_ref {
-            script.push_str("import { ref } from 'vue'\n\n");
+            imports.push("ref");
+        }
+        if needs_computed {
+            imports.push("computed");
+        }
+        if !imports.is_empty() {
+            script.push_str(&format!("import {{ {} }} from 'vue'\n\n", imports.join(", ")));
         }
 
         // Generate state variables as ref()
@@ -133,6 +141,19 @@ impl VueGenerator {
         }
 
         if !widget.state_vars.is_empty() {
+            script.push('\n');
+        }
+
+        // Generate computed properties
+        for computed_prop in &widget.computed {
+            let expr_js = self.expr_to_js(&computed_prop.expr)?;
+            script.push_str(&format!(
+                "const {} = computed(() => {})\n",
+                computed_prop.name, expr_js
+            ));
+        }
+
+        if !widget.computed.is_empty() {
             script.push('\n');
         }
 
@@ -214,15 +235,18 @@ impl VueGenerator {
                 let mut attrs = Vec::new();
                 let mut text_content: Option<String> = None;
 
-                // Class attribute
-                let classes = self.extract_classes(tag, props);
-                if !classes.is_empty() {
-                    attrs.push(format!("class=\"{}\"", classes));
+                // Class attribute (both static and dynamic)
+                let (static_classes, dynamic_classes) = self.extract_classes(tag, props);
+                if !static_classes.is_empty() {
+                    attrs.push(format!("class=\"{}\"", static_classes));
+                }
+                if let Some(dynamic) = dynamic_classes {
+                    attrs.push(format!(":class=\"{}\"", dynamic));
                 }
 
                 // Check for input type (for special handling)
                 let _input_type = props.get("type").and_then(|t| {
-                    if let AuraExpr::Literal(s) = t {
+                    if let AuraPropValue::Expr(AuraExpr::Literal(s)) = t {
                         Some(s.clone())
                     } else {
                         None
@@ -244,7 +268,7 @@ impl VueGenerator {
                     if key.starts_with("bind:") {
                         let bind_target = key.strip_prefix("bind:").unwrap();
                         let model_value = match value {
-                            AuraExpr::StateRef(name) => name.clone(),
+                            AuraPropValue::Expr(AuraExpr::StateRef(name)) => name.clone(),
                             _ => "value".to_string(),
                         };
                         // For checkbox, use v-model for the checked state
@@ -379,7 +403,7 @@ impl VueGenerator {
                 // Build props as bindings
                 let mut attrs = Vec::new();
                 for (key, value) in props {
-                    let value_str = self.prop_to_attr_value(value)?;
+                    let value_str = self.prop_to_attr_value(&AuraPropValue::Expr(value.clone()))?;
                     attrs.push(format!(":{}={}", key, value_str));
                 }
 
@@ -460,8 +484,10 @@ impl VueGenerator {
     }
 
     /// Extract Tailwind classes from tag and props
-    fn extract_classes(&self, tag: &str, props: &HashMap<String, AuraExpr>) -> String {
+    /// Returns (static_classes, dynamic_class_binding)
+    fn extract_classes(&self, tag: &str, props: &HashMap<String, AuraPropValue>) -> (String, Option<String>) {
         let mut classes = Vec::new();
+        let mut dynamic_binding: Option<String> = None;
 
         // Default classes based on tag
         match tag {
@@ -472,11 +498,26 @@ impl VueGenerator {
         }
 
         // Class prop
-        if let Some(AuraExpr::Literal(s)) = props.get("class") {
-            classes.push(s.clone());
+        if let Some(value) = props.get("class") {
+            match value {
+                AuraPropValue::Expr(AuraExpr::Literal(s)) => {
+                    classes.push(s.clone());
+                }
+                AuraPropValue::ClassBinding(bindings) => {
+                    // Generate dynamic class binding: { completed: todo.done, editing: todo.editing }
+                    let binding_strs: Vec<String> = bindings.iter()
+                        .map(|b| {
+                            let cond = self.expr_to_js(&b.condition).unwrap_or_else(|_| "false".to_string());
+                            format!("{}: {}", b.class_name, cond)
+                        })
+                        .collect();
+                    dynamic_binding = Some(format!("{{ {} }}", binding_strs.join(", ")));
+                }
+                _ => {}
+            }
         }
 
-        classes.join(" ")
+        (classes.join(" "), dynamic_binding)
     }
 
     /// Convert AuraExpr to JS value string
@@ -510,6 +551,29 @@ impl VueGenerator {
             AuraExpr::MsgVariant { msg_type, variant } => {
                 Ok(format!("{}.{}", msg_type, variant))
             }
+            AuraExpr::MethodCall { object, method, args } => {
+                let object_js = self.expr_to_js(object)?;
+                let args_js: Vec<String> = args.iter()
+                    .map(|a| self.expr_to_js(a))
+                    .collect::<Result<Vec<_>, _>>()?;
+                // Convert .len to .length for JavaScript
+                let method_js = if method == "len" { "length" } else { method.as_str() };
+                Ok(format!("{}.{}({})", object_js, method_js, args_js.join(", ")))
+            }
+            AuraExpr::Array(elems) => {
+                let elems_js: Vec<String> = elems.iter()
+                    .map(|e| self.expr_to_js(e))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("[{}]", elems_js.join(", ")))
+            }
+            AuraExpr::Lambda { params, body } => {
+                let body_js = self.expr_to_js(body)?;
+                Ok(format!("({}) => {}", params.join(", "), body_js))
+            }
+            AuraExpr::FieldAccess { object, field } => {
+                let object_js = self.expr_to_js(object)?;
+                Ok(format!("{}.{}", object_js, field))
+            }
         }
     }
 
@@ -539,6 +603,16 @@ impl VueGenerator {
                     Ok(format!("{} {} {}", target, op_js, value_js))
                 }
             }
+            AuraStmt::MethodCall { object, method, args } => {
+                let args_js: Vec<String> = args.iter()
+                    .map(|a| self.expr_to_js(a))
+                    .collect::<Result<Vec<_>, _>>()?;
+                if self.state_names.contains(object) {
+                    Ok(format!("{}.value.{}({})", object, method, args_js.join(", ")))
+                } else {
+                    Ok(format!("{}.{}({})", object, method, args_js.join(", ")))
+                }
+            }
         }
     }
 
@@ -562,24 +636,39 @@ impl VueGenerator {
     }
 
     /// Convert prop value to HTML attribute value
-    fn prop_to_attr_value(&self, expr: &AuraExpr) -> GenResult<String> {
-        match expr {
-            AuraExpr::Literal(s) => Ok(format!("\"{}\"", s)),
-            AuraExpr::Int(n) => Ok(format!("\"{}\"", n)),
-            AuraExpr::Bool(b) => Ok(format!("\"{}\"", b)),
-            AuraExpr::StateRef(name) => Ok(format!("\"{{{{ {} }}}}\"", name)),
-            _ => Ok(format!("\"{{{{ {} }}}}\"", "value")),
+    fn prop_to_attr_value(&self, value: &AuraPropValue) -> GenResult<String> {
+        match value {
+            AuraPropValue::Expr(expr) => {
+                match expr {
+                    AuraExpr::Literal(s) => Ok(format!("\"{}\"", s)),
+                    AuraExpr::Int(n) => Ok(format!("\"{}\"", n)),
+                    AuraExpr::Bool(b) => Ok(format!("\"{}\"", b)),
+                    AuraExpr::StateRef(name) => Ok(format!("\"{{{{ {} }}}}\"", name)),
+                    _ => Ok(format!("\"{{{{ {} }}}}\"", "value")),
+                }
+            }
+            AuraPropValue::ClassBinding(_) => {
+                // Class bindings are handled separately in extract_classes
+                Ok("\"\"".to_string())
+            }
         }
     }
 
     /// Convert prop value to text content (for rendering inside element)
-    fn prop_to_text_content(&self, expr: &AuraExpr) -> GenResult<String> {
-        match expr {
-            AuraExpr::Literal(s) => Ok(s.clone()),
-            AuraExpr::Int(n) => Ok(n.to_string()),
-            AuraExpr::Bool(b) => Ok(b.to_string()),
-            AuraExpr::StateRef(name) => Ok(format!("{{{{ {} }}}}", name)),
-            _ => Ok("value".to_string()),
+    fn prop_to_text_content(&self, value: &AuraPropValue) -> GenResult<String> {
+        match value {
+            AuraPropValue::Expr(expr) => {
+                match expr {
+                    AuraExpr::Literal(s) => Ok(s.clone()),
+                    AuraExpr::Int(n) => Ok(n.to_string()),
+                    AuraExpr::Bool(b) => Ok(b.to_string()),
+                    AuraExpr::StateRef(name) => Ok(format!("{{{{ {} }}}}", name)),
+                    _ => Ok("value".to_string()),
+                }
+            }
+            AuraPropValue::ClassBinding(_) => {
+                Ok("".to_string())
+            }
         }
     }
 

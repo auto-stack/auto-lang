@@ -1,0 +1,63 @@
+// TodoMVC - Simple Counter Example
+// TODO: Full todo example requires parser fixes for:
+// - Nested field access (todo.done)
+// - Boolean literals in class binding (true/false)
+// - Lambda expressions in computed properties
+
+widget TodoApp {
+    // Message declarations
+    msg Msg { Add, Clear }
+
+    // Model (state variables)
+    model {
+        count int = 0
+    }
+
+    // Computed property
+    computed {
+        doubleCount => .count * 2
+        isEmpty => .count == 0
+    }
+
+    // View tree
+    view {
+        col (class: "todoapp") {
+            // Header
+            h1 (text: "todos") {}
+
+            // Counter display
+            row (class: "counter") {
+                text `Count: ${.count}`
+                text `Double: ${.doubleCount}`
+            }
+
+            // Buttons
+            row (class: "actions") {
+                button (text: "+ Add", onclick: .Add) {}
+                button (text: "Clear", onclick: .Clear) {}
+            }
+
+            // Conditional message
+            if .isEmpty {
+                col (class: "empty-state") {
+                    text "No items yet!"
+                    text "Click '+ Add' to add one."
+                }
+            } else {
+                row (class: "status") {
+                    text `Has ${.count} items`
+                }
+            }
+        }
+    }
+
+    // Event handlers
+    on {
+        Add => {
+            .count = .count + 1
+        }
+        Clear => {
+            .count = 0
+        }
+    }
+}

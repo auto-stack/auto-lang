@@ -131,8 +131,8 @@ pub struct ComputedProperty {
     /// Property name
     pub name: Name,
 
-    /// Computation expression (as string for flexibility)
-    pub expr: String,
+    /// Computation expression
+    pub expr: Expr,
 }
 
 // ============================================================================
@@ -222,8 +222,28 @@ pub struct ViewProp {
     /// Property name
     pub name: String,
 
-    /// Property value expression
-    pub value: Expr,
+    /// Property value
+    pub value: ViewPropValue,
+}
+
+/// View property value - can be an expression or a class binding
+#[derive(Debug, Clone)]
+pub enum ViewPropValue {
+    /// Regular expression value
+    Expr(Expr),
+
+    /// Class binding: { completed: todo.done, editing: todo.editing }
+    ClassBinding(Vec<ClassBindingEntry>),
+}
+
+/// A single class binding entry
+#[derive(Debug, Clone)]
+pub struct ClassBindingEntry {
+    /// Class name (e.g., "completed")
+    pub class_name: String,
+
+    /// Condition expression (e.g., todo.done)
+    pub condition: Expr,
 }
 
 /// View event handler
@@ -329,7 +349,7 @@ impl ViewNode {
         if let ViewNode::Element { props, .. } = &mut self {
             props.push(ViewProp {
                 name: name.into(),
-                value,
+                value: ViewPropValue::Expr(value),
             });
         }
         self

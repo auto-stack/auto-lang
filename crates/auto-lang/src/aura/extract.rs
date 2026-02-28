@@ -10,7 +10,7 @@
 //! - **Separation**: Handlers are extracted as LogicPayload
 
 use super::types::*;
-use crate::ast::{Expr, Stmt, Type, Key};
+use crate::ast::{ClassBindingEntry, Expr, Stmt, Type, Key, ViewPropValue};
 use auto_val::Op;
 use std::collections::HashMap;
 
@@ -126,6 +126,76 @@ pub fn extract_expr(expr: &Expr) -> ExtractResult<AuraExpr> {
             })
         }
 
+        // Dot expression: object.field
+        // If the object is "self" or ".", treat as state reference
+        Expr::Dot(object, field) => {
+            match object.as_ref() {
+                Expr::Ident(name) if name.as_str() == "self" || name.as_str() == "." => {
+                    Ok(AuraExpr::StateRef(field.as_str().to_string()))
+                }
+                _ => {
+                    // Field access on an object (e.g., todo.done)
+                    let object_expr = extract_expr(object)?;
+                    Ok(AuraExpr::FieldAccess {
+                        object: Box::new(object_expr),
+                        field: field.as_str().to_string(),
+                    })
+                }
+            }
+        }
+
+        // Call expression: could be method call like todos.push(todo)
+        Expr::Call(call) => {
+            // Check if it's a method call (Dot expression as the name)
+            match call.name.as_ref() {
+                Expr::Dot(object, method) => {
+                    // Method call: object.method(args)
+                    let object_expr = extract_expr(object)?;
+                    let args: Vec<AuraExpr> = call.args.args.iter()
+                        .map(|arg| extract_expr(&arg.get_expr()))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(AuraExpr::MethodCall {
+                        object: Box::new(object_expr),
+                        method: method.as_str().to_string(),
+                        args,
+                    })
+                }
+                Expr::Ident(name) => {
+                    // Function call: name(args)
+                    // Treat as method call on implicit self
+                    let args: Vec<AuraExpr> = call.args.args.iter()
+                        .map(|arg| extract_expr(&arg.get_expr()))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(AuraExpr::MethodCall {
+                        object: Box::new(AuraExpr::StateRef("self".to_string())),
+                        method: name.as_str().to_string(),
+                        args,
+                    })
+                }
+                _ => Err(ExtractError::UnsupportedExpr(format!("Call with complex name: {:?}", call.name)))
+            }
+        }
+
+        // Array literal
+        Expr::Array(elems) => {
+            let elements: Vec<AuraExpr> = elems.iter()
+                .map(|e| extract_expr(e))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(AuraExpr::Array(elements))
+        }
+
+        // Closure (lambda): |params| body
+        Expr::Closure(closure) => {
+            let params: Vec<String> = closure.params.iter()
+                .map(|p| p.name.as_str().to_string())
+                .collect();
+            let body = extract_expr(&closure.body)?;
+            Ok(AuraExpr::Lambda {
+                params,
+                body: Box::new(body),
+            })
+        }
+
         // Other expressions not yet supported in view
         _ => Err(ExtractError::UnsupportedExpr(format!("{:?}", expr))),
     }
@@ -174,12 +244,32 @@ pub fn extract_stmt(stmt: &Stmt) -> ExtractResult<AuraStmt> {
             Ok(AuraStmt::Assign { target, value })
         }
 
-        // Expression statement
+        // Expression statement (e.g., method calls like todos.push(todo))
         Stmt::Expr(expr) => {
-            // Try to extract as assignment-like expression
-            extract_expr(expr)?;
-            // For now, just return a placeholder
-            Err(ExtractError::UnsupportedStmt(format!("{:?}", stmt)))
+            match expr {
+                // Method call: object.method(args)
+                Expr::Call(call) => {
+                    match call.name.as_ref() {
+                        Expr::Dot(object, method) => {
+                            // Extract object name (for now, just simple identifiers)
+                            let object_name = match object.as_ref() {
+                                Expr::Ident(name) => name.as_str().to_string(),
+                                _ => return Err(ExtractError::UnsupportedExpr(format!("Complex method call object: {:?}", object)))
+                            };
+                            let args: Vec<AuraExpr> = call.args.args.iter()
+                                .map(|arg| extract_expr(&arg.get_expr()))
+                                .collect::<Result<Vec<_>, _>>()?;
+                            Ok(AuraStmt::MethodCall {
+                                object: object_name,
+                                method: method.as_str().to_string(),
+                                args,
+                            })
+                        }
+                        _ => Err(ExtractError::UnsupportedStmt(format!("Non-method call: {:?}", call.name)))
+                    }
+                }
+                _ => Err(ExtractError::UnsupportedStmt(format!("{:?}", stmt)))
+            }
         }
 
         _ => Err(ExtractError::UnsupportedStmt(format!("{:?}", stmt))),
@@ -225,7 +315,7 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                     // Regular props
                     _ => {
                         let value = extract_expr(&pair.value)?;
-                        props.insert(key, value);
+                        props.insert(key, AuraPropValue::Expr(value));
                     }
                 }
             }
@@ -263,7 +353,7 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
                                     events.insert(key, handler);
                                 } else {
                                     let value = extract_expr(&pair.value)?;
-                                    props.insert(key, value);
+                                    props.insert(key, AuraPropValue::Expr(value));
                                 }
                             }
                         } else {
@@ -476,9 +566,24 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         .map(|p| extract_prop_decl(p))
         .collect();
 
+    // Extract computed properties
+    let computed: Vec<AuraComputed> = if let Some(ref computed_block) = decl.computed {
+        computed_block.properties.iter()
+            .map(|p| {
+                Ok(AuraComputed {
+                    name: p.name.as_str().to_string(),
+                    expr: extract_expr(&p.expr)?,
+                })
+            })
+            .collect::<ExtractResult<Vec<_>>>()?
+    } else {
+        Vec::new()
+    };
+
     Ok(AuraWidget {
         name: decl.name.as_str().to_string(),
         state_vars,
+        computed,
         messages,
         view_tree,
         handlers,
@@ -521,8 +626,26 @@ fn extract_view_block(view: &ViewBlock) -> ExtractResult<AuraNode> {
 fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
     match node {
         ViewNode::Element { tag, props, events, children } => {
-            let aura_props: HashMap<String, AuraExpr> = props.iter()
-                .map(|p| Ok((p.name.clone(), extract_expr(&p.value)?)))
+            let aura_props: HashMap<String, AuraPropValue> = props.iter()
+                .map(|p| {
+                    let value = match &p.value {
+                        ViewPropValue::Expr(expr) => {
+                            AuraPropValue::Expr(extract_expr(expr)?)
+                        }
+                        ViewPropValue::ClassBinding(bindings) => {
+                            let aura_bindings: Vec<AuraClassBinding> = bindings.iter()
+                                .map(|b| {
+                                    Ok(AuraClassBinding {
+                                        class_name: b.class_name.clone(),
+                                        condition: extract_expr(&b.condition)?,
+                                    })
+                                })
+                                .collect::<ExtractResult<_>>()?;
+                            AuraPropValue::ClassBinding(aura_bindings)
+                        }
+                    };
+                    Ok((p.name.clone(), value))
+                })
                 .collect::<ExtractResult<_>>()?;
 
             let aura_events: HashMap<String, AuraEvent> = events.iter()
@@ -594,7 +717,17 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
         }
         ViewNode::Component { name, props, events } => {
             let aura_props: HashMap<String, AuraExpr> = props.iter()
-                .map(|p| Ok((p.name.clone(), extract_expr(&p.value)?)))
+                .filter_map(|p| {
+                    match &p.value {
+                        ViewPropValue::Expr(expr) => {
+                            Some(extract_expr(expr).map(|v| (p.name.clone(), v)))
+                        }
+                        ViewPropValue::ClassBinding(_) => {
+                            // Class bindings not supported for component props
+                            None
+                        }
+                    }
+                })
                 .collect::<ExtractResult<_>>()?;
 
             let aura_events: HashMap<String, AuraEvent> = events.iter()

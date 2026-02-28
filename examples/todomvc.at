@@ -1,0 +1,53 @@
+// TodoMVC - Simple Example
+// Demonstrates core AURA features
+
+widget TodoApp {
+    // Message declarations
+    msg Msg { Add, Clear }
+
+    // Model (state variables)
+    model {
+        count int = 0
+    }
+
+    // Computed property
+    computed {
+        doubleCount => .count * 2
+    }
+
+    // View tree
+    view {
+        col {
+            h1 (text: "todos") {}
+
+            // Input area
+            row {
+                text `Count: ${.count}`
+                text `Double: ${.doubleCount}`
+            }
+
+            // Buttons
+            row {
+                button (text: "Add", onclick: .Add) {}
+                button (text: "Clear", onclick: .Clear) {}
+            }
+
+            // Conditional
+            if .count == 0 {
+                text "No items yet!"
+            } else {
+                text `Has ${.count} items`
+            }
+        }
+    }
+
+    // Event handlers
+    on {
+        Add => {
+            count = count + 1
+        }
+        Clear => {
+            count = 0
+        }
+    }
+}

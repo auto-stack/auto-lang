@@ -137,7 +137,20 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
                 output.push_str(&format!("{}    props: {{\n", ind));
                 for (key, value) in props {
                     output.push_str(&format!("{}        \"{}\": ", ind, key));
-                    serialize_expr(value, output);
+                    match value {
+                        AuraPropValue::Expr(expr) => {
+                            serialize_expr(expr, output);
+                        }
+                        AuraPropValue::ClassBinding(bindings) => {
+                            output.push_str("ClassBinding({");
+                            for (i, b) in bindings.iter().enumerate() {
+                                if i > 0 { output.push_str(", "); }
+                                output.push_str(&format!("\"{}\": ", b.class_name));
+                                serialize_expr(&b.condition, output);
+                            }
+                            output.push_str("})");
+                        }
+                    }
                     output.push_str(",\n");
                 }
                 output.push_str(&format!("{}    }},\n", ind));
@@ -285,6 +298,34 @@ fn serialize_expr(expr: &AuraExpr, output: &mut String) {
             serialize_expr(operand, output);
             output.push_str(")");
         }
+        AuraExpr::MethodCall { object, method, args } => {
+            output.push_str("MethodCall(");
+            serialize_expr(object, output);
+            output.push_str(&format!(", \"{}\", [", method));
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 { output.push_str(", "); }
+                serialize_expr(arg, output);
+            }
+            output.push_str("])");
+        }
+        AuraExpr::Array(elems) => {
+            output.push_str("Array([");
+            for (i, elem) in elems.iter().enumerate() {
+                if i > 0 { output.push_str(", "); }
+                serialize_expr(elem, output);
+            }
+            output.push_str("])");
+        }
+        AuraExpr::Lambda { params, body } => {
+            output.push_str(&format!("Lambda({:?}, ", params));
+            serialize_expr(body, output);
+            output.push_str(")");
+        }
+        AuraExpr::FieldAccess { object, field } => {
+            output.push_str("FieldAccess(");
+            serialize_expr(object, output);
+            output.push_str(&format!(", \"{}\")", field));
+        }
     }
 }
 
@@ -348,6 +389,7 @@ mod tests {
                 type_info: Type::Int,
                 initial: AuraExpr::Int(0),
             }],
+            computed: vec![],
             messages: vec![],
             view_tree: AuraNode::element("col"),
             handlers: HashMap::new(),
@@ -366,6 +408,7 @@ mod tests {
         let widget = AuraWidget {
             name: "App".to_string(),
             state_vars: vec![],
+            computed: vec![],
             messages: vec![],
             view_tree: AuraNode::element("col")
                 .with_child(AuraNode::text("Hello"))
@@ -402,6 +445,7 @@ mod tests {
             widgets: vec![AuraWidget {
                 name: "Main".to_string(),
                 state_vars: vec![],
+                computed: vec![],
                 messages: vec![],
                 view_tree: AuraNode::text("Hello"),
                 handlers: HashMap::new(),

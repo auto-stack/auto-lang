@@ -6972,6 +6972,7 @@ impl<'a> Parser<'a> {
 
         let mut messages = Vec::new();
         let mut model = None;
+        let mut computed = None;
         let mut view = None;
         let mut on = None;
 
@@ -6989,6 +6990,9 @@ impl<'a> Parser<'a> {
                 "model" => {
                     model = Some(self.parse_model_block_inner()?);
                 }
+                "computed" => {
+                    computed = Some(self.parse_computed_block_inner()?);
+                }
                 "view" => {
                     view = Some(self.parse_view_block_inner()?);
                 }
@@ -6997,7 +7001,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     return Err(SyntaxError::Generic {
-                        message: format!("Expected 'msg', 'model', 'view', or 'on' in widget, got '{}'", ident),
+                        message: format!("Expected 'msg', 'model', 'computed', 'view', or 'on' in widget, got '{}'", ident),
                         span: pos_to_span(self.cur.pos),
                     }.into());
                 }
@@ -7011,7 +7015,7 @@ impl<'a> Parser<'a> {
             name,
             messages,
             model,
-            computed: None, // TODO: parse computed block
+            computed,
             view,
             on,
             props,
@@ -7124,6 +7128,45 @@ impl<'a> Parser<'a> {
         Ok(ModelBlock { fields })
     }
 
+    /// Parse computed block, returning the ComputedBlock directly
+    fn parse_computed_block_inner(&mut self) -> AutoResult<ComputedBlock> {
+        self.expect_ident("computed")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut properties = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            // Parse: name => expression
+            let name = self.cur.text.clone();
+            self.next();
+
+            // Expect => (arrow)
+            if self.cur.text.as_str() == "=>" {
+                self.next();
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected '=>' after computed property name, got '{}'", self.cur.text),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
+
+            // Parse expression
+            let expr = self.parse_expr()?;
+
+            properties.push(ComputedProperty { name, expr });
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(ComputedBlock { properties })
+    }
+
     /// Parse view block (UI scenario only)
     pub fn parse_view_block(&mut self) -> AutoResult<Stmt> {
         let view = self.parse_view_block_inner()?;
@@ -7233,8 +7276,21 @@ impl<'a> Parser<'a> {
                     events.push(ViewEvent { name: key, handler, params });
                 } else {
                     self.expect(TokenKind::Colon)?;
-                    let value = self.parse_expr()?;
-                    props.push(ViewProp { name: key, value });
+
+                    // Check for class binding: class: { completed: todo.done }
+                    if key == "class" && self.is_kind(TokenKind::LBrace) {
+                        let binding = self.parse_class_binding()?;
+                        props.push(ViewProp {
+                            name: key,
+                            value: ViewPropValue::ClassBinding(binding),
+                        });
+                    } else {
+                        let value = self.parse_expr()?;
+                        props.push(ViewProp {
+                            name: key,
+                            value: ViewPropValue::Expr(value),
+                        });
+                    }
                 }
 
                 if self.is_kind(TokenKind::Comma) {
@@ -7267,6 +7323,54 @@ impl<'a> Parser<'a> {
             events,
             children,
         })
+    }
+
+    /// Parse class binding: { completed: todo.done, editing: todo.editing }
+    fn parse_class_binding(&mut self) -> AutoResult<Vec<ClassBindingEntry>> {
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut entries = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            // Parse class name (can be identifier or string)
+            let class_name = if self.is_kind(TokenKind::Str) || self.cur.text.starts_with('"') {
+                // Quoted string
+                let s = self.cur.text.to_string();
+                self.next();
+                // Remove quotes
+                s.trim_matches('"').to_string()
+            } else {
+                // Unquoted identifier
+                let name = self.cur.text.to_string();
+                self.next();
+                name
+            };
+
+            self.expect(TokenKind::Colon)?;
+
+            // Parse condition expression
+            let condition = self.parse_expr()?;
+
+            entries.push(ClassBindingEntry {
+                class_name,
+                condition,
+            });
+
+            // Optional comma
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(entries)
     }
 
     /// Parse for loop in view: for item in .list { body }

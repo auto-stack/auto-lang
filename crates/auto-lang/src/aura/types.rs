@@ -28,6 +28,9 @@ pub struct AuraWidget {
     /// State variable definitions
     pub state_vars: Vec<AuraStateDef>,
 
+    /// Computed properties
+    pub computed: Vec<AuraComputed>,
+
     /// Message type definitions
     pub messages: Vec<AuraMessage>,
 
@@ -72,6 +75,20 @@ pub struct AuraProp {
 }
 
 // ============================================================================
+// Computed Property Definition
+// ============================================================================
+
+/// Computed property definition
+#[derive(Debug, Clone)]
+pub struct AuraComputed {
+    /// Property name (e.g., "activeCount")
+    pub name: String,
+
+    /// Computation expression
+    pub expr: AuraExpr,
+}
+
+// ============================================================================
 // Message Definition
 // ============================================================================
 
@@ -109,6 +126,26 @@ pub struct AuraEvent {
     pub params: Vec<String>,
 }
 
+/// AURA property value - can be an expression or a class binding
+#[derive(Debug, Clone)]
+pub enum AuraPropValue {
+    /// Regular expression value
+    Expr(AuraExpr),
+
+    /// Class binding: { completed: todo.done }
+    ClassBinding(Vec<AuraClassBinding>),
+}
+
+/// A single class binding entry
+#[derive(Debug, Clone)]
+pub struct AuraClassBinding {
+    /// Class name (e.g., "completed")
+    pub class_name: String,
+
+    /// Condition expression
+    pub condition: AuraExpr,
+}
+
 /// View node: element or text
 #[derive(Debug, Clone)]
 pub enum AuraNode {
@@ -117,8 +154,8 @@ pub enum AuraNode {
         /// Tag name (e.g., "col", "button", "h2")
         tag: String,
 
-        /// Properties (key-value pairs, values can be dynamic)
-        props: HashMap<String, AuraExpr>,
+        /// Properties (key-value pairs, values can be dynamic or class bindings)
+        props: HashMap<String, AuraPropValue>,
 
         /// Event handlers (event name -> AuraEvent)
         events: HashMap<String, AuraEvent>,
@@ -206,7 +243,7 @@ impl AuraNode {
     /// Add a prop
     pub fn with_prop(mut self, key: impl Into<String>, value: AuraExpr) -> Self {
         if let AuraNode::Element { props, .. } = &mut self {
-            props.insert(key.into(), value);
+            props.insert(key.into(), AuraPropValue::Expr(value));
         }
         self
     }
@@ -294,6 +331,35 @@ pub enum AuraExpr {
         op: AuraUnaryOp,
         operand: Box<AuraExpr>,
     },
+
+    /// Method call: object.method(args)
+    MethodCall {
+        /// Object being called on (e.g., "todos")
+        object: Box<AuraExpr>,
+        /// Method name (e.g., "push", "filter")
+        method: String,
+        /// Arguments
+        args: Vec<AuraExpr>,
+    },
+
+    /// Array literal
+    Array(Vec<AuraExpr>),
+
+    /// Lambda expression: |params| body
+    Lambda {
+        /// Parameter names
+        params: Vec<String>,
+        /// Body expression
+        body: Box<AuraExpr>,
+    },
+
+    /// Field access: object.field
+    FieldAccess {
+        /// Object
+        object: Box<AuraExpr>,
+        /// Field name
+        field: String,
+    },
 }
 
 /// Binary operators
@@ -344,6 +410,16 @@ pub enum AuraStmt {
         target: String,
         op: AuraUpdateOp,
         value: AuraExpr,
+    },
+
+    /// Method call statement: object.method(args)
+    MethodCall {
+        /// Object being called on
+        object: String,
+        /// Method name
+        method: String,
+        /// Arguments
+        args: Vec<AuraExpr>,
     },
 }
 
@@ -529,6 +605,7 @@ mod tests {
                 type_info: Type::Int,
                 initial: AuraExpr::Int(0),
             }],
+            computed: vec![],
             messages: vec![],
             view_tree: AuraNode::element("col"),
             handlers: HashMap::new(),

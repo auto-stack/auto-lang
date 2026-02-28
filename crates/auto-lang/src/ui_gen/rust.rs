@@ -55,7 +55,7 @@
 //! Based on auto-ui/trans/rust_gen.rs, adapted for AuraWidget input.
 
 use super::{BackendGenerator, GenError, GenResult};
-use crate::aura::{AuraEvent, AuraExpr, AuraMessage, AuraMsgVariant, AuraNode, AuraStateDef, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{AuraEvent, AuraExpr, AuraMessage, AuraMsgVariant, AuraNode, AuraPropValue, AuraStateDef, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
 use std::collections::HashMap;
 
 /// Rust/GPUI code generator
@@ -156,6 +156,12 @@ impl RustGenerator {
 
         // Component impl
         code.push_str(&self.generate_component_impl(widget));
+
+        // Computed properties impl (if any)
+        if !widget.computed.is_empty() {
+            code.push('\n');
+            code.push_str(&self.generate_computed_impl(widget));
+        }
 
         Ok(code)
     }
@@ -282,6 +288,28 @@ impl RustGenerator {
         code.push_str(&format!("        {}\n", view_code));
 
         code.push_str("    }\n");
+
+        code
+    }
+
+    /// Generate computed properties impl block
+    fn generate_computed_impl(&self, widget: &AuraWidget) -> String {
+        let widget_name = &widget.name;
+        let mut code = String::new();
+
+        code.push_str(&format!("impl {} {{\n", widget_name));
+
+        for computed_prop in &widget.computed {
+            let method_name = &computed_prop.name;
+            let expr_rust = self.expr_to_rust(&computed_prop.expr);
+
+            // Generate getter method
+            code.push_str(&format!("    pub fn {}(&self) -> impl std::fmt::Display {{\n", method_name));
+            code.push_str(&format!("        {}\n", expr_rust));
+            code.push_str("    }\n\n");
+        }
+
+        code.push_str("}\n");
 
         code
     }
@@ -413,7 +441,7 @@ impl RustGenerator {
                 let mut builder = format!("{}::new()", name);
 
                 for (key, value) in props {
-                    builder = self.add_prop_to_builder(&builder, key, value);
+                    builder = self.add_prop_to_builder(&builder, key, &AuraPropValue::Expr(value.clone()));
                 }
 
                 for (event, handler) in events {
@@ -455,14 +483,35 @@ impl RustGenerator {
     }
 
     /// Add property to builder
-    fn add_prop_to_builder(&self, builder: &str, key: &str, value: &AuraExpr) -> String {
-        let value_str = self.expr_to_rust(value);
-        match key {
-            "class" | "className" => format!("{}.class(\"{}\")", builder, value_str),
-            "style" => format!("{}.style(\"{}\")", builder, value_str),
-            "padding" => format!("{}.padding({})", builder, value_str),
-            "spacing" => format!("{}.spacing({})", builder, value_str),
-            _ => builder.to_string(),
+    fn add_prop_to_builder(&self, builder: &str, key: &str, value: &AuraPropValue) -> String {
+        match value {
+            AuraPropValue::Expr(expr) => {
+                let value_str = self.expr_to_rust(expr);
+                match key {
+                    "class" | "className" => format!("{}.class(\"{}\")", builder, value_str),
+                    "style" => format!("{}.style(\"{}\")", builder, value_str),
+                    "padding" => format!("{}.padding({})", builder, value_str),
+                    "spacing" => format!("{}.spacing({})", builder, value_str),
+                    _ => builder.to_string(),
+                }
+            }
+            AuraPropValue::ClassBinding(bindings) => {
+                // For Rust, we'll generate conditional class application
+                // This is a simplified approach - a real implementation would need to
+                // integrate with the view builder pattern
+                let class_conditions: Vec<String> = bindings.iter()
+                    .map(|b| {
+                        let cond = self.expr_to_rust(&b.condition);
+                        format!("if {} {{ \"{}\" }} else {{ \"\" }}", cond, b.class_name)
+                    })
+                    .collect();
+                if class_conditions.is_empty() {
+                    builder.to_string()
+                } else {
+                    // Generate a combined conditional class string
+                    format!("{}.class({})", builder, class_conditions.join(" + \" \" + "))
+                }
+            }
         }
     }
 
@@ -539,6 +588,12 @@ impl RustGenerator {
                 };
                 format!("self.{} {} {}", target, op_str, value_str)
             }
+            AuraStmt::MethodCall { object, method, args } => {
+                let args_str: Vec<String> = args.iter()
+                    .map(|a| self.expr_to_rust(a))
+                    .collect();
+                format!("self.{}.{}({})", object, method, args_str.join(", "))
+            }
         }
     }
 
@@ -566,6 +621,35 @@ impl RustGenerator {
             }
             AuraExpr::MsgVariant { msg_type, variant } => {
                 format!("{}::{}", msg_type, variant)
+            }
+            AuraExpr::MethodCall { object, method, args } => {
+                let object_str = self.expr_to_rust(object);
+                let args_str: Vec<String> = args.iter()
+                    .map(|a| self.expr_to_rust(a))
+                    .collect();
+                // Convert .len to .len() for Rust
+                if method == "len" && args.is_empty() {
+                    format!("{}.len()", object_str)
+                } else if method == "filter" {
+                    // filter takes a closure
+                    format!("{}.{}({})", object_str, method, args_str.join(", "))
+                } else {
+                    format!("{}.{}({})", object_str, method, args_str.join(", "))
+                }
+            }
+            AuraExpr::Array(elems) => {
+                let elems_str: Vec<String> = elems.iter()
+                    .map(|e| self.expr_to_rust(e))
+                    .collect();
+                format!("vec![{}]", elems_str.join(", "))
+            }
+            AuraExpr::Lambda { params, body } => {
+                let body_str = self.expr_to_rust(body);
+                format!("|{}| {}", params.join(", "), body_str)
+            }
+            AuraExpr::FieldAccess { object, field } => {
+                let object_str = self.expr_to_rust(object);
+                format!("{}.{}", object_str, field)
             }
         }
     }

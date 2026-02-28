@@ -690,7 +690,7 @@ gpui = { git = "https://github.com/zed-industries/zed" }
 | Phase 1: Parser Extensions | ✅ Complete | 100% |
 | Phase 2: Vue.js Generator | ✅ Complete | 100% |
 | Phase 3: Rust/AutoUI Generator | ✅ Complete | 100% |
-| Phase 4: Testing & Polish | Not Started | 0% |
+| Phase 4: Testing & Polish | ✅ Complete | 100% |
 
 ### Architecture Decision (2026-02-28)
 
@@ -745,3 +745,44 @@ This means:
 ### Known Issues
 
 None - all Phase 1 and Phase 2 issues resolved.
+
+### Computed Properties (2026-02-28)
+
+- ✅ Parser support for `computed` block
+- ✅ AuraComputed type with AuraExpr
+- ✅ Vue generator computed() support
+- ✅ Rust generator computed methods
+- ✅ Dot expression extraction (`.count` → StateRef)
+
+### Array Operations (2026-02-28)
+
+- ✅ AuraExpr extensions: MethodCall, Array, Lambda, FieldAccess
+- ✅ AuraStmt extensions: MethodCall statement
+- ✅ Extract Call, Array, Closure expressions
+- ✅ Vue generator method calls and lambdas
+- ✅ Rust generator method calls and lambdas
+- ✅ Atom serialization for new types
+
+### Dynamic Class Binding (2026-03-01)
+
+- ✅ Parser support for `class: { key: condition }` syntax
+- ✅ ViewPropValue and ClassBindingEntry types
+- ✅ AuraPropValue and AuraClassBinding types
+- ✅ Vue generator `:class="{ completed: done.value }"` output
+- ✅ Rust generator conditional class output
+
+### Phase 4: Testing & Polish (2026-03-01)
+
+- ✅ Created working TodoMVC example (`examples/todomvc.at`)
+- ✅ Tested Vue backend - generates valid Vue 3 SFC
+- ✅ Tested Rust backend - generates valid AutoUI Component
+- ✅ All core features working: for loops, if/else, computed, class bindings
+
+## Summary
+
+Plan 097 is **COMPLETE**. All phases have been implemented:
+
+1. **Parser Extensions** - for loops, if/else, computed, class bindings
+2. **Vue.js Generator** - complete Vue 3 SFC output
+3. **Rust/AutoUI Generator** - complete Rust Component trait output
+4. **Testing & Polish** - working examples for both backends
