@@ -297,7 +297,105 @@ impl VueGenerator {
                     }
                 }
             }
+
+            AuraNode::ForLoop { var, index, iterable, body } => {
+                // Generate v-for directive
+                let v_for = if let Some(idx) = index {
+                    format!("v-for=\"({}, {}) in {}\"", idx, var, iterable.trim_start_matches('.'))
+                } else {
+                    format!("v-for=\"{} in {}\"", var, iterable.trim_start_matches('.'))
+                };
+
+                // Wrap body in a container with v-for
+                let mut body_html = String::new();
+                for child in body {
+                    body_html.push_str(&self.node_to_html(child, indent + 1)?);
+                }
+
+                // Use template tag for the loop wrapper
+                Ok(format!("{}<template {}>\n{}{}</template>\n", ind, v_for, body_html, ind))
+            }
+
+            AuraNode::Conditional { condition, then_body, else_body } => {
+                // Convert condition to Vue expression
+                let vue_condition = self.convert_condition(condition);
+
+                let mut then_html = String::new();
+                for child in then_body {
+                    then_html.push_str(&self.node_to_html(child, indent + 1)?);
+                }
+
+                if let Some(else_nodes) = else_body {
+                    let mut else_html = String::new();
+                    for child in else_nodes {
+                        else_html.push_str(&self.node_to_html(child, indent + 1)?);
+                    }
+                    Ok(format!(
+                        "{}<template v-if=\"{}\">\n{}{}</template>\n{}<template v-else>\n{}{}</template>\n",
+                        ind, vue_condition, then_html, ind, ind, else_html, ind
+                    ))
+                } else {
+                    Ok(format!("{}<template v-if=\"{}\">\n{}{}</template>\n", ind, vue_condition, then_html, ind))
+                }
+            }
+
+            AuraNode::Component { name, props, events } => {
+                // Build props as bindings
+                let mut attrs = Vec::new();
+                for (key, value) in props {
+                    let value_str = self.prop_to_attr_value(value)?;
+                    attrs.push(format!(":{}={}", key, value_str));
+                }
+
+                // Event handlers
+                for (event, handler) in events {
+                    let vue_event = self.auto_event_to_vue(event);
+                    let handler_fn = self.handler_to_function_call(handler);
+                    attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
+                }
+
+                let attr_str = if attrs.is_empty() {
+                    String::new()
+                } else {
+                    format!(" {}", attrs.join(" "))
+                };
+
+                self.component_refs.push(name.clone());
+                Ok(format!("{}<{}{} />\n", ind, name, attr_str))
+            }
         }
+    }
+
+    /// Convert AURA condition to Vue expression
+    fn convert_condition(&mut self, condition: &str) -> String {
+        // Convert .var to var, .len to .length, etc.
+        let mut result = condition.trim().to_string();
+
+        // Replace .len with .length
+        result = result.replace(".len", ".length");
+
+        // Remove leading dot from state references (.count -> count)
+        // Pattern: .identifier (at word boundary)
+        let mut converted = String::new();
+        let chars: Vec<char> = result.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] == '.' && (i == 0 || !chars[i-1].is_alphanumeric()) {
+                // Check if this is a number (like 0.5)
+                if i + 1 < chars.len() && chars[i+1].is_ascii_digit() {
+                    converted.push('.');
+                    i += 1;
+                    continue;
+                }
+                // Skip the dot (remove state prefix)
+                i += 1;
+                continue;
+            }
+            converted.push(chars[i]);
+            i += 1;
+        }
+
+        converted
     }
 
     /// Map AutoUI tag to HTML tag

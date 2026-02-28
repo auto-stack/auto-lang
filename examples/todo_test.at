@@ -1,0 +1,49 @@
+// TodoMVC Test - Testing new AURA features
+// Tests: for loops, if/else, input/checkbox elements
+
+widget TodoApp {
+    msg Msg { Add, Delete, Toggle }
+
+    model {
+        count int = 0
+    }
+
+    view {
+        col {
+            // Simple elements for testing
+            input (placeholder: "Add todo", onenter: .Add)
+            checkbox (checked: false, onchange: .Toggle)
+
+            // For loop test
+            for item in .items {
+                row {
+                    text `Item: ${item}`
+                }
+            }
+
+            // Conditional test
+            if .count > 0 {
+                text `Count: ${.count}`
+            }
+
+            // If-else test
+            if .count == 0 {
+                text "No items"
+            } else {
+                text "Has items"
+            }
+        }
+    }
+
+    on {
+        Add => {
+            count = count + 1
+        }
+        Delete => {
+            count = 0
+        }
+        Toggle => {
+            count = count - 1
+        }
+    }
+}

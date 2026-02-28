@@ -184,6 +184,71 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
                 }
             }
         }
+
+        AuraNode::ForLoop { var, index, iterable, body } => {
+            output.push_str(&format!("ForLoop {{\n"));
+            output.push_str(&format!("{}    var: \"{}\",\n", ind, var));
+            if let Some(idx) = index {
+                output.push_str(&format!("{}    index: Some(\"{}\"),\n", ind, idx));
+            } else {
+                output.push_str(&format!("{}    index: None,\n", ind));
+            }
+            output.push_str(&format!("{}    iterable: \"{}\",\n", ind, iterable));
+            output.push_str(&format!("{}    body: [\n", ind));
+            for child in body {
+                output.push_str(&format!("{}        ", ind));
+                serialize_node(child, output, indent + 2);
+                output.push_str(",\n");
+            }
+            output.push_str(&format!("{}    ]\n", ind));
+            output.push_str(&format!("{}}}", ind));
+        }
+
+        AuraNode::Conditional { condition, then_body, else_body } => {
+            output.push_str(&format!("Conditional {{\n"));
+            output.push_str(&format!("{}    condition: \"{}\",\n", ind, condition));
+            output.push_str(&format!("{}    then_body: [\n", ind));
+            for child in then_body {
+                output.push_str(&format!("{}        ", ind));
+                serialize_node(child, output, indent + 2);
+                output.push_str(",\n");
+            }
+            output.push_str(&format!("{}    ],\n", ind));
+            if let Some(else_nodes) = else_body {
+                output.push_str(&format!("{}    else_body: Some([\n", ind));
+                for child in else_nodes {
+                    output.push_str(&format!("{}        ", ind));
+                    serialize_node(child, output, indent + 2);
+                    output.push_str(",\n");
+                }
+                output.push_str(&format!("{}    ]),\n", ind));
+            } else {
+                output.push_str(&format!("{}    else_body: None,\n", ind));
+            }
+            output.push_str(&format!("{}}}", ind));
+        }
+
+        AuraNode::Component { name, props, events } => {
+            output.push_str(&format!("Component {{\n"));
+            output.push_str(&format!("{}    name: \"{}\",\n", ind, name));
+            if !props.is_empty() {
+                output.push_str(&format!("{}    props: {{\n", ind));
+                for (key, value) in props {
+                    output.push_str(&format!("{}        \"{}\": ", ind, key));
+                    serialize_expr(value, output);
+                    output.push_str(",\n");
+                }
+                output.push_str(&format!("{}    }},\n", ind));
+            }
+            if !events.is_empty() {
+                output.push_str(&format!("{}    events: {{\n", ind));
+                for (event, handler) in events {
+                    output.push_str(&format!("{}        \"{}\": \"{}\",\n", ind, event, handler));
+                }
+                output.push_str(&format!("{}    }},\n", ind));
+            }
+            output.push_str(&format!("{}}}", ind));
+        }
     }
 }
 

@@ -7011,6 +7011,7 @@ impl<'a> Parser<'a> {
             name,
             messages,
             model,
+            computed: None, // TODO: parse computed block
             view,
             on,
             props,
@@ -7148,6 +7149,16 @@ impl<'a> Parser<'a> {
     fn parse_view_node(&mut self) -> AutoResult<ViewNode> {
         self.skip_empty_lines();
 
+        // Check for "for" keyword: for item in .list { body }
+        if self.cur.text.as_str() == "for" {
+            return self.parse_view_for_loop();
+        }
+
+        // Check for "if" keyword: if condition { then_body } else { else_body }
+        if self.cur.text.as_str() == "if" {
+            return self.parse_view_conditional();
+        }
+
         // Check for text with '>' prefix: > "text" or > f"text ${.state}"
         if self.is_kind(TokenKind::Gt) {
             self.next();
@@ -7210,18 +7221,9 @@ impl<'a> Parser<'a> {
                 // Check if it's an event (onclick, etc.)
                 if key.starts_with("on") {
                     self.expect(TokenKind::Colon)?;
-                    // Handle dot-prefixed handlers like .Inc (meaning Msg::Inc in widget scope)
-                    let handler = if self.is_kind(TokenKind::Dot) {
-                        self.next(); // consume the dot
-                        let name = self.cur.text.to_string();
-                        self.next();
-                        format!(".{}", name) // keep the dot prefix for semantic resolution
-                    } else {
-                        let handler = self.cur.text.to_string();
-                        self.next();
-                        handler
-                    };
-                    events.push(ViewEvent { name: key, handler });
+                    // Parse handler with optional parameters: .Inc or .Delete(todo.id)
+                    let (handler, params) = self.parse_event_handler()?;
+                    events.push(ViewEvent { name: key, handler, params });
                 } else {
                     self.expect(TokenKind::Colon)?;
                     let value = self.parse_expr()?;
@@ -7258,6 +7260,229 @@ impl<'a> Parser<'a> {
             events,
             children,
         })
+    }
+
+    /// Parse for loop in view: for item in .list { body }
+    fn parse_view_for_loop(&mut self) -> AutoResult<ViewNode> {
+        self.expect_ident("for")?;
+
+        // Parse loop variable (and optional index)
+        let first_var = self.cur.text.to_string();
+        self.next();
+
+        // Check for index: for i, item in ...
+        let (index, var) = if self.is_kind(TokenKind::Comma) {
+            self.next(); // consume comma
+            let second_var = self.cur.text.to_string();
+            self.next();
+            (Some(first_var), second_var)
+        } else {
+            (None, first_var)
+        };
+
+        // Expect "in" keyword
+        self.expect_ident("in")?;
+
+        // Parse iterable (e.g., .todos)
+        let iterable = if self.is_kind(TokenKind::Dot) {
+            self.next();
+            let name = self.cur.text.to_string();
+            self.next();
+            format!(".{}", name)
+        } else {
+            let name = self.cur.text.to_string();
+            self.next();
+            name
+        };
+
+        // Parse body
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut body = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+            let node = self.parse_view_node()?;
+            body.push(node);
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(ViewNode::ForLoop {
+            var,
+            index,
+            iterable,
+            body,
+        })
+    }
+
+    /// Parse conditional in view: if condition { then_body } else { else_body }
+    fn parse_view_conditional(&mut self) -> AutoResult<ViewNode> {
+        self.expect_ident("if")?;
+
+        // Parse condition expression (until we hit '{')
+        let condition = self.parse_condition_expr()?;
+
+        // Parse then body
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut then_body = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+            let node = self.parse_view_node()?;
+            then_body.push(node);
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        // Check for else clause
+        let else_body = if self.cur.text.as_str() == "else" {
+            self.expect_ident("else")?;
+            self.expect(TokenKind::LBrace)?;
+            self.skip_empty_lines();
+
+            let mut else_nodes = Vec::new();
+            while !self.is_kind(TokenKind::RBrace) {
+                self.skip_empty_lines();
+                if self.is_kind(TokenKind::RBrace) {
+                    break;
+                }
+                let node = self.parse_view_node()?;
+                else_nodes.push(node);
+                self.skip_empty_lines();
+            }
+            self.expect(TokenKind::RBrace)?;
+            Some(else_nodes)
+        } else {
+            None
+        };
+
+        Ok(ViewNode::Conditional {
+            condition,
+            then_body,
+            else_body,
+        })
+    }
+
+    /// Parse condition expression (until '{')
+    fn parse_condition_expr(&mut self) -> AutoResult<String> {
+        let mut parts = Vec::new();
+
+        while !self.is_kind(TokenKind::LBrace) {
+            if self.is_kind(TokenKind::Dot) {
+                self.next();
+                let name = self.cur.text.to_string();
+                self.next();
+                parts.push(format!(".{}", name));
+            } else if self.is_kind(TokenKind::Ident) {
+                let text = self.cur.text.to_string();
+                self.next();
+                parts.push(text);
+            } else if self.is_kind(TokenKind::Lt) || self.is_kind(TokenKind::Gt)
+                || self.is_kind(TokenKind::Le) || self.is_kind(TokenKind::Ge)
+                || self.is_kind(TokenKind::Eq) || self.is_kind(TokenKind::Neq)
+                || self.is_kind(TokenKind::And) || self.is_kind(TokenKind::Or)
+                || self.is_kind(TokenKind::Not)
+            {
+                let op = self.cur.text.to_string();
+                self.next();
+                parts.push(op);
+            } else if self.is_kind(TokenKind::Int) {
+                let num = self.cur.text.to_string();
+                self.next();
+                parts.push(num);
+            } else if self.is_kind(TokenKind::LParen) {
+                self.next();
+                parts.push("(".to_string());
+            } else if self.is_kind(TokenKind::RParen) {
+                self.next();
+                parts.push(")".to_string());
+            } else if self.is_kind(TokenKind::Range) || self.is_kind(TokenKind::RangeEq) {
+                let op = self.cur.text.to_string();
+                self.next();
+                parts.push(op);
+            } else {
+                break;
+            }
+        }
+
+        Ok(parts.join(" "))
+    }
+
+    /// Parse event handler with optional parameters: .Inc or .Delete(todo.id)
+    fn parse_event_handler(&mut self) -> AutoResult<(String, Vec<String>)> {
+        // Handle dot-prefixed handlers like .Inc (meaning Msg::Inc in widget scope)
+        if self.is_kind(TokenKind::Dot) {
+            self.next(); // consume the dot
+            let name = self.cur.text.to_string();
+            self.next();
+
+            // Check for parameters: .Delete(todo.id)
+            let params = if self.is_kind(TokenKind::LParen) {
+                self.next();
+                let mut args = Vec::new();
+                while !self.is_kind(TokenKind::RParen) {
+                    // Parse argument as string
+                    let arg = self.parse_event_arg()?;
+                    args.push(arg);
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next();
+                    }
+                }
+                self.expect(TokenKind::RParen)?;
+                args
+            } else {
+                Vec::new()
+            };
+
+            Ok((format!(".{}", name), params))
+        } else {
+            let handler = self.cur.text.to_string();
+            self.next();
+            Ok((handler, Vec::new()))
+        }
+    }
+
+    /// Parse a single event argument
+    fn parse_event_arg(&mut self) -> AutoResult<String> {
+        let mut parts = Vec::new();
+
+        // Handle expressions like: todo.id, .count, 123, "string"
+        loop {
+            if self.is_kind(TokenKind::Dot) {
+                self.next();
+                let name = self.cur.text.to_string();
+                self.next();
+                if parts.is_empty() {
+                    parts.push(format!(".{}", name));
+                } else {
+                    parts.push(format!(".{}", name));
+                }
+            } else if self.is_kind(TokenKind::Ident) {
+                let text = self.cur.text.to_string();
+                self.next();
+                parts.push(text);
+            } else if self.is_kind(TokenKind::Int) {
+                let num = self.cur.text.to_string();
+                self.next();
+                parts.push(num);
+            } else if self.is_kind(TokenKind::Str) {
+                let s = format!("\"{}\"", self.cur.text.as_str());
+                self.next();
+                parts.push(s);
+            } else {
+                break;
+            }
+        }
+
+        Ok(parts.join(""))
     }
 
     /// Parse on block for widget (returns OnBlock, not OnEvents)

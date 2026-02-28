@@ -507,6 +507,53 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
             };
             Ok(AuraNode::Text(text_content))
         }
+        ViewNode::ForLoop { var, index, iterable, body } => {
+            let aura_body: Vec<AuraNode> = body.iter()
+                .map(|c| extract_view_node(c))
+                .collect::<ExtractResult<_>>()?;
+
+            Ok(AuraNode::ForLoop {
+                var: var.clone(),
+                index: index.clone(),
+                iterable: iterable.clone(),
+                body: aura_body,
+            })
+        }
+        ViewNode::Conditional { condition, then_body, else_body } => {
+            let aura_then: Vec<AuraNode> = then_body.iter()
+                .map(|c| extract_view_node(c))
+                .collect::<ExtractResult<_>>()?;
+
+            let aura_else = if let Some(else_nodes) = else_body {
+                let nodes: Vec<AuraNode> = else_nodes.iter()
+                    .map(|c| extract_view_node(c))
+                    .collect::<ExtractResult<_>>()?;
+                Some(nodes)
+            } else {
+                None
+            };
+
+            Ok(AuraNode::Conditional {
+                condition: condition.clone(),
+                then_body: aura_then,
+                else_body: aura_else,
+            })
+        }
+        ViewNode::Component { name, props, events } => {
+            let aura_props: HashMap<String, AuraExpr> = props.iter()
+                .map(|p| Ok((p.name.clone(), extract_expr(&p.value)?)))
+                .collect::<ExtractResult<_>>()?;
+
+            let aura_events: HashMap<String, String> = events.iter()
+                .map(|e| (e.name.clone(), e.handler.clone()))
+                .collect();
+
+            Ok(AuraNode::Component {
+                name: name.clone(),
+                props: aura_props,
+                events: aura_events,
+            })
+        }
     }
 }
 

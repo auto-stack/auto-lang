@@ -1,0 +1,29 @@
+// For loop and conditional test
+
+widget LoopTest {
+    msg Msg { Add }
+
+    model {
+        count int = 0
+    }
+
+    view {
+        col {
+            // Simple for loop with static content
+            for i in .items {
+                text "Static item"
+            }
+
+            // Conditional test with state
+            if .count > 0 {
+                text `Count: ${.count}`
+            }
+        }
+    }
+
+    on {
+        Add => {
+            count = count + 1
+        }
+    }
+}

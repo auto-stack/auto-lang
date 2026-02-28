@@ -119,6 +119,45 @@ pub enum AuraNode {
 
     /// Text node (literal or interpolated)
     Text(AuraTextContent),
+
+    /// For loop: for item in .list { body }
+    ForLoop {
+        /// Loop variable name
+        var: String,
+
+        /// Optional index variable
+        index: Option<String>,
+
+        /// Iterable expression
+        iterable: String,
+
+        /// Loop body nodes
+        body: Vec<AuraNode>,
+    },
+
+    /// Conditional: if condition { then_body } else { else_body }
+    Conditional {
+        /// Condition expression
+        condition: String,
+
+        /// Body when condition is true
+        then_body: Vec<AuraNode>,
+
+        /// Optional else body
+        else_body: Option<Vec<AuraNode>>,
+    },
+
+    /// Component instantiation
+    Component {
+        /// Component name
+        name: String,
+
+        /// Properties passed to component
+        props: HashMap<String, AuraExpr>,
+
+        /// Event handlers
+        events: HashMap<String, String>,
+    },
 }
 
 /// Text content: can be literal or contain interpolations

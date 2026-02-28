@@ -16,6 +16,7 @@ use auto_val::AutoStr;
 /// widget Counter {
 ///     msg Msg { Inc, Dec }
 ///     model { count int = 0 }
+///     computed { doubleCount => .count * 2 }
 ///     view { ... }
 ///     on { .Inc => { .count += 1 } }
 /// }
@@ -30,6 +31,9 @@ pub struct WidgetDecl {
 
     /// State/model declaration
     pub model: Option<ModelBlock>,
+
+    /// Computed properties
+    pub computed: Option<ComputedBlock>,
 
     /// View tree declaration
     pub view: Option<ViewBlock>,
@@ -101,6 +105,37 @@ pub struct ModelField {
 }
 
 // ============================================================================
+// Computed Block
+// ============================================================================
+
+/// Computed block: defines computed/derived properties
+///
+/// ```auto
+/// computed {
+///     activeCount => .todos.filter(|t| !t.done).len
+///     filteredTodos => match .filter {
+///         Filter::All => .todos
+///         Filter::Active => .todos.filter(|t| !t.done)
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct ComputedBlock {
+    /// Computed property declarations
+    pub properties: Vec<ComputedProperty>,
+}
+
+/// Computed property: a derived value
+#[derive(Debug, Clone)]
+pub struct ComputedProperty {
+    /// Property name
+    pub name: Name,
+
+    /// Computation expression (as string for flexibility)
+    pub expr: String,
+}
+
+// ============================================================================
 // View Block
 // ============================================================================
 
@@ -140,6 +175,45 @@ pub enum ViewNode {
 
     /// Text node (literal or with interpolations)
     Text(ViewText),
+
+    /// For loop: for item in .list { body }
+    ForLoop {
+        /// Loop variable name (e.g., "todo")
+        var: String,
+
+        /// Optional index variable (e.g., Some("i") for `for i, item in ...`)
+        index: Option<String>,
+
+        /// Iterable expression (e.g., ".todos")
+        iterable: String,
+
+        /// Loop body nodes
+        body: Vec<ViewNode>,
+    },
+
+    /// Conditional: if condition { then_body } else { else_body }
+    Conditional {
+        /// Condition expression as string (e.g., ".todos.len > 0")
+        condition: String,
+
+        /// Body when condition is true
+        then_body: Vec<ViewNode>,
+
+        /// Optional else body
+        else_body: Option<Vec<ViewNode>>,
+    },
+
+    /// Component instantiation: TodoItem (todo: .todo, onToggle: .Toggle)
+    Component {
+        /// Component name (e.g., "TodoItem")
+        name: String,
+
+        /// Properties passed to component
+        props: Vec<ViewProp>,
+
+        /// Event handlers
+        events: Vec<ViewEvent>,
+    },
 }
 
 /// View property
@@ -160,6 +234,9 @@ pub struct ViewEvent {
 
     /// Handler pattern (e.g., ".Inc" or "Msg::Inc")
     pub handler: String,
+
+    /// Optional parameters for the handler (e.g., ["todo.id"] for .Delete(todo.id))
+    pub params: Vec<String>,
 }
 
 /// View text content
@@ -264,6 +341,19 @@ impl ViewNode {
             events.push(ViewEvent {
                 name: name.into(),
                 handler: handler.into(),
+                params: Vec::new(),
+            });
+        }
+        self
+    }
+
+    /// Add an event handler with parameters
+    pub fn with_event_params(mut self, name: impl Into<String>, handler: impl Into<String>, params: Vec<String>) -> Self {
+        if let ViewNode::Element { events, .. } = &mut self {
+            events.push(ViewEvent {
+                name: name.into(),
+                handler: handler.into(),
+                params,
             });
         }
         self

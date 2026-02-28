@@ -334,7 +334,62 @@ impl RustGenerator {
                     }
                 }
             }
+
+            AuraNode::ForLoop { var, index, iterable, body } => {
+                // Generate iterator-based view construction
+                let iter_expr = if iterable.starts_with('.') {
+                    format!("self.{}", iterable.trim_start_matches('.'))
+                } else {
+                    iterable.clone()
+                };
+
+                let body_code: Vec<String> = body.iter()
+                    .map(|child| self.generate_view_tree(child))
+                    .collect();
+
+                if let Some(idx) = index {
+                    format!("{}.enumerate().map(|({}, {})| {{ {} }}).collect::<Vec<_>>()", iter_expr, idx, var, body_code.join("\n"))
+                } else {
+                    format!("{}.iter().map(|{}| {{ {} }}).collect::<Vec<_>>()", iter_expr, var, body_code.join("\n"))
+                }
+            }
+
+            AuraNode::Conditional { condition, then_body, else_body } => {
+                let rust_condition = self.convert_condition(condition);
+                let then_code: Vec<String> = then_body.iter()
+                    .map(|child| self.generate_view_tree(child))
+                    .collect();
+
+                if let Some(else_nodes) = else_body {
+                    let else_code: Vec<String> = else_nodes.iter()
+                        .map(|child| self.generate_view_tree(child))
+                        .collect();
+                    format!("if {} {{ {} }} else {{ {} }}", rust_condition, then_code.join("\n"), else_code.join("\n"))
+                } else {
+                    format!("if {} {{ {} }}", rust_condition, then_code.join("\n"))
+                }
+            }
+
+            AuraNode::Component { name, props, events } => {
+                // Generate component instantiation
+                let mut builder = format!("{}::new()", name);
+
+                for (key, value) in props {
+                    builder = self.add_prop_to_builder(&builder, key, value);
+                }
+
+                for (event, handler) in events {
+                    builder = self.add_event_to_builder(&builder, event, handler);
+                }
+
+                format!("{}.build()", builder)
+            }
         }
+    }
+
+    /// Convert AURA condition to Rust expression
+    fn convert_condition(&self, condition: &str) -> String {
+        condition.trim().to_string()
     }
 
     /// Map tag to View builder function
