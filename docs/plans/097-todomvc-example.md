@@ -687,9 +687,26 @@ gpui = { git = "https://github.com/zed-industries/zed" }
 
 | Phase | Status | Completion |
 |-------|--------|------------|
-| Phase 1: Parser Extensions | Not Started | 0% |
-| Phase 2: Vue.js Generator | Not Started | 0% |
+| Phase 1: Parser Extensions | ✅ Complete | 100% |
+| Phase 2: Vue.js Generator | 🔄 In Progress | 60% |
 | Phase 3: Iced Generator | Not Started | 0% |
 | Phase 4: GPUI Generator | Not Started | 0% |
 | Phase 5: Sub-components | Not Started | 0% |
 | Phase 6: Testing & Polish | Not Started | 0% |
+
+### Phase 1 Completed (2026-02-28)
+
+- ✅ `for` loop parsing in view blocks
+- ✅ `if/else` conditional parsing in view blocks
+- ✅ Event handler with parameters parsing
+- ✅ ViewNode AST extensions (ForLoop, Conditional, Component)
+- ✅ AuraNode IR extensions
+- ✅ Vue generator v-for/v-if support
+- ✅ Rust generator iterator support
+- ✅ AURA atom serialization
+
+### Known Issues
+
+1. **Loop variable scoping**: Loop variables (e.g., `i` in `for i in .items`) aren't registered in scope, so they can't be used in interpolations inside the loop body yet.
+2. **Text node parsing**: The `text` element with content needs improvement.
+3. **Event parameter extraction**: Parameters like `todo.id` aren't fully extracted yet.
