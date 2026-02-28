@@ -882,7 +882,7 @@ pub fn trans_javascript(path: &str) -> AutoResult<String> {
 /// # Arguments
 /// * `path` - Input file or directory
 /// * `scenario` - Compilation scenario (core, ui, shell)
-/// * `backend` - Backend target (vue, rust, gpui)
+/// * `backend` - Backend target (vue, rust)
 /// * `output` - Optional output directory
 pub fn ui_build(
     path: &str,
@@ -891,7 +891,7 @@ pub fn ui_build(
     output: Option<&str>,
 ) -> AutoResult<String> {
     use crate::session::{CompilerSession, Scenario};
-    use crate::ui_gen::{BackendGenerator, VueGenerator, RustGenerator, IcedGenerator};
+    use crate::ui_gen::{BackendGenerator, VueGenerator, RustGenerator};
 
     // Parse scenario
     let session = match scenario {
@@ -928,6 +928,7 @@ pub fn ui_build(
     }
 
     // Generate code based on backend
+    // Rust backend uses auto-ui abstract components (Iced, GPUI handled by auto-ui crate)
     let mut output_code = String::new();
     match backend {
         "vue" => {
@@ -946,16 +947,8 @@ pub fn ui_build(
                 output_code.push_str("\n\n");
             }
         }
-        "iced" => {
-            let mut gen = IcedGenerator::new();
-            for widget in &widgets {
-                let code = gen.generate(widget).map_err(|e| e.to_string())?;
-                output_code.push_str(&code);
-                output_code.push_str("\n\n");
-            }
-        }
         _ => {
-            return Err(format!("Unknown backend: {}", backend).into());
+            return Err(format!("Unknown backend: {}. Available: vue, rust", backend).into());
         }
     }
 
@@ -964,7 +957,6 @@ pub fn ui_build(
         let ext = match backend {
             "vue" => "vue",
             "rust" => "rs",
-            "iced" => "rs",
             _ => "txt",
         };
         std::fs::create_dir_all(out_dir).ok();
@@ -979,10 +971,6 @@ pub fn ui_build(
                 }
                 "rust" => {
                     let mut gen = RustGenerator::new();
-                    gen.generate(widget).map_err(|e| e.to_string())?
-                }
-                "iced" => {
-                    let mut gen = IcedGenerator::new();
                     gen.generate(widget).map_err(|e| e.to_string())?
                 }
                 _ => output_code.clone(),

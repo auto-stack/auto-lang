@@ -689,10 +689,30 @@ gpui = { git = "https://github.com/zed-industries/zed" }
 |-------|--------|------------|
 | Phase 1: Parser Extensions | ✅ Complete | 100% |
 | Phase 2: Vue.js Generator | ✅ Complete | 100% |
-| Phase 3: Iced Generator | 🔄 In Progress | 70% |
-| Phase 4: GPUI Generator | Not Started | 0% |
-| Phase 5: Sub-components | Not Started | 0% |
-| Phase 6: Testing & Polish | Not Started | 0% |
+| Phase 3: Rust/AutoUI Generator | ✅ Complete | 100% |
+| Phase 4: Testing & Polish | Not Started | 0% |
+
+### Architecture Decision (2026-02-28)
+
+**Key Insight**: The Iced and GPUI generators should NOT be separate. Instead:
+
+```
+AURA → Rust Generator → AutoUI Components (abstract)
+                              ↓
+                    ../auto-ui crate handles:
+                    - Iced backend implementation
+                    - GPUI backend implementation
+                    - Other future backends
+```
+
+The `rust.rs` generator produces code using the abstract `Component` trait
+and `View` builder pattern from `auto_ui::prelude::*`. The `auto-ui` crate
+provides backend-specific implementations.
+
+This means:
+- Only **2 generators** needed: `vue` (JavaScript) and `rust` (AutoUI)
+- Backend-specific code is in `auto-ui` crate, not `auto-lang`
+- CLI supports: `-b vue` and `-b rust`
 
 ### Phase 1 Completed (2026-02-28)
 
@@ -713,17 +733,14 @@ gpui = { git = "https://github.com/zed-industries/zed" }
 - ✅ Input/checkbox element support (v-model)
 - ✅ For loop variable order (idx, item → v-for="(item, idx)")
 
-### Phase 3 In Progress (2026-02-28)
+### Phase 3 Completed (2026-02-28)
 
-- ✅ IcedGenerator struct with loop variable tracking
-- ✅ Message enum generation
-- ✅ Model struct with state variables
-- ✅ Application trait implementation (new, title, update, view)
+- ✅ Single Rust generator for AutoUI abstraction
+- ✅ Loop variable tracking and scope handling
 - ✅ Format strings with {} placeholders
-- ✅ Loop variable scope handling
-- ✅ CLI support for `-b iced`
-- 🔄 Text input and checkbox widgets
-- 🔄 Cargo.toml generation with iced dependency
+- ✅ Condition conversion (.count → self.count)
+- ✅ Removed redundant Iced generator
+- ✅ CLI supports: `-b vue`, `-b rust`
 
 ### Known Issues
 

@@ -71,6 +71,9 @@ pub struct RustGenerator {
 
     /// Indent level
     indent: usize,
+
+    /// Loop variables in scope (for generating correct references)
+    loop_vars: Vec<String>,
 }
 
 impl RustGenerator {
@@ -81,6 +84,7 @@ impl RustGenerator {
             message_variants: Vec::new(),
             needs_imports: true,
             indent: 0,
+            loop_vars: Vec::new(),
         }
     }
 
@@ -89,6 +93,28 @@ impl RustGenerator {
         self.message_variants.clear();
         self.needs_imports = true;
         self.indent = 0;
+        self.loop_vars.clear();
+    }
+
+    /// Check if a name is a loop variable
+    fn is_loop_var(&self, name: &str) -> bool {
+        self.loop_vars.contains(&name.to_string())
+    }
+
+    /// Push loop variables into scope
+    fn push_loop_vars(&mut self, var: &str, index: Option<&str>) {
+        self.loop_vars.push(var.to_string());
+        if let Some(idx) = index {
+            self.loop_vars.push(idx.to_string());
+        }
+    }
+
+    /// Pop loop variables from scope
+    fn pop_loop_vars(&mut self, var: &str, index: Option<&str>) {
+        self.loop_vars.retain(|v| v != var);
+        if let Some(idx) = index {
+            self.loop_vars.retain(|v| v != idx);
+        }
     }
 
     /// Generate complete Rust code from AuraWidget
@@ -246,7 +272,7 @@ impl RustGenerator {
     }
 
     /// Generate view() method implementation
-    fn generate_view_method(&self, widget: &AuraWidget) -> String {
+    fn generate_view_method(&mut self, widget: &AuraWidget) -> String {
         let mut code = String::new();
 
         code.push_str("    fn view(&self) -> View<Self::Msg> {\n");
@@ -261,7 +287,7 @@ impl RustGenerator {
     }
 
     /// Generate view tree code
-    fn generate_view_tree(&self, node: &AuraNode) -> String {
+    fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
             AuraNode::Element { tag, props, events, children } => {
                 let view_fn = self.tag_to_view_fn(tag);
@@ -311,26 +337,31 @@ impl RustGenerator {
                         format!("View::text(\"{}\")", s)
                     }
                     AuraTextContent::Interpolated { template, bindings } => {
-                        // Generate format! string
-                        // Template has ${.binding} format, convert to Rust format!({binding})
+                        // Convert template to format! string with {} placeholders
                         let mut format_str = template.clone();
+                        let mut format_args = Vec::new();
+
                         for binding in bindings.iter() {
-                            // Replace ${.binding} with {binding}
+                            // Replace ${.binding} and ${binding} with {}
                             format_str = format_str.replace(
                                 &format!("${{{}.{}}}", ".", binding),
-                                &format!("{{{}}}", binding)
+                                "{}"
                             );
-                            // Also replace ${binding} with {binding}
                             format_str = format_str.replace(
                                 &format!("${{{}}}", binding),
-                                &format!("{{{}}}", binding)
+                                "{}"
                             );
+
+                            // Use binding directly if loop var, otherwise self.binding
+                            let arg = if self.is_loop_var(binding) {
+                                binding.clone()
+                            } else {
+                                format!("self.{}", binding)
+                            };
+                            format_args.push(arg);
                         }
-                        // Generate self.binding for state references
-                        let binding_refs: Vec<String> = bindings.iter()
-                            .map(|b| format!("self.{}", b))
-                            .collect();
-                        format!("View::text(format!(\"{}\", {}))", format_str, binding_refs.join(", "))
+
+                        format!("View::text(format!(\"{}\", {}))", format_str, format_args.join(", "))
                     }
                 }
             }
@@ -343,9 +374,16 @@ impl RustGenerator {
                     iterable.clone()
                 };
 
+                // Push loop vars into scope
+                self.push_loop_vars(var, index.as_deref());
+
+                // Generate body with loop vars in scope
                 let body_code: Vec<String> = body.iter()
                     .map(|child| self.generate_view_tree(child))
                     .collect();
+
+                // Pop loop vars from scope
+                self.pop_loop_vars(var, index.as_deref());
 
                 if let Some(idx) = index {
                     format!("{}.enumerate().map(|({}, {})| {{ {} }}).collect::<Vec<_>>()", iter_expr, idx, var, body_code.join("\n"))
@@ -389,7 +427,17 @@ impl RustGenerator {
 
     /// Convert AURA condition to Rust expression
     fn convert_condition(&self, condition: &str) -> String {
-        condition.trim().to_string()
+        // Replace . with self. for state references
+        let mut result = condition.trim().to_string();
+
+        // Simple approach: replace ".name" at word boundaries with "self.name"
+        // This handles cases like ".count > 0" -> "self.count > 0"
+        result = result.replace(".", "self.");
+
+        // Fix double self references
+        result = result.replace("self.self.", "self.");
+
+        result
     }
 
     /// Map tag to View builder function

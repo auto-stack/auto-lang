@@ -2,20 +2,21 @@
 //!
 //! This module provides code generators for various UI backends:
 //! - **Vue3/JavaScript**: Vue3 SFC (Single File Component) generator
-//! - **Rust/GPUI**: Rust Component trait generator (migrated from auto-ui)
-//! - **Iced**: Iced GUI framework (Elm-inspired Rust GUI)
+//! - **Rust/AutoUI**: Rust Component trait generator using auto-ui abstraction
+//!
+//! The Rust generator produces code using the abstract AutoUI components from
+//! the `auto-ui` crate. The auto-ui crate then handles backend-specific
+//! implementations (Iced, GPUI, etc.).
 //!
 //! All generators take `AuraWidget` as input and produce target-specific code.
 
 pub mod vue;
 pub mod rust;
-pub mod iced;
 pub mod style;
 
 // Re-export main types
 pub use vue::VueGenerator;
 pub use rust::RustGenerator;
-pub use iced::IcedGenerator;
 pub use style::StyleGenerator;
 
 use crate::aura::AuraWidget;
