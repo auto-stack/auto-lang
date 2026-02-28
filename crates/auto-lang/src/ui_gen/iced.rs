@@ -69,6 +69,9 @@ pub struct IcedGenerator {
 
     /// Collected message variants
     message_variants: Vec<AuraMsgVariant>,
+
+    /// Loop variables in scope (for generating correct references)
+    loop_vars: Vec<String>,
 }
 
 impl IcedGenerator {
@@ -77,12 +80,35 @@ impl IcedGenerator {
         Self {
             current_widget: None,
             message_variants: Vec::new(),
+            loop_vars: Vec::new(),
         }
     }
 
     /// Reset state for new widget
     fn reset(&mut self) {
         self.message_variants.clear();
+        self.loop_vars.clear();
+    }
+
+    /// Check if a name is a loop variable
+    fn is_loop_var(&self, name: &str) -> bool {
+        self.loop_vars.contains(&name.to_string())
+    }
+
+    /// Push loop variables into scope
+    fn push_loop_vars(&mut self, var: &str, index: Option<&str>) {
+        self.loop_vars.push(var.to_string());
+        if let Some(idx) = index {
+            self.loop_vars.push(idx.to_string());
+        }
+    }
+
+    /// Pop loop variables from scope
+    fn pop_loop_vars(&mut self, var: &str, index: Option<&str>) {
+        self.loop_vars.retain(|v| v != var);
+        if let Some(idx) = index {
+            self.loop_vars.retain(|v| v != idx);
+        }
     }
 
     /// Generate complete Iced application from AuraWidget
@@ -165,7 +191,7 @@ impl IcedGenerator {
     }
 
     /// Generate Application trait implementation
-    fn generate_application_impl(&self, widget: &AuraWidget) -> String {
+    fn generate_application_impl(&mut self, widget: &AuraWidget) -> String {
         let widget_name = &widget.name;
         let mut code = String::new();
 
@@ -233,7 +259,7 @@ impl IcedGenerator {
     }
 
     /// Generate view() method implementation
-    fn generate_view_method(&self, widget: &AuraWidget) -> String {
+    fn generate_view_method(&mut self, widget: &AuraWidget) -> String {
         let mut code = String::new();
 
         code.push_str("    fn view(&self) -> Element<Message> {\n");
@@ -248,7 +274,7 @@ impl IcedGenerator {
     }
 
     /// Generate view tree code
-    fn generate_view_tree(&self, node: &AuraNode) -> String {
+    fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
             AuraNode::Element { tag, props, events, children } => {
                 let container_fn = self.tag_to_iced_widget(tag);
@@ -288,23 +314,31 @@ impl IcedGenerator {
                         format!("text(\"{}\").into()", s)
                     }
                     AuraTextContent::Interpolated { template, bindings } => {
-                        // Generate format! string
+                        // Convert template to format! string with {} placeholders
                         let mut format_str = template.clone();
+                        let mut format_args = Vec::new();
+
                         for binding in bindings.iter() {
+                            // Replace ${.binding} and ${binding} with {}
                             format_str = format_str.replace(
                                 &format!("${{{}.{}}}", ".", binding),
-                                &format!("{{{}}}", binding)
+                                "{}"
                             );
                             format_str = format_str.replace(
                                 &format!("${{{}}}", binding),
-                                &format!("{{{}}}", binding)
+                                "{}"
                             );
+
+                            // Use binding directly if loop var, otherwise self.binding
+                            let arg = if self.is_loop_var(binding) {
+                                binding.clone()
+                            } else {
+                                format!("self.{}", binding)
+                            };
+                            format_args.push(arg);
                         }
-                        // Generate self.binding for state references
-                        let binding_refs: Vec<String> = bindings.iter()
-                            .map(|b| format!("self.{}", b))
-                            .collect();
-                        format!("text(format!(\"{}\", {})).into()", format_str, binding_refs.join(", "))
+
+                        format!("text(format!(\"{}\", {})).into()", format_str, format_args.join(", "))
                     }
                 }
             }
@@ -317,14 +351,21 @@ impl IcedGenerator {
                     iterable.clone()
                 };
 
+                // Push loop vars into scope
+                self.push_loop_vars(var, index.as_deref());
+
+                // Generate body with loop vars in scope
                 let body_code: Vec<String> = body.iter()
                     .map(|child| self.generate_view_tree(child))
                     .collect();
 
+                // Pop loop vars from scope
+                self.pop_loop_vars(var, index.as_deref());
+
                 if let Some(idx) = index {
-                    format!("{}.enumerate().map(|({}, {})| {{ {} }}).collect::<Vec<_>>().into()", iter_expr, idx, var, body_code.join("\n"))
+                    format!("{}.enumerate().map(|({}, {})| {{ {} }}).collect::<Vec<_>>()", iter_expr, idx, var, body_code.join("\n"))
                 } else {
-                    format!("{}.iter().map(|{}| {{ {} }}).collect::<Vec<_>>().into()", iter_expr, var, body_code.join("\n"))
+                    format!("{}.iter().map(|{}| {{ {} }}).collect::<Vec<_>>()", iter_expr, var, body_code.join("\n"))
                 }
             }
 

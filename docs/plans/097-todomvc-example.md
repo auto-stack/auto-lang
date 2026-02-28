@@ -689,7 +689,7 @@ gpui = { git = "https://github.com/zed-industries/zed" }
 |-------|--------|------------|
 | Phase 1: Parser Extensions | ✅ Complete | 100% |
 | Phase 2: Vue.js Generator | ✅ Complete | 100% |
-| Phase 3: Iced Generator | Not Started | 0% |
+| Phase 3: Iced Generator | 🔄 In Progress | 70% |
 | Phase 4: GPUI Generator | Not Started | 0% |
 | Phase 5: Sub-components | Not Started | 0% |
 | Phase 6: Testing & Polish | Not Started | 0% |
@@ -712,6 +712,18 @@ gpui = { git = "https://github.com/zed-industries/zed" }
 - ✅ Event parameter extraction (AuraEvent with params)
 - ✅ Input/checkbox element support (v-model)
 - ✅ For loop variable order (idx, item → v-for="(item, idx)")
+
+### Phase 3 In Progress (2026-02-28)
+
+- ✅ IcedGenerator struct with loop variable tracking
+- ✅ Message enum generation
+- ✅ Model struct with state variables
+- ✅ Application trait implementation (new, title, update, view)
+- ✅ Format strings with {} placeholders
+- ✅ Loop variable scope handling
+- ✅ CLI support for `-b iced`
+- 🔄 Text input and checkbox widgets
+- 🔄 Cargo.toml generation with iced dependency
 
 ### Known Issues
 
