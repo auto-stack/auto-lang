@@ -4,9 +4,9 @@
 // directly by the AURA pipeline without DSL preprocessing.
 //
 // Syntax:
-// - tag { props } { children }  - Element with props and children
+// - tag (props) { children }    - Element with props and children
 // - text `content ${.var}`      - Text node with interpolation
-// - button { text: "label" }    - Button with text content
+// - button (text: "label") {}   - Button with text content
 
 widget Counter {
     // Message declarations
@@ -19,13 +19,13 @@ widget Counter {
 
     // View tree
     view {
-        col {} {
+        col () {
             text `Counter: ${.count}`
-            row {} {
-                button { text: "-", onclick: .Dec }
-                button { text: "+", onclick: .Inc }
+            row () {
+                button (text: "-", onclick: .Dec) {}
+                button (text: "+", onclick: .Inc) {}
             }
-            button { text: "Reset", onclick: .Reset }
+            button (text: "Reset", onclick: .Reset) {}
         }
     }
 

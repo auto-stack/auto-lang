@@ -7,11 +7,11 @@ widget Counter {
     }
 
     view {
-        col {} {
+        col () {
             > f"Count: ${.count}"
-            row {} {
-                button { text: "-", onclick: .Dec }
-                button { text: "+", onclick: .Inc }
+            row () {
+                button (text: "-", onclick: .Dec) {}
+                button (text: "+", onclick: .Inc) {}
             }
         }
     }

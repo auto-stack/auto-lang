@@ -7193,14 +7193,14 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Parse props/events in braces
-        if self.is_kind(TokenKind::LBrace) {
+        // Parse props/events in parentheses: tag (props) { children }
+        if self.is_kind(TokenKind::LParen) {
             self.next();
             self.skip_empty_lines();
 
-            while !self.is_kind(TokenKind::RBrace) {
+            while !self.is_kind(TokenKind::RParen) {
                 self.skip_empty_lines();
-                if self.is_kind(TokenKind::RBrace) {
+                if self.is_kind(TokenKind::RParen) {
                     break;
                 }
 
@@ -7232,7 +7232,7 @@ impl<'a> Parser<'a> {
                     self.next();
                 }
             }
-            self.expect(TokenKind::RBrace)?;
+            self.expect(TokenKind::RParen)?;
         }
 
         // Parse children in nested braces
