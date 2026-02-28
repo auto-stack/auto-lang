@@ -55,6 +55,53 @@
 //! /* Component styles */
 //! </style>
 //! ```
+//!
+//! ## Supported shadcn-vue Components (Plan 099)
+//!
+//! ### Content Elements
+//! | AURA Tag | shadcn-vue | Props |
+//! |----------|------------|-------|
+//! | `button` | Button | variant, size, disabled, text→slot |
+//! | `input` | Input | v-model, type, placeholder, disabled |
+//! | `textarea` | Textarea | v-model, placeholder, rows, disabled |
+//! | `checkbox` | Checkbox | v-model:checked, disabled |
+//! | `toggle`/`switch` | Switch | v-model:checked, disabled |
+//! | `select` | Select | v-model, disabled |
+//!
+//! ### Layout & Navigation (Phase 3)
+//! | AURA Tag | shadcn-vue | Props |
+//! |----------|------------|-------|
+//! | `scroll` | ScrollArea | class, orientation, hide_delay |
+//! | `tabs` | Tabs | v-model, default-value |
+//! | `tab` | TabsTrigger | value, disabled, text→slot |
+//! | `card` | Card | variant, title→slot |
+//! | `divider` | Separator | orientation, decorative, label |
+//!
+//! ### Overlay & Feedback (Phase 4)
+//! | AURA Tag | shadcn-vue | Props |
+//! |----------|------------|-------|
+//! | `modal` | Dialog | v-model:open, title, description |
+//! | `tooltip` | Tooltip | content→slot, side, delay |
+//! | `spinner` | Skeleton | class, width, height |
+//! | `progress` | Progress | v-model, max |
+//! | `badge` | Badge | variant, text→slot |
+//!
+//! ### Data Components (Phase 5)
+//! | AURA Tag | shadcn-vue | Props |
+//! |----------|------------|-------|
+//! | `table` | Table | class |
+//! | `thead`/`tbody`/`tr` | TableHeader/TableBody/TableRow | class |
+//! | `th`/`td` | TableHead/TableCell | class, colspan, rowspan |
+//! | `tree` | Collapsible | class |
+//! | `tree_item` | CollapsibleItem | v-model:open, text→slot |
+//! | `avatar` | Avatar | src, name→slot |
+//!
+//! ### Form Components (Phase 6)
+//! | AURA Tag | shadcn-vue | Props |
+//! |----------|------------|-------|
+//! | `slider` | Slider | v-model, min, max, step, disabled |
+//! | `radiogroup` | RadioGroup | v-model, name, disabled |
+//! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
 use super::{BackendGenerator, GenError, GenResult};
 use crate::aura::{AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStateDef, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
@@ -276,8 +323,10 @@ impl VueGenerator {
         self.current_widget = Some(widget.name.clone());
         self.reset();
 
-        let script = self.generate_script(widget)?;
+        // Generate template first to collect shadcn components used
         let template = self.generate_template(&widget.view_tree)?;
+        // Then generate script (which can now include shadcn imports)
+        let script = self.generate_script(widget)?;
         let style = self.generate_style();
 
         Ok(format!(
@@ -306,7 +355,7 @@ impl VueGenerator {
         let needs_ref = !widget.state_vars.is_empty();
         let needs_computed = !widget.computed.is_empty();
 
-        // Generate import statement
+        // Generate Vue import statement
         let mut imports = Vec::new();
         if needs_ref {
             imports.push("ref");
@@ -315,8 +364,16 @@ impl VueGenerator {
             imports.push("computed");
         }
         if !imports.is_empty() {
-            script.push_str(&format!("import {{ {} }} from 'vue'\n\n", imports.join(", ")));
+            script.push_str(&format!("import {{ {} }} from 'vue'\n", imports.join(", ")));
         }
+
+        // Generate shadcn-vue imports (if any components were used in template)
+        let shadcn_imports = self.generate_shadcn_imports();
+        if !shadcn_imports.is_empty() {
+            script.push_str(&shadcn_imports);
+            script.push('\n');
+        }
+        script.push('\n');
 
         // Generate state variables as ref()
         for state in &widget.state_vars {
@@ -1181,7 +1238,91 @@ impl VueGenerator {
 
             // === Card ===
             "card" => {
-                // Cards use slots for header/content
+                // Card variant (default, outline, ghost)
+                if let Some(value) = props.get("variant") {
+                    let variant = self.extract_string_value(value).unwrap_or("default");
+                    attrs.push(format!("variant=\"{}\"", variant));
+                }
+                // Card title becomes header
+                if let Some(value) = props.get("title") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === ScrollArea ===
+            "scroll" => {
+                // viewport class for styling
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+                // orientation (vertical, horizontal, both)
+                if let Some(value) = props.get("orientation") {
+                    let orientation = self.extract_string_value(value).unwrap_or("vertical");
+                    attrs.push(format!("orientation=\"{}\"", orientation));
+                }
+                // scroll hide delay
+                if let Some(value) = props.get("hide_delay") {
+                    if let Some(delay) = self.extract_int_value(value) {
+                        attrs.push(format!(":scroll-hide-delay=\"{}\"", delay));
+                    }
+                }
+            }
+
+            // === Tabs ===
+            "tabs" => {
+                // v-model for active tab value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    } else if let Some(val) = self.extract_string_value(value) {
+                        attrs.push(format!("default-value=\"{}\"", val));
+                    }
+                }
+                // default value
+                if let Some(value) = props.get("default") {
+                    let default = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("default-value=\"{}\"", default));
+                }
+            }
+
+            // === Tab ===
+            "tab" => {
+                // Tab value (required for TabsTrigger)
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+                // Disabled state
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+                // Text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === Separator/Divider ===
+            "divider" => {
+                // orientation (horizontal, vertical)
+                if let Some(value) = props.get("orientation") {
+                    let orientation = self.extract_string_value(value).unwrap_or("horizontal");
+                    attrs.push(format!("orientation=\"{}\"", orientation));
+                }
+                // decorative (accessibility)
+                if let Some(value) = props.get("decorative") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("decorative".to_string());
+                    }
+                }
+                // label for accessibility
+                if let Some(value) = props.get("label") {
+                    let label = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("label=\"{}\"", label));
+                }
             }
 
             // === Avatar ===
@@ -1194,6 +1335,182 @@ impl VueGenerator {
                 }
                 // alt/fallback
                 if let Some(value) = props.get("name") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // ========================================
+            // Phase 4: Overlay & Feedback
+            // ========================================
+
+            // === Dialog/Modal ===
+            "modal" => {
+                // v-model:open for dialog state
+                if let Some(value) = props.get("open") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+                // title for DialogTitle
+                if let Some(value) = props.get("title") {
+                    let title = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("data-title=\"{}\"", title));
+                }
+                // description for DialogDescription
+                if let Some(value) = props.get("description") {
+                    let desc = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("data-description=\"{}\"", desc));
+                }
+            }
+
+            // === Tooltip ===
+            "tooltip" => {
+                // content for TooltipContent
+                if let Some(value) = props.get("content") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // side (top, right, bottom, left)
+                if let Some(value) = props.get("side") {
+                    let side = self.extract_string_value(value).unwrap_or("top");
+                    attrs.push(format!("side=\"{}\"", side));
+                }
+                // delay duration
+                if let Some(value) = props.get("delay") {
+                    if let Some(delay) = self.extract_int_value(value) {
+                        attrs.push(format!(":delay-duration=\"{}\"", delay));
+                    }
+                }
+            }
+
+            // === Spinner/Skeleton ===
+            "spinner" => {
+                // Skeleton uses class for sizing
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+                // width
+                if let Some(value) = props.get("width") {
+                    if let Some(width) = self.extract_int_value(value) {
+                        attrs.push(format!("style=\"width: {}px\"", width));
+                    }
+                }
+                // height
+                if let Some(value) = props.get("height") {
+                    if let Some(height) = self.extract_int_value(value) {
+                        attrs.push(format!("style=\"height: {}px\"", height));
+                    }
+                }
+            }
+
+            // ========================================
+            // Phase 5: Data Components
+            // ========================================
+
+            // === Table ===
+            "table" => {
+                // Table wrapper class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "thead" | "tbody" | "tr" => {
+                // Table structure elements - minimal props
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "th" | "td" => {
+                // Table cells
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+                // colspan
+                if let Some(value) = props.get("colspan") {
+                    if let Some(span) = self.extract_int_value(value) {
+                        attrs.push(format!(":colspan=\"{}\"", span));
+                    }
+                }
+                // rowspan
+                if let Some(value) = props.get("rowspan") {
+                    if let Some(span) = self.extract_int_value(value) {
+                        attrs.push(format!(":rowspan=\"{}\"", span));
+                    }
+                }
+            }
+
+            // === Tree ===
+            "tree" => {
+                // Tree container
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "tree_item" => {
+                // Tree item with expanded state
+                if let Some(value) = props.get("expanded") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+                // Text content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // ========================================
+            // Phase 6: Form Components
+            // ========================================
+
+            // === RadioGroup ===
+            "radiogroup" => {
+                // v-model for selected value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // name for form grouping
+                if let Some(value) = props.get("name") {
+                    let name = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("name=\"{}\"", name));
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+            }
+
+            // === Radio ===
+            "radio" => {
+                // value for this radio option
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+                // id for label association
+                if let Some(value) = props.get("id") {
+                    let id = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("id=\"{}\"", id));
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+                // label text
+                if let Some(value) = props.get("label") {
                     slot_content = self.prop_to_text_content(value).ok();
                 }
             }
@@ -1794,5 +2111,350 @@ mod tests {
         let base_css = VueGenerator::generate_base_css();
         assert!(base_css.contains("--background"));
         assert!(base_css.contains("--primary"));
+    }
+
+    // ========================================
+    // Phase 3: Layout & Navigation Tests
+    // ========================================
+
+    #[test]
+    fn test_generate_shadcn_attrs_scroll() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test scroll area with orientation
+        props.insert("orientation".to_string(), AuraPropValue::Expr(AuraExpr::Literal("vertical".to_string())));
+        let (attrs, _) = gen.generate_shadcn_attrs("scroll", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("orientation=\"vertical\"")));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_tabs() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test tabs with default value
+        props.insert("default".to_string(), AuraPropValue::Expr(AuraExpr::Literal("tab1".to_string())));
+        let (attrs, _) = gen.generate_shadcn_attrs("tabs", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("default-value=\"tab1\"")));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_tabs_with_model() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test tabs with v-model
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("activeTab".to_string())));
+        let (attrs, _) = gen.generate_shadcn_attrs("tabs", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("v-model=\"activeTab\"")));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_tab() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test tab trigger with value and text
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::Literal("tab1".to_string())));
+        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("First Tab".to_string())));
+        let (attrs, slot_content) = gen.generate_shadcn_attrs("tab", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("value=\"tab1\"")));
+        assert!(slot_content.is_some());
+        assert_eq!(slot_content.unwrap(), "First Tab");
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_card() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test card with variant and title
+        props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("outline".to_string())));
+        props.insert("title".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Card Title".to_string())));
+        let (attrs, slot_content) = gen.generate_shadcn_attrs("card", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("variant=\"outline\"")));
+        assert!(slot_content.is_some());
+        assert_eq!(slot_content.unwrap(), "Card Title");
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_divider() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test separator with orientation
+        props.insert("orientation".to_string(), AuraPropValue::Expr(AuraExpr::Literal("vertical".to_string())));
+        let (attrs, _) = gen.generate_shadcn_attrs("divider", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("orientation=\"vertical\"")));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_divider_decorative() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test decorative separator
+        props.insert("decorative".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        let (attrs, _) = gen.generate_shadcn_attrs("divider", &props, &events);
+
+        assert!(attrs.iter().any(|a| a == "decorative"));
+    }
+
+    #[test]
+    fn test_shadcn_registry_phase3_components() {
+        let registry = ShadcnRegistry::new();
+
+        // Check Phase 3 component mappings
+        assert!(registry.has_component("scroll"));
+        assert!(registry.has_component("tabs"));
+        assert!(registry.has_component("tab"));
+        assert!(registry.has_component("card"));
+        assert!(registry.has_component("divider"));
+
+        // Check primary component names
+        assert_eq!(registry.primary_component("scroll"), Some("ScrollArea"));
+        assert_eq!(registry.primary_component("tabs"), Some("Tabs"));
+        assert_eq!(registry.primary_component("tab"), Some("TabsTrigger"));
+        assert_eq!(registry.primary_component("card"), Some("Card"));
+        assert_eq!(registry.primary_component("divider"), Some("Separator"));
+
+        // Check imports are returned correctly
+        let (module, components) = registry.get("scroll").unwrap();
+        assert!(module.contains("scroll-area"));
+        assert!(components.contains(&"ScrollArea"));
+
+        let (module, components) = registry.get("tabs").unwrap();
+        assert!(module.contains("tabs"));
+        assert!(components.contains(&"Tabs"));
+        assert!(components.contains(&"TabsList"));
+        assert!(components.contains(&"TabsTrigger"));
+        assert!(components.contains(&"TabsContent"));
+    }
+
+    // ========================================
+    // Phase 4: Overlay & Feedback Tests
+    // ========================================
+
+    #[test]
+    fn test_generate_shadcn_attrs_modal() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test modal with v-model:open
+        props.insert("open".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("showDialog".to_string())));
+        props.insert("title".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Confirm Delete".to_string())));
+        let (attrs, _) = gen.generate_shadcn_attrs("modal", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("v-model:open=\"showDialog\"")));
+        assert!(attrs.iter().any(|a| a.contains("data-title=\"Confirm Delete\"")));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_tooltip() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test tooltip with content and side
+        props.insert("content".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Help text".to_string())));
+        props.insert("side".to_string(), AuraPropValue::Expr(AuraExpr::Literal("right".to_string())));
+        let (attrs, slot_content) = gen.generate_shadcn_attrs("tooltip", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("side=\"right\"")));
+        assert!(slot_content.is_some());
+        assert_eq!(slot_content.unwrap(), "Help text");
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_spinner() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test spinner/skeleton
+        props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("w-10 h-10".to_string())));
+        let (attrs, _) = gen.generate_shadcn_attrs("spinner", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("class=\"w-10 h-10\"")));
+    }
+
+    #[test]
+    fn test_shadcn_registry_phase4_components() {
+        let registry = ShadcnRegistry::new();
+
+        // Check Phase 4 component mappings
+        assert!(registry.has_component("modal"));
+        assert!(registry.has_component("tooltip"));
+        assert!(registry.has_component("spinner"));
+
+        // Check primary component names
+        assert_eq!(registry.primary_component("modal"), Some("Dialog"));
+        assert_eq!(registry.primary_component("tooltip"), Some("Tooltip"));
+        assert_eq!(registry.primary_component("spinner"), Some("Skeleton"));
+    }
+
+    // ========================================
+    // Phase 5: Data Components Tests
+    // ========================================
+
+    #[test]
+    fn test_generate_shadcn_attrs_table() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test table
+        props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("w-full".to_string())));
+        let (attrs, _) = gen.generate_shadcn_attrs("table", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("class=\"w-full\"")));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_table_cells() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test th with colspan
+        props.insert("colspan".to_string(), AuraPropValue::Expr(AuraExpr::Int(2)));
+        let (attrs, _) = gen.generate_shadcn_attrs("th", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains(":colspan=\"2\"")));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_tree() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test tree
+        props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("pl-4".to_string())));
+        let (attrs, _) = gen.generate_shadcn_attrs("tree", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("class=\"pl-4\"")));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_tree_item() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test tree_item with text
+        props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Node 1".to_string())));
+        let (attrs, slot_content) = gen.generate_shadcn_attrs("tree_item", &props, &events);
+
+        assert!(slot_content.is_some());
+        assert_eq!(slot_content.unwrap(), "Node 1");
+    }
+
+    #[test]
+    fn test_shadcn_registry_phase5_components() {
+        let registry = ShadcnRegistry::new();
+
+        // Check Phase 5 component mappings
+        assert!(registry.has_component("table"));
+        assert!(registry.has_component("thead"));
+        assert!(registry.has_component("tbody"));
+        assert!(registry.has_component("tr"));
+        assert!(registry.has_component("th"));
+        assert!(registry.has_component("td"));
+        assert!(registry.has_component("avatar"));
+
+        // Check primary component names
+        assert_eq!(registry.primary_component("table"), Some("Table"));
+        assert_eq!(registry.primary_component("thead"), Some("TableHeader"));
+        assert_eq!(registry.primary_component("tbody"), Some("TableBody"));
+        assert_eq!(registry.primary_component("tr"), Some("TableRow"));
+        assert_eq!(registry.primary_component("th"), Some("TableHead"));
+        assert_eq!(registry.primary_component("td"), Some("TableCell"));
+        assert_eq!(registry.primary_component("avatar"), Some("Avatar"));
+    }
+
+    // ========================================
+    // Phase 6: Form Components Tests
+    // ========================================
+
+    #[test]
+    fn test_generate_shadcn_attrs_radiogroup() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test radiogroup with v-model
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("selectedOption".to_string())));
+        props.insert("name".to_string(), AuraPropValue::Expr(AuraExpr::Literal("options".to_string())));
+        let (attrs, _) = gen.generate_shadcn_attrs("radiogroup", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("v-model=\"selectedOption\"")));
+        assert!(attrs.iter().any(|a| a.contains("name=\"options\"")));
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_radio() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test radio with value and label
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::Literal("option1".to_string())));
+        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Option 1".to_string())));
+        let (attrs, slot_content) = gen.generate_shadcn_attrs("radio", &props, &events);
+
+        assert!(attrs.iter().any(|a| a.contains("value=\"option1\"")));
+        assert!(slot_content.is_some());
+        assert_eq!(slot_content.unwrap(), "Option 1");
+    }
+
+    #[test]
+    fn test_generate_shadcn_attrs_radio_disabled() {
+        let gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        let events = HashMap::new();
+
+        // Test disabled radio
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::Literal("option2".to_string())));
+        props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+        let (attrs, _) = gen.generate_shadcn_attrs("radio", &props, &events);
+
+        assert!(attrs.iter().any(|a| a == "disabled"));
+    }
+
+    #[test]
+    fn test_shadcn_registry_phase6_components() {
+        let registry = ShadcnRegistry::new();
+
+        // Check Phase 6 component mappings
+        assert!(registry.has_component("slider"));
+        assert!(registry.has_component("radio"));
+        assert!(registry.has_component("radiogroup"));
+
+        // Check primary component names
+        assert_eq!(registry.primary_component("slider"), Some("Slider"));
+        // radio maps to RadioGroup with RadioGroupItem as secondary
+        assert_eq!(registry.primary_component("radio"), Some("RadioGroup"));
+        assert_eq!(registry.primary_component("radiogroup"), Some("RadioGroup"));
+
+        // Verify both RadioGroup and RadioGroupItem are in the component list
+        let (_, components) = registry.get("radio").unwrap();
+        assert!(components.contains(&"RadioGroup"));
+        assert!(components.contains(&"RadioGroupItem"));
     }
 }

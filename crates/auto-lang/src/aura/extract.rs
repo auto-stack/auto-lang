@@ -786,19 +786,38 @@ fn extract_body_stmts(body: &Body) -> ExtractResult<Vec<AuraStmt>> {
         .collect()
 }
 
-/// Extract assignment from expression (e.g., count = count + 1)
+/// Extract assignment from expression (e.g., count = count + 1, .count = .count + 1)
 fn extract_assignment_from_expr(expr: &Expr) -> Option<ExtractResult<AuraStmt>> {
     match expr {
         // Binary expression with assignment operator: lhs = rhs
         Expr::Bina(lhs, op, rhs) => {
             use auto_val::Op;
 
+            // Helper to extract target name from lhs
+            // Handles both `count` and `self.count` (which is how `.count` is parsed)
+            let extract_target_name = |expr: &Expr| -> Option<String> {
+                match expr {
+                    // Simple identifier: count
+                    Expr::Ident(name) => Some(name.as_str().to_string()),
+                    // Dot expression with self: self.count (parsed from .count)
+                    Expr::Dot(obj, field) => {
+                        match obj.as_ref() {
+                            Expr::Ident(name) if name.as_str() == "self" => {
+                                Some(field.as_str().to_string())
+                            }
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                }
+            };
+
             match op {
                 // Simple assignment: x = value
                 Op::Asn => {
-                    if let Expr::Ident(name) = lhs.as_ref() {
+                    if let Some(target) = extract_target_name(lhs.as_ref()) {
                         Some(Ok(AuraStmt::Assign {
-                            target: name.as_str().to_string(),
+                            target,
                             value: extract_expr(rhs).ok()?,
                         }))
                     } else {
@@ -808,9 +827,9 @@ fn extract_assignment_from_expr(expr: &Expr) -> Option<ExtractResult<AuraStmt>> 
 
                 // Compound assignment: x += value, x -= value, etc.
                 Op::AddEq => {
-                    if let Expr::Ident(name) = lhs.as_ref() {
+                    if let Some(target) = extract_target_name(lhs.as_ref()) {
                         Some(Ok(AuraStmt::Update {
-                            target: name.as_str().to_string(),
+                            target,
                             op: AuraUpdateOp::AddAssign,
                             value: extract_expr(rhs).ok()?,
                         }))
@@ -820,9 +839,9 @@ fn extract_assignment_from_expr(expr: &Expr) -> Option<ExtractResult<AuraStmt>> 
                 }
 
                 Op::SubEq => {
-                    if let Expr::Ident(name) = lhs.as_ref() {
+                    if let Some(target) = extract_target_name(lhs.as_ref()) {
                         Some(Ok(AuraStmt::Update {
-                            target: name.as_str().to_string(),
+                            target,
                             op: AuraUpdateOp::SubAssign,
                             value: extract_expr(rhs).ok()?,
                         }))
@@ -832,9 +851,9 @@ fn extract_assignment_from_expr(expr: &Expr) -> Option<ExtractResult<AuraStmt>> 
                 }
 
                 Op::MulEq => {
-                    if let Expr::Ident(name) = lhs.as_ref() {
+                    if let Some(target) = extract_target_name(lhs.as_ref()) {
                         Some(Ok(AuraStmt::Update {
-                            target: name.as_str().to_string(),
+                            target,
                             op: AuraUpdateOp::MulAssign,
                             value: extract_expr(rhs).ok()?,
                         }))
@@ -844,9 +863,9 @@ fn extract_assignment_from_expr(expr: &Expr) -> Option<ExtractResult<AuraStmt>> 
                 }
 
                 Op::DivEq => {
-                    if let Expr::Ident(name) = lhs.as_ref() {
+                    if let Some(target) = extract_target_name(lhs.as_ref()) {
                         Some(Ok(AuraStmt::Update {
-                            target: name.as_str().to_string(),
+                            target,
                             op: AuraUpdateOp::DivAssign,
                             value: extract_expr(rhs).ok()?,
                         }))

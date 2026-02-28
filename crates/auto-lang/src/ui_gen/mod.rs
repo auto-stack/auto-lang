@@ -16,6 +16,7 @@ pub mod style;
 
 // Re-export main types
 pub use vue::VueGenerator;
+pub use vue::VueMode;
 pub use rust::RustGenerator;
 pub use style::StyleGenerator;
 
