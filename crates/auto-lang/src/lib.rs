@@ -958,11 +958,24 @@ pub fn ui_build(
             "rust" => "rs",
             _ => "txt",
         };
-        for (i, widget) in widgets.iter().enumerate() {
+        std::fs::create_dir_all(out_dir).ok();
+        for widget in &widgets {
             let out_path = std::path::Path::new(out_dir)
                 .join(format!("{}.{}", widget.name, ext));
-            std::fs::create_dir_all(out_dir).ok();
-            // Write each widget file
+            // Generate individual widget code
+            let widget_code = match backend {
+                "vue" => {
+                    let mut gen = VueGenerator::new();
+                    gen.generate(widget).map_err(|e| e.to_string())?
+                }
+                "rust" => {
+                    let mut gen = RustGenerator::new();
+                    gen.generate(widget).map_err(|e| e.to_string())?
+                }
+                _ => output_code.clone(),
+            };
+            std::fs::write(&out_path, &widget_code)
+                .map_err(|e| format!("Failed to write output file: {}", e))?;
         }
     }
 

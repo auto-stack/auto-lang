@@ -107,6 +107,102 @@ fn init_logger() {
     .unwrap();
 }
 
+/// Run UI builder in watch mode - rebuild on file changes
+fn run_ui_watch(
+    path: &str,
+    scenario: &str,
+    backend: &str,
+    output: Option<&str>,
+    format: OutputFormat,
+) -> Result<()> {
+    use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+    use std::path::Path;
+    use std::sync::mpsc::channel;
+    use std::time::{Duration, Instant};
+
+    println!("{}", "Watch mode enabled - watching for changes...".bright_cyan());
+    println!("  File: {}", path);
+    println!("  Backend: {}", backend);
+    if let Some(out) = output {
+        println!("  Output: {}", out);
+    }
+    println!("{}", "Press Ctrl+C to stop".bright_black());
+    println!();
+
+    // Initial build
+    let build_and_report = || {
+        let timestamp = chrono::Local::now().format("%H:%M:%S");
+        print!("[{}] ", timestamp.to_string().bright_black());
+
+        match auto_lang::ui_build(path, scenario, backend, output) {
+            Ok(code) => {
+                println!("{}", "Build successful".bright_green());
+                if output.is_none() {
+                    // Only print code if no output file specified
+                    println!("{}", code);
+                }
+            }
+            Err(e) => {
+                println!("{}", "Build failed".bright_red());
+                if matches!(format, OutputFormat::Json) {
+                    eprintln!("{}", format_error_json(&e));
+                } else {
+                    let report = miette::Report::new(e);
+                    eprintln!("{:?}", report);
+                }
+            }
+        }
+    };
+
+    // Do initial build
+    build_and_report();
+
+    // Set up file watcher
+    let (tx, rx) = channel();
+    let mut watcher = RecommendedWatcher::new(
+        move |res: Result<Event, notify::Error>| {
+            if let Ok(event) = res {
+                let _ = tx.send(event);
+            }
+        },
+        Config::default(),
+    ).map_err(|e| miette::miette!("Failed to create watcher: {}", e))?;
+
+    let watch_path = Path::new(path);
+    watcher.watch(watch_path, RecursiveMode::NonRecursive)
+        .map_err(|e| miette::miette!("Failed to watch path: {}", e))?;
+
+    // Debounce duration - don't rebuild more than once per 200ms
+    let debounce = Duration::from_millis(200);
+    let mut last_rebuild = Instant::now();
+
+    // Watch loop
+    loop {
+        match rx.recv() {
+            Ok(event) => {
+                // Only react to modify events
+                if matches!(event.kind, EventKind::Modify(_)) {
+                    // Debounce: skip if we just rebuilt
+                    if last_rebuild.elapsed() < debounce {
+                        continue;
+                    }
+                    last_rebuild = Instant::now();
+
+                    println!();
+                    println!("{}", "File changed, rebuilding...".bright_cyan());
+                    build_and_report();
+                }
+            }
+            Err(e) => {
+                eprintln!("Watch error: {}", e);
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn load_am_config() -> Option<auto_man::AmConfig> {
     auto_man::load_am_config()
 }
@@ -181,6 +277,10 @@ enum Commands {
         /// Output directory
         #[arg(short, long)]
         output: Option<String>,
+
+        /// Watch for changes and rebuild
+        #[arg(short, long)]
+        watch: bool,
     },
 
     // ========== Build System Commands ==========
@@ -382,25 +482,30 @@ fn main() -> Result<()> {
 
         // ========== UI Commands ==========
 
-        Some(Commands::Ui { path, scenario, backend, output }) => {
+        Some(Commands::Ui { path, scenario, backend, output, watch }) => {
             init_logger();
             println!("{}", "---------------------------".bright_yellow().bold());
             println!("{}", "AURA UI Builder".bright_yellow().bold());
             println!("{}", "---------------------------".bright_yellow().bold());
 
-            // Build UI components using AURA pipeline
-            match auto_lang::ui_build(&path, &scenario, &backend, output.as_deref()) {
-                Ok(code) => println!("{}", code),
-                Err(e) => {
-                    // Print full error with diagnostics
-                    if matches!(format, OutputFormat::Json) {
-                        eprintln!("{}", format_error_json(&e));
+            if watch {
+                // Watch mode - rebuild on file changes
+                run_ui_watch(&path, &scenario, &backend, output.as_deref(), format)?;
+            } else {
+                // Single build
+                match auto_lang::ui_build(&path, &scenario, &backend, output.as_deref()) {
+                    Ok(code) => println!("{}", code),
+                    Err(e) => {
+                        // Print full error with diagnostics
+                        if matches!(format, OutputFormat::Json) {
+                            eprintln!("{}", format_error_json(&e));
+                            std::process::exit(1);
+                        }
+                        // Use miette to print full diagnostic
+                        let report = miette::Report::new(e);
+                        eprintln!("{:?}", report);
                         std::process::exit(1);
                     }
-                    // Use miette to print full diagnostic
-                    let report = miette::Report::new(e);
-                    eprintln!("{:?}", report);
-                    std::process::exit(1);
                 }
             }
         }

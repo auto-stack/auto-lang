@@ -399,7 +399,7 @@ impl RustGenerator {
 - [x] 实现 pac.at 解析
 - [x] CLI 支持 `-s <scenario>` 和 `-b <backend>`
 - [x] 更新转译 API 入口
-- [ ] 热重载集成
+- [x] 热重载集成
 
 **验证点**: `auto build -s ui -b vue Counter.at` 工作
 

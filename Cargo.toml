@@ -36,6 +36,7 @@ blake3 = "1.5"
 bincode = "1.3"
 glob-match = "0.2.1"
 chrono = "0.4"
+notify = "7.0"
 
 # AutoMan dependencies (Phase 1)
 tabled = "0.18"
