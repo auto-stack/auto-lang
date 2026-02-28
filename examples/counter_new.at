@@ -5,6 +5,7 @@
 //
 // Syntax:
 // - tag (props) { children }    - Element with props and children
+// - tag { children }            - Element without props (parentheses optional)
 // - text `content ${.var}`      - Text node with interpolation
 // - button (text: "label") {}   - Button with text content
 
@@ -19,9 +20,9 @@ widget Counter {
 
     // View tree
     view {
-        col () {
+        col {
             text `Counter: ${.count}`
-            row () {
+            row {
                 button (text: "-", onclick: .Dec) {}
                 button (text: "+", onclick: .Inc) {}
             }
