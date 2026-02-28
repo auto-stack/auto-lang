@@ -554,6 +554,11 @@ impl SchemaLoader {
                 "typography" => ElementCategory::Typography,
                 "list" => ElementCategory::List,
                 "data" => ElementCategory::Data,
+                "navigation" => ElementCategory::Navigation,
+                "overlay" => ElementCategory::Overlay,
+                "form" => ElementCategory::Form,
+                "feedback" => ElementCategory::Feedback,
+                "display" => ElementCategory::Display,
                 "media" => ElementCategory::Media,
                 "utility" => ElementCategory::Utility,
                 _ => ElementCategory::Content,
@@ -775,5 +780,80 @@ widget_blocks {
         assert!(!td.allows_children);
         assert!(td.get_prop("text").is_some());
         assert!(td.get_prop("align").is_some());
+
+        // Check tabs elements
+        let tabs = schema.get_element("tabs").expect("tabs element should exist");
+        assert!(tabs.allows_children);
+        assert!(tabs.get_prop("value").is_some());
+        assert!(tabs.get_prop("onchange").is_some());
+
+        let tab = schema.get_element("tab").expect("tab element should exist");
+        assert!(tab.allows_children);
+        assert!(tab.get_prop("text").is_some());
+
+        // Check modal element
+        let modal = schema.get_element("modal").expect("modal element should exist");
+        assert!(modal.allows_children);
+        assert!(modal.get_prop("visible").is_some());
+        assert!(modal.get_prop("onclose").is_some());
+
+        // Check slider element
+        let slider = schema.get_element("slider").expect("slider element should exist");
+        assert!(!slider.allows_children);
+        assert!(slider.get_prop("value").is_some());
+        assert!(slider.get_prop("min").is_some());
+        assert!(slider.get_prop("max").is_some());
+
+        // Check radio elements
+        let radio = schema.get_element("radio").expect("radio element should exist");
+        assert!(!radio.allows_children);
+        assert!(radio.get_prop("value").is_some());
+        assert!(radio.get_prop("option").is_some());
+
+        let radiogroup = schema.get_element("radiogroup").expect("radiogroup element should exist");
+        assert!(radiogroup.allows_children);
+
+        // Check progress element
+        let progress = schema.get_element("progress").expect("progress element should exist");
+        assert!(!progress.allows_children);
+        assert!(progress.get_prop("value").is_some());
+        assert!(progress.get_prop("max").is_some());
+
+        // Check badge element
+        let badge = schema.get_element("badge").expect("badge element should exist");
+        assert!(!badge.allows_children);
+        assert!(badge.get_prop("text").is_some());
+        assert!(badge.get_prop("type").is_some());
+
+        // Check spinner element
+        let spinner = schema.get_element("spinner").expect("spinner element should exist");
+        assert!(!spinner.allows_children);
+
+        // Check card element
+        let card = schema.get_element("card").expect("card element should exist");
+        assert!(card.allows_children);
+        assert!(card.get_prop("title").is_some());
+
+        // Check avatar element
+        let avatar = schema.get_element("avatar").expect("avatar element should exist");
+        assert!(!avatar.allows_children);
+        assert!(avatar.get_prop("src").is_some());
+        assert!(avatar.get_prop("name").is_some());
+
+        // Check tree elements
+        let tree = schema.get_element("tree").expect("tree element should exist");
+        assert!(tree.allows_children);
+        assert!(tree.get_prop("onselect").is_some());
+
+        let tree_item = schema.get_element("tree_item").expect("tree_item element should exist");
+        assert!(tree_item.allows_children);
+        assert!(tree_item.get_prop("text").is_some());
+        assert!(tree_item.get_prop("expanded").is_some());
+
+        // Check tooltip element
+        let tooltip = schema.get_element("tooltip").expect("tooltip element should exist");
+        assert!(tooltip.allows_children);
+        assert!(tooltip.get_prop("text").is_some());
+        assert!(tooltip.get_prop("position").is_some());
     }
 }

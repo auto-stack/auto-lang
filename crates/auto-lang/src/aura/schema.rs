@@ -18,14 +18,24 @@ use std::collections::HashMap;
 pub enum ElementCategory {
     /// Layout containers: col, row, grid, stack, scroll, container
     Layout,
-    /// Interactive content: button, input, checkbox, toggle, link
+    /// Interactive content: button, input, checkbox, toggle, link, textarea, select, option
     Content,
     /// Text display: h1-h6, p, span, code, pre
     Typography,
     /// List structures: list, list_item
     List,
-    /// Data structures: table, thead, tbody, tr, th, td
+    /// Data structures: table, thead, tbody, tr, th, td, tree, tree_item
     Data,
+    /// Navigation elements: tabs, tab
+    Navigation,
+    /// Overlay elements: modal, tooltip
+    Overlay,
+    /// Form elements: slider, radio, radiogroup
+    Form,
+    /// Feedback elements: progress, badge, spinner
+    Feedback,
+    /// Display elements: card, avatar
+    Display,
     /// Media elements: image, icon
     Media,
     /// Utility elements: divider, spacer

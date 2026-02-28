@@ -334,6 +334,200 @@ element td {
     description: "Table data cell"
 }
 
+// --- Navigation Elements ---
+
+element tabs {
+    tag: "tabs"
+    category: "navigation"
+    props: [
+        { name: "value", type: STATE_REF_TYPE, description: "Active tab index or id" }
+        { name: "onchange", type: MSG_REF_TYPE, description: "Message on tab change" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Tab container (contains tab elements)"
+}
+
+element tab {
+    tag: "tab"
+    category: "navigation"
+    props: [
+        { name: "text", type: "string", description: "Tab label text" }
+        { name: "value", type: "string", description: "Tab identifier value" }
+        { name: "disabled", type: BOOL_OR_STATE, description: "Whether tab is disabled" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Individual tab with content"
+}
+
+// --- Overlay Elements ---
+
+element modal {
+    tag: "modal"
+    category: "overlay"
+    props: [
+        { name: "visible", type: BOOL_OR_STATE, description: "Whether modal is visible" }
+        { name: "onclose", type: MSG_REF_TYPE, description: "Message on modal close" }
+        { name: "title", type: "string", description: "Modal title" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "closable", type: "bool", description: "Whether modal can be closed by clicking outside" }
+    ]
+    allows_children: true
+    description: "Modal dialog overlay"
+}
+
+element tooltip {
+    tag: "tooltip"
+    category: "overlay"
+    props: [
+        { name: "text", type: "string", description: "Tooltip text" }
+        { name: "position", type: "one_of:top,bottom,left,right", description: "Tooltip position" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Tooltip wrapper for element"
+}
+
+// --- Form Elements ---
+
+element slider {
+    tag: "slider"
+    category: "form"
+    props: [
+        { name: "value", type: STATE_REF_TYPE, description: "Current value (two-way binding)" }
+        { name: "min", type: "int", description: "Minimum value" }
+        { name: "max", type: "int", description: "Maximum value" }
+        { name: "step", type: "int", description: "Value step increment" }
+        { name: "onchange", type: MSG_REF_TYPE, description: "Message on value change" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "disabled", type: BOOL_OR_STATE, description: "Whether slider is disabled" }
+    ]
+    allows_children: false
+    description: "Range slider input"
+}
+
+element radio {
+    tag: "radio"
+    category: "form"
+    props: [
+        { name: "value", type: STATE_REF_TYPE, description: "Selected value (two-way binding)" }
+        { name: "option", type: "string", description: "This radio's option value" }
+        { name: "text", type: "string", description: "Radio label text" }
+        { name: "onchange", type: MSG_REF_TYPE, description: "Message on selection change" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "disabled", type: BOOL_OR_STATE, description: "Whether radio is disabled" }
+    ]
+    allows_children: false
+    description: "Radio button (mutually exclusive selection)"
+}
+
+element radiogroup {
+    tag: "radiogroup"
+    category: "form"
+    props: [
+        { name: "value", type: STATE_REF_TYPE, description: "Selected value (two-way binding)" }
+        { name: "onchange", type: MSG_REF_TYPE, description: "Message on selection change" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Radio button group container"
+}
+
+// --- Feedback Elements ---
+
+element progress {
+    tag: "progress"
+    category: "feedback"
+    props: [
+        { name: "value", type: "int", description: "Current progress value" }
+        { name: "max", type: "int", description: "Maximum progress value" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "type", type: "one_of:line,circle", description: "Progress bar type" }
+    ]
+    allows_children: false
+    description: "Progress indicator"
+}
+
+element badge {
+    tag: "badge"
+    category: "feedback"
+    props: [
+        { name: "text", type: "string", description: "Badge text/content" }
+        { name: "type", type: "one_of:default,success,warning,error,info", description: "Badge style type" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Status badge or tag label"
+}
+
+element spinner {
+    tag: "spinner"
+    category: "feedback"
+    props: [
+        { name: "size", type: "int", description: "Spinner size in pixels" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Loading spinner indicator"
+}
+
+// --- Display Elements ---
+
+element card {
+    tag: "card"
+    category: "display"
+    props: [
+        { name: "title", type: "string", description: "Card title" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "onclick", type: MSG_REF_TYPE, description: "Message on card click" }
+    ]
+    allows_children: true
+    description: "Card content container"
+}
+
+element avatar {
+    tag: "avatar"
+    category: "display"
+    props: [
+        { name: "src", type: "string", description: "Avatar image URL" }
+        { name: "name", type: "string", description: "User name (for initials fallback)" }
+        { name: "size", type: "int", description: "Avatar size in pixels" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "User avatar display"
+}
+
+// --- Tree Elements ---
+
+element tree {
+    tag: "tree"
+    category: "data"
+    props: [
+        { name: "value", type: STATE_REF_TYPE, description: "Selected node id" }
+        { name: "onselect", type: MSG_REF_TYPE, description: "Message on node selection" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Tree view container (contains tree_item elements)"
+}
+
+element tree_item {
+    tag: "tree_item"
+    category: "data"
+    props: [
+        { name: "text", type: "string", description: "Node label text" }
+        { name: "value", type: "string", description: "Node identifier value" }
+        { name: "expanded", type: BOOL_OR_STATE, description: "Whether node is expanded" }
+        { name: "selected", type: BOOL_OR_STATE, description: "Whether node is selected" }
+        { name: "onclick", type: MSG_REF_TYPE, description: "Message on node click" }
+        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Tree node item (can contain nested tree_item)"
+}
+
 // --- Typography Elements ---
 
 element text {
@@ -461,7 +655,17 @@ schema aura {
         // Content
         button, input, checkbox, toggle, link, textarea, select, option
         // Data
-        table, thead, tbody, tr, th, td
+        table, thead, tbody, tr, th, td, tree, tree_item
+        // Navigation
+        tabs, tab
+        // Overlay
+        modal, tooltip
+        // Form
+        slider, radio, radiogroup
+        // Feedback
+        progress, badge, spinner
+        // Display
+        card, avatar
         // Typography
         text, h1, h2, p, span
         // Media
