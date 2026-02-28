@@ -353,12 +353,36 @@ impl ComponentRegistry {
 ## Status
 
 - [x] Phase 1: Setup Infrastructure ✅ DONE
-- [ ] Phase 2: Core Components
+- [x] Phase 2: Core Components ✅ DONE
 - [ ] Phase 3: Layout & Navigation
 - [ ] Phase 4: Overlay & Feedback
 - [ ] Phase 5: Data Components
 - [ ] Phase 6: Form Components
 - [ ] Phase 7: Migration & Testing
+
+## Phase 2 Completion Summary
+
+**Implemented in `crates/auto-lang/src/ui_gen/vue.rs`:**
+
+1. **generate_shadcn_attrs()** - Component-specific attribute generation
+2. **shadcn_event_to_vue()** - Event mapping for shadcn components
+3. **Helper extractors**: `extract_string_value()`, `extract_bool_value()`, `extract_int_value()`, `extract_state_ref()`
+
+**Core components with full prop handling:**
+| Component | Props Handled |
+|-----------|---------------|
+| Button | variant, size, disabled, text→slot |
+| Input | v-model, type, placeholder, disabled |
+| Textarea | v-model, placeholder, rows, disabled |
+| Checkbox | v-model:checked, disabled |
+| Switch/Toggle | v-model:checked, disabled |
+| Select | v-model, disabled |
+| Slider | v-model, min, max, step, disabled |
+| Progress | v-model, max |
+| Badge | variant, text→slot |
+| Card/Avatar | Basic prop handling |
+
+**Tests:** 12 tests passing for shadcn-vue functionality
 
 ## Phase 1 Completion Summary
 
