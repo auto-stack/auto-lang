@@ -1,8 +1,35 @@
 //! Vue3/JavaScript Code Generator
 //!
 //! Generates Vue 3 Single File Components (SFC) from AURA widgets.
+//! Supports two output modes:
 //!
-//! ## Output Format
+//! 1. **Plain Tailwind** - Native HTML elements with Tailwind CSS classes
+//! 2. **shadcn-vue** - Pre-built accessible components from shadcn-vue
+//!
+//! ## Output Format (shadcn-vue mode)
+//!
+//! ```vue
+//! <script setup>
+//! import { ref } from 'vue'
+//! import { Button } from '@/components/ui/button'
+//! import { Input } from '@/components/ui/input'
+//!
+//! const count = ref(0)
+//!
+//! const handleInc = () => {
+//!   count.value += 1
+//! }
+//! </script>
+//!
+//! <template>
+//!   <div class="flex flex-col gap-2">
+//!     <Button @click="handleInc">Increment</Button>
+//!     <Input v-model="count" />
+//!   </div>
+//! </template>
+//! ```
+//!
+//! ## Output Format (Plain Tailwind mode)
 //!
 //! ```vue
 //! <script setup>
@@ -31,7 +58,133 @@
 
 use super::{BackendGenerator, GenError, GenResult};
 use crate::aura::{AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStateDef, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+// ============================================================================
+// shadcn-vue Component Registry
+// ============================================================================
+
+/// Maps AURA element tags to shadcn-vue component imports
+pub struct ShadcnRegistry {
+    /// Component imports needed: tag -> (module_path, component_names)
+    components: HashMap<&'static str, (&'static str, Vec<&'static str>)>,
+}
+
+impl ShadcnRegistry {
+    /// Create registry with all shadcn-vue component mappings
+    pub fn new() -> Self {
+        let mut components = HashMap::new();
+
+        // === Content Elements ===
+        components.insert("button",
+            ("@/components/ui/button", vec!["Button"]));
+        components.insert("input",
+            ("@/components/ui/input", vec!["Input"]));
+        components.insert("textarea",
+            ("@/components/ui/textarea", vec!["Textarea"]));
+        components.insert("checkbox",
+            ("@/components/ui/checkbox", vec!["Checkbox"]));
+        components.insert("toggle",
+            ("@/components/ui/switch", vec!["Switch"]));
+        components.insert("select",
+            ("@/components/ui/select", vec!["Select", "SelectContent", "SelectItem", "SelectTrigger", "SelectValue"]));
+        components.insert("option",
+            ("@/components/ui/select", vec!["SelectItem"]));
+
+        // === Navigation Elements ===
+        components.insert("tabs",
+            ("@/components/ui/tabs", vec!["Tabs", "TabsList", "TabsTrigger", "TabsContent"]));
+        components.insert("tab",
+            ("@/components/ui/tabs", vec!["TabsTrigger", "TabsContent"]));
+
+        // === Overlay Elements ===
+        components.insert("modal",
+            ("@/components/ui/dialog", vec!["Dialog", "DialogContent", "DialogTrigger", "DialogTitle", "DialogDescription"]));
+        components.insert("tooltip",
+            ("@/components/ui/tooltip", vec!["Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger"]));
+
+        // === Form Elements ===
+        components.insert("slider",
+            ("@/components/ui/slider", vec!["Slider"]));
+        components.insert("radio",
+            ("@/components/ui/radio-group", vec!["RadioGroup", "RadioGroupItem"]));
+        components.insert("radiogroup",
+            ("@/components/ui/radio-group", vec!["RadioGroup"]));
+
+        // === Feedback Elements ===
+        components.insert("progress",
+            ("@/components/ui/progress", vec!["Progress"]));
+        components.insert("badge",
+            ("@/components/ui/badge", vec!["Badge"]));
+        components.insert("spinner",
+            ("@/components/ui/skeleton", vec!["Skeleton"]));
+
+        // === Display Elements ===
+        components.insert("card",
+            ("@/components/ui/card", vec!["Card", "CardHeader", "CardTitle", "CardDescription", "CardContent", "CardFooter"]));
+        components.insert("avatar",
+            ("@/components/ui/avatar", vec!["Avatar", "AvatarImage", "AvatarFallback"]));
+
+        // === Data Elements ===
+        components.insert("table",
+            ("@/components/ui/table", vec!["Table", "TableHeader", "TableBody", "TableRow", "TableHead", "TableCell"]));
+        components.insert("thead",
+            ("@/components/ui/table", vec!["TableHeader"]));
+        components.insert("tbody",
+            ("@/components/ui/table", vec!["TableBody"]));
+        components.insert("tr",
+            ("@/components/ui/table", vec!["TableRow"]));
+        components.insert("th",
+            ("@/components/ui/table", vec!["TableHead"]));
+        components.insert("td",
+            ("@/components/ui/table", vec!["TableCell"]));
+
+        // === Utility Elements ===
+        components.insert("divider",
+            ("@/components/ui/separator", vec!["Separator"]));
+        components.insert("scroll",
+            ("@/components/ui/scroll-area", vec!["ScrollArea"]));
+        components.insert("label",
+            ("@/components/ui/label", vec!["Label"]));
+
+        Self { components }
+    }
+
+    /// Get shadcn-vue component info for a tag
+    pub fn get(&self, tag: &str) -> Option<(&'static str, &Vec<&'static str>)> {
+        self.components.get(tag).map(|(path, names)| (*path, names))
+    }
+
+    /// Check if tag has a shadcn-vue component
+    pub fn has_component(&self, tag: &str) -> bool {
+        self.components.contains_key(tag)
+    }
+
+    /// Get the primary component name for a tag (first in the list)
+    pub fn primary_component(&self, tag: &str) -> Option<&'static str> {
+        self.components.get(tag).and_then(|(_, names)| names.first().copied())
+    }
+}
+
+impl Default for ShadcnRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================================
+// Vue Generator
+// ============================================================================
+
+/// Generation mode for Vue output
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VueMode {
+    /// Plain HTML with Tailwind CSS classes
+    #[default]
+    Plain,
+    /// shadcn-vue components with accessibility built-in
+    Shadcn,
+}
 
 /// Vue3 SFC generator
 pub struct VueGenerator {
@@ -58,10 +211,19 @@ pub struct VueGenerator {
 
     /// Tailwind classes for wrapper
     wrapper_classes: String,
+
+    /// Generation mode (Plain or Shadcn)
+    mode: VueMode,
+
+    /// shadcn-vue component registry
+    shadcn_registry: ShadcnRegistry,
+
+    /// Track which shadcn-vue components are used
+    shadcn_components_used: HashSet<String>,
 }
 
 impl VueGenerator {
-    /// Create a new Vue generator
+    /// Create a new Vue generator (Plain Tailwind mode)
     pub fn new() -> Self {
         Self {
             current_widget: None,
@@ -72,7 +234,29 @@ impl VueGenerator {
             has_emit: false,
             component_refs: Vec::new(),
             wrapper_classes: String::new(),
+            mode: VueMode::Plain,
+            shadcn_registry: ShadcnRegistry::new(),
+            shadcn_components_used: HashSet::new(),
         }
+    }
+
+    /// Create a new Vue generator in shadcn-vue mode
+    pub fn new_shadcn() -> Self {
+        Self {
+            mode: VueMode::Shadcn,
+            ..Self::new()
+        }
+    }
+
+    /// Set the generation mode
+    pub fn with_mode(mut self, mode: VueMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    /// Check if using shadcn-vue mode
+    pub fn is_shadcn(&self) -> bool {
+        self.mode == VueMode::Shadcn
     }
 
     /// Reset state for new widget
@@ -84,6 +268,7 @@ impl VueGenerator {
         self.has_emit = false;
         self.component_refs.clear();
         self.wrapper_classes.clear();
+        self.shadcn_components_used.clear();
     }
 
     /// Generate complete Vue3 SFC
@@ -458,10 +643,19 @@ impl VueGenerator {
         converted
     }
 
-    /// Map AutoUI tag to HTML tag
+    /// Map AutoUI tag to HTML tag or shadcn-vue component
     fn map_tag(&mut self, tag: &str, self_closing: bool) -> String {
+        // If in shadcn mode and tag has a shadcn component, use it
+        if self.is_shadcn() {
+            if let Some(component_name) = self.shadcn_component_name(tag) {
+                self.register_shadcn_component(tag);
+                return component_name.to_string();
+            }
+        }
+
+        // Fallback to plain HTML tags
         match tag {
-            // Layout
+            // Layout (no shadcn components, use Tailwind)
             "col" | "column" => "div".to_string(),
             "row" => "div".to_string(),
             "grid" => "div".to_string(),
@@ -479,7 +673,7 @@ impl VueGenerator {
             "option" => "option".to_string(),
             "link" => "a".to_string(),
 
-            // Typography
+            // Typography (no shadcn components)
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => tag.to_string(),
             "text" | "label" | "span" => "span".to_string(),
             "p" => "p".to_string(),
@@ -547,62 +741,68 @@ impl VueGenerator {
         let mut classes = Vec::new();
         let mut dynamic_binding: Option<String> = None;
 
-        // Default classes based on tag
-        match tag {
-            // Layout
-            "col" | "column" => classes.push("flex flex-col".to_string()),
-            "row" => classes.push("flex flex-row".to_string()),
-            "grid" => classes.push("grid".to_string()),
-            "scroll" => classes.push("overflow-auto".to_string()),
-            "container" => classes.push("max-w-7xl mx-auto".to_string()),
-            "center" => classes.push("flex items-center justify-center".to_string()),
+        // In shadcn mode, skip default classes for components that have shadcn versions
+        // (shadcn components have their own styling)
+        let skip_defaults = self.is_shadcn() && self.shadcn_registry.has_component(tag);
 
-            // Content
-            "button" => classes.push("px-4 py-2 rounded".to_string()),
-            "input" => classes.push("border rounded px-2 py-1".to_string()),
-            "textarea" => classes.push("border rounded px-2 py-1".to_string()),
-            "checkbox" => classes.push("w-4 h-4".to_string()),
-            "toggle" => classes.push("relative w-10 h-6 rounded-full".to_string()),
-            "select" => classes.push("border rounded px-2 py-1".to_string()),
-            "link" => classes.push("text-blue-600 underline".to_string()),
+        // Default classes based on tag (only in Plain mode or for non-shadcn elements)
+        if !skip_defaults {
+            match tag {
+                // Layout
+                "col" | "column" => classes.push("flex flex-col".to_string()),
+                "row" => classes.push("flex flex-row".to_string()),
+                "grid" => classes.push("grid".to_string()),
+                "scroll" => classes.push("overflow-auto".to_string()),
+                "container" => classes.push("max-w-7xl mx-auto".to_string()),
+                "center" => classes.push("flex items-center justify-center".to_string()),
 
-            // Data
-            "table" => classes.push("min-w-full border".to_string()),
-            "thead" => classes.push("bg-gray-100".to_string()),
-            "th" => classes.push("px-4 py-2 text-left font-semibold".to_string()),
-            "td" => classes.push("px-4 py-2".to_string()),
-            "tree" => classes.push("list-none pl-4".to_string()),
-            "tree_item" => classes.push("py-1".to_string()),
+                // Content
+                "button" => classes.push("px-4 py-2 rounded".to_string()),
+                "input" => classes.push("border rounded px-2 py-1".to_string()),
+                "textarea" => classes.push("border rounded px-2 py-1".to_string()),
+                "checkbox" => classes.push("w-4 h-4".to_string()),
+                "toggle" => classes.push("relative w-10 h-6 rounded-full".to_string()),
+                "select" => classes.push("border rounded px-2 py-1".to_string()),
+                "link" => classes.push("text-blue-600 underline".to_string()),
 
-            // Navigation
-            "tabs" => classes.push("flex border-b".to_string()),
-            "tab" => classes.push("px-4 py-2 border-b-2 border-transparent".to_string()),
+                // Data
+                "table" => classes.push("min-w-full border".to_string()),
+                "thead" => classes.push("bg-gray-100".to_string()),
+                "th" => classes.push("px-4 py-2 text-left font-semibold".to_string()),
+                "td" => classes.push("px-4 py-2".to_string()),
+                "tree" => classes.push("list-none pl-4".to_string()),
+                "tree_item" => classes.push("py-1".to_string()),
 
-            // Overlay
-            "modal" => classes.push("fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center".to_string()),
+                // Navigation
+                "tabs" => classes.push("flex border-b".to_string()),
+                "tab" => classes.push("px-4 py-2 border-b-2 border-transparent".to_string()),
 
-            // Form
-            "slider" => classes.push("w-full".to_string()),
-            "radiogroup" => classes.push("flex flex-col gap-2".to_string()),
+                // Overlay
+                "modal" => classes.push("fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center".to_string()),
 
-            // Feedback
-            "progress" => classes.push("w-full h-2 rounded".to_string()),
-            "badge" => classes.push("px-2 py-1 text-xs rounded-full".to_string()),
-            "spinner" => classes.push("animate-spin w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full".to_string()),
+                // Form
+                "slider" => classes.push("w-full".to_string()),
+                "radiogroup" => classes.push("flex flex-col gap-2".to_string()),
 
-            // Display
-            "card" => classes.push("bg-white rounded-lg shadow p-4".to_string()),
-            "avatar" => classes.push("w-10 h-10 rounded-full".to_string()),
+                // Feedback
+                "progress" => classes.push("w-full h-2 rounded".to_string()),
+                "badge" => classes.push("px-2 py-1 text-xs rounded-full".to_string()),
+                "spinner" => classes.push("animate-spin w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full".to_string()),
 
-            // Media
-            "image" => classes.push("max-w-full".to_string()),
-            "icon" => classes.push("w-5 h-5".to_string()),
+                // Display
+                "card" => classes.push("bg-white rounded-lg shadow p-4".to_string()),
+                "avatar" => classes.push("w-10 h-10 rounded-full".to_string()),
 
-            // Utility
-            "divider" => classes.push("border-t border-gray-300".to_string()),
-            "spacer" => classes.push("flex-1".to_string()),
+                // Media
+                "image" => classes.push("max-w-full".to_string()),
+                "icon" => classes.push("w-5 h-5".to_string()),
 
-            _ => {}
+                // Utility
+                "divider" => classes.push("border-t border-gray-300".to_string()),
+                "spacer" => classes.push("flex-1".to_string()),
+
+                _ => {}
+            }
         }
 
         // Class prop
@@ -824,6 +1024,285 @@ impl VueGenerator {
         } else {
             format!("{}({})", func_name, params.join(", "))
         }
+    }
+
+    // ========================================================================
+    // shadcn-vue Support Methods
+    // ========================================================================
+
+    /// Register a shadcn-vue component as used
+    fn register_shadcn_component(&mut self, tag: &str) {
+        if self.is_shadcn() {
+            if let Some(component_name) = self.shadcn_registry.primary_component(tag) {
+                self.shadcn_components_used.insert(component_name.to_string());
+            }
+        }
+    }
+
+    /// Generate shadcn-vue import statements
+    fn generate_shadcn_imports(&self) -> String {
+        if !self.is_shadcn() || self.shadcn_components_used.is_empty() {
+            return String::new();
+        }
+
+        // Group components by their module path
+        let mut module_imports: HashMap<&str, Vec<&str>> = HashMap::new();
+
+        for component_name in &self.shadcn_components_used {
+            // Find which module this component belongs to
+            for (tag, (module, components)) in &self.shadcn_registry.components {
+                if components.contains(&component_name.as_str()) {
+                    module_imports.entry(module).or_default().push(component_name.as_str());
+                    break;
+                }
+            }
+        }
+
+        let mut imports = Vec::new();
+        for (module, components) in module_imports {
+            let unique_components: HashSet<&str> = components.into_iter().collect();
+            let mut sorted: Vec<&str> = unique_components.into_iter().collect();
+            sorted.sort();
+            imports.push(format!("import {{ {} }} from '{}'", sorted.join(", "), module));
+        }
+
+        imports.sort();
+        imports.join("\n")
+    }
+
+    /// Get shadcn-vue component name for a tag
+    fn shadcn_component_name(&self, tag: &str) -> Option<&'static str> {
+        if self.is_shadcn() {
+            self.shadcn_registry.primary_component(tag)
+        } else {
+            None
+        }
+    }
+
+    /// Generate components.json for shadcn-vue project setup
+    pub fn generate_components_json() -> String {
+        r#"{
+  "$schema": "https://shadcn-vue.com/schema.json",
+  "style": "default",
+  "typescript": true,
+  "tsConfigPath": "./tsconfig.json",
+  "tailwind": {
+    "config": "tailwind.config.js",
+    "css": "src/assets/index.css",
+    "baseColor": "slate",
+    "cssVariables": true
+  },
+  "framework": "vite",
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils"
+  }
+}"#.to_string()
+    }
+
+    /// Generate package.json for shadcn-vue project
+    pub fn generate_package_json(project_name: &str) -> String {
+        format!(r#"{{
+  "name": "{}",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {{
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }},
+  "dependencies": {{
+    "vue": "^3.4.0",
+    "vue-router": "^4.2.0",
+    "@vueuse/core": "^10.7.0",
+    "radix-vue": "^1.4.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.2.0",
+    "lucide-vue-next": "^0.312.0"
+  }},
+  "devDependencies": {{
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0",
+    "typescript": "^5.3.0",
+    "vue-tsc": "^1.8.0",
+    "tailwindcss": "^3.4.0",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0"
+  }}
+}}"#, project_name)
+    }
+
+    /// Generate vite.config.ts for shadcn-vue project
+    pub fn generate_vite_config() -> String {
+        r#"import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import { resolve } from 'path'
+
+export default defineConfig({
+  plugins: [vue()],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, './src'),
+    },
+  },
+})
+"#.to_string()
+    }
+
+    /// Generate tailwind.config.js for shadcn-vue project
+    pub fn generate_tailwind_config() -> String {
+        r#"/** @type {import('tailwindcss').Config} */
+export default {
+  darkMode: ["class"],
+  content: [
+    "./index.html",
+    "./src/**/*.{vue,js,ts,jsx,tsx}",
+  ],
+  theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
+    extend: {
+      colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+      },
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+      },
+      keyframes: {
+        "accordion-down": {
+          from: { height: 0 },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: 0 },
+        },
+      },
+      animation: {
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
+      },
+    },
+  },
+  plugins: [require("tailwindcss-animate")],
+}
+"#.to_string()
+    }
+
+    /// Generate lib/utils.ts for shadcn-vue project
+    pub fn generate_utils_ts() -> String {
+        r#"import { type ClassValue, clsx } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+"#.to_string()
+    }
+
+    /// Generate base CSS file with CSS variables
+    pub fn generate_base_css() -> String {
+        r#"@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+"#.to_string()
     }
 }
 
