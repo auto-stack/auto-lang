@@ -212,6 +212,7 @@ impl VueGenerator {
 
                 // Build attributes
                 let mut attrs = Vec::new();
+                let mut text_content: Option<String> = None;
 
                 // Class attribute
                 let classes = self.extract_classes(tag, props);
@@ -219,10 +220,15 @@ impl VueGenerator {
                     attrs.push(format!("class=\"{}\"", classes));
                 }
 
-                // Props as attributes
+                // Props as attributes (except 'text' which becomes element content)
                 for (key, value) in props {
                     if key == "class" {
                         continue; // Already handled
+                    }
+                    if key == "text" {
+                        // Extract text content to render as element content
+                        text_content = Some(self.prop_to_text_content(value)?);
+                        continue;
                     }
                     let value_str = self.prop_to_attr_value(value)?;
                     attrs.push(format!("{}={}", key, value_str));
@@ -241,7 +247,21 @@ impl VueGenerator {
                     format!(" {}", attrs.join(" "))
                 };
 
-                if children.is_empty() {
+                // Check if we have text content (render as inline content)
+                if let Some(text) = &text_content {
+                    if children.is_empty() {
+                        // <button @click="handler">text</button>
+                        Ok(format!("{}<{}{}>{}</{}>\n", ind, html_tag, attr_str, text, html_tag))
+                    } else {
+                        // Has both text and children - unusual but handle it
+                        let mut html = format!("{}<{}{}>{}\n", ind, html_tag, attr_str, text);
+                        for child in children {
+                            html.push_str(&self.node_to_html(child, indent + 1)?);
+                        }
+                        html.push_str(&format!("{}</{}>\n", ind, html_tag));
+                        Ok(html)
+                    }
+                } else if children.is_empty() {
                     Ok(format!("{}<{}{} />\n", ind, html_tag, attr_str))
                 } else {
                     let mut html = format!("{}<{}{}>\n", ind, html_tag, attr_str);
@@ -415,6 +435,17 @@ impl VueGenerator {
             AuraExpr::Bool(b) => Ok(format!("\"{}\"", b)),
             AuraExpr::StateRef(name) => Ok(format!("\"{{{{ {} }}}}\"", name)),
             _ => Ok(format!("\"{{{{ {} }}}}\"", "value")),
+        }
+    }
+
+    /// Convert prop value to text content (for rendering inside element)
+    fn prop_to_text_content(&self, expr: &AuraExpr) -> GenResult<String> {
+        match expr {
+            AuraExpr::Literal(s) => Ok(s.clone()),
+            AuraExpr::Int(n) => Ok(n.to_string()),
+            AuraExpr::Bool(b) => Ok(b.to_string()),
+            AuraExpr::StateRef(name) => Ok(format!("{{{{ {} }}}}", name)),
+            _ => Ok("value".to_string()),
         }
     }
 

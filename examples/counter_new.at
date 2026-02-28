@@ -35,13 +35,13 @@ widget Counter {
 
     // Event handlers
     on {
-        .Inc => {
+        Inc => {
             count = count + 1
         }
-        .Dec => {
+        Dec => {
             count = count - 1
         }
-        .Reset => {
+        Reset => {
             count = 0
         }
     }
