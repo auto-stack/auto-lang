@@ -730,12 +730,12 @@ stdlib/auto/
 - [x] Phase 3.2: url 模块
 - [x] Phase 4.1: http 模块
 
-### Phase 5: a2vue 双模式支持 🔄 进行中
+### Phase 5: a2vue 双模式支持 ✅ 完成
 
 - [x] Phase 5.1: API 注解解析 - crates/auto-lang/src/api/ 模块创建完成
 - [x] Phase 5.2: 双模式编译开关 - TargetGenerator trait 实现
 - [x] Phase 5.3: 前端 API 生成 - TypeScript, Tauri, Axum generators 实现
-- [ ] Phase 5.4: 集成测试
+- [x] Phase 5.4: 集成测试 - 24 tests passing
 
 **Implementation Notes**:
 
@@ -759,9 +759,10 @@ crates/auto-lang/src/api/
 5. **AxumGenerator**: Generate axum route handlers
 
 #### Test Results
-- 15 unit tests passing for api module
+- 24 unit tests passing for api module (15 original + 9 integration tests)
 - Type inference for method/path/name from function names
 - Auto-conversion: snake_case → camelCase, list_* → /users (plural)
+- Integration tests verify full code generation flow
 
 **Implementation Notes**:
 

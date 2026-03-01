@@ -265,3 +265,7 @@ mod tests {
         assert_eq!(attrs.custom.get("custom"), Some(&"value".to_string()));
     }
 }
+
+// Phase 5.4: Integration tests
+#[cfg(test)]
+mod integration_tests;

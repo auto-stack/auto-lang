@@ -92,7 +92,13 @@ impl TauriGenerator {
             .iter()
             .map(|p| {
                 let rust_type = self.to_rust_type(&p.ty);
-                format!("{}: {}", p.name, rust_type)
+                // Wrap in Option if parameter is optional
+                let final_type = if p.optional {
+                    format!("Option<{}>", rust_type)
+                } else {
+                    rust_type
+                };
+                format!("{}: {}", p.name, final_type)
             })
             .collect();
 
