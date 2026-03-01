@@ -7,6 +7,7 @@ use log::info;
 
 mod cmd_a2c_stdlib;
 mod cmd_vue;
+mod cmd_tauri;
 
 // Helper to convert AutoError to miette Report - this preserves all diagnostic info
 fn to_miette_err(err: AutoError) -> miette::Report {
@@ -306,6 +307,28 @@ enum Commands {
         yes: bool,
     },
 
+    #[command(about = "Generate a complete Tauri + Vue + shadcn-vue desktop app from AURA file")]
+    Tauri {
+        /// Input AURA file (.at)
+        path: String,
+
+        /// Output directory
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Project name (defaults to output directory name)
+        #[arg(short, long)]
+        name: Option<String>,
+
+        /// Skip npm install
+        #[arg(long)]
+        no_install: bool,
+
+        /// Automatic yes to all prompts (npm -y, npx --yes)
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+
     // ========== Build System Commands ==========
 
     #[command(about = "Create a new Auto application package", alias = "a")]
@@ -535,6 +558,16 @@ fn main() -> Result<()> {
 
         Some(Commands::Vue { path, output, name, no_install, yes }) => {
             cmd_vue::generate_vue_project(
+                &path,
+                output.as_deref(),
+                name.as_deref(),
+                no_install,
+                yes,
+            ).map_err(|e| miette::miette!("{}", e))?;
+        }
+
+        Some(Commands::Tauri { path, output, name, no_install, yes }) => {
+            cmd_tauri::generate_tauri_project(
                 &path,
                 output.as_deref(),
                 name.as_deref(),
