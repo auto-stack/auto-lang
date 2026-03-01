@@ -273,6 +273,18 @@ fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
         ("@/components/ui/navigation-menu", "navigation-menu"),
         ("@/components/ui/sidebar", "sidebar"),
         ("@/components/ui/stepper", "stepper"),
+        // Medium Priority Components
+        ("@/components/ui/calendar", "calendar"),
+        ("@/components/ui/carousel", "carousel"),
+        ("@/components/ui/combobox", "combobox"),
+        ("@/components/ui/context-menu", "context-menu"),
+        ("@/components/ui/drawer", "drawer"),
+        ("@/components/ui/hover-card", "hover-card"),
+        ("@/components/ui/number-field", "number-field"),
+        ("@/components/ui/pagination", "pagination"),
+        ("@/components/ui/pin-input", "pin-input"),
+        ("@/components/ui/tags-input", "tags-input"),
+        ("@/components/ui/toggle-group", "toggle-group"),
     ];
 
     for (pattern, component) in component_patterns {

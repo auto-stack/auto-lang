@@ -378,6 +378,138 @@ impl ShadcnRegistry {
         components.insert("stepper_separator",
             ("@/components/ui/stepper", vec!["StepperSeparator"]));
 
+        // ========================================
+        // Medium Priority Components
+        // ========================================
+
+        // === Calendar ===
+        components.insert("calendar",
+            ("@/components/ui/calendar", vec!["Calendar", "CalendarCell", "CalendarCellTrigger", "CalendarGrid", "CalendarGridBody", "CalendarGridHead", "CalendarGridRow", "CalendarHeadCell", "CalendarHeader", "CalendarHeading", "CalendarNextButton", "CalendarPrevButton"]));
+
+        // === Carousel ===
+        components.insert("carousel",
+            ("@/components/ui/carousel", vec!["Carousel", "CarouselContent", "CarouselItem", "CarouselPrevious", "CarouselNext"]));
+        components.insert("carousel_content",
+            ("@/components/ui/carousel", vec!["CarouselContent"]));
+        components.insert("carousel_item",
+            ("@/components/ui/carousel", vec!["CarouselItem"]));
+        components.insert("carousel_prev",
+            ("@/components/ui/carousel", vec!["CarouselPrevious"]));
+        components.insert("carousel_next",
+            ("@/components/ui/carousel", vec!["CarouselNext"]));
+
+        // === Combobox ===
+        components.insert("combobox",
+            ("@/components/ui/combobox", vec!["Combobox", "ComboboxAnchor", "ComboboxInput", "ComboboxList", "ComboboxEmpty", "ComboboxGroup", "ComboboxItem", "ComboboxSeparator", "ComboboxTrigger"]));
+        components.insert("combobox_anchor",
+            ("@/components/ui/combobox", vec!["ComboboxAnchor"]));
+        components.insert("combobox_input",
+            ("@/components/ui/combobox", vec!["ComboboxInput"]));
+        components.insert("combobox_list",
+            ("@/components/ui/combobox", vec!["ComboboxList"]));
+        components.insert("combobox_empty",
+            ("@/components/ui/combobox", vec!["ComboboxEmpty"]));
+        components.insert("combobox_group",
+            ("@/components/ui/combobox", vec!["ComboboxGroup"]));
+        components.insert("combobox_item",
+            ("@/components/ui/combobox", vec!["ComboboxItem"]));
+        components.insert("combobox_trigger",
+            ("@/components/ui/combobox", vec!["ComboboxTrigger"]));
+
+        // === Context Menu ===
+        components.insert("context_menu",
+            ("@/components/ui/context-menu", vec!["ContextMenu", "ContextMenuTrigger", "ContextMenuContent", "ContextMenuGroup", "ContextMenuItem", "ContextMenuCheckboxItem", "ContextMenuRadioGroup", "ContextMenuRadioItem", "ContextMenuSeparator", "ContextMenuLabel", "ContextMenuShortcut", "ContextMenuSub", "ContextMenuSubContent", "ContextMenuSubTrigger"]));
+        components.insert("context_menu_trigger",
+            ("@/components/ui/context-menu", vec!["ContextMenuTrigger"]));
+        components.insert("context_menu_content",
+            ("@/components/ui/context-menu", vec!["ContextMenuContent"]));
+        components.insert("context_menu_item",
+            ("@/components/ui/context-menu", vec!["ContextMenuItem"]));
+        components.insert("context_menu_separator",
+            ("@/components/ui/context-menu", vec!["ContextMenuSeparator"]));
+        components.insert("context_menu_label",
+            ("@/components/ui/context-menu", vec!["ContextMenuLabel"]));
+
+        // === Drawer (Vaul) ===
+        components.insert("drawer",
+            ("@/components/ui/drawer", vec!["Drawer", "DrawerTrigger", "DrawerContent", "DrawerHeader", "DrawerFooter", "DrawerTitle", "DrawerDescription", "DrawerClose"]));
+        components.insert("drawer_trigger",
+            ("@/components/ui/drawer", vec!["DrawerTrigger"]));
+        components.insert("drawer_content",
+            ("@/components/ui/drawer", vec!["DrawerContent"]));
+        components.insert("drawer_header",
+            ("@/components/ui/drawer", vec!["DrawerHeader"]));
+        components.insert("drawer_footer",
+            ("@/components/ui/drawer", vec!["DrawerFooter"]));
+        components.insert("drawer_title",
+            ("@/components/ui/drawer", vec!["DrawerTitle"]));
+        components.insert("drawer_description",
+            ("@/components/ui/drawer", vec!["DrawerDescription"]));
+        components.insert("drawer_close",
+            ("@/components/ui/drawer", vec!["DrawerClose"]));
+
+        // === Hover Card ===
+        components.insert("hover_card",
+            ("@/components/ui/hover-card", vec!["HoverCard", "HoverCardTrigger", "HoverCardContent"]));
+        components.insert("hover_card_trigger",
+            ("@/components/ui/hover-card", vec!["HoverCardTrigger"]));
+        components.insert("hover_card_content",
+            ("@/components/ui/hover-card", vec!["HoverCardContent"]));
+
+        // === Number Field ===
+        components.insert("number_field",
+            ("@/components/ui/number-field", vec!["NumberField", "NumberFieldContent", "NumberFieldDecrement", "NumberFieldIncrement", "NumberFieldInput"]));
+        components.insert("number_field_input",
+            ("@/components/ui/number-field", vec!["NumberFieldInput"]));
+        components.insert("number_field_increment",
+            ("@/components/ui/number-field", vec!["NumberFieldIncrement"]));
+        components.insert("number_field_decrement",
+            ("@/components/ui/number-field", vec!["NumberFieldDecrement"]));
+
+        // === Pagination ===
+        components.insert("pagination",
+            ("@/components/ui/pagination", vec!["Pagination", "PaginationList", "PaginationListItem", "PaginationEllipsis", "PaginationFirst", "PaginationPrev", "PaginationNext", "PaginationLast"]));
+        components.insert("pagination_list",
+            ("@/components/ui/pagination", vec!["PaginationList"]));
+        components.insert("pagination_item",
+            ("@/components/ui/pagination", vec!["PaginationListItem"]));
+        components.insert("pagination_ellipsis",
+            ("@/components/ui/pagination", vec!["PaginationEllipsis"]));
+        components.insert("pagination_prev",
+            ("@/components/ui/pagination", vec!["PaginationPrev"]));
+        components.insert("pagination_next",
+            ("@/components/ui/pagination", vec!["PaginationNext"]));
+        components.insert("pagination_first",
+            ("@/components/ui/pagination", vec!["PaginationFirst"]));
+        components.insert("pagination_last",
+            ("@/components/ui/pagination", vec!["PaginationLast"]));
+
+        // === Pin Input (OTP) ===
+        components.insert("pin_input",
+            ("@/components/ui/pin-input", vec!["PinInput", "PinInputGroup", "PinInputSeparator", "PinInputSlot"]));
+        components.insert("pin_input_group",
+            ("@/components/ui/pin-input", vec!["PinInputGroup"]));
+        components.insert("pin_input_slot",
+            ("@/components/ui/pin-input", vec!["PinInputSlot"]));
+        components.insert("pin_input_separator",
+            ("@/components/ui/pin-input", vec!["PinInputSeparator"]));
+
+        // === Tags Input ===
+        components.insert("tags_input",
+            ("@/components/ui/tags-input", vec!["TagsInput", "TagsInputInput", "TagsInputItem", "TagsInputItemDelete", "TagsInputItemText"]));
+        components.insert("tags_input_field",
+            ("@/components/ui/tags-input", vec!["TagsInputInput"]));
+        components.insert("tags_input_item",
+            ("@/components/ui/tags-input", vec!["TagsInputItem"]));
+        components.insert("tags_input_delete",
+            ("@/components/ui/tags-input", vec!["TagsInputItemDelete"]));
+
+        // === Toggle Group ===
+        components.insert("toggle_group",
+            ("@/components/ui/toggle-group", vec!["ToggleGroup", "ToggleGroupItem"]));
+        components.insert("toggle_group_item",
+            ("@/components/ui/toggle-group", vec!["ToggleGroupItem"]));
+
         Self { components }
     }
 
@@ -2490,6 +2622,523 @@ impl VueGenerator {
 
             "stepper_separator" => {
                 // No special attributes
+            }
+
+            // ========================================
+            // Phase 10: Medium Priority Components
+            // ========================================
+
+            // === Calendar ===
+            "calendar" => {
+                // v-model for selected date
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // default-placeholder
+                if let Some(value) = props.get("placeholder") {
+                    let placeholder = self.extract_string_value(value).unwrap_or("Pick a date");
+                    attrs.push(format!("placeholder=\"{}\"", placeholder));
+                }
+                // weekday-format
+                if let Some(value) = props.get("weekday") {
+                    let weekday = self.extract_string_value(value).unwrap_or("short");
+                    attrs.push(format!("weekday-format=\"{}\"", weekday));
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Carousel ===
+            "carousel" => {
+                // opts for configuration
+                if let Some(value) = props.get("align") {
+                    let align = self.extract_string_value(value).unwrap_or("center");
+                    attrs.push(format!(":opts=\"{{ align: '{}' }}\"", align));
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "carousel_content" | "carousel_item" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "carousel_prev" | "carousel_next" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Combobox ===
+            "combobox" => {
+                // v-model for selected value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // open state
+                if let Some(value) = props.get("open") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+            }
+
+            "combobox_input" => {
+                // placeholder
+                if let Some(value) = props.get("placeholder") {
+                    let placeholder = self.extract_string_value(value).unwrap_or("Select...");
+                    attrs.push(format!("placeholder=\"{}\"", placeholder));
+                }
+            }
+
+            "combobox_item" => {
+                // value
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // onclick for selection
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            "combobox_trigger" => {
+                // as-child
+                if let Some(value) = props.get("as_child") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("as-child".to_string());
+                    }
+                }
+            }
+
+            "combobox_empty" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === Context Menu ===
+            "context_menu" => {
+                // v-model:open for menu state
+                if let Some(value) = props.get("open") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+            }
+
+            "context_menu_trigger" => {
+                // as-child for custom trigger
+                if let Some(value) = props.get("as_child") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("as-child".to_string());
+                    }
+                }
+            }
+
+            "context_menu_content" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "context_menu_item" => {
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // onclick
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            "context_menu_separator" => {
+                // No special attributes
+            }
+
+            "context_menu_label" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === Drawer (Vaul) ===
+            "drawer" => {
+                // v-model:open for drawer state
+                if let Some(value) = props.get("open") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+                // direction: left, right, top, bottom
+                if let Some(value) = props.get("direction") {
+                    let direction = self.extract_string_value(value).unwrap_or("bottom");
+                    attrs.push(format!("direction=\"{}\"", direction));
+                }
+            }
+
+            "drawer_trigger" => {
+                // as-child for custom trigger
+                if let Some(value) = props.get("as_child") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("as-child".to_string());
+                    }
+                }
+            }
+
+            "drawer_content" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "drawer_header" | "drawer_footer" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "drawer_title" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "drawer_description" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "drawer_close" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // onclick
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            // === Hover Card ===
+            "hover_card" => {
+                // v-model:open for hover card state
+                if let Some(value) = props.get("open") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+                // open-delay
+                if let Some(value) = props.get("open_delay") {
+                    if let Some(delay) = self.extract_int_value(value) {
+                        attrs.push(format!(":open-delay=\"{}\"", delay));
+                    }
+                }
+                // close-delay
+                if let Some(value) = props.get("close_delay") {
+                    if let Some(delay) = self.extract_int_value(value) {
+                        attrs.push(format!(":close-delay=\"{}\"", delay));
+                    }
+                }
+            }
+
+            "hover_card_trigger" => {
+                // as-child for custom trigger
+                if let Some(value) = props.get("as_child") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("as-child".to_string());
+                    }
+                }
+            }
+
+            "hover_card_content" => {
+                // side
+                if let Some(value) = props.get("side") {
+                    let side = self.extract_string_value(value).unwrap_or("bottom");
+                    attrs.push(format!("side=\"{}\"", side));
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Number Field ===
+            "number_field" => {
+                // v-model for value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // min/max/step
+                if let Some(value) = props.get("min") {
+                    if let Some(min) = self.extract_int_value(value) {
+                        attrs.push(format!(":min=\"{}\"", min));
+                    }
+                }
+                if let Some(value) = props.get("max") {
+                    if let Some(max) = self.extract_int_value(value) {
+                        attrs.push(format!(":max=\"{}\"", max));
+                    }
+                }
+                if let Some(value) = props.get("step") {
+                    if let Some(step) = self.extract_int_value(value) {
+                        attrs.push(format!(":step=\"{}\"", step));
+                    }
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+            }
+
+            "number_field_input" => {
+                // placeholder
+                if let Some(value) = props.get("placeholder") {
+                    let placeholder = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("placeholder=\"{}\"", placeholder));
+                }
+            }
+
+            "number_field_increment" | "number_field_decrement" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Pagination ===
+            "pagination" => {
+                // v-model:page for current page
+                if let Some(value) = props.get("page") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:page=\"{}\"", model));
+                    }
+                }
+                // total
+                if let Some(value) = props.get("total") {
+                    if let Some(total) = self.extract_int_value(value) {
+                        attrs.push(format!(":total=\"{}\"", total));
+                    }
+                }
+                // per-page / items-per-page
+                if let Some(value) = props.get("per_page") {
+                    if let Some(per_page) = self.extract_int_value(value) {
+                        attrs.push(format!(":items-per-page=\"{}\"", per_page));
+                    }
+                }
+                // sibling-count
+                if let Some(value) = props.get("sibling_count") {
+                    if let Some(count) = self.extract_int_value(value) {
+                        attrs.push(format!(":sibling-count=\"{}\"", count));
+                    }
+                }
+            }
+
+            "pagination_list" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "pagination_item" => {
+                // value (page number)
+                if let Some(value) = props.get("value") {
+                    if let Some(val) = self.extract_int_value(value) {
+                        attrs.push(format!(":value=\"{}\"", val));
+                    }
+                }
+                // onclick for page change
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            "pagination_ellipsis" => {
+                // No special attributes
+            }
+
+            "pagination_prev" | "pagination_next" | "pagination_first" | "pagination_last" => {
+                // onclick
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            // === Pin Input (OTP) ===
+            "pin_input" => {
+                // v-model for value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // length (number of pins)
+                if let Some(value) = props.get("length") {
+                    if let Some(length) = self.extract_int_value(value) {
+                        attrs.push(format!(":length=\"{}\"", length));
+                    }
+                }
+                // type: text, password
+                if let Some(value) = props.get("type") {
+                    let type_val = self.extract_string_value(value).unwrap_or("text");
+                    attrs.push(format!("type=\"{}\"", type_val));
+                }
+                // otp (native autocomplete)
+                if let Some(value) = props.get("otp") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("otp".to_string());
+                    }
+                }
+            }
+
+            "pin_input_slot" => {
+                // index
+                if let Some(value) = props.get("index") {
+                    if let Some(index) = self.extract_int_value(value) {
+                        attrs.push(format!(":index=\"{}\"", index));
+                    }
+                }
+            }
+
+            "pin_input_separator" => {
+                // No special attributes
+            }
+
+            // === Tags Input ===
+            "tags_input" => {
+                // v-model for tags array
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // placeholder
+                if let Some(value) = props.get("placeholder") {
+                    let placeholder = self.extract_string_value(value).unwrap_or("Add tag...");
+                    attrs.push(format!("placeholder=\"{}\"", placeholder));
+                }
+                // max-tags
+                if let Some(value) = props.get("max") {
+                    if let Some(max) = self.extract_int_value(value) {
+                        attrs.push(format!(":max-tags=\"{}\"", max));
+                    }
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+            }
+
+            "tags_input_field" => {
+                // placeholder
+                if let Some(value) = props.get("placeholder") {
+                    let placeholder = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("placeholder=\"{}\"", placeholder));
+                }
+            }
+
+            "tags_input_item" => {
+                // value
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+            }
+
+            "tags_input_delete" => {
+                // onclick to remove tag
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            // === Toggle Group ===
+            "toggle_group" => {
+                // v-model for selected value(s)
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // type: single, multiple
+                if let Some(value) = props.get("type") {
+                    let type_val = self.extract_string_value(value).unwrap_or("single");
+                    attrs.push(format!("type=\"{}\"", type_val));
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+            }
+
+            "toggle_group_item" => {
+                // value
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+                // aria-label
+                if let Some(value) = props.get("label") {
+                    let label = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("aria-label=\"{}\"", label));
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
             }
 
             _ => {
