@@ -1,0 +1,22 @@
+// Text node test
+
+widget TextTest {
+    msg Msg { Inc }
+
+    model {
+        count int = 0
+    }
+
+    view {
+        col {
+            text "Hello World"
+            text `Interpolated: ${.count}`
+        }
+    }
+
+    on {
+        Inc => {
+            count = count + 1
+        }
+    }
+}
