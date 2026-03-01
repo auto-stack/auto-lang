@@ -662,6 +662,171 @@ impl AuraSchema {
             allows_children: true,
             description: "Dropdown menu label",
         });
+
+        // === Popover ===
+        elements.insert("popover", ElementDef {
+            tag: "popover",
+            category: ElementCategory::Overlay,
+            props: vec![
+                PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Popover container",
+        });
+
+        elements.insert("popover_trigger", ElementDef {
+            tag: "popover_trigger",
+            category: ElementCategory::Overlay,
+            props: vec![
+                PropDef { name: "as_child", type_: PropType::Bool, required: false, default: Some("false"), description: "Use child as trigger" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Popover trigger",
+        });
+
+        elements.insert("popover_content", ElementDef {
+            tag: "popover_content",
+            category: ElementCategory::Overlay,
+            props: vec![
+                PropDef { name: "side", type_: PropType::OneOf(vec!["top", "right", "bottom", "left"]), required: false, default: Some("bottom"), description: "Content position side" },
+                PropDef { name: "align", type_: PropType::OneOf(vec!["start", "center", "end"]), required: false, default: Some("center"), description: "Content alignment" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Popover content",
+        });
+
+        // === Sheet (Side Drawer) ===
+        elements.insert("sheet", ElementDef {
+            tag: "sheet",
+            category: ElementCategory::Overlay,
+            props: vec![
+                PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Sheet (side drawer) container",
+        });
+
+        elements.insert("sheet_trigger", ElementDef {
+            tag: "sheet_trigger",
+            category: ElementCategory::Overlay,
+            props: vec![
+                PropDef { name: "as_child", type_: PropType::Bool, required: false, default: Some("false"), description: "Use child as trigger" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Sheet trigger",
+        });
+
+        elements.insert("sheet_content", ElementDef {
+            tag: "sheet_content",
+            category: ElementCategory::Overlay,
+            props: vec![
+                PropDef { name: "side", type_: PropType::OneOf(vec!["top", "right", "bottom", "left"]), required: false, default: Some("right"), description: "Sheet position side" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Sheet content",
+        });
+
+        elements.insert("sheet_header", ElementDef {
+            tag: "sheet_header",
+            category: ElementCategory::Overlay,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Sheet header",
+        });
+
+        elements.insert("sheet_title", ElementDef {
+            tag: "sheet_title",
+            category: ElementCategory::Overlay,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Title text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Sheet title",
+        });
+
+        elements.insert("sheet_footer", ElementDef {
+            tag: "sheet_footer",
+            category: ElementCategory::Overlay,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Sheet footer",
+        });
+
+        // === Breadcrumb ===
+        elements.insert("breadcrumb", ElementDef {
+            tag: "breadcrumb",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Breadcrumb navigation container",
+        });
+
+        elements.insert("breadcrumb_list", ElementDef {
+            tag: "breadcrumb_list",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Breadcrumb list",
+        });
+
+        elements.insert("breadcrumb_item", ElementDef {
+            tag: "breadcrumb_item",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Breadcrumb item",
+        });
+
+        elements.insert("breadcrumb_link", ElementDef {
+            tag: "breadcrumb_link",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "href", type_: PropType::String, required: false, default: None, description: "Link URL" },
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Link text" },
+                PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Breadcrumb link",
+        });
+
+        elements.insert("breadcrumb_separator", ElementDef {
+            tag: "breadcrumb_separator",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Breadcrumb separator",
+        });
+
+        elements.insert("breadcrumb_page", ElementDef {
+            tag: "breadcrumb_page",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Current page text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Breadcrumb current page",
+        });
     }
 }
 

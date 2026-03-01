@@ -261,6 +261,9 @@ fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
         ("@/components/ui/alert", "alert"),
         ("@/components/ui/sonner", "sonner"),
         ("@/components/ui/dropdown-menu", "dropdown-menu"),
+        ("@/components/ui/popover", "popover"),
+        ("@/components/ui/sheet", "sheet"),
+        ("@/components/ui/breadcrumb", "breadcrumb"),
     ];
 
     for (pattern, component) in component_patterns {

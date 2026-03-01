@@ -220,6 +220,42 @@ impl ShadcnRegistry {
         components.insert("dropdown_label",
             ("@/components/ui/dropdown-menu", vec!["DropdownMenuLabel"]));
 
+        // === Overlay: Popover ===
+        components.insert("popover",
+            ("@/components/ui/popover", vec!["Popover", "PopoverTrigger", "PopoverContent"]));
+        components.insert("popover_trigger",
+            ("@/components/ui/popover", vec!["PopoverTrigger"]));
+        components.insert("popover_content",
+            ("@/components/ui/popover", vec!["PopoverContent"]));
+
+        // === Overlay: Sheet (Side Drawer) ===
+        components.insert("sheet",
+            ("@/components/ui/sheet", vec!["Sheet", "SheetTrigger", "SheetContent", "SheetHeader", "SheetTitle", "SheetDescription", "SheetFooter"]));
+        components.insert("sheet_trigger",
+            ("@/components/ui/sheet", vec!["SheetTrigger"]));
+        components.insert("sheet_content",
+            ("@/components/ui/sheet", vec!["SheetContent"]));
+        components.insert("sheet_header",
+            ("@/components/ui/sheet", vec!["SheetHeader"]));
+        components.insert("sheet_title",
+            ("@/components/ui/sheet", vec!["SheetTitle"]));
+        components.insert("sheet_footer",
+            ("@/components/ui/sheet", vec!["SheetFooter"]));
+
+        // === Navigation: Breadcrumb ===
+        components.insert("breadcrumb",
+            ("@/components/ui/breadcrumb", vec!["Breadcrumb", "BreadcrumbList", "BreadcrumbItem", "BreadcrumbLink", "BreadcrumbSeparator", "BreadcrumbPage"]));
+        components.insert("breadcrumb_list",
+            ("@/components/ui/breadcrumb", vec!["BreadcrumbList"]));
+        components.insert("breadcrumb_item",
+            ("@/components/ui/breadcrumb", vec!["BreadcrumbItem"]));
+        components.insert("breadcrumb_link",
+            ("@/components/ui/breadcrumb", vec!["BreadcrumbLink"]));
+        components.insert("breadcrumb_separator",
+            ("@/components/ui/breadcrumb", vec!["BreadcrumbSeparator"]));
+        components.insert("breadcrumb_page",
+            ("@/components/ui/breadcrumb", vec!["BreadcrumbPage"]));
+
         Self { components }
     }
 
@@ -1714,6 +1750,138 @@ impl VueGenerator {
 
             "dropdown_label" => {
                 // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // ========================================
+            // Phase 8: Popover, Sheet, Breadcrumb
+            // ========================================
+
+            // === Popover ===
+            "popover" => {
+                // v-model:open for popover state
+                if let Some(value) = props.get("open") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+            }
+
+            "popover_trigger" => {
+                // as-child for custom trigger
+                if let Some(value) = props.get("as_child") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("as-child".to_string());
+                    }
+                }
+            }
+
+            "popover_content" => {
+                // side: top, right, bottom, left
+                if let Some(value) = props.get("side") {
+                    let side = self.extract_string_value(value).unwrap_or("bottom");
+                    attrs.push(format!("side=\"{}\"", side));
+                }
+                // align: start, center, end
+                if let Some(value) = props.get("align") {
+                    let align = self.extract_string_value(value).unwrap_or("center");
+                    attrs.push(format!("align=\"{}\"", align));
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Sheet (Side Drawer) ===
+            "sheet" => {
+                // v-model:open for sheet state
+                if let Some(value) = props.get("open") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+            }
+
+            "sheet_trigger" => {
+                // as-child for custom trigger
+                if let Some(value) = props.get("as_child") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("as-child".to_string());
+                    }
+                }
+            }
+
+            "sheet_content" => {
+                // side: top, right, bottom, left
+                if let Some(value) = props.get("side") {
+                    let side = self.extract_string_value(value).unwrap_or("right");
+                    attrs.push(format!("side=\"{}\"", side));
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "sheet_header" | "sheet_footer" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "sheet_title" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === Breadcrumb ===
+            "breadcrumb" | "breadcrumb_list" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "breadcrumb_item" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "breadcrumb_link" => {
+                // href for link
+                if let Some(value) = props.get("href") {
+                    let href = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("href=\"{}\"", href));
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // onclick for navigation
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            "breadcrumb_separator" => {
+                // No special attributes
+            }
+
+            "breadcrumb_page" => {
+                // text becomes slot content (current page, not clickable)
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
                 }
