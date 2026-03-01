@@ -2022,6 +2022,316 @@ impl AuraSchema {
             allows_children: true,
             description: "Toggle group item",
         });
+
+        // ========================================
+        // Low Priority Components
+        // ========================================
+
+        // === Aspect Ratio ===
+        elements.insert("aspect_ratio", ElementDef {
+            tag: "aspect_ratio",
+            category: ElementCategory::Layout,
+            props: vec![
+                PropDef { name: "ratio", type_: PropType::Int, required: false, default: Some("16"), description: "Aspect ratio (e.g., 16 for 16/9)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Aspect ratio container",
+        });
+
+        // === Button Group ===
+        elements.insert("button_group", ElementDef {
+            tag: "button_group",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "orientation", type_: PropType::OneOf(vec!["horizontal", "vertical"]), required: false, default: Some("horizontal"), description: "Button orientation" },
+                PropDef { name: "size", type_: PropType::OneOf(vec!["sm", "default", "lg"]), required: false, default: Some("default"), description: "Button size" },
+                PropDef { name: "variant", type_: PropType::OneOf(vec!["default", "destructive", "outline", "secondary", "ghost", "link"]), required: false, default: Some("default"), description: "Button variant" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Button group container",
+        });
+
+        // === Chart ===
+        elements.insert("chart", ElementDef {
+            tag: "chart",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "config", type_: PropType::String, required: false, default: None, description: "Chart config object" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Chart container",
+        });
+
+        // === Collapsible ===
+        elements.insert("collapsible", ElementDef {
+            tag: "collapsible",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
+                PropDef { name: "default_open", type_: PropType::Bool, required: false, default: Some("false"), description: "Default open state" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Collapsible container",
+        });
+
+        elements.insert("collapsible_trigger", ElementDef {
+            tag: "collapsible_trigger",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "as_child", type_: PropType::Bool, required: false, default: Some("false"), description: "Use child as trigger" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Collapsible trigger",
+        });
+
+        elements.insert("collapsible_content", ElementDef {
+            tag: "collapsible_content",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Collapsible content",
+        });
+
+        // === Input Group ===
+        elements.insert("input_group", ElementDef {
+            tag: "input_group",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Input group wrapper",
+        });
+
+        // === Input OTP ===
+        elements.insert("input_otp", ElementDef {
+            tag: "input_otp",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "OTP value binding" },
+                PropDef { name: "length", type_: PropType::Int, required: false, default: Some("6"), description: "Number of OTP digits" },
+                PropDef { name: "pattern", type_: PropType::String, required: false, default: None, description: "Input pattern" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "OTP input container",
+        });
+
+        // === Kbd (Keyboard) ===
+        elements.insert("kbd", ElementDef {
+            tag: "kbd",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Keyboard key text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Keyboard key display",
+        });
+
+        // === Menubar ===
+        elements.insert("menubar", ElementDef {
+            tag: "menubar",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Menubar container",
+        });
+
+        elements.insert("menubar_menu", ElementDef {
+            tag: "menubar_menu",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "value", type_: PropType::String, required: false, default: None, description: "Menu value" },
+            ],
+            allows_children: true,
+            description: "Menubar menu",
+        });
+
+        elements.insert("menubar_trigger", ElementDef {
+            tag: "menubar_trigger",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Trigger text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Menubar trigger",
+        });
+
+        elements.insert("menubar_content", ElementDef {
+            tag: "menubar_content",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "align", type_: PropType::OneOf(vec!["start", "center", "end"]), required: false, default: Some("start"), description: "Content alignment" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Menubar content",
+        });
+
+        elements.insert("menubar_item", ElementDef {
+            tag: "menubar_item",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Item text" },
+                PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
+                PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Menubar item",
+        });
+
+        elements.insert("menubar_separator", ElementDef {
+            tag: "menubar_separator",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Menubar separator",
+        });
+
+        elements.insert("menubar_label", ElementDef {
+            tag: "menubar_label",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Label text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Menubar label",
+        });
+
+        // === Native Select ===
+        elements.insert("native_select", ElementDef {
+            tag: "native_select",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Selected value binding" },
+                PropDef { name: "name", type_: PropType::String, required: false, default: None, description: "Form field name" },
+                PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Native HTML select",
+        });
+
+        // === Range Calendar ===
+        elements.insert("range_calendar", ElementDef {
+            tag: "range_calendar",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Date range binding" },
+                PropDef { name: "placeholder", type_: PropType::String, required: false, default: Some("Pick a date range"), description: "Placeholder text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Date range picker calendar",
+        });
+
+        // === Resizable ===
+        elements.insert("resizable", ElementDef {
+            tag: "resizable",
+            category: ElementCategory::Layout,
+            props: vec![
+                PropDef { name: "direction", type_: PropType::OneOf(vec!["horizontal", "vertical"]), required: false, default: Some("horizontal"), description: "Resize direction" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Resizable panel group",
+        });
+
+        elements.insert("resizable_panel", ElementDef {
+            tag: "resizable_panel",
+            category: ElementCategory::Layout,
+            props: vec![
+                PropDef { name: "default_size", type_: PropType::Int, required: false, default: None, description: "Default panel size (%)" },
+                PropDef { name: "min_size", type_: PropType::Int, required: false, default: None, description: "Minimum panel size (%)" },
+                PropDef { name: "max_size", type_: PropType::Int, required: false, default: None, description: "Maximum panel size (%)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Resizable panel",
+        });
+
+        elements.insert("resizable_handle", ElementDef {
+            tag: "resizable_handle",
+            category: ElementCategory::Layout,
+            props: vec![
+                PropDef { name: "with_handle", type_: PropType::Bool, required: false, default: Some("false"), description: "Show drag handle" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Resizable panel handle",
+        });
+
+        // === Auto Complete ===
+        elements.insert("autocomplete", ElementDef {
+            tag: "autocomplete",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Selected value binding" },
+                PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Autocomplete container",
+        });
+
+        elements.insert("autocomplete_input", ElementDef {
+            tag: "autocomplete_input",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "placeholder", type_: PropType::String, required: false, default: Some("Search..."), description: "Input placeholder" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Autocomplete input",
+        });
+
+        elements.insert("autocomplete_list", ElementDef {
+            tag: "autocomplete_list",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Autocomplete options list",
+        });
+
+        elements.insert("autocomplete_item", ElementDef {
+            tag: "autocomplete_item",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "value", type_: PropType::String, required: false, default: None, description: "Item value" },
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Item text" },
+                PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Select handler" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Autocomplete option item",
+        });
+
+        elements.insert("autocomplete_empty", ElementDef {
+            tag: "autocomplete_empty",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: Some("No results found."), description: "Empty state text" },
+            ],
+            allows_children: true,
+            description: "Autocomplete empty state",
+        });
     }
 }
 

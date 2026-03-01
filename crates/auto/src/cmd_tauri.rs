@@ -284,6 +284,19 @@ fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
         ("@/components/ui/pin-input", "pin-input"),
         ("@/components/ui/tags-input", "tags-input"),
         ("@/components/ui/toggle-group", "toggle-group"),
+        // Low Priority Components
+        ("@/components/ui/aspect-ratio", "aspect-ratio"),
+        ("@/components/ui/button-group", "button-group"),
+        ("@/components/ui/chart", "chart"),
+        ("@/components/ui/collapsible", "collapsible"),
+        ("@/components/ui/input-group", "input-group"),
+        ("@/components/ui/input-otp", "input-otp"),
+        ("@/components/ui/kbd", "kbd"),
+        ("@/components/ui/menubar", "menubar"),
+        ("@/components/ui/native-select", "native-select"),
+        ("@/components/ui/range-calendar", "range-calendar"),
+        ("@/components/ui/resizable", "resizable"),
+        ("@/components/ui/auto-complete", "auto-complete"),
     ];
 
     for (pattern, component) in component_patterns {

@@ -510,6 +510,86 @@ impl ShadcnRegistry {
         components.insert("toggle_group_item",
             ("@/components/ui/toggle-group", vec!["ToggleGroupItem"]));
 
+        // ========================================
+        // Low Priority Components
+        // ========================================
+
+        // === Aspect Ratio ===
+        components.insert("aspect_ratio",
+            ("@/components/ui/aspect-ratio", vec!["AspectRatio"]));
+
+        // === Button Group ===
+        components.insert("button_group",
+            ("@/components/ui/button-group", vec!["ButtonGroup"]));
+
+        // === Chart ===
+        components.insert("chart",
+            ("@/components/ui/chart", vec!["ChartContainer", "ChartTooltip", "ChartLegend", "ChartStyle"]));
+
+        // === Collapsible ===
+        components.insert("collapsible",
+            ("@/components/ui/collapsible", vec!["Collapsible", "CollapsibleTrigger", "CollapsibleContent"]));
+        components.insert("collapsible_trigger",
+            ("@/components/ui/collapsible", vec!["CollapsibleTrigger"]));
+        components.insert("collapsible_content",
+            ("@/components/ui/collapsible", vec!["CollapsibleContent"]));
+
+        // === Input Group ===
+        components.insert("input_group",
+            ("@/components/ui/input-group", vec!["InputGroup", "InputGroupText"]));
+
+        // === Input OTP ===
+        components.insert("input_otp",
+            ("@/components/ui/input-otp", vec!["InputOTP", "InputGroup", "InputOTPSlot", "InputOTPSeparator"]));
+
+        // === Kbd (Keyboard) ===
+        components.insert("kbd",
+            ("@/components/ui/kbd", vec!["Kbd"]));
+
+        // === Menubar ===
+        components.insert("menubar",
+            ("@/components/ui/menubar", vec!["Menubar", "MenubarMenu", "MenubarTrigger", "MenubarContent", "MenubarItem", "MenubarSeparator", "MenubarLabel", "MenubarCheckboxItem", "MenubarRadioGroup", "MenubarRadioItem", "MenubarShortcut", "MenubarSub", "MenubarSubTrigger", "MenubarSubContent"]));
+        components.insert("menubar_menu",
+            ("@/components/ui/menubar", vec!["MenubarMenu"]));
+        components.insert("menubar_trigger",
+            ("@/components/ui/menubar", vec!["MenubarTrigger"]));
+        components.insert("menubar_content",
+            ("@/components/ui/menubar", vec!["MenubarContent"]));
+        components.insert("menubar_item",
+            ("@/components/ui/menubar", vec!["MenubarItem"]));
+        components.insert("menubar_separator",
+            ("@/components/ui/menubar", vec!["MenubarSeparator"]));
+        components.insert("menubar_label",
+            ("@/components/ui/menubar", vec!["MenubarLabel"]));
+
+        // === Native Select ===
+        components.insert("native_select",
+            ("@/components/ui/native-select", vec!["NativeSelect", "NativeSelectOption", "NativeSelectGroup", "NativeSelectLabel"]));
+
+        // === Range Calendar ===
+        components.insert("range_calendar",
+            ("@/components/ui/range-calendar", vec!["RangeCalendar", "RangeCalendarCell", "RangeCalendarCellTrigger", "RangeCalendarGrid", "RangeCalendarGridBody", "RangeCalendarGridHead", "RangeCalendarGridRow", "RangeCalendarHeadCell", "RangeCalendarHeader", "RangeCalendarHeading", "RangeCalendarNextButton", "RangeCalendarPrevButton"]));
+
+        // === Resizable ===
+        components.insert("resizable",
+            ("@/components/ui/resizable", vec!["ResizablePanelGroup", "ResizablePanel", "ResizableHandle"]));
+        components.insert("resizable_panel",
+            ("@/components/ui/resizable", vec!["ResizablePanel"]));
+        components.insert("resizable_handle",
+            ("@/components/ui/resizable", vec!["ResizableHandle"]));
+
+        // === Auto Complete ===
+        components.insert("autocomplete",
+            ("@/components/ui/auto-complete", vec!["AutoComplete", "AutoCompleteContent", "AutoCompleteEmpty", "AutoCompleteGroup", "AutoCompleteGroupHeading", "AutoCompleteItem", "AutoCompleteInput", "AutoCompleteList", "AutoCompleteTrigger"]));
+        components.insert("autocomplete_input",
+            ("@/components/ui/auto-complete", vec!["AutoCompleteInput"]));
+        components.insert("autocomplete_item",
+            ("@/components/ui/auto-complete", vec!["AutoCompleteItem"]));
+        components.insert("autocomplete_list",
+            ("@/components/ui/auto-complete", vec!["AutoCompleteList"]));
+        components.insert("autocomplete_empty",
+            ("@/components/ui/auto-complete", vec!["AutoCompleteEmpty"]));
+
         Self { components }
     }
 
@@ -3138,6 +3218,354 @@ impl VueGenerator {
                     if self.extract_bool_value(value) {
                         attrs.push("disabled".to_string());
                     }
+                }
+            }
+
+            // ========================================
+            // Phase 11: Low Priority Components
+            // ========================================
+
+            // === Aspect Ratio ===
+            "aspect_ratio" => {
+                // ratio (default 16/9 = 1.777...)
+                if let Some(value) = props.get("ratio") {
+                    if let Some(ratio) = self.extract_int_value(value) {
+                        attrs.push(format!(":ratio=\"{}\"", ratio));
+                    }
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Button Group ===
+            "button_group" => {
+                // orientation: horizontal, vertical
+                if let Some(value) = props.get("orientation") {
+                    let orientation = self.extract_string_value(value).unwrap_or("horizontal");
+                    attrs.push(format!("orientation=\"{}\"", orientation));
+                }
+                // size
+                if let Some(value) = props.get("size") {
+                    let size = self.extract_string_value(value).unwrap_or("default");
+                    attrs.push(format!("size=\"{}\"", size));
+                }
+                // variant
+                if let Some(value) = props.get("variant") {
+                    let variant = self.extract_string_value(value).unwrap_or("default");
+                    attrs.push(format!("variant=\"{}\"", variant));
+                }
+            }
+
+            // === Chart ===
+            "chart" => {
+                // config for chart styling
+                if let Some(value) = props.get("config") {
+                    let config = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!(":config=\"{}\"", config));
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Collapsible ===
+            "collapsible" => {
+                // v-model:open for expanded state
+                if let Some(value) = props.get("open") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+                // default-open
+                if let Some(value) = props.get("default_open") {
+                    if self.extract_bool_value(value) {
+                        attrs.push(":default-open=\"true\"".to_string());
+                    }
+                }
+            }
+
+            "collapsible_trigger" => {
+                // as-child
+                if let Some(value) = props.get("as_child") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("as-child".to_string());
+                    }
+                }
+            }
+
+            "collapsible_content" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Input Group ===
+            "input_group" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Input OTP ===
+            "input_otp" => {
+                // v-model for value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // length
+                if let Some(value) = props.get("length") {
+                    if let Some(length) = self.extract_int_value(value) {
+                        attrs.push(format!(":length=\"{}\"", length));
+                    }
+                }
+                // pattern
+                if let Some(value) = props.get("pattern") {
+                    let pattern = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("pattern=\"{}\"", pattern));
+                }
+            }
+
+            // === Kbd (Keyboard) ===
+            "kbd" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Menubar ===
+            "menubar" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "menubar_menu" => {
+                // value
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+            }
+
+            "menubar_trigger" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "menubar_content" => {
+                // align
+                if let Some(value) = props.get("align") {
+                    let align = self.extract_string_value(value).unwrap_or("start");
+                    attrs.push(format!("align=\"{}\"", align));
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "menubar_item" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+                // onclick
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            "menubar_separator" => {
+                // No special attributes
+            }
+
+            "menubar_label" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === Native Select ===
+            "native_select" => {
+                // v-model for value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // name
+                if let Some(value) = props.get("name") {
+                    let name = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("name=\"{}\"", name));
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Range Calendar ===
+            "range_calendar" => {
+                // v-model for date range
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // placeholder
+                if let Some(value) = props.get("placeholder") {
+                    let placeholder = self.extract_string_value(value).unwrap_or("Pick a date range");
+                    attrs.push(format!("placeholder=\"{}\"", placeholder));
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Resizable ===
+            "resizable" | "resizable_panel_group" => {
+                // direction: horizontal, vertical
+                if let Some(value) = props.get("direction") {
+                    let direction = self.extract_string_value(value).unwrap_or("horizontal");
+                    attrs.push(format!("direction=\"{}\"", direction));
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "resizable_panel" => {
+                // default-size
+                if let Some(value) = props.get("default_size") {
+                    if let Some(size) = self.extract_int_value(value) {
+                        attrs.push(format!(":default-size=\"{}\"", size));
+                    }
+                }
+                // min-size
+                if let Some(value) = props.get("min_size") {
+                    if let Some(size) = self.extract_int_value(value) {
+                        attrs.push(format!(":min-size=\"{}\"", size));
+                    }
+                }
+                // max-size
+                if let Some(value) = props.get("max_size") {
+                    if let Some(size) = self.extract_int_value(value) {
+                        attrs.push(format!(":max-size=\"{}\"", size));
+                    }
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "resizable_handle" => {
+                // with-handle (show drag handle)
+                if let Some(value) = props.get("with_handle") {
+                    if self.extract_bool_value(value) {
+                        attrs.push(":with-handle=\"true\"".to_string());
+                    }
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Auto Complete ===
+            "autocomplete" => {
+                // v-model for selected value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // open state
+                if let Some(value) = props.get("open") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+            }
+
+            "autocomplete_input" => {
+                // placeholder
+                if let Some(value) = props.get("placeholder") {
+                    let placeholder = self.extract_string_value(value).unwrap_or("Search...");
+                    attrs.push(format!("placeholder=\"{}\"", placeholder));
+                }
+            }
+
+            "autocomplete_item" => {
+                // value
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // onclick
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            "autocomplete_list" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "autocomplete_empty" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
                 }
             }
 
