@@ -1,0 +1,147 @@
+/// VM function declarations for HTTP operations
+/// These are implemented in Rust
+
+// ═══════════════════════════════════════════════════════════
+// HTTP Server
+// ═══════════════════════════════════════════════════════════
+
+/// Create a new HTTP server
+#[vm]
+fn http_server() Server
+
+/// Add GET route
+#[vm]
+fn server_get(server Server, path str, handler fn(Request) Response) Server
+
+/// Add POST route
+#[vm]
+fn server_post(server Server, path str, handler fn(Request) Response) Server
+
+/// Add PUT route
+#[vm]
+fn server_put(server Server, path str, handler fn(Request) Response) Server
+
+/// Add DELETE route
+#[vm]
+fn server_delete(server Server, path str, handler fn(Request) Response) Server
+
+/// Add static file route
+#[vm]
+fn server_static(server Server, prefix str, dir str) Server
+
+/// Start listening (blocking)
+#[vm]
+fn server_listen(server Server, addr str) void
+
+// ═══════════════════════════════════════════════════════════
+// HTTP Request
+// ═══════════════════════════════════════════════════════════
+
+#[vm]
+fn request_method(req Request) str
+
+#[vm]
+fn request_path(req Request) str
+
+#[vm]
+fn request_version(req Request) str
+
+#[vm]
+fn request_query(req Request, key str) str
+
+#[vm]
+fn request_query_string(req Request) str
+
+#[vm]
+fn request_header(req Request, key str) str
+
+#[vm]
+fn request_body(req Request) []byte
+
+#[vm]
+fn request_text(req Request) str
+
+#[vm]
+fn request_param(req Request, key str) str
+
+#[vm]
+fn request_content_length(req Request) int
+
+#[vm]
+fn request_content_type(req Request) str
+
+// ═══════════════════════════════════════════════════════════
+// HTTP Response
+// ═══════════════════════════════════════════════════════════
+
+#[vm]
+fn http_response() Response
+
+#[vm]
+fn response_status(res Response, code int) Response
+
+#[vm]
+fn response_header(res Response, key str, value str) Response
+
+#[vm]
+fn response_text(res Response, body str) Response
+
+#[vm]
+fn response_html(res Response, body str) Response
+
+#[vm]
+fn response_bytes(res Response, data []byte) Response
+
+// ═══════════════════════════════════════════════════════════
+// Quick Response Helpers
+// ═══════════════════════════════════════════════════════════
+
+#[vm]
+fn http_ok(body str) Response
+
+#[vm]
+fn http_created(body str) Response
+
+#[vm]
+fn http_bad_request(msg str) Response
+
+#[vm]
+fn http_not_found(msg str) Response
+
+#[vm]
+fn http_internal_error(msg str) Response
+
+// ═══════════════════════════════════════════════════════════
+// HTTP Client
+// ═══════════════════════════════════════════════════════════
+
+#[vm]
+fn http_get(url str) Response
+
+#[vm]
+fn http_post(url str, body str) Response
+
+#[vm]
+fn http_put(url str, body str) Response
+
+#[vm]
+fn http_delete(url str) Response
+
+#[vm]
+fn http_request(method str, url str) RequestBuilder
+
+// ═══════════════════════════════════════════════════════════
+// Request Builder
+// ═══════════════════════════════════════════════════════════
+
+#[vm]
+fn request_builder_header(rb RequestBuilder, key str, value str) RequestBuilder
+
+#[vm]
+fn request_builder_body(rb RequestBuilder, body str) RequestBuilder
+
+#[vm]
+fn request_builder_timeout(rb RequestBuilder, ms int) RequestBuilder
+
+#[vm]
+fn request_builder_send(rb RequestBuilder) Response

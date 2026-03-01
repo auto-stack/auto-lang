@@ -1,0 +1,223 @@
+/// HTTP module - HTTP server and client
+///
+/// This module provides HTTP server and client functionality.
+/// Built on the net module for TCP transport.
+
+// ═══════════════════════════════════════════════════════════
+// HTTP Server
+// ═══════════════════════════════════════════════════════════
+
+/// HTTP Server type
+type Server
+
+/// Create a new HTTP server
+/// Example: let server = http.server()
+#[pub]
+fn server() Server;
+
+/// Add a GET route
+/// Example: server.get("/users", fn(req) { http.ok("users") })
+#[pub]
+fn Server.get(self Server, path str, handler fn(Request) Response) Server;
+
+/// Add a POST route
+/// Example: server.post("/users", fn(req) { http.ok("created") })
+#[pub]
+fn Server.post(self Server, path str, handler fn(Request) Response) Server;
+
+/// Add a PUT route
+#[pub]
+fn Server.put(self Server, path str, handler fn(Request) Response) Server;
+
+/// Add a DELETE route
+#[pub]
+fn Server.delete(self Server, path str, handler fn(Request) Response) Server;
+
+/// Add a static file route
+/// Example: server.static("/static", "./public")
+#[pub]
+fn Server.static(self Server, prefix str, dir str) Server;
+
+/// Start listening for connections (blocking)
+/// Example: server.listen("127.0.0.1:8080")
+#[pub]
+fn Server.listen(self Server, addr str) void;
+
+// ═══════════════════════════════════════════════════════════
+// HTTP Request
+// ═══════════════════════════════════════════════════════════
+
+/// HTTP Request type
+type Request
+
+/// Get the HTTP method (GET, POST, etc.)
+#[pub]
+fn Request.method(self Request) str;
+
+/// Get the request path
+#[pub]
+fn Request.path(self Request) str;
+
+/// Get the HTTP version
+#[pub]
+fn Request.version(self Request) str;
+
+/// Get a query parameter
+#[pub]
+fn Request.query(self Request, key str) str;
+
+/// Get all query parameters as a string
+#[pub]
+fn Request.query_string(self Request) str;
+
+/// Get a header value
+#[pub]
+fn Request.header(self Request, key str) str;
+
+/// Get the request body as bytes
+#[pub]
+fn Request.body(self Request) []byte;
+
+/// Get the request body as text
+#[pub]
+fn Request.text(self Request) str;
+
+/// Get the request body as JSON
+/// Example: let user = req.json[User]()
+#[pub]
+fn Request.json[T](self Request) T?;
+
+/// Get a path parameter (for routes like /users/:id)
+#[pub]
+fn Request.param(self Request, key str) str;
+
+/// Get the content length
+#[pub]
+fn Request.content_length(self Request) int;
+
+/// Get the content type
+#[pub]
+fn Request.content_type(self Request) str;
+
+// ═══════════════════════════════════════════════════════════
+// HTTP Response
+// ═══════════════════════════════════════════════════════════
+
+/// HTTP Response type
+type Response
+
+/// Create a new response
+/// Example: let res = http.response()
+#[pub]
+fn response() Response;
+
+/// Set the status code
+/// Example: res.status(200) or res.status(404)
+#[pub]
+fn Response.status(self Response, code int) Response;
+
+/// Set a header
+/// Example: res.header("Content-Type", "application/json")
+#[pub]
+fn Response.header(self Response, key str, value str) Response;
+
+/// Set the body as text
+/// Example: res.text("Hello World")
+#[pub]
+fn Response.text(self Response, body str) Response;
+
+/// Set the body as HTML
+/// Example: res.html("<h1>Hello</h1>")
+#[pub]
+fn Response.html(self Response, body str) Response;
+
+/// Set the body as JSON
+/// Example: res.json({ "name": "Alice" })
+#[pub]
+fn Response.json[T](self Response, data T) Response;
+
+/// Set the body as bytes
+#[pub]
+fn Response.bytes(self Response, data []byte) Response;
+
+// ═══════════════════════════════════════════════════════════
+// Quick Response Helpers
+// ═══════════════════════════════════════════════════════════
+
+/// Create a 200 OK response
+/// Example: http.ok("Success")
+#[pub]
+fn ok(body str) Response;
+
+/// Create a 201 Created response
+#[pub]
+fn created(body str) Response;
+
+/// Create a 400 Bad Request response
+#[pub]
+fn bad_request(msg str) Response;
+
+/// Create a 404 Not Found response
+/// Example: http.not_found("User not found")
+#[pub]
+fn not_found(msg str) Response;
+
+/// Create a 500 Internal Server Error response
+#[pub]
+fn internal_error(msg str) Response;
+
+/// Create a JSON response with status
+#[pub]
+fn json_response[T](status int, data T) Response;
+
+// ═══════════════════════════════════════════════════════════
+// HTTP Client
+// ═══════════════════════════════════════════════════════════
+
+/// Perform a GET request
+/// Example: let res = http.get("https://api.example.com/users")
+#[pub]
+fn get(url str) Response;
+
+/// Perform a POST request
+/// Example: let res = http.post("https://api.example.com/users", body)
+#[pub]
+fn post(url str, body str) Response;
+
+/// Perform a PUT request
+#[pub]
+fn put(url str, body str) Response;
+
+/// Perform a DELETE request
+#[pub]
+fn delete(url str) Response;
+
+/// Create a new request builder
+#[pub]
+fn request(method str, url str) RequestBuilder;
+
+// ═══════════════════════════════════════════════════════════
+// Request Builder (for advanced client requests)
+// ═══════════════════════════════════════════════════════════
+
+type RequestBuilder
+
+/// Add a header
+#[pub]
+fn RequestBuilder.header(self RequestBuilder, key str, value str) RequestBuilder;
+
+/// Set the body
+#[pub]
+fn RequestBuilder.body(self RequestBuilder, body str) RequestBuilder;
+
+/// Set JSON body
+#[pub]
+fn RequestBuilder.json[T](self RequestBuilder, data T) RequestBuilder;
+
+/// Set timeout in milliseconds
+#[pub]
+fn RequestBuilder.timeout(self RequestBuilder, ms int) RequestBuilder;
+
+/// Send the request
+#[pub]
+fn RequestBuilder.send(self RequestBuilder) Response;

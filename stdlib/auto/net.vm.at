@@ -1,0 +1,70 @@
+/// VM function declarations for Net operations
+/// These are implemented in Rust using tokio
+
+// ═══════════════════════════════════════════════════════════
+// TCP Listener
+// ═══════════════════════════════════════════════════════════
+
+/// Bind to address and create listener
+#[vm]
+fn tcp_bind(addr str) TcpListener
+
+/// Accept a new connection
+#[vm]
+fn tcp_listener_accept(listener TcpListener) TcpStream
+
+/// Get local address
+#[vm]
+fn tcp_listener_local_addr(listener TcpListener) str
+
+/// Close listener
+#[vm]
+fn tcp_listener_close(listener TcpListener) void
+
+// ═══════════════════════════════════════════════════════════
+// TCP Stream
+// ═══════════════════════════════════════════════════════════
+
+/// Read data into buffer
+#[vm]
+fn tcp_stream_read(stream TcpStream, buf []byte) int
+
+/// Write data to stream
+#[vm]
+fn tcp_stream_write(stream TcpStream, data []byte) int
+
+/// Read all data until EOF
+#[vm]
+fn tcp_stream_read_all(stream TcpStream) []byte
+
+/// Read a line
+#[vm]
+fn tcp_stream_read_line(stream TcpStream) str
+
+/// Write a string
+#[vm]
+fn tcp_stream_write_str(stream TcpStream, s str) int
+
+/// Close stream
+#[vm]
+fn tcp_stream_close(stream TcpStream) void
+
+/// Get peer address
+#[vm]
+fn tcp_stream_peer_addr(stream TcpStream) str
+
+/// Set read timeout
+#[vm]
+fn tcp_stream_set_read_timeout(stream TcpStream, ms int) void
+
+/// Set write timeout
+#[vm]
+fn tcp_stream_set_write_timeout(stream TcpStream, ms int) void
+
+// ═══════════════════════════════════════════════════════════
+// TCP Client
+// ═══════════════════════════════════════════════════════════
+
+/// Connect to remote server
+#[vm]
+fn tcp_connect(addr str) TcpStream

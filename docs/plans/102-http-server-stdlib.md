@@ -1,9 +1,11 @@
 # Plan 102: HTTP Server 标准库实现
 
-**Status**: ⏳ Not Started
-**Priority**: P2 (Foundation for Web Backend)
+**Status**: 🔄 Phase 1-4 Complete, Phase 5 Not Started
+**Priority**: P1 (Foundation for Web Backend & a2vue)
 **Owner**: AutoLang Team
 **Created**: 2026-03-01
+**Phase 1-4 Completed**: 2026-03-01
+**Phase 5 Planned**: TBD
 **Related**:
 - [docs/design/http-server-stdlib.md](../design/http-server-stdlib.md) - API 设计文档
 - [docs/design/autovm-task-msg.md](../design/autovm-task-msg.md) - Task/Msg 架构
@@ -718,13 +720,440 @@ stdlib/auto/
 
 ## 9. Status
 
-- [ ] Phase 1.1: async 模块封装
-- [ ] Phase 1.2: log 模块
-- [ ] Phase 1.3: env 模块
-- [ ] Phase 2.1: net 模块 (TCP)
-- [ ] Phase 3.1: json 模块
-- [ ] Phase 3.2: url 模块
-- [ ] Phase 4.1: http 模块
+### Phase 1-4: 标准库实现 ✅ 完成
+
+- [x] Phase 1.1: async 模块封装
+- [x] Phase 1.2: log 模块
+- [x] Phase 1.3: env 模块
+- [x] Phase 2.1: net 模块 (TCP)
+- [x] Phase 3.1: json 模块
+- [x] Phase 3.2: url 模块
+- [x] Phase 4.1: http 模块
+
+### Phase 5: a2vue 双模式支持 ⏳ 未开始
+
+- [ ] Phase 5.1: API 注解解析
+- [ ] Phase 5.2: 双模式编译开关
+- [ ] Phase 5.3: 前端 API 生成
+- [ ] Phase 5.4: 集成测试
+
+**Implementation Notes**:
+
+### FFI Pattern
+- Simple functions use `#[rust_fn]` macro (Log, Json, Url, Http helpers)
+- Handle-based resources use manual shims (Net TCP, HTTP Response)
+- See CLAUDE.md for the `#[rust_fn]` macro guideline
+
+### Native ID Ranges
+| Range | Module | Functions |
+|-------|--------|-----------|
+| 1000-1099 | File | 10 |
+| 1100-1199 | Env | 3 |
+| 1200-1299 | Time | 3 |
+| 1300-1399 | Process | 5 |
+| 1400-1499 | Path | 5 |
+| 1500-1599 | String | 10 |
+| 1600-1699 | Char | 7 |
+| 1700-1799 | Math | 4 |
+| 1800-1899 | Log | 4 |
+| 1900-1999 | JSON | 18 |
+| 2000-2099 | URL | 16 |
+| 2100-2199 | Net (TCP) | 14 |
+| 2200-2299 | HTTP | 24 |
+
+### Files Created
+| Module | Auto API | VM Declaration |
+|--------|----------|----------------|
+| async | stdlib/auto/async.at | stdlib/auto/async.vm.at |
+| log | stdlib/auto/log.at | stdlib/auto/log.vm.at |
+| env | stdlib/auto/env.at | (uses Process FFI) |
+| net | stdlib/auto/net.at | stdlib/auto/net.vm.at |
+| json | stdlib/auto/json.at | stdlib/auto/json.vm.at |
+| url | stdlib/auto/url.at | stdlib/auto/url.vm.at |
+| http | stdlib/auto/http.at | stdlib/auto/http.vm.at |
+
+### Technical Details
+- **TCP**: Uses `std::net` with thread-local handle registry (`TCP_LISTENERS`, `TCP_STREAMS`)
+- **HTTP Client**: Simple blocking implementation, parses URL manually
+- **HTTP Server**: Placeholder (route handlers need callback support)
+- **HTTP Response**: Thread-local `HTTP_RESPONSES` registry with handle-based access
+
+### Future Work
+- [ ] HTTP Server route matching (needs VM callback support)
+- [ ] JSON generic decode (`decode<T>`)
+- [ ] URL query Map handling
+- [ ] HTTPS support
+
+---
+
+## Phase 5: a2vue 双模式支持 (Tauri + Web)
+
+**Goal**: 基于 Phase 1-4 的标准库，实现 a2vue 的 Tauri 模式和 Web 模式统一支持
+
+**Status**: [ ] 未开始
+**Priority**: P1 (a2vue 核心能力)
+**Dependency**: Phase 1-4 (已完成)
+
+### 5.1 API 注解解析
+
+**Goal**: 识别 `#[api]` 注解，自动生成后端路由代码
+
+#### Auto API 定义示例
+
+```auto
+// api/user.at
+
+/// 用户信息
+type User = {
+    id: int
+    name: str
+    email: str
+}
+
+/// 获取用户信息
+#[api]
+fn get_user(id int) User {
+    db.find_user(id)
+}
+
+/// 保存文件
+#[api]
+fn save_file(path str, content str) void {
+    fs.write(path, content)
+}
+
+/// 获取文件列表
+#[api(method = "GET", path = "/files")
+fn list_files(dir str) List<str> {
+    fs.list_dir(dir)
+}
+```
+
+#### API 注解属性
+
+| 属性 | 说明 | 示例 |
+|-----|------|------|
+| `method` | HTTP 方法 | `#[api(method = "POST")]` |
+| `path` | 自定义路径 | `#[api(path = "/users/:id")]` |
+| `name` | 自定义函数名 | `#[api(name = "getUserById")]` |
+| `auth` | 需要认证 | `#[api(auth = true)]` |
+| `cache` | 缓存时间(秒) | `#[api(cache = 60)]` |
+
+#### 编译器扩展
+
+```
+crates/auto-lang/src/api/
+├── mod.rs              # API 编译器入口
+├── parser.rs           # 解析 #[api] 注解
+├── types.rs            # API 类型定义
+└── targets/
+    ├── mod.rs          # Target trait
+    ├── tauri.rs        # Tauri 命令生成
+    ├── axum.rs         # Axum 路由生成
+    └── typescript.rs   # TypeScript 类型生成
+```
+
+**状态**: [ ] 未开始
+
+---
+
+### 5.2 双模式编译开关
+
+**Goal**: 支持 `--target tauri` 和 `--target web` 编译选项
+
+#### CLI 设计
+
+```bash
+# Tauri 模式（单机应用）
+auto build --target tauri --out ./src-tauri/src/api
+
+# Web 模式（HTTP Server）
+auto build --target web --out ./server/src/api
+
+# 同时生成两种模式
+auto build --target all --out ./generated
+```
+
+#### 生成的文件结构
+
+**Tauri 模式** (`--target tauri`):
+```
+generated/tauri/
+├── commands.rs         # #[tauri::command] 函数
+├── types.rs            # Rust 类型定义
+└── mod.rs              # 命令注册
+```
+
+```rust
+// commands.rs (自动生成)
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct User {
+    pub id: i32,
+    pub name: String,
+    pub email: String,
+}
+
+#[tauri::command]
+pub fn get_user(id: i32) -> User {
+    api::get_user(id)
+}
+
+#[tauri::command]
+pub fn save_file(path: String, content: String) {
+    api::save_file(&path, &content)
+}
+
+// 注册函数
+pub fn register_handlers(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
+    builder.invoke_handler(tauri::generate_handler![
+        get_user,
+        save_file,
+        list_files
+    ])
+}
+```
+
+**Web 模式** (`--target web`):
+```
+generated/web/
+├── routes.rs           # axum 路由定义
+├── handlers.rs         # 异步处理函数
+├── types.rs            # Rust 类型定义
+└── mod.rs              # 路由注册
+```
+
+```rust
+// routes.rs (自动生成)
+use axum::{
+    Router, routing::{get, post},
+    extract::{Path, Query, Json},
+    response::{Json as JsonResponse},
+};
+
+pub fn api_routes() -> Router {
+    Router::new()
+        .route("/users/:id", get(get_user_handler))
+        .route("/files", post(save_file_handler))
+        .route("/files", get(list_files_handler))
+}
+
+async fn get_user_handler(Path(id): Path<i32>) -> JsonResponse<User> {
+    JsonResponse(api::get_user(id))
+}
+
+async fn save_file_handler(Json(payload): Json<SaveFileRequest>) {
+    api::save_file(&payload.path, &payload.content);
+}
+```
+
+**状态**: [ ] 未开始
+
+---
+
+### 5.3 前端 API 生成
+
+**Goal**: 自动生成 TypeScript API 层，支持 Tauri IPC 和 HTTP 两种通讯方式
+
+#### 生成文件结构
+
+```
+generated/frontend/
+├── types.ts            # TypeScript 类型定义
+├── api-interface.ts    # API 接口定义
+├── api-tauri.ts        # Tauri IPC 实现
+├── api-http.ts         # HTTP 实现
+└── api.ts              # 自动选择实现
+```
+
+#### types.ts (类型定义)
+
+```typescript
+// 自动生成
+export interface User {
+    id: number;
+    name: string;
+    email: string;
+}
+
+export interface SaveFileRequest {
+    path: string;
+    content: string;
+}
+```
+
+#### api-interface.ts (接口定义)
+
+```typescript
+// 自动生成
+import type { User } from './types';
+
+export interface IApi {
+    getUser(id: number): Promise<User>;
+    saveFile(path: string, content: string): Promise<void>;
+    listFiles(dir: string): Promise<string[]>;
+}
+```
+
+#### api-tauri.ts (Tauri IPC 实现)
+
+```typescript
+// 自动生成
+import { invoke } from '@tauri-apps/api/tauri';
+import type { IApi, User } from './types';
+
+export const tauriApi: IApi = {
+    getUser: (id) => invoke<User>('get_user', { id }),
+    saveFile: (path, content) => invoke<void>('save_file', { path, content }),
+    listFiles: (dir) => invoke<string[]>('list_files', { dir }),
+};
+```
+
+#### api-http.ts (HTTP 实现)
+
+```typescript
+// 自动生成
+import axios from 'axios';
+import type { IApi, User } from './types';
+
+const BASE_URL = '/api';
+
+export const httpApi: IApi = {
+    getUser: async (id) => {
+        const res = await axios.get<User>(`${BASE_URL}/users/${id}`);
+        return res.data;
+    },
+    saveFile: async (path, content) => {
+        await axios.post(`${BASE_URL}/files`, { path, content });
+    },
+    listFiles: async (dir) => {
+        const res = await axios.get<string[]>(`${BASE_URL}/files`, { params: { dir } });
+        return res.data;
+    },
+};
+```
+
+#### api.ts (自动选择)
+
+```typescript
+// 自动生成
+import { tauriApi } from './api-tauri';
+import { httpApi } from './api-http';
+import type { IApi } from './api-interface';
+
+// 自动检测运行环境
+const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+
+// 导出适配的 API
+export const api: IApi = isTauri ? tauriApi : httpApi;
+
+// 也可以显式导入
+export { tauriApi, httpApi };
+export type { IApi };
+```
+
+#### Vue 组件使用示例
+
+```vue
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { api } from '@/api'
+
+const user = ref<User | null>(null)
+
+onMounted(async () => {
+    // 自动使用正确的通讯方式
+    // Tauri 模式: invoke('get_user', { id: 1 })
+    // Web 模式: fetch('/api/users/1')
+    user.value = await api.getUser(1)
+})
+</script>
+```
+
+**状态**: [ ] 未开始
+
+---
+
+### 5.4 架构总览
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Auto 后端代码（只写一份）                      │
+│                                                                 │
+│  #[api]                                                         │
+│  fn get_user(id int) User { ... }                              │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    编译器 (auto build --target)                  │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              后端生成 (Rust)                             │   │
+│  │                                                         │   │
+│  │  --target tauri          --target web                   │   │
+│  │  ┌──────────────┐        ┌──────────────┐              │   │
+│  │  │ #[tauri::    │        │ axum Router  │              │   │
+│  │  │  command]    │        │              │              │   │
+│  │  │ fn get_user  │        │ GET /users/  │              │   │
+│  │  └──────────────┘        └──────────────┘              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              前端生成 (TypeScript)                       │   │
+│  │                                                         │   │
+│  │  types.ts  →  类型定义                                  │   │
+│  │  api-interface.ts  →  IApi 接口                         │   │
+│  │  api-tauri.ts  →  Tauri IPC 实现                        │   │
+│  │  api-http.ts  →  HTTP 实现                              │   │
+│  │  api.ts  →  自动选择                                    │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+         ┌────────────────────┴────────────────────┐
+         │                                         │
+         ▼                                         ▼
+┌─────────────────────┐                  ┌─────────────────────┐
+│  Tauri 单机应用      │                  │  Web 应用            │
+│                     │                  │                     │
+│  WebView (Vue)      │                  │  Browser (Vue)      │
+│      │              │                  │      │              │
+│      │ IPC          │                  │      │ HTTP         │
+│      ▼              │                  │      ▼              │
+│  Rust Backend       │                  │  Rust Server        │
+│  (tauri command)    │                  │  (axum routes)      │
+│                     │                  │                     │
+└─────────────────────┘                  └─────────────────────┘
+```
+
+---
+
+### 5.5 Phase 5 实施时间线
+
+| 任务 | 预估工时 | 优先级 |
+|-----|---------|--------|
+| 5.1 API 注解解析 | 2-3 天 | P1 |
+| 5.2 双模式编译开关 | 1-2 天 | P1 |
+| 5.3 前端 API 生成 | 2-3 天 | P1 |
+| 5.4 集成测试 | 1-2 天 | P1 |
+
+**Total**: 6-10 天
+
+---
+
+### 5.6 Phase 5 验证标准
+
+- [ ] `#[api]` 注解能被正确解析
+- [ ] Tauri 模式生成 `#[tauri::command]` 代码
+- [ ] Web 模式生成 axum 路由代码
+- [ ] TypeScript 类型正确生成
+- [ ] `api.ts` 能自动检测环境
+- [ ] Tauri 应用能通过 IPC 调用后端
+- [ ] Web 应用能通过 HTTP 调用后端
+- [ ] 同一份 Vue 代码在两种模式下都能工作
 
 ---
 

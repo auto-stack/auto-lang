@@ -530,6 +530,43 @@ When working on complex features or refactoring tasks that require planning:
 3. Run `auto.exe c your_file.at` to regenerate C code
 4. The transpiler will create/update the corresponding `.c` and `.h` files
 
+### ⚠️ CRITICAL: Use `#[rust_fn]` Macro for Stdlib FFI
+
+**When implementing VM FFI functions in `crates/auto-lang/src/vm/ffi/stdlib.rs`, use the `#[rust_fn]` macro instead of manual shims whenever possible.**
+
+**Example:**
+
+```rust
+// ✅ PREFERRED: Use macro (cleaner, less error-prone)
+#[auto_macros::rust_fn("Log.debug")]
+pub fn shim_log_debug(msg: String) {
+    println!("[DEBUG] {}", msg);
+}
+
+// ❌ AVOID: Manual shim (verbose, error-prone)
+pub fn shim_log_debug(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let msg: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    println!("[DEBUG] {}", msg);
+    Ok(())
+}
+```
+
+**When to use each approach:**
+
+| Approach | Use Case | Examples |
+|----------|----------|----------|
+| **`#[rust_fn]` macro** | Simple typed args/returns | Log, Url, File, Env, Str, Char, Json |
+| **Manual shim** | Variadic args, task/vm access, direct stack ops | `Path.join` (variadic), Math (i64/f64 ops), Async (needs task) |
+
+**Registration:**
+```rust
+// Macro generates __shim_Module_function name
+natives.register_static(NATIVE_LOG_DEBUG, __shim_Log_debug);
+```
+
+**Why:** The macro reduces boilerplate, prevents stack manipulation errors, and makes the code easier to read and maintain.
+
 ### Commit Message Guidelines
 
 **Keep commit messages concise and focused.**

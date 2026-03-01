@@ -44,3 +44,4 @@ test*.pdb
 # Temp files with encoding issues
 tmp/*.at
 
+examples/**/dist/*
