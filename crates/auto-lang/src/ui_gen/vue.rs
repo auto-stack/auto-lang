@@ -256,6 +256,128 @@ impl ShadcnRegistry {
         components.insert("breadcrumb_page",
             ("@/components/ui/breadcrumb", vec!["BreadcrumbPage"]));
 
+        // === Data Display: Accordion ===
+        components.insert("accordion",
+            ("@/components/ui/accordion", vec!["Accordion", "AccordionItem", "AccordionTrigger", "AccordionContent"]));
+        components.insert("accordion_item",
+            ("@/components/ui/accordion", vec!["AccordionItem"]));
+        components.insert("accordion_trigger",
+            ("@/components/ui/accordion", vec!["AccordionTrigger"]));
+        components.insert("accordion_content",
+            ("@/components/ui/accordion", vec!["AccordionContent"]));
+
+        // === Overlay: Alert Dialog ===
+        components.insert("alert_dialog",
+            ("@/components/ui/alert-dialog", vec!["AlertDialog", "AlertDialogTrigger", "AlertDialogContent", "AlertDialogHeader", "AlertDialogFooter", "AlertDialogTitle", "AlertDialogDescription", "AlertDialogAction", "AlertDialogCancel"]));
+        components.insert("alert_dialog_trigger",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogTrigger"]));
+        components.insert("alert_dialog_content",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogContent"]));
+        components.insert("alert_dialog_header",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogHeader"]));
+        components.insert("alert_dialog_footer",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogFooter"]));
+        components.insert("alert_dialog_title",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogTitle"]));
+        components.insert("alert_dialog_description",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogDescription"]));
+        components.insert("alert_dialog_action",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogAction"]));
+        components.insert("alert_dialog_cancel",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogCancel"]));
+
+        // === Overlay: Command (Command Palette) ===
+        components.insert("command",
+            ("@/components/ui/command", vec!["Command", "CommandInput", "CommandList", "CommandEmpty", "CommandGroup", "CommandItem", "CommandShortcut", "CommandSeparator"]));
+        components.insert("command_input",
+            ("@/components/ui/command", vec!["CommandInput"]));
+        components.insert("command_list",
+            ("@/components/ui/command", vec!["CommandList"]));
+        components.insert("command_empty",
+            ("@/components/ui/command", vec!["CommandEmpty"]));
+        components.insert("command_group",
+            ("@/components/ui/command", vec!["CommandGroup"]));
+        components.insert("command_item",
+            ("@/components/ui/command", vec!["CommandItem"]));
+        components.insert("command_shortcut",
+            ("@/components/ui/command", vec!["CommandShortcut"]));
+        components.insert("command_separator",
+            ("@/components/ui/command", vec!["CommandSeparator"]));
+
+        // === Form: Form ===
+        components.insert("form",
+            ("@/components/ui/form", vec!["Form", "FormField", "FormItem", "FormLabel", "FormControl", "FormDescription", "FormMessage"]));
+        components.insert("form_field",
+            ("@/components/ui/form", vec!["FormField"]));
+        components.insert("form_item",
+            ("@/components/ui/form", vec!["FormItem"]));
+        components.insert("form_label",
+            ("@/components/ui/form", vec!["FormLabel"]));
+        components.insert("form_control",
+            ("@/components/ui/form", vec!["FormControl"]));
+        components.insert("form_description",
+            ("@/components/ui/form", vec!["FormDescription"]));
+        components.insert("form_message",
+            ("@/components/ui/form", vec!["FormMessage"]));
+
+        // === Navigation: Navigation Menu ===
+        components.insert("nav_menu",
+            ("@/components/ui/navigation-menu", vec!["NavigationMenu", "NavigationMenuList", "NavigationMenuItem", "NavigationMenuLink", "NavigationMenuContent", "NavigationMenuTrigger", "NavigationMenuIndicator"]));
+        components.insert("nav_menu_list",
+            ("@/components/ui/navigation-menu", vec!["NavigationMenuList"]));
+        components.insert("nav_menu_item",
+            ("@/components/ui/navigation-menu", vec!["NavigationMenuItem"]));
+        components.insert("nav_menu_link",
+            ("@/components/ui/navigation-menu", vec!["NavigationMenuLink"]));
+        components.insert("nav_menu_content",
+            ("@/components/ui/navigation-menu", vec!["NavigationMenuContent"]));
+        components.insert("nav_menu_trigger",
+            ("@/components/ui/navigation-menu", vec!["NavigationMenuTrigger"]));
+        components.insert("nav_menu_indicator",
+            ("@/components/ui/navigation-menu", vec!["NavigationMenuIndicator"]));
+
+        // === Navigation: Sidebar ===
+        components.insert("sidebar",
+            ("@/components/ui/sidebar", vec!["Sidebar", "SidebarHeader", "SidebarContent", "SidebarFooter", "SidebarGroup", "SidebarGroupLabel", "SidebarGroupContent", "SidebarGroupAction", "SidebarMenu", "SidebarMenuItem", "SidebarMenuButton", "SidebarMenuAction", "SidebarMenuBadge", "SidebarMenuSub", "SidebarMenuSubItem", "SidebarMenuSubButton", "SidebarRail", "SidebarSeparator", "SidebarTrigger", "SidebarInset", "SidebarProvider"]));
+        components.insert("sidebar_header",
+            ("@/components/ui/sidebar", vec!["SidebarHeader"]));
+        components.insert("sidebar_content",
+            ("@/components/ui/sidebar", vec!["SidebarContent"]));
+        components.insert("sidebar_footer",
+            ("@/components/ui/sidebar", vec!["SidebarFooter"]));
+        components.insert("sidebar_group",
+            ("@/components/ui/sidebar", vec!["SidebarGroup"]));
+        components.insert("sidebar_group_label",
+            ("@/components/ui/sidebar", vec!["SidebarGroupLabel"]));
+        components.insert("sidebar_group_content",
+            ("@/components/ui/sidebar", vec!["SidebarGroupContent"]));
+        components.insert("sidebar_menu",
+            ("@/components/ui/sidebar", vec!["SidebarMenu"]));
+        components.insert("sidebar_menu_item",
+            ("@/components/ui/sidebar", vec!["SidebarMenuItem"]));
+        components.insert("sidebar_menu_button",
+            ("@/components/ui/sidebar", vec!["SidebarMenuButton"]));
+        components.insert("sidebar_trigger",
+            ("@/components/ui/sidebar", vec!["SidebarTrigger"]));
+        components.insert("sidebar_provider",
+            ("@/components/ui/sidebar", vec!["SidebarProvider"]));
+
+        // === Navigation: Stepper ===
+        components.insert("stepper",
+            ("@/components/ui/stepper", vec!["Stepper", "StepperItem", "StepperTrigger", "StepperIndicator", "StepperTitle", "StepperDescription", "StepperSeparator"]));
+        components.insert("stepper_item",
+            ("@/components/ui/stepper", vec!["StepperItem"]));
+        components.insert("stepper_trigger",
+            ("@/components/ui/stepper", vec!["StepperTrigger"]));
+        components.insert("stepper_indicator",
+            ("@/components/ui/stepper", vec!["StepperIndicator"]));
+        components.insert("stepper_title",
+            ("@/components/ui/stepper", vec!["StepperTitle"]));
+        components.insert("stepper_description",
+            ("@/components/ui/stepper", vec!["StepperDescription"]));
+        components.insert("stepper_separator",
+            ("@/components/ui/stepper", vec!["StepperSeparator"]));
+
         Self { components }
     }
 
@@ -1885,6 +2007,489 @@ impl VueGenerator {
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
                 }
+            }
+
+            // ========================================
+            // Phase 9: High Priority Components
+            // ========================================
+
+            // === Accordion ===
+            "accordion" => {
+                // type: single, multiple
+                if let Some(value) = props.get("type") {
+                    let type_val = self.extract_string_value(value).unwrap_or("single");
+                    attrs.push(format!("type=\"{}\"", type_val));
+                }
+                // collapsible (for single type)
+                if let Some(value) = props.get("collapsible") {
+                    if self.extract_bool_value(value) {
+                        attrs.push(":collapsible=\"true\"".to_string());
+                    }
+                }
+                // default-value for initially expanded item
+                if let Some(value) = props.get("default") {
+                    let default = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("default-value=\"{}\"", default));
+                }
+            }
+
+            "accordion_item" => {
+                // value (required)
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+            }
+
+            "accordion_trigger" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "accordion_content" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Alert Dialog ===
+            "alert_dialog" => {
+                // v-model:open for dialog state
+                if let Some(value) = props.get("open") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+            }
+
+            "alert_dialog_trigger" => {
+                // as-child for custom trigger
+                if let Some(value) = props.get("as_child") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("as-child".to_string());
+                    }
+                }
+            }
+
+            "alert_dialog_content" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "alert_dialog_header" | "alert_dialog_footer" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "alert_dialog_title" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "alert_dialog_description" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "alert_dialog_action" | "alert_dialog_cancel" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // onclick event
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            // === Command (Command Palette) ===
+            "command" => {
+                // v-model for search query
+                if let Some(value) = props.get("query") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:search-term=\"{}\"", model));
+                    }
+                }
+                // placeholder
+                if let Some(value) = props.get("placeholder") {
+                    let placeholder = self.extract_string_value(value).unwrap_or("Type a command or search...");
+                    attrs.push(format!("placeholder=\"{}\"", placeholder));
+                }
+            }
+
+            "command_input" => {
+                // placeholder
+                if let Some(value) = props.get("placeholder") {
+                    let placeholder = self.extract_string_value(value).unwrap_or("Type a command...");
+                    attrs.push(format!("placeholder=\"{}\"", placeholder));
+                }
+            }
+
+            "command_list" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "command_empty" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "command_group" => {
+                // heading
+                if let Some(value) = props.get("heading") {
+                    let heading = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("heading=\"{}\"", heading));
+                }
+            }
+
+            "command_item" => {
+                // value
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // onclick for selection
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            "command_shortcut" => {
+                // text becomes slot content (e.g., "⌘K")
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "command_separator" => {
+                // No special attributes
+            }
+
+            // === Form ===
+            "form" => {
+                // id for form identification
+                if let Some(value) = props.get("id") {
+                    let id = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("id=\"{}\"", id));
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+                // onsubmit event
+                if events.contains_key("onsubmit") {
+                    // Handled by event handlers below
+                }
+            }
+
+            "form_field" => {
+                // name (required)
+                if let Some(value) = props.get("name") {
+                    let name = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("name=\"{}\"", name));
+                }
+                // v-model for value
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+            }
+
+            "form_item" | "form_control" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "form_label" => {
+                // for (htmlFor)
+                if let Some(value) = props.get("for") {
+                    let for_val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("for=\"{}\"", for_val));
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "form_description" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "form_message" => {
+                // Error message (auto-bound to form validation)
+            }
+
+            // === Navigation Menu ===
+            "nav_menu" => {
+                // orientation: horizontal, vertical
+                if let Some(value) = props.get("orientation") {
+                    let orientation = self.extract_string_value(value).unwrap_or("horizontal");
+                    attrs.push(format!("orientation=\"{}\"", orientation));
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "nav_menu_list" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "nav_menu_item" => {
+                // value
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+            }
+
+            "nav_menu_link" => {
+                // href
+                if let Some(value) = props.get("href") {
+                    let href = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("href=\"{}\"", href));
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // onclick
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            "nav_menu_trigger" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "nav_menu_content" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "nav_menu_indicator" => {
+                // No special attributes
+            }
+
+            // === Sidebar ===
+            "sidebar" => {
+                // side: left, right
+                if let Some(value) = props.get("side") {
+                    let side = self.extract_string_value(value).unwrap_or("left");
+                    attrs.push(format!("side=\"{}\"", side));
+                }
+                // variant: sidebar, floating, inset
+                if let Some(value) = props.get("variant") {
+                    let variant = self.extract_string_value(value).unwrap_or("sidebar");
+                    attrs.push(format!("variant=\"{}\"", variant));
+                }
+                // collapsible: offcanvas, icon, none
+                if let Some(value) = props.get("collapsible") {
+                    let collapsible = self.extract_string_value(value).unwrap_or("offcanvas");
+                    attrs.push(format!("collapsible=\"{}\"", collapsible));
+                }
+            }
+
+            "sidebar_header" | "sidebar_footer" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "sidebar_content" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "sidebar_group" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "sidebar_group_label" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "sidebar_group_content" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "sidebar_menu" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "sidebar_menu_item" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "sidebar_menu_button" => {
+                // tooltip
+                if let Some(value) = props.get("tooltip") {
+                    let tooltip = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("tooltip=\"{}\"", tooltip));
+                }
+                // isActive
+                if let Some(value) = props.get("active") {
+                    if self.extract_bool_value(value) {
+                        attrs.push(":is-active=\"true\"".to_string());
+                    }
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // onclick
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            "sidebar_trigger" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "sidebar_provider" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === Stepper ===
+            "stepper" => {
+                // v-model for current step
+                if let Some(value) = props.get("value") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model=\"{}\"", model));
+                    }
+                }
+                // orientation: horizontal, vertical
+                if let Some(value) = props.get("orientation") {
+                    let orientation = self.extract_string_value(value).unwrap_or("horizontal");
+                    attrs.push(format!("orientation=\"{}\"", orientation));
+                }
+            }
+
+            "stepper_item" => {
+                // step (required)
+                if let Some(value) = props.get("step") {
+                    if let Some(step) = self.extract_int_value(value) {
+                        attrs.push(format!(":step=\"{}\"", step));
+                    }
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+            }
+
+            "stepper_trigger" => {
+                // onclick for step navigation
+                if events.contains_key("onclick") {
+                    // Handled by event handlers below
+                }
+            }
+
+            "stepper_indicator" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "stepper_title" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "stepper_description" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "stepper_separator" => {
+                // No special attributes
             }
 
             _ => {
