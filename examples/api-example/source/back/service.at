@@ -1,0 +1,61 @@
+// source/back/service.at - Service Layer
+// Common service utilities for backend modules
+
+// ═══════════════════════════════════════════════════════════
+// Logging
+// ═══════════════════════════════════════════════════════════
+
+/// Log info message
+pub fn log_info(msg str) void {
+    use log
+    log.info(msg)
+}
+
+/// Log error message
+pub fn log_error(msg str) void {
+    use log
+    log.error(msg)
+}
+
+// ═══════════════════════════════════════════════════════════
+// Validation
+// ═══════════════════════════════════════════════════════════
+
+/// Validate email format
+pub fn validate_email(email str) bool {
+    return email.contains("@") && email.contains(".")
+}
+
+/// Validate user name
+pub fn validate_name(name str) bool {
+    return name.length() >= 2 && name.length() <= 100
+}
+
+// ═══════════════════════════════════════════════════════════
+// Response Helpers
+// ═══════════════════════════════════════════════════════════
+
+/// Create success response
+pub fn ok<T>(data T) Response<T> {
+    return Response<T> {
+        success: true,
+        data: data,
+        error: "",
+    }
+}
+
+/// Create error response
+pub fn err<T>(message str) Response<T> {
+    return Response<T> {
+        success: false,
+        data: null,
+        error: message,
+    }
+}
+
+/// Generic response type
+pub type Response<T> = {
+    success: bool
+    data: T?
+    error: str
+}

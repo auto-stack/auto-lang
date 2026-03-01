@@ -285,10 +285,10 @@ enum Commands {
         watch: bool,
     },
 
-    #[command(about = "Generate a complete Vue + shadcn-vue project from AURA file")]
+    #[command(about = "Generate a complete Vue + shadcn-vue project from AURA file or workspace")]
     Vue {
-        /// Input AURA file (.at)
-        path: String,
+        /// Input AURA file (.at) - optional if pac.at exists in current directory
+        path: Option<String>,
 
         /// Output directory
         #[arg(short, long)]
@@ -558,7 +558,7 @@ fn main() -> Result<()> {
 
         Some(Commands::Vue { path, output, name, no_install, yes }) => {
             cmd_vue::generate_vue_project(
-                &path,
+                path.as_deref(),
                 output.as_deref(),
                 name.as_deref(),
                 no_install,

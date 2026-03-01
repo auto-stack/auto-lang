@@ -1,0 +1,77 @@
+// source/back/db.at - Database Service
+// Backend module for database operations
+
+use service
+
+// ═══════════════════════════════════════════════════════════
+// In-memory storage (for demo)
+// In production, this would use a real database
+// ═══════════════════════════════════════════════════════════
+
+// Global state (simulated database)
+let mut users: List<User> = [
+    User { id: 1, name: "Alice", email: "alice@example.com" },
+    User { id: 2, name: "Bob", email: "bob@example.com" },
+    User { id: 3, name: "Charlie", email: "charlie@example.com" },
+]
+
+let mut nextid: int = 4
+
+// ═══════════════════════════════════════════════════════════
+// Database Operations
+// ═══════════════════════════════════════════════════════════
+
+/// Find user by ID
+pub fn find_user(id int) User? {
+    for user in users {
+        if user.id == id {
+            return user
+        }
+    }
+    return null
+}
+
+/// Get all users
+pub fn all_users() []User {
+    return users.to_array()
+}
+
+/// Create a new user
+pub fn create_user(name str, email str) User {
+    let user = User {
+        id: nextid,
+        name: name,
+        email: email,
+    }
+    nextid = nextid + 1
+    users.push(user)
+    return user
+}
+
+/// Delete a user by ID
+pub fn delete_user(id int) bool {
+    let mut removed = false
+    users = users.filter(fn(u User) bool {
+        if u.id == id {
+            removed = true
+            return false
+        }
+        return true
+    })
+    return removed
+}
+
+/// Search users by name or email
+pub fn search_users(query str) []User {
+    let query_lower = query.to_lower()
+    let results: List<User> = []
+
+    for user in users {
+        if user.name.to_lower().contains(query_lower) ||
+           user.email.to_lower().contains(query_lower) {
+            results.push(user)
+        }
+    }
+
+    return results.to_array()
+}

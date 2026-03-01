@@ -1,0 +1,41 @@
+// source/front/pac.at - Frontend Package Config
+// AURA package for UI components
+
+name: "api-example-ui"
+version: "1.0.0"
+description: "API Demo Frontend"
+
+// IMPORTANT: This marks the package as an AURA UI package
+// When scenario is "ui", the compiler treats .at files as AURA components
+scenario: "ui"
+
+// Entry point
+entry: "app.at"
+
+// API import path (relative to workspace root)
+api: "../back/api.at"
+
+// Dependencies
+deps: {
+    vue: "^3.4.0"
+    "@tauri-apps/api": "^2.0.0"
+}
+
+// Dev dependencies
+devDeps: {
+    vite: "^5.0.0"
+    "@vitejs/plugin-vue": "^5.0.0"
+    typescript: "^5.0.0"
+}
+
+// UI framework (optional, for shadcn-vue integration)
+ui: {
+    framework: "shadcn-vue"
+    components: ["button", "input", "card", "table"]
+}
+
+// Output settings
+output: {
+    dir: "./dist"
+    sourceMap: true
+}

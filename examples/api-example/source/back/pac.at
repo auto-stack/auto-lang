@@ -1,0 +1,31 @@
+// source/back/pac.at - Backend Package Config
+// Auto package for Rust backend
+
+name: "api-example-api"
+version: "1.0.0"
+description: "API Demo Backend"
+
+// Entry point
+entry: "api.at"
+
+// Dependencies
+deps: {
+    serde: { version: "1.0", features: ["derive"] }
+    serde_json: "1.0"
+    tokio: { version: "1.0", features: ["full"] }
+    axum: "0.7"
+    tower: "0.4"
+    tower-http: { version: "0.5", features: ["cors"] }
+}
+
+// Build settings
+build: {
+    target: "x86_64-unknown-linux-gnu"
+    release: false
+}
+
+// Server settings
+server: {
+    host: "0.0.0.0"
+    port: 3000
+}

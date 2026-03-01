@@ -1,0 +1,71 @@
+// source/back/api.at - Backend API Interface
+// This defines the API that the frontend can call
+// One source, dual deployment: Tauri (IPC) or Web (HTTP)
+
+// ═══════════════════════════════════════════════════════════
+// Types (shared between frontend and backend)
+// ═══════════════════════════════════════════════════════════
+
+/// User information
+pub type User = {
+    id: int
+    name: str
+    email: str
+}
+
+/// Create user request
+pub type CreateUserRequest = {
+    name: str
+    email: str
+}
+
+// ═══════════════════════════════════════════════════════════
+// API Endpoints - Use #[api] annotation to mark
+// ═══════════════════════════════════════════════════════════
+
+/// Get user by ID
+/// GET /api/users/:id
+#[api(method = "GET", path = "/api/users/:id")]
+pub fn getuser(id int) User? {
+    use db
+
+    let user = db.find_user(id)
+    return user
+}
+
+/// List all users
+/// GET /api/users
+#[api(method = "GET", path = "/api/users")]
+pub fn listusers() []User {
+    use db
+
+    return db.all_users()
+}
+
+/// Create a new user
+/// POST /api/users
+#[api(method = "POST", path = "/api/users")]
+pub fn createuser(req CreateUserRequest) User {
+    use db
+
+    let user = db.create_user(req.name, req.email)
+    return user
+}
+
+/// Delete a user
+/// DELETE /api/users/:id
+#[api(method = "DELETE", path = "/api/users/:id")]
+pub fn deleteuser(id int) bool {
+    use db
+
+    return db.delete_user(id)
+}
+
+/// Search users
+/// GET /api/users/search?query=xxx
+#[api(method = "GET", path = "/api/users/search")]
+pub fn searchusers(query str) []User {
+    use db
+
+    return db.search_users(query)
+}

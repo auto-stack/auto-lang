@@ -3,13 +3,15 @@
 //! Usage:
 //!   auto vue input.at -o ./my-app
 //!   auto vue input.at -o ./my-app --name MyApp
+//!   auto vue                          # If pac.at exists in current directory
 //!
 //! This command:
-//! 1. Parses the AURA file
-//! 2. Detects required shadcn-vue components
-//! 3. Generates a complete Vite + Vue + TypeScript project
-//! 4. Runs npm install
-//! 5. Runs npx shadcn-vue add to add components
+//! 1. Checks for pac.at in current directory (workspace mode)
+//! 2. If pac.at exists: compiles source/front and source/back
+//! 3. If no pac.at: transpiles single .at file (legacy mode)
+//! 4. Generates a complete Vite + Vue + TypeScript project
+//! 5. Runs npm install
+//! 6. Runs npx shadcn-vue add to add components
 
 use std::collections::HashSet;
 use std::fs;
@@ -65,8 +67,297 @@ fn run_command_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), String> 
     }
 }
 
-/// Generate Vue project from AURA file
+/// Check if pac.at exists in the current directory
+fn find_pac_at() -> Option<std::path::PathBuf> {
+    let pac_path = Path::new("pac.at");
+    if pac_path.exists() {
+        Some(pac_path.to_path_buf())
+    } else {
+        None
+    }
+}
+
+/// Generate Vue project from workspace (pac.at mode)
+fn generate_workspace_project(
+    pac_path: &Path,
+    output_dir: Option<&str>,
+    no_install: bool,
+    yes: bool,
+) -> Result<(), String> {
+    println!("{}", "─────────────────────────────────".bright_yellow().bold());
+    println!("{}", "  AURA Workspace → Vue + shadcn-vue".bright_yellow().bold());
+    println!("{}", "─────────────────────────────────".bright_yellow().bold());
+    println!();
+
+    // Read pac.at to get workspace structure
+    let pac_content = fs::read_to_string(pac_path)
+        .map_err(|e| format!("Failed to read pac.at: {}", e))?;
+
+    // Parse workspace paths from pac.at
+    let front_path = parse_workspace_path(&pac_content, "front")
+        .unwrap_or_else(|| "source/front".to_string());
+    let back_path = parse_workspace_path(&pac_content, "back")
+        .unwrap_or_else(|| "source/back".to_string());
+
+    println!("{} {}", "Workspace:".bright_cyan(), pac_path.display());
+    println!("{} {}", "Front:".bright_cyan(), front_path);
+    println!("{} {}", "Back:".bright_cyan(), back_path);
+    println!();
+
+    // Check if front directory exists
+    let front_dir = Path::new(&front_path);
+    if !front_dir.exists() {
+        return Err(format!("Front directory '{}' not found", front_path));
+    }
+
+    // Find app.at in front directory
+    let app_at = front_dir.join("app.at");
+    if !app_at.exists() {
+        return Err(format!("Entry file '{}' not found", app_at.display()));
+    }
+
+    // Get project name from pac.at
+    let project_name = parse_pac_name(&pac_content)
+        .unwrap_or_else(|| "aura-app".to_string());
+
+    // Determine output directory
+    let output = output_dir.unwrap_or("dist");
+    let output_path = Path::new(output);
+
+    println!("{} {}", "Output:".bright_cyan(), output);
+    println!("{} {}", "Name:".bright_cyan(), project_name);
+    println!();
+
+    // Create output directory
+    fs::create_dir_all(output_path)
+        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+
+    // Create src directory structure
+    let src_dir = output_path.join("src");
+    let components_dir = src_dir.join("components");
+    let lib_dir = src_dir.join("lib");
+    let assets_dir = src_dir.join("assets");
+
+    fs::create_dir_all(&components_dir)
+        .map_err(|e| format!("Failed to create src/components: {}", e))?;
+    fs::create_dir_all(&lib_dir)
+        .map_err(|e| format!("Failed to create src/lib: {}", e))?;
+    fs::create_dir_all(&assets_dir)
+        .map_err(|e| format!("Failed to create src/assets: {}", e))?;
+
+    println!("{}", "✓ Created directory structure".bright_green());
+
+    // Compile all .at files in front directory
+    let mut all_components = Vec::new();
+    let mut all_shadcn_components = HashSet::new();
+
+    for entry in fs::read_dir(front_dir)
+        .map_err(|e| format!("Failed to read front directory: {}", e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+
+        if path.extension().map(|e| e == "at").unwrap_or(false) {
+            let file_name = path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("component");
+
+            // Skip pac.at
+            if file_name == "pac" {
+                continue;
+            }
+
+            println!("{} {}", "  Compiling:".bright_black(), path.display());
+
+            // Generate Vue code with shadcn-vue mode
+            let vue_code = auto_lang::ui_build_shadcn(path.to_str().unwrap(), None)
+                .map_err(|e| format!("Failed to generate Vue code for {:?}: {:?}", path, e))?;
+
+            // Detect shadcn components
+            let components = detect_shadcn_components(&vue_code);
+            for comp in &components {
+                all_shadcn_components.insert(comp.clone());
+            }
+
+            // Store component info
+            all_components.push((file_name.to_string(), vue_code));
+        }
+    }
+
+    let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();
+    println!("{} {}", "✓ Detected shadcn-vue components:".bright_green(), shadcn_components.join(", "));
+
+    // Generate App.vue from app.at
+    let app_vue_code = all_components.iter()
+        .find(|(name, _)| name == "app")
+        .map(|(_, code)| code.clone())
+        .ok_or_else(|| "app.at not found".to_string())?;
+
+    // Write project files
+    write_project_files(output_path, &project_name, &app_vue_code, &shadcn_components)?;
+
+    // Write all components
+    for (name, code) in &all_components {
+        if name != "app" {
+            let component_file = components_dir.join(format!("{}.vue", name));
+            fs::write(&component_file, code)
+                .map_err(|e| format!("Failed to write {}: {}", component_file.display(), e))?;
+        }
+    }
+
+    println!("{}", "✓ Generated project files".bright_green());
+
+    // Install dependencies if requested
+    if !no_install {
+        run_install_steps(output_path, &shadcn_components, yes)?;
+    } else {
+        println!();
+        println!("{}", "Project created successfully!".bright_green().bold());
+        println!();
+        println!("Next steps:");
+        println!("  cd {}", output);
+        println!("  npm install");
+        if !shadcn_components.is_empty() {
+            println!("  npx shadcn-vue@latest add {} --yes", shadcn_components.join(" "));
+        }
+        println!("  npm run dev");
+    }
+
+    Ok(())
+}
+
+/// Parse workspace path from pac.at content
+fn parse_workspace_path(content: &str, key: &str) -> Option<String> {
+    // Look for: front: "./source/front" or workspace: { front: "./source/front" }
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with(&format!("{}:", key)) {
+            // Extract path from: front: "./source/front"
+            if let Some(colon_pos) = line.find(':') {
+                let value = line[colon_pos + 1..].trim();
+                // Remove quotes
+                let value = value.trim_matches('"').trim_matches('\'');
+                // Remove trailing comma
+                let value = value.trim_end_matches(',');
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Parse project name from pac.at content
+fn parse_pac_name(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("name:") {
+            if let Some(colon_pos) = line.find(':') {
+                let value = line[colon_pos + 1..].trim();
+                let value = value.trim_matches('"').trim_matches('\'');
+                let value = value.trim_end_matches(',');
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Run npm install and shadcn-vue add
+fn run_install_steps(output_path: &Path, components: &[String], yes: bool) -> Result<(), String> {
+    if !command_exists("npm") {
+        println!();
+        println!("{}", "⚠ npm not found".bright_yellow());
+        println!("Please install Node.js from https://nodejs.org/");
+        return Ok(());
+    }
+
+    // Step 1: npm install
+    println!();
+    println!("{} {}", "▶".bright_cyan(), "Step 1/3: Installing dependencies...".bright_white());
+
+    let npm_install_args = if yes {
+        println!("{}", "  Running: npm install -y".bright_black());
+        vec!["install", "-y"]
+    } else {
+        println!("{}", "  Running: npm install".bright_black());
+        vec!["install"]
+    };
+
+    match run_command_live("npm", &npm_install_args, output_path) {
+        Ok(_) => println!("{}", "  ✓ Dependencies installed".bright_green()),
+        Err(e) => {
+            println!("{} {}", "  ✗ Failed:".bright_red(), e);
+            println!("  You may need to run 'npm install' manually.");
+        }
+    }
+
+    // Step 2: shadcn-vue add
+    if !components.is_empty() {
+        println!();
+        println!("{} {}", "▶".bright_cyan(), format!("Step 2/3: Adding shadcn-vue components ({})...", components.join(", ")).bright_white());
+
+        let mut args = if yes {
+            println!("{}", format!("  Running: npx --yes shadcn-vue@latest add {} --yes", components.join(" ")).bright_black());
+            vec!["--yes", "shadcn-vue@latest", "add"]
+        } else {
+            println!("{}", format!("  Running: npx shadcn-vue@latest add {} --yes", components.join(" ")).bright_black());
+            vec!["shadcn-vue@latest", "add"]
+        };
+        args.extend(components.iter().map(|s| s.as_str()));
+        args.push("--yes");
+
+        match run_command_live("npx", &args, output_path) {
+            Ok(_) => println!("{}", "  ✓ shadcn-vue components added".bright_green()),
+            Err(e) => {
+                println!("{} {}", "  ✗ Failed:".bright_red(), e);
+                println!("  You may need to run 'npx shadcn-vue@latest add {} --yes' manually.", components.join(" "));
+            }
+        }
+    } else {
+        println!();
+        println!("{} {}", "▶".bright_cyan(), "Step 2/3: No shadcn-vue components needed".bright_white());
+    }
+
+    // Step 3: Run dev server
+    println!();
+    println!("{} {}", "▶".bright_cyan(), "Step 3/3: Ready to start dev server".bright_white());
+    println!();
+    println!("{}", "═════════════════════════════════".bright_green().bold());
+    println!("{}", "  Project created successfully!".bright_green().bold());
+    println!("{}", "═════════════════════════════════".bright_green().bold());
+    println!();
+    println!("Starting dev server...");
+    println!();
+
+    let _ = run_command_live("npm", &["run", "dev"], output_path);
+
+    Ok(())
+}
+
+/// Generate Vue project from AURA file or workspace
 pub fn generate_vue_project(
+    input_path: Option<&str>,
+    output_dir: Option<&str>,
+    project_name: Option<&str>,
+    no_install: bool,
+    yes: bool,
+) -> Result<(), String> {
+    // Check if we're in workspace mode (pac.at exists)
+    if input_path.is_none() {
+        if let Some(pac_path) = find_pac_at() {
+            return generate_workspace_project(&pac_path, output_dir, no_install, yes);
+        } else {
+            return Err("No pac.at found in current directory. Please specify an input file: auto vue <input.at>".to_string());
+        }
+    }
+
+    // Legacy mode: transpile single .at file
+    let input_path = input_path.unwrap();
+    generate_single_file_project(input_path, output_dir, project_name, no_install, yes)
+}
+
+/// Generate Vue project from single AURA file (legacy mode)
+fn generate_single_file_project(
     input_path: &str,
     output_dir: Option<&str>,
     project_name: Option<&str>,

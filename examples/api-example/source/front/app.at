@@ -1,0 +1,39 @@
+// source/front/app.at - Main Application Entry
+// Simple test widget for workspace compilation
+
+widget App {
+    msg Msg { Click, Load }
+
+    model {
+        count int = 0
+    }
+
+    computed {
+        doubleCount => .count * 2
+    }
+
+    view {
+        col {
+            h1 (text: "API Demo") {}
+
+            row {
+                text `Count: ${.count}`
+                text `Double: ${.doubleCount}`
+            }
+
+            row {
+                button (text: "Load", onclick: .Load) {}
+                button (text: "Click", onclick: .Click) {}
+            }
+        }
+    }
+
+    on {
+        Click => {
+            count = count + 1
+        }
+        Load => {
+            // TODO: Call backend API
+        }
+    }
+}
