@@ -1,0 +1,92 @@
+/// Async module - Asynchronous programming utilities
+///
+/// This module provides async primitives built on the Task/Msg framework (Plan 069).
+/// All operations map to VM opcodes for efficient execution.
+
+// ═══════════════════════════════════════════════════════════
+// Channel Types
+// ═══════════════════════════════════════════════════════════
+
+/// Sender - Channel sender endpoint
+/// Use to send values to a Receiver
+type Sender[T]
+
+/// Receiver - Channel receiver endpoint
+/// Use to receive values from a Sender
+type Receiver[T]
+
+// ═══════════════════════════════════════════════════════════
+// Task Management
+// ═══════════════════════════════════════════════════════════
+
+/// Spawn a new async task
+/// The task will run concurrently with the current task.
+/// Example:
+///   spawn(fn() {
+///     print("Hello from task!")
+///   })
+#[pub]
+fn spawn(f fn()) void;
+
+/// Get the current task ID
+/// Returns a unique identifier for the current task.
+#[pub]
+fn task_id() int;
+
+/// Yield execution to other tasks
+/// Allows other tasks to run before continuing.
+#[pub]
+fn yield_now() void;
+
+/// Sleep for a duration in milliseconds
+/// Example:
+///   sleep(1000)  // Sleep for 1 second
+#[pub]
+fn sleep(ms int) void;
+
+// ═══════════════════════════════════════════════════════════
+// Channel Operations
+// ═══════════════════════════════════════════════════════════
+
+/// Create a new channel for inter-task communication
+/// Returns (sender, receiver) pair.
+/// Example:
+///   let (tx, rx) = channel[int]()
+///   spawn(fn() { tx.send(42) })
+///   let value = rx.recv()
+#[pub]
+fn channel[T]() (Sender[T], Receiver[T]);
+
+/// Send a value through the channel
+/// Blocks until the value is received.
+#[pub]
+fn Sender.send[T](self Sender[T], value T) void;
+
+/// Receive a value from the channel
+/// Blocks until a value is available.
+#[pub]
+fn Receiver.recv[T](self Receiver[T]) T;
+
+/// Try to receive a value without blocking
+/// Returns the value if available, or 0/default if not.
+#[pub]
+fn Receiver.try_recv[T](self Receiver[T]) T;
+
+/// Check if the channel has pending data
+/// Returns 1 if data is available, 0 otherwise.
+#[pub]
+fn Receiver.has_data[T](self Receiver[T]) int;
+
+// ═══════════════════════════════════════════════════════════
+// Utility Functions
+// ═══════════════════════════════════════════════════════════
+
+/// Run a function with a timeout
+/// Returns 1 if completed, 0 if timed out.
+#[pub]
+fn with_timeout[T](ms int, f fn()) int;
+
+/// Wait for all tasks to complete
+/// Blocks until the task count reaches expected.
+#[pub]
+fn wait_all(expected int) void;

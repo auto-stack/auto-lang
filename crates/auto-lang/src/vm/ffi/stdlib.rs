@@ -51,6 +51,12 @@ pub const NATIVE_MATH_MIN: u16 = 1701;
 pub const NATIVE_MATH_MAX: u16 = 1702;
 pub const NATIVE_MATH_SQRT: u16 = 1703;
 
+// Log functions: 1800-1899
+pub const NATIVE_LOG_DEBUG: u16 = 1800;
+pub const NATIVE_LOG_INFO: u16 = 1801;
+pub const NATIVE_LOG_WARN: u16 = 1802;
+pub const NATIVE_LOG_ERROR: u16 = 1803;
+
 // Path functions: 1400-1499
 pub const NATIVE_PATH_JOIN: u16 = 1400;
 pub const NATIVE_PATH_PARENT: u16 = 1401;
@@ -495,6 +501,50 @@ pub fn shim_math_sqrt(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
 }
 
 // ============================================================================
+// Log Functions (ID 1800-1899)
+// ============================================================================
+
+/// Log a debug message to stdout
+///
+/// Stack: msg (str) -> void
+pub fn shim_log_debug(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let msg: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    println!("[DEBUG] {}", msg);
+    Ok(())
+}
+
+/// Log an info message to stdout
+///
+/// Stack: msg (str) -> void
+pub fn shim_log_info(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let msg: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    println!("[INFO] {}", msg);
+    Ok(())
+}
+
+/// Log a warning message to stdout
+///
+/// Stack: msg (str) -> void
+pub fn shim_log_warn(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let msg: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    println!("[WARN] {}", msg);
+    Ok(())
+}
+
+/// Log an error message to stderr
+///
+/// Stack: msg (str) -> void
+pub fn shim_log_error(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let msg: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    eprintln!("[ERROR] {}", msg);
+    Ok(())
+}
+
+// ============================================================================
 // Registration Function
 // ============================================================================
 
@@ -565,6 +615,12 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_MATH_MIN, shim_math_min);
     natives.register_static(NATIVE_MATH_MAX, shim_math_max);
     natives.register_static(NATIVE_MATH_SQRT, shim_math_sqrt);
+
+    // Log functions
+    natives.register_static(NATIVE_LOG_DEBUG, shim_log_debug);
+    natives.register_static(NATIVE_LOG_INFO, shim_log_info);
+    natives.register_static(NATIVE_LOG_WARN, shim_log_warn);
+    natives.register_static(NATIVE_LOG_ERROR, shim_log_error);
 }
 
 // ============================================================================

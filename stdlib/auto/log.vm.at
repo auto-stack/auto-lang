@@ -1,0 +1,22 @@
+/// VM function declarations for Log operations
+/// These are implemented in Rust in crates/auto-lang/src/vm/ffi/stdlib.rs
+
+/// Log a debug message to stdout
+/// Format: [DEBUG] message
+#[vm]
+fn _log_debug(msg str) void
+
+/// Log an info message to stdout
+/// Format: [INFO] message
+#[vm]
+fn _log_info(msg str) void
+
+/// Log a warning message to stdout
+/// Format: [WARN] message
+#[vm]
+fn _log_warn(msg str) void
+
+/// Log an error message to stderr
+/// Format: [ERROR] message
+#[vm]
+fn _log_error(msg str) void

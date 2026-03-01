@@ -1,0 +1,71 @@
+/// VM function declarations for Async operations
+/// These map to VM opcodes (Plan 069) or are implemented in Rust.
+///
+/// Related opcodes:
+/// - SPAWN = 0x80  - Create a new task
+/// - YIELD = 0x82  - Yield execution
+/// - SLEEP = 0x83  - Sleep for milliseconds
+/// - CHAN_NEW = 0x85 - Create a new channel
+/// - SEND = 0x86   - Send to channel
+/// - RECV = 0x87   - Receive from channel (blocking)
+/// - TRY_RECV = 0x88 - Try receive (non-blocking)
+
+// ═══════════════════════════════════════════════════════════
+// Task Management - Map to VM Opcodes
+// ═══════════════════════════════════════════════════════════
+
+/// Spawn a new async task
+/// Maps to SPAWN opcode (0x80)
+#[vm]
+fn spawn(f fn()) void
+
+/// Get the current task ID
+#[vm]
+fn task_id() int
+
+/// Yield execution to other tasks
+/// Maps to YIELD opcode (0x82)
+#[vm]
+fn yield_now() void
+
+/// Sleep for a duration in milliseconds
+/// Maps to SLEEP opcode (0x83)
+#[vm]
+fn sleep(ms int) void
+
+// ═══════════════════════════════════════════════════════════
+// Channel Operations - Map to VM Opcodes
+// ═══════════════════════════════════════════════════════════
+
+/// Create a new channel
+/// Maps to CHAN_NEW opcode (0x85)
+/// Returns channel_id (both sender and receiver share the same id)
+#[vm]
+fn chan_new() int
+
+/// Send a value through the channel
+/// Maps to SEND opcode (0x86)
+#[vm]
+fn chan_send(channel_id int, value int) void
+
+/// Receive a value from the channel (blocking)
+/// Maps to RECV opcode (0x87)
+#[vm]
+fn chan_recv(channel_id int) int
+
+/// Try to receive a value (non-blocking)
+/// Maps to TRY_RECV opcode (0x88)
+#[vm]
+fn chan_try_recv(channel_id int) int
+
+// ═══════════════════════════════════════════════════════════
+// Utility Functions - VM Native Implementations
+// ═══════════════════════════════════════════════════════════
+
+/// Get the number of active tasks
+#[vm]
+fn task_count() int
+
+/// Check if a channel has pending data
+#[vm]
+fn chan_has_data(channel_id int) int
