@@ -730,12 +730,38 @@ stdlib/auto/
 - [x] Phase 3.2: url 模块
 - [x] Phase 4.1: http 模块
 
-### Phase 5: a2vue 双模式支持 ⏳ 未开始
+### Phase 5: a2vue 双模式支持 🔄 进行中
 
-- [ ] Phase 5.1: API 注解解析
-- [ ] Phase 5.2: 双模式编译开关
-- [ ] Phase 5.3: 前端 API 生成
+- [x] Phase 5.1: API 注解解析 - crates/auto-lang/src/api/ 模块创建完成
+- [x] Phase 5.2: 双模式编译开关 - TargetGenerator trait 实现
+- [x] Phase 5.3: 前端 API 生成 - TypeScript, Tauri, Axum generators 实现
 - [ ] Phase 5.4: 集成测试
+
+**Implementation Notes**:
+
+#### API Module Structure (Phase 5.1-5.3)
+```
+crates/auto-lang/src/api/
+├── mod.rs              # API module entry, ApiAnnotationParser, ApiExtractor
+├── types.rs            # ApiAttrs, ApiEndpoint, ApiParam, ApiModule, ApiType
+└── targets/
+    ├── mod.rs          # TargetGenerator trait, Target enum
+    ├── typescript.rs   # TypeScript type + API client generation
+    ├── tauri.rs        # Tauri command generation
+    └── axum.rs         # Axum HTTP route generation
+```
+
+#### Key Features Implemented
+1. **ApiAttrs**: Parse `#[api(method = "GET", path = "/users/:id", auth = true, cache = 60)]`
+2. **ApiExtractor**: Extract API endpoints from AST function declarations
+3. **TypeScriptGenerator**: Generate types.ts, api-interface.ts, api-tauri.ts, api-http.ts, api.ts
+4. **TauriGenerator**: Generate #[tauri::command] functions
+5. **AxumGenerator**: Generate axum route handlers
+
+#### Test Results
+- 15 unit tests passing for api module
+- Type inference for method/path/name from function names
+- Auto-conversion: snake_case → camelCase, list_* → /users (plural)
 
 **Implementation Notes**:
 

@@ -1,3 +1,4 @@
+pub mod api;
 pub mod ast;
 pub mod atom;
 // a2r Standard Library - Rust implementations of AutoLang standard types
