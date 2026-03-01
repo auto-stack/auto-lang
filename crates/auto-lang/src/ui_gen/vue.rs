@@ -194,6 +194,32 @@ impl ShadcnRegistry {
         components.insert("label",
             ("@/components/ui/label", vec!["Label"]));
 
+        // === Feedback: Alert ===
+        components.insert("alert",
+            ("@/components/ui/alert", vec!["Alert", "AlertTitle", "AlertDescription"]));
+
+        // === Feedback: Toast (Sonner) ===
+        components.insert("toast",
+            ("@/components/ui/sonner", vec!["Toaster"]));
+        components.insert("toaster",
+            ("@/components/ui/sonner", vec!["Toaster"]));
+
+        // === Navigation: Dropdown Menu ===
+        components.insert("dropdown",
+            ("@/components/ui/dropdown-menu", vec!["DropdownMenu", "DropdownMenuTrigger", "DropdownMenuContent", "DropdownMenuItem", "DropdownMenuSeparator", "DropdownMenuLabel"]));
+        components.insert("dropdown_menu",
+            ("@/components/ui/dropdown-menu", vec!["DropdownMenu", "DropdownMenuTrigger", "DropdownMenuContent"]));
+        components.insert("dropdown_trigger",
+            ("@/components/ui/dropdown-menu", vec!["DropdownMenuTrigger"]));
+        components.insert("dropdown_content",
+            ("@/components/ui/dropdown-menu", vec!["DropdownMenuContent"]));
+        components.insert("dropdown_item",
+            ("@/components/ui/dropdown-menu", vec!["DropdownMenuItem"]));
+        components.insert("dropdown_separator",
+            ("@/components/ui/dropdown-menu", vec!["DropdownMenuSeparator"]));
+        components.insert("dropdown_label",
+            ("@/components/ui/dropdown-menu", vec!["DropdownMenuLabel"]));
+
         Self { components }
     }
 
@@ -1582,6 +1608,113 @@ impl VueGenerator {
                 }
                 // label text
                 if let Some(value) = props.get("label") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // ========================================
+            // Phase 7: Feedback & Navigation
+            // ========================================
+
+            // === Alert ===
+            "alert" => {
+                // variant: default, destructive
+                if let Some(value) = props.get("variant") {
+                    let variant = self.extract_string_value(value).unwrap_or("default");
+                    attrs.push(format!("variant=\"{}\"", variant));
+                }
+                // title for AlertTitle
+                if let Some(value) = props.get("title") {
+                    let title = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("data-title=\"{}\"", title));
+                }
+                // description/text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                if let Some(value) = props.get("description") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === Toast/Toaster (Sonner) ===
+            "toast" | "toaster" => {
+                // position: top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
+                if let Some(value) = props.get("position") {
+                    let position = self.extract_string_value(value).unwrap_or("bottom-right");
+                    attrs.push(format!("position=\"{}\"", position));
+                }
+                // richColors for colored toasts
+                if let Some(value) = props.get("rich_colors") {
+                    if self.extract_bool_value(value) {
+                        attrs.push(":rich-colors=\"true\"".to_string());
+                    }
+                }
+                // expand for expanded toasts
+                if let Some(value) = props.get("expand") {
+                    if self.extract_bool_value(value) {
+                        attrs.push(":expand=\"true\"".to_string());
+                    }
+                }
+            }
+
+            // === Dropdown Menu ===
+            "dropdown" | "dropdown_menu" => {
+                // v-model:open for menu state
+                if let Some(value) = props.get("open") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+            }
+
+            "dropdown_trigger" => {
+                // as-child for custom trigger
+                if let Some(value) = props.get("as_child") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("as-child".to_string());
+                    }
+                }
+            }
+
+            "dropdown_content" => {
+                // side: top, right, bottom, left
+                if let Some(value) = props.get("side") {
+                    let side = self.extract_string_value(value).unwrap_or("bottom");
+                    attrs.push(format!("side=\"{}\"", side));
+                }
+                // align: start, center, end
+                if let Some(value) = props.get("align") {
+                    let align = self.extract_string_value(value).unwrap_or("center");
+                    attrs.push(format!("align=\"{}\"", align));
+                }
+            }
+
+            "dropdown_item" => {
+                // value for selection
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "dropdown_separator" => {
+                // No special attributes
+            }
+
+            "dropdown_label" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
                 }
             }

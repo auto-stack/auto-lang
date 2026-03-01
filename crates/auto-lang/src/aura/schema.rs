@@ -211,6 +211,9 @@ impl AuraSchema {
         // Utility elements
         Self::add_utility_elements(&mut elements);
 
+        // Feedback & Overlay elements (shadcn-vue components)
+        Self::add_feedback_elements(&mut elements);
+
         AuraSchema {
             elements,
             widget_blocks: WidgetBlockSchema {
@@ -548,6 +551,116 @@ impl AuraSchema {
             ],
             allows_children: false,
             description: "Flexible or fixed space",
+        });
+    }
+
+    fn add_feedback_elements(elements: &mut HashMap<&'static str, ElementDef>) {
+        // === Alert ===
+        elements.insert("alert", ElementDef {
+            tag: "alert",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "variant", type_: PropType::OneOf(vec!["default", "destructive"]), required: false, default: Some("default"), description: "Alert style variant" },
+                PropDef { name: "title", type_: PropType::String, required: false, default: None, description: "Alert title" },
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Alert description text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Alert message box",
+        });
+
+        // === Toast/Toaster ===
+        elements.insert("toast", ElementDef {
+            tag: "toast",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "position", type_: PropType::OneOf(vec!["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"]), required: false, default: Some("bottom-right"), description: "Toast position" },
+                PropDef { name: "rich_colors", type_: PropType::Bool, required: false, default: Some("false"), description: "Use rich colors" },
+                PropDef { name: "expand", type_: PropType::Bool, required: false, default: Some("false"), description: "Expand toasts" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Toast notification container (Sonner)",
+        });
+
+        elements.insert("toaster", ElementDef {
+            tag: "toaster",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "position", type_: PropType::OneOf(vec!["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"]), required: false, default: Some("bottom-right"), description: "Toast position" },
+            ],
+            allows_children: false,
+            description: "Toast notification container (alias)",
+        });
+
+        // === Dropdown Menu ===
+        elements.insert("dropdown", ElementDef {
+            tag: "dropdown",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Dropdown menu container",
+        });
+
+        elements.insert("dropdown_trigger", ElementDef {
+            tag: "dropdown_trigger",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "as_child", type_: PropType::Bool, required: false, default: Some("false"), description: "Use child as trigger" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Dropdown menu trigger",
+        });
+
+        elements.insert("dropdown_content", ElementDef {
+            tag: "dropdown_content",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "side", type_: PropType::OneOf(vec!["top", "right", "bottom", "left"]), required: false, default: Some("bottom"), description: "Content position side" },
+                PropDef { name: "align", type_: PropType::OneOf(vec!["start", "center", "end"]), required: false, default: Some("center"), description: "Content alignment" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Dropdown menu content",
+        });
+
+        elements.insert("dropdown_item", ElementDef {
+            tag: "dropdown_item",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "value", type_: PropType::String, required: false, default: None, description: "Item value" },
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Item text" },
+                PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
+                PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click handler" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Dropdown menu item",
+        });
+
+        elements.insert("dropdown_separator", ElementDef {
+            tag: "dropdown_separator",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Dropdown menu separator",
+        });
+
+        elements.insert("dropdown_label", ElementDef {
+            tag: "dropdown_label",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Label text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Dropdown menu label",
         });
     }
 }
