@@ -57,6 +57,44 @@ pub const NATIVE_LOG_INFO: u16 = 1801;
 pub const NATIVE_LOG_WARN: u16 = 1802;
 pub const NATIVE_LOG_ERROR: u16 = 1803;
 
+// JSON functions: 1900-1999
+pub const NATIVE_JSON_ENCODE: u16 = 1900;
+pub const NATIVE_JSON_DECODE: u16 = 1901;
+pub const NATIVE_JSON_PARSE: u16 = 1902;
+pub const NATIVE_JSON_PRETTIFY: u16 = 1903;
+pub const NATIVE_JSON_MINIFY: u16 = 1904;
+pub const NATIVE_JSON_IS_VALID: u16 = 1905;
+pub const NATIVE_JSON_GET: u16 = 1906;
+pub const NATIVE_JSON_GET_AT: u16 = 1907;
+pub const NATIVE_JSON_LEN: u16 = 1908;
+pub const NATIVE_JSON_TYPE: u16 = 1909;
+pub const NATIVE_JSON_AS_STRING: u16 = 1910;
+pub const NATIVE_JSON_AS_NUMBER: u16 = 1911;
+pub const NATIVE_JSON_AS_INT: u16 = 1912;
+pub const NATIVE_JSON_AS_BOOL: u16 = 1913;
+pub const NATIVE_JSON_IS_NULL: u16 = 1914;
+pub const NATIVE_JSON_KEYS: u16 = 1915;
+pub const NATIVE_JSON_AS_ARRAY: u16 = 1916;
+pub const NATIVE_JSON_HAS_KEY: u16 = 1917;
+
+// URL functions: 2000-2099
+pub const NATIVE_URL_ENCODE: u16 = 2000;
+pub const NATIVE_URL_DECODE: u16 = 2001;
+pub const NATIVE_URL_ENCODE_QUERY: u16 = 2002;
+pub const NATIVE_URL_DECODE_QUERY: u16 = 2003;
+pub const NATIVE_URL_ENCODE_PATH_SEGMENT: u16 = 2004;
+pub const NATIVE_URL_DECODE_QUERY_COMPONENT: u16 = 2005;
+pub const NATIVE_URL_PARSE: u16 = 2006;
+pub const NATIVE_URL_SCHEME: u16 = 2007;
+pub const NATIVE_URL_HOST: u16 = 2008;
+pub const NATIVE_URL_PORT: u16 = 2009;
+pub const NATIVE_URL_PATH: u16 = 2010;
+pub const NATIVE_URL_QUERY: u16 = 2011;
+pub const NATIVE_URL_FRAGMENT: u16 = 2012;
+pub const NATIVE_URL_QUERY_PARAM: u16 = 2013;
+pub const NATIVE_URL_QUERY_PARAMS: u16 = 2014;
+pub const NATIVE_URL_JOIN_PATH: u16 = 2015;
+
 // Path functions: 1400-1499
 pub const NATIVE_PATH_JOIN: u16 = 1400;
 pub const NATIVE_PATH_PARENT: u16 = 1401;
@@ -545,6 +583,131 @@ pub fn shim_log_error(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
 }
 
 // ============================================================================
+// JSON Functions (ID 1900-1999)
+// ============================================================================
+
+/// Encode a value to JSON string
+///
+/// Stack: value -> json_str
+pub fn shim_json_encode(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    // For now, simple string encoding
+    let value: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let json = serde_json::to_string(&value).unwrap_or_default();
+    VMConvertible::push_to_stack(&json, task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// Parse a JSON string
+///
+/// Stack: json_str -> JsonValue
+pub fn shim_json_parse(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let s: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    // For now, return the string as-is (placeholder)
+    // Full implementation would return a JsonValue handle
+    VMConvertible::push_to_stack(&s, task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// Prettify a JSON string
+///
+/// Stack: json_str -> pretty_json_str
+pub fn shim_json_prettify(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let s: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let result = serde_json::from_str::<serde_json::Value>(&s)
+        .ok()
+        .and_then(|v| serde_json::to_string_pretty(&v).ok())
+        .unwrap_or_default();
+    VMConvertible::push_to_stack(&result, task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// Check if a string is valid JSON
+///
+/// Stack: json_str -> bool
+pub fn shim_json_is_valid(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let s: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let is_valid = serde_json::from_str::<serde_json::Value>(&s).is_ok() as i32;
+    task.ram.push_i32(is_valid);
+    Ok(())
+}
+
+// ============================================================================
+// URL Functions (ID 2000-2099)
+// ============================================================================
+
+/// URL encode a string
+///
+/// Stack: str -> encoded_str
+pub fn shim_url_encode(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let s: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let encoded = urlencoding::encode(&s).to_string();
+    VMConvertible::push_to_stack(&encoded, task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// URL decode a string
+///
+/// Stack: encoded_str -> str
+pub fn shim_url_decode(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let s: String = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let decoded = urlencoding::decode(&s)
+        .map(|c| c.to_string())
+        .unwrap_or_default();
+    VMConvertible::push_to_stack(&decoded, task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// Encode query parameters
+///
+/// Stack: params_map -> query_str
+pub fn shim_url_encode_query(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    // Placeholder - would need to handle Map type
+    let result = String::new();
+    VMConvertible::push_to_stack(&result, task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// Decode query string
+///
+/// Stack: query_str -> params_map
+pub fn shim_url_decode_query(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    // Placeholder - would need to handle Map type
+    let result: Vec<String> = Vec::new();
+    VMConvertible::push_to_stack(&result, task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// Join URL path segments
+///
+/// Stack: segments -> path
+pub fn shim_url_join_path(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let segments: Vec<String> = VMConvertible::pop_from_stack(task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let path = segments.iter()
+        .map(|s| s.trim_start_matches('/').trim_end_matches('/'))
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("/");
+    let result = format!("/{}", path);
+    VMConvertible::push_to_stack(&result, task, _vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+// ============================================================================
 // Registration Function
 // ============================================================================
 
@@ -621,6 +784,19 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_static(NATIVE_LOG_INFO, shim_log_info);
     natives.register_static(NATIVE_LOG_WARN, shim_log_warn);
     natives.register_static(NATIVE_LOG_ERROR, shim_log_error);
+
+    // JSON functions
+    natives.register_static(NATIVE_JSON_ENCODE, shim_json_encode);
+    natives.register_static(NATIVE_JSON_PARSE, shim_json_parse);
+    natives.register_static(NATIVE_JSON_PRETTIFY, shim_json_prettify);
+    natives.register_static(NATIVE_JSON_IS_VALID, shim_json_is_valid);
+
+    // URL functions
+    natives.register_static(NATIVE_URL_ENCODE, shim_url_encode);
+    natives.register_static(NATIVE_URL_DECODE, shim_url_decode);
+    natives.register_static(NATIVE_URL_ENCODE_QUERY, shim_url_encode_query);
+    natives.register_static(NATIVE_URL_DECODE_QUERY, shim_url_decode_query);
+    natives.register_static(NATIVE_URL_JOIN_PATH, shim_url_join_path);
 }
 
 // ============================================================================

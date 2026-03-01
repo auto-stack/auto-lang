@@ -45,6 +45,8 @@ bincode = { workspace = true }
 libloading = "0.8"
 # Logging for FFI bridge
 log = { workspace = true }
+# URL encoding (Plan 102)
+urlencoding = { workspace = true }
 
 [dev-dependencies]
 criterion = "0.5"

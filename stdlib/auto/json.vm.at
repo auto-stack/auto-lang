@@ -1,0 +1,96 @@
+/// VM function declarations for JSON operations
+/// These are implemented in Rust using serde_json
+
+// ═══════════════════════════════════════════════════════════
+// Encoding
+// ═══════════════════════════════════════════════════════════
+
+/// Encode a value to JSON string
+#[vm]
+fn encode(value) str
+
+/// Encode a value to pretty-printed JSON string
+#[vm]
+fn encode_pretty(value) str
+
+// ═══════════════════════════════════════════════════════════
+// Decoding
+// ═══════════════════════════════════════════════════════════
+
+/// Parse a JSON string into a JsonValue
+/// Returns null on failure
+#[vm]
+fn parse(s str) JsonValue
+
+/// Try to decode a JSON string
+/// Returns null on failure
+#[vm]
+fn try_decode(s str)
+
+// ═══════════════════════════════════════════════════════════
+// JsonValue Operations
+// ═══════════════════════════════════════════════════════════
+
+/// Get JSON value type
+#[vm]
+fn json_value_type(val JsonValue) str
+
+/// Check if JSON value is null
+#[vm]
+fn json_is_null(val JsonValue) int
+
+/// Convert JsonValue to string
+#[vm]
+fn json_as_string(val JsonValue) str
+
+/// Convert JsonValue to number (float)
+#[vm]
+fn json_as_number(val JsonValue) float
+
+/// Convert JsonValue to int
+#[vm]
+fn json_as_int(val JsonValue) int
+
+/// Convert JsonValue to bool
+#[vm]
+fn json_as_bool(val JsonValue) int
+
+/// Get object field
+#[vm]
+fn json_get(val JsonValue, key str) JsonValue
+
+/// Get array element
+#[vm]
+fn json_get_at(val JsonValue, index int) JsonValue
+
+/// Get array/object length
+#[vm]
+fn json_len(val JsonValue) int
+
+/// Check if object has key
+#[vm]
+fn json_has_key(val JsonValue, key str) int
+
+/// Get object keys
+#[vm]
+fn json_keys(val JsonValue) []str
+
+/// Get array as list
+#[vm]
+fn json_as_array(val JsonValue) []JsonValue
+
+// ═══════════════════════════════════════════════════════════
+// Utility
+// ═══════════════════════════════════════════════════════════
+
+/// Prettify a JSON string
+#[vm]
+fn prettify(s str) str
+
+/// Minify a JSON string
+#[vm]
+fn minify(s str) str
+
+/// Check if string is valid JSON
+#[vm]
+fn is_valid(s str) int

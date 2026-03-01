@@ -37,6 +37,7 @@ bincode = "1.3"
 glob-match = "0.2.1"
 chrono = "0.4"
 notify = "7.0"
+urlencoding = "2.1"
 
 # AutoMan dependencies (Phase 1)
 tabled = "0.18"

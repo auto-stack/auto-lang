@@ -1,0 +1,106 @@
+/// VM function declarations for URL operations
+/// These are implemented in Rust using url and urlencoding crates
+
+// ═══════════════════════════════════════════════════════════
+// URL Encoding/Decoding
+// ═══════════════════════════════════════════════════════════
+
+/// URL encode a string
+#[vm]
+fn encode(s str) str
+
+/// URL decode a string
+#[vm]
+fn decode(s str) str
+
+/// Encode for path segment
+#[vm]
+fn encode_path_segment(s str) str
+
+/// Encode for query component (spaces as +)
+#[vm]
+fn encode_query_component(s str) str
+
+/// Decode query component (+ as space)
+#[vm]
+fn decode_query_component(s str) str
+
+// ═══════════════════════════════════════════════════════════
+// Query String Operations
+// ═══════════════════════════════════════════════════════════
+
+/// Encode query parameters
+#[vm]
+fn encode_query(params Map[str, str]) str
+
+/// Decode query string to map
+#[vm]
+fn decode_query(query str) Map[str, str]
+
+/// Parse form data
+#[vm]
+fn parse_form(body str) Map[str, str]
+
+// ═══════════════════════════════════════════════════════════
+// URL Parsing
+// ═══════════════════════════════════════════════════════════
+
+/// Parse a URL string
+#[vm]
+fn url_parse(url str) Url
+
+/// Get URL scheme
+#[vm]
+fn url_scheme(url Url) str
+
+/// Get URL host
+#[vm]
+fn url_host(url Url) str
+
+/// Get URL port
+#[vm]
+fn url_port(url Url) int
+
+/// Get URL path
+#[vm]
+fn url_path(url Url) str
+
+/// Get URL query string
+#[vm]
+fn url_query(url Url) str
+
+/// Get URL fragment
+#[vm]
+fn url_fragment(url Url) str
+
+/// Get URL username
+#[vm]
+fn url_username(url Url) str
+
+/// Get URL password
+#[vm]
+fn url_password(url Url) str
+
+/// Get query params as map
+#[vm]
+fn url_query_params(url Url) Map[str, str]
+
+/// Get specific query param
+#[vm]
+fn url_query_param(url Url, key str) str
+
+/// Convert URL to string
+#[vm]
+fn url_to_string(url Url) str
+
+// ═══════════════════════════════════════════════════════════
+// URL Building
+// ═══════════════════════════════════════════════════════════
+
+/// Build URL from components
+#[vm]
+fn url_build(components Map[str, str]) str
+
+/// Join path segments
+#[vm]
+fn join_path(segments []str) str
