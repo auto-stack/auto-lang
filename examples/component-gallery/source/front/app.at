@@ -21,22 +21,22 @@ widget App {
         // Main layout: sidebar + content
         row {
             // Sidebar - Component navigation with proper styling
-            col {
+            col (class: "p-4") {
                 // Logo/Title
                 text "AutoUI"
 
                 // Components section header
                 text "Components"
 
-                // Navigation links - using buttons styled as links
-                button (text: "Button", onclick: .GoToButton) {}
-                button (text: "Input", onclick: .GoToInput) {}
-                button (text: "Text", onclick: .GoToText) {}
-                button (text: "Card", onclick: .GoToCard) {}
-                button (text: "Badge", onclick: .GoToBadge) {}
-                button (text: "Label", onclick: .GoToLabel) {}
-                button (text: "Accordion", onclick: .GoToAccordion) {}
-                button (text: "Tabs", onclick: .GoToTabs) {}
+                // Navigation links - styled as nav links
+                link (text: "Button", onclick: .GoToButton) {}
+                link (text: "Input", onclick: .GoToInput) {}
+                link (text: "Text", onclick: .GoToText) {}
+                link (text: "Card", onclick: .GoToCard) {}
+                link (text: "Badge", onclick: .GoToBadge) {}
+                link (text: "Label", onclick: .GoToLabel) {}
+                link (text: "Accordion", onclick: .GoToAccordion) {}
+                link (text: "Tabs", onclick: .GoToTabs) {}
             }
 
             // Main content area - conditional rendering based on currentPage

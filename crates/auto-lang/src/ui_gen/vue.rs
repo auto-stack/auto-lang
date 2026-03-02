@@ -1282,7 +1282,7 @@ impl VueGenerator {
                 "checkbox" => classes.push("w-4 h-4".to_string()),
                 "toggle" => classes.push("relative w-10 h-6 rounded-full".to_string()),
                 "select" => classes.push("border rounded px-2 py-1".to_string()),
-                "link" => classes.push("text-primary underline-offset-4 hover:underline".to_string()),
+                "link" => classes.push("block select-none rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer".to_string()),
                 "label" => classes.push("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70".to_string()),
 
                 // Data
@@ -1566,6 +1566,19 @@ impl VueGenerator {
                 // Text becomes slot content
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === Link (Navigation Link) ===
+            "link" => {
+                // Text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // href (optional, if present use as link destination)
+                if let Some(value) = props.get("href") {
+                    let href = self.extract_string_value(value).unwrap_or("#");
+                    attrs.push(format!("href=\"{}\"", href));
                 }
             }
 
