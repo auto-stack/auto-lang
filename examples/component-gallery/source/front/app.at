@@ -18,46 +18,60 @@ widget App {
     }
 
     view {
-        // Main layout: sidebar + content
-        row {
-            // Sidebar - Component navigation with proper styling
-            col (class: "p-4") {
-                // Logo/Title with icon
-                row (class: "items-center gap-2") {
-                    image (src: "/icon.png", alt: "Auto", class: "h-6 w-6") {}
-                    text "AutoUI"
+        // Main container with full height
+        col (class: "min-h-screen") {
+            // Header Banner - full width
+            header (class: "sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur") {
+                row (class: "container h-14 items-center px-4") {
+                    // Logo with bigger icon
+                    row (class: "items-center gap-3 mr-6") {
+                        image (src: "/icon.png", alt: "Auto", class: "h-8 w-8") {}
+                        text "AutoUI"
+                    }
+                    // Navigation menu
+                    row (class: "items-center gap-4 text-sm") {
+                        text "Docs"
+                        text "Components"
+                        text "Examples"
+                    }
                 }
-
-                // Components section header
-                text "Components"
-
-                // Navigation links - styled as nav links
-                link (text: "Button", onclick: .GoToButton) {}
-                link (text: "Input", onclick: .GoToInput) {}
-                link (text: "Text", onclick: .GoToText) {}
-                link (text: "Card", onclick: .GoToCard) {}
-                link (text: "Badge", onclick: .GoToBadge) {}
-                link (text: "Label", onclick: .GoToLabel) {}
-                link (text: "Accordion", onclick: .GoToAccordion) {}
-                link (text: "Tabs", onclick: .GoToTabs) {}
             }
 
-            // Main content area - conditional rendering based on currentPage
-            if .currentPage == "button" {
-                col {
-                    // Breadcrumb
-                    row {
-                        text "Components"
-                        text "/"
-                        text "Button"
-                    }
+            // Main content area: sidebar + content
+            row (class: "flex-1") {
+                // Sidebar
+                col (class: "w-64 border-r bg-background p-4") {
+                    // Components section header
+                    text (text: "Components", class: "text-sm font-semibold text-muted-foreground mb-2 px-3") {}
 
-                    // Page header
-                    h1 (text: "Button") {}
-                    text "Displays a button or a component that looks like a button."
+                    // Navigation links - styled as nav links
+                    link (text: "Button", onclick: .GoToButton) {}
+                    link (text: "Input", onclick: .GoToInput) {}
+                    link (text: "Text", onclick: .GoToText) {}
+                    link (text: "Card", onclick: .GoToCard) {}
+                    link (text: "Badge", onclick: .GoToBadge) {}
+                    link (text: "Label", onclick: .GoToLabel) {}
+                    link (text: "Accordion", onclick: .GoToAccordion) {}
+                    link (text: "Tabs", onclick: .GoToTabs) {}
+                }
 
-                    // Installation section
-                    h2 (text: "Installation") {}
+                // Main content area - conditional rendering based on currentPage
+                col (class: "flex-1 p-8") {
+                    if .currentPage == "button" {
+                        col {
+                            // Breadcrumb
+                            row (class: "gap-2 text-sm text-muted-foreground") {
+                                text "Components"
+                                text "/"
+                                text "Button"
+                            }
+
+                            // Page header
+                            h1 (text: "Button") {}
+                            text "Displays a button or a component that looks like a button."
+
+                            // Installation section
+                            h2 (text: "Installation") {}
                     row {
                         text "$"
                         text "npx shadcn-vue@latest add button"
