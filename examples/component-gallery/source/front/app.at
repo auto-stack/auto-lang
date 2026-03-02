@@ -22,8 +22,11 @@ widget App {
         row {
             // Sidebar - Component navigation with proper styling
             col (class: "p-4") {
-                // Logo/Title
-                text "AutoUI"
+                // Logo/Title with icon
+                row (class: "items-center gap-2") {
+                    image (src: "/icon.png", alt: "Auto", class: "h-6 w-6") {}
+                    text "AutoUI"
+                }
 
                 // Components section header
                 text "Components"
