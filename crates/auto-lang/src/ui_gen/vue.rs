@@ -1186,6 +1186,7 @@ impl VueGenerator {
             "option" => "option".to_string(),
             "link" => "a".to_string(),
             "codeblock" => "pre".to_string(),
+            "codepane" => "div".to_string(),
 
             // Typography (no shadcn components)
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => tag.to_string(),
@@ -1285,6 +1286,7 @@ impl VueGenerator {
                 "select" => classes.push("border rounded px-2 py-1".to_string()),
                 "link" => classes.push("block select-none rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer".to_string()),
                 "codeblock" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-x-auto".to_string()),
+                "codepane" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-hidden".to_string()),
                 "label" => classes.push("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70".to_string()),
 
                 // Data

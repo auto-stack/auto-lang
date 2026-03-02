@@ -442,6 +442,18 @@ impl AuraSchema {
             allows_children: true,
             description: "Code block with syntax highlighting",
         });
+
+        elements.insert("codepane", ElementDef {
+            tag: "codepane",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "auto", type_: PropType::String, required: false, default: None, description: "Auto (AURA) source code" },
+                PropDef { name: "vue", type_: PropType::String, required: false, default: None, description: "Generated Vue.js code" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Tabbed code block showing Auto and Vue code side by side",
+        });
     }
 
     fn add_typography_elements(elements: &mut HashMap<&'static str, ElementDef>) {
