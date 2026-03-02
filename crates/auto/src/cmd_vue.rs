@@ -20,6 +20,26 @@ use std::process::Command;
 
 use colored::Colorize;
 
+/// Recursively copy a directory and all its contents
+fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if ty.is_dir() {
+            copy_dir_all(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Check if a command exists
 fn command_exists(cmd: &str) -> bool {
     #[cfg(windows)]
@@ -435,6 +455,17 @@ fn generate_single_file_project(
         .map_err(|e| format!("Failed to create src/lib: {}", e))?;
     fs::create_dir_all(&assets_dir)
         .map_err(|e| format!("Failed to create src/assets: {}", e))?;
+
+    // Copy public folder from source to output (for static assets like images)
+    let input_dir = input.parent().unwrap_or(Path::new("."));
+    let source_public = input_dir.join("public");
+    let dest_public = output_path.join("public");
+
+    if source_public.exists() && source_public.is_dir() {
+        copy_dir_all(&source_public, &dest_public)
+            .map_err(|e| format!("Failed to copy public folder: {}", e))?;
+        println!("{}", "✓ Copied public assets".bright_green());
+    }
 
     println!("{}", "✓ Created directory structure".bright_green());
 
@@ -1007,6 +1038,35 @@ fn generate_index_css() -> String {
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  /* Header styles */
+  header {
+    @apply w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60;
+  }
+
+  /* Sidebar styles */
+  aside {
+    @apply w-64 border-r bg-background;
+  }
+
+  /* Navigation link styles */
+  nav a,
+  a.nav-link {
+    @apply text-sm font-medium text-muted-foreground hover:text-foreground transition-colors;
+  }
+
+  /* Sidebar link styles */
+  aside a {
+    @apply block px-3 py-2 rounded-md text-sm hover:bg-muted transition-colors;
+  }
+
+  /* Main content area */
+  main {
+    @apply flex-1;
   }
 }
 "#.to_string()

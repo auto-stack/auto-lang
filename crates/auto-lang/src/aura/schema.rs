@@ -460,6 +460,7 @@ impl AuraSchema {
             tag: "previewcard",
             category: ElementCategory::Content,
             props: vec![
+                PropDef { name: "id", type_: PropType::String, required: false, default: None, description: "Unique identifier for the preview card (used for state variables)" },
                 PropDef { name: "title", type_: PropType::String, required: false, default: Some("Preview"), description: "Section title" },
                 PropDef { name: "auto", type_: PropType::String, required: false, default: None, description: "Auto (AURA) source code" },
                 PropDef { name: "vue", type_: PropType::String, required: false, default: None, description: "Generated Vue.js code" },

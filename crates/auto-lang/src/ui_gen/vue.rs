@@ -666,6 +666,26 @@ pub struct VueGenerator {
 
     /// Whether to output TypeScript (Plan 100: a2js → a2ts)
     use_typescript: bool,
+
+    /// Counter for unique previewcard IDs
+    previewcard_counter: usize,
+
+    /// Data for each previewcard (id, auto_code, vue_code)
+    previewcard_data: Vec<PreviewCardData>,
+
+    /// Whether copyCode function is needed
+    needs_copy_code: bool,
+}
+
+/// Data for generating interactive preview cards
+#[derive(Debug, Clone)]
+struct PreviewCardData {
+    /// Unique identifier (e.g., "preview", "variants")
+    id: String,
+    /// Auto (AURA) source code
+    auto_code: String,
+    /// Vue.js source code
+    vue_code: String,
 }
 
 impl VueGenerator {
@@ -684,6 +704,9 @@ impl VueGenerator {
             shadcn_registry: ShadcnRegistry::new(),
             shadcn_components_used: HashSet::new(),
             use_typescript: true,  // Plan 100: TypeScript by default
+            previewcard_counter: 0,
+            previewcard_data: Vec::new(),
+            needs_copy_code: false,
         }
     }
 
@@ -727,6 +750,9 @@ impl VueGenerator {
         self.component_refs.clear();
         self.wrapper_classes.clear();
         self.shadcn_components_used.clear();
+        self.previewcard_counter = 0;
+        self.previewcard_data.clear();
+        self.needs_copy_code = false;
     }
 
     /// Generate complete Vue3 SFC
@@ -861,6 +887,68 @@ impl VueGenerator {
             }
         }
 
+        // Generate previewcard state variables and copyCode function
+        if !self.previewcard_data.is_empty() {
+            // Add copiedCode state
+            if self.use_typescript {
+                script.push_str("const copiedCode = ref<string>('')\n");
+            } else {
+                script.push_str("const copiedCode = ref('')\n");
+            }
+
+            // Add state for each previewcard
+            for pc in &self.previewcard_data {
+                let show_var = format!("show{}Code", pc.id);
+                let active_var = format!("active{}Tab", pc.id);
+                if self.use_typescript {
+                    script.push_str(&format!("const {} = ref<boolean>(false)\n", show_var));
+                    script.push_str(&format!("const {} = ref<string>('auto')\n", active_var));
+                } else {
+                    script.push_str(&format!("const {} = ref(false)\n", show_var));
+                    script.push_str(&format!("const {} = ref('auto')\n", active_var));
+                }
+            }
+            script.push('\n');
+
+            // Add copyCode function
+            if self.use_typescript {
+                script.push_str("// Copy to clipboard function\n");
+                script.push_str("async function copyCode(code: string, id: string): Promise<void> {\n");
+                script.push_str("  try {\n");
+                script.push_str("    await navigator.clipboard.writeText(code)\n");
+                script.push_str("    copiedCode.value = id\n");
+                script.push_str("    setTimeout(() => {\n");
+                script.push_str("      copiedCode.value = ''\n");
+                script.push_str("    }, 2000)\n");
+                script.push_str("  } catch (err) {\n");
+                script.push_str("    console.error('Failed to copy:', err)\n");
+                script.push_str("  }\n");
+                script.push_str("}\n\n");
+            } else {
+                script.push_str("// Copy to clipboard function\n");
+                script.push_str("async function copyCode(code, id) {\n");
+                script.push_str("  try {\n");
+                script.push_str("    await navigator.clipboard.writeText(code)\n");
+                script.push_str("    copiedCode.value = id\n");
+                script.push_str("    setTimeout(() => {\n");
+                script.push_str("      copiedCode.value = ''\n");
+                script.push_str("    }, 2000)\n");
+                script.push_str("  } catch (err) {\n");
+                script.push_str("    console.error('Failed to copy:', err)\n");
+                script.push_str("  }\n");
+                script.push_str("}\n\n");
+            }
+
+            // Add code sample constants
+            for pc in &self.previewcard_data {
+                let auto_var = format!("{}AutoCode", pc.id.to_lowercase());
+                let vue_var = format!("{}VueCode", pc.id.to_lowercase());
+                script.push_str(&format!("const {} = `{}`\n", auto_var, pc.auto_code));
+                script.push_str(&format!("const {} = `{}`\n", vue_var, pc.vue_code));
+            }
+            script.push('\n');
+        }
+
         Ok(script)
     }
 
@@ -908,6 +996,11 @@ impl VueGenerator {
 
         match node {
             AuraNode::Element { tag, props, events, children } => {
+                // Special handling for previewcard element
+                if tag == "previewcard" {
+                    return self.generate_previewcard_html(props, events, children, indent);
+                }
+
                 let html_tag = self.map_tag(tag, children.is_empty());
 
                 // Check if this is a shadcn-vue component
@@ -938,6 +1031,11 @@ impl VueGenerator {
                             continue; // Already handled
                         }
                         if key == "text" {
+                            text_content = Some(self.prop_to_text_content(value)?);
+                            continue;
+                        }
+                        // Special handling for codeblock's code prop - render as content
+                        if key == "code" && tag == "codeblock" {
                             text_content = Some(self.prop_to_text_content(value)?);
                             continue;
                         }
@@ -1106,6 +1204,125 @@ impl VueGenerator {
         }
     }
 
+    /// Generate HTML for interactive previewcard element
+    fn generate_previewcard_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        _events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "  ".repeat(indent);
+
+        // Extract props
+        let id = if let Some(value) = props.get("id") {
+            self.extract_string_value(value)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    self.previewcard_counter += 1;
+                    format!("preview{}", self.previewcard_counter)
+                })
+        } else {
+            self.previewcard_counter += 1;
+            format!("preview{}", self.previewcard_counter)
+        };
+
+        // Capitalize first letter for variable names
+        let id_cap = format!("{}{}", id.chars().next().unwrap().to_uppercase(), &id[1..]);
+
+        let auto_code = if let Some(value) = props.get("auto") {
+            self.extract_string_value(value).unwrap_or_default().to_string()
+        } else {
+            "// Auto code not provided".to_string()
+        };
+
+        let vue_code = if let Some(value) = props.get("vue") {
+            self.extract_string_value(value).unwrap_or_default().to_string()
+        } else {
+            "// Vue code not provided".to_string()
+        };
+
+        // Store previewcard data for script generation
+        self.previewcard_data.push(PreviewCardData {
+            id: id_cap.clone(),
+            auto_code: auto_code.clone(),
+            vue_code: vue_code.clone(),
+        });
+        self.needs_copy_code = true;
+
+        // Generate children HTML for preview area
+        let mut children_html = String::new();
+        for child in children {
+            children_html.push_str(&self.node_to_html(child, indent + 3)?);
+        }
+
+        // Generate the full previewcard HTML
+        let html = format!(
+            r#"{ind}<!-- Merged {id_cap} Component -->
+{ind}<div class="rounded-lg border overflow-hidden">
+{ind}  <!-- Preview Area -->
+{ind}  <div class="flex items-center justify-center p-4 min-h-[100px] bg-zinc-100 dark:bg-zinc-900">
+{ind}    {children_html}{ind}  </div>
+{ind}  <!-- Toggle Code Footer -->
+{ind}  <div class="border-t">
+{ind}    <button
+{ind}      @click="show{id_cap}Code = !show{id_cap}Code"
+{ind}      class="flex w-full items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
+{ind}    >
+{ind}      <span class="font-medium">Code</span>
+{ind}      <svg
+{ind}        :class="show{id_cap}Code ? 'rotate-180' : ''"
+{ind}        xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+{ind}        class="transition-transform duration-200"
+{ind}      >
+{ind}        <path d="m6 9 6 6 6-6"/>
+{ind}      </svg>
+{ind}    </button>
+{ind}    <!-- Expandable Code Block -->
+{ind}    <div v-if="show{id_cap}Code" class="border-t bg-zinc-950 text-zinc-50">
+{ind}      <!-- Tabs -->
+{ind}      <div class="flex items-center justify-between border-b border-zinc-800">
+{ind}        <div class="flex">
+{ind}          <button
+{ind}            @click="active{id_cap}Tab = 'auto'"
+{ind}            :class="active{id_cap}Tab === 'auto' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'"
+{ind}            class="px-4 py-2 text-xs font-medium transition-colors"
+{ind}          >
+{ind}            Auto
+{ind}          </button>
+{ind}          <button
+{ind}            @click="active{id_cap}Tab = 'vue'"
+{ind}            :class="active{id_cap}Tab === 'vue' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'"
+{ind}            class="px-4 py-2 text-xs font-medium transition-colors"
+{ind}          >
+{ind}            Vue
+{ind}          </button>
+{ind}        </div>
+{ind}        <button
+{ind}          @click="copyCode(active{id_cap}Tab === 'auto' ? {id_lower}AutoCode : {id_lower}VueCode, '{id}')"
+{ind}          class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 mr-2 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+{ind}        >
+{ind}          <svg v-if="copiedCode !== '{id}'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+{ind}          <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+{ind}          {{{{ copiedCode === '{id}' ? 'Copied!' : 'Copy' }}}}
+{ind}        </button>
+{ind}      </div>
+{ind}      <!-- Code content -->
+{ind}      <pre class="overflow-x-auto p-4 text-sm"><code class="font-mono">{{{{ active{id_cap}Tab === 'auto' ? {id_lower}AutoCode : {id_lower}VueCode }}}}</code></pre>
+{ind}    </div>
+{ind}  </div>
+{ind}</div>
+"#,
+            ind = ind,
+            id = id,
+            id_cap = id_cap,
+            id_lower = id.to_lowercase(),
+            children_html = children_html
+        );
+
+        Ok(html)
+    }
+
     /// Convert AURA condition to Vue expression
     fn convert_condition(&mut self, condition: &str) -> String {
         // Convert .var to var, .len to .length, etc.
@@ -1175,6 +1392,15 @@ impl VueGenerator {
             "scroll" => "div".to_string(),
             "container" => "div".to_string(),
             "center" => "div".to_string(),
+
+            // HTML5 semantic elements
+            "header" => "header".to_string(),
+            "nav" => "nav".to_string(),
+            "main" => "main".to_string(),
+            "section" => "section".to_string(),
+            "aside" => "aside".to_string(),
+            "footer" => "footer".to_string(),
+            "article" => "article".to_string(),
 
             // Content
             "button" => "button".to_string(),
@@ -1261,8 +1487,16 @@ impl VueGenerator {
         // (shadcn components have their own styling)
         let skip_defaults = self.is_shadcn() && self.shadcn_registry.has_component(tag);
 
+        // Check if user has provided a class attribute
+        let has_user_class = props.contains_key("class");
+
+        // For semantic HTML elements, skip defaults if user provides their own class
+        // These elements are typically fully custom-styled
+        let semantic_elements = ["header", "nav", "main", "aside", "footer", "article"];
+        let skip_semantic_defaults = has_user_class && semantic_elements.contains(&tag);
+
         // Default classes based on tag (only in Plain mode or for non-shadcn elements)
-        if !skip_defaults {
+        if !skip_defaults && !skip_semantic_defaults {
             match tag {
                 // Layout
                 "col" | "column" => classes.push("flex flex-col gap-4".to_string()),
@@ -1271,6 +1505,14 @@ impl VueGenerator {
                 "scroll" => classes.push("overflow-auto".to_string()),
                 "container" => classes.push("max-w-7xl mx-auto".to_string()),
                 "center" => classes.push("flex items-center justify-center".to_string()),
+
+                // HTML5 semantic elements (only add defaults if user hasn't provided class)
+                "header" => classes.push("w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60".to_string()),
+                "nav" => classes.push("flex items-center gap-4".to_string()),
+                "main" => classes.push("flex-1".to_string()),
+                "aside" => classes.push("w-64 border-r bg-background".to_string()),
+                "footer" => classes.push("w-full border-t bg-background".to_string()),
+                "article" => classes.push("prose max-w-none".to_string()),
 
                 // Typography
                 "h1" => classes.push("text-4xl font-bold tracking-tight".to_string()),
@@ -1285,7 +1527,7 @@ impl VueGenerator {
                 "checkbox" => classes.push("w-4 h-4".to_string()),
                 "toggle" => classes.push("relative w-10 h-6 rounded-full".to_string()),
                 "select" => classes.push("border rounded px-2 py-1".to_string()),
-                "link" => classes.push("block select-none rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer".to_string()),
+                "link" => classes.push("text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer".to_string()),
                 "codeblock" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-x-auto".to_string()),
                 "codepane" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-hidden".to_string()),
                 "previewcard" => classes.push("rounded-lg border overflow-hidden".to_string()),
@@ -1605,21 +1847,22 @@ impl VueGenerator {
             "previewcard" => {
                 // title prop (default: "Preview")
                 let title = if let Some(value) = props.get("title") {
-                    self.extract_string_value(value).unwrap_or("Preview")
+                    self.extract_string_value(value).unwrap_or("Preview").to_string()
                 } else {
                     "Preview".to_string()
                 };
                 // auto and vue props are stored as data attributes for the code section
                 if let Some(value) = props.get("auto") {
-                    if let Ok(auto_code) = self.extract_string_value(value) else {
+                    if let Some(auto_code) = self.extract_string_value(value) {
                         attrs.push(format!("data-auto=\"{}\"", auto_code.replace("\"", "&quot;").replace("<", "&lt;")));
                     }
                 }
                 if let Some(value) = props.get("vue") {
-                    if let Ok(vue_code) = self.extract_string_value(value) else {
+                    if let Some(vue_code) = self.extract_string_value(value) {
                         attrs.push(format!("data-vue=\"{}\"", vue_code.replace("\"", "&quot;").replace("<", "&lt;")));
                     }
                 }
+                let _ = title; // Suppress unused variable warning
             }
 
             // === Input ===
