@@ -1135,7 +1135,25 @@ impl VueGenerator {
             i += 1;
         }
 
-        converted
+        // Replace double quotes with single quotes for Vue template compatibility
+        // (v-if="currentPage == 'button'" not v-if="currentPage == "button"")
+        let mut final_result = String::new();
+        let mut in_string = false;
+        for c in converted.chars() {
+            if c == '"' {
+                if in_string {
+                    final_result.push('\'');  // End of string, use single quote
+                    in_string = false;
+                } else {
+                    final_result.push('\'');  // Start of string, use single quote
+                    in_string = true;
+                }
+            } else {
+                final_result.push(c);
+            }
+        }
+
+        final_result
     }
 
     /// Map AutoUI tag to HTML tag or shadcn-vue component

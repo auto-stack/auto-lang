@@ -306,9 +306,9 @@ examples/component-gallery/source/front/components/nav_link.at
 
 ## Known Issues (待修复)
 
-### Phase 7: 下一步计划
+### Phase 7: 下一步计划 ✅ 已完成
 
-#### 1. 侧边栏导航切换页面内容 (高优先级)
+#### 1. 侧边栏导航切换页面内容 (高优先级) ✅ 已修复
 
 **问题描述**:
 当前侧边栏的导航按钮点击后能够更新 `currentPage` 状态，但主内容区域没有根据状态变化显示不同的组件文档页面。
@@ -347,9 +347,14 @@ view {
 - `crates/auto-lang/src/parser.rs` - `parse_view_conditional()` 条件表达式解析
 
 **修复方案**:
-1. 检查 `parse_condition_expr()` 是否正确解析 `.currentPage == "button"` 表达式
-2. 确保 `extract_view_node()` 正确提取 `ViewNode::Conditional` 节点
-3. 验证 Vue 生成器生成正确的 `v-if` / `v-else-if` / `v-else` 模板
+1. ✅ 添加字符串字面量解析支持到 `parse_condition_expr()` (TokenKind::Str)
+2. ✅ 修复 Vue 生成器中双引号转义问题（使用单引号替代）
+3. ✅ 更新 app.at 使用嵌套 if/else 条件渲染
+
+**已修复 (2026-03-02)**:
+- `parser.rs`: 添加 `TokenKind::Str` 支持解析 `"button"` 等字符串
+- `vue.rs`: `convert_condition()` 将双引号转换为单引号避免 Vue 模板语法冲突
+- `app.at`: 实现完整的 8 页面条件切换
 
 #### 2. shadcn-vue 初始化问题 (中优先级)
 
@@ -390,6 +395,19 @@ view {
 - 1 个 GitHub Actions workflow
 
 **下一步**:
-- 实现页面内容切换
+- ~~实现页面内容切换~~ ✅ 已完成
 - 完善各组件的文档内容
 - 添加真正的代码展示（而非占位符）
+
+### 2026-03-02: 侧边栏导航内容切换实现
+
+**成就**:
+- ✅ 修复 `parse_condition_expr()` 支持字符串字面量解析
+- ✅ 修复 Vue 生成器引号转义问题
+- ✅ 实现 8 个组件页面的完整条件切换
+- ✅ `npm run build` 成功构建生产版本
+
+**修改文件**:
+- `crates/auto-lang/src/parser.rs` - 添加 TokenKind::Str 支持
+- `crates/auto-lang/src/ui_gen/vue.rs` - 修复 convert_condition() 引号问题
+- `examples/component-gallery/source/front/app.at` - 完善条件渲染逻辑

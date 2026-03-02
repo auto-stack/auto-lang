@@ -7579,6 +7579,11 @@ impl<'a> Parser<'a> {
                 let num = self.cur.text.to_string();
                 self.next();
                 parts.push(num);
+            } else if self.is_kind(TokenKind::Str) {
+                // Handle string literals like "button"
+                let s = format!("\"{}\"", self.cur.text);
+                self.next();
+                parts.push(s);
             } else if self.is_kind(TokenKind::LParen) {
                 self.next();
                 parts.push("(".to_string());

@@ -6,7 +6,11 @@ widget App {
         GoToButton,
         GoToInput,
         GoToCard,
-        GoToBadge
+        GoToBadge,
+        GoToText,
+        GoToLabel,
+        GoToAccordion,
+        GoToTabs
     }
 
     model {
@@ -22,40 +26,144 @@ widget App {
                 // Navigation links
                 button (text: "Button", onclick: .GoToButton) {}
                 button (text: "Input", onclick: .GoToInput) {}
+                button (text: "Text", onclick: .GoToText) {}
                 button (text: "Card", onclick: .GoToCard) {}
                 button (text: "Badge", onclick: .GoToBadge) {}
+                button (text: "Label", onclick: .GoToLabel) {}
+                button (text: "Accordion", onclick: .GoToAccordion) {}
+                button (text: "Tabs", onclick: .GoToTabs) {}
             }
 
-            // Main content area
-            col {
-                // Page header
-                h1 (text: "Button") {}
-                text "A button component with multiple variants."
+            // Main content area - conditional rendering based on currentPage
+            if .currentPage == "button" {
+                col {
+                    h1 (text: "Button") {}
+                    text "A button component with multiple variants."
 
-                // Installation
-                h2 (text: "Installation") {}
-                text "npx shadcn-vue@latest add button"
+                    h2 (text: "Installation") {}
+                    text "npx shadcn-vue@latest add button"
 
-                // Preview section
-                h2 (text: "Preview") {}
+                    h2 (text: "Preview") {}
+                    row {
+                        button (text: "Default") {}
+                        button (text: "Outline") {}
+                        button (text: "Destructive") {}
+                    }
 
-                // Component demo
-                row {
-                    button (text: "Default") {}
-                    button (text: "Outline") {}
-                    button (text: "Destructive") {}
+                    h2 (text: "API Reference") {}
+                    text "Props: text, variant, size, disabled"
                 }
+            } else {
+                if .currentPage == "input" {
+                    col {
+                        h1 (text: "Input") {}
+                        text "A text input component."
 
-                // Code section
-                h2 (text: "Auto Source Code") {}
-                text "widget Button { ... }"
+                        h2 (text: "Installation") {}
+                        text "npx shadcn-vue@latest add input"
 
-                h2 (text: "Vue Source Code") {}
-                text "<Button>Click me</Button>"
+                        h2 (text: "Preview") {}
+                        input (placeholder: "Enter text...") {}
 
-                // API Reference
-                h2 (text: "API Reference") {}
-                text "Props: text, variant, size, disabled"
+                        h2 (text: "API Reference") {}
+                        text "Props: value, placeholder, type, disabled"
+                    }
+                } else {
+                    if .currentPage == "text" {
+                        col {
+                            h1 (text: "Text") {}
+                            text "A text display component with interpolation support."
+
+                            h2 (text: "Preview") {}
+                            text "Hello, World!"
+
+                            h2 (text: "API Reference") {}
+                            text "Props: content"
+                        }
+                    } else {
+                        if .currentPage == "card" {
+                            col {
+                                h1 (text: "Card") {}
+                                text "A card container component."
+
+                                h2 (text: "Installation") {}
+                                text "npx shadcn-vue@latest add card"
+
+                                h2 (text: "Preview") {}
+                                card (title: "Card Title") {
+                                    text "Card content goes here."
+                                }
+
+                                h2 (text: "API Reference") {}
+                                text "Props: title, variant"
+                            }
+                        } else {
+                            if .currentPage == "badge" {
+                                col {
+                                    h1 (text: "Badge") {}
+                                    text "A badge component for status indicators."
+
+                                    h2 (text: "Installation") {}
+                                    text "npx shadcn-vue@latest add badge"
+
+                                    h2 (text: "Preview") {}
+                                    row {
+                                        badge (text: "Default") {}
+                                        badge (text: "Success") {}
+                                        badge (text: "Warning") {}
+                                    }
+
+                                    h2 (text: "API Reference") {}
+                                    text "Props: text, variant"
+                                }
+                            } else {
+                                if .currentPage == "label" {
+                                    col {
+                                        h1 (text: "Label") {}
+                                        text "A form label component."
+
+                                        h2 (text: "Preview") {}
+                                        label (text: "Email") {}
+
+                                        h2 (text: "API Reference") {}
+                                        text "Props: text, required, error"
+                                    }
+                                } else {
+                                    if .currentPage == "accordion" {
+                                        col {
+                                            h1 (text: "Accordion") {}
+                                            text "A collapsible accordion component."
+
+                                            h2 (text: "Installation") {}
+                                            text "npx shadcn-vue@latest add accordion"
+
+                                            h2 (text: "API Reference") {}
+                                            text "Props: items, defaultOpen"
+                                        }
+                                    } else {
+                                        if .currentPage == "tabs" {
+                                            col {
+                                                h1 (text: "Tabs") {}
+                                                text "A tab navigation component."
+
+                                                h2 (text: "Installation") {}
+                                                text "npx shadcn-vue@latest add tabs"
+
+                                                h2 (text: "API Reference") {}
+                                                text "Props: items, defaultTab"
+                                            }
+                                        } else {
+                                            col {
+                                                h1 (text: "Button") {}
+                                                text "A button component with multiple variants."
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -67,11 +175,23 @@ widget App {
         GoToInput => {
             currentPage = "input"
         }
+        GoToText => {
+            currentPage = "text"
+        }
         GoToCard => {
             currentPage = "card"
         }
         GoToBadge => {
             currentPage = "badge"
+        }
+        GoToLabel => {
+            currentPage = "label"
+        }
+        GoToAccordion => {
+            currentPage = "accordion"
+        }
+        GoToTabs => {
+            currentPage = "tabs"
         }
     }
 }
