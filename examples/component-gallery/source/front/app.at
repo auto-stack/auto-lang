@@ -72,38 +72,22 @@ widget App {
 
                             // Installation section
                             h2 (text: "Installation") {}
-                    row {
-                        text "$"
-                        text "npx shadcn-vue@latest add button"
-                    }
+                            codeblock (lang: "bash", code: "npx shadcn-vue@latest add button") {}
 
-                    // Preview section
-                    h2 (text: "Preview") {}
-                    card {
-                        row {
-                            button (text: "Default") {}
-                            button (text: "Secondary") {}
-                            button (text: "Destructive") {}
-                            button (text: "Outline") {}
-                        }
-                    }
+                            // Preview section
+                            h2 (text: "Preview") {}
+                            card {
+                                row {
+                                    button (text: "Default") {}
+                                    button (text: "Secondary") {}
+                                    button (text: "Destructive") {}
+                                    button (text: "Outline") {}
+                                }
+                            }
 
-                    // Code section
-                    h2 (text: "Code") {}
-                    card {
-                        col {
-                            text "widget Button {"
-                            text "  msg Msg { Click }"
-                            text "  model { count int = 0 }"
-                            text "  view {"
-                            text "    button (text: 'Click me', onclick: .Click) {}"
-                            text "  }"
-                            text "  on {"
-                            text "    Click => { count = count + 1 }"
-                            text "  }"
-                            text "}"
-                        }
-                    }
+                            // Code section
+                            h2 (text: "Code") {}
+                            codeblock (lang: "auto", code: "widget Button {\n    msg Msg { Click }\n    model { count int = 0 }\n    view {\n        button (text: 'Click me', onclick: .Click) {}\n    }\n    on {\n        Click => { count = count + 1 }\n    }\n}") {}
 
                     // API Reference
                     h2 (text: "API Reference") {}

@@ -1185,6 +1185,7 @@ impl VueGenerator {
             "select" => "select".to_string(),
             "option" => "option".to_string(),
             "link" => "a".to_string(),
+            "codeblock" => "pre".to_string(),
 
             // Typography (no shadcn components)
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => tag.to_string(),
@@ -1283,6 +1284,7 @@ impl VueGenerator {
                 "toggle" => classes.push("relative w-10 h-6 rounded-full".to_string()),
                 "select" => classes.push("border rounded px-2 py-1".to_string()),
                 "link" => classes.push("block select-none rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer".to_string()),
+                "codeblock" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-x-auto".to_string()),
                 "label" => classes.push("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70".to_string()),
 
                 // Data
@@ -1579,6 +1581,19 @@ impl VueGenerator {
                 if let Some(value) = props.get("href") {
                     let href = self.extract_string_value(value).unwrap_or("#");
                     attrs.push(format!("href=\"{}\"", href));
+                }
+            }
+
+            // === CodeBlock ===
+            "codeblock" => {
+                // lang prop for language identifier
+                if let Some(value) = props.get("lang") {
+                    let lang = self.extract_string_value(value).unwrap_or("text");
+                    attrs.push(format!("data-lang=\"{}\"", lang));
+                }
+                // code content becomes slot content
+                if let Some(value) = props.get("code") {
+                    slot_content = self.prop_to_text_content(value).ok();
                 }
             }
 

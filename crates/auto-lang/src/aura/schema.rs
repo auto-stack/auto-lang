@@ -430,6 +430,18 @@ impl AuraSchema {
             allows_children: false,
             description: "Hyperlink",
         });
+
+        elements.insert("codeblock", ElementDef {
+            tag: "codeblock",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "lang", type_: PropType::String, required: false, default: Some("text"), description: "Programming language for syntax highlighting" },
+                PropDef { name: "code", type_: PropType::String, required: false, default: None, description: "Code content" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Code block with syntax highlighting",
+        });
     }
 
     fn add_typography_elements(elements: &mut HashMap<&'static str, ElementDef>) {
