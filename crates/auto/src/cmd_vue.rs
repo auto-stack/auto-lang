@@ -93,21 +93,28 @@ fn generate_workspace_project(
     let pac_content = fs::read_to_string(pac_path)
         .map_err(|e| format!("Failed to read pac.at: {}", e))?;
 
+    // Get the directory containing pac.at
+    let pac_dir = pac_path.parent()
+        .ok_or_else(|| "Cannot determine pac.at directory".to_string())?;
+
     // Parse workspace paths from pac.at
-    let front_path = parse_workspace_path(&pac_content, "front")
+    let front_rel_path = parse_workspace_path(&pac_content, "front")
         .unwrap_or_else(|| "source/front".to_string());
-    let back_path = parse_workspace_path(&pac_content, "back")
+    let back_rel_path = parse_workspace_path(&pac_content, "back")
         .unwrap_or_else(|| "source/back".to_string());
 
+    // Resolve paths relative to pac.at directory
+    let front_dir = pac_dir.join(&front_rel_path);
+    let back_dir = pac_dir.join(&back_rel_path);
+
     println!("{} {}", "Workspace:".bright_cyan(), pac_path.display());
-    println!("{} {}", "Front:".bright_cyan(), front_path);
-    println!("{} {}", "Back:".bright_cyan(), back_path);
+    println!("{} {}", "Front:".bright_cyan(), front_rel_path);
+    println!("{} {}", "Back:".bright_cyan(), back_rel_path);
     println!();
 
     // Check if front directory exists
-    let front_dir = Path::new(&front_path);
     if !front_dir.exists() {
-        return Err(format!("Front directory '{}' not found", front_path));
+        return Err(format!("Front directory '{}' not found", front_dir.display()));
     }
 
     // Find app.at in front directory
@@ -351,9 +358,22 @@ pub fn generate_vue_project(
         }
     }
 
+    let input = input_path.unwrap();
+    let input_path_buf = Path::new(input);
+
+    // Check if input is a directory (workspace mode)
+    if input_path_buf.is_dir() {
+        // Look for pac.at in the directory
+        let pac_path = input_path_buf.join("pac.at");
+        if pac_path.exists() {
+            return generate_workspace_project(&pac_path, output_dir, no_install, yes);
+        } else {
+            return Err(format!("No pac.at found in directory '{}'", input));
+        }
+    }
+
     // Legacy mode: transpile single .at file
-    let input_path = input_path.unwrap();
-    generate_single_file_project(input_path, output_dir, project_name, no_install, yes)
+    generate_single_file_project(input, output_dir, project_name, no_install, yes)
 }
 
 /// Generate Vue project from single AURA file (legacy mode)

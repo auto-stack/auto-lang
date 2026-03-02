@@ -1,0 +1,55 @@
+// pages/index.at - Documentation home page
+
+widget IndexPage {
+    msg Msg { Navigate }
+
+    model {
+        activeTab str = "preview"
+    }
+
+    computed {
+        components => ["Button", "Input", "Text", "Card", "Badge", "Label", "Accordion", "Tabs"]
+        features => [
+            { title: "Type Safe", desc: "Full TypeScript support with type inference" },
+            { title: "Composable", desc: "Build complex UIs from simple components" },
+            { title: "Accessible", desc: "WCAG 2.1 AA compliant by default" },
+            { title: "Themeable", desc: "Easy customization with CSS variables" }
+        ]
+    }
+
+    view {
+        col {
+            // Hero section
+            div { class: "hero" }
+            row {
+                Badge (text: "v1.0.0", variant: "outline") {}
+            }
+
+            // Features section
+            h2 (text: "Features") {}
+            row {
+                for feature in .features {
+                    Card (title: .feature.title, variant: "outlined") {
+                        text .feature.desc
+                    }
+                }
+            }
+
+            // Quick start section
+            h2 (text: "Quick Start") {}
+
+            CodeBlock {
+                language: "bash"
+                code: "# Install AutoUI\nnpm install autoui\n\n# Or use the CLI\nnpx autoui add button"
+            }
+
+            // Component grid
+            h2 (text: "Available Components") {}
+
+            div { class: "component-grid" }
+
+            // CTA section
+            div { class: "cta-section" }
+        }
+    }
+}

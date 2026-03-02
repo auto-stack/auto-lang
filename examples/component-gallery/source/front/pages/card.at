@@ -1,0 +1,64 @@
+// pages/card.at - Card component documentation page
+
+widget CardPage {
+    msg Msg { TabChange(tab: str) }
+
+    model { activeTab str = "preview" }
+
+    computed {
+        autoCode => r#"
+widget Card {
+    model {
+        title str = ""
+        variant str = "default"  // default, outlined, elevated
+    }
+
+    view {
+        div { class: "card" }
+    }
+}
+"#
+    }
+
+    view {
+        col {
+            Breadcrumb {
+                items: [
+                    { text: "Docs", href: "/" },
+                    { text: "Components", href: "/components" },
+                    { text: "Card", href: "/components/card" }
+                ]
+            }
+
+            h1 (text: "Card") {}
+            Paragraph (content: "A card component for grouping related content with optional header and footer.") {}
+
+            h2 (text: "Installation") {}
+            CodeBlock { language: "bash", code: "npx autoui add card" }
+
+            Tabs (activeTab: .activeTab, onchange: .TabChange) {
+                TabTrigger (id: "preview", label: "Preview") {}
+                TabTrigger (id: "code", label: "Code") {}
+            }
+
+            TabContent (id: "preview", active: .activeTab == "preview") {
+                CardDemo {}
+            }
+
+            TabContent (id: "code", active: .activeTab == "code") {
+                DocsTabs { autoCode: .autoCode, vueCode: "" }
+            }
+
+            h2 (text: "Examples") {}
+
+            h3 (text: "Card Variants") {}
+            row {
+                Card (title: "Default", variant: "default") { text "Default card content" }
+                Card (title: "Outlined", variant: "outlined") { text "Outlined card content" }
+                Card (title: "Elevated", variant: "elevated") { text "Elevated card content" }
+            }
+        }
+    }
+
+    on { TabChange(tab) => { activeTab = tab } }
+}

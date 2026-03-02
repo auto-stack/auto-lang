@@ -1,0 +1,32 @@
+// pac.at - Component Gallery Workspace Config
+// AutoUI 组件库文档站点示例
+
+name: "component-gallery"
+version: "1.0.0"
+description: "AutoUI Component Gallery - Interactive component documentation"
+
+// Workspace structure
+workspace: {
+    front: "./source/front"
+}
+
+// Build targets
+targets: {
+    // `auto.exe vue` generates Vue documentation site
+    vue: {
+        frontend: "vue"
+        backend: "none"
+    }
+    // Future: GPUI desktop app
+    gpui: {
+        frontend: "gpui"
+        backend: "none"
+    }
+}
+
+// Development commands
+scripts: {
+    dev: "npm run dev"
+    build: "npm run build"
+    preview: "npm run preview"
+}

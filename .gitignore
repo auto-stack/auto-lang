@@ -45,3 +45,6 @@ test*.pdb
 tmp/*.at
 
 examples/**/dist/*
+
+# npm
+node_modules/

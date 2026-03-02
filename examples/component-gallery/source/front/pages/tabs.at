@@ -1,0 +1,91 @@
+// pages/tabs.at - Tabs component documentation page
+
+widget TabsPage {
+    msg Msg { TabChange(tab: str) }
+
+    model { activeTab str = "preview" }
+
+    computed {
+        autoCode => r#"
+widget Tabs {
+    msg Msg { Change(tabId: str) }
+
+    model {
+        tabs List = []  // List of {id, label}
+        activeTab str = ""
+    }
+
+    view {
+        div { class: "tabs" }
+    }
+}
+
+widget TabTrigger {
+    model {
+        id str = ""
+        label str = ""
+        active bool = false
+    }
+
+    view {
+        button { class: "tab-trigger", text: .label }
+    }
+}
+
+widget TabContent {
+    model {
+        id str = ""
+        active bool = false
+    }
+
+    view {
+        div { class: "tab-content" }
+    }
+}
+"#
+    }
+
+    view {
+        col {
+            Breadcrumb {
+                items: [
+                    { text: "Docs", href: "/" },
+                    { text: "Components", href: "/components" },
+                    { text: "Tabs", href: "/components/tabs" }
+                ]
+            }
+
+            h1 (text: "Tabs") {}
+            Paragraph (content: "A tabs component for tabbed navigation with horizontal and vertical orientations.") {}
+
+            h2 (text: "Installation") {}
+            CodeBlock { language: "bash", code: "npx autoui add tabs" }
+
+            Tabs (activeTab: .activeTab, onchange: .TabChange) {
+                TabTrigger (id: "preview", label: "Preview") {}
+                TabTrigger (id: "code", label: "Code") {}
+            }
+
+            TabContent (id: "preview", active: .activeTab == "preview") {
+                TabsDemo {}
+            }
+
+            TabContent (id: "code", active: .activeTab == "code") {
+                DocsTabs { autoCode: .autoCode, vueCode: "" }
+            }
+
+            h2 (text: "Examples") {}
+
+            h3 (text: "Horizontal Tabs") {}
+            TabsDemo {}
+
+            h3 (text: "Vertical Tabs") {}
+            VerticalTabsDemo {}
+
+            h3 (text: "Documentation Style") {}
+            DocsTabs { autoCode: "", vueCode: "" }
+        }
+    }
+
+    on { TabChange(tab) => { activeTab = tab } }
+}

@@ -1,0 +1,71 @@
+// pages/text.at - Text component documentation page
+
+widget TextPage {
+    msg Msg { TabChange(tab: str) }
+
+    model { activeTab str = "preview" }
+
+    computed {
+        autoCode => r#"
+widget Text {
+    model {
+        content str = ""
+        style str = "default"  // default, heading, paragraph, code, muted
+        truncate bool = false
+    }
+
+    view {
+        text { content: .content }
+    }
+}
+
+// Heading helpers
+widget H1 { model { content str = "" } view { text { class: "h1", content: .content } } }
+widget H2 { model { content str = "" } view { text { class: "h2", content: .content } } }
+widget H3 { model { content str = "" } view { text { class: "h3", content: .content } } }
+"#
+    }
+
+    view {
+        col {
+            Breadcrumb {
+                items: [
+                    { text: "Docs", href: "/" },
+                    { text: "Components", href: "/components" },
+                    { text: "Text", href: "/components/text" }
+                ]
+            }
+
+            h1 (text: "Text") {}
+            Paragraph (content: "A text display component with support for various styles and interpolation.") {}
+
+            h2 (text: "Installation") {}
+            CodeBlock { language: "bash", code: "npx autoui add text" }
+
+            Tabs (activeTab: .activeTab, onchange: .TabChange) {
+                TabTrigger (id: "preview", label: "Preview") {}
+                TabTrigger (id: "code", label: "Code") {}
+            }
+
+            TabContent (id: "preview", active: .activeTab == "preview") {
+                TextDemo {}
+            }
+
+            TabContent (id: "code", active: .activeTab == "code") {
+                DocsTabs { autoCode: .autoCode, vueCode: "" }
+            }
+
+            h2 (text: "Examples") {}
+
+            h3 (text: "Headings") {}
+            H1 (content: "Heading 1") {}
+            H2 (content: "Heading 2") {}
+            H3 (content: "Heading 3") {}
+
+            h3 (text: "Interpolation") {}
+            text f"Hello, ${"AutoUI"}! 2 + 2 = ${2 + 2}"
+        }
+    }
+
+    on { TabChange(tab) => { activeTab = tab } }
+}

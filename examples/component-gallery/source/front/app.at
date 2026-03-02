@@ -1,0 +1,77 @@
+// source/front/app.at - Component Gallery Documentation Site
+// A shadcn-vue style documentation site layout
+
+widget App {
+    msg Msg {
+        GoToButton,
+        GoToInput,
+        GoToCard,
+        GoToBadge
+    }
+
+    model {
+        currentPage str = "button"
+    }
+
+    view {
+        row {
+            // Sidebar - Component navigation
+            col {
+                h2 (text: "Components") {}
+
+                // Navigation links
+                button (text: "Button", onclick: .GoToButton) {}
+                button (text: "Input", onclick: .GoToInput) {}
+                button (text: "Card", onclick: .GoToCard) {}
+                button (text: "Badge", onclick: .GoToBadge) {}
+            }
+
+            // Main content area
+            col {
+                // Page header
+                h1 (text: "Button") {}
+                text "A button component with multiple variants."
+
+                // Installation
+                h2 (text: "Installation") {}
+                text "npx shadcn-vue@latest add button"
+
+                // Preview section
+                h2 (text: "Preview") {}
+
+                // Component demo
+                row {
+                    button (text: "Default") {}
+                    button (text: "Outline") {}
+                    button (text: "Destructive") {}
+                }
+
+                // Code section
+                h2 (text: "Auto Source Code") {}
+                text "widget Button { ... }"
+
+                h2 (text: "Vue Source Code") {}
+                text "<Button>Click me</Button>"
+
+                // API Reference
+                h2 (text: "API Reference") {}
+                text "Props: text, variant, size, disabled"
+            }
+        }
+    }
+
+    on {
+        GoToButton => {
+            currentPage = "button"
+        }
+        GoToInput => {
+            currentPage = "input"
+        }
+        GoToCard => {
+            currentPage = "card"
+        }
+        GoToBadge => {
+            currentPage = "badge"
+        }
+    }
+}

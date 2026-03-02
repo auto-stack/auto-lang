@@ -1,0 +1,73 @@
+// pages/badge.at - Badge component documentation page
+
+widget BadgePage {
+    msg Msg { TabChange(tab: str) }
+
+    model { activeTab str = "preview" }
+
+    computed {
+        autoCode => r#"
+widget Badge {
+    model {
+        text str = ""
+        variant str = "default"  // default, secondary, destructive, outline
+        size str = "md"          // sm, md, lg
+    }
+
+    view {
+        span { class: "badge", text: .text }
+    }
+}
+"#
+    }
+
+    view {
+        col {
+            Breadcrumb {
+                items: [
+                    { text: "Docs", href: "/" },
+                    { text: "Components", href: "/components" },
+                    { text: "Badge", href: "/components/badge" }
+                ]
+            }
+
+            h1 (text: "Badge") {}
+            Paragraph (content: "A badge component for displaying status, labels, or counts.") {}
+
+            h2 (text: "Installation") {}
+            CodeBlock { language: "bash", code: "npx autoui add badge" }
+
+            Tabs (activeTab: .activeTab, onchange: .TabChange) {
+                TabTrigger (id: "preview", label: "Preview") {}
+                TabTrigger (id: "code", label: "Code") {}
+            }
+
+            TabContent (id: "preview", active: .activeTab == "preview") {
+                BadgeDemo {}
+            }
+
+            TabContent (id: "code", active: .activeTab == "code") {
+                DocsTabs { autoCode: .autoCode, vueCode: "" }
+            }
+
+            h2 (text: "Examples") {}
+
+            h3 (text: "Variants") {}
+            row {
+                Badge (text: "Default", variant: "default") {}
+                Badge (text: "Secondary", variant: "secondary") {}
+                Badge (text: "Destructive", variant: "destructive") {}
+                Badge (text: "Outline", variant: "outline") {}
+            }
+
+            h3 (text: "Sizes") {}
+            row {
+                Badge (text: "Small", size: "sm") {}
+                Badge (text: "Medium", size: "md") {}
+                Badge (text: "Large", size: "lg") {}
+            }
+        }
+    }
+
+    on { TabChange(tab) => { activeTab = tab } }
+}

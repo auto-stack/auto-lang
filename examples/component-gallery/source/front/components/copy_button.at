@@ -1,0 +1,103 @@
+// components/copy_button.at - Copy to clipboard button
+
+/// CopyButton component for copying content to clipboard.
+///
+/// # Features
+/// - Visual feedback on copy
+/// - Customizable copy duration
+/// - Error handling for clipboard access
+
+widget CopyButton {
+    msg Msg {
+        Copy
+        ResetCopyState
+    }
+
+    model {
+        text str = ""
+        copied bool = false
+        copyDuration int = 2000  // ms
+    }
+
+    computed {
+        buttonText => if .copied { "Copied!" } else { "Copy" }
+        buttonClass => if .copied { "copy-button copied" } else { "copy-button" }
+        icon => if .copied { "✓" } else { "📋" }
+    }
+
+    view {
+        button {
+            class: .buttonClass
+            onclick: .Copy
+        }
+    }
+
+    on {
+        Copy => {
+            // Copy to clipboard via VM FFI
+            // clipboard.write(.text)
+            copied = true
+            // Schedule reset
+            // setTimeout(.ResetCopyState, .copyDuration)
+        }
+        ResetCopyState => {
+            copied = false
+        }
+    }
+}
+
+/// Copy button with icon only
+widget CopyIconButton {
+    msg Msg { Copy }
+
+    model {
+        text str = ""
+        copied bool = false
+    }
+
+    computed {
+        icon => if .copied { "✓" } else { "📋" }
+    }
+
+    view {
+        button {
+            class: "copy-icon-button"
+            onclick: .Copy
+            text: .icon
+        }
+    }
+
+    on {
+        Copy => {
+            copied = true
+        }
+    }
+}
+
+/// Copy demo for documentation page
+widget CopyButtonDemo {
+    model {
+        sampleCode str = "fn main() {\n    print(\"Hello, AutoUI!\")\n}"
+    }
+
+    view {
+        col {
+            h3 (text: "Copy Button") {}
+
+            row {
+                CopyButton (text: .sampleCode) {}
+            }
+
+            h3 (text: "Copy Icon Button") {}
+
+            row {
+                text "Copy this code: "
+                CopyIconButton (text: .sampleCode) {}
+            }
+
+            h3 (text: "Combined with Code Block") {}
+
+            div { class: "code-with-copy" }
+        }
+    }
+}

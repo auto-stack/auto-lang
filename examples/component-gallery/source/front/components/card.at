@@ -1,0 +1,98 @@
+// components/card.at - Card container component
+
+/// Card component for grouping related content.
+///
+/// # Structure
+/// - header: Optional card header
+/// - content: Main card content
+/// - footer: Optional card footer
+///
+/// # Variants
+/// - default: Standard card with border
+/// - outlined: Card with outline only
+/// - elevated: Card with shadow
+
+widget Card {
+    model {
+        title str = ""
+        variant str = "default"  // default, outlined, elevated
+    }
+
+    computed {
+        cardClass => f"card card-${.variant}"
+    }
+
+    view {
+        div {
+            class: .cardClass
+            if .title != "" {
+                div { class: "card-header", text: .title }
+            }
+            div { class: "card-content" }
+        }
+    }
+}
+
+/// Card with full control over sections
+widget CardSection {
+    model {
+        variant str = "default"
+    }
+
+    view {
+        div { class: f"card card-${.variant}" }
+    }
+}
+
+/// Card demo for documentation page
+widget CardDemo {
+    model {
+        selectedCard int = 0
+    }
+
+    view {
+        col {
+            h3 (text: "Card Variants") {}
+
+            row {
+                Card (title: "Default Card", variant: "default") {
+                    text "This is a default card with standard styling."
+                }
+
+                Card (title: "Outlined Card", variant: "outlined") {
+                    text "This is an outlined card with minimal styling."
+                }
+
+                Card (title: "Elevated Card", variant: "elevated") {
+                    text "This is an elevated card with shadow."
+                }
+            }
+
+            h3 (text: "Interactive Card") {}
+
+            row {
+                Card (title: "Click me!") {
+                    col {
+                        text "This card is interactive."
+                        text f"Selected: ${.selectedCard}"
+                        Button (text: "Select", onclick: .SelectCard) {}
+                    }
+                }
+            }
+
+            h3 (text: "Card with Content Sections") {}
+
+            CardSection (variant: "default") {
+                div { class: "card-header", text: "Product Card" }
+                div { class: "card-content" }
+                div { class: "card-footer" }
+            }
+        }
+    }
+
+    on {
+        SelectCard => {
+            selectedCard = selectedCard + 1
+        }
+    }
+}

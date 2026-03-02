@@ -1,0 +1,75 @@
+// pages/accordion.at - Accordion component documentation page
+
+widget AccordionPage {
+    msg Msg { TabChange(tab: str) }
+
+    model { activeTab str = "preview" }
+
+    computed {
+        autoCode => r#"
+widget Accordion {
+    model {
+        items List = []  // List of {id, title, content}
+        type str = "single"  // single, multiple
+    }
+
+    view {
+        div { class: "accordion" }
+    }
+}
+
+widget AccordionItem {
+    model {
+        id str = ""
+        title str = ""
+        expanded bool = false
+    }
+
+    view {
+        div { class: "accordion-item" }
+    }
+}
+"#
+    }
+
+    view {
+        col {
+            Breadcrumb {
+                items: [
+                    { text: "Docs", href: "/" },
+                    { text: "Components", href: "/components" },
+                    { text: "Accordion", href: "/components/accordion" }
+                ]
+            }
+
+            h1 (text: "Accordion") {}
+            Paragraph (content: "A vertically stacked set of interactive headings that each reveal a section of content.") {}
+
+            h2 (text: "Installation") {}
+            CodeBlock { language: "bash", code: "npx autoui add accordion" }
+
+            Tabs (activeTab: .activeTab, onchange: .TabChange) {
+                TabTrigger (id: "preview", label: "Preview") {}
+                TabTrigger (id: "code", label: "Code") {}
+            }
+
+            TabContent (id: "preview", active: .activeTab == "preview") {
+                AccordionShadcnDemo {}
+            }
+
+            TabContent (id: "code", active: .activeTab == "code") {
+                DocsTabs { autoCode: .autoCode, vueCode: "" }
+            }
+
+            h2 (text: "Usage") {}
+
+            h3 (text: "Single Expand") {}
+            text "Only one item can be expanded at a time."
+
+            h3 (text: "Multiple Expand") {}
+            text "Multiple items can be expanded simultaneously."
+        }
+    }
+
+    on { TabChange(tab) => { activeTab = tab } }
+}

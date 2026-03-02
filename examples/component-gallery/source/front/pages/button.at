@@ -1,0 +1,157 @@
+// pages/button.at - Button component documentation page
+
+widget ButtonPage {
+    msg Msg { TabChange(tab: str) }
+
+    model {
+        activeTab str = "preview"
+    }
+
+    // Auto source code for display
+    computed {
+        autoCode => r#"
+widget Button {
+    msg Msg { Click }
+
+    model {
+        text str = "Button"
+        variant str = "default"  // default, outline, ghost, destructive
+        size str = "md"          // sm, md, lg
+        disabled bool = false
+    }
+
+    computed {
+        classes => f"btn btn-${.variant} btn-${.size}"
+    }
+
+    view {
+        button {
+            class: .classes
+            text: .text
+            onclick: .Click
+            disabled: .disabled
+        }
+    }
+
+    on {
+        Click => {
+            // Handle click
+        }
+    }
+}
+"#
+
+        vueCode => r#"
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { Button } from '@/components/ui/button'
+
+const clickCount = ref(0)
+const handleClick = () => {
+  clickCount.value++
+}
+
+interface Props {
+  text?: string
+  variant?: 'default' | 'outline' | 'ghost' | 'destructive'
+  size?: 'sm' | 'md' | 'lg'
+  disabled?: boolean
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  text: 'Button',
+  variant: 'default',
+  size: 'md',
+  disabled: false
+})
+</script>
+
+<template>
+  <Button
+    :variant="variant"
+    :size="size"
+    :disabled="disabled"
+    @click="handleClick"
+  >
+    {{ text }}
+  </Button>
+</template>
+"#
+    }
+
+    view {
+        col {
+            // Breadcrumb
+            Breadcrumb {
+                items: [
+                    { text: "Docs", href: "/" },
+                    { text: "Components", href: "/components" },
+                    { text: "Button", href: "/components/button" }
+                ]
+            }
+
+            // Page header
+            h1 (text: "Button") {}
+            Paragraph (content: "A clickable button component with multiple variants for different use cases.") {}
+
+            // Installation
+            h2 (text: "Installation") {}
+            CodeBlock {
+                language: "bash"
+                code: "npx autoui add button"
+            }
+
+            // Tabs: Preview / Code
+            Tabs (activeTab: .activeTab, onchange: .TabChange) {
+                TabTrigger (id: "preview", label: "Preview") {}
+                TabTrigger (id: "code", label: "Code") {}
+            }
+
+            TabContent (id: "preview", active: .activeTab == "preview") {
+                // Live component preview
+                ButtonDemo {}
+            }
+
+            TabContent (id: "code", active: .activeTab == "code") {
+                // Code tabs
+                DocsTabs {
+                    autoCode: .autoCode
+                    vueCode: .vueCode
+                }
+            }
+
+            // API Reference
+            h2 (text: "API Reference") {}
+
+            h3 (text: "Props") {}
+            div { class: "props-table" }
+
+            // Examples
+            h2 (text: "Examples") {}
+
+            h3 (text: "Button Variants") {}
+            row {
+                Button (text: "Default", variant: "default") {}
+                Button (text: "Outline", variant: "outline") {}
+                Button (text: "Ghost", variant: "ghost") {}
+                Button (text: "Destructive", variant: "destructive") {}
+            }
+
+            h3 (text: "Button Sizes") {}
+            row {
+                Button (text: "Small", size: "sm") {}
+                Button (text: "Medium", size: "md") {}
+                Button (text: "Large", size: "lg") {}
+            }
+
+            h3 (text: "Disabled State") {}
+            Button (text: "Disabled", disabled: true) {}
+        }
+    }
+
+    on {
+        TabChange(tab) => {
+            activeTab = tab
+        }
+    }
+}

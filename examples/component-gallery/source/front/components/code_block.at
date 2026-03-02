@@ -1,0 +1,91 @@
+// components/code_block.at - Code display component with syntax highlighting
+
+/// CodeBlock component for displaying code with syntax highlighting.
+///
+/// # Features
+/// - Syntax highlighting for multiple languages
+/// - Line numbers (optional)
+/// - Copy to clipboard button
+/// - Filename display
+
+widget CodeBlock {
+    msg Msg {
+        Copy
+    }
+
+    model {
+        code str = ""
+        language str = "auto"  // auto, vue, typescript, rust, etc.
+        filename str = ""
+        showLineNumbers bool = true
+        copied bool = false
+    }
+
+    computed {
+        copyButtonText => if .copied { "Copied!" } else { "Copy" }
+        codeClass => f"code-block language-${.language}"
+    }
+
+    view {
+        div { class: "code-container" }
+    }
+}
+
+/// Pre-formatted code display
+widget Pre {
+    model { content str = "" }
+    view { pre { text: .content } }
+}
+
+/// Inline code display
+widget Code {
+    model {
+        content str = ""
+        language str = ""
+    }
+
+    computed {
+        codeClass => if .language != "" { f"inline-code language-${.language}" } else { "inline-code" }
+    }
+
+    view {
+        code { class: .codeClass, text: .content }
+    }
+}
+
+/// Code demo for documentation page
+widget CodeBlockDemo {
+    model {
+        autoCode str = "widget Button {\n    msg Msg { Click }\n    model {\n        text str = \"Click me\"\n    }\n    view {\n        button { text: .text, onclick: .Click }\n    }\n}"
+        vueCode str = "<script setup lang=\"ts\">\nconst text = ref('Click me')\nconst handleClick = () => {\n  console.log('clicked')\n}\n</script>\n\n<template>\n  <button @click=\"handleClick\">{{ text }}</button>\n</template>"
+        copied bool = false
+    }
+
+    view {
+        col {
+            h3 (text: "Code Block with Syntax Highlighting") {}
+
+            CodeBlock {
+                code: .autoCode
+                language: "auto"
+                filename: "button.at"
+                showLineNumbers: true
+            }
+
+            h3 (text: "Inline Code") {}
+
+            row {
+                text "Use "
+                Code (content: "widget") {}
+                text " keyword to define a component."
+            }
+
+            h3 (text: "Multi-language Support") {}
+
+            Tabs (activeTab: "auto") {
+                TabTrigger (id: "auto", label: "Auto") {}
+                TabTrigger (id: "vue", label: "Vue") {}
+            }
+        }
+    }
+}

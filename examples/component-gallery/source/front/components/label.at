@@ -1,0 +1,95 @@
+// components/label.at - Label component for form fields
+
+/// Label component for form field labels.
+///
+/// # Features
+/// - Required field indicator
+/// - Optional field indicator
+/// - Error state styling
+/// - Tooltip support
+
+widget Label {
+    model {
+        text str = ""
+        required bool = false
+        optional bool = false
+        error bool = false
+        htmlFor str = ""
+    }
+
+    computed {
+        labelText => if .required {
+            f"${.text} *"
+        } else if .optional {
+            f"${.text} (optional)"
+        } else {
+            .text
+        }
+        labelClass => if .error {
+            "label label-error"
+        } else {
+            "label"
+        }
+    }
+
+    view {
+        label {
+            class: .labelClass
+            for: .htmlFor
+            text: .labelText
+        }
+    }
+}
+
+/// Form field with label wrapper
+widget FormField {
+    model {
+        label str = ""
+        error str = ""
+        required bool = false
+    }
+
+    view {
+        div { class: "form-field" }
+    }
+}
+
+/// Label demo for documentation page
+widget LabelDemo {
+    model {
+        name str = ""
+        email str = ""
+        bio str = ""
+    }
+
+    view {
+        col {
+            h3 (text: "Label Variants") {}
+
+            col {
+                Label (text: "Standard Label") {}
+                Input (placeholder: "Standard input") {}
+            }
+
+            col {
+                Label (text: "Required Field", required: true) {}
+                Input (placeholder: "This field is required") {}
+            }
+
+            col {
+                Label (text: "Optional Field", optional: true) {}
+                Input (placeholder: "This field is optional") {}
+            }
+
+            col {
+                Label (text: "Error Label", error: true) {}
+                Input (placeholder: "Invalid input") {}
+                text { class: "error-text", content: "This field has an error" }
+            }
+
+            h3 (text: "Form Example") {}
+
+            div { class: "form" }
+        }
+    }
+}

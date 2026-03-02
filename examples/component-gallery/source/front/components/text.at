@@ -1,0 +1,102 @@
+// components/text.at - Text display component
+
+/// Text component for displaying text content.
+///
+/// # Features
+/// - Supports plain text and interpolated strings (f-strings)
+/// - Multiple text styles (heading, paragraph, code, etc.)
+/// - Truncation support for long text
+
+widget Text {
+    model {
+        content str = ""
+        style str = "default"  // default, heading, paragraph, code, muted
+        truncate bool = false
+        maxLength int = 0  // 0 = no limit
+    }
+
+    computed {
+        displayText => if .truncate && .maxLength > 0 {
+            if .content.len() > .maxLength {
+                f"${.content.slice(0, .maxLength)}..."
+            } else {
+                .content
+            }
+        } else {
+            .content
+        }
+        textClass => f"text text-${.style}"
+    }
+
+    view {
+        text {
+            class: .textClass
+            content: .displayText
+        }
+    }
+}
+
+/// Heading components
+widget H1 {
+    model { content str = "" }
+    view { text { class: "heading-1", content: .content } }
+}
+
+widget H2 {
+    model { content str = "" }
+    view { text { class: "heading-2", content: .content } }
+}
+
+widget H3 {
+    model { content str = "" }
+    view { text { class: "heading-3", content: .content } }
+}
+
+widget Paragraph {
+    model { content str = "" }
+    view { text { class: "paragraph", content: .content } }
+}
+
+/// Text demo for documentation page
+widget TextDemo {
+    model {
+        name str = "AutoUI"
+        version str = "1.0.0"
+    }
+
+    view {
+        col {
+            h3 (text: "Text Styles") {}
+
+            H1 (content: "Heading 1") {}
+            H2 (content: "Heading 2") {}
+            H3 (content: "Heading 3") {}
+            Paragraph (content: "This is a paragraph of text. It can contain multiple sentences and will wrap automatically.") {}
+
+            h3 (text: "Interpolated Text") {}
+
+            text f"Welcome to ${.name} v${.version}!"
+            text f"2 + 2 = ${2 + 2}"
+            text f"Current time: ${.now()}"
+
+            h3 (text: "Truncated Text") {}
+
+            Text {
+                content: "This is a very long text that will be truncated when it exceeds the maximum length."
+                truncate: true
+                maxLength: 30
+            }
+
+            h3 (text: "Muted Text") {}
+
+            Text {
+                content: "This is muted text, typically used for secondary information."
+                style: "muted"
+            }
+        }
+    }
+
+    computed {
+        now => "2024-01-15"  // Placeholder
+    }
+}

@@ -1,0 +1,75 @@
+// pages/label.at - Label component documentation page
+
+widget LabelPage {
+    msg Msg { TabChange(tab: str) }
+
+    model { activeTab str = "preview" }
+
+    computed {
+        autoCode => r#"
+widget Label {
+    model {
+        text str = ""
+        required bool = false
+        optional bool = false
+        error bool = false
+    }
+
+    computed {
+        labelText => if .required { f"${.text} *" } else { .text }
+    }
+
+    view {
+        label { text: .labelText }
+    }
+}
+"#
+    }
+
+    view {
+        col {
+            Breadcrumb {
+                items: [
+                    { text: "Docs", href: "/" },
+                    { text: "Components", href: "/components" },
+                    { text: "Label", href: "/components/label" }
+                ]
+            }
+
+            h1 (text: "Label") {}
+            Paragraph (content: "A label component for form field labels with required/optional indicators.") {}
+
+            h2 (text: "Installation") {}
+            CodeBlock { language: "bash", code: "npx autoui add label" }
+
+            Tabs (activeTab: .activeTab, onchange: .TabChange) {
+                TabTrigger (id: "preview", label: "Preview") {}
+                TabTrigger (id: "code", label: "Code") {}
+            }
+
+            TabContent (id: "preview", active: .activeTab == "preview") {
+                LabelDemo {}
+            }
+
+            TabContent (id: "code", active: .activeTab == "code") {
+                DocsTabs { autoCode: .autoCode, vueCode: "" }
+            }
+
+            h2 (text: "Examples") {}
+
+            h3 (text: "Standard Label") {}
+            Label (text: "Username") {}
+            Input (placeholder: "Enter username") {}
+
+            h3 (text: "Required Field") {}
+            Label (text: "Email", required: true) {}
+            Input (inputType: "email", placeholder: "email@example.com") {}
+
+            h3 (text: "Error State") {}
+            Label (text: "Password", error: true) {}
+            Input (inputType: "password") {}
+        }
+    }
+
+    on { TabChange(tab) => { activeTab = tab } }
+}

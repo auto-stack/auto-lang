@@ -1,0 +1,51 @@
+// source/front/pac.at - Frontend Package Config
+
+name: "component-gallery-front"
+version: "1.0.0"
+description: "Component Gallery Frontend - Documentation site components"
+
+// IMPORTANT: This marks the package as an AURA UI package
+// When scenario is "ui", the compiler treats .at files as AURA components
+scenario: "ui"
+
+// Entry point
+entry: "app.at"
+
+// Dependencies
+deps: {
+    vue: "^3.4.0"
+    // shadcn-vue components for styling
+    shadcn: "@/components/ui"
+}
+
+// Component registry
+components: {
+    // UI components (Phase 1)
+    Button: "./components/button.at"
+    Input: "./components/input.at"
+    Text: "./components/text.at"
+    Card: "./components/card.at"
+    Badge: "./components/badge.at"
+    Label: "./components/label.at"
+    Accordion: "./components/accordion.at"
+    Tabs: "./components/tabs.at"
+
+    // Documentation components
+    CodeBlock: "./components/code_block.at"
+    CopyButton: "./components/copy_button.at"
+    Sidebar: "./components/sidebar.at"
+    NavLink: "./components/nav_link.at"
+}
+
+// Pages
+pages: {
+    index: "./pages/index.at"
+    button: "./pages/button.at"
+    input: "./pages/input.at"
+    text: "./pages/text.at"
+    card: "./pages/card.at"
+    badge: "./pages/badge.at"
+    label: "./pages/label.at"
+    accordion: "./pages/accordion.at"
+    tabs: "./pages/tabs.at"
+}
