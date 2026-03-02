@@ -454,6 +454,20 @@ impl AuraSchema {
             allows_children: false,
             description: "Tabbed code block showing Auto and Vue code side by side",
         });
+
+        // Preview Card - like shadcn-vue docs
+        elements.insert("previewcard", ElementDef {
+            tag: "previewcard",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "title", type_: PropType::String, required: false, default: Some("Preview"), description: "Section title" },
+                PropDef { name: "auto", type_: PropType::String, required: false, default: None, description: "Auto (AURA) source code" },
+                PropDef { name: "vue", type_: PropType::String, required: false, default: None, description: "Generated Vue.js code" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Preview card with collapsible code section - like shadcn-vue docs",
+        });
     }
 
     fn add_typography_elements(elements: &mut HashMap<&'static str, ElementDef>) {

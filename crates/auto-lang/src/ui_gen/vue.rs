@@ -1187,6 +1187,7 @@ impl VueGenerator {
             "link" => "a".to_string(),
             "codeblock" => "pre".to_string(),
             "codepane" => "div".to_string(),
+            "previewcard" => "div".to_string(),
 
             // Typography (no shadcn components)
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => tag.to_string(),
@@ -1287,6 +1288,7 @@ impl VueGenerator {
                 "link" => classes.push("block select-none rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer".to_string()),
                 "codeblock" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-x-auto".to_string()),
                 "codepane" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-hidden".to_string()),
+                "previewcard" => classes.push("rounded-lg border overflow-hidden".to_string()),
                 "label" => classes.push("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70".to_string()),
 
                 // Data
@@ -1596,6 +1598,27 @@ impl VueGenerator {
                 // code content becomes slot content
                 if let Some(value) = props.get("code") {
                     slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === PreviewCard ===
+            "previewcard" => {
+                // title prop (default: "Preview")
+                let title = if let Some(value) = props.get("title") {
+                    self.extract_string_value(value).unwrap_or("Preview")
+                } else {
+                    "Preview".to_string()
+                };
+                // auto and vue props are stored as data attributes for the code section
+                if let Some(value) = props.get("auto") {
+                    if let Ok(auto_code) = self.extract_string_value(value) else {
+                        attrs.push(format!("data-auto=\"{}\"", auto_code.replace("\"", "&quot;").replace("<", "&lt;")));
+                    }
+                }
+                if let Some(value) = props.get("vue") {
+                    if let Ok(vue_code) = self.extract_string_value(value) else {
+                        attrs.push(format!("data-vue=\"{}\"", vue_code.replace("\"", "&quot;").replace("<", "&lt;")));
+                    }
                 }
             }
 
