@@ -18,12 +18,17 @@ widget App {
     }
 
     view {
+        // Main layout: sidebar + content
         row {
-            // Sidebar - Component navigation
+            // Sidebar - Component navigation with proper styling
             col {
-                h2 (text: "Components") {}
+                // Logo/Title
+                text "AutoUI"
 
-                // Navigation links
+                // Components section header
+                text "Components"
+
+                // Navigation links - using buttons styled as links
                 button (text: "Button", onclick: .GoToButton) {}
                 button (text: "Input", onclick: .GoToInput) {}
                 button (text: "Text", onclick: .GoToText) {}
@@ -37,120 +42,255 @@ widget App {
             // Main content area - conditional rendering based on currentPage
             if .currentPage == "button" {
                 col {
-                    h1 (text: "Button") {}
-                    text "A button component with multiple variants."
-
-                    h2 (text: "Installation") {}
-                    text "npx shadcn-vue@latest add button"
-
-                    h2 (text: "Preview") {}
+                    // Breadcrumb
                     row {
-                        button (text: "Default") {}
-                        button (text: "Outline") {}
-                        button (text: "Destructive") {}
+                        text "Components"
+                        text "/"
+                        text "Button"
                     }
 
+                    // Page header
+                    h1 (text: "Button") {}
+                    text "Displays a button or a component that looks like a button."
+
+                    // Installation section
+                    h2 (text: "Installation") {}
+                    row {
+                        text "$"
+                        text "npx shadcn-vue@latest add button"
+                    }
+
+                    // Preview section
+                    h2 (text: "Preview") {}
+                    card {
+                        row {
+                            button (text: "Default") {}
+                            button (text: "Secondary") {}
+                            button (text: "Destructive") {}
+                            button (text: "Outline") {}
+                        }
+                    }
+
+                    // Code section
+                    h2 (text: "Code") {}
+                    card {
+                        col {
+                            text "widget Button {"
+                            text "  msg Msg { Click }"
+                            text "  model { count int = 0 }"
+                            text "  view {"
+                            text "    button (text: 'Click me', onclick: .Click) {}"
+                            text "  }"
+                            text "  on {"
+                            text "    Click => { count = count + 1 }"
+                            text "  }"
+                            text "}"
+                        }
+                    }
+
+                    // API Reference
                     h2 (text: "API Reference") {}
-                    text "Props: text, variant, size, disabled"
+                    card {
+                        col {
+                            row {
+                                text "text"
+                                text "string"
+                            }
+                            row {
+                                text "variant"
+                                text "default | secondary | destructive | outline | ghost | link"
+                            }
+                            row {
+                                text "size"
+                                text "default | sm | lg | icon"
+                            }
+                            row {
+                                text "disabled"
+                                text "boolean"
+                            }
+                        }
+                    }
                 }
             } else {
                 if .currentPage == "input" {
                     col {
+                        row {
+                            text "Components"
+                            text "/"
+                            text "Input"
+                        }
                         h1 (text: "Input") {}
-                        text "A text input component."
+                        text "Displays a form input field or a component that looks like an input field."
 
                         h2 (text: "Installation") {}
-                        text "npx shadcn-vue@latest add input"
+                        row {
+                            text "$"
+                            text "npx shadcn-vue@latest add input"
+                        }
 
                         h2 (text: "Preview") {}
-                        input (placeholder: "Enter text...") {}
+                        card {
+                            col {
+                                input (placeholder: "Email") {}
+                                input (placeholder: "Password") {}
+                            }
+                        }
 
                         h2 (text: "API Reference") {}
-                        text "Props: value, placeholder, type, disabled"
+                        card {
+                            col {
+                                row {
+                                    text "type"
+                                    text "text | password | email | number"
+                                }
+                                row {
+                                    text "placeholder"
+                                    text "string"
+                                }
+                                row {
+                                    text "disabled"
+                                    text "boolean"
+                                }
+                            }
+                        }
                     }
                 } else {
                     if .currentPage == "text" {
                         col {
+                            row {
+                                text "Components"
+                                text "/"
+                                text "Text"
+                            }
                             h1 (text: "Text") {}
-                            text "A text display component with interpolation support."
+                            text "Displays text with support for string interpolation."
 
                             h2 (text: "Preview") {}
-                            text "Hello, World!"
+                            card {
+                                text "Hello, World!"
+                            }
 
-                            h2 (text: "API Reference") {}
-                            text "Props: content"
+                            h2 (text: "Features") {}
+                            card {
+                                col {
+                                    text "- Static text content"
+                                    text "- Variable interpolation: $name"
+                                    text "- Expression interpolation: ${1 + 2}"
+                                }
+                            }
                         }
                     } else {
                         if .currentPage == "card" {
                             col {
+                                row {
+                                    text "Components"
+                                    text "/"
+                                    text "Card"
+                                }
                                 h1 (text: "Card") {}
-                                text "A card container component."
+                                text "Displays a card with header, content, and footer."
 
                                 h2 (text: "Installation") {}
-                                text "npx shadcn-vue@latest add card"
-
-                                h2 (text: "Preview") {}
-                                card (title: "Card Title") {
-                                    text "Card content goes here."
+                                row {
+                                    text "$"
+                                    text "npx shadcn-vue@latest add card"
                                 }
 
-                                h2 (text: "API Reference") {}
-                                text "Props: title, variant"
+                                h2 (text: "Preview") {}
+                                card {
+                                    col {
+                                        text "Card Title"
+                                        text "Card Description"
+                                        text "Card Content goes here."
+                                    }
+                                }
                             }
                         } else {
                             if .currentPage == "badge" {
                                 col {
+                                    row {
+                                        text "Components"
+                                        text "/"
+                                        text "Badge"
+                                    }
                                     h1 (text: "Badge") {}
-                                    text "A badge component for status indicators."
+                                    text "Displays a badge or a label."
 
                                     h2 (text: "Installation") {}
-                                    text "npx shadcn-vue@latest add badge"
-
-                                    h2 (text: "Preview") {}
                                     row {
-                                        badge (text: "Default") {}
-                                        badge (text: "Success") {}
-                                        badge (text: "Warning") {}
+                                        text "$"
+                                        text "npx shadcn-vue@latest add badge"
                                     }
 
-                                    h2 (text: "API Reference") {}
-                                    text "Props: text, variant"
+                                    h2 (text: "Preview") {}
+                                    card {
+                                        row {
+                                            badge (text: "Badge") {}
+                                        }
+                                    }
+
+                                    h2 (text: "Variants") {}
+                                    card {
+                                        row {
+                                            badge (text: "Default") {}
+                                            badge (text: "Secondary") {}
+                                            badge (text: "Destructive") {}
+                                            badge (text: "Outline") {}
+                                        }
+                                    }
                                 }
                             } else {
                                 if .currentPage == "label" {
                                     col {
+                                        row {
+                                            text "Components"
+                                            text "/"
+                                            text "Label"
+                                        }
                                         h1 (text: "Label") {}
-                                        text "A form label component."
+                                        text "Renders an accessible label associated with controls."
 
                                         h2 (text: "Preview") {}
-                                        label (text: "Email") {}
-
-                                        h2 (text: "API Reference") {}
-                                        text "Props: text, required, error"
+                                        card {
+                                            col {
+                                                label (text: "Email") {}
+                                                input (placeholder: "Email") {}
+                                            }
+                                        }
                                     }
                                 } else {
                                     if .currentPage == "accordion" {
                                         col {
+                                            row {
+                                                text "Components"
+                                                text "/"
+                                                text "Accordion"
+                                            }
                                             h1 (text: "Accordion") {}
-                                            text "A collapsible accordion component."
+                                            text "A vertically stacked set of interactive sections."
 
                                             h2 (text: "Installation") {}
-                                            text "npx shadcn-vue@latest add accordion"
-
-                                            h2 (text: "API Reference") {}
-                                            text "Props: items, defaultOpen"
+                                            row {
+                                                text "$"
+                                                text "npx shadcn-vue@latest add accordion"
+                                            }
                                         }
                                     } else {
                                         if .currentPage == "tabs" {
                                             col {
+                                                row {
+                                                    text "Components"
+                                                    text "/"
+                                                    text "Tabs"
+                                                }
                                                 h1 (text: "Tabs") {}
-                                                text "A tab navigation component."
+                                                text "A set of layered sections of content."
 
                                                 h2 (text: "Installation") {}
-                                                text "npx shadcn-vue@latest add tabs"
-
-                                                h2 (text: "API Reference") {}
-                                                text "Props: items, defaultTab"
+                                                row {
+                                                    text "$"
+                                                    text "npx shadcn-vue@latest add tabs"
+                                                }
                                             }
                                         } else {
                                             col {

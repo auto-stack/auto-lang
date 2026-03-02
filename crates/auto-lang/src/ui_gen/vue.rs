@@ -1262,12 +1262,18 @@ impl VueGenerator {
         if !skip_defaults {
             match tag {
                 // Layout
-                "col" | "column" => classes.push("flex flex-col".to_string()),
-                "row" => classes.push("flex flex-row".to_string()),
+                "col" | "column" => classes.push("flex flex-col gap-4".to_string()),
+                "row" => classes.push("flex flex-row gap-4".to_string()),
                 "grid" => classes.push("grid".to_string()),
                 "scroll" => classes.push("overflow-auto".to_string()),
                 "container" => classes.push("max-w-7xl mx-auto".to_string()),
                 "center" => classes.push("flex items-center justify-center".to_string()),
+
+                // Typography
+                "h1" => classes.push("text-4xl font-bold tracking-tight".to_string()),
+                "h2" => classes.push("text-2xl font-semibold tracking-tight mt-8".to_string()),
+                "h3" => classes.push("text-xl font-semibold".to_string()),
+                "text" => classes.push("text-muted-foreground leading-7".to_string()),
 
                 // Content
                 "button" => classes.push("px-4 py-2 rounded".to_string()),
@@ -1276,11 +1282,12 @@ impl VueGenerator {
                 "checkbox" => classes.push("w-4 h-4".to_string()),
                 "toggle" => classes.push("relative w-10 h-6 rounded-full".to_string()),
                 "select" => classes.push("border rounded px-2 py-1".to_string()),
-                "link" => classes.push("text-blue-600 underline".to_string()),
+                "link" => classes.push("text-primary underline-offset-4 hover:underline".to_string()),
+                "label" => classes.push("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70".to_string()),
 
                 // Data
                 "table" => classes.push("min-w-full border".to_string()),
-                "thead" => classes.push("bg-gray-100".to_string()),
+                "thead" => classes.push("bg-muted/50".to_string()),
                 "th" => classes.push("px-4 py-2 text-left font-semibold".to_string()),
                 "td" => classes.push("px-4 py-2".to_string()),
                 "tree" => classes.push("list-none pl-4".to_string()),
@@ -1291,7 +1298,7 @@ impl VueGenerator {
                 "tab" => classes.push("px-4 py-2 border-b-2 border-transparent".to_string()),
 
                 // Overlay
-                "modal" => classes.push("fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center".to_string()),
+                "modal" => classes.push("fixed inset-0 bg-black/80 flex items-center justify-center".to_string()),
 
                 // Form
                 "slider" => classes.push("w-full".to_string()),
@@ -1300,10 +1307,10 @@ impl VueGenerator {
                 // Feedback
                 "progress" => classes.push("w-full h-2 rounded".to_string()),
                 "badge" => classes.push("px-2 py-1 text-xs rounded-full".to_string()),
-                "spinner" => classes.push("animate-spin w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full".to_string()),
+                "spinner" => classes.push("animate-spin w-6 h-6 border-2 border-muted-foreground border-t-primary rounded-full".to_string()),
 
                 // Display
-                "card" => classes.push("bg-white rounded-lg shadow p-4".to_string()),
+                "card" => classes.push("rounded-lg border bg-card text-card-foreground shadow-sm".to_string()),
                 "avatar" => classes.push("w-10 h-10 rounded-full".to_string()),
 
                 // Media
@@ -1311,7 +1318,7 @@ impl VueGenerator {
                 "icon" => classes.push("w-5 h-5".to_string()),
 
                 // Utility
-                "divider" => classes.push("border-t border-gray-300".to_string()),
+                "divider" => classes.push("border-t border-border".to_string()),
                 "spacer" => classes.push("flex-1".to_string()),
 
                 _ => {}
