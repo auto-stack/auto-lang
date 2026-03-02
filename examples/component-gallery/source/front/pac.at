@@ -8,6 +8,9 @@ description: "Component Gallery Frontend - Documentation site components"
 // When scenario is "ui", the compiler treats .at files as AURA components
 scenario: "ui"
 
+// Workspace paths (front is current directory)
+front: "."
+
 // Entry point
 entry: "app.at"
 

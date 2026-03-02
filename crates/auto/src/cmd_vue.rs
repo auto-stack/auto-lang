@@ -174,59 +174,119 @@ fn generate_workspace_project(
 
     println!("{}", "✓ Created directory structure".bright_green());
 
-    // Compile all .at files in front directory
-    let mut all_components = Vec::new();
+    // Note: public folder will be copied in Step 3 during install steps
+    let source_public = front_dir.join("public");
+
+    // Compile .at files in front directory
+    // Structure: (relative_path, file_stem, vue_code)
+    // e.g., ("pages/button", "button", "<template>...")
+    let mut all_components: Vec<(String, String, String)> = Vec::new();
     let mut all_shadcn_components = HashSet::new();
 
-    for entry in fs::read_dir(front_dir)
-        .map_err(|e| format!("Failed to read front directory: {}", e))?
-    {
-        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-        let path = entry.path();
+    // Process app.at first
+    let app_at = front_dir.join("app.at");
+    if app_at.exists() {
+        println!("{} {}", "  Compiling:".bright_black(), app_at.display());
 
-        if path.extension().map(|e| e == "at").unwrap_or(false) {
-            let file_name = path.file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("component");
-
-            // Skip pac.at
-            if file_name == "pac" {
-                continue;
+        match auto_lang::ui_build_shadcn(app_at.to_str().unwrap(), None) {
+            Ok(vue_code) => {
+                let components = detect_shadcn_components(&vue_code);
+                for comp in &components {
+                    all_shadcn_components.insert(comp.clone());
+                }
+                all_components.push(("".to_string(), "app".to_string(), vue_code));
             }
-
-            println!("{} {}", "  Compiling:".bright_black(), path.display());
-
-            // Generate Vue code with shadcn-vue mode
-            let vue_code = auto_lang::ui_build_shadcn(path.to_str().unwrap(), None)
-                .map_err(|e| format!("Failed to generate Vue code for {:?}: {:?}", path, e))?;
-
-            // Detect shadcn components
-            let components = detect_shadcn_components(&vue_code);
-            for comp in &components {
-                all_shadcn_components.insert(comp.clone());
+            Err(e) => {
+                println!("{} {}", "  Warning: Failed to compile app.at:".bright_yellow(), e);
             }
+        }
+    }
 
-            // Store component info
-            all_components.push((file_name.to_string(), vue_code));
+    // Process pages/ directory
+    let pages_dir = front_dir.join("pages");
+    if pages_dir.exists() {
+        for entry in fs::read_dir(&pages_dir)
+            .map_err(|e| format!("Failed to read pages directory: {}", e))?
+        {
+            let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+            let path = entry.path();
+
+            if path.extension().map(|e| e == "at").unwrap_or(false) {
+                let file_stem = path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("page");
+
+                println!("{} {}", "  Compiling:".bright_black(), path.display());
+
+                match auto_lang::ui_build_shadcn(path.to_str().unwrap(), None) {
+                    Ok(vue_code) => {
+                        let components = detect_shadcn_components(&vue_code);
+                        for comp in &components {
+                            all_shadcn_components.insert(comp.clone());
+                        }
+                        all_components.push(("pages".to_string(), file_stem.to_string(), vue_code));
+                    }
+                    Err(e) => {
+                        println!("{} Failed to compile {}: {}", "  Warning:".bright_yellow(), path.display(), e);
+                    }
+                }
+            }
         }
     }
 
     let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();
     println!("{} {}", "✓ Detected shadcn-vue components:".bright_green(), shadcn_components.join(", "));
 
-    // Generate App.vue from app.at
+    // Generate App.vue from app.at (relative_dir should be empty for app.at)
     let app_vue_code = all_components.iter()
-        .find(|(name, _)| name == "app")
-        .map(|(_, code)| code.clone())
-        .ok_or_else(|| "app.at not found".to_string())?;
+        .find(|(_, name, _)| name == "app")
+        .map(|(_, _, code)| code.clone())
+        .ok_or_else(|| "app.at not found or failed to compile".to_string())?;
 
     // Write project files
     write_project_files(output_path, &project_name, &app_vue_code, &shadcn_components)?;
 
-    // Write all components
-    for (name, code) in &all_components {
+    // Write all components to mirror source directory structure
+    // components/ -> src/components/
+    // pages/ -> src/pages/
+    eprintln!("[DEBUG] all_components count: {}", all_components.len());
+    for (relative_dir, name, code) in &all_components {
+        eprintln!("[DEBUG] Processing: relative_dir='{}', name='{}', code_len={}", relative_dir, name, code.len());
         if name != "app" {
-            let component_file = components_dir.join(format!("{}.vue", name));
+            // Determine output subdirectory
+            let output_subdir = if relative_dir.is_empty() {
+                components_dir.clone()
+            } else if relative_dir == "components" {
+                components_dir.clone()
+            } else if relative_dir == "pages" {
+                let pages_dir = src_dir.join("pages");
+                fs::create_dir_all(&pages_dir)
+                    .map_err(|e| format!("Failed to create src/pages: {}", e))?;
+                pages_dir
+            } else if relative_dir.starts_with("components/") {
+                // Handle nested paths like components/ui/button
+                let sub_path = relative_dir.strip_prefix("components/").unwrap_or(relative_dir);
+                let nested_dir = components_dir.join(sub_path);
+                fs::create_dir_all(&nested_dir)
+                    .map_err(|e| format!("Failed to create {}: {}", nested_dir.display(), e))?;
+                nested_dir
+            } else if relative_dir.starts_with("pages/") {
+                let sub_path = relative_dir.strip_prefix("pages/").unwrap_or(relative_dir);
+                let pages_dir = src_dir.join("pages");
+                let nested_dir = pages_dir.join(sub_path);
+                fs::create_dir_all(&nested_dir)
+                    .map_err(|e| format!("Failed to create {}: {}", nested_dir.display(), e))?;
+                nested_dir
+            } else {
+                // Other directories go to components
+                let nested_dir = components_dir.join(relative_dir);
+                fs::create_dir_all(&nested_dir)
+                    .map_err(|e| format!("Failed to create {}: {}", nested_dir.display(), e))?;
+                nested_dir
+            };
+
+            let component_file = output_subdir.join(format!("{}.vue", name));
+            eprintln!("[DEBUG] Writing to: {}", component_file.display());
             fs::write(&component_file, code)
                 .map_err(|e| format!("Failed to write {}: {}", component_file.display(), e))?;
         }
@@ -236,8 +296,18 @@ fn generate_workspace_project(
 
     // Install dependencies if requested
     if !no_install {
-        run_install_steps(output_path, &shadcn_components, yes)?;
+        // Pass public folder source to run_install_steps for Step 3 copy
+        run_install_steps(output_path, &shadcn_components, yes, Some(&source_public))?;
     } else {
+        // For no-install mode, copy public folder directly
+        let dest_public = output_path.join("public");
+        if source_public.exists() && source_public.is_dir() {
+            copy_dir_all(&source_public, &dest_public)
+                .map_err(|e| format!("Failed to copy public folder: {}", e))?;
+            println!("{}", "✓ Copied public assets".bright_green());
+        }
+
+        println!();
         println!();
         println!("{}", "Project created successfully!".bright_green().bold());
         println!();
@@ -289,8 +359,56 @@ fn parse_pac_name(content: &str) -> Option<String> {
     None
 }
 
+/// Check if npm dependencies are already installed
+fn is_npm_installed(output_path: &Path) -> bool {
+    output_path.join("node_modules").exists()
+}
+
+/// Check if shadcn-vue components are already installed
+fn are_shadcn_components_installed(output_path: &Path, components: &[String]) -> bool {
+    // Check if components.json exists (shadcn-vue config file)
+    let components_json = output_path.join("components.json");
+    if !components_json.exists() {
+        return false;
+    }
+
+    // Check if all required component files exist
+    // shadcn-vue uses folder structure: src/components/ui/{component}/Component.vue
+    // or: src/components/ui/{component}.ts for primitives
+    for component in components {
+        let ui_dir = output_path.join("src/components/ui");
+
+        // Check for folder-based component (e.g., button/Button.vue)
+        let component_folder = ui_dir.join(component);
+        let pascal_name = component
+            .split('-')
+            .map(|s| {
+                let mut chars = s.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(f) => f.to_uppercase().collect::<String>() + chars.as_str(),
+                }
+            })
+            .collect::<String>();
+
+        let folder_vue = component_folder.join(format!("{}.vue", pascal_name));
+        let folder_index = component_folder.join("index.ts");
+        let primitive_ts = ui_dir.join(format!("{}.ts", component));
+
+        if !folder_vue.exists() && !folder_index.exists() && !primitive_ts.exists() {
+            return false;
+        }
+    }
+    true
+}
+
 /// Run npm install and shadcn-vue add
-fn run_install_steps(output_path: &Path, components: &[String], yes: bool) -> Result<(), String> {
+fn run_install_steps(
+    output_path: &Path,
+    components: &[String],
+    yes: bool,
+    public_folder_source: Option<&Path>,
+) -> Result<(), String> {
     if !command_exists("npm") {
         println!();
         println!("{}", "⚠ npm not found".bright_yellow());
@@ -298,56 +416,98 @@ fn run_install_steps(output_path: &Path, components: &[String], yes: bool) -> Re
         return Ok(());
     }
 
-    // Step 1: npm install
+    // Detect which steps need to be run
+    let npm_needed = !is_npm_installed(output_path);
+    let shadcn_needed = !components.is_empty() && !are_shadcn_components_installed(output_path, components);
+
+    // Calculate step numbers dynamically
+    let total_steps = 4; // Always 4 steps, but some may be skipped
+    let mut current_step = 0;
+
+    // Step 1: npm install (or skip if already installed)
     println!();
-    println!("{} {}", "▶".bright_cyan(), "Step 1/3: Installing dependencies...".bright_white());
+    current_step += 1;
+    if npm_needed {
+        println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Installing dependencies...", current_step, total_steps).bright_white());
 
-    let npm_install_args = if yes {
-        println!("{}", "  Running: npm install -y".bright_black());
-        vec!["install", "-y"]
-    } else {
-        println!("{}", "  Running: npm install".bright_black());
-        vec!["install"]
-    };
-
-    match run_command_live("npm", &npm_install_args, output_path) {
-        Ok(_) => println!("{}", "  ✓ Dependencies installed".bright_green()),
-        Err(e) => {
-            println!("{} {}", "  ✗ Failed:".bright_red(), e);
-            println!("  You may need to run 'npm install' manually.");
-        }
-    }
-
-    // Step 2: shadcn-vue add
-    if !components.is_empty() {
-        println!();
-        println!("{} {}", "▶".bright_cyan(), format!("Step 2/3: Adding shadcn-vue components ({})...", components.join(", ")).bright_white());
-
-        let mut args = if yes {
-            println!("{}", format!("  Running: npx --yes shadcn-vue@latest add {} --yes", components.join(" ")).bright_black());
-            vec!["--yes", "shadcn-vue@latest", "add"]
+        let npm_install_args = if yes {
+            println!("{}", "  Running: npm install -y".bright_black());
+            vec!["install", "-y"]
         } else {
-            println!("{}", format!("  Running: npx shadcn-vue@latest add {} --yes", components.join(" ")).bright_black());
-            vec!["shadcn-vue@latest", "add"]
+            println!("{}", "  Running: npm install".bright_black());
+            vec!["install"]
         };
-        args.extend(components.iter().map(|s| s.as_str()));
-        args.push("--yes");
 
-        match run_command_live("npx", &args, output_path) {
-            Ok(_) => println!("{}", "  ✓ shadcn-vue components added".bright_green()),
+        match run_command_live("npm", &npm_install_args, output_path) {
+            Ok(_) => println!("{}", "  ✓ Dependencies installed".bright_green()),
             Err(e) => {
                 println!("{} {}", "  ✗ Failed:".bright_red(), e);
-                println!("  You may need to run 'npx shadcn-vue@latest add {} --yes' manually.", components.join(" "));
+                println!("  You may need to run 'npm install' manually.");
             }
         }
     } else {
-        println!();
-        println!("{} {}", "▶".bright_cyan(), "Step 2/3: No shadcn-vue components needed".bright_white());
+        println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Dependencies already installed (skipping)", current_step, total_steps).bright_white());
     }
 
-    // Step 3: Run dev server
+    // Step 2: shadcn-vue add (or skip if already installed or not needed)
+    current_step += 1;
+    if !components.is_empty() {
+        if shadcn_needed {
+            println!();
+            println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Adding shadcn-vue components ({})...", current_step, total_steps, components.join(", ")).bright_white());
+
+            let mut args = if yes {
+                println!("{}", format!("  Running: npx --yes shadcn-vue@latest add {} --yes", components.join(" ")).bright_black());
+                vec!["--yes", "shadcn-vue@latest", "add"]
+            } else {
+                println!("{}", format!("  Running: npx shadcn-vue@latest add {} --yes", components.join(" ")).bright_black());
+                vec!["shadcn-vue@latest", "add"]
+            };
+            args.extend(components.iter().map(|s| s.as_str()));
+            args.push("--yes");
+
+            match run_command_live("npx", &args, output_path) {
+                Ok(_) => println!("{}", "  ✓ shadcn-vue components added".bright_green()),
+                Err(e) => {
+                    println!("{} {}", "  ✗ Failed:".bright_red(), e);
+                    println!("  You may need to run 'npx shadcn-vue@latest add {} --yes' manually.", components.join(" "));
+                }
+            }
+        } else {
+            println!();
+            println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: shadcn-vue components already installed (skipping)", current_step, total_steps).bright_white());
+        }
+    } else {
+        println!();
+        println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: No shadcn-vue components needed", current_step, total_steps).bright_white());
+    }
+
+    // Step 3: Copy public assets
+    current_step += 1;
     println!();
-    println!("{} {}", "▶".bright_cyan(), "Step 3/3: Ready to start dev server".bright_white());
+    if let Some(source_public) = public_folder_source {
+        let dest_public = output_path.join("public");
+        if source_public.exists() && source_public.is_dir() {
+            // Check if public assets are already copied (destination exists and has same files)
+            if dest_public.exists() && dest_public.is_dir() {
+                println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Public assets already copied (skipping)", current_step, total_steps).bright_white());
+            } else {
+                println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Copying public assets...", current_step, total_steps).bright_white());
+                copy_dir_all(source_public, &dest_public)
+                    .map_err(|e| format!("Failed to copy public folder: {}", e))?;
+                println!("{}", "  ✓ Public assets copied".bright_green());
+            }
+        } else {
+            println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: No public assets to copy", current_step, total_steps).bright_white());
+        }
+    } else {
+        println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: No public assets to copy", current_step, total_steps).bright_white());
+    }
+
+    // Step 4: Run dev server
+    current_step += 1;
+    println!();
+    println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Ready to start dev server", current_step, total_steps).bright_white());
     println!();
     println!("{}", "═════════════════════════════════".bright_green().bold());
     println!("{}", "  Project created successfully!".bright_green().bold());
@@ -456,16 +616,9 @@ fn generate_single_file_project(
     fs::create_dir_all(&assets_dir)
         .map_err(|e| format!("Failed to create src/assets: {}", e))?;
 
-    // Copy public folder from source to output (for static assets like images)
+    // Note: public folder will be copied in Step 3 during install steps
     let input_dir = input.parent().unwrap_or(Path::new("."));
     let source_public = input_dir.join("public");
-    let dest_public = output_path.join("public");
-
-    if source_public.exists() && source_public.is_dir() {
-        copy_dir_all(&source_public, &dest_public)
-            .map_err(|e| format!("Failed to copy public folder: {}", e))?;
-        println!("{}", "✓ Copied public assets".bright_green());
-    }
 
     println!("{}", "✓ Created directory structure".bright_green());
 
@@ -483,6 +636,14 @@ fn generate_single_file_project(
     println!("{}", "✓ Generated project files".bright_green());
 
     if no_install {
+        // For no-install mode, copy public folder directly
+        if source_public.exists() && source_public.is_dir() {
+            let dest_public = output_path.join("public");
+            copy_dir_all(&source_public, &dest_public)
+                .map_err(|e| format!("Failed to copy public folder: {}", e))?;
+            println!("{}", "✓ Copied public assets".bright_green());
+        }
+
         println!();
         println!("{}", "Project created successfully!".bright_green().bold());
         println!();
@@ -506,59 +667,92 @@ fn generate_single_file_project(
             return Ok(());
         }
 
-        // Step 1: npm install
+        // Detect which steps need to be run
+        let npm_needed = !is_npm_installed(output_path);
+        let shadcn_needed = !components.is_empty() && !are_shadcn_components_installed(output_path, &components);
+
+        let total_steps = 4;
+        let mut current_step = 0;
+
+        // Step 1: npm install (or skip if already installed)
         println!();
-        println!("{} {}", "▶".bright_cyan(), "Step 1/3: Installing dependencies...".bright_white());
+        current_step += 1;
+        if npm_needed {
+            println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Installing dependencies...", current_step, total_steps).bright_white());
 
-        let npm_install_args = if yes {
-            println!("{}", "  Running: npm install -y".bright_black());
-            vec!["install", "-y"]
-        } else {
-            println!("{}", "  Running: npm install".bright_black());
-            vec!["install"]
-        };
-
-        match run_command_live("npm", &npm_install_args, output_path) {
-            Ok(_) => println!("{}", "  ✓ Dependencies installed".bright_green()),
-            Err(e) => {
-                println!("{} {}", "  ✗ Failed:".bright_red(), e);
-                println!("  You may need to run 'npm install' manually.");
-            }
-        }
-
-        // Step 2: shadcn-vue add
-        if !components.is_empty() {
-            println!();
-            println!("{} {}", "▶".bright_cyan(), format!("Step 2/3: Adding shadcn-vue components ({})...", components.join(", ")).bright_white());
-
-            // Build args: npx --yes shadcn-vue@latest add button --yes
-            // First --yes is for npx (auto-install package)
-            // Second --yes is for shadcn-vue (skip prompts)
-            let mut args = if yes {
-                println!("{}", format!("  Running: npx --yes shadcn-vue@latest add {} --yes", components.join(" ")).bright_black());
-                vec!["--yes", "shadcn-vue@latest", "add"]
+            let npm_install_args = if yes {
+                println!("{}", "  Running: npm install -y".bright_black());
+                vec!["install", "-y"]
             } else {
-                println!("{}", format!("  Running: npx shadcn-vue@latest add {} --yes", components.join(" ")).bright_black());
-                vec!["shadcn-vue@latest", "add"]
+                println!("{}", "  Running: npm install".bright_black());
+                vec!["install"]
             };
-            args.extend(components.iter().map(|s| s.as_str()));
-            args.push("--yes");
 
-            match run_command_live("npx", &args, output_path) {
-                Ok(_) => println!("{}", "  ✓ shadcn-vue components added".bright_green()),
+            match run_command_live("npm", &npm_install_args, output_path) {
+                Ok(_) => println!("{}", "  ✓ Dependencies installed".bright_green()),
                 Err(e) => {
                     println!("{} {}", "  ✗ Failed:".bright_red(), e);
-                    println!("  You may need to run 'npx shadcn-vue@latest add {} --yes' manually.", components.join(" "));
+                    println!("  You may need to run 'npm install' manually.");
                 }
             }
         } else {
-            println!();
-            println!("{} {}", "▶".bright_cyan(), "Step 2/3: No shadcn-vue components needed".bright_white());
+            println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Dependencies already installed (skipping)", current_step, total_steps).bright_white());
         }
 
-        // Step 3: Ask if user wants to run dev server
+        // Step 2: shadcn-vue add (or skip if already installed or not needed)
+        current_step += 1;
+        if !components.is_empty() {
+            if shadcn_needed {
+                println!();
+                println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Adding shadcn-vue components ({})...", current_step, total_steps, components.join(", ")).bright_white());
+
+                let mut args = if yes {
+                    println!("{}", format!("  Running: npx --yes shadcn-vue@latest add {} --yes", components.join(" ")).bright_black());
+                    vec!["--yes", "shadcn-vue@latest", "add"]
+                } else {
+                    println!("{}", format!("  Running: npx shadcn-vue@latest add {} --yes", components.join(" ")).bright_black());
+                    vec!["shadcn-vue@latest", "add"]
+                };
+                args.extend(components.iter().map(|s| s.as_str()));
+                args.push("--yes");
+
+                match run_command_live("npx", &args, output_path) {
+                    Ok(_) => println!("{}", "  ✓ shadcn-vue components added".bright_green()),
+                    Err(e) => {
+                        println!("{} {}", "  ✗ Failed:".bright_red(), e);
+                        println!("  You may need to run 'npx shadcn-vue@latest add {} --yes' manually.", components.join(" "));
+                    }
+                }
+            } else {
+                println!();
+                println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: shadcn-vue components already installed (skipping)", current_step, total_steps).bright_white());
+            }
+        } else {
+            println!();
+            println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: No shadcn-vue components needed", current_step, total_steps).bright_white());
+        }
+
+        // Step 3: Copy public assets
+        current_step += 1;
         println!();
-        println!("{} {}", "▶".bright_cyan(), "Step 3/3: Ready to start dev server".bright_white());
+        if source_public.exists() && source_public.is_dir() {
+            let dest_public = output_path.join("public");
+            if dest_public.exists() && dest_public.is_dir() {
+                println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Public assets already copied (skipping)", current_step, total_steps).bright_white());
+            } else {
+                println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Copying public assets...", current_step, total_steps).bright_white());
+                copy_dir_all(&source_public, &dest_public)
+                    .map_err(|e| format!("Failed to copy public folder: {}", e))?;
+                println!("{}", "  ✓ Public assets copied".bright_green());
+            }
+        } else {
+            println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: No public assets to copy", current_step, total_steps).bright_white());
+        }
+
+        // Step 4: Run dev server
+        current_step += 1;
+        println!();
+        println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Ready to start dev server", current_step, total_steps).bright_white());
         println!();
         println!("{}", "═════════════════════════════════".bright_green().bold());
         println!("{}", "  Project created successfully!".bright_green().bold());

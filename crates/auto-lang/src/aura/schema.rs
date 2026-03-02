@@ -2371,6 +2371,169 @@ impl AuraSchema {
             allows_children: true,
             description: "Autocomplete empty state",
         });
+
+        // === Display: Card (Compound Component) ===
+        elements.insert("card", ElementDef {
+            tag: "card",
+            category: ElementCategory::Display,
+            props: vec![
+                PropDef { name: "variant", type_: PropType::OneOf(vec!["default", "outline"]), required: false, default: Some("default"), description: "Card variant style" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Card container with sections",
+        });
+
+        elements.insert("cardheader", ElementDef {
+            tag: "cardheader",
+            category: ElementCategory::Display,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Card header section",
+        });
+
+        elements.insert("cardtitle", ElementDef {
+            tag: "cardtitle",
+            category: ElementCategory::Display,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Title text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Card title",
+        });
+
+        elements.insert("carddescription", ElementDef {
+            tag: "carddescription",
+            category: ElementCategory::Display,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Description text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Card description",
+        });
+
+        elements.insert("cardcontent", ElementDef {
+            tag: "cardcontent",
+            category: ElementCategory::Display,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Card content section",
+        });
+
+        elements.insert("cardfooter", ElementDef {
+            tag: "cardfooter",
+            category: ElementCategory::Display,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Card footer section",
+        });
+
+        // === Feedback: Badge ===
+        elements.insert("badge", ElementDef {
+            tag: "badge",
+            category: ElementCategory::Feedback,
+            props: [
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Badge text" },
+                PropDef { name: "variant", type_: PropType::OneOf(vec!["default", "secondary", "destructive", "outline"]), required: false, default: Some("default"), description: "Badge variant" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ].to_vec(),
+            allows_children: true,
+            description: "Badge for status or labels",
+        });
+
+        // === Navigation: Tabs (Compound Component) ===
+        elements.insert("tabs", ElementDef {
+            tag: "tabs",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "defaultvalue", type_: PropType::String, required: false, default: None, description: "Default active tab" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Tabs container",
+        });
+
+        elements.insert("tabslist", ElementDef {
+            tag: "tabslist",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Tabs list container",
+        });
+
+        elements.insert("tabstrigger", ElementDef {
+            tag: "tabstrigger",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "value", type_: PropType::String, required: true, default: None, description: "Tab value identifier" },
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Tab label text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Tab trigger button",
+        });
+
+        elements.insert("tabscontent", ElementDef {
+            tag: "tabscontent",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "value", type_: PropType::String, required: true, default: None, description: "Tab value identifier" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Tab content panel",
+        });
+
+        // === Form: Label ===
+        elements.insert("label", ElementDef {
+            tag: "label",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "for", type_: PropType::String, required: false, default: None, description: "Associated form control ID" },
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Label text" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Form label",
+        });
+
+        // === Form: Textarea ===
+        elements.insert("textarea", ElementDef {
+            tag: "textarea",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "placeholder", type_: PropType::String, required: false, default: None, description: "Placeholder text" },
+                PropDef { name: "value", type_: PropType::Union(vec![PropType::String, PropType::StateRef]), required: false, default: None, description: "Textarea value" },
+                PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
+                PropDef { name: "rows", type_: PropType::Int, required: false, default: None, description: "Number of rows" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Multi-line text input",
+        });
+
+        // === Utility: Separator ===
+        elements.insert("separator", ElementDef {
+            tag: "separator",
+            category: ElementCategory::Utility,
+            props: vec![
+                PropDef { name: "orientation", type_: PropType::OneOf(vec!["horizontal", "vertical"]), required: false, default: Some("horizontal"), description: "Separator orientation" },
+                PropDef { name: "label", type_: PropType::String, required: false, default: None, description: "Optional label for separator" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::ClassBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "Visual divider",
+        });
     }
 }
 

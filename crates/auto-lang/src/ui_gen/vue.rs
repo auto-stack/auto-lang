@@ -104,7 +104,7 @@
 //! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
 use super::{BackendGenerator, GenError, GenResult};
-use crate::aura::{AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStateDef, AuraStmt, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{AuraBinOp, AuraEvent, AuraExpr, AuraNode, AuraPropValue, AuraStateDef, AuraStmt, AuraTextContent, AuraUnaryOp, AuraWidget, LogicPayload};
 use std::collections::{HashMap, HashSet};
 
 // ============================================================================
@@ -141,6 +141,12 @@ impl ShadcnRegistry {
         // === Navigation Elements ===
         components.insert("tabs",
             ("@/components/ui/tabs", vec!["Tabs", "TabsList", "TabsTrigger", "TabsContent"]));
+        components.insert("tabslist",
+            ("@/components/ui/tabs", vec!["TabsList"]));
+        components.insert("tabstrigger",
+            ("@/components/ui/tabs", vec!["TabsTrigger"]));
+        components.insert("tabscontent",
+            ("@/components/ui/tabs", vec!["TabsContent"]));
         components.insert("tab",
             ("@/components/ui/tabs", vec!["TabsTrigger", "TabsContent"]));
 
@@ -169,6 +175,16 @@ impl ShadcnRegistry {
         // === Display Elements ===
         components.insert("card",
             ("@/components/ui/card", vec!["Card", "CardHeader", "CardTitle", "CardDescription", "CardContent", "CardFooter"]));
+        components.insert("cardheader",
+            ("@/components/ui/card", vec!["CardHeader"]));
+        components.insert("cardtitle",
+            ("@/components/ui/card", vec!["CardTitle"]));
+        components.insert("carddescription",
+            ("@/components/ui/card", vec!["CardDescription"]));
+        components.insert("cardcontent",
+            ("@/components/ui/card", vec!["CardContent"]));
+        components.insert("cardfooter",
+            ("@/components/ui/card", vec!["CardFooter"]));
         components.insert("avatar",
             ("@/components/ui/avatar", vec!["Avatar", "AvatarImage", "AvatarFallback"]));
 
@@ -188,6 +204,8 @@ impl ShadcnRegistry {
 
         // === Utility Elements ===
         components.insert("divider",
+            ("@/components/ui/separator", vec!["Separator"]));
+        components.insert("separator",
             ("@/components/ui/separator", vec!["Separator"]));
         components.insert("scroll",
             ("@/components/ui/scroll-area", vec!["ScrollArea"]));
@@ -896,10 +914,24 @@ impl VueGenerator {
                 script.push_str("const copiedCode = ref('')\n");
             }
 
+            // Helper function to convert kebab-case to PascalCase
+            let to_pascal_case = |s: &str| -> String {
+                s.split('-')
+                    .map(|part| {
+                        let mut chars = part.chars();
+                        match chars.next() {
+                            None => String::new(),
+                            Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                        }
+                    })
+                    .collect()
+            };
+
             // Add state for each previewcard
             for pc in &self.previewcard_data {
-                let show_var = format!("show{}Code", pc.id);
-                let active_var = format!("active{}Tab", pc.id);
+                let id_pascal = to_pascal_case(&pc.id);
+                let show_var = format!("show{}Code", id_pascal);
+                let active_var = format!("active{}Tab", id_pascal);
                 if self.use_typescript {
                     script.push_str(&format!("const {} = ref<boolean>(false)\n", show_var));
                     script.push_str(&format!("const {} = ref<string>('auto')\n", active_var));
@@ -941,8 +973,28 @@ impl VueGenerator {
 
             // Add code sample constants
             for pc in &self.previewcard_data {
-                let auto_var = format!("{}AutoCode", pc.id.to_lowercase());
-                let vue_var = format!("{}VueCode", pc.id.to_lowercase());
+                // DEBUG: Print pc.id value
+                eprintln!("[DEBUG] previewcard_data.id = '{}'", pc.id);
+                // Convert kebab-case to camelCase (e.g., "card-basic" -> "cardBasic")
+                let id_camel: String = pc.id.split('-')
+                    .enumerate()
+                    .map(|(i, part)| {
+                        let mut chars = part.chars();
+                        match chars.next() {
+                            None => String::new(),
+                            Some(c) => {
+                                if i == 0 {
+                                    c.to_lowercase().collect::<String>() + chars.as_str()
+                                } else {
+                                    c.to_uppercase().collect::<String>() + chars.as_str()
+                                }
+                            }
+                        }
+                    })
+                    .collect();
+                eprintln!("[DEBUG] id_camel = '{}'", id_camel);
+                let auto_var = format!("{}AutoCode", id_camel);
+                let vue_var = format!("{}VueCode", id_camel);
                 script.push_str(&format!("const {} = `{}`\n", auto_var, pc.auto_code));
                 script.push_str(&format!("const {} = `{}`\n", vue_var, pc.vue_code));
             }
@@ -1228,18 +1280,70 @@ impl VueGenerator {
         };
 
         // Capitalize first letter for variable names
-        let id_cap = format!("{}{}", id.chars().next().unwrap().to_uppercase(), &id[1..]);
+        // Convert kebab-case to PascalCase (e.g., "card-basic" -> "CardBasic")
+        let id_cap = id.split('-')
+            .map(|part| {
+                let mut chars = part.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                }
+            })
+            .collect::<String>();
 
+        // Also create a lowercase version for code variable names (still camelCase)
+        let id_lower = id.split('-')
+            .enumerate()
+            .map(|(i, part)| {
+                let mut chars = part.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(c) => {
+                        if i == 0 {
+                            c.to_lowercase().collect::<String>() + chars.as_str()
+                        } else {
+                            c.to_uppercase().collect::<String>() + chars.as_str()
+                        }
+                    }
+                }
+            })
+            .collect::<String>();
+
+        // Generate Auto code from children if not provided
         let auto_code = if let Some(value) = props.get("auto") {
             self.extract_string_value(value).unwrap_or_default().to_string()
         } else {
-            "// Auto code not provided".to_string()
+            // Auto-generate Auto code from children
+            let mut auto_code_parts = Vec::new();
+            for child in children {
+                auto_code_parts.push(self.node_to_auto_code(child, 0));
+            }
+            let generated = auto_code_parts.join("\n");
+            if generated.is_empty() {
+                "// Auto code not provided".to_string()
+            } else {
+                generated
+            }
         };
 
+        // Generate Vue code from children if not provided
         let vue_code = if let Some(value) = props.get("vue") {
             self.extract_string_value(value).unwrap_or_default().to_string()
         } else {
-            "// Vue code not provided".to_string()
+            // Auto-generate Vue code from children
+            let mut vue_code_parts = Vec::new();
+            for child in children {
+                match self.node_to_html(child, 0) {
+                    Ok(html) => vue_code_parts.push(html),
+                    Err(_) => vue_code_parts.push("<!-- Error generating code -->".to_string()),
+                }
+            }
+            let generated = vue_code_parts.join("\n");
+            if generated.is_empty() {
+                "// Vue code not provided".to_string()
+            } else {
+                generated
+            }
         };
 
         // Store previewcard data for script generation
@@ -1316,11 +1420,187 @@ impl VueGenerator {
             ind = ind,
             id = id,
             id_cap = id_cap,
-            id_lower = id.to_lowercase(),
+            id_lower = id_lower,
             children_html = children_html
         );
 
         Ok(html)
+    }
+
+    /// Convert AuraNode back to Auto source code string
+    /// This is used to generate the Auto code for previewcard components
+    fn node_to_auto_code(&self, node: &AuraNode, indent: usize) -> String {
+        let ind = "    ".repeat(indent);
+
+        match node {
+            AuraNode::Element { tag, props, events, children } => {
+                let mut result = String::new();
+
+                // Build props string
+                let mut props_parts = Vec::new();
+                for (key, value) in props {
+                    let value_str = match value {
+                        AuraPropValue::Expr(expr) => self.expr_to_auto_string(expr),
+                        AuraPropValue::ClassBinding(bindings) => {
+                            let binding_strs: Vec<String> = bindings.iter()
+                                .map(|b| format!("{}: {}", b.class_name, self.expr_to_auto_string(&b.condition)))
+                                .collect();
+                            format!("{{{}}}", binding_strs.join(", "))
+                        }
+                    };
+                    props_parts.push(format!("{}: {}", key, value_str));
+                }
+
+                // Build events string
+                for (event_name, event) in events {
+                    let params_str = if event.params.is_empty() {
+                        String::new()
+                    } else {
+                        format!("({})", event.params.join(", "))
+                    };
+                    props_parts.push(format!("{}: .{}", event_name, event.handler));
+                }
+
+                let props_str = if props_parts.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({})", props_parts.join(", "))
+                };
+
+                // Handle self-closing vs with children
+                if children.is_empty() {
+                    result.push_str(&format!("{}{}{} {{}}\n", ind, tag, props_str));
+                } else {
+                    result.push_str(&format!("{}{}{} {{\n", ind, tag, props_str));
+                    for child in children {
+                        result.push_str(&self.node_to_auto_code(child, indent + 1));
+                    }
+                    result.push_str(&format!("{}}}\n", ind));
+                }
+
+                result
+            }
+
+            AuraNode::Text(text_content) => {
+                match text_content {
+                    AuraTextContent::Literal(s) => {
+                        format!("{}\"{}\"\n", ind, s)
+                    }
+                    AuraTextContent::Interpolated { template, bindings } => {
+                        // Show the template with bindings
+                        format!("{}\"{}\"\n", ind, template)
+                    }
+                }
+            }
+
+            AuraNode::Conditional { condition, then_body, else_body } => {
+                let mut result = String::new();
+                result.push_str(&format!("{}if {} {{\n", ind, condition));
+                for child in then_body {
+                    result.push_str(&self.node_to_auto_code(child, indent + 1));
+                }
+                result.push_str(&format!("{}}}\n", ind));
+                if let Some(else_nodes) = else_body {
+                    result.push_str(&format!("{}else {{\n", ind));
+                    for child in else_nodes {
+                        result.push_str(&self.node_to_auto_code(child, indent + 1));
+                    }
+                    result.push_str(&format!("{}}}\n", ind));
+                }
+                result
+            }
+
+            AuraNode::ForLoop { var, index, iterable, body } => {
+                let mut result = String::new();
+                let loop_header = if let Some(idx) = index {
+                    format!("for ({}, {}) in {}", var, idx, iterable)
+                } else {
+                    format!("for {} in {}", var, iterable)
+                };
+                result.push_str(&format!("{}{} {{\n", ind, loop_header));
+                for child in body {
+                    result.push_str(&self.node_to_auto_code(child, indent + 1));
+                }
+                result.push_str(&format!("{}}}\n", ind));
+                result
+            }
+
+            AuraNode::Component { name, props, events } => {
+                let mut result = String::new();
+
+                let mut props_parts = Vec::new();
+                for (key, value) in props {
+                    props_parts.push(format!("{}: {}", key, self.expr_to_auto_string(value)));
+                }
+
+                for (event_name, event) in events {
+                    props_parts.push(format!("{}: .{}", event_name, event.handler));
+                }
+
+                let props_str = if props_parts.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({})", props_parts.join(", "))
+                };
+
+                result.push_str(&format!("{}{}{} {{}}\n", ind, name, props_str));
+                result
+            }
+        }
+    }
+
+    /// Convert AuraExpr to Auto source code string
+    fn expr_to_auto_string(&self, expr: &AuraExpr) -> String {
+        match expr {
+            AuraExpr::Int(n) => n.to_string(),
+            AuraExpr::Float(n) => n.to_string(),
+            AuraExpr::Bool(b) => b.to_string(),
+            AuraExpr::Literal(s) => format!("\"{}\"", s),
+            AuraExpr::StateRef(name) => format!(".{}", name),
+            AuraExpr::MsgVariant { msg_type, variant } => {
+                format!("{}::{}", msg_type, variant)
+            }
+            AuraExpr::Binary { left, op, right } => {
+                let op_str = match op {
+                    AuraBinOp::Add => "+",
+                    AuraBinOp::Sub => "-",
+                    AuraBinOp::Mul => "*",
+                    AuraBinOp::Div => "/",
+                    AuraBinOp::Mod => "%",
+                    AuraBinOp::Eq => "==",
+                    AuraBinOp::Ne => "!=",
+                    AuraBinOp::Lt => "<",
+                    AuraBinOp::Le => "<=",
+                    AuraBinOp::Gt => ">",
+                    AuraBinOp::Ge => ">=",
+                    AuraBinOp::And => "&&",
+                    AuraBinOp::Or => "||",
+                };
+                format!("{} {} {}", self.expr_to_auto_string(left), op_str, self.expr_to_auto_string(right))
+            }
+            AuraExpr::Unary { op, operand } => {
+                let op_str = match op {
+                    AuraUnaryOp::Neg => "-",
+                    AuraUnaryOp::Not => "!",
+                };
+                format!("{}{}", op_str, self.expr_to_auto_string(operand))
+            }
+            AuraExpr::MethodCall { object, method, args } => {
+                let args_str: Vec<String> = args.iter().map(|a| self.expr_to_auto_string(a)).collect();
+                format!("{}.{}({})", self.expr_to_auto_string(object), method, args_str.join(", "))
+            }
+            AuraExpr::Array(elements) => {
+                let elements_str: Vec<String> = elements.iter().map(|e| self.expr_to_auto_string(e)).collect();
+                format!("[{}]", elements_str.join(", "))
+            }
+            AuraExpr::Lambda { params, body } => {
+                let params_str = params.join(", ");
+                format!("|{}| {}", params_str, self.expr_to_auto_string(body))
+            }
+            AuraExpr::FieldAccess { object, field } => {
+                format!("{}.{}", self.expr_to_auto_string(object), field)
+            }
+        }
     }
 
     /// Convert AURA condition to Vue expression
@@ -1543,6 +1823,9 @@ impl VueGenerator {
 
                 // Navigation
                 "tabs" => classes.push("flex border-b".to_string()),
+                "tabslist" => classes.push("inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground".to_string()),
+                "tabstrigger" => classes.push("inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50".to_string()),
+                "tabscontent" => classes.push("mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2".to_string()),
                 "tab" => classes.push("px-4 py-2 border-b-2 border-transparent".to_string()),
 
                 // Overlay
@@ -1559,6 +1842,11 @@ impl VueGenerator {
 
                 // Display
                 "card" => classes.push("rounded-lg border bg-card text-card-foreground shadow-sm".to_string()),
+                "cardheader" => classes.push("flex flex-col space-y-1.5 p-6".to_string()),
+                "cardtitle" => classes.push("text-lg font-semibold leading-none tracking-tight".to_string()),
+                "carddescription" => classes.push("text-sm text-muted-foreground".to_string()),
+                "cardcontent" => classes.push("p-6 pt-0".to_string()),
+                "cardfooter" => classes.push("flex items-center p-6 pt-0".to_string()),
                 "avatar" => classes.push("w-10 h-10 rounded-full".to_string()),
 
                 // Media
@@ -1566,7 +1854,8 @@ impl VueGenerator {
                 "icon" => classes.push("w-5 h-5".to_string()),
 
                 // Utility
-                "divider" => classes.push("border-t border-border".to_string()),
+                "divider" => classes.push("shrink-0 bg-border".to_string()),
+                "separator" => classes.push("shrink-0 bg-border".to_string()),
                 "spacer" => classes.push("flex-1".to_string()),
 
                 _ => {}
@@ -2094,7 +2383,7 @@ impl VueGenerator {
             }
 
             // === Separator/Divider ===
-            "divider" => {
+            "divider" | "separator" => {
                 // orientation (horizontal, vertical)
                 if let Some(value) = props.get("orientation") {
                     let orientation = self.extract_string_value(value).unwrap_or("horizontal");
@@ -2110,6 +2399,40 @@ impl VueGenerator {
                 if let Some(value) = props.get("label") {
                     let label = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("label=\"{}\"", label));
+                }
+            }
+
+            // === Card Sub-components ===
+            "cardheader" | "cardcontent" | "cardfooter" => {
+                // These are container components - class is handled by extract_classes
+            }
+            "cardtitle" | "carddescription" => {
+                // Text content for title/description
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === Tabs Sub-components ===
+            "tabslist" => {
+                // TabsList is a container - class handled by extract_classes
+            }
+            "tabstrigger" => {
+                // value is required for TabsTrigger
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+                // Text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+            "tabscontent" => {
+                // value is required for TabsContent
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
                 }
             }
 

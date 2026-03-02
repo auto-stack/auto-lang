@@ -107,6 +107,39 @@ widget App {
                             }
                         }
                     }
+
+                    // Card Demo Section
+                    h2 (text: "Card Component") {}
+                    text (text: "A card component with header, content, and footer sections.") {}
+
+                    previewcard (id: "CardPreview") {
+                        card (class: "w-[350px]") {
+                            cardheader {
+                                cardtitle (text: "Create project") {}
+                                carddescription (text: "Deploy your new project in one click.") {}
+                            }
+                            cardcontent {
+                                text "Card content goes here. You can add any elements."
+                            }
+                            cardfooter (class: "flex justify-between") {
+                                button (text: "Cancel", variant: "outline") {}
+                                button (text: "Deploy") {}
+                            }
+                        }
+                    }
+
+                    // Badge Demo Section
+                    h2 (text: "Badge Component") {}
+                    text (text: "A badge for displaying status or labels.") {}
+
+                    previewcard (id: "BadgePreview") {
+                        row (class: "gap-2") {
+                            badge (text: "Default") {}
+                            badge (text: "Secondary", variant: "secondary") {}
+                            badge (text: "Destructive", variant: "destructive") {}
+                            badge (text: "Outline", variant: "outline") {}
+                        }
+                    }
                 }
             }
         }
