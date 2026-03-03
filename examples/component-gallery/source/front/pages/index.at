@@ -23,161 +23,253 @@ widget IndexPage {
                 div { class: "bg-muted rounded-md p-4 font-mono text-sm" }
             }
 
-            // Component grid - static list for now
+            // Component grid - link buttons to each page
             col (class: "gap-4") {
                 h2 (text: "Components", class: "text-2xl font-semibold tracking-tight") {}
                 text (text: "Components that you can use in your applications.", class: "text-muted-foreground") {}
 
                 row (class: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4") {
                     // Row 1
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Accordion"
+                    link (to: "/accordion") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Accordion"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Alert"
+                    link (to: "/alert") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Alert"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "AlertDialog"
+                    link (to: "/alertdialog") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "AlertDialog"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Avatar"
+                    link (to: "/avatar") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Avatar"
+                        }
                     }
                     // Row 2
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Badge"
+                    link (to: "/badge") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Badge"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Breadcrumb"
+                    link (to: "/breadcrumb") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Breadcrumb"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Button"
+                    link (to: "/button") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Button"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Calendar"
+                    link (to: "/calendar") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Calendar"
+                        }
                     }
                     // Row 3
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Card"
+                    link (to: "/card") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Card"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Carousel"
+                    link (to: "/carousel") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Carousel"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Checkbox"
+                    link (to: "/checkbox") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Checkbox"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Collapsible"
+                    link (to: "/collapsible") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Collapsible"
+                        }
                     }
                     // Row 4
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Combobox"
+                    link (to: "/combobox") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Combobox"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Command"
+                    link (to: "/command") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Command"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "ContextMenu"
+                    link (to: "/contextmenu") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "ContextMenu"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "DataTable"
+                    link (to: "/datatable") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "DataTable"
+                        }
                     }
                     // Row 5
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "DatePicker"
+                    link (to: "/datepicker") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "DatePicker"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Dialog"
+                    link (to: "/dialog") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Dialog"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Drawer"
+                    link (to: "/drawer") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Drawer"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "DropdownMenu"
+                    link (to: "/dropdownmenu") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "DropdownMenu"
+                        }
                     }
                     // Row 6
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Form"
+                    link (to: "/form") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Form"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "HoverCard"
+                    link (to: "/hovercard") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "HoverCard"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Input"
+                    link (to: "/input") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Input"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Label"
+                    link (to: "/label") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Label"
+                        }
                     }
                     // Row 7
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Menubar"
+                    link (to: "/menubar") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Menubar"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "NavigationMenu"
+                    link (to: "/navigationmenu") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "NavigationMenu"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Pagination"
+                    link (to: "/pagination") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Pagination"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Popover"
+                    link (to: "/popover") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Popover"
+                        }
                     }
                     // Row 8
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Progress"
+                    link (to: "/progress") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Progress"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "RadioGroup"
+                    link (to: "/radiogroup") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "RadioGroup"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "ScrollArea"
+                    link (to: "/scrollarea") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "ScrollArea"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Select"
+                    link (to: "/select") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Select"
+                        }
                     }
                     // Row 9
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Separator"
+                    link (to: "/separator") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Separator"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Sheet"
+                    link (to: "/sheet") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Sheet"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Sidebar"
+                    link (to: "/sidebar") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Sidebar"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Skeleton"
+                    link (to: "/skeleton") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Skeleton"
+                        }
                     }
                     // Row 10
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Slider"
+                    link (to: "/slider") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Slider"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Sonner"
+                    link (to: "/sonner") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Sonner"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Switch"
+                    link (to: "/switch") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Switch"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Table"
+                    link (to: "/table") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Table"
+                        }
                     }
                     // Row 11
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Tabs"
+                    link (to: "/tabs") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Tabs"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Textarea"
+                    link (to: "/textarea") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Textarea"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Toast"
+                    link (to: "/toast") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Toast"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Toggle"
+                    link (to: "/toggle") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Toggle"
+                        }
                     }
                     // Row 12
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "ToggleGroup"
+                    link (to: "/togglegroup") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "ToggleGroup"
+                        }
                     }
-                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
-                        text "Tooltip"
+                    link (to: "/tooltip") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "Tooltip"
+                        }
                     }
                 }
             }

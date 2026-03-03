@@ -1,0 +1,18 @@
+// pages/alertdialog.at - AlertDialog component documentation page
+
+widget AlertdialogPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "AlertDialog") {}
+            text (text: "A modal dialog that interrupts the user with important content.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add alert-dialog") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "alertdialog-basic") {
+                text (text: "AlertDialog placeholder") {}
+            }
+        }
+    }
+}

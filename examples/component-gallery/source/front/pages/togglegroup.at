@@ -1,0 +1,18 @@
+// pages/togglegroup.at - ToggleGroup component documentation page
+
+widget TogglegroupPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "ToggleGroup") {}
+            text (text: "A group of toggle buttons.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add toggle-group") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "togglegroup-basic") {
+                text (text: "ToggleGroup placeholder") {}
+            }
+        }
+    }
+}

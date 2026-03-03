@@ -1,0 +1,18 @@
+// pages/contextmenu.at - ContextMenu component documentation page
+
+widget ContextmenuPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "ContextMenu") {}
+            text (text: "A menu that appears on right click.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add context-menu") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "contextmenu-basic") {
+                text (text: "ContextMenu placeholder") {}
+            }
+        }
+    }
+}

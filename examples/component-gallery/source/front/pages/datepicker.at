@@ -1,0 +1,18 @@
+// pages/datepicker.at - DatePicker component documentation page
+
+widget DatepickerPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "DatePicker") {}
+            text (text: "A date picker component with a calendar popover.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add date-picker") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "datepicker-basic") {
+                text (text: "DatePicker placeholder") {}
+            }
+        }
+    }
+}

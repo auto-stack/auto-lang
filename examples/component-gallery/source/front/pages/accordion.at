@@ -11,9 +11,57 @@ widget AccordionPage {
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add accordion") {}
 
-            h2 (text: "Preview") {}
+            h2 (text: "Simple") {}
             preview-card (id: "accordion-basic") {
-                text (text: "Accordion demo placeholder") {}
+                accordion (type: "single", collapsible: "true", class: "w-full") {
+                    accordion-item (value: "item-1") {
+                        accordion-trigger (text: "Is it accessible?") {}
+                        accordion-content {
+                            text (text: "Yes. It adheres to the WAI-ARIA design pattern.") {}
+                        }
+                    }
+                    accordion-item (value: "item-2") {
+                        accordion-trigger (text: "Is it styled?") {}
+                        accordion-content {
+                            text (text: "Yes. It comes with default styles that match the other components.") {}
+                        }
+                    }
+                    accordion-item (value: "item-3") {
+                        accordion-trigger (text: "Is it animated?") {}
+                        accordion-content {
+                            text (text: "Yes. It's animated by default, but you can disable it if you prefer.") {}
+                        }
+                    }
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "type") {}
+                        td (text: "string") {}
+                        td (text: "single") {}
+                        td (text: "single, multiple") {}
+                        td (text: "Single or multiple items open") {}
+                    }
+                    tr {
+                        td (text: "collapsible") {}
+                        td (text: "boolean") {}
+                        td (text: "false") {}
+                        td (text: "true, false") {}
+                        td (text: "Allow all items to be collapsed") {}
+                    }
+                }
             }
         }
     }

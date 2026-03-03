@@ -6,14 +6,51 @@ widget LabelPage {
     view {
         col {
             h1 (text: "Label") {}
-            text (text: "A label component for form field labels.") {}
+            text (text: "Renders an accessible label associated with controls.") {}
 
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add label") {}
 
-            h2 (text: "Preview") {}
+            h2 (text: "Simple") {}
             preview-card (id: "label-basic") {
                 label (text: "Email") {}
+            }
+
+            h2 (text: "With Input") {}
+            preview-card (id: "label-input") {
+                col (gap: "1.5", class: "w-64") {
+                    label (text: "Email", for: "email") {}
+                    input (id: "email", placeholder: "Enter your email") {}
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "text") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Label text content (slot)") {}
+                    }
+                    tr {
+                        td (text: "for") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "ID of the associated form control") {}
+                    }
+                }
             }
         }
     }

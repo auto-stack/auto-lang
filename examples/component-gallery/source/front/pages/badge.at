@@ -6,14 +6,53 @@ widget BadgePage {
     view {
         col {
             h1 (text: "Badge") {}
-            text (text: "A badge component for displaying status or labels.") {}
+            text (text: "Displays a badge or a label that draws attention and labels items.") {}
 
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add badge") {}
 
-            h2 (text: "Preview") {}
+            h2 (text: "Simple") {}
             preview-card (id: "badge-basic") {
                 badge (text: "Badge") {}
+            }
+
+            h2 (text: "Variants") {}
+            preview-card (id: "badge-variants") {
+                row (gap: "2") {
+                    badge (text: "Default") {}
+                    badge (text: "Secondary", variant: "secondary") {}
+                    badge (text: "Destructive", variant: "destructive") {}
+                    badge (text: "Outline", variant: "outline") {}
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "text") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Badge text content (slot)") {}
+                    }
+                    tr {
+                        td (text: "variant") {}
+                        td (text: "string") {}
+                        td (text: "default") {}
+                        td (text: "default, secondary, destructive, outline") {}
+                        td (text: "Badge style variant") {}
+                    }
+                }
             }
         }
     }

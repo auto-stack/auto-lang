@@ -1,0 +1,18 @@
+// pages/breadcrumb.at - Breadcrumb component documentation page
+
+widget BreadcrumbPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "Breadcrumb") {}
+            text (text: "Shows the user's current location within a navigational hierarchy.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add breadcrumb") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "breadcrumb-basic") {
+                text (text: "Breadcrumb placeholder") {}
+            }
+        }
+    }
+}

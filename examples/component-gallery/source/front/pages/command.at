@@ -1,0 +1,18 @@
+// pages/command.at - Command component documentation page
+
+widget CommandPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "Command") {}
+            text (text: "Command menu for searching and performing actions quickly.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add command") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "command-basic") {
+                text (text: "Command placeholder") {}
+            }
+        }
+    }
+}

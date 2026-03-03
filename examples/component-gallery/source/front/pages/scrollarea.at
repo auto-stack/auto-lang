@@ -1,0 +1,18 @@
+// pages/scrollarea.at - ScrollArea component documentation page
+
+widget ScrollareaPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "ScrollArea") {}
+            text (text: "A custom scrollable container with styled scrollbars.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add scroll-area") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "scrollarea-basic") {
+                text (text: "ScrollArea placeholder") {}
+            }
+        }
+    }
+}

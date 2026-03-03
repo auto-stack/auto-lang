@@ -1,0 +1,18 @@
+// pages/textarea.at - Textarea component documentation page
+
+widget TextareaPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "Textarea") {}
+            text (text: "Displays a form textarea or a component that looks like a textarea.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add textarea") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "textarea-basic") {
+                text (text: "Textarea placeholder") {}
+            }
+        }
+    }
+}

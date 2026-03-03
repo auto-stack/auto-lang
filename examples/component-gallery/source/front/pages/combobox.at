@@ -1,0 +1,18 @@
+// pages/combobox.at - Combobox component documentation page
+
+widget ComboboxPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "Combobox") {}
+            text (text: "Autocomplete input with a listbox.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add combobox") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "combobox-basic") {
+                text (text: "Combobox placeholder") {}
+            }
+        }
+    }
+}

@@ -1,0 +1,18 @@
+// pages/pagination.at - Pagination component documentation page
+
+widget PaginationPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "Pagination") {}
+            text (text: "A navigation component for paginating through content.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add pagination") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "pagination-basic") {
+                text (text: "Pagination placeholder") {}
+            }
+        }
+    }
+}

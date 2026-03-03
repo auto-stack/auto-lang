@@ -1,0 +1,18 @@
+// pages/hovercard.at - HoverCard component documentation page
+
+widget HovercardPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "HoverCard") {}
+            text (text: "A card that appears when hovering over an element.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add hover-card") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "hovercard-basic") {
+                text (text: "HoverCard placeholder") {}
+            }
+        }
+    }
+}

@@ -6,14 +6,95 @@ widget InputPage {
     view {
         col {
             h1 (text: "Input") {}
-            text (text: "A text input component for user text entry.") {}
+            text (text: "Displays a form input field or a component that looks like an input field.") {}
 
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add input") {}
 
-            h2 (text: "Preview") {}
+            h2 (text: "Simple") {}
             preview-card (id: "input-basic") {
-                input (placeholder: "Enter text") {}
+                input (placeholder: "Email", type: "email") {}
+            }
+
+            h2 (text: "Examples") {}
+
+            h3 (text: "File") {}
+            preview-card (id: "input-file") {
+                col (gap: "1.5", class: "w-full max-w-sm") {
+                    label (text: "Picture", for: "picture") {}
+                    input (id: "picture", type: "file") {}
+                }
+            }
+
+            h3 (text: "Disabled") {}
+            preview-card (id: "input-disabled") {
+                input (placeholder: "Email", type: "email", disabled: "true") {}
+            }
+
+            h3 (text: "With Label") {}
+            preview-card (id: "input-label") {
+                col (gap: "1.5", class: "w-full max-w-sm") {
+                    label (text: "Email", for: "email") {}
+                    input (id: "email", placeholder: "Email", type: "email") {}
+                }
+            }
+
+            h3 (text: "With Button") {}
+            preview-card (id: "input-button") {
+                row (gap: "2", class: "w-full max-w-sm items-center") {
+                    input (placeholder: "Email", type: "email") {}
+                    button (text: "Subscribe", type: "submit") {}
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "type") {}
+                        td (text: "string") {}
+                        td (text: "text") {}
+                        td (text: "text, email, password, file, number, etc.") {}
+                        td (text: "Input type attribute") {}
+                    }
+                    tr {
+                        td (text: "placeholder") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Placeholder text shown when input is empty") {}
+                    }
+                    tr {
+                        td (text: "disabled") {}
+                        td (text: "boolean") {}
+                        td (text: "false") {}
+                        td (text: "true, false") {}
+                        td (text: "Disables the input") {}
+                    }
+                    tr {
+                        td (text: "id") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Unique identifier for associating with labels") {}
+                    }
+                    tr {
+                        td (text: "modelValue") {}
+                        td (text: "string | number") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "The value of the input (v-model binding)") {}
+                    }
+                }
             }
         }
     }

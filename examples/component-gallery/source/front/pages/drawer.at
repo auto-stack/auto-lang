@@ -1,0 +1,18 @@
+// pages/drawer.at - Drawer component documentation page
+
+widget DrawerPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "Drawer") {}
+            text (text: "A drawer that slides in from the side of the screen.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add drawer") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "drawer-basic") {
+                text (text: "Drawer placeholder") {}
+            }
+        }
+    }
+}

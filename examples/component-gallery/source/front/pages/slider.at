@@ -1,0 +1,18 @@
+// pages/slider.at - Slider component documentation page
+
+widget SliderPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "Slider") {}
+            text (text: "An input where the user selects a value from within a given range.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add slider") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "slider-basic") {
+                text (text: "Slider placeholder") {}
+            }
+        }
+    }
+}

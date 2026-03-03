@@ -1,0 +1,18 @@
+// pages/carousel.at - Carousel component documentation page
+
+widget CarouselPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "Carousel") {}
+            text (text: "A carousel with motion and gestures built in.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add carousel") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "carousel-basic") {
+                text (text: "Carousel placeholder") {}
+            }
+        }
+    }
+}

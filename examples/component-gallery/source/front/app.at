@@ -5,15 +5,53 @@ widget App {
     // Route definitions - maps URLs to page modules (Plan 106 syntax)
     routes {
         "/" => use index
-        "/button" => use button
-        "/input" => use input
-        "/card" => use card
-        "/badge" => use badge
-        "/checkbox" => use checkbox
         "/accordion" => use accordion
+        "/alert" => use alert
+        "/alertdialog" => use alertdialog
+        "/avatar" => use avatar
+        "/badge" => use badge
+        "/breadcrumb" => use breadcrumb
+        "/button" => use button
+        "/calendar" => use calendar
+        "/card" => use card
+        "/carousel" => use carousel
+        "/checkbox" => use checkbox
+        "/collapsible" => use collapsible
+        "/combobox" => use combobox
+        "/command" => use command
+        "/contextmenu" => use contextmenu
+        "/datatable" => use datatable
+        "/datepicker" => use datepicker
+        "/dialog" => use dialog
+        "/drawer" => use drawer
+        "/dropdownmenu" => use dropdownmenu
+        "/form" => use form
+        "/hovercard" => use hovercard
+        "/input" => use input
         "/label" => use label
+        "/menubar" => use menubar
+        "/navigationmenu" => use navigationmenu
+        "/pagination" => use pagination
+        "/popover" => use popover
+        "/progress" => use progress
+        "/radiogroup" => use radiogroup
+        "/scrollarea" => use scrollarea
+        "/select" => use select
+        "/separator" => use separator
+        "/sheet" => use sheet
+        "/sidebar" => use sidebar
+        "/skeleton" => use skeleton
+        "/slider" => use slider
+        "/sonner" => use sonner
+        "/switch" => use switch
+        "/table" => use table
         "/tabs" => use tabs
+        "/textarea" => use textarea
         "/text" => use text
+        "/toast" => use toast
+        "/toggle" => use toggle
+        "/togglegroup" => use togglegroup
+        "/tooltip" => use tooltip
     }
 
     view {
@@ -41,37 +79,151 @@ widget App {
             // Main content area: sidebar + content
             row (class: "flex-1") {
                 // Sidebar - on the left
-                aside (class: "w-64 border-r bg-background p-4 flex flex-col gap-1") {
+                aside (class: "w-64 border-r bg-background p-4 flex flex-col gap-1 overflow-y-auto") {
                     // Components section header
                     text (text: "Components", class: "text-sm font-semibold text-muted-foreground mb-2 px-3") {}
 
                     // Navigation links using router-link
-                    link (to: "/button") {
-                        text (text: "Button", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    link (to: "/accordion") {
+                        text (text: "Accordion", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
                     }
-                    link (to: "/input") {
-                        text (text: "Input", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    link (to: "/alert") {
+                        text (text: "Alert", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
                     }
-                    link (to: "/card") {
-                        text (text: "Card", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    link (to: "/alertdialog") {
+                        text (text: "AlertDialog", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/avatar") {
+                        text (text: "Avatar", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
                     }
                     link (to: "/badge") {
                         text (text: "Badge", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
                     }
+                    link (to: "/breadcrumb") {
+                        text (text: "Breadcrumb", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/button") {
+                        text (text: "Button", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/calendar") {
+                        text (text: "Calendar", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/card") {
+                        text (text: "Card", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/carousel") {
+                        text (text: "Carousel", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
                     link (to: "/checkbox") {
                         text (text: "Checkbox", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
                     }
-                    link (to: "/accordion") {
-                        text (text: "Accordion", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    link (to: "/collapsible") {
+                        text (text: "Collapsible", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/combobox") {
+                        text (text: "Combobox", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/command") {
+                        text (text: "Command", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/contextmenu") {
+                        text (text: "ContextMenu", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/datatable") {
+                        text (text: "DataTable", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/datepicker") {
+                        text (text: "DatePicker", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/dialog") {
+                        text (text: "Dialog", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/drawer") {
+                        text (text: "Drawer", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/dropdownmenu") {
+                        text (text: "DropdownMenu", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/form") {
+                        text (text: "Form", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/hovercard") {
+                        text (text: "HoverCard", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/input") {
+                        text (text: "Input", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
                     }
                     link (to: "/label") {
                         text (text: "Label", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
                     }
+                    link (to: "/menubar") {
+                        text (text: "Menubar", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/navigationmenu") {
+                        text (text: "NavigationMenu", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/pagination") {
+                        text (text: "Pagination", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/popover") {
+                        text (text: "Popover", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/progress") {
+                        text (text: "Progress", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/radiogroup") {
+                        text (text: "RadioGroup", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/scrollarea") {
+                        text (text: "ScrollArea", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/select") {
+                        text (text: "Select", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/separator") {
+                        text (text: "Separator", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/sheet") {
+                        text (text: "Sheet", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/sidebar") {
+                        text (text: "Sidebar", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/skeleton") {
+                        text (text: "Skeleton", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/slider") {
+                        text (text: "Slider", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/sonner") {
+                        text (text: "Sonner", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/switch") {
+                        text (text: "Switch", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/table") {
+                        text (text: "Table", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
                     link (to: "/tabs") {
                         text (text: "Tabs", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
                     }
+                    link (to: "/textarea") {
+                        text (text: "Textarea", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
                     link (to: "/text") {
                         text (text: "Text", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/toast") {
+                        text (text: "Toast", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/toggle") {
+                        text (text: "Toggle", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/togglegroup") {
+                        text (text: "ToggleGroup", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/tooltip") {
+                        text (text: "Tooltip", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
                     }
                 }
 

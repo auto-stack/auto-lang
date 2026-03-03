@@ -1,0 +1,18 @@
+// pages/dropdownmenu.at - DropdownMenu component documentation page
+
+widget DropdownmenuPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "DropdownMenu") {}
+            text (text: "A menu that drops down from a trigger element.") {}
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add dropdown-menu") {}
+            h2 (text: "Simple") {}
+            preview-card (id: "dropdownmenu-basic") {
+                text (text: "DropdownMenu placeholder") {}
+            }
+        }
+    }
+}
