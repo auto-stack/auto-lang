@@ -8882,4 +8882,45 @@ widget App {
             }
         }
     }
+
+    #[test]
+    fn test_hyphenated_tag_names() {
+        // Test that hyphenated tag names parse correctly in view blocks (Task 3)
+        let code = r#"
+widget Test {
+    view {
+        preview-card (id: "test") {
+            button-primary {}
+        }
+    }
+}
+"#;
+        // Create parser with UI scenario enabled
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+
+        match result {
+            Ok(ast) => {
+                let non_empty: Vec<_> = ast.stmts.iter().filter(|s| {
+                    !matches!(s, Stmt::EmptyLine(_))
+                }).collect();
+                assert_eq!(non_empty.len(), 1, "Should have one widget statement");
+
+                if let Stmt::WidgetDecl(widget) = non_empty[0] {
+                    assert_eq!(widget.name.as_str(), "Test");
+
+                    // Check view tree exists
+                    assert!(widget.view.is_some(), "View should be parsed");
+
+                    println!("Hyphenated tag names parsed successfully!");
+                } else {
+                    panic!("Expected WidgetDecl, got {:?}", non_empty[0]);
+                }
+            }
+            Err(e) => {
+                panic!("Hyphenated tag names parsing failed: {:?}", e);
+            }
+        }
+    }
 }
