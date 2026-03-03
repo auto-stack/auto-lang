@@ -4743,17 +4743,20 @@ export function cn(...inputs: ClassValue[]) {
             }
         }
 
-        // Generate component imports
+        // Generate component imports (each component from its own file)
         let mut imports = Vec::new();
         for route in routes {
-            imports.push(route.component.clone());
+            imports.push(format!(
+                "import {} from '@/pages/{}.vue'",
+                route.component, route.component
+            ));
         }
-        let imports_str = imports.join(", ");
+        let imports_str = imports.join("\n");
 
         format!(
             r#"import {{ createRouter, createWebHistory }} from 'vue-router'
 import type {{ RouteRecordRaw }} from 'vue-router'
-import {{ {} }}
+{}
 
 const routes: RouteRecordRaw[] = [
 {}
