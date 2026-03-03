@@ -693,6 +693,9 @@ pub struct VueGenerator {
 
     /// Whether copyCode function is needed
     needs_copy_code: bool,
+
+    /// Whether router is needed (has outlet, link, or nav() calls) - Plan 105
+    needs_router: bool,
 }
 
 /// Data for generating interactive preview cards
@@ -725,6 +728,7 @@ impl VueGenerator {
             previewcard_counter: 0,
             previewcard_data: Vec::new(),
             needs_copy_code: false,
+            needs_router: false,
         }
     }
 
@@ -771,6 +775,7 @@ impl VueGenerator {
         self.previewcard_counter = 0;
         self.previewcard_data.clear();
         self.needs_copy_code = false;
+        self.needs_router = false;
     }
 
     /// Generate complete Vue3 SFC
@@ -778,9 +783,15 @@ impl VueGenerator {
         self.current_widget = Some(widget.name.clone());
         self.reset();
 
-        // Generate template first to collect shadcn components used
+        // Generate template first to collect shadcn components used and detect Outlet/Link
         let template = self.generate_template(&widget.view_tree)?;
-        // Then generate script (which can now include shadcn imports)
+
+        // Plan 105: Check handlers for NavCall
+        if self.widget_needs_router(widget) {
+            self.needs_router = true;
+        }
+
+        // Then generate script (which can now include shadcn imports and router)
         let script = self.generate_script(widget)?;
         let style = self.generate_style();
 
@@ -827,6 +838,12 @@ impl VueGenerator {
         }
         if !imports.is_empty() {
             script.push_str(&format!("import {{ {} }} from 'vue'\n", imports.join(", ")));
+        }
+
+        // Plan 105: Add router import if needed
+        if self.needs_router {
+            script.push_str("import { useRouter } from 'vue-router'\n");
+            script.push_str("const router = useRouter()\n\n");
         }
 
         // Generate shadcn-vue imports (if any components were used in template)
@@ -1257,11 +1274,13 @@ impl VueGenerator {
             // Plan 105: Router outlet and link
             AuraNode::Outlet => {
                 // Vue Router outlet: <router-view />
+                self.needs_router = true;
                 Ok(format!("{}<router-view />\n", ind))
             }
 
             AuraNode::Link { to, children } => {
                 // Vue Router link: <router-link to="path">children</router-link>
+                self.needs_router = true;
                 let mut children_html = String::new();
                 for child in children {
                     children_html.push_str(&self.node_to_html(child, indent + 1)?);
@@ -1951,6 +1970,52 @@ impl VueGenerator {
         }
     }
 
+    /// Check if an expression contains NavCall (Plan 105)
+    fn expr_has_nav_call(expr: &AuraExpr) -> bool {
+        match expr {
+            AuraExpr::NavCall { .. } => true,
+            AuraExpr::Binary { left, right, .. } => {
+                Self::expr_has_nav_call(left) || Self::expr_has_nav_call(right)
+            }
+            AuraExpr::Unary { operand, .. } => Self::expr_has_nav_call(operand),
+            AuraExpr::MethodCall { object, args, .. } => {
+                Self::expr_has_nav_call(object) || args.iter().any(Self::expr_has_nav_call)
+            }
+            AuraExpr::Array(elems) => elems.iter().any(Self::expr_has_nav_call),
+            AuraExpr::Lambda { body, .. } => Self::expr_has_nav_call(body),
+            AuraExpr::FieldAccess { object, .. } => Self::expr_has_nav_call(object),
+            _ => false,
+        }
+    }
+
+    /// Check if a statement contains NavCall (Plan 105)
+    fn stmt_has_nav_call(stmt: &AuraStmt) -> bool {
+        match stmt {
+            AuraStmt::Assign { value, .. } => Self::expr_has_nav_call(value),
+            AuraStmt::Update { value, .. } => Self::expr_has_nav_call(value),
+            AuraStmt::MethodCall { args, .. } => args.iter().any(Self::expr_has_nav_call),
+        }
+    }
+
+    /// Check if LogicPayload contains NavCall (Plan 105)
+    fn payload_has_nav_call(payload: &LogicPayload) -> bool {
+        match payload {
+            LogicPayload::AstBlock(stmts) => stmts.iter().any(Self::stmt_has_nav_call),
+            LogicPayload::Bytecode(_) => false, // Can't analyze bytecode
+        }
+    }
+
+    /// Check if widget uses router features (Plan 105)
+    fn widget_needs_router(&self, widget: &AuraWidget) -> bool {
+        // Check handlers for NavCall
+        for payload in widget.handlers.values() {
+            if Self::payload_has_nav_call(payload) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Convert AuraExpr to JS value string
     fn expr_to_js(&self, expr: &AuraExpr) -> GenResult<String> {
         match expr {
@@ -2006,12 +2071,18 @@ impl VueGenerator {
                 Ok(format!("{}.{}", object_js, field))
             }
             AuraExpr::NavCall { path, params } => {
-                let params_js: Vec<String> = params.iter()
-                    .map(|(k, v)| {
-                        self.expr_to_js(v).map(|v_js| format!("{}: {}", k, v_js))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(format!("router.push({{ path: '{}', query: {{ {} }} }})", path, params_js.join(", ")))
+                if params.is_empty() {
+                    // Simple path navigation: router.push('/path')
+                    Ok(format!("router.push('{}')", path))
+                } else {
+                    // Navigation with query params: router.push({ path: '/path', query: { ... } })
+                    let params_js: Vec<String> = params.iter()
+                        .map(|(k, v)| {
+                            self.expr_to_js(v).map(|v_js| format!("{}: {}", k, v_js))
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(format!("router.push({{ path: '{}', query: {{ {} }} }})", path, params_js.join(", ")))
+                }
             }
         }
     }
@@ -4641,6 +4712,64 @@ export function cn(...inputs: ClassValue[]) {
 }
 "#.to_string()
     }
+
+    /// Generate Vue Router configuration file (Plan 105)
+    ///
+    /// Creates a `router/index.ts` file with route definitions.
+    pub fn generate_router_file(routes: &[crate::aura::AuraRoute]) -> String {
+        let mut route_defs = Vec::new();
+
+        for route in routes {
+            // Generate route definition
+            let component_import = route.component.clone();
+            let path = &route.path;
+
+            // Create route object
+            if route.params.is_empty() {
+                route_defs.push(format!(
+                    "  {{ path: '{}', name: '{}', component: {} }}",
+                    path,
+                    route.component,
+                    component_import
+                ));
+            } else {
+                // Route with params - add props: true for dynamic segments
+                route_defs.push(format!(
+                    "  {{ path: '{}', name: '{}', component: {}, props: true }}",
+                    path,
+                    route.component,
+                    component_import
+                ));
+            }
+        }
+
+        // Generate component imports
+        let mut imports = Vec::new();
+        for route in routes {
+            imports.push(route.component.clone());
+        }
+        let imports_str = imports.join(", ");
+
+        format!(
+            r#"import {{ createRouter, createWebHistory }} from 'vue-router'
+import type {{ RouteRecordRaw }} from 'vue-router'
+import {{ {} }}
+
+const routes: RouteRecordRaw[] = [
+{}
+]
+
+const router = createRouter({{
+  history: createWebHistory(import.meta.url),
+  routes,
+}})
+
+export default router
+"#,
+            imports_str,
+            route_defs.join(",\n")
+        )
+    }
 }
 
 impl BackendGenerator for VueGenerator {
@@ -4702,9 +4831,10 @@ mod tests {
         let mut gen = VueGenerator::new();
         let sfc = gen.generate(&widget).unwrap();
 
-        assert!(sfc.contains("<script setup>"));
+        // Plan 100: Default is now TypeScript, so check for lang="ts"
+        assert!(sfc.contains(r#"<script setup lang="ts">"#));
         assert!(sfc.contains("import { ref } from 'vue'"));
-        assert!(sfc.contains("const count = ref(0)"));
+        assert!(sfc.contains("const count = ref<number>(0)"));
         assert!(sfc.contains("<template>"));
         assert!(sfc.contains("<style scoped>"));
     }
