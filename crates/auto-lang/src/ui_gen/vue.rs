@@ -1239,6 +1239,9 @@ impl VueGenerator {
                         if key == "class" {
                             continue; // Already handled
                         }
+                        if key == "gap" {
+                            continue; // Handled in extract_classes for layout elements
+                        }
                         if key == "text" {
                             text_content = Some(self.prop_to_text_content(value)?);
                             continue;
@@ -2071,12 +2074,22 @@ impl VueGenerator {
         let semantic_elements = ["header", "nav", "main", "aside", "footer", "article"];
         let skip_semantic_defaults = has_user_class && semantic_elements.contains(&tag);
 
+        // Extract gap prop for layout elements
+        let gap_class = if let Some(value) = props.get("gap") {
+            match value {
+                AuraPropValue::Expr(AuraExpr::Literal(s)) => format!("gap-{}", s),
+                _ => "gap-4".to_string(),
+            }
+        } else {
+            "gap-4".to_string()
+        };
+
         // Default classes based on tag (only in Plain mode or for non-shadcn elements)
         if !skip_defaults && !skip_semantic_defaults {
             match tag {
                 // Layout
-                "col" | "column" => classes.push("flex flex-col gap-4".to_string()),
-                "row" => classes.push("flex flex-row gap-4".to_string()),
+                "col" | "column" => classes.push(format!("flex flex-col {}", gap_class)),
+                "row" => classes.push(format!("flex flex-row {}", gap_class)),
                 "grid" => classes.push("grid".to_string()),
                 "scroll" => classes.push("overflow-auto".to_string()),
                 "container" => classes.push("max-w-7xl mx-auto".to_string()),

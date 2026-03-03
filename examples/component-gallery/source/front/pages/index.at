@@ -16,18 +16,8 @@ widget IndexPage {
                 text (text: "Built with Auto, styled with Tailwind CSS", class: "text-muted-foreground") {}
             }
 
-            // Getting Started section
-            col (class: "gap-4") {
-                h2 (text: "Getting Started", class: "text-2xl font-semibold tracking-tight") {}
-                text "Run the following command to add components to your project:"
-                div { class: "bg-muted rounded-md p-4 font-mono text-sm" }
-            }
-
             // Component grid - link buttons to each page
             col (class: "gap-4") {
-                h2 (text: "Components", class: "text-2xl font-semibold tracking-tight") {}
-                text (text: "Components that you can use in your applications.", class: "text-muted-foreground") {}
-
                 row (class: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4") {
                     // Row 1
                     link (to: "/accordion") {
