@@ -462,36 +462,32 @@ fn run_install_steps(
     }
 
     // Detect which steps need to be run
-    let npm_needed = !is_npm_installed(output_path);
+    // Always run npm install to pick up new dependencies (it's fast if already installed)
     let shadcn_needed = !components.is_empty() && !are_shadcn_components_installed(output_path, components);
 
     // Calculate step numbers dynamically
     let total_steps = 4; // Always 4 steps, but some may be skipped
     let mut current_step = 0;
 
-    // Step 1: npm install (or skip if already installed)
+    // Step 1: npm install (always run to pick up new dependencies)
     println!();
     current_step += 1;
-    if npm_needed {
-        println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Installing dependencies...", current_step, total_steps).bright_white());
+    println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Installing dependencies...", current_step, total_steps).bright_white());
 
-        let npm_install_args = if yes {
-            println!("{}", "  Running: npm install -y".bright_black());
-            vec!["install", "-y"]
-        } else {
-            println!("{}", "  Running: npm install".bright_black());
-            vec!["install"]
-        };
-
-        match run_command_live("npm", &npm_install_args, output_path) {
-            Ok(_) => println!("{}", "  ✓ Dependencies installed".bright_green()),
-            Err(e) => {
-                println!("{} {}", "  ✗ Failed:".bright_red(), e);
-                println!("  You may need to run 'npm install' manually.");
-            }
-        }
+    let npm_install_args = if yes {
+        println!("{}", "  Running: npm install -y".bright_black());
+        vec!["install", "-y"]
     } else {
-        println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Dependencies already installed (skipping)", current_step, total_steps).bright_white());
+        println!("{}", "  Running: npm install".bright_black());
+        vec!["install"]
+    };
+
+    match run_command_live("npm", &npm_install_args, output_path) {
+        Ok(_) => println!("{}", "  ✓ Dependencies installed".bright_green()),
+        Err(e) => {
+            println!("{} {}", "  ✗ Failed:".bright_red(), e);
+            println!("  You may need to run 'npm install' manually.");
+        }
     }
 
     // Step 2: shadcn-vue add (or skip if already installed or not needed)
@@ -742,35 +738,31 @@ fn generate_single_file_project(
         }
 
         // Detect which steps need to be run
-        let npm_needed = !is_npm_installed(output_path);
+        // Always run npm install to pick up new dependencies (it's fast if already installed)
         let shadcn_needed = !components.is_empty() && !are_shadcn_components_installed(output_path, &components);
 
         let total_steps = 4;
         let mut current_step = 0;
 
-        // Step 1: npm install (or skip if already installed)
+        // Step 1: npm install (always run to pick up new dependencies)
         println!();
         current_step += 1;
-        if npm_needed {
-            println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Installing dependencies...", current_step, total_steps).bright_white());
+        println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Installing dependencies...", current_step, total_steps).bright_white());
 
-            let npm_install_args = if yes {
-                println!("{}", "  Running: npm install -y".bright_black());
-                vec!["install", "-y"]
-            } else {
-                println!("{}", "  Running: npm install".bright_black());
-                vec!["install"]
-            };
-
-            match run_command_live("npm", &npm_install_args, output_path) {
-                Ok(_) => println!("{}", "  ✓ Dependencies installed".bright_green()),
-                Err(e) => {
-                    println!("{} {}", "  ✗ Failed:".bright_red(), e);
-                    println!("  You may need to run 'npm install' manually.");
-                }
-            }
+        let npm_install_args = if yes {
+            println!("{}", "  Running: npm install -y".bright_black());
+            vec!["install", "-y"]
         } else {
-            println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Dependencies already installed (skipping)", current_step, total_steps).bright_white());
+            println!("{}", "  Running: npm install".bright_black());
+            vec!["install"]
+        };
+
+        match run_command_live("npm", &npm_install_args, output_path) {
+            Ok(_) => println!("{}", "  ✓ Dependencies installed".bright_green()),
+            Err(e) => {
+                println!("{} {}", "  ✗ Failed:".bright_red(), e);
+                println!("  You may need to run 'npm install' manually.");
+            }
         }
 
         // Step 2: shadcn-vue add (or skip if already installed or not needed)
@@ -1043,7 +1035,7 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
   "dependencies": {{
     "vue": "^3.4.0",
 {}    "@vueuse/core": "^10.7.0",
-    "radix-vue": "^1.4.0",
+    "reka-ui": "^2.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.0",
@@ -1234,37 +1226,81 @@ fn generate_index_html(name: &str) -> String {
 
 fn generate_main_ts(has_routes: bool) -> String {
     if has_routes {
-        r#"import { createApp } from 'vue'
+        r#"import { createApp, nextTick } from 'vue'
 import App from './App.vue'
 import router from './router'
 import './assets/index.css'
-import 'prismjs'
+
+// Prism.js setup
+import Prism from 'prismjs'
 import 'prismjs/components/prism-bash'
 import 'prismjs/components/prism-typescript'
+import 'prismjs/components/prism-javascript'
+import 'prismjs/components/prism-css'
+import 'prismjs/components/prism-markup' // HTML/XML
 import 'prismjs/themes/prism-tomorrow.min.css'
+
+// Define custom 'auto' language (similar to rust/swift)
+Prism.languages.auto = Prism.languages.extend('clike', {
+  'keyword': /\b(widget|fn|let|mut|const|var|if|else|for|in|loop|while|break|continue|return|use|import|export|type|struct|enum|impl|trait|pub|private|static|async|await|try|catch|throw|new|true|false|null|nil|self|super)\b/,
+  'string': /(["'`])(?:\\[\s\S]|(?!\1)[^\\])*\1/,
+  'number': /\b\d+\.?\d*\b/,
+  'operator': /[+\-*/%=<>!&|^~?:]+/,
+  'punctuation': /[{}[\]();,.]/,
+  'function': /\b[a-zA-Z_]\w*(?=\s*\()/,
+  'comment': /\/\/.*|\/\*[\s\S]*?\*\//,
+});
+
+// Highlight function that works with Vue's render cycle
+function highlightCode() {
+  nextTick(() => {
+    Prism.highlightAll()
+  })
+}
 
 const app = createApp(App)
 app.use(router)
 app.mount('#app')
 
-// Highlight all code blocks after mount
-import Prism from 'prismjs'
-setTimeout(() => Prism.highlightAll(), 0)
+// Initial highlight
+highlightCode()
+
+// Re-highlight on route change
+router.afterEach(() => {
+  highlightCode()
+})
 "#.to_string()
     } else {
-        r#"import { createApp } from 'vue'
+        r#"import { createApp, nextTick } from 'vue'
 import App from './App.vue'
 import './assets/index.css'
-import 'prismjs'
+
+// Prism.js setup
+import Prism from 'prismjs'
 import 'prismjs/components/prism-bash'
 import 'prismjs/components/prism-typescript'
+import 'prismjs/components/prism-javascript'
+import 'prismjs/components/prism-css'
+import 'prismjs/components/prism-markup' // HTML/XML
 import 'prismjs/themes/prism-tomorrow.min.css'
+
+// Define custom 'auto' language (similar to rust/swift)
+Prism.languages.auto = Prism.languages.extend('clike', {
+  'keyword': /\b(widget|fn|let|mut|const|var|if|else|for|in|loop|while|break|continue|return|use|import|export|type|struct|enum|impl|trait|pub|private|static|async|await|try|catch|throw|new|true|false|null|nil|self|super)\b/,
+  'string': /(["'`])(?:\\[\s\S]|(?!\1)[^\\])*\1/,
+  'number': /\b\d+\.?\d*\b/,
+  'operator': /[+\-*/%=<>!&|^~?:]+/,
+  'punctuation': /[{}[\]();,.]/,
+  'function': /\b[a-zA-Z_]\w*(?=\s*\()/,
+  'comment': /\/\/.*|\/\*[\s\S]*?\*\//,
+});
 
 createApp(App).mount('#app')
 
-// Highlight all code blocks after mount
-import Prism from 'prismjs'
-setTimeout(() => Prism.highlightAll(), 0)
+// Highlight after mount
+nextTick(() => {
+  Prism.highlightAll()
+})
 "#.to_string()
     }
 }
