@@ -1047,7 +1047,8 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.0",
-    "lucide-vue-next": "^0.312.0"
+    "lucide-vue-next": "^0.312.0",
+    "prismjs": "^1.29.0"
   }},
   "devDependencies": {{
     "@vitejs/plugin-vue": "^5.0.0",
@@ -1237,17 +1238,33 @@ fn generate_main_ts(has_routes: bool) -> String {
 import App from './App.vue'
 import router from './router'
 import './assets/index.css'
+import 'prismjs'
+import 'prismjs/components/prism-bash'
+import 'prismjs/components/prism-typescript'
+import 'prismjs/themes/prism-tomorrow.min.css'
 
 const app = createApp(App)
 app.use(router)
 app.mount('#app')
+
+// Highlight all code blocks after mount
+import Prism from 'prismjs'
+setTimeout(() => Prism.highlightAll(), 0)
 "#.to_string()
     } else {
         r#"import { createApp } from 'vue'
 import App from './App.vue'
 import './assets/index.css'
+import 'prismjs'
+import 'prismjs/components/prism-bash'
+import 'prismjs/components/prism-typescript'
+import 'prismjs/themes/prism-tomorrow.min.css'
 
 createApp(App).mount('#app')
+
+// Highlight all code blocks after mount
+import Prism from 'prismjs'
+setTimeout(() => Prism.highlightAll(), 0)
 "#.to_string()
     }
 }
