@@ -1251,6 +1251,27 @@ Prism.languages.auto = Prism.languages.extend('clike', {
   'comment': /\/\/.*|\/\*[\s\S]*?\*\//,
 });
 
+// Define custom 'vue' language (HTML-based with Vue directives)
+Prism.languages.vue = Prism.languages.extend('markup', {
+  // Vue directives: v-if, v-for, v-model, @click, :class, etc.
+  'directive': {
+    pattern: /(?:^|\s)(?:v-[a-z]+|@[a-z]+(?::[a-z]+)?|:[a-z-]+)(?:=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/i,
+    lookbehind: true,
+    inside: {
+      'punctuation': /^=|[:=]/,
+      'attribute-name': /[a-z-]+/i,
+    }
+  },
+  // Mustache templates: {{ ... }}
+  'mustache': {
+    pattern: /\{\{[\s\S]*?\}\}/,
+    inside: {
+      'delimiter': /^\{\{|\}\}$/,
+      'expression': /[\s\S]+/,
+    }
+  },
+});
+
 // Highlight function that works with Vue's render cycle
 function highlightCode() {
   nextTick(() => {
@@ -1293,6 +1314,27 @@ Prism.languages.auto = Prism.languages.extend('clike', {
   'punctuation': /[{}[\]();,.]/,
   'function': /\b[a-zA-Z_]\w*(?=\s*\()/,
   'comment': /\/\/.*|\/\*[\s\S]*?\*\//,
+});
+
+// Define custom 'vue' language (HTML-based with Vue directives)
+Prism.languages.vue = Prism.languages.extend('markup', {
+  // Vue directives: v-if, v-for, v-model, @click, :class, etc.
+  'directive': {
+    pattern: /(?:^|\s)(?:v-[a-z]+|@[a-z]+(?::[a-z]+)?|:[a-z-]+)(?:=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/i,
+    lookbehind: true,
+    inside: {
+      'punctuation': /^=|[:=]/,
+      'attribute-name': /[a-z-]+/i,
+    }
+  },
+  // Mustache templates: {{ ... }}
+  'mustache': {
+    pattern: /\{\{[\s\S]*?\}\}/,
+    inside: {
+      'delimiter': /^\{\{|\}\}$/,
+      'expression': /[\s\S]+/,
+    }
+  },
 });
 
 createApp(App).mount('#app')

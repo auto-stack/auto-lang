@@ -875,8 +875,17 @@ impl VueGenerator {
         if needs_computed {
             imports.push("computed");
         }
+        // Plan 106: Add watch and nextTick for Prism.js re-highlighting
+        if !self.previewcard_data.is_empty() {
+            imports.push("watch");
+            imports.push("nextTick");
+        }
         if !imports.is_empty() {
             script.push_str(&format!("import {{ {} }} from 'vue'\n", imports.join(", ")));
+        }
+        // Plan 106: Add Prism import for syntax highlighting
+        if !self.previewcard_data.is_empty() {
+            script.push_str("import Prism from 'prismjs'\n");
         }
 
         // Plan 105: Add router import if needed
@@ -1074,6 +1083,16 @@ impl VueGenerator {
                 let code_var = format!("{}Code", id_camel);
                 script.push_str(&format!("const {} = `{}`\n", code_var, cb.code));
             }
+
+            // Plan 106: Add watchers for syntax highlighting when tabs change
+            for pc in &self.previewcard_data {
+                let id_pascal = to_pascal_case(&pc.id);
+                let active_var = format!("active{}Tab", id_pascal);
+                script.push_str(&format!(
+                    "watch({}, () => {{\n  nextTick(() => Prism.highlightAll())\n}})\n",
+                    active_var
+                ));
+            }
             script.push('\n');
         } else if !self.codeblock_data.is_empty() {
             // Codeblocks only (no previewcard)
@@ -1161,7 +1180,18 @@ impl VueGenerator {
 
     /// Generate <style scoped> content
     fn generate_style(&self) -> String {
-        "/* Component styles */\n".to_string()
+        let mut style = String::new();
+
+        // Plan 106: Override Prism.js default margin on pre elements
+        if !self.previewcard_data.is_empty() || !self.codeblock_data.is_empty() {
+            style.push_str("/* Override Prism.js default styles */\n");
+            style.push_str("pre[class*=\"language-\"] {\n");
+            style.push_str("  margin: 0;\n");
+            style.push_str("}\n\n");
+        }
+
+        style.push_str("/* Component styles */\n");
+        style
     }
 
     /// Convert AuraNode to HTML string
