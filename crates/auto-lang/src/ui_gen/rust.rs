@@ -450,6 +450,20 @@ impl RustGenerator {
 
                 format!("{}.build()", builder)
             }
+
+            // Plan 105: Router outlet and link
+            AuraNode::Outlet => {
+                // Rust router outlet placeholder
+                "View::outlet()".to_string()
+            }
+
+            AuraNode::Link { to, children } => {
+                // Rust router link
+                let children_code: Vec<String> = children.iter()
+                    .map(|child| self.generate_view_tree(child))
+                    .collect();
+                format!("View::link(\"{}\").children(vec![{}]).build()", to, children_code.join(", "))
+            }
         }
     }
 

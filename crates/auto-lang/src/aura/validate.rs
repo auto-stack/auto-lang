@@ -213,6 +213,16 @@ impl WidgetValidator {
                 // Note: Component validation could be extended to check against component schemas
                 let _ = (name, props); // Suppress unused warning
             }
+            ViewNode::Outlet => {
+                // Router outlet - no children or props to validate
+            }
+            ViewNode::Link { to, children } => {
+                // Navigation link - validate that 'to' is valid
+                let _ = to; // Suppress unused warning
+                for child in children {
+                    self.validate_view_tree(child, errors);
+                }
+            }
         }
     }
 

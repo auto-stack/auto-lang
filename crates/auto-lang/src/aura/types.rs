@@ -205,6 +205,18 @@ pub enum AuraNode {
         /// Event handlers
         events: HashMap<String, AuraEvent>,
     },
+
+    /// Router outlet: renders matched child route (Plan 105)
+    Outlet,
+
+    /// Navigation link with routing (Plan 105)
+    Link {
+        /// Target path
+        to: String,
+
+        /// Child content
+        children: Vec<AuraNode>,
+    },
 }
 
 /// Text content: can be literal or contain interpolations

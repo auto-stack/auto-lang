@@ -311,6 +311,11 @@ pub enum Expr {
     // May type operators (Phase 1b.3)
     NullCoalesce(Box<Expr>, Box<Expr>),  // left ?? right
     ErrorPropagate(Box<Expr>),            // expression.?
+    // Router navigation (Plan 105)
+    NavCall {
+        path: Box<Expr>,
+        params: Vec<Pair>,  // key-value pairs for route params
+    },
 }
 
 fn fmt_array(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
@@ -384,6 +389,16 @@ impl fmt::Display for Expr {
             Expr::Range(r) => write!(f, "{}", r),
             Expr::NullCoalesce(l, r) => write!(f, "(?? {} {})", l, r),
             Expr::ErrorPropagate(e) => write!(f, "(?. {})", e),
+            Expr::NavCall { path, params } => {
+                write!(f, "(nav {} ", path)?;
+                for (i, param) in params.iter().enumerate() {
+                    write!(f, "{}", param)?;
+                    if i < params.len() - 1 {
+                        write!(f, " ")?;
+                    }
+                }
+                write!(f, ")")
+            }
         }
     }
 }
@@ -810,6 +825,15 @@ impl ToNode for Expr {
                 let mut node = AutoNode::new("dot");
                 node.add_kid(object.to_node());
                 node.add_arg(auto_val::Arg::Pos(Value::str(field.as_str())));
+                node
+            }
+            // Plan 105: Router navigation
+            Expr::NavCall { path, params } => {
+                let mut node = AutoNode::new("nav");
+                node.add_kid(path.to_node());
+                for pair in params {
+                    node.add_kid(pair.to_node());
+                }
                 node
             }
         }

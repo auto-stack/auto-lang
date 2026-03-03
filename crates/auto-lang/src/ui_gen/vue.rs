@@ -1253,6 +1253,21 @@ impl VueGenerator {
                 self.component_refs.push(name.clone());
                 Ok(format!("{}<{}{} />\n", ind, name, attr_str))
             }
+
+            // Plan 105: Router outlet and link
+            AuraNode::Outlet => {
+                // Vue Router outlet: <router-view />
+                Ok(format!("{}<router-view />\n", ind))
+            }
+
+            AuraNode::Link { to, children } => {
+                // Vue Router link: <router-link to="path">children</router-link>
+                let mut children_html = String::new();
+                for child in children {
+                    children_html.push_str(&self.node_to_html(child, indent + 1)?);
+                }
+                Ok(format!("{}<router-link to=\"{}\">\n{}{}</router-link>\n", ind, to, children_html, ind))
+            }
         }
     }
 
@@ -1544,6 +1559,21 @@ impl VueGenerator {
                 };
 
                 result.push_str(&format!("{}{}{} {{}}\n", ind, name, props_str));
+                result
+            }
+
+            // Plan 105: Router outlet and link
+            AuraNode::Outlet => {
+                format!("{}outlet\n", ind)
+            }
+
+            AuraNode::Link { to, children } => {
+                let mut result = String::new();
+                result.push_str(&format!("{}link (to: \"{}\") {{\n", ind, to));
+                for child in children {
+                    result.push_str(&self.node_to_auto_code(child, indent + 1));
+                }
+                result.push_str(&format!("{}}}\n", ind));
                 result
             }
         }

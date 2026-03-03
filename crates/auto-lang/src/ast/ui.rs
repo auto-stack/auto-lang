@@ -4,6 +4,7 @@
 //! They represent widget, msg, model, view, and on blocks as first-class citizens.
 
 use super::{Body, Expr, Name, Type};
+use super::route::RoutesBlock;
 use auto_val::AutoStr;
 
 // ============================================================================
@@ -43,6 +44,9 @@ pub struct WidgetDecl {
 
     /// Props for reusable components
     pub props: Vec<PropDecl>,
+
+    /// Routes block for router widgets (Plan 105)
+    pub routes: Option<RoutesBlock>,
 }
 
 // ============================================================================
@@ -213,6 +217,26 @@ pub enum ViewNode {
 
         /// Event handlers
         events: Vec<ViewEvent>,
+    },
+
+    /// Router outlet: renders the matched child route (Plan 105)
+    ///
+    /// ```auto
+    /// outlet
+    /// ```
+    Outlet,
+
+    /// Navigation link: anchor with routing (Plan 105)
+    ///
+    /// ```auto
+    /// link (to: "/user/123") { "View Profile" }
+    /// ```
+    Link {
+        /// Target path (e.g., "/user/123")
+        to: String,
+
+        /// Child content
+        children: Vec<ViewNode>,
     },
 }
 
@@ -432,6 +456,7 @@ mod tests {
             on: None,
             props: vec![],
             computed: None,
+            routes: None,
         };
 
         assert_eq!(widget.name.as_str(), "Counter");

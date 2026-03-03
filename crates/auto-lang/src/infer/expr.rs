@@ -380,6 +380,10 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
                 _ => Type::Unknown,
             }
         }
+
+        // ========== Router Navigation (Plan 105) ==========
+        // nav() returns void (navigation is a side effect)
+        Expr::NavCall { .. } => Type::Void,
     }
 }
 

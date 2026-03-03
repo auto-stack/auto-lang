@@ -272,6 +272,26 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             }
             output.push_str(&format!("{}}}", ind));
         }
+
+        // Plan 105: Router outlet and link
+        AuraNode::Outlet => {
+            output.push_str(&format!("Outlet"));
+        }
+
+        AuraNode::Link { to, children } => {
+            output.push_str(&format!("Link {{\n"));
+            output.push_str(&format!("{}    to: \"{}\",\n", ind, to));
+            if !children.is_empty() {
+                output.push_str(&format!("{}    children: [\n", ind));
+                for child in children {
+                    output.push_str(&format!("{}        ", ind));
+                    serialize_node(child, output, indent + 2);
+                    output.push_str(",\n");
+                }
+                output.push_str(&format!("{}    ]\n", ind));
+            }
+            output.push_str(&format!("{}}}", ind));
+        }
     }
 }
 

@@ -231,6 +231,7 @@ impl<'db> DepScanner<'db> {
             | Expr::Null => {}
             | Expr::NullCoalesce(_, _) => {}
             | Expr::ErrorPropagate(_) => {}
+            | Expr::NavCall { .. } => {}  // Plan 105: Navigation has no dependencies
         }
     }
 

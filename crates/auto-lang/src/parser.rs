@@ -6781,6 +6781,13 @@ impl<'a> Parser<'a> {
     }
 
     fn call(&mut self, ident: Expr, args: Args) -> AutoResult<Expr> {
+        // Check for special builtin functions (Plan 105)
+        if let Expr::Ident(name) = &ident {
+            if name.as_str() == "nav" {
+                return self.parse_nav_call(args);
+            }
+        }
+
         let ret_type = self.return_type(&ident)?;
         let expr = Expr::Call(Call {
             name: Box::new(ident),
@@ -6789,6 +6796,41 @@ impl<'a> Parser<'a> {
             type_args: Vec::new(), // Plan 061: Will be filled in during type inference
         });
         self.check_symbol(expr)
+    }
+
+    /// Parse nav() function call for router navigation (Plan 105)
+    ///
+    /// Syntax: nav("/path", id: 123, name: "john")
+    /// - First argument: path string (required)
+    /// - Remaining arguments: key-value pairs for route parameters
+    fn parse_nav_call(&mut self, args: Args) -> AutoResult<Expr> {
+        // First argument must be the path string
+        let first_arg = args.first_arg();
+        let path = match first_arg {
+            Some(expr) => expr,
+            None => {
+                return Err(SyntaxError::Generic {
+                    message: "nav() requires at least one argument (path)".to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
+        };
+
+        // Collect named arguments as params
+        let params: Vec<Pair> = args.args.iter().skip(1).filter_map(|arg| {
+            match arg {
+                Arg::Pair(name, expr) => Some(Pair {
+                    key: Key::NamedKey(name.clone()),
+                    value: Box::new(expr.clone()),
+                }),
+                _ => None,
+            }
+        }).collect();
+
+        Ok(Expr::NavCall {
+            path: Box::new(path),
+            params,
+        })
     }
 
     fn special_block(&mut self, name: &AutoStr) -> AutoResult<Body> {
@@ -6975,6 +7017,7 @@ impl<'a> Parser<'a> {
         let mut computed = None;
         let mut view = None;
         let mut on = None;
+        let mut routes = None;
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -6999,9 +7042,12 @@ impl<'a> Parser<'a> {
                 "on" => {
                     on = Some(self.parse_on_block()?);
                 }
+                "routes" => {
+                    routes = Some(self.parse_routes_block_inner()?);
+                }
                 _ => {
                     return Err(SyntaxError::Generic {
-                        message: format!("Expected 'msg', 'model', 'computed', 'view', or 'on' in widget, got '{}'", ident),
+                        message: format!("Expected 'msg', 'model', 'computed', 'view', 'on', or 'routes' in widget, got '{}'", ident),
                         span: pos_to_span(self.cur.pos),
                     }.into());
                 }
@@ -7019,6 +7065,7 @@ impl<'a> Parser<'a> {
             view,
             on,
             props,
+            routes,
         }))
     }
 
@@ -7167,6 +7214,54 @@ impl<'a> Parser<'a> {
         Ok(ComputedBlock { properties })
     }
 
+    /// Parse routes block, returning the RoutesBlock directly (Plan 105)
+    ///
+    /// Syntax:
+    /// ```auto
+    /// routes {
+    ///     "/button" => ButtonPage {}
+    ///     "/user/:id" => UserPage {}
+    /// }
+    /// ```
+    fn parse_routes_block_inner(&mut self) -> AutoResult<RoutesBlock> {
+        self.expect_ident("routes")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut routes = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            // Parse: "/path" => ComponentName {}
+            let path = self.cur.text.to_string();
+            self.expect(TokenKind::Str)?;
+            self.expect(TokenKind::DoubleArrow)?;
+
+            let component = self.cur.text.to_string();
+            self.expect(TokenKind::Ident)?;
+
+            // Parse empty braces: ComponentName {}
+            self.expect(TokenKind::LBrace)?;
+            self.skip_empty_lines();
+            self.expect(TokenKind::RBrace)?;
+
+            routes.push(RouteDef::new(path, component));
+
+            // Optional comma
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(RoutesBlock { routes })
+    }
+
     /// Parse view block (UI scenario only)
     pub fn parse_view_block(&mut self) -> AutoResult<Stmt> {
         let view = self.parse_view_block_inner()?;
@@ -7200,6 +7295,18 @@ impl<'a> Parser<'a> {
         // Check for "if" keyword: if condition { then_body } else { else_body }
         if self.cur.text.as_str() == "if" {
             return self.parse_view_conditional();
+        }
+
+        // Check for "outlet" keyword: router outlet (Plan 105)
+        if self.is_kind(TokenKind::Outlet) {
+            self.next();
+            return Ok(ViewNode::Outlet);
+        }
+
+        // Check for "link" keyword: navigation link (Plan 105)
+        // link (to: "/path") { children }
+        if self.is_kind(TokenKind::Link) {
+            return self.parse_view_link();
         }
 
         // Check for text with '>' prefix: > "text" or > f"text ${.state}"
@@ -7550,6 +7657,63 @@ impl<'a> Parser<'a> {
             then_body,
             else_body,
         })
+    }
+
+    /// Parse navigation link in view: link (to: "/path") { children } (Plan 105)
+    fn parse_view_link(&mut self) -> AutoResult<ViewNode> {
+        self.expect(TokenKind::Link)?;
+
+        // Parse props in parentheses: (to: "/path")
+        let mut to = String::new();
+
+        if self.is_kind(TokenKind::LParen) {
+            self.next();
+            self.skip_empty_lines();
+
+            while !self.is_kind(TokenKind::RParen) {
+                self.skip_empty_lines();
+                if self.is_kind(TokenKind::RParen) {
+                    break;
+                }
+
+                let key = self.cur.text.to_string();
+                self.next();
+                self.expect(TokenKind::Colon)?;
+
+                if key == "to" {
+                    to = self.cur.text.to_string();
+                    self.expect(TokenKind::Str)?;
+                } else {
+                    // Skip unknown props
+                    self.next();
+                }
+
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                }
+            }
+            self.expect(TokenKind::RParen)?;
+        }
+
+        // Parse children in braces
+        let mut children = Vec::new();
+        if self.is_kind(TokenKind::LBrace) {
+            self.next();
+            self.skip_empty_lines();
+
+            while !self.is_kind(TokenKind::RBrace) {
+                self.skip_empty_lines();
+                if self.is_kind(TokenKind::RBrace) {
+                    break;
+                }
+                let child = self.parse_view_node()?;
+                children.push(child);
+                self.skip_empty_lines();
+            }
+            self.expect(TokenKind::RBrace)?;
+        }
+
+        Ok(ViewNode::Link { to, children })
     }
 
     /// Parse condition expression (until '{')
