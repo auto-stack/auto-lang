@@ -143,9 +143,15 @@ impl ShadcnRegistry {
             ("@/components/ui/tabs", vec!["Tabs", "TabsList", "TabsTrigger", "TabsContent"]));
         components.insert("tabslist",
             ("@/components/ui/tabs", vec!["TabsList"]));
+        components.insert("tabs-list",
+            ("@/components/ui/tabs", vec!["TabsList"]));
         components.insert("tabstrigger",
             ("@/components/ui/tabs", vec!["TabsTrigger"]));
+        components.insert("tabs-trigger",
+            ("@/components/ui/tabs", vec!["TabsTrigger"]));
         components.insert("tabscontent",
+            ("@/components/ui/tabs", vec!["TabsContent"]));
+        components.insert("tabs-content",
             ("@/components/ui/tabs", vec!["TabsContent"]));
         components.insert("tab",
             ("@/components/ui/tabs", vec!["TabsTrigger", "TabsContent"]));
@@ -163,6 +169,8 @@ impl ShadcnRegistry {
             ("@/components/ui/radio-group", vec!["RadioGroup", "RadioGroupItem"]));
         components.insert("radiogroup",
             ("@/components/ui/radio-group", vec!["RadioGroup"]));
+        components.insert("radio-group",
+            ("@/components/ui/radio-group", vec!["RadioGroup"]));
 
         // === Feedback Elements ===
         components.insert("progress",
@@ -177,13 +185,23 @@ impl ShadcnRegistry {
             ("@/components/ui/card", vec!["Card", "CardHeader", "CardTitle", "CardDescription", "CardContent", "CardFooter"]));
         components.insert("cardheader",
             ("@/components/ui/card", vec!["CardHeader"]));
+        components.insert("card-header",
+            ("@/components/ui/card", vec!["CardHeader"]));
         components.insert("cardtitle",
+            ("@/components/ui/card", vec!["CardTitle"]));
+        components.insert("card-title",
             ("@/components/ui/card", vec!["CardTitle"]));
         components.insert("carddescription",
             ("@/components/ui/card", vec!["CardDescription"]));
+        components.insert("card-description",
+            ("@/components/ui/card", vec!["CardDescription"]));
         components.insert("cardcontent",
             ("@/components/ui/card", vec!["CardContent"]));
+        components.insert("card-content",
+            ("@/components/ui/card", vec!["CardContent"]));
         components.insert("cardfooter",
+            ("@/components/ui/card", vec!["CardFooter"]));
+        components.insert("card-footer",
             ("@/components/ui/card", vec!["CardFooter"]));
         components.insert("avatar",
             ("@/components/ui/avatar", vec!["Avatar", "AvatarImage", "AvatarFallback"]));
@@ -1158,7 +1176,7 @@ impl VueGenerator {
                 }
 
                 // Special handling for codeblock element (with copy button)
-                if tag == "codeblock" {
+                if tag == "codeblock" || tag == "code-block" {
                     return self.generate_codeblock_html(props, events, children, indent);
                 }
 
@@ -1196,7 +1214,7 @@ impl VueGenerator {
                             continue;
                         }
                         // Special handling for codeblock's code prop - render as content
-                        if key == "code" && tag == "codeblock" {
+                        if key == "code" && (tag == "codeblock" || tag == "code-block") {
                             text_content = Some(self.prop_to_text_content(value)?);
                             continue;
                         }
@@ -1939,8 +1957,8 @@ impl VueGenerator {
             "select" => "select".to_string(),
             "option" => "option".to_string(),
             "link" => "a".to_string(),
-            "codeblock" => "pre".to_string(),
-            "codepane" => "div".to_string(),
+            "codeblock" | "code-block" => "pre".to_string(),
+            "codepane" | "code-pane" => "div".to_string(),
             "previewcard" | "preview-card" => "div".to_string(),
 
             // Typography (no shadcn components)
@@ -1956,7 +1974,7 @@ impl VueGenerator {
             "th" => "th".to_string(),
             "td" => "td".to_string(),
             "tree" => "ul".to_string(),
-            "tree_item" => "li".to_string(),
+            "tree_item" | "tree-item" => "li".to_string(),
 
             // Navigation
             "tabs" => "div".to_string(),
@@ -1969,7 +1987,7 @@ impl VueGenerator {
             // Form
             "slider" => "input".to_string(),
             "radio" => "input".to_string(),
-            "radiogroup" => "div".to_string(),
+            "radiogroup" | "radio-group" => "div".to_string(),
 
             // Feedback
             "progress" => "progress".to_string(),
@@ -2056,8 +2074,8 @@ impl VueGenerator {
                 "toggle" => classes.push("relative w-10 h-6 rounded-full".to_string()),
                 "select" => classes.push("border rounded px-2 py-1".to_string()),
                 "link" => classes.push("text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer".to_string()),
-                "codeblock" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-x-auto".to_string()),
-                "codepane" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-hidden".to_string()),
+                "codeblock" | "code-block" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-x-auto".to_string()),
+                "codepane" | "code-pane" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-hidden".to_string()),
                 "previewcard" | "preview-card" => classes.push("rounded-lg border overflow-hidden".to_string()),
                 "label" => classes.push("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70".to_string()),
 
@@ -2067,13 +2085,13 @@ impl VueGenerator {
                 "th" => classes.push("px-4 py-2 text-left font-semibold".to_string()),
                 "td" => classes.push("px-4 py-2".to_string()),
                 "tree" => classes.push("list-none pl-4".to_string()),
-                "tree_item" => classes.push("py-1".to_string()),
+                "tree_item" | "tree-item" => classes.push("py-1".to_string()),
 
                 // Navigation
                 "tabs" => classes.push("flex border-b".to_string()),
-                "tabslist" => classes.push("inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground".to_string()),
-                "tabstrigger" => classes.push("inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50".to_string()),
-                "tabscontent" => classes.push("mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2".to_string()),
+                "tabslist" | "tabs-list" => classes.push("inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground".to_string()),
+                "tabstrigger" | "tabs-trigger" => classes.push("inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50".to_string()),
+                "tabscontent" | "tabs-content" => classes.push("mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2".to_string()),
                 "tab" => classes.push("px-4 py-2 border-b-2 border-transparent".to_string()),
 
                 // Overlay
@@ -2081,7 +2099,7 @@ impl VueGenerator {
 
                 // Form
                 "slider" => classes.push("w-full".to_string()),
-                "radiogroup" => classes.push("flex flex-col gap-2".to_string()),
+                "radiogroup" | "radio-group" => classes.push("flex flex-col gap-2".to_string()),
 
                 // Feedback
                 "progress" => classes.push("w-full h-2 rounded".to_string()),
@@ -2090,11 +2108,11 @@ impl VueGenerator {
 
                 // Display
                 "card" => classes.push("rounded-lg border bg-card text-card-foreground shadow-sm".to_string()),
-                "cardheader" => classes.push("flex flex-col space-y-1.5 p-6".to_string()),
-                "cardtitle" => classes.push("text-lg font-semibold leading-none tracking-tight".to_string()),
-                "carddescription" => classes.push("text-sm text-muted-foreground".to_string()),
-                "cardcontent" => classes.push("p-6 pt-0".to_string()),
-                "cardfooter" => classes.push("flex items-center p-6 pt-0".to_string()),
+                "cardheader" | "card-header" => classes.push("flex flex-col space-y-1.5 p-6".to_string()),
+                "cardtitle" | "card-title" => classes.push("text-lg font-semibold leading-none tracking-tight".to_string()),
+                "carddescription" | "card-description" => classes.push("text-sm text-muted-foreground".to_string()),
+                "cardcontent" | "card-content" => classes.push("p-6 pt-0".to_string()),
+                "cardfooter" | "card-footer" => classes.push("flex items-center p-6 pt-0".to_string()),
                 "avatar" => classes.push("w-10 h-10 rounded-full".to_string()),
 
                 // Media
@@ -2722,10 +2740,10 @@ impl VueGenerator {
             }
 
             // === Tabs Sub-components ===
-            "tabslist" => {
+            "tabslist" | "tabs-list" => {
                 // TabsList is a container - class handled by extract_classes
             }
-            "tabstrigger" => {
+            "tabstrigger" | "tabs-trigger" => {
                 // value is required for TabsTrigger
                 if let Some(value) = props.get("value") {
                     let val = self.extract_string_value(value).unwrap_or("");
@@ -2736,7 +2754,7 @@ impl VueGenerator {
                     slot_content = self.prop_to_text_content(value).ok();
                 }
             }
-            "tabscontent" => {
+            "tabscontent" | "tabs-content" => {
                 // value is required for TabsContent
                 if let Some(value) = props.get("value") {
                     let val = self.extract_string_value(value).unwrap_or("");
@@ -2872,7 +2890,7 @@ impl VueGenerator {
                 }
             }
 
-            "tree_item" => {
+            "tree_item" | "tree-item" => {
                 // Tree item with expanded state
                 if let Some(value) = props.get("expanded") {
                     if let Some(model) = self.extract_state_ref(value) {
@@ -2890,7 +2908,7 @@ impl VueGenerator {
             // ========================================
 
             // === RadioGroup ===
-            "radiogroup" => {
+            "radiogroup" | "radio-group" => {
                 // v-model for selected value
                 if let Some(value) = props.get("value") {
                     if let Some(model) = self.extract_state_ref(value) {
