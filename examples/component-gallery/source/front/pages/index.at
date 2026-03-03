@@ -7,49 +7,180 @@ widget IndexPage {
         activeTab str = "preview"
     }
 
-    computed {
-        components => ["Button", "Input", "Text", "Card", "Badge", "Label", "Accordion", "Tabs"]
-        features => [
-            { title: "Type Safe", desc: "Full TypeScript support with type inference" },
-            { title: "Composable", desc: "Build complex UIs from simple components" },
-            { title: "Accessible", desc: "WCAG 2.1 AA compliant by default" },
-            { title: "Themeable", desc: "Easy customization with CSS variables" }
-        ]
-    }
-
     view {
-        col {
+        col (class: "gap-8") {
             // Hero section
-            div { class: "hero" }
-            row {
-                Badge (text: "v1.0.0", variant: "outline") {}
+            col (class: "gap-4 text-center py-12") {
+                h1 (text: "Auto UI", class: "text-5xl font-bold tracking-tight") {}
+                text (text: "A collection of beautifully designed components", class: "text-xl text-muted-foreground") {}
+                text (text: "Built with Auto, styled with Tailwind CSS", class: "text-muted-foreground") {}
             }
 
-            // Features section
-            h2 (text: "Features") {}
-            row {
-                for feature in .features {
-                    Card (title: .feature.title, variant: "outlined") {
-                        text .feature.desc
+            // Getting Started section
+            col (class: "gap-4") {
+                h2 (text: "Getting Started", class: "text-2xl font-semibold tracking-tight") {}
+                text "Run the following command to add components to your project:"
+                div { class: "bg-muted rounded-md p-4 font-mono text-sm" }
+            }
+
+            // Component grid - static list for now
+            col (class: "gap-4") {
+                h2 (text: "Components", class: "text-2xl font-semibold tracking-tight") {}
+                text (text: "Components that you can use in your applications.", class: "text-muted-foreground") {}
+
+                row (class: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4") {
+                    // Row 1
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Accordion"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Alert"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "AlertDialog"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Avatar"
+                    }
+                    // Row 2
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Badge"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Breadcrumb"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Button"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Calendar"
+                    }
+                    // Row 3
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Card"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Carousel"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Checkbox"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Collapsible"
+                    }
+                    // Row 4
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Combobox"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Command"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "ContextMenu"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "DataTable"
+                    }
+                    // Row 5
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "DatePicker"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Dialog"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Drawer"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "DropdownMenu"
+                    }
+                    // Row 6
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Form"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "HoverCard"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Input"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Label"
+                    }
+                    // Row 7
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Menubar"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "NavigationMenu"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Pagination"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Popover"
+                    }
+                    // Row 8
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Progress"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "RadioGroup"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "ScrollArea"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Select"
+                    }
+                    // Row 9
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Separator"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Sheet"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Sidebar"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Skeleton"
+                    }
+                    // Row 10
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Slider"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Sonner"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Switch"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Table"
+                    }
+                    // Row 11
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Tabs"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Textarea"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Toast"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Toggle"
+                    }
+                    // Row 12
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "ToggleGroup"
+                    }
+                    div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                        text "Tooltip"
                     }
                 }
             }
-
-            // Quick start section
-            h2 (text: "Quick Start") {}
-
-            CodeBlock {
-                language: "bash"
-                code: "# Install AutoUI\nnpm install autoui\n\n# Or use the CLI\nnpx autoui add button"
-            }
-
-            // Component grid
-            h2 (text: "Available Components") {}
-
-            div { class: "component-grid" }
-
-            // CTA section
-            div { class: "cta-section" }
         }
     }
 }
