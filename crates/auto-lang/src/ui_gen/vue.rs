@@ -1556,7 +1556,7 @@ impl VueGenerator {
 {ind}        </button>
 {ind}      </div>
 {ind}      <!-- Code content with syntax highlighting -->
-{ind}      <pre class="overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"><code :class="'font-mono language-' + active{id_cap}Tab.toLowerCase()">{{{{ active{id_cap}Tab === 'auto' ? {id_lower}AutoCode : {id_lower}VueCode }}}}</code></pre>
+{ind}      <pre class="overflow-x-auto p-4 text-sm bg-zinc-950 text-zinc-50"><code :class="'block font-mono !p-0 language-' + active{id_cap}Tab.toLowerCase()">{{{{ active{id_cap}Tab === 'auto' ? {id_lower}AutoCode : {id_lower}VueCode }}}}</code></pre>
 {ind}    </div>
 {ind}  </div>
 {ind}</div>
@@ -1660,7 +1660,7 @@ impl VueGenerator {
 {ind}      {{{{ copiedCode === '{id}' ? 'Copied!' : 'Copy' }}}}
 {ind}    </button>
 {ind}  </div>
-{ind}  <pre class="p-4 text-sm bg-zinc-950 text-zinc-50 overflow-x-auto"><code class="font-mono language-{lang}">{{{{ {id_camel}Code }}}}</code></pre>
+{ind}  <pre class="p-4 text-sm bg-zinc-950 text-zinc-50 overflow-x-auto"><code class="block font-mono !p-0 language-{lang}">{{{{ {id_camel}Code }}}}</code></pre>
 {ind}</div>
 "#,
             ind = ind,
