@@ -8,6 +8,7 @@ use std::fmt;
 
 // Re-export Type from ast for convenience
 pub use crate::ast::Type;
+use crate::ast::{RouteDef, RoutesBlock};
 
 // ============================================================================
 // AURA Widget - Core Component Definition
@@ -20,6 +21,7 @@ pub use crate::ast::Type;
 /// - State variables (model)
 /// - View tree (pure layout, no logic)
 /// - Event handlers (logic payload)
+/// - Routes (for router widgets, Plan 105)
 #[derive(Debug, Clone)]
 pub struct AuraWidget {
     /// Widget name (e.g., "Counter")
@@ -42,6 +44,78 @@ pub struct AuraWidget {
 
     /// Props for reusable components
     pub props: Vec<AuraProp>,
+
+    /// Routes configuration (for router widgets, Plan 105)
+    pub routes: Option<AuraRoutes>,
+}
+
+// ============================================================================
+// Router Types (Plan 105)
+// ============================================================================
+
+/// AURA route definition
+///
+/// Represents a single route in the application's routing table.
+/// Extracted from `routes { ... }` blocks in AutoUI.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuraRoute {
+    /// URL path pattern (e.g., "/button" or "/user/:id")
+    pub path: String,
+
+    /// Component name to render (e.g., "ButtonPage")
+    pub component: String,
+
+    /// Extracted parameters from path (e.g., ["id"] from "/user/:id")
+    pub params: Vec<String>,
+}
+
+/// AURA routes configuration
+///
+/// Contains all routes for an application, extracted from `routes { ... }` blocks.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuraRoutes {
+    /// Collection of route definitions
+    pub routes: Vec<AuraRoute>,
+}
+
+impl AuraRoutes {
+    /// Create a new empty routes configuration
+    pub fn new() -> Self {
+        Self { routes: Vec::new() }
+    }
+
+    /// Create routes configuration with the given routes
+    pub fn with_routes(routes: Vec<AuraRoute>) -> Self {
+        Self { routes }
+    }
+}
+
+impl Default for AuraRoutes {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================================
+// From Implementations for Route Types
+// ============================================================================
+
+impl From<RouteDef> for AuraRoute {
+    fn from(route: RouteDef) -> Self {
+        AuraRoute {
+            path: route.path,
+            component: route.component,
+            params: route.params,
+        }
+    }
+}
+
+impl From<RoutesBlock> for AuraRoutes {
+    fn from(block: RoutesBlock) -> Self {
+        AuraRoutes {
+            routes: block.routes.into_iter().map(|r| r.into()).collect(),
+        }
+    }
 }
 
 // ============================================================================
@@ -372,6 +446,15 @@ pub enum AuraExpr {
         /// Field name
         field: String,
     },
+
+    /// Programmatic navigation (Plan 105): Nav.to("/path", { param: value })
+    NavCall {
+        /// Target path
+        path: String,
+
+        /// Navigation parameters
+        params: HashMap<String, AuraExpr>,
+    },
 }
 
 /// Binary operators
@@ -622,6 +705,7 @@ mod tests {
             view_tree: AuraNode::element("col"),
             handlers: HashMap::new(),
             props: vec![],
+            routes: None,
         };
 
         assert_eq!(widget.name, "Counter");
@@ -635,5 +719,87 @@ mod tests {
 
         assert!(matches!(ast_payload, LogicPayload::AstBlock(_)));
         assert!(matches!(bytecode_payload, LogicPayload::Bytecode(_)));
+    }
+
+    #[test]
+    fn test_aura_route() {
+        let route = AuraRoute {
+            path: "/user/:id".to_string(),
+            component: "UserPage".to_string(),
+            params: vec!["id".to_string()],
+        };
+
+        assert_eq!(route.path, "/user/:id");
+        assert_eq!(route.component, "UserPage");
+        assert_eq!(route.params, vec!["id"]);
+    }
+
+    #[test]
+    fn test_aura_routes() {
+        let routes = AuraRoutes::with_routes(vec![
+            AuraRoute {
+                path: "/".to_string(),
+                component: "HomePage".to_string(),
+                params: vec![],
+            },
+            AuraRoute {
+                path: "/user/:id".to_string(),
+                component: "UserPage".to_string(),
+                params: vec!["id".to_string()],
+            },
+        ]);
+
+        assert_eq!(routes.routes.len(), 2);
+        assert_eq!(routes.routes[0].path, "/");
+        assert_eq!(routes.routes[1].params, vec!["id"]);
+    }
+
+    #[test]
+    fn test_aura_route_from_route_def() {
+        let route_def = RouteDef::new("/user/:id".to_string(), "UserPage".to_string());
+        let aura_route: AuraRoute = route_def.into();
+
+        assert_eq!(aura_route.path, "/user/:id");
+        assert_eq!(aura_route.component, "UserPage");
+        assert_eq!(aura_route.params, vec!["id"]);
+    }
+
+    #[test]
+    fn test_aura_routes_from_routes_block() {
+        let mut block = RoutesBlock::new();
+        block.add_route(RouteDef::new("/button".to_string(), "ButtonPage".to_string()));
+        block.add_route(RouteDef::new("/user/:id".to_string(), "UserPage".to_string()));
+
+        let aura_routes: AuraRoutes = block.into();
+
+        assert_eq!(aura_routes.routes.len(), 2);
+        assert_eq!(aura_routes.routes[0].path, "/button");
+        assert_eq!(aura_routes.routes[1].params, vec!["id"]);
+    }
+
+    #[test]
+    fn test_aura_expr_nav_call() {
+        let mut params = HashMap::new();
+        params.insert("id".to_string(), AuraExpr::Int(42));
+
+        let nav_call = AuraExpr::NavCall {
+            path: "/user".to_string(),
+            params,
+        };
+
+        match nav_call {
+            AuraExpr::NavCall { path, params } => {
+                assert_eq!(path, "/user");
+                assert_eq!(params.len(), 1);
+                // Check that the params contain "id" key with an Int value
+                let id_param = params.get("id");
+                assert!(id_param.is_some());
+                match id_param.unwrap() {
+                    AuraExpr::Int(n) => assert_eq!(*n, 42),
+                    _ => panic!("Expected Int"),
+                }
+            }
+            _ => panic!("Expected NavCall"),
+        }
     }
 }

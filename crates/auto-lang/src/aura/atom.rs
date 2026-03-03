@@ -346,6 +346,15 @@ fn serialize_expr(expr: &AuraExpr, output: &mut String) {
             serialize_expr(object, output);
             output.push_str(&format!(", \"{}\")", field));
         }
+        AuraExpr::NavCall { path, params } => {
+            output.push_str(&format!("NavCall(\"{}\", {{", path));
+            for (i, (key, value)) in params.iter().enumerate() {
+                if i > 0 { output.push_str(", "); }
+                output.push_str(&format!("\"{}\": ", key));
+                serialize_expr(value, output);
+            }
+            output.push_str("})");
+        }
     }
 }
 
@@ -414,6 +423,7 @@ mod tests {
             view_tree: AuraNode::element("col"),
             handlers: HashMap::new(),
             props: vec![],
+            routes: None,
         };
 
         let atom = to_atom(&widget);
@@ -435,6 +445,7 @@ mod tests {
                 .with_child(AuraNode::element("button")),
             handlers: HashMap::new(),
             props: vec![],
+            routes: None,
         };
 
         let atom = to_atom(&widget);
@@ -470,6 +481,7 @@ mod tests {
                 view_tree: AuraNode::text("Hello"),
                 handlers: HashMap::new(),
                 props: vec![],
+                routes: None,
             }],
             messages: vec![],
             app: Some(AuraApp {

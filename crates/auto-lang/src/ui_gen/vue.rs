@@ -1630,6 +1630,12 @@ impl VueGenerator {
             AuraExpr::FieldAccess { object, field } => {
                 format!("{}.{}", self.expr_to_auto_string(object), field)
             }
+            AuraExpr::NavCall { path, params } => {
+                let params_str: Vec<String> = params.iter()
+                    .map(|(k, v)| format!("{}: {}", k, self.expr_to_auto_string(v)))
+                    .collect();
+                format!("Nav.to(\"{}\", {{ {} }})", path, params_str.join(", "))
+            }
         }
     }
 
@@ -1998,6 +2004,14 @@ impl VueGenerator {
             AuraExpr::FieldAccess { object, field } => {
                 let object_js = self.expr_to_js(object)?;
                 Ok(format!("{}.{}", object_js, field))
+            }
+            AuraExpr::NavCall { path, params } => {
+                let params_js: Vec<String> = params.iter()
+                    .map(|(k, v)| {
+                        self.expr_to_js(v).map(|v_js| format!("{}: {}", k, v_js))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("router.push({{ path: '{}', query: {{ {} }} }})", path, params_js.join(", ")))
             }
         }
     }
@@ -4682,6 +4696,7 @@ mod tests {
             handlers: HashMap::new(),
             props: vec![],
             computed: vec![],
+            routes: None,
         };
 
         let mut gen = VueGenerator::new();

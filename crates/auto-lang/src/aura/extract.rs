@@ -588,6 +588,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         view_tree,
         handlers,
         props,
+        routes: None, // Routes are extracted separately during widget processing
     })
 }
 

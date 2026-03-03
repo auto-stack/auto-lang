@@ -720,6 +720,12 @@ impl RustGenerator {
                 let object_str = self.expr_to_rust(object);
                 format!("{}.{}", object_str, field)
             }
+            AuraExpr::NavCall { path, params } => {
+                let params_str: Vec<String> = params.iter()
+                    .map(|(k, v)| format!("{}: {}", k, self.expr_to_rust(v)))
+                    .collect();
+                format!("nav_to(\"{}\", {{ {} }})", path, params_str.join(", "))
+            }
         }
     }
 
@@ -811,6 +817,7 @@ mod tests {
             handlers: HashMap::new(),
             props: vec![],
             computed: vec![],
+            routes: None,
         };
 
         let mut gen = RustGenerator::new();
