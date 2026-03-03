@@ -113,6 +113,13 @@ pub enum TokenKind {
     Or,     // ADDED: logical or keyword (Plan 066)
     Dep,    // ADDED: dep keyword for dependency declaration (Plan 092)
 
+    // Router keywords (Plan 105)
+    Routes,
+    Outlet,
+    Link,
+    Route,
+    Nav,
+
     // Property Keywords (Phase 3: postfix property syntax)
     DotView,  // .view
     DotMut,   // .mut
@@ -192,6 +199,11 @@ impl fmt::Display for Token {
             TokenKind::Node => write!(f, "<node>"),
             TokenKind::And => write!(f, "<and>"),
             TokenKind::Or => write!(f, "<or>"),
+            TokenKind::Routes => write!(f, "<routes>"),
+            TokenKind::Outlet => write!(f, "<outlet>"),
+            TokenKind::Link => write!(f, "<link>"),
+            TokenKind::Route => write!(f, "<route>"),
+            TokenKind::Nav => write!(f, "<nav>"),
             TokenKind::FStrNote => write!(f, "<{}>", self.text),
             TokenKind::FStrStart => write!(f, "<fstrs>"),
             TokenKind::FStrEnd => write!(f, "<fstre>"),
@@ -315,6 +327,11 @@ impl Token {
             "and" => Some(TokenKind::And),
             "or" => Some(TokenKind::Or),
             "dep" => Some(TokenKind::Dep),  // Plan 092: dependency declaration
+            "routes" => Some(TokenKind::Routes),  // Plan 105: router keywords
+            "outlet" => Some(TokenKind::Outlet),
+            "link" => Some(TokenKind::Link),
+            "route" => Some(TokenKind::Route),
+            "nav" => Some(TokenKind::Nav),
             _ => None,
         }
     }
