@@ -2110,10 +2110,10 @@ impl VueGenerator {
                 "label" => classes.push("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70".to_string()),
 
                 // Data
-                "table" => classes.push("min-w-full border".to_string()),
+                "table" => classes.push("w-full border-collapse".to_string()),
                 "thead" => classes.push("bg-muted/50".to_string()),
-                "th" => classes.push("px-4 py-2 text-left font-semibold".to_string()),
-                "td" => classes.push("px-4 py-2".to_string()),
+                "th" => classes.push("border px-4 py-2 text-left font-semibold".to_string()),
+                "td" => classes.push("border px-4 py-2".to_string()),
                 "tree" => classes.push("list-none pl-4".to_string()),
                 "tree_item" | "tree-item" => classes.push("py-1".to_string()),
 
@@ -2908,6 +2908,10 @@ impl VueGenerator {
                     if let Some(span) = self.extract_int_value(value) {
                         attrs.push(format!(":rowspan=\"{}\"", span));
                     }
+                }
+                // Text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
                 }
             }
 
