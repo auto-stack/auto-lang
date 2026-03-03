@@ -483,6 +483,24 @@ impl<'a> Lexer<'a> {
             if c.is_alphabetic() || c == '_' || c.is_digit(10) {
                 text.push(c);
                 self.chars.next();
+            } else if c == '-' {
+                // Hyphen: check if next char is a letter or underscore (not digit)
+                // This allows "preview-card" but keeps "a-1" as "a - 1"
+                let mut lookahead = self.chars.clone();
+                lookahead.next(); // skip the '-'
+                if let Some(&next) = lookahead.peek() {
+                    if next.is_alphabetic() || next == '_' {
+                        // Hyphen followed by letter/underscore, include in identifier
+                        text.push(c);
+                        self.chars.next();
+                    } else {
+                        // Hyphen followed by digit or other char, stop
+                        break;
+                    }
+                } else {
+                    // Hyphen at end of input, stop
+                    break;
+                }
             } else {
                 break;
             }
@@ -1048,5 +1066,37 @@ mod tests {
 
         assert_eq!(token.kind, TokenKind::Routes);
         assert_eq!(token.text.as_str(), "routes");
+    }
+
+    #[test]
+    fn test_hyphenated_identifiers() {
+        let code = "preview-card button-primary my-component";
+        let tokens = parse_token_strings(code);
+        assert_eq!(
+            tokens,
+            "<ident:preview-card><ident:button-primary><ident:my-component>"
+        );
+    }
+
+    #[test]
+    fn test_subtraction_with_spaces() {
+        let code = "a - b";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<ident:a><-><ident:b>");
+    }
+
+    #[test]
+    fn test_hyphen_identifier_vs_subtraction() {
+        // a-b is identifier
+        let tokens1 = parse_token_strings("a-b");
+        assert_eq!(tokens1, "<ident:a-b>");
+
+        // a - b is subtraction
+        let tokens2 = parse_token_strings("a - b");
+        assert_eq!(tokens2, "<ident:a><-><ident:b>");
+
+        // a -b is a then unary minus
+        let tokens3 = parse_token_strings("a -b");
+        assert_eq!(tokens3, "<ident:a><-><ident:b>");
     }
 }
