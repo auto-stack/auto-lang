@@ -1,0 +1,36 @@
+// Test basic routes parsing and Vue Router generation (Plan 105)
+
+widget App {
+    routes {
+        "/" => HomePage {}
+        "/about" => AboutPage {}
+    }
+
+    view {
+        col {
+            nav {
+                link (to: "/") {
+                    text "Home"
+                }
+                link (to: "/about") {
+                    text "About"
+                }
+            }
+            main {
+                outlet
+            }
+        }
+    }
+}
+
+widget HomePage {
+    view {
+        h1 "Home"
+    }
+}
+
+widget AboutPage {
+    view {
+        h1 "About"
+    }
+}

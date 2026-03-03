@@ -5333,4 +5333,58 @@ mod tests {
         assert!(components.contains(&"RadioGroup"));
         assert!(components.contains(&"RadioGroupItem"));
     }
+
+    // ========================================================================
+    // Router Tests (Plan 105)
+    // ========================================================================
+
+    #[test]
+    fn test_router_generation() {
+        use crate::aura::AuraRoute;
+
+        let routes = vec![
+            AuraRoute {
+                path: "/".to_string(),
+                component: "HomePage".to_string(),
+                params: vec![],
+            },
+            AuraRoute {
+                path: "/about".to_string(),
+                component: "AboutPage".to_string(),
+                params: vec![],
+            },
+            AuraRoute {
+                path: "/user/:id".to_string(),
+                component: "UserPage".to_string(),
+                params: vec!["id".to_string()],
+            },
+        ];
+
+        let output = VueGenerator::generate_router_file(&routes);
+
+        // Check imports
+        assert!(output.contains("import { createRouter, createWebHistory }"));
+        assert!(output.contains("import HomePage from '@/pages/HomePage.vue'"));
+        assert!(output.contains("import AboutPage from '@/pages/AboutPage.vue'"));
+        assert!(output.contains("import UserPage from '@/pages/UserPage.vue'"));
+
+        // Check route definitions
+        assert!(output.contains("path: '/'"));
+        assert!(output.contains("path: '/about'"));
+        assert!(output.contains("path: '/user/:id'"));
+
+        // Check route with params has props: true
+        assert!(output.contains("props: true"));
+    }
+
+    #[test]
+    fn test_router_generation_empty() {
+        let routes: Vec<crate::aura::AuraRoute> = vec![];
+        let output = VueGenerator::generate_router_file(&routes);
+
+        // Should still generate valid router structure
+        assert!(output.contains("import { createRouter, createWebHistory }"));
+        assert!(output.contains("const routes: RouteRecordRaw[] = ["));
+        assert!(output.contains("export default router"));
+    }
 }
