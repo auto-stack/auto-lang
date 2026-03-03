@@ -8804,4 +8804,58 @@ widget Counter {
             }
         }
     }
+
+    #[test]
+    fn test_widget_with_routes() {
+        // Test widget with routes block (Plan 105)
+        let code = r#"
+widget App {
+    routes {
+        "/" => HomePage {}
+        "/button" => ButtonPage {}
+        "/user/:id" => UserPage {}
+    }
+    view {
+        col {
+            outlet
+        }
+    }
+}
+"#;
+        // Create parser with UI scenario enabled
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+
+        match result {
+            Ok(ast) => {
+                let non_empty: Vec<_> = ast.stmts.iter().filter(|s| {
+                    !matches!(s, Stmt::EmptyLine(_))
+                }).collect();
+                assert_eq!(non_empty.len(), 1, "Should have one widget statement");
+
+                if let Stmt::WidgetDecl(widget) = non_empty[0] {
+                    assert_eq!(widget.name.as_str(), "App");
+
+                    // Check routes exist
+                    assert!(widget.routes.is_some(), "Routes should be parsed");
+
+                    let routes = widget.routes.as_ref().unwrap();
+                    assert_eq!(routes.routes.len(), 3);
+                    assert_eq!(routes.routes[0].path, "/");
+                    assert_eq!(routes.routes[0].component, "HomePage");
+                    assert_eq!(routes.routes[1].path, "/button");
+                    assert_eq!(routes.routes[2].path, "/user/:id");
+                    assert_eq!(routes.routes[2].params, vec!["id"]);
+
+                    println!("Widget with routes parsed successfully!");
+                } else {
+                    panic!("Expected WidgetDecl, got {:?}", non_empty[0]);
+                }
+            }
+            Err(e) => {
+                panic!("Widget with routes parsing failed: {:?}", e);
+            }
+        }
+    }
 }

@@ -1,20 +1,19 @@
 // source/front/app.at - Component Gallery Documentation Site
-// A shadcn-vue style documentation site layout
+// A shadcn-vue style documentation site with Vue Router integration
 
 widget App {
-    msg Msg {
-        GoToButton,
-        GoToInput,
-        GoToCard,
-        GoToBadge,
-        GoToText,
-        GoToLabel,
-        GoToAccordion,
-        GoToTabs
-    }
-
-    model {
-        currentPage str = "button"
+    // Route definitions - maps URLs to page components
+    routes {
+        "/" => IndexPage {}
+        "/button" => ButtonPage {}
+        "/input" => InputPage {}
+        "/card" => CardPage {}
+        "/badge" => BadgePage {}
+        "/checkbox" => CheckboxPage {}
+        "/accordion" => AccordionPage {}
+        "/label" => LabelPage {}
+        "/tabs" => TabsPage {}
+        "/text" => TextPage {}
     }
 
     view {
@@ -25,14 +24,16 @@ widget App {
                 row (class: "h-14 items-center px-6 w-full") {
                     // Logo with icon and title
                     row (class: "items-center gap-2 mr-8") {
-                        image (src: "/icon.png", alt: "Auto", class: "h-6 w-6") {}
                         text (text: "Auto UI", class: "text-lg font-bold") {}
                     }
                     // Navigation menu - header links
                     row (class: "items-center gap-6 text-sm") {
-                        link (text: "Docs", onclick: .GoToButton) {}
-                        link (text: "Components", onclick: .GoToInput) {}
-                        link (text: "Examples", onclick: .GoToCard) {}
+                        link (to: "/") {
+                            text (text: "Docs", class: "text-muted-foreground hover:text-foreground") {}
+                        }
+                        link (to: "/button") {
+                            text (text: "Components", class: "text-muted-foreground hover:text-foreground") {}
+                        }
                     }
                 }
             }
@@ -44,131 +45,41 @@ widget App {
                     // Components section header
                     text (text: "Components", class: "text-sm font-semibold text-muted-foreground mb-2 px-3") {}
 
-                    // Navigation links - vertical sidebar links
-                    link (text: "Button", onclick: .GoToButton, class: "block px-3 py-2 rounded-md hover:bg-muted") {}
-                    link (text: "Input", onclick: .GoToInput, class: "block px-3 py-2 rounded-md hover:bg-muted") {}
-                    link (text: "Text", onclick: .GoToText, class: "block px-3 py-2 rounded-md hover:bg-muted") {}
-                    link (text: "Card", onclick: .GoToCard, class: "block px-3 py-2 rounded-md hover:bg-muted") {}
-                    link (text: "Badge", onclick: .GoToBadge, class: "block px-3 py-2 rounded-md hover:bg-muted") {}
-                    link (text: "Label", onclick: .GoToLabel, class: "block px-3 py-2 rounded-md hover:bg-muted") {}
-                    link (text: "Accordion", onclick: .GoToAccordion, class: "block px-3 py-2 rounded-md hover:bg-muted") {}
-                    link (text: "Tabs", onclick: .GoToTabs, class: "block px-3 py-2 rounded-md hover:bg-muted") {}
+                    // Navigation links using router-link
+                    link (to: "/button") {
+                        text (text: "Button", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/input") {
+                        text (text: "Input", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/card") {
+                        text (text: "Card", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/badge") {
+                        text (text: "Badge", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/checkbox") {
+                        text (text: "Checkbox", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/accordion") {
+                        text (text: "Accordion", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/label") {
+                        text (text: "Label", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/tabs") {
+                        text (text: "Tabs", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
+                    link (to: "/text") {
+                        text (text: "Text", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    }
                 }
 
-                // Main content area - conditional rendering based on currentPage
+                // Route outlet - renders the matched page component
                 main (class: "flex-1 p-8") {
-                    // Breadcrumb
-                    row (class: "gap-2 text-sm text-muted-foreground") {
-                        text "Components"
-                        text "/"
-                        text "Button"
-                    }
-
-                    // Page header
-                    h1 (text: "Button") {}
-                    text "Displays a button or a component that looks like a button."
-
-                    // Installation section
-                    h2 (text: "Installation") {}
-                    codeblock (lang: "bash", code: "npx shadcn-vue@latest add button") {}
-
-                    // Preview section
-                    h2 (text: "Preview") {}
-                    previewcard (id: "Preview") {
-                        button (text: "Click me") {}
-                    }
-
-                    // Variants section
-                    h2 (text: "Variants") {}
-                    previewcard (id: "Variants") {
-                        row {
-                            button (text: "Default") {}
-                            button (text: "Secondary", variant: "secondary") {}
-                            button (text: "Destructive", variant: "destructive") {}
-                            button (text: "Outline", variant: "outline") {}
-                        }
-                    }
-
-                    // API Reference with proper table
-                    h2 (text: "API Reference") {}
-                    table (class: "w-full text-sm") {
-                        thead (class: "border-b bg-muted/50") {
-                            tr {
-                                th (text: "Prop", class: "px-4 py-3 text-left font-medium") {}
-                                th (text: "Type", class: "px-4 py-3 text-muted-foreground") {}
-                                th (text: "Default", class: "px-4 py-3 text-muted-foreground") {}
-                            }
-                        }
-                        tbody (class: "divide-y") {
-                            tr (class: "hover:bg-muted/50 transition-colors") {
-                                td (class: "px-4 py-3") { text "text" }
-                                td (class: "px-4 py-3 text-muted-foreground") { text "string" }
-                                td (class: "px-4 py-3 text-muted-foreground") { text "-" }
-                            }
-                        }
-                    }
-
-                    // Card Demo Section
-                    h2 (text: "Card Component") {}
-                    text (text: "A card component with header, content, and footer sections.") {}
-
-                    previewcard (id: "CardPreview") {
-                        card (class: "w-[350px]") {
-                            cardheader {
-                                cardtitle (text: "Create project") {}
-                                carddescription (text: "Deploy your new project in one click.") {}
-                            }
-                            cardcontent {
-                                text "Card content goes here. You can add any elements."
-                            }
-                            cardfooter (class: "flex justify-between") {
-                                button (text: "Cancel", variant: "outline") {}
-                                button (text: "Deploy") {}
-                            }
-                        }
-                    }
-
-                    // Badge Demo Section
-                    h2 (text: "Badge Component") {}
-                    text (text: "A badge for displaying status or labels.") {}
-
-                    previewcard (id: "BadgePreview") {
-                        row (class: "gap-2") {
-                            badge (text: "Default") {}
-                            badge (text: "Secondary", variant: "secondary") {}
-                            badge (text: "Destructive", variant: "destructive") {}
-                            badge (text: "Outline", variant: "outline") {}
-                        }
-                    }
+                    outlet
                 }
             }
-        }
-    }
-
-    on {
-        GoToButton => {
-            currentPage = "button"
-        }
-        GoToInput => {
-            currentPage = "input"
-        }
-        GoToCard => {
-            currentPage = "card"
-        }
-        GoToBadge => {
-            currentPage = "badge"
-        }
-        GoToText => {
-            currentPage = "text"
-        }
-        GoToLabel => {
-            currentPage = "label"
-        }
-        GoToAccordion => {
-            currentPage = "accordion"
-        }
-        GoToTabs => {
-            currentPage = "tabs"
         }
     }
 }

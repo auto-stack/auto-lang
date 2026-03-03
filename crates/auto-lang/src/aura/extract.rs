@@ -580,6 +580,13 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         Vec::new()
     };
 
+    // Extract routes (Plan 105)
+    let routes = if let Some(ref routes_block) = decl.routes {
+        Some(crate::aura::types::AuraRoutes::from(routes_block.clone()))
+    } else {
+        None
+    };
+
     Ok(AuraWidget {
         name: decl.name.as_str().to_string(),
         state_vars,
@@ -588,7 +595,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         view_tree,
         handlers,
         props,
-        routes: None, // Routes are extracted separately during widget processing
+        routes,
     })
 }
 

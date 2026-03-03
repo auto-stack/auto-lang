@@ -1035,13 +1035,18 @@ mod tests {
 
     #[test]
     fn test_router_keywords() {
-        let input = "routes outlet link route nav";
-        let mut lexer = Lexer::new(input);
+        let code = "routes outlet link route nav";
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<routes><outlet><link><route><nav>");
+    }
 
-        assert_eq!(lexer.next().unwrap().kind, TokenKind::Routes);
-        assert_eq!(lexer.next().unwrap().kind, TokenKind::Outlet);
-        assert_eq!(lexer.next().unwrap().kind, TokenKind::Link);
-        assert_eq!(lexer.next().unwrap().kind, TokenKind::Route);
-        assert_eq!(lexer.next().unwrap().kind, TokenKind::Nav);
+    #[test]
+    fn test_routes_token_text() {
+        let code = "routes";
+        let mut lexer = Lexer::new(code);
+        let token = lexer.next().unwrap();
+
+        assert_eq!(token.kind, TokenKind::Routes);
+        assert_eq!(token.text.as_str(), "routes");
     }
 }
