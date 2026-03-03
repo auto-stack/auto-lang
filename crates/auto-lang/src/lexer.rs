@@ -1032,4 +1032,16 @@ mod tests {
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<ident:a><-><int:1>");
     }
+
+    #[test]
+    fn test_router_keywords() {
+        let input = "routes outlet link route nav";
+        let mut lexer = Lexer::new(input);
+
+        assert_eq!(lexer.next().unwrap().kind, TokenKind::Routes);
+        assert_eq!(lexer.next().unwrap().kind, TokenKind::Outlet);
+        assert_eq!(lexer.next().unwrap().kind, TokenKind::Link);
+        assert_eq!(lexer.next().unwrap().kind, TokenKind::Route);
+        assert_eq!(lexer.next().unwrap().kind, TokenKind::Nav);
+    }
 }
