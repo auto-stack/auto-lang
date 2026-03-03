@@ -2,18 +2,18 @@
 // A shadcn-vue style documentation site with Vue Router integration
 
 widget App {
-    // Route definitions - maps URLs to page components
+    // Route definitions - maps URLs to page modules (Plan 106 syntax)
     routes {
-        "/" => IndexPage {}
-        "/button" => ButtonPage {}
-        "/input" => InputPage {}
-        "/card" => CardPage {}
-        "/badge" => BadgePage {}
-        "/checkbox" => CheckboxPage {}
-        "/accordion" => AccordionPage {}
-        "/label" => LabelPage {}
-        "/tabs" => TabsPage {}
-        "/text" => TextPage {}
+        "/" => use index
+        "/button" => use button
+        "/input" => use input
+        "/card" => use card
+        "/badge" => use badge
+        "/checkbox" => use checkbox
+        "/accordion" => use accordion
+        "/label" => use label
+        "/tabs" => use tabs
+        "/text" => use text
     }
 
     view {

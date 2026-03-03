@@ -9,19 +9,20 @@ The Auto Router enables:
 - Navigation via `link` elements (declarative) or `nav()` function (programmatic)
 - Route outlets for rendering matched components
 - Route parameter extraction (e.g., `/user/:id`)
+- Lazy loading for optimal bundle size (Plan 106)
 
 ## Basic Usage
 
-### Define Routes
+### Define Routes (Plan 106 - Recommended)
 
-Add a `routes` block to your root widget:
+Use the `use` keyword to specify page modules:
 
 ```auto
 widget App {
     routes {
-        "/" => HomePage {}
-        "/about" => AboutPage {}
-        "/user/:id" => UserPage {}
+        "/" => use index
+        "/about" => use about
+        "/user/:id" => use user
     }
 
     view {
@@ -34,6 +35,35 @@ widget App {
     }
 }
 ```
+
+**Convention:**
+- `use index` maps to `@/pages/index.vue`
+- `use about` maps to `@/pages/about.vue`
+- `use user` maps to `@/pages/user.vue`
+
+### Define Routes (Plan 105 - Backward Compatible)
+
+The old syntax with component names is still supported:
+
+```auto
+widget App {
+    routes {
+        "/" => HomePage {}
+        "/about" => AboutPage {}
+        "/user/:id" => UserPage {}
+    }
+
+    view {
+        col {
+            main {
+                outlet
+            }
+        }
+    }
+}
+```
+
+**Note:** This syntax converts component names to lowercase module names (e.g., `HomePage` → `homepage`).
 
 ### Navigation
 
@@ -79,17 +109,16 @@ When you use `auto vue` to generate a Vue project:
 
 ### Router Configuration (`src/router/index.ts`)
 
+Plan 106 generates lazy-loaded routes:
+
 ```typescript
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
-import HomePage from '@/pages/HomePage.vue'
-import AboutPage from '@/pages/AboutPage.vue'
-import UserPage from '@/pages/UserPage.vue'
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', name: 'HomePage', component: HomePage },
-  { path: '/about', name: 'AboutPage', component: AboutPage },
-  { path: '/user/:id', name: 'UserPage', component: UserPage, props: true }
+  { path: '/', name: 'index', component: () => import('@/pages/index.vue') },
+  { path: '/about', name: 'about', component: () => import('@/pages/about.vue') },
+  { path: '/user/:id', name: 'user', component: () => import('@/pages/user.vue'), props: true }
 ]
 
 const router = createRouter({
@@ -130,6 +159,7 @@ app.mount('#app')
 | Auto | Vue |
 |------|-----|
 | `routes {}` | `routes: [...]` in router config |
+| `"/" => use index` | `{ path: '/', component: () => import('@/pages/index.vue') }` |
 | `outlet` | `<router-view>` |
 | `link (to: "/path")` | `<router-link to="/path">` |
 | `nav("/path")` | `router.push("/path")` |
@@ -137,7 +167,21 @@ app.mount('#app')
 
 ## Syntax Reference
 
-### Routes Block
+### Routes Block (Plan 106)
+
+```auto
+routes {
+    PATH => use MODULE_NAME
+    ...
+}
+```
+
+- `PATH`: String literal (e.g., `"/"`, `"/about"`, `"/user/:id"`)
+- `MODULE_NAME`: Lowercase module name (e.g., `index`, `about`, `user`)
+- Maps to `@/pages/{MODULE_NAME}.vue`
+- Parameters are automatically extracted from paths like `/user/:id`
+
+### Routes Block (Plan 105 - Backward Compatible)
 
 ```auto
 routes {
@@ -146,9 +190,8 @@ routes {
 }
 ```
 
-- `PATH`: String literal (e.g., `"/"`, `"/about"`, `"/user/:id"`)
-- `ComponentName`: Widget name to render for this route
-- Parameters are automatically extracted from paths like `/user/:id`
+- `ComponentName` is converted to lowercase for the module name
+- Example: `HomePage {}` → `@/pages/homepage.vue`
 
 ### Outlet
 
@@ -177,6 +220,19 @@ nav("/path", param1: value1, param2: value2)
 
 Programmatically navigates to a path with optional parameters.
 
+## File Structure Convention
+
+For Plan 106, use lowercase file names:
+
+```
+source/front/
+├── app.at           # Main app with routes
+└── pages/
+    ├── index.at     # "/" route → @/pages/index.vue
+    ├── about.at     # "/about" route → @/pages/about.vue
+    └── user.at      # "/user/:id" route → @/pages/user.vue
+```
+
 ## CLI Usage
 
 Generate a Vue project with router:
@@ -186,9 +242,22 @@ auto vue source/front -o output/app
 ```
 
 If any widget contains a `routes` block, the generated project will include:
-- `src/router/index.ts` - Router configuration
+- `src/router/index.ts` - Router configuration with lazy loading
 - `vue-router` dependency in `package.json`
 - Router setup in `src/main.ts`
+
+## Plan History
+
+### Plan 105 (Original)
+- Syntax: `"/path" => ComponentName {}`
+- Static imports: `import ComponentName from '@/pages/ComponentName.vue'`
+- File names: PascalCase (e.g., `HomePage.vue`)
+
+### Plan 106 (Current - Recommended)
+- Syntax: `"/path" => use module`
+- Lazy loading: `component: () => import('@/pages/module.vue')`
+- File names: lowercase (e.g., `index.vue`)
+- Backward compatible with Plan 105
 
 ## Future Phases
 
@@ -208,5 +277,4 @@ If any widget contains a `routes` block, the generated project will include:
 
 - Nested routes (`children`)
 - Route guards (`beforeEnter`)
-- Lazy loading
 - Redirects and aliases

@@ -2,12 +2,20 @@
 //!
 //! These nodes represent route blocks and route definitions for the Auto Router feature.
 //!
-//! Example:
+//! Example (Plan 106 - use syntax):
+//! ```auto
+//! routes {
+//!     "/" => use index
+//!     "/button" => use button
+//!     "/user/:id" => use user
+//! }
+//! ```
+//!
+//! Example (Plan 105 - backward compatible):
 //! ```auto
 //! routes {
 //!     "/button" => ButtonPage {}
 //!     "/user/:id" => UserPage {}
-//!     "/post/:category/:slug" => PostPage {}
 //! }
 //! ```
 
@@ -15,9 +23,10 @@
 // Route Definition
 // ============================================================================
 
-/// Route definition: "/path" => ComponentName {}
+/// Route definition: "/path" => use module_name (Plan 106)
+///                   "/path" => ComponentName {} (Plan 105, backward compat)
 ///
-/// Represents a single route mapping from a URL path pattern to a component.
+/// Represents a single route mapping from a URL path pattern to a module.
 ///
 /// # Path Patterns
 ///
@@ -25,23 +34,24 @@
 /// - Dynamic routes: `"/user/:id"` - matches `/user/123`, extracts `id = "123"`
 /// - Multiple params: `"/post/:category/:slug"` - extracts multiple parameters
 ///
-/// # Example
+/// # Example (Plan 106)
 ///
 /// ```auto
-/// "/user/:id" => UserPage {}
+/// "/user/:id" => use user
 /// ```
 ///
 /// This creates a `RouteDef` with:
 /// - `path`: `"/user/:id"`
-/// - `component`: `"UserPage"`
+/// - `module`: `"user"` (maps to `@/pages/user.vue`)
 /// - `params`: `["id"]`
 #[derive(Debug, Clone, PartialEq)]
 pub struct RouteDef {
     /// URL path pattern (e.g., "/button" or "/user/:id")
     pub path: String,
 
-    /// Component name to render (e.g., "ButtonPage")
-    pub component: String,
+    /// Module name to render (e.g., "index", "button", "user")
+    /// Maps to `@/pages/{module}.vue` in Vue generator
+    pub module: String,
 
     /// Extracted parameters from path (e.g., ["id"] from "/user/:id")
     pub params: Vec<String>,
@@ -53,21 +63,21 @@ impl RouteDef {
     /// # Arguments
     ///
     /// * `path` - URL path pattern (e.g., "/user/:id")
-    /// * `component` - Component name (e.g., "UserPage")
+    /// * `module` - Module name (e.g., "user" maps to `@/pages/user.vue`)
     ///
     /// # Example
     ///
     /// ```
     /// use auto_lang::ast::RouteDef;
     ///
-    /// let route = RouteDef::new("/user/:id".to_string(), "UserPage".to_string());
+    /// let route = RouteDef::new("/user/:id".to_string(), "user".to_string());
     /// assert_eq!(route.path, "/user/:id");
-    /// assert_eq!(route.component, "UserPage");
+    /// assert_eq!(route.module, "user");
     /// assert_eq!(route.params, vec!["id"]);
     /// ```
-    pub fn new(path: String, component: String) -> Self {
+    pub fn new(path: String, module: String) -> Self {
         let params = extract_route_params(&path);
-        Self { path, component, params }
+        Self { path, module, params }
     }
 }
 
@@ -79,12 +89,13 @@ impl RouteDef {
 ///
 /// Represents a collection of routes that define the application's routing table.
 ///
-/// # Example
+/// # Example (Plan 106)
 ///
 /// ```auto
 /// routes {
-///     "/button" => ButtonPage {}
-///     "/user/:id" => UserPage {}
+///     "/" => use index
+///     "/button" => use button
+///     "/user/:id" => use user
 /// }
 /// ```
 #[derive(Debug, Clone, PartialEq)]
@@ -183,15 +194,15 @@ mod tests {
     #[test]
     fn test_route_def_new() {
         // Static route
-        let route = RouteDef::new("/button".to_string(), "ButtonPage".to_string());
+        let route = RouteDef::new("/button".to_string(), "button".to_string());
         assert_eq!(route.path, "/button");
-        assert_eq!(route.component, "ButtonPage");
+        assert_eq!(route.module, "button");
         assert_eq!(route.params, vec![] as Vec<String>);
 
         // Dynamic route
-        let route = RouteDef::new("/user/:id".to_string(), "UserPage".to_string());
+        let route = RouteDef::new("/user/:id".to_string(), "user".to_string());
         assert_eq!(route.path, "/user/:id");
-        assert_eq!(route.component, "UserPage");
+        assert_eq!(route.module, "user");
         assert_eq!(route.params, vec!["id"]);
     }
 
@@ -201,8 +212,8 @@ mod tests {
         assert_eq!(block.routes.len(), 0);
 
         // Add routes
-        block.add_route(RouteDef::new("/button".to_string(), "ButtonPage".to_string()));
-        block.add_route(RouteDef::new("/user/:id".to_string(), "UserPage".to_string()));
+        block.add_route(RouteDef::new("/button".to_string(), "button".to_string()));
+        block.add_route(RouteDef::new("/user/:id".to_string(), "user".to_string()));
         assert_eq!(block.routes.len(), 2);
 
         // Verify routes
@@ -213,8 +224,8 @@ mod tests {
     #[test]
     fn test_routes_block_with_routes() {
         let routes = vec![
-            RouteDef::new("/".to_string(), "HomePage".to_string()),
-            RouteDef::new("/about".to_string(), "AboutPage".to_string()),
+            RouteDef::new("/".to_string(), "index".to_string()),
+            RouteDef::new("/about".to_string(), "about".to_string()),
         ];
         let block = RoutesBlock::with_routes(routes);
         assert_eq!(block.routes.len(), 2);

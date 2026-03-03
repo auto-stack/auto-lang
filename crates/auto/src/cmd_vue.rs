@@ -149,16 +149,16 @@ fn generate_workspace_project(
     let project_name = parse_pac_name(&pac_content)
         .unwrap_or_else(|| "aura-app".to_string());
 
-    // Determine output directory
+    // Determine output directory (relative to pac_dir/workspace root)
     let output = output_dir.unwrap_or("dist");
-    let output_path = Path::new(output);
+    let output_path = pac_dir.join(output);
 
     println!("{} {}", "Output:".bright_cyan(), output);
     println!("{} {}", "Name:".bright_cyan(), project_name);
     println!();
 
     // Create output directory
-    fs::create_dir_all(output_path)
+    fs::create_dir_all(&output_path)
         .map_err(|e| format!("Failed to create output directory: {}", e))?;
 
     // Create src directory structure
@@ -261,7 +261,7 @@ fn generate_workspace_project(
     if has_routes {
         println!("{} {}", "✓ Detected routes:".bright_green(), all_routes.len());
         for route in &all_routes {
-            println!("    {} -> {}", route.path.bright_cyan(), route.component);
+            println!("    {} -> {}", route.path.bright_cyan(), route.module);
         }
     }
 
@@ -272,7 +272,7 @@ fn generate_workspace_project(
         .ok_or_else(|| "app.at not found or failed to compile".to_string())?;
 
     // Write project files
-    write_project_files(output_path, &project_name, &app_vue_code, &shadcn_components, has_routes)?;
+    write_project_files(&output_path, &project_name, &app_vue_code, &shadcn_components, has_routes)?;
 
     // Generate router files if routes detected
     if has_routes {
@@ -290,9 +290,7 @@ fn generate_workspace_project(
     // Write all components to mirror source directory structure
     // components/ -> src/components/
     // pages/ -> src/pages/
-    eprintln!("[DEBUG] all_components count: {}", all_components.len());
     for (relative_dir, name, code, widget_name) in &all_components {
-        eprintln!("[DEBUG] Processing: relative_dir='{}', name='{}', widget_name='{}', code_len={}", relative_dir, name, widget_name, code.len());
         if name != "app" {
             // Determine output subdirectory
             let output_subdir = if relative_dir.is_empty() {
@@ -326,9 +324,14 @@ fn generate_workspace_project(
                 nested_dir
             };
 
-            // Use widget_name for the Vue file name
-            let component_file = output_subdir.join(format!("{}.vue", widget_name));
-            eprintln!("[DEBUG] Writing to: {}", component_file.display());
+            // Use lowercase file name for pages (Plan 106), widget_name for others
+            // pages/card.at -> pages/card.vue (not CardPage.vue)
+            let vue_file_name = if relative_dir == "pages" || relative_dir.starts_with("pages/") {
+                name  // lowercase file stem (e.g., "card")
+            } else {
+                widget_name  // widget name (e.g., "CardPage")
+            };
+            let component_file = output_subdir.join(format!("{}.vue", vue_file_name));
             fs::write(&component_file, code)
                 .map_err(|e| format!("Failed to write {}: {}", component_file.display(), e))?;
         }
@@ -339,7 +342,7 @@ fn generate_workspace_project(
     // Install dependencies if requested
     if !no_install {
         // Pass public folder source to run_install_steps for Step 3 copy
-        run_install_steps(output_path, &shadcn_components, yes, Some(&source_public))?;
+        run_install_steps(&output_path, &shadcn_components, yes, Some(&source_public))?;
     } else {
         // For no-install mode, copy public folder directly
         let dest_public = output_path.join("public");
@@ -684,7 +687,7 @@ fn generate_single_file_project(
     if has_routes {
         println!("{} {}", "✓ Detected routes:".bright_green(), all_routes.len());
         for route in &all_routes {
-            println!("    {} -> {}", route.path.bright_cyan(), route.component);
+            println!("    {} -> {}", route.path.bright_cyan(), route.module);
         }
     }
 

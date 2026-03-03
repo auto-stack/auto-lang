@@ -7214,9 +7214,18 @@ impl<'a> Parser<'a> {
         Ok(ComputedBlock { properties })
     }
 
-    /// Parse routes block, returning the RoutesBlock directly (Plan 105)
+    /// Parse routes block, returning the RoutesBlock directly (Plan 105/106)
     ///
-    /// Syntax:
+    /// Syntax (Plan 106 - recommended):
+    /// ```auto
+    /// routes {
+    ///     "/" => use index
+    ///     "/button" => use button
+    ///     "/user/:id" => use user
+    /// }
+    /// ```
+    ///
+    /// Syntax (Plan 105 - backward compatible):
     /// ```auto
     /// routes {
     ///     "/button" => ButtonPage {}
@@ -7236,20 +7245,35 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            // Parse: "/path" => ComponentName {}
+            // Parse: "/path" => use module_name (Plan 106)
+            //     or: "/path" => ComponentName {} (Plan 105, backward compat)
             let path = self.cur.text.to_string();
             self.expect(TokenKind::Str)?;
             self.expect(TokenKind::DoubleArrow)?;
 
-            let component = self.cur.text.to_string();
-            self.expect(TokenKind::Ident)?;
+            // Check if next token is `use` keyword (Plan 106 syntax)
+            let module = if self.is_kind(TokenKind::Use) {
+                // Plan 106: "/path" => use module_name
+                self.next(); // consume 'use'
+                let module_name = self.cur.text.to_string();
+                self.expect(TokenKind::Ident)?;
+                module_name
+            } else {
+                // Plan 105 (backward compat): "/path" => ComponentName {}
+                let component = self.cur.text.to_string();
+                self.expect(TokenKind::Ident)?;
 
-            // Parse empty braces: ComponentName {}
-            self.expect(TokenKind::LBrace)?;
-            self.skip_empty_lines();
-            self.expect(TokenKind::RBrace)?;
+                // Parse empty braces: ComponentName {}
+                self.expect(TokenKind::LBrace)?;
+                self.skip_empty_lines();
+                self.expect(TokenKind::RBrace)?;
 
-            routes.push(RouteDef::new(path, component));
+                // Convert PascalCase component name to lowercase module name
+                // e.g., "ButtonPage" -> "button", "IndexPage" -> "index"
+                component.to_lowercase()
+            };
+
+            routes.push(RouteDef::new(path, module));
 
             // Optional comma
             if self.is_kind(TokenKind::Comma) {
@@ -8843,7 +8867,7 @@ widget App {
                     let routes = widget.routes.as_ref().unwrap();
                     assert_eq!(routes.routes.len(), 3);
                     assert_eq!(routes.routes[0].path, "/");
-                    assert_eq!(routes.routes[0].component, "HomePage");
+                    assert_eq!(routes.routes[0].module, "homepage");  // lowercase (backward compat)
                     assert_eq!(routes.routes[1].path, "/button");
                     assert_eq!(routes.routes[2].path, "/user/:id");
                     assert_eq!(routes.routes[2].params, vec!["id"]);

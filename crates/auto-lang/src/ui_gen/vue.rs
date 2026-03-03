@@ -990,9 +990,7 @@ impl VueGenerator {
 
             // Add code sample constants
             for pc in &self.previewcard_data {
-                // DEBUG: Print pc.id value
-                eprintln!("[DEBUG] previewcard_data.id = '{}'", pc.id);
-                // Convert kebab-case to camelCase (e.g., "card-basic" -> "cardBasic")
+                // Convert PascalCase to camelCase (e.g., "CardBasic" -> "cardBasic")
                 let id_camel: String = pc.id.split('-')
                     .enumerate()
                     .map(|(i, part)| {
@@ -1009,7 +1007,6 @@ impl VueGenerator {
                         }
                     })
                     .collect();
-                eprintln!("[DEBUG] id_camel = '{}'", id_camel);
                 let auto_var = format!("{}AutoCode", id_camel);
                 let vue_var = format!("{}VueCode", id_camel);
                 script.push_str(&format!("const {} = `{}`\n", auto_var, pc.auto_code));
@@ -4720,43 +4717,34 @@ export function cn(...inputs: ClassValue[]) {
         let mut route_defs = Vec::new();
 
         for route in routes {
-            // Generate route definition
-            let component_import = route.component.clone();
+            // Generate route definition with lazy loading (Plan 106)
+            let module = &route.module;
             let path = &route.path;
 
-            // Create route object
+            // Create route object with lazy loading
             if route.params.is_empty() {
                 route_defs.push(format!(
-                    "  {{ path: '{}', name: '{}', component: {} }}",
+                    "  {{ path: '{}', name: '{}', component: () => import('@/pages/{}.vue') }}",
                     path,
-                    route.component,
-                    component_import
+                    module,
+                    module
                 ));
             } else {
                 // Route with params - add props: true for dynamic segments
                 route_defs.push(format!(
-                    "  {{ path: '{}', name: '{}', component: {}, props: true }}",
+                    "  {{ path: '{}', name: '{}', component: () => import('@/pages/{}.vue'), props: true }}",
                     path,
-                    route.component,
-                    component_import
+                    module,
+                    module
                 ));
             }
         }
 
-        // Generate component imports (each component from its own file)
-        let mut imports = Vec::new();
-        for route in routes {
-            imports.push(format!(
-                "import {} from '@/pages/{}.vue'",
-                route.component, route.component
-            ));
-        }
-        let imports_str = imports.join("\n");
+        // No static imports needed - using lazy loading
 
         format!(
             r#"import {{ createRouter, createWebHistory }} from 'vue-router'
 import type {{ RouteRecordRaw }} from 'vue-router'
-{}
 
 const routes: RouteRecordRaw[] = [
 {}
@@ -4769,7 +4757,6 @@ const router = createRouter({{
 
 export default router
 "#,
-            imports_str,
             route_defs.join(",\n")
         )
     }
@@ -5345,17 +5332,17 @@ mod tests {
         let routes = vec![
             AuraRoute {
                 path: "/".to_string(),
-                component: "HomePage".to_string(),
+                module: "index".to_string(),
                 params: vec![],
             },
             AuraRoute {
                 path: "/about".to_string(),
-                component: "AboutPage".to_string(),
+                module: "about".to_string(),
                 params: vec![],
             },
             AuraRoute {
                 path: "/user/:id".to_string(),
-                component: "UserPage".to_string(),
+                module: "user".to_string(),
                 params: vec!["id".to_string()],
             },
         ];
@@ -5364,9 +5351,11 @@ mod tests {
 
         // Check imports
         assert!(output.contains("import { createRouter, createWebHistory }"));
-        assert!(output.contains("import HomePage from '@/pages/HomePage.vue'"));
-        assert!(output.contains("import AboutPage from '@/pages/AboutPage.vue'"));
-        assert!(output.contains("import UserPage from '@/pages/UserPage.vue'"));
+
+        // Check lazy loading imports (Plan 106)
+        assert!(output.contains("component: () => import('@/pages/index.vue')"));
+        assert!(output.contains("component: () => import('@/pages/about.vue')"));
+        assert!(output.contains("component: () => import('@/pages/user.vue')"));
 
         // Check route definitions
         assert!(output.contains("path: '/'"));

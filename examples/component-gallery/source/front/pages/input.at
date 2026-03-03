@@ -1,130 +1,20 @@
 // pages/input.at - Input component documentation page
 
 widget InputPage {
-    msg Msg { TabChange(tab: str) }
-
-    model {
-        activeTab str = "preview"
-    }
-
-    computed {
-        autoCode => r#"
-widget Input {
-    msg Msg {
-        Change(value: str)
-        Focus
-        Blur
-    }
-
-    model {
-        value str = ""
-        placeholder str = "Enter text..."
-        inputType str = "text"  // text, password, email, number, search
-        disabled bool = false
-    }
-
-    view {
-        input {
-            type: .inputType
-            value: .value
-            placeholder: .placeholder
-            disabled: .disabled
-            onchange: .Change
-        }
-    }
-}
-"#
-
-        vueCode => r#"
-<script setup lang="ts">
-import { ref } from 'vue'
-import { Input } from '@/components/ui/input'
-
-const value = ref('')
-
-interface Props {
-  type?: 'text' | 'password' | 'email' | 'number' | 'search'
-  placeholder?: string
-  disabled?: boolean
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  type: 'text',
-  placeholder: '',
-  disabled: false
-})
-
-const emit = defineEmits<{
-  change: [value: string]
-}>()
-</script>
-
-<template>
-  <Input
-    :type="type"
-    v-model="value"
-    :placeholder="placeholder"
-    :disabled="disabled"
-    @change="emit('change', value)"
-  />
-</template>
-"#
-    }
+    model { activeTab str = "preview" }
 
     view {
         col {
-            // Breadcrumb
-            Breadcrumb {
-                items: [
-                    { text: "Docs", href: "/" },
-                    { text: "Components", href: "/components" },
-                    { text: "Input", href: "/components/input" }
-                ]
-            }
-
             h1 (text: "Input") {}
-            Paragraph (content: "A text input component for user text entry with various types.") {}
+            text (text: "A text input component for user text entry.") {}
 
-            // Installation
             h2 (text: "Installation") {}
-            CodeBlock { language: "bash", code: "npx autoui add input" }
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add input") {}
 
-            // Tabs
-            Tabs (activeTab: .activeTab, onchange: .TabChange) {
-                TabTrigger (id: "preview", label: "Preview") {}
-                TabTrigger (id: "code", label: "Code") {}
+            h2 (text: "Preview") {}
+            previewcard (id: "input-basic") {
+                input (placeholder: "Enter text") {}
             }
-
-            TabContent (id: "preview", active: .activeTab == "preview") {
-                InputDemo {}
-            }
-
-            TabContent (id: "code", active: .activeTab == "code") {
-                DocsTabs { autoCode: .autoCode, vueCode: .vueCode }
-            }
-
-            // API Reference
-            h2 (text: "API Reference") {}
-            h3 (text: "Props") {}
-
-            // Examples
-            h2 (text: "Examples") {}
-
-            h3 (text: "Text Input") {}
-            Input (placeholder: "Enter your name") {}
-
-            h3 (text: "Email Input") {}
-            Input (inputType: "email", placeholder: "email@example.com") {}
-
-            h3 (text: "Password Input") {}
-            Input (inputType: "password", placeholder: "Enter password") {}
-
-            h3 (text: "Disabled Input") {}
-            Input (disabled: true, placeholder: "Disabled input") {}
         }
-    }
-
-    on {
-        TabChange(tab) => { activeTab = tab }
     }
 }

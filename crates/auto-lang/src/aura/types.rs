@@ -62,8 +62,9 @@ pub struct AuraRoute {
     /// URL path pattern (e.g., "/button" or "/user/:id")
     pub path: String,
 
-    /// Component name to render (e.g., "ButtonPage")
-    pub component: String,
+    /// Module name to render (e.g., "index", "button", "user")
+    /// Maps to `@/pages/{module}.vue` in Vue generator
+    pub module: String,
 
     /// Extracted parameters from path (e.g., ["id"] from "/user/:id")
     pub params: Vec<String>,
@@ -104,7 +105,7 @@ impl From<RouteDef> for AuraRoute {
     fn from(route: RouteDef) -> Self {
         AuraRoute {
             path: route.path,
-            component: route.component,
+            module: route.module,
             params: route.params,
         }
     }
@@ -725,12 +726,12 @@ mod tests {
     fn test_aura_route() {
         let route = AuraRoute {
             path: "/user/:id".to_string(),
-            component: "UserPage".to_string(),
+            module: "user".to_string(),
             params: vec!["id".to_string()],
         };
 
         assert_eq!(route.path, "/user/:id");
-        assert_eq!(route.component, "UserPage");
+        assert_eq!(route.module, "user");
         assert_eq!(route.params, vec!["id"]);
     }
 
@@ -739,12 +740,12 @@ mod tests {
         let routes = AuraRoutes::with_routes(vec![
             AuraRoute {
                 path: "/".to_string(),
-                component: "HomePage".to_string(),
+                module: "index".to_string(),
                 params: vec![],
             },
             AuraRoute {
                 path: "/user/:id".to_string(),
-                component: "UserPage".to_string(),
+                module: "user".to_string(),
                 params: vec!["id".to_string()],
             },
         ]);
@@ -756,19 +757,19 @@ mod tests {
 
     #[test]
     fn test_aura_route_from_route_def() {
-        let route_def = RouteDef::new("/user/:id".to_string(), "UserPage".to_string());
+        let route_def = RouteDef::new("/user/:id".to_string(), "user".to_string());
         let aura_route: AuraRoute = route_def.into();
 
         assert_eq!(aura_route.path, "/user/:id");
-        assert_eq!(aura_route.component, "UserPage");
+        assert_eq!(aura_route.module, "user");
         assert_eq!(aura_route.params, vec!["id"]);
     }
 
     #[test]
     fn test_aura_routes_from_routes_block() {
         let mut block = RoutesBlock::new();
-        block.add_route(RouteDef::new("/button".to_string(), "ButtonPage".to_string()));
-        block.add_route(RouteDef::new("/user/:id".to_string(), "UserPage".to_string()));
+        block.add_route(RouteDef::new("/button".to_string(), "button".to_string()));
+        block.add_route(RouteDef::new("/user/:id".to_string(), "user".to_string()));
 
         let aura_routes: AuraRoutes = block.into();
 

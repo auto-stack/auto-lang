@@ -1,0 +1,20 @@
+// pages/checkbox.at - Checkbox component documentation page
+
+widget CheckboxPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "Checkbox") {}
+            text (text: "A control that allows the user to toggle between checked and not checked.") {}
+
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add checkbox") {}
+
+            h2 (text: "Preview") {}
+            previewcard (id: "checkbox-basic") {
+                checkbox (checked: true) {}
+            }
+        }
+    }
+}

@@ -1,0 +1,25 @@
+// Test routes parsing with Plan 106 `use` syntax
+
+widget App {
+    routes {
+        "/" => use index
+        "/about" => use about
+        "/user/:id" => use user
+    }
+
+    view {
+        col {
+            nav {
+                link (to: "/") {
+                    text "Home"
+                }
+                link (to: "/about") {
+                    text "About"
+                }
+            }
+            main {
+                outlet
+            }
+        }
+    }
+}
