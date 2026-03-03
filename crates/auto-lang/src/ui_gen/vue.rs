@@ -989,10 +989,10 @@ impl VueGenerator {
                 let show_var = format!("show{}Code", id_pascal);
                 let active_var = format!("active{}Tab", id_pascal);
                 if self.use_typescript {
-                    script.push_str(&format!("const {} = ref<boolean>(false)\n", show_var));
+                    script.push_str(&format!("const {} = ref<boolean>(true)\n", show_var));  // expanded by default
                     script.push_str(&format!("const {} = ref<string>('auto')\n", active_var));
                 } else {
-                    script.push_str(&format!("const {} = ref(false)\n", show_var));
+                    script.push_str(&format!("const {} = ref(true)\n", show_var));  // expanded by default
                     script.push_str(&format!("const {} = ref('auto')\n", active_var));
                 }
             }
