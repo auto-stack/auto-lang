@@ -19,6 +19,8 @@ use std::path::Path;
 use std::process::Command;
 
 use colored::Colorize;
+use auto_lang::aura::AuraRoute;
+use auto_lang::ui_gen::VueGenerator;
 
 /// Recursively copy a directory and all its contents
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -178,23 +180,32 @@ fn generate_workspace_project(
     let source_public = front_dir.join("public");
 
     // Compile .at files in front directory
-    // Structure: (relative_path, file_stem, vue_code)
-    // e.g., ("pages/button", "button", "<template>...")
-    let mut all_components: Vec<(String, String, String)> = Vec::new();
+    // Structure: (relative_path, file_stem, vue_code, widget_name)
+    // e.g., ("pages/button", "button", "<template>...", "ButtonPage")
+    let mut all_components: Vec<(String, String, String, String)> = Vec::new();
     let mut all_shadcn_components = HashSet::new();
+    let mut all_routes: Vec<AuraRoute> = Vec::new();
 
     // Process app.at first
     let app_at = front_dir.join("app.at");
     if app_at.exists() {
         println!("{} {}", "  Compiling:".bright_black(), app_at.display());
 
-        match auto_lang::ui_build_shadcn(app_at.to_str().unwrap(), None) {
-            Ok(vue_code) => {
+        match auto_lang::ui_build_shadcn_with_widgets(app_at.to_str().unwrap(), None) {
+            Ok((vue_code, widgets)) => {
                 let components = detect_shadcn_components(&vue_code);
                 for comp in &components {
                     all_shadcn_components.insert(comp.clone());
                 }
-                all_components.push(("".to_string(), "app".to_string(), vue_code));
+                // Extract routes from widgets
+                for widget in &widgets {
+                    if let Some(ref routes) = widget.routes {
+                        all_routes.extend(routes.routes.clone());
+                    }
+                }
+                // Get widget name from first widget (or use "App" as default)
+                let widget_name = widgets.first().map(|w| w.name.as_str()).unwrap_or("App");
+                all_components.push(("".to_string(), "app".to_string(), vue_code, widget_name.to_string()));
             }
             Err(e) => {
                 println!("{} {}", "  Warning: Failed to compile app.at:".bright_yellow(), e);
@@ -218,13 +229,21 @@ fn generate_workspace_project(
 
                 println!("{} {}", "  Compiling:".bright_black(), path.display());
 
-                match auto_lang::ui_build_shadcn(path.to_str().unwrap(), None) {
-                    Ok(vue_code) => {
+                match auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
+                    Ok((vue_code, widgets)) => {
                         let components = detect_shadcn_components(&vue_code);
                         for comp in &components {
                             all_shadcn_components.insert(comp.clone());
                         }
-                        all_components.push(("pages".to_string(), file_stem.to_string(), vue_code));
+                        // Extract routes from widgets
+                        for widget in &widgets {
+                            if let Some(ref routes) = widget.routes {
+                                all_routes.extend(routes.routes.clone());
+                            }
+                        }
+                        // Get widget name from first widget (or use file_stem as default)
+                        let widget_name = widgets.first().map(|w| w.name.as_str()).unwrap_or(file_stem);
+                        all_components.push(("pages".to_string(), file_stem.to_string(), vue_code, widget_name.to_string()));
                     }
                     Err(e) => {
                         println!("{} Failed to compile {}: {}", "  Warning:".bright_yellow(), path.display(), e);
@@ -237,21 +256,43 @@ fn generate_workspace_project(
     let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();
     println!("{} {}", "✓ Detected shadcn-vue components:".bright_green(), shadcn_components.join(", "));
 
+    // Check if any routes were detected
+    let has_routes = !all_routes.is_empty();
+    if has_routes {
+        println!("{} {}", "✓ Detected routes:".bright_green(), all_routes.len());
+        for route in &all_routes {
+            println!("    {} -> {}", route.path.bright_cyan(), route.component);
+        }
+    }
+
     // Generate App.vue from app.at (relative_dir should be empty for app.at)
     let app_vue_code = all_components.iter()
-        .find(|(_, name, _)| name == "app")
-        .map(|(_, _, code)| code.clone())
+        .find(|(_, name, _, _)| name == "app")
+        .map(|(_, _, code, _)| code.clone())
         .ok_or_else(|| "app.at not found or failed to compile".to_string())?;
 
     // Write project files
-    write_project_files(output_path, &project_name, &app_vue_code, &shadcn_components)?;
+    write_project_files(output_path, &project_name, &app_vue_code, &shadcn_components, has_routes)?;
+
+    // Generate router files if routes detected
+    if has_routes {
+        let router_dir = output_path.join("src/router");
+        fs::create_dir_all(&router_dir)
+            .map_err(|e| format!("Failed to create src/router: {}", e))?;
+
+        let router_content = VueGenerator::generate_router_file(&all_routes);
+        fs::write(router_dir.join("index.ts"), router_content)
+            .map_err(|e| format!("Failed to write router/index.ts: {}", e))?;
+
+        println!("{}", "  Generated src/router/index.ts".bright_green());
+    }
 
     // Write all components to mirror source directory structure
     // components/ -> src/components/
     // pages/ -> src/pages/
     eprintln!("[DEBUG] all_components count: {}", all_components.len());
-    for (relative_dir, name, code) in &all_components {
-        eprintln!("[DEBUG] Processing: relative_dir='{}', name='{}', code_len={}", relative_dir, name, code.len());
+    for (relative_dir, name, code, widget_name) in &all_components {
+        eprintln!("[DEBUG] Processing: relative_dir='{}', name='{}', widget_name='{}', code_len={}", relative_dir, name, widget_name, code.len());
         if name != "app" {
             // Determine output subdirectory
             let output_subdir = if relative_dir.is_empty() {
@@ -285,7 +326,8 @@ fn generate_workspace_project(
                 nested_dir
             };
 
-            let component_file = output_subdir.join(format!("{}.vue", name));
+            // Use widget_name for the Vue file name
+            let component_file = output_subdir.join(format!("{}.vue", widget_name));
             eprintln!("[DEBUG] Writing to: {}", component_file.display());
             fs::write(&component_file, code)
                 .map_err(|e| format!("Failed to write {}: {}", component_file.display(), e))?;
@@ -623,15 +665,44 @@ fn generate_single_file_project(
     println!("{}", "✓ Created directory structure".bright_green());
 
     // Parse AURA and generate Vue component with shadcn-vue mode
-    let vue_code = auto_lang::ui_build_shadcn(input_path, None)
+    let (vue_code, widgets) = auto_lang::ui_build_shadcn_with_widgets(input_path, None)
         .map_err(|e| format!("Failed to generate Vue code: {:?}", e))?;
 
     // Detect required shadcn components
     let components = detect_shadcn_components(&vue_code);
     println!("{} {}", "✓ Detected shadcn-vue components:".bright_green(), components.join(", "));
 
+    // Detect routes from widgets
+    let mut all_routes: Vec<AuraRoute> = Vec::new();
+    for widget in &widgets {
+        if let Some(ref routes) = widget.routes {
+            all_routes.extend(routes.routes.clone());
+        }
+    }
+
+    let has_routes = !all_routes.is_empty();
+    if has_routes {
+        println!("{} {}", "✓ Detected routes:".bright_green(), all_routes.len());
+        for route in &all_routes {
+            println!("    {} -> {}", route.path.bright_cyan(), route.component);
+        }
+    }
+
     // Write project files
-    write_project_files(output_path, name, &vue_code, &components)?;
+    write_project_files(output_path, name, &vue_code, &components, has_routes)?;
+
+    // Generate router files if routes detected
+    if has_routes {
+        let router_dir = output_path.join("src/router");
+        fs::create_dir_all(&router_dir)
+            .map_err(|e| format!("Failed to create src/router: {}", e))?;
+
+        let router_content = VueGenerator::generate_router_file(&all_routes);
+        fs::write(router_dir.join("index.ts"), router_content)
+            .map_err(|e| format!("Failed to write router/index.ts: {}", e))?;
+
+        println!("{}", "  Generated src/router/index.ts".bright_green());
+    }
 
     println!("{}", "✓ Generated project files".bright_green());
 
@@ -854,9 +925,10 @@ fn write_project_files(
     name: &str,
     vue_code: &str,
     components: &[String],
+    has_routes: bool,
 ) -> Result<(), String> {
     // package.json
-    let package_json = generate_package_json(name);
+    let package_json = generate_package_json(name, has_routes);
     fs::write(output_path.join("package.json"), package_json)
         .map_err(|e| format!("Failed to write package.json: {}", e))?;
 
@@ -891,7 +963,7 @@ fn write_project_files(
         .map_err(|e| format!("Failed to write index.html: {}", e))?;
 
     // src/main.ts
-    let main_ts = generate_main_ts();
+    let main_ts = generate_main_ts(has_routes);
     fs::write(output_path.join("src/main.ts"), main_ts)
         .map_err(|e| format!("Failed to write src/main.ts: {}", e))?;
 
@@ -947,7 +1019,14 @@ fn extract_widget_name(vue_code: &str) -> Option<String> {
 
 // Template generators
 
-fn generate_package_json(name: &str) -> String {
+fn generate_package_json(name: &str, has_routes: bool) -> String {
+    let router_dep = if has_routes {
+        r#"    "vue-router": "^4.2.0",
+"#
+    } else {
+        ""
+    };
+
     format!(r#"{{
   "name": "{}",
   "version": "0.1.0",
@@ -960,7 +1039,7 @@ fn generate_package_json(name: &str) -> String {
   }},
   "dependencies": {{
     "vue": "^3.4.0",
-    "@vueuse/core": "^10.7.0",
+{}    "@vueuse/core": "^10.7.0",
     "radix-vue": "^1.4.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
@@ -978,7 +1057,7 @@ fn generate_package_json(name: &str) -> String {
     "tailwindcss-animate": "^1.0.7"
   }}
 }}
-"#, name)
+"#, name, router_dep)
 }
 
 fn generate_vite_config() -> String {
@@ -1149,13 +1228,25 @@ fn generate_index_html(name: &str) -> String {
 "#, name)
 }
 
-fn generate_main_ts() -> String {
-    r#"import { createApp } from 'vue'
+fn generate_main_ts(has_routes: bool) -> String {
+    if has_routes {
+        r#"import { createApp } from 'vue'
+import App from './App.vue'
+import router from './router'
+import './assets/index.css'
+
+const app = createApp(App)
+app.use(router)
+app.mount('#app')
+"#.to_string()
+    } else {
+        r#"import { createApp } from 'vue'
 import App from './App.vue'
 import './assets/index.css'
 
 createApp(App).mount('#app')
 "#.to_string()
+    }
 }
 
 fn generate_app_vue(vue_code: &str) -> String {
