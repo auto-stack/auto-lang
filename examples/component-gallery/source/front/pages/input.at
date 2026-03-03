@@ -12,7 +12,7 @@ widget InputPage {
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add input") {}
 
             h2 (text: "Preview") {}
-            previewcard (id: "input-basic") {
+            preview-card (id: "input-basic") {
                 input (placeholder: "Enter text") {}
             }
         }

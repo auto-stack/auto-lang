@@ -12,7 +12,7 @@ widget CardPage {
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add card") {}
 
             h2 (text: "Preview") {}
-            previewcard (id: "card-basic") {
+            preview-card (id: "card-basic") {
                 card {
                     cardheader {
                         cardtitle (text: "Card Title") {}
@@ -28,7 +28,7 @@ widget CardPage {
             }
 
             h2 (text: "Card with Form") {}
-            previewcard (id: "card-form") {
+            preview-card (id: "card-form") {
                 card (class: "w-[350px]") {
                     cardheader {
                         cardtitle (text: "Account") {}

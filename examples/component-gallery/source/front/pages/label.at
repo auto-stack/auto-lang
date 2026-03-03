@@ -12,7 +12,7 @@ widget LabelPage {
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add label") {}
 
             h2 (text: "Preview") {}
-            previewcard (id: "label-basic") {
+            preview-card (id: "label-basic") {
                 label (text: "Email") {}
             }
         }

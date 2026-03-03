@@ -12,7 +12,7 @@ widget BadgePage {
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add badge") {}
 
             h2 (text: "Preview") {}
-            previewcard (id: "badge-basic") {
+            preview-card (id: "badge-basic") {
                 badge (text: "Badge") {}
             }
         }

@@ -12,7 +12,7 @@ widget TabsPage {
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add tabs") {}
 
             h2 (text: "Preview") {}
-            previewcard (id: "tabs-basic") {
+            preview-card (id: "tabs-basic") {
                 text (text: "Tabs demo placeholder") {}
             }
         }

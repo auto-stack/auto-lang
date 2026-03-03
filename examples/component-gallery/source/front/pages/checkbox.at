@@ -12,7 +12,7 @@ widget CheckboxPage {
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add checkbox") {}
 
             h2 (text: "Preview") {}
-            previewcard (id: "checkbox-basic") {
+            preview-card (id: "checkbox-basic") {
                 checkbox (checked: true) {}
             }
         }

@@ -12,7 +12,7 @@ widget TextPage {
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add text") {}
 
             h2 (text: "Preview") {}
-            previewcard (id: "text-basic") {
+            preview-card (id: "text-basic") {
                 text (text: "Hello World")
             }
         }

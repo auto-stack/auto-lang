@@ -12,7 +12,7 @@ widget AccordionPage {
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add accordion") {}
 
             h2 (text: "Preview") {}
-            previewcard (id: "accordion-basic") {
+            preview-card (id: "accordion-basic") {
                 text (text: "Accordion demo placeholder") {}
             }
         }

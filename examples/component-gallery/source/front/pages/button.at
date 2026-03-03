@@ -12,7 +12,7 @@ widget ButtonPage {
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add button") {}
 
             h2 (text: "Preview") {}
-            previewcard (id: "button-basic") {
+            preview-card (id: "button-basic") {
                 button (text: "Button") {}
             }
         }
