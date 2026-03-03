@@ -694,6 +694,12 @@ pub struct VueGenerator {
     /// Whether copyCode function is needed
     needs_copy_code: bool,
 
+    /// Counter for unique codeblock IDs
+    codeblock_counter: usize,
+
+    /// Data for each codeblock (id, code, lang)
+    codeblock_data: Vec<CodeBlockData>,
+
     /// Whether router is needed (has outlet, link, or nav() calls) - Plan 105
     needs_router: bool,
 }
@@ -707,6 +713,17 @@ struct PreviewCardData {
     auto_code: String,
     /// Vue.js source code
     vue_code: String,
+}
+
+/// Data for generating code blocks with copy button
+#[derive(Debug, Clone)]
+struct CodeBlockData {
+    /// Unique identifier (e.g., "install-button", "install-card")
+    id: String,
+    /// Code content
+    code: String,
+    /// Language (e.g., "bash", "typescript")
+    lang: String,
 }
 
 impl VueGenerator {
@@ -728,6 +745,8 @@ impl VueGenerator {
             previewcard_counter: 0,
             previewcard_data: Vec::new(),
             needs_copy_code: false,
+            codeblock_counter: 0,
+            codeblock_data: Vec::new(),
             needs_router: false,
         }
     }
@@ -775,6 +794,8 @@ impl VueGenerator {
         self.previewcard_counter = 0;
         self.previewcard_data.clear();
         self.needs_copy_code = false;
+        self.codeblock_counter = 0;
+        self.codeblock_data.clear();
         self.needs_router = false;
     }
 
@@ -1012,6 +1033,75 @@ impl VueGenerator {
                 script.push_str(&format!("const {} = `{}`\n", auto_var, pc.auto_code));
                 script.push_str(&format!("const {} = `{}`\n", vue_var, pc.vue_code));
             }
+
+            // Add code constants for each codeblock
+            for cb in &self.codeblock_data {
+                // Convert kebab-case to camelCase (e.g., "install-button" -> "installButton")
+                let id_camel: String = cb.id.split('-')
+                    .enumerate()
+                    .map(|(i, part)| {
+                        let mut chars = part.chars();
+                        match chars.next() {
+                            None => String::new(),
+                            Some(c) => {
+                                if i == 0 {
+                                    c.to_lowercase().collect::<String>() + chars.as_str()
+                                } else {
+                                    c.to_uppercase().collect::<String>() + chars.as_str()
+                                }
+                            }
+                        }
+                    })
+                    .collect();
+                let code_var = format!("{}Code", id_camel);
+                script.push_str(&format!("const {} = `{}`\n", code_var, cb.code));
+            }
+            script.push('\n');
+        } else if !self.codeblock_data.is_empty() {
+            // Codeblocks only (no previewcard)
+            // Add copiedCode state
+            if self.use_typescript {
+                script.push_str("const copiedCode = ref<string>('')\n");
+            } else {
+                script.push_str("const copiedCode = ref('')\n");
+            }
+
+            // Add copyCode function
+            script.push_str("\n// Copy to clipboard function\n");
+            script.push_str("async function copyCode(code: string, id: string): Promise<void> {\n");
+            script.push_str("  try {\n");
+            script.push_str("    await navigator.clipboard.writeText(code)\n");
+            script.push_str("    copiedCode.value = id\n");
+            script.push_str("    setTimeout(() => {\n");
+            script.push_str("      copiedCode.value = ''\n");
+            script.push_str("    }, 2000)\n");
+            script.push_str("  } catch (err) {\n");
+            script.push_str("    console.error('Failed to copy:', err)\n");
+            script.push_str("  }\n");
+            script.push_str("}\n\n");
+
+            // Add code constants for each codeblock
+            for cb in &self.codeblock_data {
+                // Convert kebab-case to camelCase (e.g., "install-button" -> "installButton")
+                let id_camel: String = cb.id.split('-')
+                    .enumerate()
+                    .map(|(i, part)| {
+                        let mut chars = part.chars();
+                        match chars.next() {
+                            None => String::new(),
+                            Some(c) => {
+                                if i == 0 {
+                                    c.to_lowercase().collect::<String>() + chars.as_str()
+                                } else {
+                                    c.to_uppercase().collect::<String>() + chars.as_str()
+                                }
+                            }
+                        }
+                    })
+                    .collect();
+                let code_var = format!("{}Code", id_camel);
+                script.push_str(&format!("const {} = `{}`\n", code_var, cb.code));
+            }
             script.push('\n');
         }
 
@@ -1065,6 +1155,11 @@ impl VueGenerator {
                 // Special handling for previewcard element
                 if tag == "previewcard" {
                     return self.generate_previewcard_html(props, events, children, indent);
+                }
+
+                // Special handling for codeblock element (with copy button)
+                if tag == "codeblock" {
+                    return self.generate_codeblock_html(props, events, children, indent);
                 }
 
                 let html_tag = self.map_tag(tag, children.is_empty());
@@ -1453,6 +1548,107 @@ impl VueGenerator {
             id_cap = id_cap,
             id_lower = id_lower,
             children_html = children_html
+        );
+
+        Ok(html)
+    }
+
+    /// Generate HTML for codeblock element with copy button
+    fn generate_codeblock_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        _events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        let ind = "  ".repeat(indent);
+
+        // Extract id prop or generate one
+        let id = if let Some(value) = props.get("id") {
+            self.extract_string_value(value)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    self.codeblock_counter += 1;
+                    format!("codeblock{}", self.codeblock_counter)
+                })
+        } else {
+            self.codeblock_counter += 1;
+            format!("codeblock{}", self.codeblock_counter)
+        };
+
+        // Extract lang prop (default: "text")
+        let lang = if let Some(value) = props.get("lang") {
+            self.extract_string_value(value).unwrap_or("text").to_string()
+        } else {
+            "text".to_string()
+        };
+
+        // Extract code content from props or children
+        let code = if let Some(value) = props.get("code") {
+            self.prop_to_text_content(value).unwrap_or_default()
+        } else if let Some(value) = props.get("text") {
+            self.prop_to_text_content(value).unwrap_or_default()
+        } else {
+            // Get text from children
+            let mut code_parts = Vec::new();
+            for child in children {
+                if let AuraNode::Text(content) = child {
+                    match content {
+                        AuraTextContent::Literal(s) => code_parts.push(s.clone()),
+                        AuraTextContent::Interpolated { template, .. } => code_parts.push(template.clone()),
+                    }
+                }
+            }
+            code_parts.join("\n")
+        };
+
+        // Convert kebab-case to camelCase for variable names (e.g., "install-button" -> "installButton")
+        let id_camel = id.split('-')
+            .enumerate()
+            .map(|(i, part)| {
+                let mut chars = part.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(c) => {
+                        if i == 0 {
+                            c.to_lowercase().collect::<String>() + chars.as_str()
+                        } else {
+                            c.to_uppercase().collect::<String>() + chars.as_str()
+                        }
+                    }
+                }
+            })
+            .collect::<String>();
+
+        // Store codeblock data for script generation
+        self.codeblock_data.push(CodeBlockData {
+            id: id.clone(),
+            code: code.clone(),
+            lang: lang.clone(),
+        });
+        self.needs_copy_code = true;
+
+        // Generate the codeblock HTML with copy button
+        let html = format!(
+            r#"{ind}<div class="relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-x-auto">
+{ind}  <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+{ind}    <span class="text-xs text-zinc-400">{lang}</span>
+{ind}    <button
+{ind}      @click="copyCode({id_camel}Code, '{id}')"
+{ind}      class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+{ind}    >
+{ind}      <svg v-if="copiedCode !== '{id}'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+{ind}      <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+{ind}      {{{{ copiedCode === '{id}' ? 'Copied!' : 'Copy' }}}}
+{ind}    </button>
+{ind}  </div>
+{ind}  <pre class="p-4 text-sm"><code class="font-mono">{{{{ {id_camel}Code }}}}</code></pre>
+{ind}</div>
+"#,
+            ind = ind,
+            id = id,
+            id_camel = id_camel,
+            lang = lang
         );
 
         Ok(html)
