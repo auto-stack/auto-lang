@@ -1152,8 +1152,8 @@ impl VueGenerator {
 
         match node {
             AuraNode::Element { tag, props, events, children } => {
-                // Special handling for previewcard element
-                if tag == "previewcard" {
+                // Special handling for previewcard element (supports both previewcard and preview-card)
+                if tag == "previewcard" || tag == "preview-card" {
                     return self.generate_previewcard_html(props, events, children, indent);
                 }
 
@@ -1941,7 +1941,7 @@ impl VueGenerator {
             "link" => "a".to_string(),
             "codeblock" => "pre".to_string(),
             "codepane" => "div".to_string(),
-            "previewcard" => "div".to_string(),
+            "previewcard" | "preview-card" => "div".to_string(),
 
             // Typography (no shadcn components)
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => tag.to_string(),
@@ -2058,7 +2058,7 @@ impl VueGenerator {
                 "link" => classes.push("text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer".to_string()),
                 "codeblock" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-x-auto".to_string()),
                 "codepane" => classes.push("relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-hidden".to_string()),
-                "previewcard" => classes.push("rounded-lg border overflow-hidden".to_string()),
+                "previewcard" | "preview-card" => classes.push("rounded-lg border overflow-hidden".to_string()),
                 "label" => classes.push("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70".to_string()),
 
                 // Data
@@ -2441,7 +2441,7 @@ impl VueGenerator {
             }
 
             // === PreviewCard ===
-            "previewcard" => {
+            "previewcard" | "preview-card" => {
                 // title prop (default: "Preview")
                 let title = if let Some(value) = props.get("title") {
                     self.extract_string_value(value).unwrap_or("Preview").to_string()
@@ -5041,6 +5041,24 @@ mod tests {
         assert_eq!(gen.map_tag("col", true), "div");
         assert_eq!(gen.map_tag("button", false), "button");
         assert_eq!(gen.map_tag("h2", false), "h2");
+    }
+
+    #[test]
+    fn test_map_tag_hyphenated() {
+        let mut gen = VueGenerator::new();
+
+        // Hyphenated tags should pass through correctly
+        assert_eq!(gen.map_tag("preview-card", false), "div");
+        assert_eq!(gen.map_tag("preview-card", true), "div");
+
+        // Both previewcard and preview-card should map to the same thing
+        assert_eq!(gen.map_tag("previewcard", false), gen.map_tag("preview-card", false));
+
+        // Other hyphenated tags (fallback to div for unknown)
+        assert_eq!(gen.map_tag("my-custom-tag", false), "div");
+
+        // Known tags with hyphens in HTML5
+        // (these would pass through if added to the match)
     }
 
     #[test]
