@@ -50,6 +50,8 @@ mod range;
 pub use range::*;
 mod ui;
 pub use ui::*;
+mod route;
+pub use route::*;
 
 mod atom_helpers;
 pub use atom_helpers::*;
