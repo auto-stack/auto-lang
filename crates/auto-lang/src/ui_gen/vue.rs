@@ -1529,18 +1529,18 @@ impl VueGenerator {
 {ind}    <!-- Expandable Code Block -->
 {ind}    <div v-if="show{id_cap}Code" class="border-t">
 {ind}      <!-- Tabs (gray title bar) -->
-{ind}      <div class="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800 border-b">
+{ind}      <div class="flex items-center justify-between bg-zinc-100 dark:bg-zinc-800">
 {ind}        <div class="flex">
 {ind}          <button
 {ind}            @click="active{id_cap}Tab = 'auto'"
-{ind}            :class="active{id_cap}Tab === 'auto' ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'"
+{ind}            :class="active{id_cap}Tab === 'auto' ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent'"
 {ind}            class="px-4 py-2 text-xs font-medium transition-colors"
 {ind}          >
 {ind}            Auto
 {ind}          </button>
 {ind}          <button
 {ind}            @click="active{id_cap}Tab = 'vue'"
-{ind}            :class="active{id_cap}Tab === 'vue' ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'"
+{ind}            :class="active{id_cap}Tab === 'vue' ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-primary -mb-px' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 border-b-2 border-transparent'"
 {ind}            class="px-4 py-2 text-xs font-medium transition-colors"
 {ind}          >
 {ind}            Vue
@@ -1646,21 +1646,21 @@ impl VueGenerator {
         });
         self.needs_copy_code = true;
 
-        // Generate the codeblock HTML with copy button
+        // Generate the codeblock HTML with copy button (gray title bar, dark code content)
         let html = format!(
-            r#"{ind}<div class="relative rounded-lg border bg-zinc-950 text-zinc-50 overflow-x-auto">
-{ind}  <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-{ind}    <span class="text-xs text-zinc-400">{lang}</span>
+            r#"{ind}<div class="relative rounded-lg border overflow-hidden">
+{ind}  <div class="flex items-center justify-between px-4 py-3 bg-zinc-100 dark:bg-zinc-800 border-b">
+{ind}    <span class="text-xs text-zinc-600 dark:text-zinc-400 font-medium">{lang}</span>
 {ind}    <button
 {ind}      @click="copyCode({id_camel}Code, '{id}')"
-{ind}      class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+{ind}      class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
 {ind}    >
 {ind}      <svg v-if="copiedCode !== '{id}'" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
 {ind}      <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
 {ind}      {{{{ copiedCode === '{id}' ? 'Copied!' : 'Copy' }}}}
 {ind}    </button>
 {ind}  </div>
-{ind}  <pre class="p-4 text-sm"><code class="font-mono">{{{{ {id_camel}Code }}}}</code></pre>
+{ind}  <pre class="p-4 text-sm bg-zinc-950 text-zinc-50 overflow-x-auto"><code class="font-mono language-{lang}">{{{{ {id_camel}Code }}}}</code></pre>
 {ind}</div>
 "#,
             ind = ind,
