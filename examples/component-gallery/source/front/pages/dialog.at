@@ -11,7 +11,45 @@ widget DialogPage {
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add dialog") {}
             h2 (text: "Simple") {}
             preview-card (id: "dialog-basic") {
-                text (text: "Dialog placeholder") {}
+                row (gap: "4") {
+                    dialog {}
+                    dialog-trigger (text: "Open Dialog") {}
+                }
+            }
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "open") {}
+                        td (text: "boolean") {}
+                        td (text: "false") {}
+                        td (text: "true, false") {}
+                        td (text: "Controls dialog visibility") {}
+                    }
+                    tr {
+                        td (text: "title") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Dialog title") {}
+                    }
+                    tr {
+                        td (text: "description") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Dialog description") {}
+                    }
+                }
             }
         }
     }

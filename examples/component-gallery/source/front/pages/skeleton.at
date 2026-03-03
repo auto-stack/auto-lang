@@ -7,11 +7,46 @@ widget SkeletonPage {
         col {
             h1 (text: "Skeleton") {}
             text (text: "Use to show a placeholder while content is loading.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add skeleton") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "skeleton-basic") {
-                text (text: "Skeleton placeholder") {}
+                skeleton (class: "w-48 h-4") {}
+            }
+
+            h2 (text: "Card Skeleton") {}
+            preview-card (id: "skeleton-card") {
+                col (gap: "4", class: "w-64") {
+                    skeleton (class: "h-12 w-12 rounded-full") {}
+                    col (gap: "2") {
+                        skeleton (class: "h-4 w-full") {}
+                        skeleton (class: "h-4 w-3/4") {}
+                    }
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "class") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Tailwind classes for sizing") {}
+                    }
+                }
             }
         }
     }

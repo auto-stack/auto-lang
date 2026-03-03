@@ -7,11 +7,52 @@ widget DrawerPage {
         col {
             h1 (text: "Drawer") {}
             text (text: "A drawer that slides in from the side of the screen.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add drawer") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "drawer-basic") {
-                text (text: "Drawer placeholder") {}
+                row (gap: "4") {
+                    drawer {}
+                    drawer-trigger (text: "Open Drawer") {}
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "open") {}
+                        td (text: "boolean") {}
+                        td (text: "false") {}
+                        td (text: "true, false") {}
+                        td (text: "Controls drawer visibility") {}
+                    }
+                    tr {
+                        td (text: "direction") {}
+                        td (text: "string") {}
+                        td (text: "right") {}
+                        td (text: "left, right, top, bottom") {}
+                        td (text: "Drawer slide direction") {}
+                    }
+                    tr {
+                        td (text: "title") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Drawer title") {}
+                    }
+                }
             }
         }
     }

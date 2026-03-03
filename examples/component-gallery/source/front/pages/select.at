@@ -6,12 +6,47 @@ widget SelectPage {
     view {
         col {
             h1 (text: "Select") {}
-            text (text: "Displays a list of options for the user to pick from.") {}
+            text (text: "Displays a list of options for the user to pick from, triggered by a button.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add select") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "select-basic") {
-                text (text: "Select placeholder") {}
+                select (placeholder: "Select a fruit") {
+                    select-item (text: "Apple", value: "apple") {}
+                    select-item (text: "Banana", value: "banana") {}
+                    select-item (text: "Orange", value: "orange") {}
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "placeholder") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Placeholder text") {}
+                    }
+                    tr {
+                        td (text: "disabled") {}
+                        td (text: "boolean") {}
+                        td (text: "false") {}
+                        td (text: "true, false") {}
+                        td (text: "Disables the select") {}
+                    }
+                }
             }
         }
     }

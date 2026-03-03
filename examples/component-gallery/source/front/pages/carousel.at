@@ -6,12 +6,69 @@ widget CarouselPage {
     view {
         col {
             h1 (text: "Carousel") {}
-            text (text: "A carousel with motion and gestures built in.") {}
+            text (text: "A carousel with motion and gestures built in using Embla Carousel.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add carousel") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "carousel-basic") {
-                text (text: "Carousel placeholder") {}
+                carousel (class: "w-full max-w-xs") {
+                    carousel-content {
+                        carousel-item {
+                            card {
+                                card-content {
+                                    text (text: "Slide 1") {}
+                                }
+                            }
+                        }
+                        carousel-item {
+                            card {
+                                card-content {
+                                    text (text: "Slide 2") {}
+                                }
+                            }
+                        }
+                        carousel-item {
+                            card {
+                                card-content {
+                                    text (text: "Slide 3") {}
+                                }
+                            }
+                        }
+                    }
+                    carousel-previous {}
+                    carousel-next {}
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "opts") {}
+                        td (text: "object") {}
+                        td (text: "{}") {}
+                        td (text: "-") {}
+                        td (text: "Embla carousel options") {}
+                    }
+                    tr {
+                        td (text: "orientation") {}
+                        td (text: "string") {}
+                        td (text: "\"horizontal\"") {}
+                        td (text: "\"horizontal\", \"vertical\"") {}
+                        td (text: "Carousel direction") {}
+                    }
+                }
             }
         }
     }

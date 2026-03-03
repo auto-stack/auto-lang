@@ -6,12 +6,45 @@ widget NavigationmenuPage {
     view {
         col {
             h1 (text: "NavigationMenu") {}
-            text (text: "A collection of navigation links.") {}
+            text (text: "A collection of navigation links with dropdown support.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add navigation-menu") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "navigationmenu-basic") {
-                text (text: "NavigationMenu placeholder") {}
+                row (gap: "4") {
+                    navigation-menu {}
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "text") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Link text") {}
+                    }
+                    tr {
+                        td (text: "href") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Link destination") {}
+                    }
+                }
             }
         }
     }

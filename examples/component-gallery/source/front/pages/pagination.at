@@ -7,11 +7,51 @@ widget PaginationPage {
         col {
             h1 (text: "Pagination") {}
             text (text: "A navigation component for paginating through content.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add pagination") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "pagination-basic") {
-                text (text: "Pagination placeholder") {}
+                row (gap: "2", class: "items-center") {
+                    pagination {}
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "total") {}
+                        td (text: "number") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Total number of pages") {}
+                    }
+                    tr {
+                        td (text: "page") {}
+                        td (text: "number") {}
+                        td (text: "1") {}
+                        td (text: "-") {}
+                        td (text: "Current page number") {}
+                    }
+                    tr {
+                        td (text: "sibling-count") {}
+                        td (text: "number") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Number of visible page buttons") {}
+                    }
+                }
             }
         }
     }

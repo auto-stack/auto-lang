@@ -7,11 +7,57 @@ widget SheetPage {
         col {
             h1 (text: "Sheet") {}
             text (text: "A panel that slides in from the side of the screen.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add sheet") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "sheet-basic") {
-                text (text: "Sheet placeholder") {}
+                row (gap: "4") {
+                    sheet (side: "right") {
+                        sheet-trigger {
+                            button (text: "Open", variant: "outline") {}
+                        }
+                        sheet-content {
+                            sheet-header {
+                                sheet-title (text: "Edit Profile") {}
+                                sheet-description (text: "Make changes to your profile here.") {}
+                            }
+                            col (gap: "4") {
+                                text (text: "Profile content goes here.") {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "side") {}
+                        td (text: "string") {}
+                        td (text: "\"right\"") {}
+                        td (text: "\"top\", \"right\", \"bottom\", \"left\"") {}
+                        td (text: "Which side the sheet slides from") {}
+                    }
+                    tr {
+                        td (text: "open") {}
+                        td (text: "boolean") {}
+                        td (text: "false") {}
+                        td (text: "true, false") {}
+                        td (text: "Controls the open state") {}
+                    }
+                }
             }
         }
     }

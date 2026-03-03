@@ -7,11 +7,48 @@ widget BreadcrumbPage {
         col {
             h1 (text: "Breadcrumb") {}
             text (text: "Shows the user's current location within a navigational hierarchy.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add breadcrumb") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "breadcrumb-basic") {
-                text (text: "Breadcrumb placeholder") {}
+                breadcrumb {
+                    breadcrumb-item (text: "Home", href: "/") {}
+                    breadcrumb-separator {}
+                    breadcrumb-item (text: "Components", href: "/components") {}
+                    breadcrumb-separator {}
+                    breadcrumb-item (text: "Breadcrumb") {}
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "text") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Item text content") {}
+                    }
+                    tr {
+                        td (text: "href") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Link destination") {}
+                    }
+                }
             }
         }
     }

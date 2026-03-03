@@ -7,11 +7,42 @@ widget ProgressPage {
         col {
             h1 (text: "Progress") {}
             text (text: "Displays an indicator showing the completion progress of a task.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add progress") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "progress-basic") {
-                text (text: "Progress placeholder") {}
+                progress (value: "33", class: "w-60") {}
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "value") {}
+                        td (text: "number") {}
+                        td (text: "0") {}
+                        td (text: "0-100") {}
+                        td (text: "Progress percentage") {}
+                    }
+                    tr {
+                        td (text: "max") {}
+                        td (text: "number") {}
+                        td (text: "100") {}
+                        td (text: "-") {}
+                        td (text: "Maximum value") {}
+                    }
+                }
             }
         }
     }

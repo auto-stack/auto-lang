@@ -6,12 +6,45 @@ widget MenubarPage {
     view {
         col {
             h1 (text: "Menubar") {}
-            text (text: "A horizontal menu bar for navigation.") {}
+            text (text: "A horizontal menu bar with dropdown menus for navigation.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add menubar") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "menubar-basic") {
-                text (text: "Menubar placeholder") {}
+                row (gap: "4") {
+                    menubar {}
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "text") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Menu label text") {}
+                    }
+                    tr {
+                        td (text: "disabled") {}
+                        td (text: "boolean") {}
+                        td (text: "false") {}
+                        td (text: "true, false") {}
+                        td (text: "Disables the menu item") {}
+                    }
+                }
             }
         }
     }

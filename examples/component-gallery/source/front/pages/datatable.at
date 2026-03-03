@@ -6,12 +6,56 @@ widget DatatablePage {
     view {
         col {
             h1 (text: "DataTable") {}
-            text (text: "A table with sorting, filtering, and pagination.") {}
+            text (text: "A powerful table component with sorting, filtering, and pagination built-in.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add data-table") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "datatable-basic") {
-                text (text: "DataTable placeholder") {}
+                text (text: "DataTable requires TanStack Table - see shadcn-vue docs for setup.") {}
+            }
+
+            h2 (text: "Features") {}
+            col (gap: "2") {
+                row (gap: "2") {
+                    badge (text: "Sorting", variant: "secondary") {}
+                    badge (text: "Filtering", variant: "secondary") {}
+                    badge (text: "Pagination", variant: "secondary") {}
+                }
+                row (gap: "2") {
+                    badge (text: "Row Selection", variant: "secondary") {}
+                    badge (text: "Column Visibility", variant: "secondary") {}
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "data") {}
+                        td (text: "array") {}
+                        td (text: "[]") {}
+                        td (text: "-") {}
+                        td (text: "Array of row data") {}
+                    }
+                    tr {
+                        td (text: "columns") {}
+                        td (text: "array") {}
+                        td (text: "[]") {}
+                        td (text: "-") {}
+                        td (text: "Column definitions") {}
+                    }
+                }
             }
         }
     }

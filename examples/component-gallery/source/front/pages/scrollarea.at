@@ -1,17 +1,65 @@
 // pages/scrollarea.at - ScrollArea component documentation page
 
-widget ScrollareaPage {
+widget ScrollAreaPage {
     model { activeTab str = "preview" }
 
     view {
         col {
             h1 (text: "ScrollArea") {}
-            text (text: "A custom scrollable container with styled scrollbars.") {}
+            text (text: "A scrollable container with custom styled scrollbars.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add scroll-area") {}
-            h2 (text: "Simple") {}
-            preview-card (id: "scrollarea-basic") {
-                text (text: "ScrollArea placeholder") {}
+
+            h2 (text: "Vertical Scroll") {}
+            preview-card (id: "scroll-vertical") {
+                scroll (class: "h-72 w-48 rounded-md border") {
+                    col (gap: "2") {
+                        text (text: "Scroll Area") {}
+                        separator {}
+                        text (text: "Item 1") {}
+                        text (text: "Item 2") {}
+                        text (text: "Item 3") {}
+                        text (text: "Item 4") {}
+                        text (text: "Item 5") {}
+                        text (text: "Item 6") {}
+                        text (text: "Item 7") {}
+                        text (text: "Item 8") {}
+                        text (text: "Item 9") {}
+                        text (text: "Item 10") {}
+                        text (text: "Item 11") {}
+                        text (text: "Item 12") {}
+                    }
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "class") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Additional CSS classes") {}
+                    }
+                    tr {
+                        td (text: "scrollbarVisibility") {}
+                        td (text: "string") {}
+                        td (text: "\"auto\"") {}
+                        td (text: "\"auto\", \"always\", \"scroll\", \"hover\"") {}
+                        td (text: "Scrollbar visibility mode") {}
+                    }
+                }
             }
         }
     }

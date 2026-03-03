@@ -6,12 +6,60 @@ widget ComboboxPage {
     view {
         col {
             h1 (text: "Combobox") {}
-            text (text: "Autocomplete input with a listbox.") {}
+            text (text: "An autocomplete input with a listbox, combining a text input with a dropdown.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add combobox") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "combobox-basic") {
-                text (text: "Combobox placeholder") {}
+                popover {
+                    popover-trigger {
+                        button (text: "Select framework...", variant: "outline") {}
+                    }
+                    popover-content {
+                        command {
+                            command-input (placeholder: "Search framework...") {}
+                            command-empty (text: "No framework found.") {}
+                            command-list {
+                                command-group {
+                                    command-item (text: "Vue") {}
+                                    command-item (text: "React") {}
+                                    command-item (text: "Svelte") {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "v-model") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Selected value") {}
+                    }
+                    tr {
+                        td (text: "filter") {}
+                        td (text: "function") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Custom filter function") {}
+                    }
+                }
             }
         }
     }

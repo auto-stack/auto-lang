@@ -6,12 +6,84 @@ widget SidebarPage {
     view {
         col {
             h1 (text: "Sidebar") {}
-            text (text: "A composable sidebar component with sections.") {}
+            text (text: "A composable sidebar component with support for different sections and navigation items.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add sidebar") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "sidebar-basic") {
-                text (text: "Sidebar placeholder") {}
+                sidebar-provider {
+                    sidebar {
+                        sidebar-header {
+                            sidebar-menu {
+                                sidebar-menu-item {
+                                    sidebar-menu-button {
+                                        text (text: "Dashboard") {}
+                                    }
+                                }
+                            }
+                        }
+                        sidebar-content {
+                            sidebar-group {
+                                sidebar-group-label (text: "Main") {}
+                                sidebar-group-content {
+                                    sidebar-menu {
+                                        sidebar-menu-item {
+                                            sidebar-menu-button {
+                                                text (text: "Home") {}
+                                            }
+                                        }
+                                        sidebar-menu-item {
+                                            sidebar-menu-button {
+                                                text (text: "Settings") {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        sidebar-footer {
+                            text (text: "Footer") {}
+                        }
+                    }
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "side") {}
+                        td (text: "string") {}
+                        td (text: "\"left\"") {}
+                        td (text: "\"left\", \"right\"") {}
+                        td (text: "Which side the sidebar appears") {}
+                    }
+                    tr {
+                        td (text: "variant") {}
+                        td (text: "string") {}
+                        td (text: "\"sidebar\"") {}
+                        td (text: "\"sidebar\", \"floating\", \"inset\"") {}
+                        td (text: "Sidebar style variant") {}
+                    }
+                    tr {
+                        td (text: "collapsible") {}
+                        td (text: "string") {}
+                        td (text: "\"offcanvas\"") {}
+                        td (text: "\"offcanvas\", \"icon\", \"none\"") {}
+                        td (text: "Collapsible behavior") {}
+                    }
+                }
             }
         }
     }

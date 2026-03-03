@@ -6,12 +6,57 @@ widget CalendarPage {
     view {
         col {
             h1 (text: "Calendar") {}
-            text (text: "A date field component that allows users to select a date.") {}
+            text (text: "A date field component that allows users to select a date or date range.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add calendar") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "calendar-basic") {
-                text (text: "Calendar placeholder") {}
+                calendar {}
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "v-model") {}
+                        td (text: "Date") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Selected date value") {}
+                    }
+                    tr {
+                        td (text: "locale") {}
+                        td (text: "string") {}
+                        td (text: "\"en\"") {}
+                        td (text: "-") {}
+                        td (text: "Locale for formatting") {}
+                    }
+                    tr {
+                        td (text: "disabled") {}
+                        td (text: "boolean") {}
+                        td (text: "false") {}
+                        td (text: "true, false") {}
+                        td (text: "Disables the calendar") {}
+                    }
+                    tr {
+                        td (text: "mode") {}
+                        td (text: "string") {}
+                        td (text: "\"single\"") {}
+                        td (text: "\"single\", \"range\"") {}
+                        td (text: "Selection mode") {}
+                    }
+                }
             }
         }
     }

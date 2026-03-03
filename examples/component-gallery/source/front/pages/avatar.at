@@ -7,11 +7,52 @@ widget AvatarPage {
         col {
             h1 (text: "Avatar") {}
             text (text: "An image element with a fallback for representing the user.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add avatar") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "avatar-basic") {
-                text (text: "Avatar placeholder") {}
+                row (gap: "4") {
+                    avatar (src: "https://github.com/shadcn.png", alt: "@shadcn") {}
+                    avatar (fallback: "CN") {}
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "src") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Image source URL") {}
+                    }
+                    tr {
+                        td (text: "alt") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Alt text for accessibility") {}
+                    }
+                    tr {
+                        td (text: "fallback") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Fallback text when image fails") {}
+                    }
+                }
             }
         }
     }

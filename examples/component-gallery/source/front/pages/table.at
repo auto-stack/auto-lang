@@ -6,12 +6,59 @@ widget TablePage {
     view {
         col {
             h1 (text: "Table") {}
-            text (text: "A table component for displaying data.") {}
+            text (text: "A responsive table component for displaying data in rows and columns.") {}
+
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add table") {}
+
             h2 (text: "Simple") {}
             preview-card (id: "table-basic") {
-                text (text: "Table placeholder") {}
+                table {
+                    table-header {
+                        table-row {
+                            table-head (text: "Invoice") {}
+                            table-head (text: "Status") {}
+                            table-head (text: "Method") {}
+                            table-head (text: "Amount", class: "text-right") {}
+                        }
+                    }
+                    table-body {
+                        table-row {
+                            table-cell (text: "INV001") {}
+                            table-cell (text: "Paid") {}
+                            table-cell (text: "Credit Card") {}
+                            table-cell (text: "$250.00", class: "text-right") {}
+                        }
+                        table-row {
+                            table-cell (text: "INV002") {}
+                            table-cell (text: "Pending") {}
+                            table-cell (text: "PayPal") {}
+                            table-cell (text: "$150.00", class: "text-right") {}
+                        }
+                    }
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "class") {}
+                        td (text: "string") {}
+                        td (text: "-") {}
+                        td (text: "-") {}
+                        td (text: "Additional CSS classes") {}
+                    }
+                }
             }
         }
     }

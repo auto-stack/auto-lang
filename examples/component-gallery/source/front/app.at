@@ -55,8 +55,8 @@ widget App {
     }
 
     view {
-        // Main container with full height
-        col (class: "min-h-screen") {
+        // Main container with full height - no page scroll
+        col (class: "h-screen overflow-hidden") {
             // Header Banner - full width
             header (class: "sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur") {
                 row (class: "h-14 items-center px-6 w-full") {
@@ -77,159 +77,166 @@ widget App {
             }
 
             // Main content area: sidebar + content
-            row (class: "flex-1") {
-                // Sidebar - on the left
-                aside (class: "w-64 border-r bg-background p-4 flex flex-col gap-1 overflow-y-auto") {
-                    // Components section header
-                    text (text: "Components", class: "text-sm font-semibold text-muted-foreground mb-2 px-3") {}
+            row (class: "flex-1 overflow-hidden") {
+                // Sidebar - on the left with scrollable content
+                aside (class: "w-64 border-r bg-background flex flex-col h-[calc(100vh-3.5rem)]") {
+                    // Components section header (fixed)
+                    text (text: "Components", class: "text-sm font-semibold text-muted-foreground px-4 pt-4 pb-2") {}
 
-                    // Navigation links using router-link
-                    link (to: "/accordion") {
-                        text (text: "Accordion", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/alert") {
-                        text (text: "Alert", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/alertdialog") {
-                        text (text: "AlertDialog", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/avatar") {
-                        text (text: "Avatar", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/badge") {
-                        text (text: "Badge", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/breadcrumb") {
-                        text (text: "Breadcrumb", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/button") {
-                        text (text: "Button", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/calendar") {
-                        text (text: "Calendar", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/card") {
-                        text (text: "Card", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/carousel") {
-                        text (text: "Carousel", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/checkbox") {
-                        text (text: "Checkbox", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/collapsible") {
-                        text (text: "Collapsible", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/combobox") {
-                        text (text: "Combobox", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/command") {
-                        text (text: "Command", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/contextmenu") {
-                        text (text: "ContextMenu", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/datatable") {
-                        text (text: "DataTable", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/datepicker") {
-                        text (text: "DatePicker", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/dialog") {
-                        text (text: "Dialog", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/drawer") {
-                        text (text: "Drawer", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/dropdownmenu") {
-                        text (text: "DropdownMenu", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/form") {
-                        text (text: "Form", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/hovercard") {
-                        text (text: "HoverCard", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/input") {
-                        text (text: "Input", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/label") {
-                        text (text: "Label", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/menubar") {
-                        text (text: "Menubar", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/navigationmenu") {
-                        text (text: "NavigationMenu", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/pagination") {
-                        text (text: "Pagination", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/popover") {
-                        text (text: "Popover", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/progress") {
-                        text (text: "Progress", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/radiogroup") {
-                        text (text: "RadioGroup", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/scrollarea") {
-                        text (text: "ScrollArea", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/select") {
-                        text (text: "Select", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/separator") {
-                        text (text: "Separator", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/sheet") {
-                        text (text: "Sheet", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/sidebar") {
-                        text (text: "Sidebar", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/skeleton") {
-                        text (text: "Skeleton", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/slider") {
-                        text (text: "Slider", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/sonner") {
-                        text (text: "Sonner", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/switch") {
-                        text (text: "Switch", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/table") {
-                        text (text: "Table", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/tabs") {
-                        text (text: "Tabs", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/textarea") {
-                        text (text: "Textarea", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/text") {
-                        text (text: "Text", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/toast") {
-                        text (text: "Toast", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/toggle") {
-                        text (text: "Toggle", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/togglegroup") {
-                        text (text: "ToggleGroup", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
-                    }
-                    link (to: "/tooltip") {
-                        text (text: "Tooltip", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                    // Scrollable navigation area
+                    scroll (class: "flex-1 px-2") {
+                        col (gap: "0.5") {
+                            // Navigation links using router-link
+                            link (to: "/accordion") {
+                                text (text: "Accordion", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/alert") {
+                                text (text: "Alert", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/alertdialog") {
+                                text (text: "AlertDialog", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/avatar") {
+                                text (text: "Avatar", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/badge") {
+                                text (text: "Badge", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/breadcrumb") {
+                                text (text: "Breadcrumb", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/button") {
+                                text (text: "Button", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/calendar") {
+                                text (text: "Calendar", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/card") {
+                                text (text: "Card", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/carousel") {
+                                text (text: "Carousel", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/checkbox") {
+                                text (text: "Checkbox", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/collapsible") {
+                                text (text: "Collapsible", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/combobox") {
+                                text (text: "Combobox", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/command") {
+                                text (text: "Command", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/contextmenu") {
+                                text (text: "ContextMenu", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/datatable") {
+                                text (text: "DataTable", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/datepicker") {
+                                text (text: "DatePicker", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/dialog") {
+                                text (text: "Dialog", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/drawer") {
+                                text (text: "Drawer", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/dropdownmenu") {
+                                text (text: "DropdownMenu", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/form") {
+                                text (text: "Form", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/hovercard") {
+                                text (text: "HoverCard", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/input") {
+                                text (text: "Input", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/label") {
+                                text (text: "Label", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/menubar") {
+                                text (text: "Menubar", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/navigationmenu") {
+                                text (text: "NavigationMenu", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/pagination") {
+                                text (text: "Pagination", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/popover") {
+                                text (text: "Popover", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/progress") {
+                                text (text: "Progress", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/radiogroup") {
+                                text (text: "RadioGroup", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/scrollarea") {
+                                text (text: "ScrollArea", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/select") {
+                                text (text: "Select", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/separator") {
+                                text (text: "Separator", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/sheet") {
+                                text (text: "Sheet", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/sidebar") {
+                                text (text: "Sidebar", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/skeleton") {
+                                text (text: "Skeleton", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/slider") {
+                                text (text: "Slider", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/sonner") {
+                                text (text: "Sonner", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/switch") {
+                                text (text: "Switch", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/table") {
+                                text (text: "Table", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/tabs") {
+                                text (text: "Tabs", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/textarea") {
+                                text (text: "Textarea", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/text") {
+                                text (text: "Text", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/toast") {
+                                text (text: "Toast", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/toggle") {
+                                text (text: "Toggle", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/togglegroup") {
+                                text (text: "ToggleGroup", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/tooltip") {
+                                text (text: "Tooltip", class: "block px-3 py-2 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                        }
                     }
                 }
 
                 // Route outlet - renders the matched page component
-                main (class: "flex-1 p-8") {
-                    outlet
+                main (class: "flex-1 p-8 h-[calc(100vh-3.5rem)] overflow-hidden") {
+                    scroll (class: "h-full pr-4") {
+                        outlet
+                    }
                 }
             }
         }
