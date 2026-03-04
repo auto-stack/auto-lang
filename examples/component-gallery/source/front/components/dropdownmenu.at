@@ -1,0 +1,113 @@
+// components/dropdownmenu.at - DropdownMenu component
+
+/// DropdownMenu component for dropdown navigation.
+///
+/// # Features
+/// - Triggered by click
+/// - Keyboard navigation
+/// - Nested menus support
+///
+/// # Usage
+/// ```
+/// dropdown-menu {
+///     dropdown-menu-trigger (text: "Open") {}
+///     dropdown-menu-content {
+///         dropdown-menu-item (text: "Profile") {}
+///         dropdown-menu-separator {}
+///         dropdown-menu-item (text: "Logout") {}
+///     }
+/// }
+/// ```
+
+widget DropdownMenu {
+    model {
+        open bool = false
+    }
+
+    view {
+        div { class: "dropdown-menu" }
+    }
+}
+
+/// DropdownMenu trigger button
+widget DropdownMenuTrigger {
+    msg Msg { Click }
+
+    model {
+        text str = "Open"
+    }
+
+    view {
+        button { class: "dropdown-menu-trigger", text: .text, onclick: .Click }
+    }
+}
+
+/// DropdownMenu content container
+widget DropdownMenuContent {
+    model {
+        align str = "start"  // start, center, end
+        sideOffset int = 4
+    }
+
+    view {
+        div { class: f"dropdown-menu-content ${.align}" }
+    }
+}
+
+/// DropdownMenu item
+widget DropdownMenuItem {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+        disabled bool = false
+    }
+
+    computed {
+        itemClass => if .disabled {
+            "dropdown-menu-item disabled"
+        } else {
+            "dropdown-menu-item"
+        }
+    }
+
+    view {
+        div { class: .itemClass, text: .text, onclick: .Click }
+    }
+}
+
+/// DropdownMenu separator
+widget DropdownMenuSeparator {
+    view {
+        div { class: "dropdown-menu-separator" }
+    }
+}
+
+/// DropdownMenu label
+widget DropdownMenuLabel {
+    model {
+        text str = ""
+    }
+
+    view {
+        div { class: "dropdown-menu-label", text: .text }
+    }
+}
+
+/// Demo widget for DropdownMenu documentation
+widget DropdownMenuDemo {
+    view {
+        DropdownMenu {
+            DropdownMenuTrigger (text: "Open Menu") {}
+            DropdownMenuContent {
+                DropdownMenuLabel (text: "My Account") {}
+                DropdownMenuSeparator {}
+                DropdownMenuItem (text: "Profile") {}
+                DropdownMenuItem (text: "Billing") {}
+                DropdownMenuItem (text: "Settings") {}
+                DropdownMenuSeparator {}
+                DropdownMenuItem (text: "Logout") {}
+            }
+        }
+    }
+}

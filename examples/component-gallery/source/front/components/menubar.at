@@ -1,0 +1,138 @@
+// components/menubar.at - Menubar component
+
+/// Menubar component for horizontal menu navigation.
+///
+/// # Features
+/// - Horizontal menu bar
+/// - Nested submenus
+/// - Keyboard navigation
+///
+/// # Usage
+/// ```
+/// menubar {
+///     menubar-menu {
+///         menubar-trigger (text: "File") {}
+///         menubar-content {
+///             menubar-item (text: "New File") {}
+///             menubar-item (text: "Open") {}
+///         }
+///     }
+/// }
+/// ```
+
+widget Menubar {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { class: f"menubar ${.class}" }
+    }
+}
+
+/// Menubar menu container
+widget MenubarMenu {
+    view {
+        div { class: "menubar-menu" }
+    }
+}
+
+/// Menubar trigger button
+widget MenubarTrigger {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+    }
+
+    view {
+        button { class: "menubar-trigger", text: .text, onclick: .Click }
+    }
+}
+
+/// Menubar content/dropdown
+widget MenubarContent {
+    model {
+        align str = "start"
+    }
+
+    view {
+        div { class: f"menubar-content ${.align}" }
+    }
+}
+
+/// Menubar item
+widget MenubarItem {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+        disabled bool = false
+    }
+
+    view {
+        div { class: "menubar-item", text: .text, onclick: .Click }
+    }
+}
+
+/// Menubar separator
+widget MenubarSeparator {
+    view {
+        div { class: "menubar-separator" }
+    }
+}
+
+/// Menubar label
+widget MenubarLabel {
+    model {
+        text str = ""
+    }
+
+    view {
+        div { class: "menubar-label", text: .text }
+    }
+}
+
+/// Menubar checkbox item
+widget MenubarCheckboxItem {
+    model {
+        text str = ""
+        checked bool = false
+    }
+
+    view {
+        div { class: "menubar-checkbox-item" } {
+            checkbox (checked: .checked) {}
+            text (text: .text) {}
+        }
+    }
+}
+
+/// Demo widget for Menubar documentation
+widget MenubarDemo {
+    view {
+        Menubar {
+            MenubarMenu {
+                MenubarTrigger (text: "File") {}
+                MenubarContent {
+                    MenubarItem (text: "New File") {}
+                    MenubarItem (text: "Open...") {}
+                    MenubarSeparator {}
+                    MenubarItem (text: "Save") {}
+                    MenubarItem (text: "Save As...") {}
+                }
+            }
+            MenubarMenu {
+                MenubarTrigger (text: "Edit") {}
+                MenubarContent {
+                    MenubarItem (text: "Undo") {}
+                    MenubarItem (text: "Redo") {}
+                    MenubarSeparator {}
+                    MenubarItem (text: "Cut") {}
+                    MenubarItem (text: "Copy") {}
+                    MenubarItem (text: "Paste") {}
+                }
+            }
+        }
+    }
+}

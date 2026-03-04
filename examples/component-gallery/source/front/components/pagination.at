@@ -1,0 +1,139 @@
+// components/pagination.at - Pagination component
+
+/// Pagination component for page navigation.
+///
+/// # Features
+/// - Page number navigation
+/// - Previous/Next buttons
+/// - First/Last buttons
+/// - Ellipsis for large page counts
+///
+/// # Usage
+/// ```
+/// pagination (page: .currentPage, total: .totalPages, onchange: .ChangePage) {}
+/// ```
+
+widget Pagination {
+    msg Msg {
+        Change(page: int)
+        First
+        Last
+        Previous
+        Next
+    }
+
+    model {
+        page int = 1
+        total int = 10
+        perPage int = 10
+    }
+
+    view {
+        nav { class: "pagination", role: "navigation", "aria-label": "pagination" } {
+            ul { class: "pagination-list flex items-center gap-1" } {
+                // First button
+                PaginationFirst {}
+                // Previous button
+                PaginationPrevious {}
+                // Page numbers
+                PaginationItem (text: "1", active: .page == 1) {}
+                PaginationEllipsis {}
+                PaginationItem (text: f"${.page}") {}
+                PaginationEllipsis {}
+                PaginationItem (text: f"${.total}") {}
+                // Next button
+                PaginationNext {}
+                // Last button
+                PaginationLast {}
+            }
+        }
+    }
+}
+
+/// Pagination first button
+widget PaginationFirst {
+    msg Msg { Click }
+
+    view {
+        button { class: "pagination-first", variant: "ghost", size: "icon" } {
+            text (text: "<<") {}
+        }
+    }
+}
+
+/// Pagination previous button
+widget PaginationPrevious {
+    msg Msg { Click }
+
+    view {
+        button { class: "pagination-previous", variant: "ghost", size: "icon" } {
+            text (text: "<") {}
+        }
+    }
+}
+
+/// Pagination next button
+widget PaginationNext {
+    msg Msg { Click }
+
+    view {
+        button { class: "pagination-next", variant: "ghost", size: "icon" } {
+            text (text: ">") {}
+        }
+    }
+}
+
+/// Pagination last button
+widget PaginationLast {
+    msg Msg { Click }
+
+    view {
+        button { class: "pagination-last", variant: "ghost", size: "icon" } {
+            text (text: ">>") {}
+        }
+    }
+}
+
+/// Pagination page item
+widget PaginationItem {
+    msg Msg { Click }
+
+    model {
+        text str = "1"
+        active bool = false
+    }
+
+    computed {
+        itemClass => if .active {
+            "pagination-item active"
+        } else {
+            "pagination-item"
+        }
+    }
+
+    view {
+        button { class: .itemClass, text: .text, onclick: .Click }
+    }
+}
+
+/// Pagination ellipsis
+widget PaginationEllipsis {
+    view {
+        span { class: "pagination-ellipsis", text: "..." }
+    }
+}
+
+/// Demo widget for Pagination documentation
+widget PaginationDemo {
+    model {
+        page int = 3
+        total int = 20
+    }
+
+    view {
+        col (gap: "4") {
+            Pagination (page: .page, total: .total) {}
+            text (text: f"Page ${.page} of ${.total}") {}
+        }
+    }
+}

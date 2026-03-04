@@ -1,0 +1,122 @@
+// components/navigationmenu.at - NavigationMenu component
+
+/// NavigationMenu component for site navigation.
+///
+/// # Features
+/// - Responsive navigation
+/// - Nested dropdowns
+/// - Active state tracking
+///
+/// # Usage
+/// ```
+/// navigation-menu {
+///     navigation-menu-list {
+///         navigation-menu-item {
+///             navigation-menu-link (text: "Home", href: "/") {}
+///         }
+///         navigation-menu-item {
+///             navigation-menu-trigger (text: "Products") {}
+///             navigation-menu-content {
+///                 navigation-menu-link (text: "Item 1") {}
+///             }
+///         }
+///     }
+/// }
+/// ```
+
+widget NavigationMenu {
+    model {
+        class str = ""
+    }
+
+    view {
+        nav { class: f"navigation-menu ${.class}" }
+    }
+}
+
+/// NavigationMenu list container
+widget NavigationMenuList {
+    view {
+        ul { class: "navigation-menu-list" }
+    }
+}
+
+/// NavigationMenu item
+widget NavigationMenuItem {
+    view {
+        li { class: "navigation-menu-item" }
+    }
+}
+
+/// NavigationMenu trigger button
+widget NavigationMenuTrigger {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+    }
+
+    view {
+        button { class: "navigation-menu-trigger", text: .text, onclick: .Click }
+    }
+}
+
+/// NavigationMenu link
+widget NavigationMenuLink {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+        href str = "#"
+        active bool = false
+    }
+
+    computed {
+        linkClass => if .active {
+            "navigation-menu-link active"
+        } else {
+            "navigation-menu-link"
+        }
+    }
+
+    view {
+        a { class: .linkClass, text: .text, href: .href, onclick: .Click }
+    }
+}
+
+/// NavigationMenu content/dropdown
+widget NavigationMenuContent {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { class: f"navigation-menu-content ${.class}" }
+    }
+}
+
+/// Demo widget for NavigationMenu documentation
+widget NavigationMenuDemo {
+    view {
+        NavigationMenu {
+            NavigationMenuList {
+                NavigationMenuItem {
+                    NavigationMenuLink (text: "Home", href: "/", active: true) {}
+                }
+                NavigationMenuItem {
+                    NavigationMenuTrigger (text: "Products") {}
+                    NavigationMenuContent {
+                        col (gap: "2") {
+                            NavigationMenuLink (text: "Product 1", href: "/products/1") {}
+                            NavigationMenuLink (text: "Product 2", href: "/products/2") {}
+                            NavigationMenuLink (text: "Product 3", href: "/products/3") {}
+                        }
+                    }
+                }
+                NavigationMenuItem {
+                    NavigationMenuLink (text: "About", href: "/about") {}
+                }
+            }
+        }
+    }
+}
