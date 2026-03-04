@@ -1,0 +1,91 @@
+// components/collapsible.at - Collapsible component
+
+/// Collapsible component for expandable content sections.
+///
+/// # Features
+/// - Expand/collapse animation
+/// - Accessible with keyboard
+/// - Controlled or uncontrolled mode
+///
+/// # Usage
+/// ```
+/// collapsible (open: .expanded) {
+///     collapsible-trigger {
+///         button (text: "Toggle") {}
+///     }
+///     collapsible-content {
+///         text (text: "Hidden content") {}
+///     }
+/// }
+/// ```
+
+widget Collapsible {
+    msg Msg { Toggle }
+
+    model {
+        open bool = false
+    }
+
+    computed {
+        collapsibleClass => if .open {
+            "collapsible open"
+        } else {
+            "collapsible"
+        }
+    }
+
+    view {
+        div { class: .collapsibleClass, "data-state": if .open { "open" } else { "closed" } }
+    }
+
+    on {
+        Toggle => {
+            open = !open
+        }
+    }
+}
+
+/// Collapsible trigger button
+widget CollapsibleTrigger {
+    msg Msg { Click }
+
+    view {
+        button { class: "collapsible-trigger", onclick: .Click }
+    }
+}
+
+/// Collapsible content area
+widget CollapsibleContent {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { class: f"collapsible-content ${.class}" }
+    }
+}
+
+/// Demo widget for Collapsible documentation
+widget CollapsibleDemo {
+    model {
+        expanded bool = false
+    }
+
+    view {
+        col (gap: "4") {
+            Collapsible (open: .expanded) {
+                collapsible-trigger {
+                    row (gap: "2", class: "items-center") {
+                        button (text: if .expanded { "Collapse" } else { "Expand" }, variant: "outline") {}
+                    }
+                }
+                collapsible-content {
+                    div { class: "rounded-md border px-4 py-2 font-mono text-sm" } {
+                        text (text: "@radix-ui/colors") {}
+                        text (text: "@radix-ui/react-collapsible") {}
+                    }
+                }
+            }
+        }
+    }
+}

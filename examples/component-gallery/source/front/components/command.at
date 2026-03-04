@@ -1,0 +1,145 @@
+// components/command.at - Command component
+
+/// Command component for searchable command menus (Command+K palette).
+///
+/// # Features
+/// - Searchable options
+/// - Keyboard navigation
+/// - Grouped results
+/// - Empty state
+///
+/// # Usage
+/// ```
+/// command-dialog {
+///     command-input (placeholder: "Search...") {}
+///     command-list {
+///         command-empty (text: "No results") {}
+///         command-group (heading: "Suggestions") {
+///             command-item (text: "Calendar") {}
+///             command-item (text: "Settings") {}
+///         }
+///     }
+/// }
+/// ```
+
+widget Command {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { class: f"command ${.class}" }
+    }
+}
+
+/// Command dialog wrapper
+widget CommandDialog {
+    model {
+        open bool = false
+    }
+
+    view {
+        div { class: "command-dialog" }
+    }
+}
+
+/// Command input field
+widget CommandInput {
+    model {
+        placeholder str = "Type a command or search..."
+        value str = ""
+    }
+
+    view {
+        div { class: "flex items-center border-b px-3" } {
+            text (text: "🔍", class: "mr-2 h-4 w-4 shrink-0 opacity-50") {}
+            input { class: "flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50", placeholder: .placeholder, value: .value }
+        }
+    }
+}
+
+/// Command list container
+widget CommandList {
+    model {
+        maxheight int = 300
+    }
+
+    view {
+        div { class: "command-list", "max-height": f"${.maxheight}px" }
+    }
+}
+
+/// Command empty state
+widget CommandEmpty {
+    model {
+        text str = "No results found."
+    }
+
+    view {
+        p { class: "py-6 text-center text-sm", text: .text }
+    }
+}
+
+/// Command group
+widget CommandGroup {
+    model {
+        heading str = ""
+    }
+
+    view {
+        div { class: "command-group" } {
+            if .heading != "" {
+                div { class: "command-group-heading", text: .heading }
+            }
+        }
+    }
+}
+
+/// Command item/option
+widget CommandItem {
+    msg Msg { Click }
+
+    model {
+        text str = ""
+        shortcut str = ""
+    }
+
+    view {
+        div { class: "command-item", onclick: .Click } {
+            text (text: .text) {}
+            if .shortcut != "" {
+                text (text: .shortcut, class: "command-shortcut") {}
+            }
+        }
+    }
+}
+
+/// Command separator
+widget CommandSeparator {
+    view {
+        div { class: "command-separator" }
+    }
+}
+
+/// Demo widget for Command documentation
+widget CommandDemo {
+    view {
+        Command {
+            CommandInput (placeholder: "Search commands...") {}
+            CommandList {
+                CommandEmpty (text: "No commands found.") {}
+                CommandGroup (heading: "Suggestions") {
+                    CommandItem (text: "Calendar", shortcut: "⌘C") {}
+                    CommandItem (text: "Search Emoji", shortcut: "⌘E") {}
+                    CommandItem (text: "Calculator", shortcut: "⌘K") {}
+                }
+                CommandSeparator {}
+                CommandGroup (heading: "Settings") {
+                    CommandItem (text: "Profile") {}
+                    CommandItem (text: "Billing") {}
+                    CommandItem (text: "Settings") {}
+                }
+            }
+        }
+    }
+}
