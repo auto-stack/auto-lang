@@ -1354,3 +1354,27 @@ mod unified_registry_tests;
 
 #[cfg(test)]
 mod tests;
+
+// =============================================================================
+// Plan 015: AutoUI Core (feature-gated)
+// =============================================================================
+
+#[cfg(feature = "ui")]
+pub mod ui;
+
+// Re-export UI types when feature is enabled
+#[cfg(feature = "ui")]
+pub use ui::{
+    Component, View, ViewBuilder,
+    VNodeId, VNodeKind, VNode, VNodeProps, VTree,
+    view_to_vtree,
+    App, AppResult,
+    Style,
+};
+
+#[cfg(feature = "ui-interpreter")]
+pub use ui::{
+    interpreter::{InterpreterBridge, DynamicMessage},
+    event_router::{EventRouter, EventType, EventContext},
+    hot_reload::{HotReloadComponent, UIWatcher},
+};
