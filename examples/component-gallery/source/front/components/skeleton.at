@@ -1,0 +1,38 @@
+// components/skeleton.at - Skeleton component
+
+/// Skeleton component for showing loading placeholders.
+///
+/// # Features
+/// - Pulse animation while loading
+/// - Customizable width and height via class
+///
+/// # Usage
+/// ```
+/// Skeleton (class: "h-4 w-[250px]") {}
+/// ```
+
+widget Skeleton {
+    model {
+        class str = "h-4 w-[250px]"
+    }
+
+    view {
+        div { class: f"animate-pulse rounded-md bg-muted ${.class}" }
+    }
+}
+
+/// Demo widget for Skeleton documentation
+widget SkeletonDemo {
+    view {
+        col (gap: "4") {
+            row (gap: "4") {
+                Skeleton (class: "h-12 w-12 rounded-full") {}
+                col (gap: "2") {
+                    Skeleton (class: "h-4 w-[250px]") {}
+                    Skeleton (class: "h-4 w-[200px]") {}
+                }
+            }
+            Skeleton (class: "h-[125px] w-[250px] rounded-xl") {}
+        }
+    }
+}

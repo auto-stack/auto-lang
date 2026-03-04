@@ -1,0 +1,44 @@
+// components/progress.at - Progress component
+
+/// Progress component for showing completion status.
+///
+/// # Features
+/// - Shows progress as a percentage (0-100)
+/// - Animated transition when value changes
+///
+/// # Usage
+/// ```
+/// Progress (value: 60) {}
+/// ```
+
+widget Progress {
+    model {
+        value int = 0  // 0-100
+        max int = 100
+    }
+
+    computed {
+        percentage => if .max > 0 { .value * 100 / .max } else { 0 }
+    }
+
+    view {
+        div { class: "relative h-2 w-full overflow-hidden rounded-full bg-muted/20" } {
+            div { class: "h-full bg-primary transition-all", style: f"transform: translateX(-${100 - .percentage}%)" }
+        }
+    }
+}
+
+/// Demo widget for Progress documentation
+widget ProgressDemo {
+    model {
+        progress int = 60
+    }
+
+    view {
+        col (gap: "4") {
+            Progress (value: 25) {}
+            Progress (value: 60) {}
+            Progress (value: 100) {}
+        }
+    }
+}
