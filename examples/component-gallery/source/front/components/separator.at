@@ -1,0 +1,54 @@
+// components/separator.at - Separator component
+
+/// Separator component for visual division.
+///
+/// # Features
+/// - Horizontal or vertical orientation
+/// - Decorative or semantic
+/// - Customizable styling
+///
+/// # Usage
+/// ```
+/// separator (orientation: "horizontal") {}
+/// separator (orientation: "vertical", decorative: true) {}
+/// ```
+
+widget Separator {
+    model {
+        orientation str = "horizontal"  // horizontal, vertical
+        decorative bool = false
+    }
+
+    computed {
+        separatorClass => if .orientation == "vertical" {
+            "separator vertical h-full w-[1px]"
+        } else {
+            "separator horizontal h-[1px] w-full"
+        }
+    }
+
+    view {
+        div {
+            class: .separatorClass,
+            role: if .decorative { "none" } else { "separator" },
+            "aria-orientation": if .decorative { "undefined" } else { .orientation }
+        }
+    }
+}
+
+/// Demo widget for Separator documentation
+widget SeparatorDemo {
+    view {
+        col (gap: "4") {
+            text (text: "Above separator") {}
+            Separator {}
+            text (text: "Below separator") {}
+
+            row (gap: "4") {
+                text (text: "Left") {}
+                Separator (orientation: "vertical", decorative: true) {}
+                text (text: "Right") {}
+            }
+        }
+    }
+}

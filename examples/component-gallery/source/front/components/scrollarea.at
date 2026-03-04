@@ -1,0 +1,76 @@
+// components/scrollarea.at - ScrollArea component
+
+/// ScrollArea component for scrollable containers.
+///
+/// # Features
+/// - Custom styled scrollbars
+/// - Vertical and horizontal scrolling
+/// - Scroll visibility modes
+///
+/// # Usage
+/// ```
+/// scroll-area (class: "h-72 w-48") {
+///     col {
+///         // scrollable content
+///     }
+/// }
+/// ```
+
+widget ScrollArea {
+    model {
+        class str = ""
+        scrollbarVisibility str = "auto"  // auto, always, scroll, hover
+    }
+
+    view {
+        div { class: f"scroll-area ${.class}" }
+    }
+}
+
+/// ScrollArea viewport
+widget ScrollAreaViewport {
+    view {
+        div { class: "scroll-area-viewport" }
+    }
+}
+
+/// ScrollArea scrollbar
+widget ScrollAreaScrollbar {
+    model {
+        orientation str = "vertical"  // vertical, horizontal
+    }
+
+    view {
+        div { class: f"scroll-area-scrollbar ${.orientation}" }
+    }
+}
+
+/// ScrollArea thumb
+widget ScrollAreaThumb {
+    view {
+        div { class: "scroll-area-thumb" }
+    }
+}
+
+/// Demo widget for ScrollArea documentation
+widget ScrollAreaDemo {
+    view {
+        col (gap: "4") {
+            h3 (text: "Vertical Scroll") {}
+            ScrollArea (class: "h-32 w-48 rounded-md border") {
+                col (gap: "2") {
+                    text (text: "Item 1") {}
+                    text (text: "Item 2") {}
+                    text (text: "Item 3") {}
+                    text (text: "Item 4") {}
+                    text (text: "Item 5") {}
+                    text (text: "Item 6") {}
+                    text (text: "Item 7") {}
+                    text (text: "Item 8") {}
+                    text (text: "Item 9") {}
+                    text (text: "Item 10") {}
+                }
+            }
+        }
+    }
+}

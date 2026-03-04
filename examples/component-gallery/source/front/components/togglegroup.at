@@ -1,0 +1,93 @@
+// components/togglegroup.at - ToggleGroup component
+
+/// ToggleGroup component for grouped toggle buttons.
+///
+/// # Features
+/// - Single or multiple selection
+/// - Horizontal or vertical orientation
+/// - Accessible with keyboard
+///
+/// # Usage
+/// ```
+/// toggle-group (type: "single", value: .selected, onchange: .Select) {
+///     toggle-item (value: "left", text: "Left") {}
+///     toggle-item (value: "center", text: "Center") {}
+///     toggle-item (value: "right", text: "Right") {}
+/// }
+/// ```
+
+widget ToggleGroup {
+    msg Msg { Change(value: str) }
+
+    model {
+        value str = ""
+        values List = []  // For multiple selection
+        type str = "single"  // single, multiple
+        orientation str = "horizontal"  // horizontal, vertical
+        disabled bool = false
+    }
+
+    computed {
+        groupClass => f"toggle-group toggle-group-${.orientation}"
+    }
+
+    view {
+        div { class: .groupClass, role: "group" }
+    }
+}
+
+/// ToggleGroup item
+widget ToggleItem {
+    msg Msg { Click }
+
+    model {
+        value str = ""
+        text str = ""
+        pressed bool = false
+        disabled bool = false
+    }
+
+    computed {
+        itemClass => if .pressed {
+            "toggle-group-item pressed"
+        } else {
+            "toggle-group-item"
+        }
+    }
+
+    view {
+        button { class: .itemClass, text: .text, onclick: .Click, disabled: .disabled, "aria-pressed": .pressed }
+    }
+}
+
+/// Demo widget for ToggleGroup documentation
+widget ToggleGroupDemo {
+    model {
+        alignment str = "left"
+        styles List = ["bold"]
+    }
+
+    view {
+        col (gap: "4") {
+            // Single selection
+            col (gap: "2") {
+                label (text: "Alignment") {}
+                ToggleGroup (type: "single", value: .alignment) {
+                    ToggleItem (value: "left", text: "Left", pressed: .alignment == "left") {}
+                    ToggleItem (value: "center", text: "Center", pressed: .alignment == "center") {}
+                    ToggleItem (value: "right", text: "Right", pressed: .alignment == "right") {}
+                }
+            }
+
+            // Multiple selection (simulated)
+            col (gap: "2") {
+                label (text: "Style") {}
+                ToggleGroup (type: "multiple", orientation: "horizontal") {
+                    ToggleItem (value: "bold", text: "B") {}
+                    ToggleItem (value: "italic", text: "I") {}
+                    ToggleItem (value: "underline", text: "U") {}
+                }
+            }
+        }
+    }
+}

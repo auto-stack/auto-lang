@@ -1,0 +1,75 @@
+// components/toggle.at - Toggle component
+
+/// Toggle component for two-state buttons.
+///
+/// # Features
+/// - Pressed/unpressed states
+/// - Accessible with keyboard
+/// - Customizable styling
+///
+/// # Usage
+/// ```
+/// toggle (pressed: .isPressed, onchange: .Toggle) {
+///     text (text: "B") {}
+/// }
+/// ```
+
+widget Toggle {
+    msg Msg { Change(pressed: bool) }
+
+    model {
+        pressed bool = false
+        disabled bool = false
+        size str = "md"  // sm, md, lg
+        variant str = "default"  // default, outline
+    }
+
+    computed {
+        toggleClass => if .pressed {
+            f"toggle toggle-${.size} toggle-${.variant} pressed"
+        } else {
+            f"toggle toggle-${.size} toggle-${.variant}"
+        }
+    }
+
+    view {
+        button {
+            class: .toggleClass,
+            onclick: .Change,
+            disabled: .disabled,
+            "aria-pressed": .pressed
+        }
+    }
+
+    on {
+        Change(pressed) => {
+            pressed = pressed
+        }
+    }
+}
+
+/// Demo widget for Toggle documentation
+widget ToggleDemo {
+    model {
+        bold bool = false
+        italic bool = true
+        underline bool = false
+    }
+
+    view {
+        col (gap: "4") {
+            row (gap: "2") {
+                Toggle (pressed: .bold) {
+                    text (text: "B", class: "font-bold") {}
+                }
+                Toggle (pressed: .italic) {
+                    text (text: "I", class: "italic") {}
+                }
+                Toggle (pressed: .underline) {
+                    text (text: "U", class: "underline") {}
+                }
+            }
+            text (text: f"Bold: ${.bold}, Italic: ${.italic}, Underline: ${.underline}") {}
+        }
+    }
+}
