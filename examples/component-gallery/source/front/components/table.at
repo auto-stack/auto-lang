@@ -1,0 +1,131 @@
+// components/table.at - Table component
+
+/// Table component for displaying tabular data.
+///
+/// # Features
+/// - Responsive design
+/// - Customizable headers and cells
+/// - Support for colspan and rowspan
+///
+/// # Usage
+/// ```
+/// table {
+///     table-header {
+///         table-row {
+///             table-head (text: "Name") {}
+///             table-head (text: "Email") {}
+///         }
+///     }
+///     table-body {
+///         table-row {
+///             table-cell (text: "John") {}
+///             table-cell (text: "john@example.com") {}
+///         }
+///     }
+/// }
+/// ```
+
+widget Table {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { class: "relative w-full overflow-auto" } {
+            table { class: f"w-full caption-bottom text-sm ${.class}" }
+        }
+    }
+}
+
+/// Table header section
+widget TableHeader {
+    view {
+        thead { class: "[&_tr]:border-b" }
+    }
+}
+
+/// Table body section
+widget TableBody {
+    view {
+        tbody { class: "[&_tr:last-child]:border-0" }
+    }
+}
+
+/// Table footer section
+widget TableFooter {
+    view {
+        tfoot { class: "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0" }
+    }
+}
+
+/// Table row
+widget TableRow {
+    view {
+        tr { class: "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted" }
+    }
+}
+
+/// Table header cell
+widget TableHead {
+    model {
+        text str = ""
+        colspan int = 1
+    }
+
+    view {
+        th { class: "h-10 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]", text: .text, colspan: .colspan }
+    }
+}
+
+/// Table data cell
+widget TableCell {
+    model {
+        text str = ""
+        colspan int = 1
+    }
+
+    view {
+        td { class: "p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]", text: .text, colspan: .colspan }
+    }
+}
+
+/// Table caption
+widget TableCaption {
+    model {
+        text str = ""
+    }
+
+    view {
+        caption { class: "mt-4 text-sm text-muted-foreground", text: .text }
+    }
+}
+
+/// Demo widget for Table documentation
+widget TableDemo {
+    view {
+        Table {
+            TableHeader {
+                TableRow {
+                    TableHead (text: "Invoice") {}
+                    TableHead (text: "Status") {}
+                    TableHead (text: "Method") {}
+                    TableHead (text: "Amount") {}
+                }
+            }
+            TableBody {
+                TableRow {
+                    TableCell (text: "INV001") {}
+                    TableCell (text: "Paid") {}
+                    TableCell (text: "Credit Card") {}
+                    TableCell (text: "$250.00") {}
+                }
+                TableRow {
+                    TableCell (text: "INV002") {}
+                    TableCell (text: "Pending") {}
+                    TableCell (text: "PayPal") {}
+                    TableCell (text: "$150.00") {}
+                }
+            }
+        }
+    }
+}

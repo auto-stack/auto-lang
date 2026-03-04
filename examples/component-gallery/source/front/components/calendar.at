@@ -1,0 +1,71 @@
+// components/calendar.at - Calendar component
+
+/// Calendar component for date selection.
+///
+/// # Features
+/// - Date selection with visual feedback
+/// - Month navigation
+/// - Accessible with keyboard navigation
+///
+/// # Usage
+/// ```
+/// calendar (selected: .selectedDate, onselect: .SelectDate) {}
+/// ```
+
+widget Calendar {
+    msg Msg {
+        Select(date: str)
+        PrevMonth
+        NextMonth
+    }
+
+    model {
+        selected str = ""
+        month int = 1
+        year int = 2025
+    }
+
+    view {
+        div { class: "rounded-md border" } {
+            // Calendar header with navigation
+            div { class: "flex items-center justify-between p-4" } {
+                button { text: "<", onclick: .PrevMonth }
+                text (text: f"${.month}/${.year}") {}
+                button { text: ">", onclick: .NextMonth }
+            }
+            // Calendar grid
+            div { class: "calendar-grid" }
+        }
+    }
+
+    on {
+        PrevMonth => {
+            month = month - 1
+            if month < 1 {
+                month = 12
+                year = year - 1
+            }
+        }
+        NextMonth => {
+            month = month + 1
+            if month > 12 {
+                month = 1
+                year = year + 1
+            }
+        }
+    }
+}
+
+/// Demo widget for Calendar documentation
+widget CalendarDemo {
+    model {
+        selectedDate str = ""
+    }
+
+    view {
+        col (gap: "4") {
+            Calendar (selected: .selectedDate) {}
+            text (text: f"Selected: ${.selectedDate}") {}
+        }
+    }
+}

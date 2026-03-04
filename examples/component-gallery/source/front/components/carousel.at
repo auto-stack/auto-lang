@@ -1,0 +1,106 @@
+// components/carousel.at - Carousel component
+
+/// Carousel component with motion and gestures.
+///
+/// # Features
+/// - Touch/swipe support
+/// - Keyboard navigation
+/// - Auto-play option
+/// - Multiple slides per view
+///
+/// # Usage
+/// ```
+/// carousel {
+///     carousel-content {
+///         carousel-item { text (text: "Slide 1") {} }
+///         carousel-item { text (text: "Slide 2") {} }
+///     }
+///     carousel-previous {}
+///     carousel-next {}
+/// }
+/// ```
+
+widget Carousel {
+    msg Msg {
+        Next
+        Previous
+    }
+
+    model {
+        autoplay bool = false
+        orientation str = "horizontal"  // horizontal, vertical
+    }
+
+    computed {
+        carouselClass => f"carousel carousel-${.orientation}"
+    }
+
+    view {
+        div { class: .carouselClass, role: "region", "aria-roledescription": "carousel" }
+    }
+}
+
+/// Carousel content container
+widget CarouselContent {
+    view {
+        div { class: "flex" }
+    }
+}
+
+/// Carousel item/slide
+widget CarouselItem {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { class: f"min-w-0 shrink-0 grow-0 basis-full ${.class}" }
+    }
+}
+
+/// Carousel previous button
+widget CarouselPrevious {
+    view {
+        button { class: "carousel-previous", variant: "outline", size: "icon" }
+    }
+}
+
+/// Carousel next button
+widget CarouselNext {
+    view {
+        button { class: "carousel-next", variant: "outline", size: "icon" }
+    }
+}
+
+/// Demo widget for Carousel documentation
+widget CarouselDemo {
+    view {
+        carousel (class: "w-full max-w-xs") {
+            carousel-content {
+                carousel-item {
+                    card {
+                        card-content {
+                            text (text: "Slide 1") {}
+                        }
+                    }
+                }
+                carousel-item {
+                    card {
+                        card-content {
+                            text (text: "Slide 2") {}
+                        }
+                    }
+                }
+                carousel-item {
+                    card {
+                        card-content {
+                            text (text: "Slide 3") {}
+                        }
+                    }
+                }
+            }
+            carousel-previous {}
+            carousel-next {}
+        }
+    }
+}

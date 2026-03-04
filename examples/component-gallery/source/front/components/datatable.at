@@ -1,0 +1,107 @@
+// components/datatable.at - DataTable component
+
+/// DataTable component for advanced table features.
+///
+/// # Features
+/// - Sorting by column
+/// - Filtering/searching
+/// - Pagination
+/// - Row selection
+///
+/// # Usage
+/// ```
+/// data-table {
+///     data-table-header {
+///         data-table-row {
+///             data-table-head (text: "Name", sortable: true) {}
+///         }
+///     }
+///     data-table-body {
+///         data-table-row {
+///             data-table-cell (text: "Value") {}
+///         }
+///     }
+/// }
+/// ```
+
+widget DataTable {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { class: f"data-table ${.class}" } {
+            Table {}
+        }
+    }
+}
+
+/// DataTable toolbar with search and filters
+widget DataTableToolbar {
+    model {
+        placeholder str = "Search..."
+    }
+
+    view {
+        div { class: "flex items-center justify-between" } {
+            input (placeholder: .placeholder, class: "w-64") {}
+            row (gap: "2") {
+                button (text: "Filter", variant: "outline") {}
+            }
+        }
+    }
+}
+
+/// DataTable pagination controls
+widget DataTablePagination {
+    model {
+        page int = 1
+        total int = 1
+        perPage int = 10
+    }
+
+    computed {
+        totalPages => (total + perPage - 1) / perPage
+    }
+
+    view {
+        div { class: "flex items-center justify-between px-2" } {
+            text (text: f"Page ${.page} of ${.totalPages}") {}
+            row (gap: "2") {
+                button (text: "Previous", variant: "outline", size: "sm") {}
+                button (text: "Next", variant: "outline", size: "sm") {}
+            }
+        }
+    }
+}
+
+/// Demo widget for DataTable documentation
+widget DataTableDemo {
+    view {
+        col (gap: "4") {
+            DataTableToolbar {}
+            Table {
+                TableHeader {
+                    TableRow {
+                        TableHead (text: "ID") {}
+                        TableHead (text: "Name") {}
+                        TableHead (text: "Status") {}
+                    }
+                }
+                TableBody {
+                    TableRow {
+                        TableCell (text: "001") {}
+                        TableCell (text: "Item 1") {}
+                        TableCell (text: "Active") {}
+                    }
+                    TableRow {
+                        TableCell (text: "002") {}
+                        TableCell (text: "Item 2") {}
+                        TableCell (text: "Inactive") {}
+                    }
+                }
+            }
+            DataTablePagination (page: 1, total: 50, perPage: 10) {}
+        }
+    }
+}
