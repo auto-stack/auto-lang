@@ -6,17 +6,50 @@ widget SelectPage {
     view {
         col {
             h1 (text: "Select") {}
-            text (text: "Displays a list of options for the user to pick from, triggered by a button.") {}
+            text (text: "Displays a list of options for the user to pick from.") {}
 
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add select") {}
 
             h2 (text: "Simple") {}
             preview-card (id: "select-basic") {
-                select (placeholder: "Select a fruit") {
-                    select-item (text: "Apple", value: "apple") {}
-                    select-item (text: "Banana", value: "banana") {}
-                    select-item (text: "Orange", value: "orange") {}
+                select {
+                    select-trigger {
+                        select-value (placeholder: "Select a fruit") {}
+                    }
+                    select-content {
+                        select-group {
+                            select-label (text: "Fruits") {}
+                            select-item (text: "Apple", value: "apple") {}
+                            select-item (text: "Banana", value: "banana") {}
+                            select-item (text: "Blueberry", value: "blueberry") {}
+                            select-item (text: "Grapes", value: "grapes") {}
+                            select-item (text: "Pineapple", value: "pineapple") {}
+                        }
+                    }
+                }
+            }
+
+            h2 (text: "Scrollable") {}
+            preview-card (id: "select-scrollable") {
+                select {
+                    select-trigger (class: "w-[280px]") {
+                        select-value (placeholder: "Select a timezone") {}
+                    }
+                    select-content {
+                        scroll (class: "h-[200px]") {
+                            select-item (text: "Pacific Standard Time", value: "pst") {}
+                            select-item (text: "Mountain Standard Time", value: "mst") {}
+                            select-item (text: "Central Standard Time", value: "cst") {}
+                            select-item (text: "Eastern Standard Time", value: "est") {}
+                            select-item (text: "Atlantic Standard Time", value: "ast") {}
+                            select-item (text: "Greenwich Mean Time", value: "gmt") {}
+                            select-item (text: "Central European Time", value: "cet") {}
+                            select-item (text: "Eastern European Time", value: "eet") {}
+                            select-item (text: "Japan Standard Time", value: "jst") {}
+                            select-item (text: "Australian Eastern Time", value: "aet") {}
+                        }
+                    }
                 }
             }
 
@@ -37,7 +70,7 @@ widget SelectPage {
                         td (text: "string") {}
                         td (text: "-") {}
                         td (text: "-") {}
-                        td (text: "Placeholder text") {}
+                        td (text: "Placeholder text for select-value") {}
                     }
                     tr {
                         td (text: "disabled") {}
