@@ -244,11 +244,31 @@ impl<'a> Lexer<'a> {
 
     pub fn str(&mut self) -> Token {
         let mut text = String::new();
-        self.chars.next();
+        self.chars.next(); // skip opening "
         while let Some(&c) = self.chars.peek() {
             if c == '"' {
                 self.chars.next();
                 break;
+            }
+            if c == '\\' {
+                self.chars.next(); // skip \
+                if let Some(&esc) = self.chars.peek() {
+                    match esc {
+                        'n' => text.push('\n'),
+                        't' => text.push('\t'),
+                        'r' => text.push('\r'),
+                        '0' => text.push('\0'),
+                        '\\' => text.push('\\'),
+                        '"' => text.push('"'),
+                        _ => {
+                            // Unknown escape, keep as-is
+                            text.push('\\');
+                            text.push(esc);
+                        }
+                    }
+                    self.chars.next();
+                    continue;
+                }
             }
             text.push(c);
             self.chars.next();
@@ -931,6 +951,34 @@ mod tests {
         let code = r#""Hello""#;
         let tokens = parse_token_strings(code);
         assert_eq!(tokens, "<str:Hello>");
+    }
+
+    #[test]
+    fn test_str_escape_quote() {
+        let code = r#""hello \"world\"""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, r#"<str:hello "world">"#);
+    }
+
+    #[test]
+    fn test_str_escape_backslash() {
+        let code = r#""path\\file""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, r#"<str:path\file>"#);
+    }
+
+    #[test]
+    fn test_str_escape_newline() {
+        let code = r#""line1\nline2""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<str:line1\nline2>");
+    }
+
+    #[test]
+    fn test_str_escape_tab() {
+        let code = r#""col1\tcol2""#;
+        let tokens = parse_token_strings(code);
+        assert_eq!(tokens, "<str:col1\tcol2>");
     }
 
     #[test]

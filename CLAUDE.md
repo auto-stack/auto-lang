@@ -37,6 +37,13 @@ auto auto/auto.at            # Compile the Auto compiler with itself
 
 **Status**: Early stage - this is the beginning of the self-hosting effort. The compiler is not yet feature-complete.
 
+### Component Gallery (Vue UI Generation)
+
+```bash
+# Build Vue components from AURA files
+cd examples/component-gallery && cargo run -- vue
+```
+
 ## Architecture Overview
 
 ### Compilation Pipeline
