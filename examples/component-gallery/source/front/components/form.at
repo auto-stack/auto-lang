@@ -1,0 +1,114 @@
+// components/form.at - Form component
+
+/// Form component for form validation and submission.
+///
+/// # Features
+/// - Form validation
+/// - Error messages
+/// - Accessible labels
+///
+/// # Usage
+/// ```
+/// form (onsubmit: .Submit) {
+///     form-item {
+///         form-label (text: "Email") {}
+///         input (type: "email") {}
+///         form-description (text: "Enter your email") {}
+///         form-message (text: "Invalid email") {}
+///     }
+/// }
+/// ```
+
+widget Form {
+    msg Msg { Submit }
+
+    model {
+        class str = ""
+    }
+
+    view {
+        form { class: f"space-y-6 ${.class}", onsubmit: .Submit }
+    }
+}
+
+/// Form item container
+widget FormItem {
+    view {
+        div { class: "space-y-2" }
+    }
+}
+
+/// Form label
+widget FormLabel {
+    model {
+        text str = ""
+        for str = ""
+    }
+
+    view {
+        label { class: "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70", text: .text }
+    }
+}
+
+/// Form control wrapper
+widget FormControl {
+    view {
+        div { class: "form-control" }
+    }
+}
+
+/// Form description
+widget FormDescription {
+    model {
+        text str = ""
+    }
+
+    view {
+        p { class: "text-[0.8rem] text-muted-foreground", text: .text }
+    }
+}
+
+/// Form message (error/success)
+widget FormMessage {
+    model {
+        text str = ""
+        type str = "error"  // error, success, info
+    }
+
+    computed {
+        messageClass => if .type == "error" {
+            "text-[0.8rem] font-medium text-destructive"
+        } else {
+            "text-[0.8rem] font-medium text-muted-foreground"
+        }
+    }
+
+    view {
+        p { class: .messageClass, text: .text }
+    }
+}
+
+/// Demo widget for Form documentation
+widget FormDemo {
+    msg Msg { Submit }
+
+    model {
+        email str = ""
+        password str = ""
+    }
+
+    view {
+        Form {
+            FormItem {
+                FormLabel (text: "Email") {}
+                input (type: "email", placeholder: "email@example.com") {}
+                FormDescription (text: "We'll never share your email.") {}
+            }
+            FormItem {
+                FormLabel (text: "Password") {}
+                input (type: "password", placeholder: "••••••••") {}
+            }
+            button (text: "Submit", type: "submit") {}
+        }
+    }
+}

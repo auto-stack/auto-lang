@@ -1,0 +1,115 @@
+// components/combobox.at - Combobox component
+
+/// Combobox component combining input with dropdown.
+///
+/// # Features
+/// - Searchable options
+/// - Keyboard navigation
+/// - Multi-select support
+///
+/// # Usage
+/// ```
+/// combobox (value: .selected, onchange: .Select) {
+///     combobox-input (placeholder: "Search...") {}
+///     combobox-list {
+///         combobox-item (value: "1", text: "Option 1") {}
+///     }
+/// }
+/// ```
+
+widget Combobox {
+    msg Msg { Change(value: str) }
+
+    model {
+        value str = ""
+        open bool = false
+    }
+
+    view {
+        Popover (open: .open) {
+            popover-trigger {
+                ComboboxInput (value: .value) {}
+            }
+            popover-content {
+                ComboboxList {}
+            }
+        }
+    }
+}
+
+/// Combobox input field
+widget ComboboxInput {
+    msg Msg { Change(value: str) }
+
+    model {
+        value str = ""
+        placeholder str = "Search..."
+    }
+
+    view {
+        input { class: "combobox-input", placeholder: .placeholder, value: .value, onchange: .Change }
+    }
+}
+
+/// Combobox list container
+widget ComboboxList {
+    view {
+        div { class: "combobox-list" }
+    }
+}
+
+/// Combobox empty state
+widget ComboboxEmpty {
+    model {
+        text str = "No results found."
+    }
+
+    view {
+        p { class: "py-6 text-center text-sm", text: .text }
+    }
+}
+
+/// Combobox item/option
+widget ComboboxItem {
+    msg Msg { Click }
+
+    model {
+        value str = ""
+        text str = ""
+        disabled bool = false
+    }
+
+    view {
+        div { class: "combobox-item", text: .text, onclick: .Click }
+    }
+}
+
+/// Combobox group
+widget ComboboxGroup {
+    view {
+        div { class: "combobox-group" }
+    }
+}
+
+/// Demo widget for Combobox documentation
+widget ComboboxDemo {
+    model {
+        selected str = ""
+        open bool = false
+    }
+
+    view {
+        Combobox (value: .selected, open: .open) {
+            ComboboxInput (placeholder: "Select framework...") {}
+            ComboboxList {
+                ComboboxEmpty (text: "No framework found.") {}
+                ComboboxGroup {
+                    ComboboxItem (value: "next", text: "Next.js") {}
+                    ComboboxItem (value: "sveltekit", text: "SvelteKit") {}
+                    ComboboxItem (value: "nuxt", text: "Nuxt.js") {}
+                    ComboboxItem (value: "remix", text: "Remix") {}
+                }
+            }
+        }
+    }
+}

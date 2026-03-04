@@ -1,0 +1,64 @@
+// components/switch.at - Switch component
+
+/// Switch component for toggle selections.
+///
+/// # Features
+/// - On/off toggle switch
+/// - Accessible with keyboard
+/// - Animated transition
+///
+/// # Usage
+/// ```
+/// switch (checked: .isEnabled, onchange: .Toggle) {}
+/// ```
+
+widget Switch {
+    msg Msg { Change(checked: bool) }
+
+    model {
+        checked bool = false
+        disabled bool = false
+    }
+
+    computed {
+        switchClass => if .checked {
+            "switch checked"
+        } else {
+            "switch"
+        }
+    }
+
+    view {
+        button {
+            type: "switch",
+            class: .switchClass,
+            onclick: .Change,
+            disabled: .disabled,
+            role: "switch",
+            "aria-checked": .checked
+        }
+    }
+
+    on {
+        Change(checked) => {
+            checked = checked
+        }
+    }
+}
+
+/// Demo widget for Switch documentation
+widget SwitchDemo {
+    model {
+        enabled bool = false
+    }
+
+    view {
+        col (gap: "4") {
+            row (gap: "2") {
+                Switch (checked: .enabled) {}
+                label (text: "Enable notifications") {}
+            }
+            text (text: f"Status: ${if .enabled { \"On\" } else { \"Off\" }}") {}
+        }
+    }
+}
