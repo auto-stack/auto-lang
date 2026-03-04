@@ -137,6 +137,37 @@ impl ShadcnRegistry {
             ("@/components/ui/select", vec!["Select", "SelectContent", "SelectItem", "SelectTrigger", "SelectValue"]));
         components.insert("option",
             ("@/components/ui/select", vec!["SelectItem"]));
+        // Select sub-components
+        components.insert("selecttrigger",
+            ("@/components/ui/select", vec!["SelectTrigger"]));
+        components.insert("select-trigger",
+            ("@/components/ui/select", vec!["SelectTrigger"]));
+        components.insert("selectvalue",
+            ("@/components/ui/select", vec!["SelectValue"]));
+        components.insert("select-value",
+            ("@/components/ui/select", vec!["SelectValue"]));
+        components.insert("selectcontent",
+            ("@/components/ui/select", vec!["SelectContent"]));
+        components.insert("select-content",
+            ("@/components/ui/select", vec!["SelectContent"]));
+        components.insert("selectitem",
+            ("@/components/ui/select", vec!["SelectItem"]));
+        components.insert("select-item",
+            ("@/components/ui/select", vec!["SelectItem"]));
+        components.insert("selectgroup",
+            ("@/components/ui/select", vec!["SelectGroup"]));
+        components.insert("select-group",
+            ("@/components/ui/select", vec!["SelectGroup"]));
+        components.insert("selectlabel",
+            ("@/components/ui/select", vec!["SelectLabel"]));
+        components.insert("select-label",
+            ("@/components/ui/select", vec!["SelectLabel"]));
+        components.insert("selectseparator",
+            ("@/components/ui/select", vec!["SelectSeparator"]));
+        components.insert("select-separator",
+            ("@/components/ui/select", vec!["SelectSeparator"]));
+        components.insert("selectscrollbutton",
+            ("@/components/ui/select", vec!["SelectScrollUpButton", "SelectScrollDownButton"]));
 
         // === Navigation Elements ===
         components.insert("tabs",
@@ -2620,6 +2651,51 @@ impl VueGenerator {
                     if self.extract_bool_value(value) {
                         attrs.push("disabled".to_string());
                     }
+                }
+            }
+
+            // === SelectItem ===
+            "selectitem" | "select-item" => {
+                // value for selection
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // disabled
+                if let Some(value) = props.get("disabled") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("disabled".to_string());
+                    }
+                }
+            }
+
+            // === SelectValue ===
+            "selectvalue" | "select-value" => {
+                // placeholder
+                if let Some(value) = props.get("placeholder") {
+                    let placeholder = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("placeholder=\"{}\"", placeholder));
+                }
+            }
+
+            // === SelectTrigger ===
+            "selecttrigger" | "select-trigger" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            // === SelectLabel ===
+            "selectlabel" | "select-label" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
                 }
             }
 
