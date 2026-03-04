@@ -1,0 +1,122 @@
+// components/sheet.at - Sheet component
+
+/// Sheet component for side panels.
+///
+/// # Features
+/// - Slides in from left, right, top, or bottom
+/// - Animated transitions
+/// - Accessible with keyboard navigation
+///
+/// # Usage
+/// ```
+/// sheet (open: .showSheet) {
+///     sheet-trigger (text: "Open") {}
+///     sheet-content (side: "right") {
+///         sheet-header {
+///             sheet-title (text: "Title") {}
+///         }
+///     }
+/// }
+/// ```
+
+widget Sheet {
+    model {
+        open bool = false
+    }
+
+    view {
+        div { class: "sheet" }
+    }
+}
+
+/// Sheet trigger button
+widget SheetTrigger {
+    msg Msg { Click }
+
+    model {
+        text str = "Open"
+    }
+
+    view {
+        button { text: .text, onclick: .Click }
+    }
+}
+
+/// Sheet content container
+widget SheetContent {
+    model {
+        side str = "right"  // left, right, top, bottom
+        class str = ""
+    }
+
+    view {
+        div { class: f"sheet-content ${.side} ${.class}" }
+    }
+}
+
+/// Sheet header section
+widget SheetHeader {
+    view {
+        div { class: "flex flex-col space-y-2 text-center sm:text-left" }
+    }
+}
+
+/// Sheet title
+widget SheetTitle {
+    model {
+        text str = ""
+    }
+
+    view {
+        h2 { class: "text-lg font-semibold", text: .text }
+    }
+}
+
+/// Sheet description
+widget SheetDescription {
+    model {
+        text str = ""
+    }
+
+    view {
+        p { class: "text-sm text-muted-foreground", text: .text }
+    }
+}
+
+/// Sheet footer section
+widget SheetFooter {
+    view {
+        div { class: "flex flex-col sm:flex-row sm:justify-end sm:space-x-2" }
+    }
+}
+
+/// Sheet close button
+widget SheetClose {
+    view {
+        button { class: "sheet-close" }
+    }
+}
+
+/// Demo widget for Sheet documentation
+widget SheetDemo {
+    model {
+        open bool = false
+    }
+
+    view {
+        row (gap: "4") {
+            sheet (open: .open) {
+                sheet-trigger (text: "Open Sheet") {}
+                sheet-content (side: "right") {
+                    sheet-header {
+                        sheet-title (text: "Edit Profile") {}
+                        sheet-description (text: "Make changes to your profile here.") {}
+                    }
+                    sheet-footer {
+                        button (text: "Save changes") {}
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,70 @@
+// components/hovercard.at - HoverCard component
+
+/// HoverCard component for preview content on hover.
+///
+/// # Features
+/// - Shows content on hover
+/// - Positioned floating content
+/// - Accessible with keyboard navigation
+///
+/// # Usage
+/// ```
+/// hover-card {
+///     hover-card-trigger (text: "Hover me") {}
+///     hover-card-content {
+///         text (text: "Preview content") {}
+///     }
+/// }
+/// ```
+
+widget HoverCard {
+    model {
+        open bool = false
+    }
+
+    view {
+        div { class: "hover-card" }
+    }
+}
+
+/// HoverCard trigger button
+widget HoverCardTrigger {
+    model {
+        text str = "Hover me"
+    }
+
+    view {
+        button { text: .text, variant: "link" }
+    }
+}
+
+/// HoverCard content container
+widget HoverCardContent {
+    model {
+        class str = ""
+        side str = "bottom"  // top, right, bottom, left
+    }
+
+    view {
+        div { class: f"hover-card-content ${.class}" }
+    }
+}
+
+/// Demo widget for HoverCard documentation
+widget HoverCardDemo {
+    view {
+        hover-card {
+            hover-card-trigger (text: "@nextjs") {}
+            hover-card-content {
+                col (class: "gap-3") {
+                    avatar (class: "h-12 w-12 rounded-full") {}
+                    col (gap: "1") {
+                        h4 (text: "Next.js") {}
+                        text (text: "The React Framework – created and maintained by @vercel.") {}
+                    }
+                    button (text: "Follow", size: "sm") {}
+                }
+            }
+        }
+    }
+}

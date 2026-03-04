@@ -1,0 +1,126 @@
+// components/drawer.at - Drawer component
+
+/// Drawer component for slide-out panels.
+///
+/// # Features
+/// - Slides in from any direction
+/// - Animated transitions
+/// - Accessible with keyboard navigation
+///
+/// # Usage
+/// ```
+/// drawer (open: .showDrawer) {
+///     drawer-trigger (text: "Open") {}
+///     drawer-content {
+///         drawer-header {
+///             drawer-title (text: "Title") {}
+///         }
+///     }
+/// }
+/// ```
+
+widget Drawer {
+    model {
+        open bool = false
+    }
+
+    view {
+        div { class: "drawer" }
+    }
+}
+
+/// Drawer trigger button
+widget DrawerTrigger {
+    msg Msg { Click }
+
+    model {
+        text str = "Open"
+    }
+
+    view {
+        button { text: .text, onclick: .Click }
+    }
+}
+
+/// Drawer content container
+widget DrawerContent {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { class: f"drawer-content ${.class}" }
+    }
+}
+
+/// Drawer header section
+widget DrawerHeader {
+    view {
+        div { class: "flex flex-col space-y-2 text-center sm:text-left" }
+    }
+}
+
+/// Drawer title
+widget DrawerTitle {
+    model {
+        text str = ""
+    }
+
+    view {
+        h2 { class: "text-lg font-semibold", text: .text }
+    }
+}
+
+/// Drawer description
+widget DrawerDescription {
+    model {
+        text str = ""
+    }
+
+    view {
+        p { class: "text-sm text-muted-foreground", text: .text }
+    }
+}
+
+/// Drawer footer section
+widget DrawerFooter {
+    view {
+        div { class: "flex flex-col sm:flex-row sm:justify-end sm:space-x-2" }
+    }
+}
+
+/// Drawer close button
+widget DrawerClose {
+    msg Msg { Click }
+
+    model {
+        text str = "Close"
+    }
+
+    view {
+        button { text: .text, variant: "outline", onclick: .Click }
+    }
+}
+
+/// Demo widget for Drawer documentation
+widget DrawerDemo {
+    model {
+        open bool = false
+    }
+
+    view {
+        drawer (open: .open) {
+            drawer-trigger (text: "Open Drawer") {}
+            drawer-content {
+                drawer-header {
+                    drawer-title (text: "Menu") {}
+                    drawer-description (text: "Choose an option from the menu.") {}
+                }
+                drawer-footer {
+                    drawer-close (text: "Cancel") {}
+                    button (text: "Submit") {}
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,143 @@
+// components/alertdialog.at - AlertDialog component
+
+/// AlertDialog component for confirmation dialogs.
+///
+/// # Features
+/// - Modal confirmation dialog
+/// - Destructive action support
+/// - Accessible with focus management
+///
+/// # Usage
+/// ```
+/// alert-dialog (open: .showAlert) {
+///     alert-dialog-trigger (text: "Delete") {}
+///     alert-dialog-content {
+///         alert-dialog-header {
+///             alert-dialog-title (text: "Are you sure?") {}
+///         }
+///         alert-dialog-footer {
+///             alert-dialog-cancel (text: "Cancel") {}
+///             alert-dialog-action (text: "Continue") {}
+///         }
+///     }
+/// }
+/// ```
+
+widget AlertDialog {
+    model {
+        open bool = false
+    }
+
+    view {
+        div { class: "alert-dialog" }
+    }
+}
+
+/// AlertDialog trigger button
+widget AlertDialogTrigger {
+    msg Msg { Click }
+
+    model {
+        text str = "Open"
+    }
+
+    view {
+        button { text: .text, onclick: .Click }
+    }
+}
+
+/// AlertDialog content container
+widget AlertDialogContent {
+    model {
+        class str = ""
+    }
+
+    view {
+        div { class: f"alert-dialog-content ${.class}" }
+    }
+}
+
+/// AlertDialog header section
+widget AlertDialogHeader {
+    view {
+        div { class: "flex flex-col space-y-2 text-center sm:text-left" }
+    }
+}
+
+/// AlertDialog footer section
+widget AlertDialogFooter {
+    view {
+        div { class: "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2" }
+    }
+}
+
+/// AlertDialog title
+widget AlertDialogTitle {
+    model {
+        text str = ""
+    }
+
+    view {
+        h2 { class: "text-lg font-semibold", text: .text }
+    }
+}
+
+/// AlertDialog description
+widget AlertDialogDescription {
+    model {
+        text str = ""
+    }
+
+    view {
+        p { class: "text-sm text-muted-foreground", text: .text }
+    }
+}
+
+/// AlertDialog action button (confirm)
+widget AlertDialogAction {
+    msg Msg { Click }
+
+    model {
+        text str = "Continue"
+    }
+
+    view {
+        button { text: .text, onclick: .Click }
+    }
+}
+
+/// AlertDialog cancel button
+widget AlertDialogCancel {
+    msg Msg { Click }
+
+    model {
+        text str = "Cancel"
+    }
+
+    view {
+        button { text: .text, variant: "outline", onclick: .Click }
+    }
+}
+
+/// Demo widget for AlertDialog documentation
+widget AlertDialogDemo {
+    model {
+        open bool = false
+    }
+
+    view {
+        alert-dialog (open: .open) {
+            alert-dialog-trigger (text: "Delete Account") {}
+            alert-dialog-content {
+                alert-dialog-header {
+                    alert-dialog-title (text: "Are you absolutely sure?") {}
+                    alert-dialog-description (text: "This action cannot be undone. This will permanently delete your account and remove your data from our servers.") {}
+                }
+                alert-dialog-footer {
+                    alert-dialog-cancel (text: "Cancel") {}
+                    alert-dialog-action (text: "Continue") {}
+                }
+            }
+        }
+    }
+}
