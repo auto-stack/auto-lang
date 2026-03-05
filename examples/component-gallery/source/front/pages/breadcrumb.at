@@ -14,11 +14,19 @@ widget BreadcrumbPage {
             h2 (text: "Simple") {}
             preview-card (id: "breadcrumb-basic") {
                 breadcrumb {
-                    breadcrumb-item (text: "Home", href: "/") {}
-                    breadcrumb-separator {}
-                    breadcrumb-item (text: "Components", href: "/components") {}
-                    breadcrumb-separator {}
-                    breadcrumb-item (text: "Breadcrumb") {}
+                    breadcrumb-list {
+                        breadcrumb-item {
+                            breadcrumb-link (text: "Home", href: "/") {}
+                        }
+                        breadcrumb-separator {}
+                        breadcrumb-item {
+                            breadcrumb-link (text: "Components", href: "/components") {}
+                        }
+                        breadcrumb-separator {}
+                        breadcrumb-item {
+                            breadcrumb-page (text: "Breadcrumb") {}
+                        }
+                    }
                 }
             }
 

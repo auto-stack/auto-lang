@@ -685,19 +685,27 @@ impl ShadcnRegistry {
         Self { components }
     }
 
+    /// Normalize tag name for lookup (convert kebab-case to snake_case)
+    fn normalize_tag(tag: &str) -> String {
+        tag.replace('-', "_")
+    }
+
     /// Get shadcn-vue component info for a tag
     pub fn get(&self, tag: &str) -> Option<(&'static str, &Vec<&'static str>)> {
-        self.components.get(tag).map(|(path, names)| (*path, names))
+        let normalized = Self::normalize_tag(tag);
+        self.components.get(normalized.as_str()).map(|(path, names)| (*path, names))
     }
 
     /// Check if tag has a shadcn-vue component
     pub fn has_component(&self, tag: &str) -> bool {
-        self.components.contains_key(tag)
+        let normalized = Self::normalize_tag(tag);
+        self.components.contains_key(normalized.as_str())
     }
 
     /// Get the primary component name for a tag (first in the list)
     pub fn primary_component(&self, tag: &str) -> Option<&'static str> {
-        self.components.get(tag).and_then(|(_, names)| names.first().copied())
+        let normalized = Self::normalize_tag(tag);
+        self.components.get(normalized.as_str()).and_then(|(_, names)| names.first().copied())
     }
 }
 
@@ -1272,10 +1280,10 @@ impl VueGenerator {
                 let is_shadcn_component = self.is_shadcn() && self.shadcn_registry.has_component(tag);
 
                 // Build attributes
-                let (attrs, text_content) = if is_shadcn_component {
+                let (attrs, text_content, generated_children) = if is_shadcn_component {
                     // Use shadcn-specific attribute generation
-                    let (shadcn_attrs, slot_content) = self.generate_shadcn_attrs(tag, props, events);
-                    (shadcn_attrs, slot_content)
+                    let (shadcn_attrs, slot_content, slot_children) = self.generate_shadcn_attrs(tag, props, events);
+                    (shadcn_attrs, slot_content, slot_children)
                 } else {
                     // Use plain Tailwind attribute generation
                     let mut attrs = Vec::new();
@@ -1336,7 +1344,7 @@ impl VueGenerator {
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
                     }
 
-                    (attrs, text_content)
+                    (attrs, text_content, None)
                 };
 
                 let attr_str = if attrs.is_empty() {
@@ -1359,10 +1367,19 @@ impl VueGenerator {
                         html.push_str(&format!("{}</{}>\n", ind, html_tag));
                         Ok(html)
                     }
-                } else if children.is_empty() {
+                } else if children.is_empty() && generated_children.is_none() {
+                    // No children and no generated children - self-closing tag
                     Ok(format!("{}<{}{} />\n", ind, html_tag, attr_str))
                 } else {
+                    // Has children (from source or generated)
                     let mut html = format!("{}<{}{}>\n", ind, html_tag, attr_str);
+
+                    // Add generated children first (e.g., AvatarImage, AvatarFallback)
+                    if let Some(gen_children) = &generated_children {
+                        html.push_str(&format!("{}{}", "  ".repeat(indent + 1), gen_children));
+                    }
+
+                    // Add source children
                     for child in children {
                         html.push_str(&self.node_to_html(child, indent + 1)?);
                     }
@@ -2500,16 +2517,21 @@ impl VueGenerator {
     // ========================================================================
 
     /// Generate shadcn-vue component attributes based on element type
+    /// Returns: (attributes, text_content, generated_children_html)
     fn generate_shadcn_attrs(
-        &self,
+        &mut self,
         tag: &str,
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
-    ) -> (Vec<String>, Option<String>) {
+    ) -> (Vec<String>, Option<String>, Option<String>) {
         let mut attrs = Vec::new();
         let mut slot_content: Option<String> = None;
+        let mut slot_children: Option<String> = None;
 
-        match tag {
+        // Normalize tag for matching (kebab-case -> snake_case)
+        let normalized_tag = tag.replace('-', "_");
+
+        match normalized_tag.as_str() {
             // === Button ===
             "button" => {
                 // Handle variant prop
@@ -2966,15 +2988,37 @@ impl VueGenerator {
 
             // === Avatar ===
             "avatar" => {
-                // src for image
+                // Avatar in shadcn-vue is a wrapper that needs AvatarImage and AvatarFallback children
+                let mut generated_children = String::new();
+
+                // Generate AvatarImage if src provided
                 if let Some(value) = props.get("src") {
                     let src = self.extract_string_value(value).unwrap_or("");
-                    // AvatarImage component
-                    attrs.push(format!("src=\"{}\"", src));
+                    let alt = props.get("alt")
+                        .and_then(|v| self.extract_string_value(v))
+                        .unwrap_or("");
+                    generated_children.push_str(&format!(
+                        r#"<AvatarImage src="{}" alt="{}" />{}"#,
+                        src, alt, "\n"
+                    ));
+                    // Register AvatarImage component for imports
+                    self.shadcn_components_used.insert("AvatarImage".to_string());
                 }
-                // alt/fallback
-                if let Some(value) = props.get("name") {
-                    slot_content = self.prop_to_text_content(value).ok();
+
+                // Generate AvatarFallback if fallback provided
+                if let Some(value) = props.get("fallback") {
+                    let fallback_text = self.prop_to_text_content(value).unwrap_or_default();
+                    generated_children.push_str(&format!(
+                        r#"<AvatarFallback>{}</AvatarFallback>"#,
+                        fallback_text
+                    ));
+                    // Register AvatarFallback component for imports
+                    self.shadcn_components_used.insert("AvatarFallback".to_string());
+                }
+
+                // Set generated children if any were created
+                if !generated_children.is_empty() {
+                    slot_children = Some(generated_children);
                 }
             }
 
@@ -4767,7 +4811,7 @@ impl VueGenerator {
             attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
         }
 
-        (attrs, slot_content)
+        (attrs, slot_content, slot_children)
     }
 
     /// Convert AutoUI event to Vue event for shadcn-vue components
