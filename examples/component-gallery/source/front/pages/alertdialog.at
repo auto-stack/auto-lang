@@ -13,9 +13,20 @@ widget AlertdialogPage {
 
             h2 (text: "Simple") {}
             preview-card (id: "alertdialog-basic") {
-                row (gap: "4") {
-                    alert-dialog {}
-                    alert-dialog-trigger (text: "Open Alert") {}
+                alert-dialog {
+                    alert-dialog-trigger {
+                        button (text: "Show Dialog", variant: "outline") {}
+                    }
+                    alert-dialog-content {
+                        alert-dialog-header {
+                            alert-dialog-title (text: "Are you absolutely sure?") {}
+                            alert-dialog-description (text: "This action cannot be undone. This will permanently delete your account and remove your data from our servers.") {}
+                        }
+                        alert-dialog-footer {
+                            alert-dialog-cancel (text: "Cancel") {}
+                            alert-dialog-action (text: "Continue") {}
+                        }
+                    }
                 }
             }
 
@@ -39,32 +50,11 @@ widget AlertdialogPage {
                         td (text: "Controls dialog visibility") {}
                     }
                     tr {
-                        td (text: "title") {}
+                        td (text: "text") {}
                         td (text: "string") {}
                         td (text: "-") {}
                         td (text: "-") {}
-                        td (text: "Dialog title") {}
-                    }
-                    tr {
-                        td (text: "description") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Dialog description") {}
-                    }
-                    tr {
-                        td (text: "cancelText") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Cancel button text") {}
-                    }
-                    tr {
-                        td (text: "actionText") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Action button text") {}
+                        td (text: "Button/Title/Description text") {}
                     }
                 }
             }

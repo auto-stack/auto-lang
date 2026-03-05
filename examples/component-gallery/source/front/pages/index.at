@@ -40,6 +40,11 @@ widget IndexPage {
                             text "Avatar"
                         }
                     }
+                    link (to: "/aspectratio") {
+                        div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {
+                            text "AspectRatio"
+                        }
+                    }
                     // Row 2
                     link (to: "/badge") {
                         div (class: "border rounded-lg p-4 hover:bg-muted transition-colors") {

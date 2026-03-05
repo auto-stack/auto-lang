@@ -1,0 +1,92 @@
+// pages/aspectratio.at - AspectRatio component documentation page
+
+widget AspectratioPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "AspectRatio") {}
+            text (text: "Displays content within a desired ratio.") {}
+
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add aspect-ratio") {}
+
+            h2 (text: "Example") {}
+            preview-card (id: "aspectratio-basic") {
+                div (class: "w-[450px] bg-muted rounded-md overflow-hidden border") {
+                    aspect-ratio (ratio: 1.777) {
+                        img (src: "https://images.unsplash.com/photo-1588345921523-c2dcdb7f1dcd?w=800&dpr=2&q=80", alt: "Photo by Drew Beamer", class: "object-cover w-full h-full") {}
+                    }
+                }
+            }
+
+            h2 (text: "Common Ratios") {}
+            preview-card (id: "aspectratio-ratios") {
+                row (gap: "4", class: "flex-wrap") {
+                    col (gap: "2", class: "w-[150px]") {
+                        div (class: "bg-muted rounded-md overflow-hidden") {
+                            aspect-ratio (ratio: 1.0) {
+                                div (class: "flex items-center justify-center w-full h-full bg-primary/10") {
+                                    text (text: "1:1") {}
+                                }
+                            }
+                        }
+                        text (text: "Square (1:1)", class: "text-sm text-muted-foreground") {}
+                    }
+                    col (gap: "2", class: "w-[150px]") {
+                        div (class: "bg-muted rounded-md overflow-hidden") {
+                            aspect-ratio (ratio: 1.777) {
+                                div (class: "flex items-center justify-center w-full h-full bg-primary/10") {
+                                    text (text: "16:9") {}
+                                }
+                            }
+                        }
+                        text (text: "Widescreen (16:9)", class: "text-sm text-muted-foreground") {}
+                    }
+                    col (gap: "2", class: "w-[150px]") {
+                        div (class: "bg-muted rounded-md overflow-hidden") {
+                            aspect-ratio (ratio: 0.5625) {
+                                div (class: "flex items-center justify-center w-full h-full bg-primary/10") {
+                                    text (text: "9:16") {}
+                                }
+                            }
+                        }
+                        text (text: "Portrait (9:16)", class: "text-sm text-muted-foreground") {}
+                    }
+                    col (gap: "2", class: "w-[150px]") {
+                        div (class: "bg-muted rounded-md overflow-hidden") {
+                            aspect-ratio (ratio: 1.333) {
+                                div (class: "flex items-center justify-center w-full h-full bg-primary/10") {
+                                    text (text: "4:3") {}
+                                }
+                            }
+                        }
+                        text (text: "Standard (4:3)", class: "text-sm text-muted-foreground") {}
+                    }
+                }
+            }
+
+            h2 (text: "Properties") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Property") {}
+                        th (text: "Type") {}
+                        th (text: "Default") {}
+                        th (text: "Values") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "ratio") {}
+                        td (text: "number") {}
+                        td (text: "1") {}
+                        td (text: "-") {}
+                        td (text: "The aspect ratio (width/height)") {}
+                    }
+                }
+            }
+        }
+    }
+}

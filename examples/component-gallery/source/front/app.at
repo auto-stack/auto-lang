@@ -8,6 +8,7 @@ widget App {
         "/accordion" => use accordion
         "/alert" => use alert
         "/alertdialog" => use alertdialog
+        "/aspectratio" => use aspectratio
         "/avatar" => use avatar
         "/badge" => use badge
         "/breadcrumb" => use breadcrumb
@@ -95,6 +96,9 @@ widget App {
                             }
                             link (to: "/alertdialog") {
                                 text (text: "AlertDialog", class: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
+                            }
+                            link (to: "/aspectratio") {
+                                text (text: "AspectRatio", class: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}
                             }
                             link (to: "/avatar") {
                                 text (text: "Avatar", class: "block px-3 py-0 rounded-md hover:bg-muted cursor-pointer text-sm") {}

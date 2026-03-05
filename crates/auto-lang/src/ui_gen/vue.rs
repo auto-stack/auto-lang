@@ -237,6 +237,12 @@ impl ShadcnRegistry {
         components.insert("avatar",
             ("@/components/ui/avatar", vec!["Avatar", "AvatarImage", "AvatarFallback"]));
 
+        // === Display: AspectRatio ===
+        components.insert("aspectratio",
+            ("@/components/ui/aspect-ratio", vec!["AspectRatio"]));
+        components.insert("aspect-ratio",
+            ("@/components/ui/aspect-ratio", vec!["AspectRatio"]));
+
         // === Data Elements ===
         components.insert("table",
             ("@/components/ui/table", vec!["Table", "TableHeader", "TableBody", "TableRow", "TableHead", "TableCell"]));
@@ -351,6 +357,25 @@ impl ShadcnRegistry {
         components.insert("alert_dialog_action",
             ("@/components/ui/alert-dialog", vec!["AlertDialogAction"]));
         components.insert("alert_dialog_cancel",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogCancel"]));
+        // Hyphenated versions for AURA tag compatibility
+        components.insert("alert-dialog",
+            ("@/components/ui/alert-dialog", vec!["AlertDialog"]));
+        components.insert("alert-dialog-trigger",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogTrigger"]));
+        components.insert("alert-dialog-content",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogContent"]));
+        components.insert("alert-dialog-header",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogHeader"]));
+        components.insert("alert-dialog-footer",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogFooter"]));
+        components.insert("alert-dialog-title",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogTitle"]));
+        components.insert("alert-dialog-description",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogDescription"]));
+        components.insert("alert-dialog-action",
+            ("@/components/ui/alert-dialog", vec!["AlertDialogAction"]));
+        components.insert("alert-dialog-cancel",
             ("@/components/ui/alert-dialog", vec!["AlertDialogCancel"]));
 
         // === Overlay: Command (Command Palette) ===
@@ -2061,9 +2086,11 @@ impl VueGenerator {
             // Display
             "card" => "div".to_string(),
             "avatar" => "img".to_string(),
+            "aspectratio" | "aspect-ratio" => "div".to_string(),
 
             // Media
             "image" => "img".to_string(),
+            "img" => "img".to_string(),
             "icon" => "span".to_string(),
 
             // Utility
@@ -2188,6 +2215,7 @@ impl VueGenerator {
                 "cardcontent" | "card-content" => classes.push("p-6 pt-0".to_string()),
                 "cardfooter" | "card-footer" => classes.push("flex items-center p-6 pt-0".to_string()),
                 "avatar" => classes.push("w-10 h-10 rounded-full".to_string()),
+                "aspectratio" | "aspect-ratio" => classes.push("relative w-full".to_string()),
 
                 // Media
                 "image" => classes.push("max-w-full".to_string()),
@@ -2847,6 +2875,61 @@ impl VueGenerator {
                 }
             }
 
+            // === AlertDialog Sub-components ===
+            "alertdialog" | "alert-dialog" => {
+                // v-model:open for dialog state
+                if let Some(value) = props.get("open") {
+                    if let Some(model) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", model));
+                    }
+                }
+            }
+            "alertdialogtrigger" | "alert-dialog-trigger" => {
+                // text becomes slot content, as-child for button styling
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                if let Some(value) = props.get("asChild") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("as-child".to_string());
+                    }
+                }
+            }
+            "alertdialogcontent" | "alert-dialog-content" => {
+                // class for styling
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+            "alertdialogheader" | "alert-dialog-header" | "alertdialogfooter" | "alert-dialog-footer" => {
+                // Container components - class handled by extract_classes
+            }
+            "alertdialogtitle" | "alert-dialog-title" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+            "alertdialogdescription" | "alert-dialog-description" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+            "alertdialogaction" | "alert-dialog-action" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+            "alertdialogcancel" | "alert-dialog-cancel" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
             // === Card Sub-components ===
             "cardheader" | "cardcontent" | "cardfooter" => {
                 // These are container components - class is handled by extract_classes
@@ -2892,6 +2975,16 @@ impl VueGenerator {
                 // alt/fallback
                 if let Some(value) = props.get("name") {
                     slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === AspectRatio ===
+            "aspectratio" | "aspect-ratio" => {
+                // ratio prop (e.g., 16/9 = 1.777)
+                if let Some(value) = props.get("ratio") {
+                    if let Some(ratio) = self.extract_float_value(value) {
+                        attrs.push(format!(":ratio=\"{}\"", ratio));
+                    }
                 }
             }
 
@@ -4709,6 +4802,16 @@ impl VueGenerator {
     fn extract_int_value(&self, value: &AuraPropValue) -> Option<i64> {
         match value {
             AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n),
+            AuraPropValue::Expr(AuraExpr::Literal(s)) => s.parse().ok(),
+            _ => None,
+        }
+    }
+
+    /// Extract float value from AuraPropValue
+    fn extract_float_value(&self, value: &AuraPropValue) -> Option<f64> {
+        match value {
+            AuraPropValue::Expr(AuraExpr::Float(n)) => Some(*n),
+            AuraPropValue::Expr(AuraExpr::Int(n)) => Some(*n as f64),
             AuraPropValue::Expr(AuraExpr::Literal(s)) => s.parse().ok(),
             _ => None,
         }
