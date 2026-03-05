@@ -245,7 +245,7 @@ impl ShadcnRegistry {
 
         // === Data Elements ===
         components.insert("table",
-            ("@/components/ui/table", vec!["Table", "TableHeader", "TableBody", "TableRow", "TableHead", "TableCell"]));
+            ("@/components/ui/table", vec!["Table", "TableHeader", "TableBody", "TableRow", "TableHead", "TableCell", "TableCaption"]));
         components.insert("thead",
             ("@/components/ui/table", vec!["TableHeader"]));
         components.insert("tbody",
@@ -255,6 +255,18 @@ impl ShadcnRegistry {
         components.insert("th",
             ("@/components/ui/table", vec!["TableHead"]));
         components.insert("td",
+            ("@/components/ui/table", vec!["TableCell"]));
+        components.insert("table_caption",
+            ("@/components/ui/table", vec!["TableCaption"]));
+        components.insert("table_header",
+            ("@/components/ui/table", vec!["TableHeader"]));
+        components.insert("table_body",
+            ("@/components/ui/table", vec!["TableBody"]));
+        components.insert("table_row",
+            ("@/components/ui/table", vec!["TableRow"]));
+        components.insert("table_head",
+            ("@/components/ui/table", vec!["TableHead"]));
+        components.insert("table_cell",
             ("@/components/ui/table", vec!["TableCell"]));
 
         // === Utility Elements ===
@@ -3154,6 +3166,39 @@ impl VueGenerator {
                     }
                 }
                 // Text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            // === shadcn-vue Table components ===
+            "table_caption" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "table_header" | "table_body" | "table_row" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+            }
+
+            "table_head" | "table_cell" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
+                // text becomes slot content
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
                 }

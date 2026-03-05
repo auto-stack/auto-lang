@@ -6,17 +6,18 @@ widget TablePage {
     view {
         col {
             h1 (text: "Table") {}
-            text (text: "A responsive table component for displaying data in rows and columns.") {}
+            text (text: "A responsive table component.") {}
 
             h2 (text: "Installation") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add table") {}
 
-            h2 (text: "Simple") {}
+            h2 (text: "Example") {}
             preview-card (id: "table-basic") {
                 table {
+                    table-caption (text: "A list of your recent invoices.") {}
                     table-header {
                         table-row {
-                            table-head (text: "Invoice") {}
+                            table-head (text: "Invoice", class: "w-[100px]") {}
                             table-head (text: "Status") {}
                             table-head (text: "Method") {}
                             table-head (text: "Amount", class: "text-right") {}
@@ -24,39 +25,90 @@ widget TablePage {
                     }
                     table-body {
                         table-row {
-                            table-cell (text: "INV001") {}
+                            table-cell (text: "INV001", class: "font-medium") {}
                             table-cell (text: "Paid") {}
                             table-cell (text: "Credit Card") {}
                             table-cell (text: "$250.00", class: "text-right") {}
                         }
                         table-row {
-                            table-cell (text: "INV002") {}
+                            table-cell (text: "INV002", class: "font-medium") {}
                             table-cell (text: "Pending") {}
                             table-cell (text: "PayPal") {}
                             table-cell (text: "$150.00", class: "text-right") {}
+                        }
+                        table-row {
+                            table-cell (text: "INV003", class: "font-medium") {}
+                            table-cell (text: "Unpaid") {}
+                            table-cell (text: "Bank Transfer") {}
+                            table-cell (text: "$350.00", class: "text-right") {}
+                        }
+                        table-row {
+                            table-cell (text: "INV004", class: "font-medium") {}
+                            table-cell (text: "Paid") {}
+                            table-cell (text: "Credit Card") {}
+                            table-cell (text: "$450.00", class: "text-right") {}
+                        }
+                        table-row {
+                            table-cell (text: "INV005", class: "font-medium") {}
+                            table-cell (text: "Paid") {}
+                            table-cell (text: "PayPal") {}
+                            table-cell (text: "$550.00", class: "text-right") {}
+                        }
+                        table-row {
+                            table-cell (text: "INV006", class: "font-medium") {}
+                            table-cell (text: "Pending") {}
+                            table-cell (text: "Bank Transfer") {}
+                            table-cell (text: "$200.00", class: "text-right") {}
+                        }
+                        table-row {
+                            table-cell (text: "INV007", class: "font-medium") {}
+                            table-cell (text: "Unpaid") {}
+                            table-cell (text: "Credit Card") {}
+                            table-cell (text: "$300.00", class: "text-right") {}
                         }
                     }
                 }
             }
 
+            h2 (text: "Data Table") {}
+            text (text: "You can use the Table component to build more complex data tables. Combine it with @tanstack/vue-table to create tables with sorting, filtering and pagination.", class: "text-muted-foreground") {}
+
             h2 (text: "Properties") {}
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
+                        th (text: "Component") {}
                         th (text: "Description") {}
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "class") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Additional CSS classes") {}
+                        td (text: "Table") {}
+                        td (text: "Main table container") {}
+                    }
+                    tr {
+                        td (text: "TableHeader") {}
+                        td (text: "Header section") {}
+                    }
+                    tr {
+                        td (text: "TableBody") {}
+                        td (text: "Body section") {}
+                    }
+                    tr {
+                        td (text: "TableCaption") {}
+                        td (text: "Table caption/description") {}
+                    }
+                    tr {
+                        td (text: "TableRow") {}
+                        td (text: "Table row") {}
+                    }
+                    tr {
+                        td (text: "TableHead") {}
+                        td (text: "Header cell") {}
+                    }
+                    tr {
+                        td (text: "TableCell") {}
+                        td (text: "Data cell") {}
                     }
                 }
             }

@@ -1,23 +1,622 @@
 // pages/datatable.at - DataTable component documentation page
 
 widget DatatablePage {
-    model { activeTab str = "preview" }
+    msg Msg {
+        ToggleSortStatus
+        ToggleSortEmail
+        ToggleSortAmount
+        SetFilter
+        ToggleRow
+        NextPage
+        PrevPage
+    }
+
+    model {
+        activeTab str = "preview"
+        sortColumn str = ""
+        sortDirection str = "asc"
+        filterText str = ""
+        selectedRows int = 0
+        currentPage int = 1
+    }
 
     view {
         col {
-            h1 (text: "DataTable") {}
-            text (text: "A powerful table component with sorting, filtering, and pagination built-in.") {}
+            h1 (text: "Data Table") {}
+            text (text: "Powerful table and datagrids built using TanStack Table.") {}
+
+            h2 (text: "Introduction") {}
+            text (text: "The Data Table is not a single component but a guide on how to build your own data tables using TanStack Table (@tanstack/vue-table) combined with the Table component. This allows for maximum flexibility with sorting, filtering, pagination, and more.", class: "text-muted-foreground") {}
 
             h2 (text: "Installation") {}
-            codeblock (lang: "bash", code: "npx shadcn-vue@latest add data-table") {}
+            text (text: "1. Add the Table component:", class: "font-medium") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add table") {}
+            text (text: "2. Add TanStack Table dependency:", class: "font-medium") {}
+            codeblock (lang: "bash", code: "npm install @tanstack/vue-table") {}
 
-            h2 (text: "Simple") {}
+            // Basic Table
+            h2 (text: "Basic Table") {}
+            text (text: "Start with a basic table to display your data.", class: "text-muted-foreground") {}
             preview-card (id: "datatable-basic") {
-                text (text: "DataTable requires TanStack Table - see shadcn-vue docs for setup.") {}
+                table {
+                    table-header {
+                        table-row {
+                            table-head (text: "Status") {}
+                            table-head (text: "Email") {}
+                            table-head (text: "Amount", class: "text-right") {}
+                        }
+                    }
+                    table-body {
+                        table-row {
+                            table-cell { badge (text: "Success", variant: "default") {} }
+                            table-cell (text: "ken99@yahoo.com", class: "lowercase") {}
+                            table-cell (text: "$316.00", class: "text-right font-medium") {}
+                        }
+                        table-row {
+                            table-cell { badge (text: "Pending", variant: "secondary") {} }
+                            table-cell (text: "abe45@gmail.com", class: "lowercase") {}
+                            table-cell (text: "$242.00", class: "text-right font-medium") {}
+                        }
+                        table-row {
+                            table-cell { badge (text: "Processing", variant: "outline") {} }
+                            table-cell (text: "monserrat44@gmail.com", class: "lowercase") {}
+                            table-cell (text: "$837.00", class: "text-right font-medium") {}
+                        }
+                    }
+                }
             }
 
+            // Sorting - Interactive!
+            h2 (text: "Sorting") {}
+            text (text: "Click column headers to sort ascending or descending. Try clicking on each column!", class: "text-muted-foreground") {}
+            preview-card (id: "datatable-sorting") {
+                table {
+                    table-header {
+                        table-row {
+                            table-head {
+                                button (variant: "ghost", class: "-ml-4", onclick: .ToggleSortStatus) {
+                                    text (text: "Status") {}
+                                    if .sortColumn == "status" {
+                                        if .sortDirection == "asc" {
+                                            icon (name: "arrow-up", class: "ml-2 h-4 w-4") {}
+                                        }
+                                        if .sortDirection == "desc" {
+                                            icon (name: "arrow-down", class: "ml-2 h-4 w-4") {}
+                                        }
+                                    }
+                                    if .sortColumn != "status" {
+                                        icon (name: "arrow-up-down", class: "ml-2 h-4 w-4") {}
+                                    }
+                                }
+                            }
+                            table-head {
+                                button (variant: "ghost", class: "-ml-4", onclick: .ToggleSortEmail) {
+                                    text (text: "Email") {}
+                                    if .sortColumn == "email" {
+                                        if .sortDirection == "asc" {
+                                            icon (name: "arrow-up", class: "ml-2 h-4 w-4") {}
+                                        }
+                                        if .sortDirection == "desc" {
+                                            icon (name: "arrow-down", class: "ml-2 h-4 w-4") {}
+                                        }
+                                    }
+                                    if .sortColumn != "email" {
+                                        icon (name: "arrow-up-down", class: "ml-2 h-4 w-4") {}
+                                    }
+                                }
+                            }
+                            table-head (class: "text-right") {
+                                button (variant: "ghost", class: "-ml-4", onclick: .ToggleSortAmount) {
+                                    text (text: "Amount") {}
+                                    if .sortColumn == "amount" {
+                                        if .sortDirection == "asc" {
+                                            icon (name: "arrow-up", class: "ml-2 h-4 w-4") {}
+                                        }
+                                        if .sortDirection == "desc" {
+                                            icon (name: "arrow-down", class: "ml-2 h-4 w-4") {}
+                                        }
+                                    }
+                                    if .sortColumn != "amount" {
+                                        icon (name: "arrow-up-down", class: "ml-2 h-4 w-4") {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    table-body {
+                        // Rows sorted by email
+                        if .sortColumn == "email" {
+                            if .sortDirection == "asc" {
+                                table-row {
+                                    table-cell { badge (text: "Success", variant: "default") {} }
+                                    table-cell (text: "abe45@gmail.com", class: "lowercase") {}
+                                    table-cell (text: "$242.00", class: "text-right font-medium") {}
+                                }
+                                table-row {
+                                    table-cell { badge (text: "Failed", variant: "destructive") {} }
+                                    table-cell (text: "carmella@hotmail.com", class: "lowercase") {}
+                                    table-cell (text: "$721.00", class: "text-right font-medium") {}
+                                }
+                                table-row {
+                                    table-cell { badge (text: "Success", variant: "default") {} }
+                                    table-cell (text: "ken99@yahoo.com", class: "lowercase") {}
+                                    table-cell (text: "$316.00", class: "text-right font-medium") {}
+                                }
+                            }
+                            if .sortDirection == "desc" {
+                                table-row {
+                                    table-cell { badge (text: "Success", variant: "default") {} }
+                                    table-cell (text: "ken99@yahoo.com", class: "lowercase") {}
+                                    table-cell (text: "$316.00", class: "text-right font-medium") {}
+                                }
+                                table-row {
+                                    table-cell { badge (text: "Failed", variant: "destructive") {} }
+                                    table-cell (text: "carmella@hotmail.com", class: "lowercase") {}
+                                    table-cell (text: "$721.00", class: "text-right font-medium") {}
+                                }
+                                table-row {
+                                    table-cell { badge (text: "Success", variant: "default") {} }
+                                    table-cell (text: "abe45@gmail.com", class: "lowercase") {}
+                                    table-cell (text: "$242.00", class: "text-right font-medium") {}
+                                }
+                            }
+                        }
+                        // Rows sorted by amount
+                        if .sortColumn == "amount" {
+                            if .sortDirection == "asc" {
+                                table-row {
+                                    table-cell { badge (text: "Success", variant: "default") {} }
+                                    table-cell (text: "abe45@gmail.com", class: "lowercase") {}
+                                    table-cell (text: "$242.00", class: "text-right font-medium") {}
+                                }
+                                table-row {
+                                    table-cell { badge (text: "Success", variant: "default") {} }
+                                    table-cell (text: "ken99@yahoo.com", class: "lowercase") {}
+                                    table-cell (text: "$316.00", class: "text-right font-medium") {}
+                                }
+                                table-row {
+                                    table-cell { badge (text: "Failed", variant: "destructive") {} }
+                                    table-cell (text: "carmella@hotmail.com", class: "lowercase") {}
+                                    table-cell (text: "$721.00", class: "text-right font-medium") {}
+                                }
+                            }
+                            if .sortDirection == "desc" {
+                                table-row {
+                                    table-cell { badge (text: "Failed", variant: "destructive") {} }
+                                    table-cell (text: "carmella@hotmail.com", class: "lowercase") {}
+                                    table-cell (text: "$721.00", class: "text-right font-medium") {}
+                                }
+                                table-row {
+                                    table-cell { badge (text: "Success", variant: "default") {} }
+                                    table-cell (text: "ken99@yahoo.com", class: "lowercase") {}
+                                    table-cell (text: "$316.00", class: "text-right font-medium") {}
+                                }
+                                table-row {
+                                    table-cell { badge (text: "Success", variant: "default") {} }
+                                    table-cell (text: "abe45@gmail.com", class: "lowercase") {}
+                                    table-cell (text: "$242.00", class: "text-right font-medium") {}
+                                }
+                            }
+                        }
+                        // Rows sorted by status
+                        if .sortColumn == "status" {
+                            if .sortDirection == "asc" {
+                                table-row {
+                                    table-cell { badge (text: "Failed", variant: "destructive") {} }
+                                    table-cell (text: "carmella@hotmail.com", class: "lowercase") {}
+                                    table-cell (text: "$721.00", class: "text-right font-medium") {}
+                                }
+                                table-row {
+                                    table-cell { badge (text: "Success", variant: "default") {} }
+                                    table-cell (text: "abe45@gmail.com", class: "lowercase") {}
+                                    table-cell (text: "$242.00", class: "text-right font-medium") {}
+                                }
+                                table-row {
+                                    table-cell { badge (text: "Success", variant: "default") {} }
+                                    table-cell (text: "ken99@yahoo.com", class: "lowercase") {}
+                                    table-cell (text: "$316.00", class: "text-right font-medium") {}
+                                }
+                            }
+                            if .sortDirection == "desc" {
+                                table-row {
+                                    table-cell { badge (text: "Success", variant: "default") {} }
+                                    table-cell (text: "abe45@gmail.com", class: "lowercase") {}
+                                    table-cell (text: "$242.00", class: "text-right font-medium") {}
+                                }
+                                table-row {
+                                    table-cell { badge (text: "Success", variant: "default") {} }
+                                    table-cell (text: "ken99@yahoo.com", class: "lowercase") {}
+                                    table-cell (text: "$316.00", class: "text-right font-medium") {}
+                                }
+                                table-row {
+                                    table-cell { badge (text: "Failed", variant: "destructive") {} }
+                                    table-cell (text: "carmella@hotmail.com", class: "lowercase") {}
+                                    table-cell (text: "$721.00", class: "text-right font-medium") {}
+                                }
+                            }
+                        }
+                        // Default (no sort)
+                        if .sortColumn == "" {
+                            table-row {
+                                table-cell { badge (text: "Success", variant: "default") {} }
+                                table-cell (text: "ken99@yahoo.com", class: "lowercase") {}
+                                table-cell (text: "$316.00", class: "text-right font-medium") {}
+                            }
+                            table-row {
+                                table-cell { badge (text: "Success", variant: "default") {} }
+                                table-cell (text: "abe45@gmail.com", class: "lowercase") {}
+                                table-cell (text: "$242.00", class: "text-right font-medium") {}
+                            }
+                            table-row {
+                                table-cell { badge (text: "Failed", variant: "destructive") {} }
+                                table-cell (text: "carmella@hotmail.com", class: "lowercase") {}
+                                table-cell (text: "$721.00", class: "text-right font-medium") {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            on {
+                ToggleSortStatus => {
+                    if sortColumn == "status" {
+                        sortDirection = if sortDirection == "asc" { "desc" } else { "asc" }
+                    } else {
+                        sortColumn = "status"
+                        sortDirection = "asc"
+                    }
+                }
+                ToggleSortEmail => {
+                    if sortColumn == "email" {
+                        sortDirection = if sortDirection == "asc" { "desc" } else { "asc" }
+                    } else {
+                        sortColumn = "email"
+                        sortDirection = "asc"
+                    }
+                }
+                ToggleSortAmount => {
+                    if sortColumn == "amount" {
+                        sortDirection = if sortDirection == "asc" { "desc" } else { "asc" }
+                    } else {
+                        sortColumn = "amount"
+                        sortDirection = "asc"
+                    }
+                }
+            }
+
+            // Filtering
+            h2 (text: "Filtering") {}
+            text (text: "Search and filter data across columns.", class: "text-muted-foreground") {}
+            preview-card (id: "datatable-filtering") {
+                col (gap: "4") {
+                    row (class: "flex items-center gap-2") {
+                        text (text: "Filter:", class: "text-sm font-medium") {}
+                        input (placeholder: "Search by email...", class: "w-[250px]") {}
+                    }
+                    table {
+                        table-header {
+                            table-row {
+                                table-head (text: "Status") {}
+                                table-head (text: "Email") {}
+                                table-head (text: "Amount", class: "text-right") {}
+                            }
+                        }
+                        table-body {
+                            table-row {
+                                table-cell { badge (text: "Success", variant: "default") {} }
+                                table-cell (text: "ken99@yahoo.com", class: "lowercase") {}
+                                table-cell (text: "$316.00", class: "text-right font-medium") {}
+                            }
+                            table-row {
+                                table-cell { badge (text: "Success", variant: "default") {} }
+                                table-cell (text: "abe45@gmail.com", class: "lowercase") {}
+                                table-cell (text: "$242.00", class: "text-right font-medium") {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Pagination
+            h2 (text: "Pagination") {}
+            text (text: "Navigate through large datasets with page controls.", class: "text-muted-foreground") {}
+            preview-card (id: "datatable-pagination") {
+                col (gap: "4") {
+                    table {
+                        table-header {
+                            table-row {
+                                table-head (text: "Invoice") {}
+                                table-head (text: "Status") {}
+                                table-head (text: "Amount", class: "text-right") {}
+                            }
+                        }
+                        table-body {
+                            table-row {
+                                table-cell (text: "INV001", class: "font-medium") {}
+                                table-cell (text: "Paid") {}
+                                table-cell (text: "$250.00", class: "text-right") {}
+                            }
+                            table-row {
+                                table-cell (text: "INV002", class: "font-medium") {}
+                                table-cell (text: "Pending") {}
+                                table-cell (text: "$150.00", class: "text-right") {}
+                            }
+                        }
+                    }
+                    row (class: "flex items-center justify-between") {
+                        row (class: "flex items-center gap-2") {
+                            text (text: "Rows per page", class: "text-sm text-muted-foreground") {}
+                            select (class: "w-[70px]") {
+                                select-trigger { select-value (text: "10") {} }
+                                select-content {
+                                    select-item (text: "10", value: "10") {}
+                                    select-item (text: "20", value: "20") {}
+                                }
+                            }
+                        }
+                        text (text: "Page 1 of 10", class: "text-sm text-muted-foreground") {}
+                        row (gap: "2") {
+                            button (variant: "outline", size: "icon", disabled: true) {
+                                icon (name: "chevron-left", class: "h-4 w-4") {}
+                            }
+                            button (variant: "outline", size: "icon") {
+                                icon (name: "chevron-right", class: "h-4 w-4") {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Row Selection
+            h2 (text: "Row Selection") {}
+            text (text: "Select rows with checkboxes for bulk operations.", class: "text-muted-foreground") {}
+            preview-card (id: "datatable-selection") {
+                col (gap: "4") {
+                    table {
+                        table-header {
+                            table-row {
+                                table-head (class: "w-[50px]") { checkbox {} }
+                                table-head (text: "Status") {}
+                                table-head (text: "Email") {}
+                                table-head (text: "Amount", class: "text-right") {}
+                            }
+                        }
+                        table-body {
+                            table-row {
+                                table-cell (class: "w-[50px]") { checkbox {} }
+                                table-cell { badge (text: "Success", variant: "default") {} }
+                                table-cell (text: "ken99@yahoo.com") {}
+                                table-cell (text: "$316.00", class: "text-right font-medium") {}
+                            }
+                            table-row {
+                                table-cell (class: "w-[50px]") { checkbox (checked: true) {} }
+                                table-cell { badge (text: "Success", variant: "default") {} }
+                                table-cell (text: "abe45@gmail.com") {}
+                                table-cell (text: "$242.00", class: "text-right font-medium") {}
+                            }
+                            table-row {
+                                table-cell (class: "w-[50px]") { checkbox {} }
+                                table-cell { badge (text: "Processing", variant: "outline") {} }
+                                table-cell (text: "monserrat44@gmail.com") {}
+                                table-cell (text: "$837.00", class: "text-right font-medium") {}
+                            }
+                        }
+                    }
+                    row (class: "flex items-center justify-between") {
+                        text (text: "1 of 3 row(s) selected.", class: "text-sm text-muted-foreground") {}
+                        row (gap: "2") {
+                            button (text: "Previous", variant: "outline", size: "sm") {}
+                            button (text: "Next", variant: "outline", size: "sm") {}
+                        }
+                    }
+                }
+            }
+
+            // Row Actions
+            h2 (text: "Row Actions") {}
+            text (text: "Add action menus to each row.", class: "text-muted-foreground") {}
+            preview-card (id: "datatable-actions") {
+                table {
+                    table-header {
+                        table-row {
+                            table-head (text: "Invoice") {}
+                            table-head (text: "Status") {}
+                            table-head (text: "Amount", class: "text-right") {}
+                            table-head (text: "", class: "w-[50px]") {}
+                        }
+                    }
+                    table-body {
+                        table-row {
+                            table-cell (text: "INV001", class: "font-medium") {}
+                            table-cell { badge (text: "Paid", variant: "default") {} }
+                            table-cell (text: "$250.00", class: "text-right") {}
+                            table-cell (class: "w-[50px]") {
+                                dropdown-menu {
+                                    dropdown-menu-trigger {
+                                        button (variant: "ghost", size: "icon") {
+                                            icon (name: "more-horizontal", class: "h-4 w-4") {}
+                                        }
+                                    }
+                                    dropdown-menu-content {
+                                        dropdown-menu-item (text: "Copy ID") {}
+                                        dropdown-menu-item (text: "View details") {}
+                                        dropdown-menu-separator {}
+                                        dropdown-menu-item (text: "Delete", class: "text-destructive") {}
+                                    }
+                                }
+                            }
+                        }
+                        table-row {
+                            table-cell (text: "INV002", class: "font-medium") {}
+                            table-cell { badge (text: "Pending", variant: "secondary") {} }
+                            table-cell (text: "$150.00", class: "text-right") {}
+                            table-cell (class: "w-[50px]") {
+                                dropdown-menu {
+                                    dropdown-menu-trigger {
+                                        button (variant: "ghost", size: "icon") {
+                                            icon (name: "more-horizontal", class: "h-4 w-4") {}
+                                        }
+                                    }
+                                    dropdown-menu-content {
+                                        dropdown-menu-item (text: "Copy ID") {}
+                                        dropdown-menu-item (text: "View details") {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Column Visibility
+            h2 (text: "Column Visibility") {}
+            text (text: "Toggle column visibility with a dropdown menu.", class: "text-muted-foreground") {}
+            preview-card (id: "datatable-visibility") {
+                col (gap: "4") {
+                    row (class: "flex items-center justify-between") {
+                        input (placeholder: "Search...", class: "w-[200px]") {}
+                        dropdown-menu {
+                            dropdown-menu-trigger {
+                                button (variant: "outline", size: "sm") {
+                                    icon (name: "columns", class: "mr-2 h-4 w-4") {}
+                                    text (text: "Columns") {}
+                                }
+                            }
+                            dropdown-menu-content {
+                                dropdown-menu-item (text: "Status") {}
+                                dropdown-menu-item (text: "Email") {}
+                                dropdown-menu-item (text: "Amount") {}
+                            }
+                        }
+                    }
+                    table {
+                        table-header {
+                            table-row {
+                                table-head (text: "Status") {}
+                                table-head (text: "Email") {}
+                                table-head (text: "Amount", class: "text-right") {}
+                            }
+                        }
+                        table-body {
+                            table-row {
+                                table-cell { badge (text: "Success", variant: "default") {} }
+                                table-cell (text: "ken99@yahoo.com") {}
+                                table-cell (text: "$316.00", class: "text-right font-medium") {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Complete Example
+            h2 (text: "Complete Example") {}
+            text (text: "A full-featured data table with all features combined.", class: "text-muted-foreground") {}
+            preview-card (id: "datatable-complete") {
+                col (gap: "4") {
+                    row (class: "flex items-center justify-between") {
+                        input (placeholder: "Filter emails...", class: "w-[200px]") {}
+                        row (gap: "2") {
+                            dropdown-menu {
+                                dropdown-menu-trigger {
+                                    button (variant: "outline", size: "sm") {
+                                        icon (name: "columns", class: "mr-2 h-4 w-4") {}
+                                        text (text: "View") {}
+                                    }
+                                }
+                                dropdown-menu-content (align: "end") {
+                                    dropdown-menu-item (text: "Status") {}
+                                    dropdown-menu-item (text: "Email") {}
+                                    dropdown-menu-item (text: "Amount") {}
+                                }
+                            }
+                            button (variant: "outline", size: "sm") {
+                                icon (name: "plus", class: "mr-2 h-4 w-4") {}
+                                text (text: "Add Payment") {}
+                            }
+                        }
+                    }
+                    table {
+                        table-header {
+                            table-row {
+                                table-head (class: "w-[50px]") { checkbox {} }
+                                table-head {
+                                    button (variant: "ghost", class: "-ml-4") {
+                                        text (text: "Status") {}
+                                        icon (name: "arrow-up-down", class: "ml-2 h-4 w-4") {}
+                                    }
+                                }
+                                table-head {
+                                    button (variant: "ghost", class: "-ml-4") {
+                                        text (text: "Email") {}
+                                        icon (name: "arrow-up-down", class: "ml-2 h-4 w-4") {}
+                                    }
+                                }
+                                table-head (text: "Amount", class: "text-right") {}
+                                table-head (text: "", class: "w-[50px]") {}
+                            }
+                        }
+                        table-body {
+                            table-row {
+                                table-cell (class: "w-[50px]") { checkbox {} }
+                                table-cell { badge (text: "Success", variant: "default") {} }
+                                table-cell (text: "ken99@yahoo.com", class: "lowercase") {}
+                                table-cell (text: "$316.00", class: "text-right font-medium") {}
+                                table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "...") {} } }
+                            }
+                            table-row {
+                                table-cell (class: "w-[50px]") { checkbox (checked: true) {} }
+                                table-cell { badge (text: "Success", variant: "default") {} }
+                                table-cell (text: "abe45@gmail.com", class: "lowercase") {}
+                                table-cell (text: "$242.00", class: "text-right font-medium") {}
+                                table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "...") {} } }
+                            }
+                            table-row {
+                                table-cell (class: "w-[50px]") { checkbox {} }
+                                table-cell { badge (text: "Processing", variant: "outline") {} }
+                                table-cell (text: "monserrat44@gmail.com", class: "lowercase") {}
+                                table-cell (text: "$837.00", class: "text-right font-medium") {}
+                                table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "...") {} } }
+                            }
+                            table-row {
+                                table-cell (class: "w-[50px]") { checkbox {} }
+                                table-cell { badge (text: "Failed", variant: "destructive") {} }
+                                table-cell (text: "carmella@hotmail.com", class: "lowercase") {}
+                                table-cell (text: "$721.00", class: "text-right font-medium") {}
+                                table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "...") {} } }
+                            }
+                        }
+                    }
+                    row (class: "flex items-center justify-between") {
+                        text (text: "1 of 4 row(s) selected.", class: "text-sm text-muted-foreground") {}
+                        row (class: "flex items-center gap-6") {
+                            row (class: "flex items-center gap-2") {
+                                text (text: "Rows per page", class: "text-sm text-muted-foreground") {}
+                                select (class: "w-[70px]") {
+                                    select-trigger { select-value {} }
+                                    select-content {
+                                        select-item (text: "5", value: "5") {}
+                                        select-item (text: "10", value: "10") {}
+                                    }
+                                }
+                            }
+                            text (text: "Page 1 of 1", class: "text-sm text-muted-foreground") {}
+                            row (gap: "2") {
+                                button (variant: "outline", size: "icon", disabled: true) {
+                                    icon (name: "chevron-left", class: "h-4 w-4") {}
+                                }
+                                button (variant: "outline", size: "icon", disabled: true) {
+                                    icon (name: "chevron-right", class: "h-4 w-4") {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Features Overview
             h2 (text: "Features") {}
-            col (gap: "2") {
+            text (text: "The Data Table guide covers:", class: "text-muted-foreground") {}
+            col (gap: "2", class: "py-2") {
                 row (gap: "2") {
                     badge (text: "Sorting", variant: "secondary") {}
                     badge (text: "Filtering", variant: "secondary") {}
@@ -26,37 +625,83 @@ widget DatatablePage {
                 row (gap: "2") {
                     badge (text: "Row Selection", variant: "secondary") {}
                     badge (text: "Column Visibility", variant: "secondary") {}
+                    badge (text: "Row Actions", variant: "secondary") {}
                 }
             }
 
-            h2 (text: "Properties") {}
+            // Table Components
+            h2 (text: "Table Components") {}
             table {
-                thead {
-                    tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                table-header {
+                    table-row {
+                        table-head (text: "Component") {}
+                        table-head (text: "Description") {}
                     }
                 }
-                tbody {
-                    tr {
-                        td (text: "data") {}
-                        td (text: "array") {}
-                        td (text: "[]") {}
-                        td (text: "-") {}
-                        td (text: "Array of row data") {}
+                table-body {
+                    table-row {
+                        table-cell (text: "Table") {}
+                        table-cell (text: "Main table container") {}
                     }
-                    tr {
-                        td (text: "columns") {}
-                        td (text: "array") {}
-                        td (text: "[]") {}
-                        td (text: "-") {}
-                        td (text: "Column definitions") {}
+                    table-row {
+                        table-cell (text: "TableHeader") {}
+                        table-cell (text: "Header section") {}
+                    }
+                    table-row {
+                        table-cell (text: "TableBody") {}
+                        table-cell (text: "Body section") {}
+                    }
+                    table-row {
+                        table-cell (text: "TableRow") {}
+                        table-cell (text: "Table row") {}
+                    }
+                    table-row {
+                        table-cell (text: "TableHead") {}
+                        table-cell (text: "Header cell") {}
+                    }
+                    table-row {
+                        table-cell (text: "TableCell") {}
+                        table-cell (text: "Data cell") {}
                     }
                 }
             }
+
+            // TanStack Table API
+            h2 (text: "TanStack Table API") {}
+            text (text: "Key API methods from @tanstack/vue-table:", class: "text-muted-foreground") {}
+            table {
+                table-header {
+                    table-row {
+                        table-head (text: "Method") {}
+                        table-head (text: "Description") {}
+                    }
+                }
+                table-body {
+                    table-row {
+                        table-cell (text: "useVueTable", class: "font-mono text-sm") {}
+                        table-cell (text: "Main composable to create table instance") {}
+                    }
+                    table-row {
+                        table-cell (text: "getCoreRowModel", class: "font-mono text-sm") {}
+                        table-cell (text: "Returns core row model") {}
+                    }
+                    table-row {
+                        table-cell (text: "getPaginationRowModel", class: "font-mono text-sm") {}
+                        table-cell (text: "Returns pagination row model") {}
+                    }
+                    table-row {
+                        table-cell (text: "getSortedRowModel", class: "font-mono text-sm") {}
+                        table-cell (text: "Returns sorted row model") {}
+                    }
+                    table-row {
+                        table-cell (text: "getFilteredRowModel", class: "font-mono text-sm") {}
+                        table-cell (text: "Returns filtered row model") {}
+                    }
+                }
+            }
+
+            h2 (text: "Documentation") {}
+            text (text: "For the complete guide with code examples, see the shadcn-vue Data Table documentation.", class: "text-muted-foreground") {}
         }
     }
 }
