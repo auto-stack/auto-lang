@@ -66,6 +66,8 @@ pub mod trait_checker;
 // Plan 087: Type registry for REPL
 pub mod trans;
 pub mod type_registry;
+// Plan 109: AutoDown Document Format
+pub mod autodown;
 // Plan 091: Extracted from universe.rs
 pub mod symbol;
 pub mod util;
