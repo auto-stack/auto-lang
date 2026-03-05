@@ -485,6 +485,8 @@ impl ShadcnRegistry {
             ("@/components/ui/carousel", vec!["CarouselContent"]));
         components.insert("carousel_item",
             ("@/components/ui/carousel", vec!["CarouselItem"]));
+        components.insert("carousel_previous",
+            ("@/components/ui/carousel", vec!["CarouselPrevious"]));
         components.insert("carousel_prev",
             ("@/components/ui/carousel", vec!["CarouselPrevious"]));
         components.insert("carousel_next",
@@ -521,6 +523,20 @@ impl ShadcnRegistry {
             ("@/components/ui/context-menu", vec!["ContextMenuSeparator"]));
         components.insert("context_menu_label",
             ("@/components/ui/context-menu", vec!["ContextMenuLabel"]));
+        components.insert("context_menu_shortcut",
+            ("@/components/ui/context-menu", vec!["ContextMenuShortcut"]));
+        components.insert("context_menu_checkbox_item",
+            ("@/components/ui/context-menu", vec!["ContextMenuCheckboxItem"]));
+        components.insert("context_menu_radio_group",
+            ("@/components/ui/context-menu", vec!["ContextMenuRadioGroup"]));
+        components.insert("context_menu_radio_item",
+            ("@/components/ui/context-menu", vec!["ContextMenuRadioItem"]));
+        components.insert("context_menu_sub",
+            ("@/components/ui/context-menu", vec!["ContextMenuSub", "ContextMenuSubTrigger", "ContextMenuSubContent"]));
+        components.insert("context_menu_sub_trigger",
+            ("@/components/ui/context-menu", vec!["ContextMenuSubTrigger"]));
+        components.insert("context_menu_sub_content",
+            ("@/components/ui/context-menu", vec!["ContextMenuSubContent"]));
 
         // === Drawer (Vaul) ===
         components.insert("drawer",
@@ -2229,7 +2245,9 @@ impl VueGenerator {
                 "cardheader" | "card-header" => classes.push("flex flex-col space-y-1.5 p-6".to_string()),
                 "cardtitle" | "card-title" => classes.push("text-lg font-semibold leading-none tracking-tight".to_string()),
                 "carddescription" | "card-description" => classes.push("text-sm text-muted-foreground".to_string()),
-                "cardcontent" | "card-content" => classes.push("p-6 pt-0".to_string()),
+                "cardcontent" | "card-content" => {
+                    // Don't add default padding - let users control via class prop
+                }
                 "cardfooter" | "card-footer" => classes.push("flex items-center p-6 pt-0".to_string()),
                 "avatar" => classes.push("w-10 h-10 rounded-full".to_string()),
                 "aspectratio" | "aspect-ratio" => classes.push("relative w-full".to_string()),
@@ -3965,11 +3983,34 @@ impl VueGenerator {
 
             // === Carousel ===
             "carousel" => {
-                // opts for configuration
+                // Build opts object for Embla options (align, loop, etc.)
+                let mut opts_parts: Vec<String> = Vec::new();
+
+                // align option
                 if let Some(value) = props.get("align") {
                     let align = self.extract_string_value(value).unwrap_or("center");
-                    attrs.push(format!(":opts=\"{{ align: '{}' }}\"", align));
+                    opts_parts.push(format!("align: '{}'", align));
                 }
+
+                // loop option
+                if let Some(value) = props.get("loop") {
+                    if self.extract_bool_value(value) {
+                        opts_parts.push("loop: true".to_string());
+                    }
+                }
+
+                // orientation option (vertical/horizontal)
+                // This is a direct prop on Carousel for shadcn-vue styling
+                if let Some(value) = props.get("orientation") {
+                    let orientation = self.extract_string_value(value).unwrap_or("horizontal");
+                    attrs.push(format!("orientation=\"{}\"", orientation));
+                }
+
+                // Output opts if any options were specified
+                if !opts_parts.is_empty() {
+                    attrs.push(format!(":opts=\"{{ {} }}\"", opts_parts.join(", ")));
+                }
+
                 // class
                 if let Some(value) = props.get("class") {
                     let class = self.extract_string_value(value).unwrap_or("");
@@ -3985,7 +4026,7 @@ impl VueGenerator {
                 }
             }
 
-            "carousel_prev" | "carousel_next" => {
+            "carousel_prev" | "carousel_previous" | "carousel_next" => {
                 // class
                 if let Some(value) = props.get("class") {
                     let class = self.extract_string_value(value).unwrap_or("");
@@ -4060,6 +4101,11 @@ impl VueGenerator {
             }
 
             "context_menu_trigger" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
                 // as-child for custom trigger
                 if let Some(value) = props.get("as_child") {
                     if self.extract_bool_value(value) {
@@ -4083,10 +4129,30 @@ impl VueGenerator {
                         attrs.push("disabled".to_string());
                     }
                 }
+                // inset
+                if let Some(value) = props.get("inset") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("inset".to_string());
+                    }
+                }
+                // variant (default, destructive)
+                if let Some(value) = props.get("variant") {
+                    let variant = self.extract_string_value(value).unwrap_or("default");
+                    if variant != "default" {
+                        attrs.push(format!("variant=\"{}\"", variant));
+                    }
+                }
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
                 // text becomes slot content
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
                 }
+                // shortcut - rendered as ContextMenuShortcut inside the item
+                // (handled in node_to_html when children are processed)
                 // onclick
                 if events.contains_key("onclick") {
                     // Handled by event handlers below
@@ -4098,9 +4164,85 @@ impl VueGenerator {
             }
 
             "context_menu_label" => {
+                // inset
+                if let Some(value) = props.get("inset") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("inset".to_string());
+                    }
+                }
                 // text becomes slot content
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "context_menu_shortcut" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "context_menu_checkbox_item" => {
+                // model-value for checked state
+                if let Some(value) = props.get("checked") {
+                    if self.extract_bool_value(value) {
+                        attrs.push(":model-value=\"true\"".to_string());
+                    }
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "context_menu_radio_group" => {
+                // model-value for selected value
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("model-value=\"{}\"", val));
+                }
+            }
+
+            "context_menu_radio_item" => {
+                // value (required)
+                if let Some(value) = props.get("value") {
+                    let val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("value=\"{}\"", val));
+                }
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+            }
+
+            "context_menu_sub" => {
+                // open
+                if let Some(value) = props.get("open") {
+                    if let Some(ref_name) = self.extract_state_ref(value) {
+                        attrs.push(format!("v-model:open=\"{}\"", ref_name));
+                    }
+                }
+            }
+
+            "context_menu_sub_trigger" => {
+                // text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
+                }
+                // inset
+                if let Some(value) = props.get("inset") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("inset".to_string());
+                    }
+                }
+            }
+
+            "context_menu_sub_content" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
                 }
             }
 
@@ -4520,6 +4662,11 @@ impl VueGenerator {
             }
 
             "collapsible_trigger" => {
+                // class
+                if let Some(value) = props.get("class") {
+                    let class = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("class=\"{}\"", class));
+                }
                 // as-child
                 if let Some(value) = props.get("as_child") {
                     if self.extract_bool_value(value) {
@@ -5009,7 +5156,8 @@ impl VueGenerator {
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.0",
-    "lucide-vue-next": "^0.312.0"
+    "lucide-vue-next": "^0.312.0",
+    "embla-carousel-vue": "^8.5.1"
   }},
   "devDependencies": {{
     "@vitejs/plugin-vue": "^5.0.0",
@@ -5235,7 +5383,7 @@ const routes: RouteRecordRaw[] = [
 ]
 
 const router = createRouter({{
-  history: createWebHistory(import.meta.url),
+  history: createWebHistory(),
   routes,
 }})
 
