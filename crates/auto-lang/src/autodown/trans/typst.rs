@@ -578,7 +578,7 @@ mod tests {
     #[test]
     fn test_typst_simple_document() {
         let doc = AdocDocument::with_title("Test Document")
-            .add_preamble_block(AdocBlock::paragraph("Hello, world!"));
+            .add_preamble(AdocBlock::paragraph("Hello, world!"));
 
         let mut transpiler = TypstTranspiler::new();
         let result = transpiler.transpile(&doc).unwrap();
@@ -590,7 +590,7 @@ mod tests {
     #[test]
     fn test_typst_math() {
         let doc = AdocDocument::with_title("Math Test")
-            .add_preamble_block(AdocBlock::MathBlock(AdocMath::inline("E = mc^2")));
+            .add_preamble(AdocBlock::MathBlock(AdocMath::inline("E = mc^2")));
 
         let mut transpiler = TypstTranspiler::new();
         let result = transpiler.transpile(&doc).unwrap();
@@ -600,10 +600,10 @@ mod tests {
 
     #[test]
     fn test_typst_list() {
-        let doc = AdocDocument::with_title("List Test").add_preamble_block(AdocBlock::List {
+        let doc = AdocDocument::with_title("List Test").add_preamble(AdocBlock::List {
             items: vec![
-                AdocListItem::simple("Item 1"),
-                AdocListItem::simple("Item 2"),
+                AdocListItem::simple(vec![AdocInline::text("Item 1")]),
+                AdocListItem::simple(vec![AdocInline::text("Item 2")]),
             ],
             ordered: false,
         });
