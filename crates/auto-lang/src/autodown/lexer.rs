@@ -978,3 +978,52 @@ mod tests {
         assert_eq!(token.kind, AdTokenKind::RBrace);
     }
 }
+
+/// Helper function: tokenize text content starting with a specific character already in buffer
+fn tokenize_text_content_with(&mut self, start_char: char) -> AdocResult<AdToken> {
+    let mut text = String::new();
+    text.push(start_char);
+    
+    // Continue with normal text tokenization
+    self.tokenize_text_content_with(start_char)
+}
+
+/// Helper function: tokenize text content starting with a specific character already in buffer
+fn tokenize_text_content_with(&mut self, start_char: char) -> AdocResult<AdToken> {
+    let line = self.line;
+    let column = self.column;
+    
+    self.mode = LexerMode::Text;
+    
+    // Start with the initial character
+    let mut text = String::new();
+    text.push(start_char);
+    
+    loop {
+        match self.peek() {
+            // Stop at special characters
+            '\n' | '#' | '$' | '%' | '*' | '_' | '`' | '-' 
+            | '>' | '!' | '[' => break,
+            ' ' | '\t' => {
+                text.push(c);
+                self.advance();
+            }
+            _ => {
+                text.push(c);
+                self.advance();
+            }
+        }
+        
+        if text.len() > 10000 {
+            return Err(AdocError::lexer("Text content too long"));
+        }
+    }
+    
+    if text.is_empty() {
+        // Single character token (should not happen here since we start)
+        let c = self.advance().unwrap() as char;
+        Ok(AdToken::new(AdTokenKind::Text, c.to_string(), line, column))
+    } else {
+        Ok(AdToken::new(AdTokenKind::Text, text, line, column))
+    }
+}
