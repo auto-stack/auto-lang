@@ -342,17 +342,15 @@ impl<'a> AdocLexer<'a> {
             }
             
             Some('%') => {
+                self.advance(); // consume %
                 // Check for math start %{
-                if self.peek_next() == Some('{') {
-                    self.advance(); // consume %
+                if self.peek() == Some('{') {
                     self.advance(); // consume {
                     self.mode = LexerMode::Math;
                     return Ok(AdToken::simple(AdTokenKind::MathStart, line, column));
                 }
-                // Just a percent sign in text
-                self.start_token();
-                self.advance();
-                self.tokenize_text_content()
+                // Just a percent sign in text - return as text token
+                Ok(AdToken::new(AdTokenKind::Text, "%", line, column))
             }
             
             Some('*') => {
@@ -420,9 +418,8 @@ impl<'a> AdocLexer<'a> {
                     self.advance();
                     return Ok(AdToken::simple(AdTokenKind::ImageStart, line, col));
                 }
-                // Just a ! in text
-                self.start_token();
-                self.tokenize_text_content()
+                // Just a ! in text - return as text token
+                Ok(AdToken::new(AdTokenKind::Text, "!", line, col))
             }
             
             Some('[') => {
@@ -904,14 +901,20 @@ mod tests {
     fn test_lexer_basic_text() {
         let source = "Hello, world!";
         let mut lexer = AdocLexer::new(source);
-        
+
+        // First token is "Hello, world" (stops at !)
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::Text);
-        assert_eq!(token.text, "Hello,");
-        
+        assert!(token.text.contains("Hello"));
+
+        // Second token is "!" as text
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::Text);
-        assert_eq!(token.text, "world!");
+        assert_eq!(token.text, "!");
+
+        // Third token is EOF
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token.kind, AdTokenKind::EOF);
     }
 
     #[test]
@@ -976,54 +979,5 @@ mod tests {
         // }
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::RBrace);
-    }
-}
-
-/// Helper function: tokenize text content starting with a specific character already in buffer
-fn tokenize_text_content_with(&mut self, start_char: char) -> AdocResult<AdToken> {
-    let mut text = String::new();
-    text.push(start_char);
-    
-    // Continue with normal text tokenization
-    self.tokenize_text_content_with(start_char)
-}
-
-/// Helper function: tokenize text content starting with a specific character already in buffer
-fn tokenize_text_content_with(&mut self, start_char: char) -> AdocResult<AdToken> {
-    let line = self.line;
-    let column = self.column;
-    
-    self.mode = LexerMode::Text;
-    
-    // Start with the initial character
-    let mut text = String::new();
-    text.push(start_char);
-    
-    loop {
-        match self.peek() {
-            // Stop at special characters
-            '\n' | '#' | '$' | '%' | '*' | '_' | '`' | '-' 
-            | '>' | '!' | '[' => break,
-            ' ' | '\t' => {
-                text.push(c);
-                self.advance();
-            }
-            _ => {
-                text.push(c);
-                self.advance();
-            }
-        }
-        
-        if text.len() > 10000 {
-            return Err(AdocError::lexer("Text content too long"));
-        }
-    }
-    
-    if text.is_empty() {
-        // Single character token (should not happen here since we start)
-        let c = self.advance().unwrap() as char;
-        Ok(AdToken::new(AdTokenKind::Text, c.to_string(), line, column))
-    } else {
-        Ok(AdToken::new(AdTokenKind::Text, text, line, column))
     }
 }

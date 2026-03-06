@@ -5618,7 +5618,7 @@ mod tests {
 
     #[test]
     fn test_shadcn_mode() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         assert!(gen.is_shadcn());
 
         let gen = VueGenerator::new().with_mode(VueMode::Shadcn);
@@ -5670,13 +5670,13 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_button() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test button with text
         props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Click me".to_string())));
-        let (attrs, slot_content) = gen.generate_shadcn_attrs("button", &props, &events);
+        let (attrs, slot_content, _) = gen.generate_shadcn_attrs("button", &props, &events);
 
         assert!(slot_content.is_some());
         assert_eq!(slot_content.unwrap(), "Click me");
@@ -5684,14 +5684,14 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_input() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test input with v-model
         props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("name".to_string())));
         props.insert("placeholder".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Enter name".to_string())));
-        let (attrs, _) = gen.generate_shadcn_attrs("input", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("input", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("v-model=\"name\"")));
         assert!(attrs.iter().any(|a| a.contains("placeholder=\"Enter name\"")));
@@ -5699,13 +5699,13 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_checkbox() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test checkbox with v-model:checked
         props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("done".to_string())));
-        let (attrs, _) = gen.generate_shadcn_attrs("checkbox", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("checkbox", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("v-model:checked=\"done\"")));
     }
@@ -5742,53 +5742,53 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_scroll() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test scroll area with orientation
         props.insert("orientation".to_string(), AuraPropValue::Expr(AuraExpr::Literal("vertical".to_string())));
-        let (attrs, _) = gen.generate_shadcn_attrs("scroll", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("orientation=\"vertical\"")));
     }
 
     #[test]
     fn test_generate_shadcn_attrs_tabs() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test tabs with default value
         props.insert("default".to_string(), AuraPropValue::Expr(AuraExpr::Literal("tab1".to_string())));
-        let (attrs, _) = gen.generate_shadcn_attrs("tabs", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("tabs", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("default-value=\"tab1\"")));
     }
 
     #[test]
     fn test_generate_shadcn_attrs_tabs_with_model() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test tabs with v-model
         props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("activeTab".to_string())));
-        let (attrs, _) = gen.generate_shadcn_attrs("tabs", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("tabs", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("v-model=\"activeTab\"")));
     }
 
     #[test]
     fn test_generate_shadcn_attrs_tab() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test tab trigger with value and text
         props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::Literal("tab1".to_string())));
         props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("First Tab".to_string())));
-        let (attrs, slot_content) = gen.generate_shadcn_attrs("tab", &props, &events);
+        let (attrs, slot_content, _) = gen.generate_shadcn_attrs("tab", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("value=\"tab1\"")));
         assert!(slot_content.is_some());
@@ -5797,14 +5797,14 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_card() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test card with variant and title
         props.insert("variant".to_string(), AuraPropValue::Expr(AuraExpr::Literal("outline".to_string())));
         props.insert("title".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Card Title".to_string())));
-        let (attrs, slot_content) = gen.generate_shadcn_attrs("card", &props, &events);
+        let (attrs, slot_content, _) = gen.generate_shadcn_attrs("card", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("variant=\"outline\"")));
         assert!(slot_content.is_some());
@@ -5813,26 +5813,26 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_divider() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test separator with orientation
         props.insert("orientation".to_string(), AuraPropValue::Expr(AuraExpr::Literal("vertical".to_string())));
-        let (attrs, _) = gen.generate_shadcn_attrs("divider", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("divider", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("orientation=\"vertical\"")));
     }
 
     #[test]
     fn test_generate_shadcn_attrs_divider_decorative() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test decorative separator
         props.insert("decorative".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
-        let (attrs, _) = gen.generate_shadcn_attrs("divider", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("divider", &props, &events);
 
         assert!(attrs.iter().any(|a| a == "decorative"));
     }
@@ -5874,14 +5874,14 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_modal() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test modal with v-model:open
         props.insert("open".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("showDialog".to_string())));
         props.insert("title".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Confirm Delete".to_string())));
-        let (attrs, _) = gen.generate_shadcn_attrs("modal", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("modal", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("v-model:open=\"showDialog\"")));
         assert!(attrs.iter().any(|a| a.contains("data-title=\"Confirm Delete\"")));
@@ -5889,14 +5889,14 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_tooltip() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test tooltip with content and side
         props.insert("content".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Help text".to_string())));
         props.insert("side".to_string(), AuraPropValue::Expr(AuraExpr::Literal("right".to_string())));
-        let (attrs, slot_content) = gen.generate_shadcn_attrs("tooltip", &props, &events);
+        let (attrs, slot_content, _) = gen.generate_shadcn_attrs("tooltip", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("side=\"right\"")));
         assert!(slot_content.is_some());
@@ -5905,13 +5905,13 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_spinner() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test spinner/skeleton
         props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("w-10 h-10".to_string())));
-        let (attrs, _) = gen.generate_shadcn_attrs("spinner", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("spinner", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("class=\"w-10 h-10\"")));
     }
@@ -5937,52 +5937,52 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_table() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test table
         props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("w-full".to_string())));
-        let (attrs, _) = gen.generate_shadcn_attrs("table", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("table", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("class=\"w-full\"")));
     }
 
     #[test]
     fn test_generate_shadcn_attrs_table_cells() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test th with colspan
         props.insert("colspan".to_string(), AuraPropValue::Expr(AuraExpr::Int(2)));
-        let (attrs, _) = gen.generate_shadcn_attrs("th", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("th", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains(":colspan=\"2\"")));
     }
 
     #[test]
     fn test_generate_shadcn_attrs_tree() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test tree
         props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("pl-4".to_string())));
-        let (attrs, _) = gen.generate_shadcn_attrs("tree", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("tree", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("class=\"pl-4\"")));
     }
 
     #[test]
     fn test_generate_shadcn_attrs_tree_item() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test tree_item with text
         props.insert("text".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Node 1".to_string())));
-        let (attrs, slot_content) = gen.generate_shadcn_attrs("tree_item", &props, &events);
+        let (attrs, slot_content, _) = gen.generate_shadcn_attrs("tree_item", &props, &events);
 
         assert!(slot_content.is_some());
         assert_eq!(slot_content.unwrap(), "Node 1");
@@ -6017,14 +6017,14 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_radiogroup() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test radiogroup with v-model
         props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("selectedOption".to_string())));
         props.insert("name".to_string(), AuraPropValue::Expr(AuraExpr::Literal("options".to_string())));
-        let (attrs, _) = gen.generate_shadcn_attrs("radiogroup", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("radiogroup", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("v-model=\"selectedOption\"")));
         assert!(attrs.iter().any(|a| a.contains("name=\"options\"")));
@@ -6032,14 +6032,14 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_radio() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test radio with value and label
         props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::Literal("option1".to_string())));
         props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Option 1".to_string())));
-        let (attrs, slot_content) = gen.generate_shadcn_attrs("radio", &props, &events);
+        let (attrs, slot_content, _) = gen.generate_shadcn_attrs("radio", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("value=\"option1\"")));
         assert!(slot_content.is_some());
@@ -6048,14 +6048,14 @@ mod tests {
 
     #[test]
     fn test_generate_shadcn_attrs_radio_disabled() {
-        let gen = VueGenerator::new_shadcn();
+        let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         let events = HashMap::new();
 
         // Test disabled radio
         props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::Literal("option2".to_string())));
         props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
-        let (attrs, _) = gen.generate_shadcn_attrs("radio", &props, &events);
+        let (attrs, _, _) = gen.generate_shadcn_attrs("radio", &props, &events);
 
         assert!(attrs.iter().any(|a| a == "disabled"));
     }
