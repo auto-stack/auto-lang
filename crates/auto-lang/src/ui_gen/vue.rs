@@ -2741,10 +2741,13 @@ impl VueGenerator {
 
             // === Checkbox ===
             "checkbox" => {
-                // v-model:checked for checked state
+                // v-model:checked for checked state (dynamic) or :default-checked (static)
                 if let Some(value) = props.get("checked") {
                     if let Some(model) = self.extract_state_ref(value) {
                         attrs.push(format!("v-model:checked=\"{}\"", model));
+                    } else if self.extract_bool_value(value) {
+                        // Static true value - use default-checked for uncontrolled mode
+                        attrs.push(":default-checked=\"true\"".to_string());
                     }
                 }
                 // disabled
@@ -2757,10 +2760,13 @@ impl VueGenerator {
 
             // === Switch/Toggle ===
             "toggle" | "switch" => {
-                // v-model:checked for checked state
+                // v-model:checked for checked state (dynamic) or :default-checked (static)
                 if let Some(value) = props.get("checked") {
                     if let Some(model) = self.extract_state_ref(value) {
                         attrs.push(format!("v-model:checked=\"{}\"", model));
+                    } else if self.extract_bool_value(value) {
+                        // Static true value - use default-checked for uncontrolled mode
+                        attrs.push(":default-checked=\"true\"".to_string());
                     }
                 }
                 // disabled
