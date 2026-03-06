@@ -231,9 +231,20 @@ pub enum ViewNode {
     /// ```auto
     /// link (to: "/user/123") { "View Profile" }
     /// ```
+    ///
+    /// Also supports shorthand form:
+    /// ```auto
+    /// link (text: "Forgot password?", href: "#")
+    /// ```
     Link {
-        /// Target path (e.g., "/user/123")
+        /// Target path for router-link (e.g., "/user/123")
         to: String,
+
+        /// Text content (optional, for shorthand form)
+        text: String,
+
+        /// href for external links (optional)
+        href: String,
 
         /// Child content
         children: Vec<ViewNode>,

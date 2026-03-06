@@ -7684,11 +7684,14 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse navigation link in view: link (to: "/path") { children } (Plan 105)
+    /// Also supports: link (text: "label", href: "#") {} for external links
     fn parse_view_link(&mut self) -> AutoResult<ViewNode> {
         self.expect(TokenKind::Link)?;
 
-        // Parse props in parentheses: (to: "/path")
+        // Parse props in parentheses: (to: "/path") or (text: "label", href: "#")
         let mut to = String::new();
+        let mut text = String::new();
+        let mut href = String::new();
 
         if self.is_kind(TokenKind::LParen) {
             self.next();
@@ -7706,6 +7709,12 @@ impl<'a> Parser<'a> {
 
                 if key == "to" {
                     to = self.cur.text.to_string();
+                    self.expect(TokenKind::Str)?;
+                } else if key == "text" {
+                    text = self.cur.text.to_string();
+                    self.expect(TokenKind::Str)?;
+                } else if key == "href" {
+                    href = self.cur.text.to_string();
                     self.expect(TokenKind::Str)?;
                 } else {
                     // Skip unknown props
@@ -7737,7 +7746,12 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::RBrace)?;
         }
 
-        Ok(ViewNode::Link { to, children })
+        // If text is provided but no children, create a text child
+        if !text.is_empty() && children.is_empty() {
+            children.push(ViewNode::Text(ViewText::Literal(text.clone())));
+        }
+
+        Ok(ViewNode::Link { to, text, href, children })
     }
 
     /// Parse condition expression (until '{')

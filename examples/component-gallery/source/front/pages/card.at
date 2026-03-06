@@ -1,2 +1,203 @@
 // pages/card.at - Card component documentation page
 
+widget CardPage {
+    model { activeTab str = "preview" }
+
+    view {
+        col {
+            h1 (text: "Card") {}
+            text (text: "Displays a card with header, content, and footer.") {}
+
+            h2 (text: "Installation") {}
+            codeblock (lang: "bash", code: "npx shadcn-vue@latest add card") {}
+
+            // Basic Example
+            h2 (text: "Basic") {}
+            preview-card (id: "card-basic") {
+                card {
+                    card-header {
+                        card-title (text: "Card Title") {}
+                        card-description (text: "Card Description") {}
+                    }
+                    card-content {
+                        text (text: "Card Content") {}
+                    }
+                    card-footer {
+                        text (text: "Card Footer") {}
+                    }
+                }
+            }
+
+            // Login Form Example
+            h2 (text: "Login Form") {}
+            preview-card (id: "card-login") {
+                card (class: "w-full max-w-sm") {
+                    card-header {
+                        card-title (text: "Login to your account") {}
+                        card-description (text: "Enter your email below to login to your account.") {}
+                        card-action {
+                            button (text: "Sign Up", variant: "link") {}
+                        }
+                    }
+                    card-content {
+                        form {
+                            col (gap: "6") {
+                                col (gap: "2") {
+                                    label (text: "Email", for: "email") {}
+                                    input (id: "email", type: "email", placeholder: "m@example.com") {}
+                                }
+                                col (gap: "2") {
+                                    row (class: "flex items-center") {
+                                        label (text: "Password", for: "password") {}
+                                        link (text: "Forgot your password?", href: "#", class: "ml-auto inline-block text-sm underline-offset-4 hover:underline") {}
+                                    }
+                                    input (id: "password", type: "password") {}
+                                }
+                            }
+                        }
+                    }
+                    card-footer (class: "flex-col gap-2") {
+                        button (text: "Login", class: "w-full") {}
+                        button (text: "Login with Google", variant: "outline", class: "w-full") {}
+                    }
+                }
+            }
+
+            // Create Project Example
+            h2 (text: "Create Project") {}
+            preview-card (id: "card-project") {
+                card {
+                    card-header {
+                        card-title (text: "Create project") {}
+                        card-description (text: "Deploy your new project in one-click.") {}
+                    }
+                    card-content {
+                        col (gap: "4") {
+                            col (gap: "2") {
+                                label (text: "Name") {}
+                                input (placeholder: "Name of your project") {}
+                            }
+                            col (gap: "2") {
+                                label (text: "Framework") {}
+                                select {
+                                    select-trigger {
+                                        select-value (placeholder: "Select") {}
+                                    }
+                                    select-content {
+                                        select-item (text: "Next.js", value: "next") {}
+                                        select-item (text: "SvelteKit", value: "sveltekit") {}
+                                        select-item (text: "Astro", value: "astro") {}
+                                        select-item (text: "Nuxt", value: "nuxt") {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    card-footer (class: "flex justify-between") {
+                        button (text: "Cancel", variant: "outline") {}
+                        button (text: "Deploy") {}
+                    }
+                }
+            }
+
+            // Notifications Example
+            h2 (text: "Notifications") {}
+            preview-card (id: "card-notifications") {
+                card {
+                    card-header {
+                        card-title (text: "Notifications") {}
+                        card-description (text: "You have 3 unread messages.") {}
+                    }
+                    card-content (class: "grid gap-4") {
+                        col (gap: "4") {
+                            row (class: "flex items-center justify-between") {
+                                col (gap: "1") {
+                                    text (text: "Push Notifications", class: "text-sm font-medium") {}
+                                    text (text: "Send notifications to device.", class: "text-sm text-muted-foreground") {}
+                                }
+                                switch {}
+                            }
+                            separator {}
+                            col (gap: "4") {
+                                row (class: "flex items-start gap-4") {
+                                    avatar (size: "sm") {
+                                        avatar-image (src: "/avatars/01.png", alt: "Avatar") {}
+                                        avatar-fallback (text: "OM") {}
+                                    }
+                                    col (gap: "1", class: "grid gap-1") {
+                                        text (text: "Your call has been confirmed.", class: "text-sm") {}
+                                        text (text: "1 hour ago", class: "text-sm text-muted-foreground") {}
+                                    }
+                                }
+                                row (class: "flex items-start gap-4") {
+                                    avatar (size: "sm") {
+                                        avatar-image (src: "/avatars/02.png", alt: "Avatar") {}
+                                        avatar-fallback (text: "JD") {}
+                                    }
+                                    col (gap: "1", class: "grid gap-1") {
+                                        text (text: "You have a new message!", class: "text-sm") {}
+                                        text (text: "1 hour ago", class: "text-sm text-muted-foreground") {}
+                                    }
+                                }
+                                row (class: "flex items-start gap-4") {
+                                    avatar (size: "sm") {
+                                        avatar-image (src: "/avatars/03.png", alt: "Avatar") {}
+                                        avatar-fallback (text: "WW") {}
+                                    }
+                                    col (gap: "1", class: "grid gap-1") {
+                                        text (text: "Your subscription is expiring soon!", class: "text-sm") {}
+                                        text (text: "2 hours ago", class: "text-sm text-muted-foreground") {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    card-footer {
+                        button (text: "Mark all as read", variant: "outline", class: "w-full") {}
+                    }
+                }
+            }
+
+            // Components Table
+            h2 (text: "Components") {}
+            table {
+                thead {
+                    tr {
+                        th (text: "Component") {}
+                        th (text: "Description") {}
+                    }
+                }
+                tbody {
+                    tr {
+                        td (text: "Card") {}
+                        td (text: "Root container component") {}
+                    }
+                    tr {
+                        td (text: "CardHeader") {}
+                        td (text: "Header section with title, description, and action") {}
+                    }
+                    tr {
+                        td (text: "CardTitle") {}
+                        td (text: "Card title text") {}
+                    }
+                    tr {
+                        td (text: "CardDescription") {}
+                        td (text: "Card description text") {}
+                    }
+                    tr {
+                        td (text: "CardAction") {}
+                        td (text: "Action area in header, like Sign Up button") {}
+                    }
+                    tr {
+                        td (text: "CardContent") {}
+                        td (text: "Main content area") {}
+                    }
+                    tr {
+                        td (text: "CardFooter") {}
+                        td (text: "Footer section for actions") {}
+                    }
+                }
+            }
+        }
+    }
+}

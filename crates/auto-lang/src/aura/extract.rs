@@ -756,12 +756,14 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
         }
         // Plan 105: Router outlet and link
         ViewNode::Outlet => Ok(AuraNode::Outlet),
-        ViewNode::Link { to, children } => {
+        ViewNode::Link { to, text, href, children } => {
             let aura_children: Vec<AuraNode> = children.iter()
                 .map(|c| extract_view_node(c))
                 .collect::<ExtractResult<_>>()?;
             Ok(AuraNode::Link {
                 to: to.clone(),
+                text: text.clone(),
+                href: href.clone(),
                 children: aura_children,
             })
         }

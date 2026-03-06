@@ -1522,14 +1522,36 @@ impl VueGenerator {
                 Ok(format!("{}<router-view />\n", ind))
             }
 
-            AuraNode::Link { to, children } => {
-                // Vue Router link: <router-link to="path">children</router-link>
-                self.needs_router = true;
-                let mut children_html = String::new();
-                for child in children {
-                    children_html.push_str(&self.node_to_html(child, indent + 1)?);
+            AuraNode::Link { to, text, href, children } => {
+                // Handle different link types:
+                // 1. External link with href: <a href="...">
+                // 2. Router link with to: <router-link to="...">
+                if !href.is_empty() {
+                    // External link
+                    let text_content = if text.is_empty() {
+                        let mut children_html = String::new();
+                        for child in children {
+                            children_html.push_str(&self.node_to_html(child, indent + 1)?);
+                        }
+                        children_html
+                    } else {
+                        text.clone()
+                    };
+                    Ok(format!("{}<a href=\"{}\">{}</a>\n", ind, href, text_content.trim()))
+                } else {
+                    // Vue Router link
+                    self.needs_router = true;
+                    let children_html = if text.is_empty() {
+                        let mut html = String::new();
+                        for child in children {
+                            html.push_str(&self.node_to_html(child, indent + 1)?);
+                        }
+                        html
+                    } else {
+                        text.clone()
+                    };
+                    Ok(format!("{}<router-link to=\"{}\">\n{}{}</router-link>\n", ind, to, children_html, ind))
                 }
-                Ok(format!("{}<router-link to=\"{}\">\n{}{}</router-link>\n", ind, to, children_html, ind))
             }
         }
     }
@@ -1931,13 +1953,31 @@ impl VueGenerator {
                 format!("{}outlet\n", ind)
             }
 
-            AuraNode::Link { to, children } => {
+            AuraNode::Link { to, text, href, children } => {
                 let mut result = String::new();
-                result.push_str(&format!("{}link (to: \"{}\") {{\n", ind, to));
-                for child in children {
-                    result.push_str(&self.node_to_auto_code(child, indent + 1));
+                // Generate appropriate link syntax based on which props are provided
+                if !href.is_empty() {
+                    // External link with href
+                    if text.is_empty() {
+                        result.push_str(&format!("{}link (href: \"{}\") {{\n", ind, href));
+                        for child in children {
+                            result.push_str(&self.node_to_auto_code(child, indent + 1));
+                        }
+                        result.push_str(&format!("{}}}\n", ind));
+                    } else {
+                        result.push_str(&format!("{}link (text: \"{}\", href: \"{}\") {{}}\n", ind, text, href));
+                    }
+                } else if !text.is_empty() && children.is_empty() {
+                    // Shorthand form with just text and to
+                    result.push_str(&format!("{}link (to: \"{}\", text: \"{}\") {{}}\n", ind, to, text));
+                } else {
+                    // Standard form with children
+                    result.push_str(&format!("{}link (to: \"{}\") {{\n", ind, to));
+                    for child in children {
+                        result.push_str(&self.node_to_auto_code(child, indent + 1));
+                    }
+                    result.push_str(&format!("{}}}\n", ind));
                 }
-                result.push_str(&format!("{}}}\n", ind));
                 result
             }
         }
@@ -2657,6 +2697,19 @@ impl VueGenerator {
                     if self.extract_bool_value(value) {
                         attrs.push("disabled".to_string());
                     }
+                }
+            }
+
+            // === Label ===
+            "label" => {
+                // for prop (link to input id)
+                if let Some(value) = props.get("for") {
+                    let for_val = self.extract_string_value(value).unwrap_or("");
+                    attrs.push(format!("for=\"{}\"", for_val));
+                }
+                // Text becomes slot content
+                if let Some(value) = props.get("text") {
+                    slot_content = self.prop_to_text_content(value).ok();
                 }
             }
 
@@ -5198,11 +5251,16 @@ impl VueGenerator {
     "vue-router": "^4.2.0",
     "@vueuse/core": "^10.7.0",
     "radix-vue": "^1.4.0",
+    "reka-ui": "^2.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.0",
     "lucide-vue-next": "^0.312.0",
-    "embla-carousel-vue": "^8.5.1"
+    "embla-carousel-vue": "^8.5.1",
+    "vee-validate": "^4.15.1",
+    "@vee-validate/zod": "^4.15.1",
+    "zod": "^3.25.76",
+    "prismjs": "^1.29.0"
   }},
   "devDependencies": {{
     "@vitejs/plugin-vue": "^5.0.0",
@@ -5210,6 +5268,7 @@ impl VueGenerator {
     "typescript": "^5.3.0",
     "vue-tsc": "^1.8.0",
     "tailwindcss": "^3.4.0",
+    "tailwindcss-animate": "^1.0.7",
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0"
   }}

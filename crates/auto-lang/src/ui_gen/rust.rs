@@ -457,12 +457,28 @@ impl RustGenerator {
                 "View::outlet()".to_string()
             }
 
-            AuraNode::Link { to, children } => {
-                // Rust router link
+            AuraNode::Link { to, text, href, children } => {
+                // Rust router link or external link
                 let children_code: Vec<String> = children.iter()
                     .map(|child| self.generate_view_tree(child))
                     .collect();
-                format!("View::link(\"{}\").children(vec![{}]).build()", to, children_code.join(", "))
+
+                if !href.is_empty() {
+                    // External link
+                    let text_content = if text.is_empty() {
+                        children_code.join(", ")
+                    } else {
+                        format!("\"{}\"", text)
+                    };
+                    format!("View::external_link(\"{}\").text({})", href, text_content)
+                } else {
+                    let text_arg = if text.is_empty() {
+                        String::new()
+                    } else {
+                        format!(".text(\"{}\")", text)
+                    };
+                    format!("View::link(\"{}\").children(vec![{}]){}.build()", to, children_code.join(", "), text_arg)
+                }
             }
         }
     }

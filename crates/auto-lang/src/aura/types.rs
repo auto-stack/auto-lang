@@ -286,8 +286,14 @@ pub enum AuraNode {
 
     /// Navigation link with routing (Plan 105)
     Link {
-        /// Target path
+        /// Target path for router-link
         to: String,
+
+        /// Text content (optional, for shorthand form)
+        text: String,
+
+        /// href for external links (optional)
+        href: String,
 
         /// Child content
         children: Vec<AuraNode>,

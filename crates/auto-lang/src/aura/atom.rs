@@ -278,9 +278,15 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             output.push_str(&format!("Outlet"));
         }
 
-        AuraNode::Link { to, children } => {
+        AuraNode::Link { to, text, href, children } => {
             output.push_str(&format!("Link {{\n"));
             output.push_str(&format!("{}    to: \"{}\",\n", ind, to));
+            if !text.is_empty() {
+                output.push_str(&format!("{}    text: \"{}\",\n", ind, text));
+            }
+            if !href.is_empty() {
+                output.push_str(&format!("{}    href: \"{}\",\n", ind, href));
+            }
             if !children.is_empty() {
                 output.push_str(&format!("{}    children: [\n", ind));
                 for child in children {

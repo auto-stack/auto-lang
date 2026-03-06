@@ -216,9 +216,9 @@ impl WidgetValidator {
             ViewNode::Outlet => {
                 // Router outlet - no children or props to validate
             }
-            ViewNode::Link { to, children } => {
+            ViewNode::Link { to, text, href, children } => {
                 // Navigation link - validate that 'to' is valid
-                let _ = to; // Suppress unused warning
+                let _ = (to, text, href); // Suppress unused warning
                 for child in children {
                     self.validate_view_tree(child, errors);
                 }
