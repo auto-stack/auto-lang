@@ -1040,7 +1040,8 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
     "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.0",
     "lucide-vue-next": "^0.312.0",
-    "prismjs": "^1.29.0"
+    "prismjs": "^1.29.0",
+    "embla-carousel-vue": "^8.5.1"
   }},
   "devDependencies": {{
     "@vitejs/plugin-vue": "^5.0.0",
