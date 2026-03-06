@@ -141,31 +141,41 @@ impl<'a> AdocParser<'a> {
     /// Parse a block
     fn parse_block(&mut self) -> AdocResult<Option<AdocBlock>> {
         match &self.current.kind {
-            AdTokenKind::BlankLine => {
-                self.advance()?;
-                Ok(None)
-            }
-
-            AdTokenKind::Newline => {
-                self.advance()?;
+            AdTokenKind::BlankLine | AdTokenKind::Newline => {
+                // Return None without advancing - let the main loop handle it
+                // to avoid double-advance
                 Ok(None)
             }
 
             AdTokenKind::Text => self.parse_paragraph(),
 
+            // Inline markup can start a paragraph
+            AdTokenKind::StarStar => self.parse_paragraph(),
+            AdTokenKind::Underscore => self.parse_paragraph(),
+            AdTokenKind::Backtick => self.parse_paragraph(),
+            AdTokenKind::LinkStart => self.parse_paragraph(),
+            AdTokenKind::ImageStart => self.parse_paragraph(),
+
             AdTokenKind::Dollar => self.parse_code_block(),
+
 
             AdTokenKind::InterpolateStart => self.parse_interpolation_as_block(),
 
+
             AdTokenKind::MathStart => self.parse_math_block(),
+
 
             AdTokenKind::ListItem => self.parse_list(),
 
+
             AdTokenKind::NumberedList => self.parse_numbered_list(),
+
 
             AdTokenKind::CodeFence => self.parse_fenced_code(),
 
+
             AdTokenKind::Blockquote => self.parse_blockquote(),
+
 
             AdTokenKind::HorizontalRule => {
                 self.advance()?;
@@ -180,9 +190,11 @@ impl<'a> AdocParser<'a> {
         }
     }
 
+
     /// Parse a paragraph
     fn parse_paragraph(&mut self) -> AdocResult<Option<AdocBlock>> {
         let mut inlines = Vec::new();
+
 
         loop {
             match &self.current.kind {
@@ -191,7 +203,9 @@ impl<'a> AdocParser<'a> {
                     self.advance()?;
                 }
 
+
                 AdTokenKind::StarStar => {
+                    self.advance()?;
                     self.advance()?;
                     let bold_content = self.parse_inline_until(AdTokenKind::StarStar)?;
                     self.advance()?; // consume closing **
