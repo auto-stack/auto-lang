@@ -14,17 +14,32 @@ The AutoLang compiler supports multiple execution modes:
 
 The self-hosted version (`auto/`) represents a future bootstrap effort to implement the AutoLang compiler in its own language.
 
-## Build Commands
+### Unified CLI (auto)
 
-### Rust Implementation (Primary Compiler)
+The `auto` command is the main entry point for both script execution and project management.
 
 ```bash
-# From project root
+# Script Execution
+auto hello.at                # Run an Auto script directly
+
+# Project Management (Integrated AutoMan)
+auto new myapp               # Create a new project
+auto build                    # Build current project
+auto run                      # Run current project
+auto fetch                    # Download dependencies
+auto device list              # List connected devices
+
+# REPL
+auto                         # Enter interactive mode
+```
+
+### Development & Testing
+
+```bash
+# Build & Test Implementation
 cargo build --release        # Build all crates
-cargo run --release          # Run REPL
+cargo run --release          # Run REPL (using cargo)
 cargo test                   # Run all tests
-cargo test -p auto-lang      # Test specific crate
-cargo test -p auto-lang -- trans  # Run transpiler tests
 ```
 
 ### Self-Hosted Implementation (auto/)

@@ -70,23 +70,29 @@ cargo test
 cargo build --release
 ```
 
-### Hello World
+### 运行
 
-**脚本模式**（保存为 `hello.at`）：
-```rust
-print("Hello, world!")
-```
+你可以直接运行一个 AutoLang 脚本：
 
-**静态模式**（可转译为 C/Rust）：
-```rust
-fn main() {
-    println("Hello, world!")
-}
-```
-
-**运行**：
 ```bash
-cargo run hello.at
+auto hello.at
+```
+
+#### 工程管理 (AutoMan 集成)
+
+AutoMan 的功能现在已集成到 `auto` 命令中：
+
+```bash
+auto new myapp    # 创建新工程
+auto build         # 构建当前工程
+auto run           # 运行构建后的工程
+auto fetch         # 下载依赖
+```
+
+你也可以使用 REPL（交互式解释器）：
+
+```bash
+auto
 ```
 
 ---

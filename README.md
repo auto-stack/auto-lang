@@ -33,10 +33,28 @@ AutoLang is a programming language designed for automation and flexibility.
 
 AutoLang supports multiple execution and transpilation modes:
 
-- **AutoVM** (default) - Fast bytecode VM execution
-- **C Transpilation** - Transpile to C for embedded systems
-- **Rust Transpilation** - Transpile to Rust for native applications
-- **Evaluator** - Legacy TreeWalker interpreter (deprecated)
+- **Script Execution** (default) - `auto <file.at>` to run scripts directly via AutoVM
+- **Project Management** - Use subcommands like `auto build`, `auto run`, `auto fetch`
+- **REPL** - Run `auto` without arguments to enter the interactive shell
+
+#### Script Execution
+
+You can run an AutoLang script directly:
+
+```bash
+auto hello.at
+```
+
+#### Project Management (AutoMan Integration)
+
+AutoMan functionalities are now integrated into the `auto` command:
+
+```bash
+auto new myapp    # Create a new project
+auto build         # Build the current project
+auto run           # Run the built project
+auto fetch         # Download dependencies
+```
 
 You can specify the execution mode in your `pac.at` file:
 
