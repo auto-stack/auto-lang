@@ -1888,6 +1888,52 @@ impl Codegen {
                         }
                     }
 
+                    // Compile node body into props object (Plan 073)
+                    let mut keys = Vec::new();
+                    let mut types = Vec::new();
+                    let mut prop_count = 0;
+
+                    for stmt in &node.body.stmts {
+                        if let crate::ast::Stmt::Expr(expr) = stmt {
+                            if let crate::ast::Expr::Pair(pair) = expr {
+                                let key_str = match &pair.key {
+                                    crate::ast::Key::NamedKey(name) => name.to_string(),
+                                    crate::ast::Key::StrKey(s) => s.to_string(),
+                                    _ => format!("_prop{}", prop_count),
+                                };
+                                keys.push(auto_val::ValueKey::Str(key_str.into()));
+                                
+                                self.compile_expr(&pair.value)?;
+                                types.push(self.infer_object_type(&pair.value));
+                                prop_count += 1;
+                            }
+                        } else if let crate::ast::Stmt::Store(store) = stmt {
+                            let key_str = store.name.to_string();
+                            keys.push(auto_val::ValueKey::Str(key_str.into()));
+                            
+                            self.compile_expr(&store.expr)?;
+                            types.push(self.infer_object_type(&store.expr));
+                            prop_count += 1;
+                        }
+                    }
+
+                    if prop_count > 0 {
+                        let key_index = self.object_keys.len() as u16;
+                        self.object_keys.push(keys);
+                        self.object_types.push(types);
+
+                        self.emit(OpCode::CREATE_OBJ);
+                        self.code.extend_from_slice(&key_index.to_le_bytes());
+                        self.code.push(prop_count as u8);
+                    } else {
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(-1); // props_id
+                    }
+
+                    // For now, use -1 for kids_id
+                    self.emit(OpCode::CONST_I32);
+                    self.emit_i32(-1); // kids_id
+
                     // Emit CREATE_NODE with name index and arg count
                     self.emit(OpCode::CREATE_NODE);
                     self.code.extend_from_slice(&name_idx.to_le_bytes());
@@ -3146,7 +3192,7 @@ impl Codegen {
     }
 
     // Plan 073: Convert expression to ObjectType for object field tracking
-    fn infer_object_type(&self, expr: &Expr) -> ObjectType {
+    pub(crate) fn infer_object_type(&self, expr: &Expr) -> ObjectType {
         match expr {
             Expr::Float(_, _) => ObjectType::Float,
             Expr::Double(_, _) => ObjectType::Double,
@@ -3155,10 +3201,10 @@ impl Codegen {
             Expr::Str(_) | Expr::CStr(_) => ObjectType::String,
             Expr::Char(_) => ObjectType::Char,
             Expr::Bool(_) => ObjectType::Bool,
-            // Plan 073: Nested object and array types
-            Expr::Object(_) => ObjectType::NestedObject,
+            // Plan 073: Nested object, node, pair and array types
+            Expr::Object(_) | Expr::Node(_) | Expr::Call(_) | Expr::Bina(_, _, _) | Expr::If(_) | Expr::Lambda(_) | Expr::Closure(_) | Expr::Pair(_) => ObjectType::NestedObject,
             Expr::Array(_) => ObjectType::Array,
-            // For complex expressions, default to Int (will be refined later with full type inference)
+            // For other expressions, default to Int
             _ => ObjectType::Int,
         }
     }

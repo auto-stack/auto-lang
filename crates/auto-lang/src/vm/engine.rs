@@ -132,17 +132,17 @@ impl AutoVM {
             objects: DashMap::new(),
             object_id_gen: AtomicU64::new(1000000),
             // Plan 073: Array registry
-            // Note: IDs start at 1000000 to avoid confusion with small integer values
+            // Note: IDs start at 2000000 to avoid confusion with objects
             arrays: DashMap::new(),
-            array_id_gen: AtomicU64::new(1000000),
+            array_id_gen: AtomicU64::new(2000000),
             // Plan 073: Node registry
-            // Note: IDs start at 1000000 to avoid confusion with small integer values
+            // Note: IDs start at 3000000 to avoid confusion with arrays
             nodes: DashMap::new(),
-            node_id_gen: AtomicU64::new(1000000),
+            node_id_gen: AtomicU64::new(3000000),
             // Plan 077 Phase 4: Unified object registry
-            // Note: IDs start at 1000000 to avoid confusion with small integer values
+            // Note: IDs start at 4000000 to avoid confusion with nodes
             heap_objects: DashMap::new(),
-            heap_object_id_gen: AtomicU64::new(1000000),
+            heap_object_id_gen: AtomicU64::new(4000000),
         }
     }
 
@@ -481,6 +481,76 @@ impl AutoVM {
                     task.ip += 2;
                     // Tag string indices as negative: -(index+1)
                     task.ram.push_i32(-(str_idx as i32) - 1);
+                }
+                // Plan 073: Node support
+                OpCode::CREATE_NODE => {
+                    let name_idx = self.flash.read_u16(task.ip);
+                    task.ip += 2;
+                    let arg_count = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+
+                    // Pop kids_id and props_id first
+                    let kids_id = task.ram.pop_i32();
+                    let props_id = task.ram.pop_i32();
+
+                    // Pop args (in reverse order)
+                    let mut args = Vec::with_capacity(arg_count as usize);
+                    for _ in 0..arg_count {
+                        let bits = task.ram.pop_i32();
+                        // Inside VM, everything is an i32 bits. We wrap it in VmRef if it's positive,
+                        // or decode string index if it's negative.
+                        let val = if bits < 0 {
+                            let str_idx = (-bits - 1) as usize;
+                            let strings = self.strings.read().unwrap();
+                            if let Some(bytes) = strings.get(str_idx) {
+                                auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
+                            } else {
+                                auto_val::Value::Nil
+                            }
+                        } else {
+                            auto_val::Value::VmRef(auto_val::VmRef { id: bits as usize })
+                        };
+                        args.push(val);
+                    }
+                    args.reverse();
+
+                    // Decode name
+                    let strings = self.strings.read().unwrap();
+                    let name = if let Some(bytes) = strings.get(name_idx as usize) {
+                        String::from_utf8_lossy(bytes).to_string()
+                    } else {
+                        "".to_string()
+                    };
+                    drop(strings);
+
+                    let mut node = auto_val::Node::new(&name);
+                    
+                    // Assign args
+                    for arg in args {
+                        node.add_arg(auto_val::Arg::Pos(arg));
+                    }
+
+                    // Assign props if available
+                    if props_id >= 0 {
+                        if let Some(props_ref) = self.objects.get(&(props_id as u64)) {
+                            let props_data = props_ref.value().read().unwrap();
+                            // Clone properties from ObjectData to Node
+                            for (key, val) in &props_data.fields {
+                                node.set_prop(key.clone(), val.clone());
+                            }
+                        }
+                    }
+
+                    // Assign kids if available
+                    if kids_id >= 0 {
+                        // TODO: Implement kids array/list mapping
+                    }
+
+                    // Store node in nodes registry
+                    let node_id = self.node_id_gen.fetch_add(1, Ordering::SeqCst);
+                    self.nodes.insert(node_id, Arc::new(RwLock::new(node)));
+
+                    task.ram.push_i32(node_id as i32);
                 }
                 // Plan 073: Object literal support
                 OpCode::CREATE_OBJ => {
@@ -1297,22 +1367,67 @@ impl AutoVM {
                         String::new()
                     };
 
+                    // Pop props_id and kids_id from stack (Plan 073)
+                    // -1 means no props/kids
+                    let kids_id = task.ram.pop_i32();
+                    let props_id = task.ram.pop_i32();
+
                     // Pop arguments from stack (in reverse order)
                     let mut args = Vec::with_capacity(arg_count as usize);
                     for i in 0..arg_count {
                         let idx = (arg_count - 1 - i) as usize;
-                        let bits = task.ram.pop_i32();
-                        args.insert(idx, auto_val::Value::Int(bits));
+                        let tagged = task.ram.pop_i32();
+                        
+                        // Decode string if tagged negative
+                        let arg_val = if tagged < 0 {
+                            let str_idx = (-tagged - 1) as usize;
+                            if let Ok(strings) = self.strings.read() {
+                                if let Some(bytes) = strings.get(str_idx) {
+                                    auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
+                                } else {
+                                    auto_val::Value::Nil
+                                }
+                            } else {
+                                auto_val::Value::Nil
+                            }
+                        } else {
+                            // TODO: Support NestedObject/Array in node args
+                            auto_val::Value::Int(tagged)
+                        };
+                        args.insert(idx, arg_val);
                     }
 
                     // Create node
                     let mut node = auto_val::Node::new(&name);
 
-                    // Add arguments as properties
+                    // Add arguments as properties (positional)
                     for (i, arg) in args.iter().enumerate() {
-                        // Use positional keys: 0, 1, 2, ...
                         let key = auto_val::ValueKey::Int(i as i32);
                         node.set_prop(key, arg.clone());
+                    }
+
+                    // Add additional properties if props_id is provided
+                    if props_id >= 0 {
+                        if let Some(obj_ref) = self.objects.get(&(props_id as u64)) {
+                            let obj_data = obj_ref.value().read().unwrap();
+                            for (key, val) in &obj_data.fields {
+                                node.set_prop(key.clone(), val.clone());
+                            }
+                        }
+                    }
+
+                    // Add children if kids_id is provided
+                    if kids_id >= 0 {
+                        if let Some(array_ref) = self.arrays.get(&(kids_id as u64)) {
+                            let array_data = array_ref.value().read().unwrap();
+                            for val in array_data.iter() {
+                                if let auto_val::Value::Node(kid) = val {
+                                    node.add_kid(kid.clone());
+                                } else if let auto_val::Value::Str(s) = val {
+                                    node = node.with_text(s.clone());
+                                }
+                            }
+                        }
                     }
 
                     // Store node in nodes registry and get ID

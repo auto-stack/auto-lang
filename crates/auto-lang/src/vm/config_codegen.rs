@@ -56,8 +56,8 @@ impl ConfigCodegen {
             self.collect_config_stmt(stmt)?;
         }
 
-        // Phase 2: Compile field values (in reverse order so they're pushed correctly)
-        for expr in self.field_values.iter().rev() {
+        // Phase 2: Compile field values (in normal order so they're pushed correctly)
+        for expr in self.field_values.iter() {
             self.base.compile_expr(expr)?;
         }
 
@@ -120,13 +120,20 @@ impl ConfigCodegen {
         Ok(())
     }
 
-    /// Collect an expression statement as an anonymous field
+    /// Collect an expression statement as an anonymous field (or named if Pair)
     fn collect_expr_field(&mut self, expr: &Expr) -> AutoResult<()> {
-        // Generate field name for expression
-        let field_name = format!("_expr{}", self.field_values.len());
-
-        // Clone the expression for later compilation
-        let expr = expr.clone();
+        let (field_name, expr) = if let Expr::Pair(pair) = expr {
+            // Unpack pair: key: value -> map key to field_name
+            let key_str = match &pair.key {
+                crate::ast::Key::NamedKey(name) => name.to_string(),
+                crate::ast::Key::StrKey(s) => s.to_string(),
+                _ => format!("_expr{}", self.field_values.len()), // Fallback
+            };
+            (key_str, *pair.value.clone())
+        } else {
+            // Generate anonymous field name for other expressions
+            (format!("_expr{}", self.field_values.len()), expr.clone())
+        };
 
         // Track this field
         self.field_paths.push(field_name);
@@ -146,8 +153,10 @@ impl ConfigCodegen {
         let key_index = self.base.object_keys.len() as u16;
         self.base.object_keys.push(keys);
 
-        // We don't have type information for config fields, so use empty types
-        let types = vec![crate::vm::codegen::ObjectType::String; self.field_paths.len()];
+        // Plan 073: Infer field types from field values
+        let types: Vec<crate::vm::codegen::ObjectType> = self.field_values.iter()
+            .map(|expr| self.base.infer_object_type(expr))
+            .collect();
         self.base.object_types.push(types);
 
         // Emit CREATE_OBJ with key_index and field count

@@ -92,7 +92,7 @@ use crate::compile::CompileSession;
 use crate::trans::c::CTrans;
 pub use crate::symbols::SymbolLocation;
 use crate::{trans::Sink, trans::Trans};
-use auto_val::{AutoPath, Obj, Value};
+use auto_val::{AutoPath, Obj, Value, Node, Array, ValueKey, VmRef};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -517,6 +517,93 @@ pub fn run_file(path: &str) -> AutoResult<String> {
 /// name: "myapp"
 /// version: "0.1.0"
 /// "#;
+fn extract_value_from_vm(vm: &crate::vm::engine::AutoVM, bits: i32, visited: &mut std::collections::HashSet<u64>) -> Value {
+    if bits < 0 {
+        // Tagged string index: indices are stored as -(index+1)
+        let str_idx = (-bits - 1) as usize;
+        let strings = vm.strings.read().unwrap();
+        if let Some(str_bytes) = strings.get(str_idx) {
+            return Value::Str(String::from_utf8_lossy(str_bytes).to_string().into());
+        }
+        return Value::Nil;
+    }
+
+    let id = bits as u64;
+
+    if !visited.insert(id) {
+        // Cycle detected
+        return Value::Nil;
+    }
+
+    // 1. Check if it's an object ID
+    if let Some(obj_ref) = vm.objects.get(&id) {
+        let obj_data = obj_ref.value().read().unwrap();
+        let mut result_obj = Obj::new();
+        for (key, val) in &obj_data.fields {
+            let extracted = extract_auto_val_value(vm, val, visited);
+            result_obj.set(key.clone(), extracted);
+        }
+        visited.remove(&id);
+        return Value::Obj(result_obj);
+    }
+
+    // 2. Check if it's a node ID
+    if let Some(node_ref) = vm.nodes.get(&id) {
+        let node_data = node_ref.value().read().unwrap();
+        let result = Value::Node(extract_node_deep(vm, &node_data, visited));
+        visited.remove(&id);
+        return result;
+    }
+
+    // 3. Check if it's an array ID
+    if let Some(array_ref) = vm.arrays.get(&id) {
+        let array_data = array_ref.value().read().unwrap();
+        let mut items = Vec::new();
+        for val in array_data.iter() {
+            items.push(extract_auto_val_value(vm, val, visited));
+        }
+        visited.remove(&id);
+        return Value::Array(Array::from_vec(items));
+    }
+
+    visited.remove(&id);
+    // Fallback to integer (for non-heap values)
+    Value::Int(bits)
+}
+
+fn extract_auto_val_value(vm: &crate::vm::engine::AutoVM, val: &Value, visited: &mut std::collections::HashSet<u64>) -> Value {
+    match val {
+        Value::VmRef(vm_ref) => extract_value_from_vm(vm, vm_ref.id as i32, visited),
+        Value::Array(arr) => {
+            let mut items = Vec::new();
+            for v in &arr.values {
+                items.push(extract_auto_val_value(vm, v, visited));
+            }
+            Value::Array(Array::from_vec(items))
+        }
+        Value::Obj(obj) => {
+            let mut result_obj = Obj::new();
+            for (key, val) in obj.iter() {
+                result_obj.set(key.clone(), extract_auto_val_value(vm, val, visited));
+            }
+            Value::Obj(result_obj)
+        }
+        Value::Node(node) => Value::Node(extract_node_deep(vm, node, visited)),
+        _ => val.clone(),
+    }
+}
+
+fn extract_node_deep(vm: &crate::vm::engine::AutoVM, node: &Node, visited: &mut std::collections::HashSet<u64>) -> Node {
+    let mut result = node.clone();
+    // Resolve props
+    let props = node.props_clone();
+    for (key, val) in props.iter() {
+        result.set_prop(key.clone(), extract_auto_val_value(vm, val, visited));
+    }
+    // TODO: Resolve args and kids if they contain VmRefs
+    result
+}
+
 /// let result = eval_config_with_vm(config, &Obj::new()).unwrap();
 /// ```
 pub fn eval_config_with_vm(code: &str, _args: &Obj) -> AutoResult<Value> {
@@ -594,15 +681,33 @@ pub fn eval_config_with_vm(code: &str, _args: &Obj) -> AutoResult<Value> {
             }
 
             // Pop the result value from the stack
-            let _result_i32 = task.ram.pop_i32();
+            let result_i32 = task.ram.pop_i32();
 
-            // For config mode, we need to return the root Node
-            // TODO: Properly extract the config object from VM heap
-            // For now, return a placeholder
-            Ok(Value::Node(auto_val::Node::new("root")))
+            // Materialize the result from the VM heap
+            let mut visited = std::collections::HashSet::new();
+            let materialized_result = extract_value_from_vm(&vm, result_i32, &mut visited);
+
+            // For config mode, we often expect a Node. 
+            // If the result is an Obj, convert it to a "root" Node.
+            match materialized_result {
+                Value::Obj(obj) => {
+                    let mut root = Node::new("root");
+                    for (k, v) in obj.iter() {
+                        if k.to_string().starts_with("_expr") {
+                            if let Value::Node(n) = v {
+                                root.add_kid(n.clone());
+                                continue;
+                            }
+                        }
+                        root.set_prop(k.clone(), v.clone());
+                    }
+                    Ok(Value::Node(root))
+                }
+                _ => Ok(materialized_result),
+            }
         } else {
-            // Task not found - return empty config
-            Ok(Value::Node(auto_val::Node::new("root")))
+            // Task not found - return Nil
+            Ok(Value::Nil)
         }
     })
 }

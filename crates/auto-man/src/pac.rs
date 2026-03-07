@@ -27,6 +27,7 @@ use tabled::{
 
 pub struct Pac {
     pub name: AutoStr,
+    pub backend: AutoStr,
     pub port: Port,
     pub version: AutoStr,
     pub ports: Vec<Node>,
@@ -54,6 +55,9 @@ impl Pac {
         let pac_name = config.name();
         let version = config.version();
         let props = config.root.props_clone();
+
+        let backend_str = config.root.get_prop("backend").to_astr();
+        let backend = if backend_str.is_empty() { "c".into() } else { backend_str };
 
         // ports
         let ports = config.root.get_nodes("port");
@@ -106,6 +110,7 @@ impl Pac {
 
         Self {
             name: pac_name,
+            backend,
             version,
             port,
             ports,
@@ -1270,6 +1275,52 @@ mod tests {
                 assert!(false, "{}", e);
             }
         }
+    }
+
+    #[test]
+    fn test_bpbe_architecture_parsing() {
+        use crate::node_ext::NodeExt;
+        let code = r#"
+        name: "sensor_hub"
+        version: "1.0.0"
+        backend: "c"
+        
+        port stm32 {
+            mcu: "stm32f407"
+            os: "freertos"
+            
+            sdk("stm32f4_hal", "1.0.5") {
+                series: "f407"
+            }
+            
+            toolchain: "arm-none-eabi-gcc"
+        }
+        "#;
+        let config = auto_lang::config::AutoConfig::new(code).expect("failed to parse pac.at");
+        let pac = Pac::new(config);
+        
+        assert_eq!(pac.name, "sensor_hub");
+        // Test backend (requires new field `backend` in Pac)
+        assert_eq!(pac.backend, "c");
+        
+        assert_eq!(pac.ports.len(), 1);
+        let port_node = &pac.ports[0];
+        
+        // Test port sub-properties
+        assert_eq!(port_node.main_arg().to_astr(), "stm32");
+        assert_eq!(port_node.get_prop("mcu").to_astr(), "stm32f407");
+        assert_eq!(port_node.get_prop("os").to_astr(), "freertos");
+        assert_eq!(port_node.get_prop("toolchain").to_astr(), "arm-none-eabi-gcc");
+        
+        // Test nested SDK dependency parsing
+        let sdks = port_node.get_nodes("sdk");
+        assert_eq!(sdks.len(), 1);
+        assert_eq!(sdks[0].main_arg().to_astr(), "stm32f4_hal");
+        
+        let arg2 = sdks[0].args.get_val(1);
+        assert_eq!(arg2.to_astr(), "1.0.5");
+        
+        assert_eq!(sdks[0].get_prop("series").to_astr(), "f407");
     }
 
     #[test]
