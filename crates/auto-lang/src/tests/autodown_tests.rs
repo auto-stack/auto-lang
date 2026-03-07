@@ -1,11 +1,11 @@
 //! AutoDown Test Suite
-use auto_lang::autodown::{
+use crate::autodown::{
     AdocBlock, AdocDocument, AdocInline, AdocMath, AdocParser, AdocSection,
     AdocLexer, LexerMode,
 };
-use auto_lang::autodown::lexer::{AdToken, AdTokenKind, AdocLexer as Lexer};
-use auto_lang::autodown::trans::{HtmlTranspiler, TypstTranspiler, AdocTranspiler};
-use auto_lang::autodown::math::AutoMathParser;
+use crate::autodown::lexer::{AdToken, AdTokenKind, AdocLexer as Lexer};
+use crate::autodown::trans::{HtmlTranspiler, TypstTranspiler, AdocTranspiler};
+use crate::autodown::math::AutoMathParser;
 
 mod lexer_tests {
     use super::*;
@@ -174,28 +174,28 @@ mod math_tests {
 
     #[test]
     fn test_math_simple_expression() {
-        let math = AdocMath { content: "a + b".to_string(), parsed: None };
+        let math = AdocMath { content: "a + b".to_string(), parsed: None, display: false };
         let result = AutoMathParser::to_latex(&math);
         assert!(!result.is_empty());
     }
 
     #[test]
     fn test_math_sum_function() {
-        let math = AdocMath { content: "sum(i=0..n, f(i))".to_string(), parsed: None };
+        let math = AdocMath { content: "sum(i=0..n, f(i))".to_string(), parsed: None, display: false };
         let result = AutoMathParser::to_latex(&math);
         assert!(result.contains("sum"));
     }
 
     #[test]
     fn test_math_sqrt() {
-        let math = AdocMath { content: "sqrt(x)".to_string(), parsed: None };
+        let math = AdocMath { content: "sqrt(x)".to_string(), parsed: None, display: false };
         let result = AutoMathParser::to_latex(&math);
         assert!(result.contains("sqrt"));
     }
 
     #[test]
     fn test_math_to_typst() {
-        let math = AdocMath { content: "a + b".to_string(), parsed: None };
+        let math = AdocMath { content: "a + b".to_string(), parsed: None, display: false };
         let result = AutoMathParser::to_typst(&math);
         assert!(!result.is_empty());
     }
@@ -310,7 +310,7 @@ mod lexer_advanced_tests {
 
     #[test]
     fn test_lexer_interpolation() {
-        let source = "Hello \${name}!";
+        let source = "Hello ${name}!";
         let mut lexer = Lexer::new(source);
         let tokens: Vec<AdToken> = lexer.tokenize_all().unwrap();
         let has_interpolate = tokens.iter().any(|t| t.kind == AdTokenKind::InterpolateStart);
@@ -319,7 +319,7 @@ mod lexer_advanced_tests {
 
     #[test]
     fn test_lexer_if_keyword() {
-        let source = "\$if condition {";
+        let source = "$if condition {";
         let mut lexer = Lexer::new(source);
         let _ = lexer.next_token().unwrap(); // Dollar
         let token = lexer.next_token().unwrap();
@@ -328,7 +328,7 @@ mod lexer_advanced_tests {
 
     #[test]
     fn test_lexer_for_keyword() {
-        let source = "\$for item in .list {";
+        let source = "$for item in .list {";
         let mut lexer = Lexer::new(source);
         let _ = lexer.next_token().unwrap(); // Dollar
         let token = lexer.next_token().unwrap();
@@ -337,7 +337,7 @@ mod lexer_advanced_tests {
 
     #[test]
     fn test_lexer_else_keyword() {
-        let source = "\$else {";
+        let source = "$else {";
         let mut lexer = Lexer::new(source);
         let _ = lexer.next_token().unwrap(); // Dollar
         let token = lexer.next_token().unwrap();

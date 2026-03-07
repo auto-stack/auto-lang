@@ -632,6 +632,34 @@ impl AutoVM {
                     // Use special marker for range: -1000000 + range_id
                     task.ram.push_i32(-1000000 + range_id);
                 }
+                OpCode::ARRAY_LEN => {
+                    // Stack: array_id
+                    let array_id = task.ram.pop_i32() as u64;
+
+                    // Get array length
+                    if let Some(array_ref) = self.arrays.get(&array_id) {
+                        let guard = array_ref.read().unwrap();
+                        let len = guard.len() as i32;
+                        task.ram.push_i32(len);
+                    } else if let Some(list) = self.heap_objects.get(&array_id) {
+                        use crate::vm::types::ListData;
+                        let guard = list.read().unwrap();
+
+                        let len = if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                            list.elems.len() as i32
+                        } else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+                            list.elems.len() as i32
+                        } else if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
+                            list.elems.len() as i32
+                        } else {
+                            0 // Unknown type
+                        };
+                        task.ram.push_i32(len);
+                    } else {
+                        // Array not found
+                        task.ram.push_i32(0);
+                    }
+                }
                 // Plan 073: F-string support (f"hello $name")
                 OpCode::BUILD_FSTR => {
                     let part_count = self.flash.read_u8(task.ip);

@@ -1,0 +1,969 @@
+warning: unused imports: `ApiField` and `ApiParam`
+ --> crates\auto-lang\src\api\targets\typescript.rs:5:31
+  |
+5 | use crate::api::{ApiEndpoint, ApiField, ApiModule, ApiParam, ApiType};
+  |                               ^^^^^^^^             ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ApiParam`
+ --> crates\auto-lang\src\api\targets\tauri.rs:5:42
+  |
+5 | use crate::api::{ApiEndpoint, ApiModule, ApiParam};
+  |                                          ^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> crates\auto-lang\src\api\mod.rs:40:5
+   |
+40 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `auto_val::AutoStr`
+ --> crates\auto-lang\src\ast\ui.rs:8:5
+  |
+8 | use auto_val::AutoStr;
+  |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ClassBindingEntry`
+  --> crates\auto-lang\src\aura\extract.rs:13:18
+   |
+13 | use crate::ast::{ClassBindingEntry, Expr, Stmt, Type, Key, ViewPropValue};
+   |                  ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+ --> crates\auto-lang\src\aura\atom.rs:8:5
+  |
+8 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `AuraStateDef`
+   --> crates\auto-lang\src\ui_gen\vue.rs:107:76
+    |
+107 | ...pr, AuraNode, AuraPropValue, AuraStateDef, AuraStmt, AuraTextContent, ...
+    |                                 ^^^^^^^^^^^^
+
+warning: unused import: `GenError`
+  --> crates\auto-lang\src\ui_gen\rust.rs:57:31
+   |
+57 | use super::{BackendGenerator, GenError, GenResult};
+   |                               ^^^^^^^^
+
+warning: unused imports: `AuraMessage` and `AuraStateDef`
+  --> crates\auto-lang\src\ui_gen\rust.rs:58:40
+   |
+58 | ...r, AuraMessage, AuraMsgVariant, AuraNode, AuraPropValue, AuraStateDef, A...
+   |       ^^^^^^^^^^^                                           ^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> crates\auto-lang\src\ui_gen\rust.rs:59:5
+   |
+59 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::fmt`
+ --> crates\auto-lang\src\autodown\error.rs:5:5
+  |
+5 | use std::fmt;
+  |     ^^^^^^^^
+
+warning: unused imports: `AdocBlock`, `AdocInline`, and `AdocMath`
+  --> crates\auto-lang\src\autodown\lexer.rs:10:18
+   |
+10 | use super::ast::{AdocBlock, AdocInline, AdocMath};
+   |                  ^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^
+
+warning: unused import: `super::super::math::AutoMathParser`
+ --> crates\auto-lang\src\autodown\trans\typst.rs:7:5
+  |
+7 | use super::super::math::AutoMathParser;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `AdocError`
+  --> crates\auto-lang\src\autodown\trans\mod.rs:11:20
+   |
+11 | use super::error::{AdocError, AdocResult};
+   |                    ^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> crates\auto-lang\src\autodown\trans\mod.rs:12:5
+   |
+12 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `AdocError`
+ --> crates\auto-lang\src\autodown\math.rs:6:20
+  |
+6 | use super::error::{AdocError, AdocResult};
+  |                    ^^^^^^^^^
+
+warning: unused doc comment
+   --> crates\auto-lang\src\vm\ffi\stdlib.rs:697:1
+    |
+697 | /// Thread-local storage for TCP listeners
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+    |
+    = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused doc comment
+   --> crates\auto-lang\src\vm\ffi\stdlib.rs:976:1
+    |
+976 | /// HTTP Response data stored in thread-local
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+    |
+    = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+
+warning: unused imports: `Arc` and `Mutex`
+  --> crates\auto-lang\src\vm\ffi\stdlib.rs:15:17
+   |
+15 | use std::sync::{Arc, Mutex};
+   |                 ^^^  ^^^^^
+
+warning: unused import: `Scenario`
+   --> crates\auto-lang\src\lib.rs:917:43
+    |
+917 |     use crate::session::{CompilerSession, Scenario};
+    |                                           ^^^^^^^^
+
+warning: unused variable: `i`
+   --> crates\auto-lang\src\api\targets\typescript.rs:126:14
+    |
+126 |         for (i, endpoint) in endpoints.iter().enumerate() {
+    |              ^
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+help: if this is intentional, prefix it with an underscore
+    |
+126 |         for (_i, endpoint) in endpoints.iter().enumerate() {
+    |              +
+help: you might have meant to pattern match on the similarly named constant `MAX_SUGGESTIONS`
+    |
+126 |         for (infer::errors::MAX_SUGGESTIONS, endpoint) in endpoints.iter().enumerate() {
+    |               +++++++++++++++++++++++++++++
+
+warning: unused variable: `view`
+   --> crates\auto-lang\src\ast.rs:254:29
+    |
+254 |             Stmt::ViewBlock(view) => write!(f, "(view)"),
+    |                             ^^^^ help: if this is intentional, prefix it with an underscore: `_view`
+
+warning: variable does not need to be mutable
+   --> crates\auto-lang\src\aura\extract.rs:305:17
+    |
+305 |             let mut children = Vec::new();
+    |                 ----^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `options`
+  --> crates\auto-lang\src\aura\schema.rs:81:29
+   |
+81 |             PropType::OneOf(options) => {
+   |                             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_options`
+
+warning: unused variable: `tag`
+   --> crates\auto-lang\src\aura\validate.rs:391:47
+    |
+391 |             ValidationError::UnknownElement { tag, suggestion, .. } => {
+    |                                               ^^^-
+    |                                               |
+    |                                               help: try removing the field
+
+warning: unused variable: `params_str`
+    --> crates\auto-lang\src\ui_gen\vue.rs:1857:25
+     |
+1857 |                     let params_str = if event.params.is_empty() {
+     |                         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_params_str`
+
+warning: unused variable: `bindings`
+    --> crates\auto-lang\src\ui_gen\vue.rs:1890:63
+     |
+1890 | ...mplate, bindings } => {
+     |            ^^^^^^^^ help: try ignoring the field: `bindings: _`
+
+warning: unused variable: `tag`
+    --> crates\auto-lang\src\ui_gen\vue.rs:5193:18
+     |
+5193 |             for (tag, (module, components)) in &self.shadcn_registry.com...
+     |                  ^^^ help: if this is intentional, prefix it with an underscore: `_tag`
+
+warning: unused variable: `delim`
+   --> crates\auto-lang\src\autodown\lexer.rs:514:17
+    |
+514 |             let delim = self.peek().unwrap();
+    |                 ^^^^^ help: if this is intentional, prefix it with an underscore: `_delim`
+
+warning: field `lang` is never read
+   --> crates\auto-lang\src\ui_gen\vue.rs:836:5
+    |
+830 | struct CodeBlockData {
+    |        ------------- field in this struct
+...
+836 |     lang: String,
+    |     ^^^^
+    |
+    = note: `CodeBlockData` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `handler_to_rust_closure` is never used
+   --> crates\auto-lang\src\ui_gen\rust.rs:618:8
+    |
+ 79 | impl RustGenerator {
+    | ------------------ method in this implementation
+...
+618 |     fn handler_to_rust_closure(&self, handler: &str) -> String {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `use_tailwind` is never read
+  --> crates\auto-lang\src\ui_gen\style.rs:11:5
+   |
+ 9 | pub struct StyleGenerator {
+   |            -------------- field in this struct
+10 |     /// Whether to use Tailwind CSS
+11 |     use_tailwind: bool,
+   |     ^^^^^^^^^^^^
+
+warning: fields `source`, `code_fence_lang`, and `code_fence_delim` are never read
+   --> crates\auto-lang\src\autodown\lexer.rs:167:5
+    |
+165 | pub struct AdocLexer<'a> {
+    |            --------- fields in this struct
+166 |     /// Source code being lexed
+167 |     source: &'a str,
+    |     ^^^^^^
+...
+194 |     code_fence_lang: Option<String>,
+    |     ^^^^^^^^^^^^^^^
+...
+197 |     code_fence_delim: String,
+    |     ^^^^^^^^^^^^^^^^
+
+warning: methods `peek_next` and `token_text` are never used
+   --> crates\auto-lang\src\autodown\lexer.rs:258:8
+    |
+202 | impl<'a> AdocLexer<'a> {
+    | ---------------------- methods in this implementation
+...
+258 |     fn peek_next(&mut self) -> Option<char> {
+    |        ^^^^^^^^^
+...
+307 |     fn token_text(&self) -> String {
+    |        ^^^^^^^^^^
+
+warning: fields `mode` and `section_stack` are never read
+  --> crates\auto-lang\src\autodown\parser.rs:21:5
+   |
+10 | pub struct AdocParser<'a> {
+   |            ---------- fields in this struct
+...
+21 |     mode: ParserMode,
+   |     ^^^^
+...
+24 |     section_stack: Vec<AdocSection>,
+   |     ^^^^^^^^^^^^^
+
+warning: fields `in_math` and `metadata` are never read
+  --> crates\auto-lang\src\autodown\trans\typst.rs:17:5
+   |
+12 | pub struct TypstTranspiler {
+   |            --------------- fields in this struct
+...
+17 |     in_math: bool,
+   |     ^^^^^^^
+...
+20 |     metadata: String,
+   |     ^^^^^^^^
+   |
+   = note: `TypstTranspiler` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `sink` is never read
+  --> crates\auto-lang\src\autodown\trans\html.rs:51:5
+   |
+49 | pub struct HtmlTranspiler {
+   |            -------------- field in this struct
+50 |     /// Output sink
+51 |     sink: AdocSink,
+   |     ^^^^
+   |
+   = note: `HtmlTranspiler` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> crates\auto-lang\src\aura\validate.rs:330:29
+    |
+330 |     pub fn validate_element(&self, tag: &str) -> ElementValidation {
+    |                             ^^^^^                ^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                             |
+    |                             the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+330 |     pub fn validate_element(&self, tag: &str) -> ElementValidation<'_> {
+    |                                                                   ++++
+
+warning: function `__shim_Path_join` should have a snake case name
+   --> crates\auto-lang\src\vm\ffi\stdlib.rs:343:8
+    |
+343 | pub fn __shim_Path_join(
+    |        ^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `__shim_path_join`
+    |
+    = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: `auto-lang` (lib) generated 39 warnings (run `cargo fix --lib -p auto-lang` to apply 22 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.24s
+     Running unittests src\lib.rs (target\debug\deps\auto_gen-734c565b825606df.exe)
+
+running 1 test
+Running 10 tests from tests/autogen_tests.md
+DEBUG flipped_code:
+let name = "World"
+let __out__ = ""
+__out__ = __out__ + `Hello, $name!`
+__out__ = __out__ + ``
+__out__
+
+DEBUG: Inferred type for 'name' from expression: Str(5)
+DEBUG: Inferred type for '__out__' from expression: Str(0)
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: name
+DEBUG: Variable name found at index 0
+DEBUG: emit_load_loc called with index=0, n_args=0
+DEBUG: Loading local variable 0 at BP+1+0
+DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+  ✓ Test 1: Simple Variable
+DEBUG flipped_code:
+let greeting = "Hello"
+let target = "World"
+let __out__ = ""
+__out__ = __out__ + `$greeting, $target!`
+__out__ = __out__ + ``
+__out__
+
+DEBUG: Inferred type for 'greeting' from expression: Str(5)
+DEBUG: Inferred type for 'target' from expression: Str(5)
+DEBUG: Inferred type for '__out__' from expression: Str(0)
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 2
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG: Compiling Ident: greeting
+DEBUG: Variable greeting found at index 0
+DEBUG: emit_load_loc called with index=0, n_args=0
+DEBUG: Loading local variable 0 at BP+1+0
+DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)
+DEBUG: Compiling Ident: target
+DEBUG: Variable target found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 2
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 2
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG: STORE_LOCAL local 2: BP+1+2 = -3
+DEBUG: STORE_LOCAL local 2: BP+1+2 = -8
+DEBUG: STORE_LOCAL local 2: BP+1+2 = -10
+  ✓ Test 2: Multiple Variables
+DEBUG flipped_code:
+let count = 42
+let __out__ = ""
+__out__ = __out__ + `The answer is $count.`
+__out__ = __out__ + ``
+__out__
+
+DEBUG: Inferred type for 'count' from expression: Int
+DEBUG: Inferred type for '__out__' from expression: Str(0)
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: count
+DEBUG: Variable count found at index 0
+DEBUG: emit_load_loc called with index=0, n_args=0
+DEBUG: Loading local variable 0 at BP+1+0
+DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: CONST_I32: val=42, sp before push=3
+DEBUG: CONST_I32: sp after push=4, wrote to address 3
+  ✓ Test 3: Integer Variable
+DEBUG flipped_code:
+let is_ready = true
+let __out__ = ""
+__out__ = __out__ + `Status: $is_ready`
+__out__ = __out__ + ``
+__out__
+
+DEBUG: Inferred type for 'is_ready' from expression: Bool
+DEBUG: Inferred type for '__out__' from expression: Str(0)
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: is_ready
+DEBUG: Variable is_ready found at index 0
+DEBUG: emit_load_loc called with index=0, n_args=0
+DEBUG: Loading local variable 0 at BP+1+0
+DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: CONST_I32: val=1, sp before push=3
+DEBUG: CONST_I32: sp after push=4, wrote to address 3
+  ✓ Test 4: Boolean Variable
+DEBUG flipped_code:
+let items = [1, 2, 3]
+let __out__ = ""
+for i in items {
+__out__ = __out__ + `[$i, ${i*2}, ${i*3}]`
+}
+__out__ = __out__ + ``
+__out__
+
+DEBUG: Inferred type for 'items' from expression: Array(ArrayType { elem: Int, len: 3 })
+DEBUG: Inferred type for '__out__' from expression: Str(0)
+DEBUG FOR: Compiling for loop
+DEBUG: Compiling Ident: items
+DEBUG: Variable items found at index 0
+DEBUG: emit_load_loc called with index=0, n_args=0
+DEBUG: Loading local variable 0 at BP+1+0
+DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG: emit_load_loc called with index=3, n_args=0
+DEBUG: Loading local variable 3 at BP+1+3
+DEBUG: Emitting LOAD_LOCAL with local index 3
+DEBUG: emit_load_loc called with index=4, n_args=0
+DEBUG: Loading local variable 4 at BP+1+4
+DEBUG: Emitting LOAD_LOCAL with local index 4
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: i
+DEBUG: Variable i found at index 5
+DEBUG: emit_load_loc called with index=5, n_args=0
+DEBUG: Loading local variable 5 at BP+1+5
+DEBUG: Emitting LOAD_LOCAL with local index 5
+DEBUG: Compiling Ident: i
+DEBUG: Variable i found at index 5
+DEBUG: emit_load_loc called with index=5, n_args=0
+DEBUG: Loading local variable 5 at BP+1+5
+DEBUG: Emitting LOAD_LOCAL with local index 5
+DEBUG: Compiling Ident: i
+DEBUG: Variable i found at index 5
+DEBUG: emit_load_loc called with index=5, n_args=0
+DEBUG: Loading local variable 5 at BP+1+5
+DEBUG: Emitting LOAD_LOCAL with local index 5
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG patch_jump: placeholder_idx=37, target=93, anchor=39, offset=54
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: CONST_I32: val=1, sp before push=7
+DEBUG: CONST_I32: sp after push=8, wrote to address 7
+DEBUG: CONST_I32: val=2, sp before push=8
+DEBUG: CONST_I32: sp after push=9, wrote to address 8
+DEBUG: CONST_I32: val=3, sp before push=9
+DEBUG: CONST_I32: sp after push=10, wrote to address 9
+DEBUG: STORE_LOCAL local 2: BP+1+2 = 0
+DEBUG: STORE_LOCAL local 3: BP+1+3 = 3
+DEBUG: STORE_LOCAL local 4: BP+1+4 = 1000000
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = 3
+DEBUG: LOAD_LOCAL local 4: BP+1+4 = 1000000
+DEBUG GET_ELEM: obj_id=1000000, index=0
+DEBUG: STORE_LOCAL local 5: BP+1+5 = 1
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = 1
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = 1
+DEBUG: CONST_I32: val=2, sp before push=12
+DEBUG: CONST_I32: sp after push=13, wrote to address 12
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = 1
+DEBUG: CONST_I32: val=3, sp before push=14
+DEBUG: CONST_I32: sp after push=15, wrote to address 14
+DEBUG: CONST_I32: val=1, sp before push=7
+DEBUG: CONST_I32: sp after push=8, wrote to address 7
+DEBUG: STORE_LOCAL local 2: BP+1+2 = 1
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = 3
+DEBUG: LOAD_LOCAL local 4: BP+1+4 = 1000000
+DEBUG GET_ELEM: obj_id=1000000, index=1
+DEBUG: STORE_LOCAL local 5: BP+1+5 = 2
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = -7
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = -7
+DEBUG: CONST_I32: val=2, sp before push=11
+DEBUG: CONST_I32: sp after push=12, wrote to address 11
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = -7
+DEBUG: CONST_I32: val=3, sp before push=13
+DEBUG: CONST_I32: sp after push=14, wrote to address 13
+DEBUG: CONST_I32: val=1, sp before push=6
+DEBUG: CONST_I32: sp after push=7, wrote to address 6
+DEBUG: STORE_LOCAL local 2: BP+1+2 = 2
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = 3
+DEBUG: LOAD_LOCAL local 4: BP+1+4 = -2147483648
+DEBUG GET_ELEM: obj_id=18446744071562067968, index=2
+DEBUG: STORE_LOCAL local 5: BP+1+5 = 0
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = -2
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = -2
+DEBUG: CONST_I32: val=2, sp before push=10
+DEBUG: CONST_I32: sp after push=11, wrote to address 10
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = -2
+DEBUG: CONST_I32: val=3, sp before push=12
+DEBUG: CONST_I32: sp after push=13, wrote to address 12
+DEBUG: CONST_I32: val=1, sp before push=5
+DEBUG: CONST_I32: sp after push=6, wrote to address 5
+DEBUG: STORE_LOCAL local 2: BP+1+2 = 3
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = 3
+  ✗ Test 5: Simple Array: Output mismatch for test 'Test 5: Simple Array'
+
+Expected:
+[1, 2, 3]
+[2, 4, 6]
+[3, 6, 9]
+
+Got:
+[1, 2, 3][[1, 2, 3], <invalid_str_idx:13>, <invalid_str_idx:20>][[, , , [1, 2, 3]]
+
+DEBUG flipped_code:
+let products = [ { name: "A", price: 10 }, { name: "B", price: 20 } ]
+let __out__ = ""
+__out__ = __out__ + `{`
+for p in products {
+__out__ = __out__ + `    ${p.name}: ${p.price}`
+}
+__out__ = __out__ + `}`
+__out__ = __out__ + ``
+__out__
+
+DEBUG: Inferred type for 'products' from expression: Array(ArrayType { elem: Unknown, len: 2 })
+DEBUG: Inferred type for '__out__' from expression: Str(0)
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG FOR: Compiling for loop
+DEBUG: Compiling Ident: products
+DEBUG: Variable products found at index 0
+DEBUG: emit_load_loc called with index=0, n_args=0
+DEBUG: Loading local variable 0 at BP+1+0
+DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG: emit_load_loc called with index=3, n_args=0
+DEBUG: Loading local variable 3 at BP+1+3
+DEBUG: Emitting LOAD_LOCAL with local index 3
+DEBUG: emit_load_loc called with index=4, n_args=0
+DEBUG: Loading local variable 4 at BP+1+4
+DEBUG: Emitting LOAD_LOCAL with local index 4
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: p
+DEBUG: Variable p found at index 5
+DEBUG: emit_load_loc called with index=5, n_args=0
+DEBUG: Loading local variable 5 at BP+1+5
+DEBUG: Emitting LOAD_LOCAL with local index 5
+DEBUG: Compiling Ident: p
+DEBUG: Variable p found at index 5
+DEBUG: emit_load_loc called with index=5, n_args=0
+DEBUG: Loading local variable 5 at BP+1+5
+DEBUG: Emitting LOAD_LOCAL with local index 5
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG patch_jump: placeholder_idx=55, target=97, anchor=57, offset=40
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: CONST_I32: val=10, sp before push=8
+DEBUG: CONST_I32: sp after push=9, wrote to address 8
+DEBUG: CONST_I32: val=20, sp before push=9
+DEBUG: CONST_I32: sp after push=10, wrote to address 9
+DEBUG: STORE_LOCAL local 2: BP+1+2 = 0
+DEBUG: STORE_LOCAL local 3: BP+1+3 = 2
+DEBUG: STORE_LOCAL local 4: BP+1+4 = 1000000
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = 2
+DEBUG: LOAD_LOCAL local 4: BP+1+4 = 1000000
+DEBUG GET_ELEM: obj_id=1000000, index=0
+DEBUG: STORE_LOCAL local 5: BP+1+5 = 1000000
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = -11
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = -11
+DEBUG: CONST_I32: val=1, sp before push=6
+DEBUG: CONST_I32: sp after push=7, wrote to address 6
+DEBUG: STORE_LOCAL local 2: BP+1+2 = 1
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = 2
+DEBUG: LOAD_LOCAL local 4: BP+1+4 = -2147483648
+DEBUG GET_ELEM: obj_id=18446744071562067968, index=1
+DEBUG: STORE_LOCAL local 5: BP+1+5 = 0
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = -5
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = -5
+DEBUG: CONST_I32: val=1, sp before push=5
+DEBUG: CONST_I32: sp after push=6, wrote to address 5
+DEBUG: STORE_LOCAL local 2: BP+1+2 = 2
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = 2
+  ✗ Test 6: Array with Fields: Output mismatch for test 'Test 6: Array with Fields'
+
+Expected:
+{
+A: 10
+B: 20
+}
+
+Got:
+{    0: 0    0: 0}
+
+DEBUG flipped_code:
+let user = { name: "John", age: 30 }
+let __out__ = ""
+__out__ = __out__ + `Name: ${user.name}, Age: ${user.age}`
+__out__ = __out__ + ``
+__out__
+
+DEBUG: Inferred type for '__out__' from expression: Str(0)
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: user
+DEBUG: Variable user found at index 0
+DEBUG: emit_load_loc called with index=0, n_args=0
+DEBUG: Loading local variable 0 at BP+1+0
+DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)
+DEBUG: Compiling Ident: user
+DEBUG: Variable user found at index 0
+DEBUG: emit_load_loc called with index=0, n_args=0
+DEBUG: Loading local variable 0 at BP+1+0
+DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: CONST_I32: val=30, sp before push=4
+DEBUG: CONST_I32: sp after push=5, wrote to address 4
+  ✓ Test 7: Nested Fields
+DEBUG flipped_code:
+let values = [10, 20, 30]
+let __out__ = ""
+for i, v in values {
+__out__ = __out__ + `Index $i: $v`
+}
+__out__ = __out__ + ``
+__out__
+
+DEBUG: Inferred type for 'values' from expression: Array(ArrayType { elem: Int, len: 3 })
+DEBUG: Inferred type for '__out__' from expression: Str(0)
+DEBUG FOR: Compiling for loop
+DEBUG: Compiling Ident: values
+DEBUG: Variable values found at index 0
+DEBUG: emit_load_loc called with index=0, n_args=0
+DEBUG: Loading local variable 0 at BP+1+0
+DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG: emit_load_loc called with index=3, n_args=0
+DEBUG: Loading local variable 3 at BP+1+3
+DEBUG: Emitting LOAD_LOCAL with local index 3
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG: emit_load_loc called with index=4, n_args=0
+DEBUG: Loading local variable 4 at BP+1+4
+DEBUG: Emitting LOAD_LOCAL with local index 4
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: i
+DEBUG: Variable i found at index 5
+DEBUG: emit_load_loc called with index=5, n_args=0
+DEBUG: Loading local variable 5 at BP+1+5
+DEBUG: Emitting LOAD_LOCAL with local index 5
+DEBUG: Compiling Ident: v
+DEBUG: Variable v found at index 6
+DEBUG: emit_load_loc called with index=6, n_args=0
+DEBUG: Loading local variable 6 at BP+1+6
+DEBUG: Emitting LOAD_LOCAL with local index 6
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG patch_jump: placeholder_idx=37, target=76, anchor=39, offset=37
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: CONST_I32: val=10, sp before push=8
+DEBUG: CONST_I32: sp after push=9, wrote to address 8
+DEBUG: CONST_I32: val=20, sp before push=9
+DEBUG: CONST_I32: sp after push=10, wrote to address 9
+DEBUG: CONST_I32: val=30, sp before push=10
+DEBUG: CONST_I32: sp after push=11, wrote to address 10
+DEBUG: STORE_LOCAL local 2: BP+1+2 = 0
+DEBUG: STORE_LOCAL local 3: BP+1+3 = 3
+DEBUG: STORE_LOCAL local 4: BP+1+4 = 1000000
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = 3
+DEBUG: STORE_LOCAL local 5: BP+1+5 = 0
+DEBUG: LOAD_LOCAL local 4: BP+1+4 = 1000000
+DEBUG GET_ELEM: obj_id=1000000, index=0
+DEBUG: STORE_LOCAL local 6: BP+1+6 = 10
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = 0
+DEBUG: LOAD_LOCAL local 6: BP+1+6 = 10
+DEBUG: CONST_I32: val=1, sp before push=8
+DEBUG: CONST_I32: sp after push=9, wrote to address 8
+DEBUG: STORE_LOCAL local 2: BP+1+2 = 1
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = 3
+DEBUG: STORE_LOCAL local 5: BP+1+5 = 1
+DEBUG: LOAD_LOCAL local 4: BP+1+4 = 1000000
+DEBUG GET_ELEM: obj_id=1000000, index=1
+DEBUG: STORE_LOCAL local 6: BP+1+6 = 20
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = 1
+DEBUG: LOAD_LOCAL local 6: BP+1+6 = -5
+DEBUG: CONST_I32: val=1, sp before push=7
+DEBUG: CONST_I32: sp after push=8, wrote to address 7
+DEBUG: STORE_LOCAL local 2: BP+1+2 = 2
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = 3
+DEBUG: STORE_LOCAL local 5: BP+1+5 = 2
+DEBUG: LOAD_LOCAL local 4: BP+1+4 = 1000000
+DEBUG GET_ELEM: obj_id=1000000, index=2
+DEBUG: STORE_LOCAL local 6: BP+1+6 = 30
+DEBUG: LOAD_LOCAL local 5: BP+1+5 = -7
+DEBUG: LOAD_LOCAL local 6: BP+1+6 = -2
+DEBUG: CONST_I32: val=1, sp before push=6
+DEBUG: CONST_I32: sp after push=7, wrote to address 6
+DEBUG: STORE_LOCAL local 2: BP+1+2 = 3
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = 3
+  ✗ Test 8: Array Iteration: Output mismatch for test 'Test 8: Array Iteration'
+
+Expected:
+Index 0: 10
+Index 1: 20
+Index 2: 30
+
+Got:
+Index 0: 10Index 1: Index 0: 10Index Index 0: 10Index 1: Index 0: 10: Index
+
+DEBUG flipped_code:
+let debug = true
+let __out__ = ""
+if debug {
+__out__ = __out__ + `#define DEBUG_MODE ON`
+}
+__out__ = __out__ + ``
+__out__
+
+DEBUG: Inferred type for 'debug' from expression: Bool
+DEBUG: Inferred type for '__out__' from expression: Str(0)
+DEBUG: Compiling Ident: debug
+DEBUG: Variable debug found at index 0
+DEBUG: emit_load_loc called with index=0, n_args=0
+DEBUG: Loading local variable 0 at BP+1+0
+DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG patch_jump: placeholder_idx=12, target=26, anchor=14, offset=12
+DEBUG patch_jump: placeholder_idx=24, target=26, anchor=26, offset=0
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: CONST_I32: val=1, sp before push=3
+DEBUG: CONST_I32: sp after push=4, wrote to address 3
+  ✓ Test 9: Conditional Text
+DEBUG flipped_code:
+let name = "World"
+let first = "Hello"
+let second = name // here name is evaluated
+let __out__ = ""
+__out__ = __out__ + `$first $second!`
+__out__ = __out__ + ``
+__out__
+
+DEBUG: Inferred type for 'name' from expression: Str(5)
+DEBUG: Inferred type for 'first' from expression: Str(5)
+DEBUG: Compiling Ident: name
+DEBUG: Variable name found at index 0
+DEBUG: emit_load_loc called with index=0, n_args=0
+DEBUG: Loading local variable 0 at BP+1+0
+DEBUG: Emitting LOAD_LOC_0 (opcode 0x22)
+DEBUG: Inferred type for 'second' from expression: Str(5)
+DEBUG: Inferred type for '__out__' from expression: Str(0)
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 3
+DEBUG: emit_load_loc called with index=3, n_args=0
+DEBUG: Loading local variable 3 at BP+1+3
+DEBUG: Emitting LOAD_LOCAL with local index 3
+DEBUG: Compiling Ident: first
+DEBUG: Variable first found at index 1
+DEBUG: emit_load_loc called with index=1, n_args=0
+DEBUG: Loading local variable 1 at BP+1+1
+DEBUG: Emitting LOAD_LOC_1
+DEBUG: Compiling Ident: second
+DEBUG: Variable second found at index 2
+DEBUG: emit_load_loc called with index=2, n_args=0
+DEBUG: Loading local variable 2 at BP+1+2
+DEBUG: Emitting LOAD_LOC_2
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 3
+DEBUG: emit_load_loc called with index=3, n_args=0
+DEBUG: Loading local variable 3 at BP+1+3
+DEBUG: Emitting LOAD_LOCAL with local index 3
+DEBUG: Compiling Ident: __out__
+DEBUG: Variable __out__ found at index 3
+DEBUG: emit_load_loc called with index=3, n_args=0
+DEBUG: Loading local variable 3 at BP+1+3
+DEBUG: Emitting LOAD_LOCAL with local index 3
+DEBUG: STORE_LOCAL local 2: BP+1+2 = -1
+DEBUG: STORE_LOCAL local 3: BP+1+3 = -3
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = -3
+DEBUG: STORE_LOCAL local 3: BP+1+3 = -8
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = -8
+DEBUG: STORE_LOCAL local 3: BP+1+3 = -10
+DEBUG: LOAD_LOCAL local 3: BP+1+3 = -10
+  ✓ Test 10: Auto with variables
+
+Results: 7/10 passed
+
+thread 'tests::test_autogen_markdown_tests' (85100) panicked at crates\auto-gen\src\lib.rs:401:23:
+Auto-gen tests failed:
+3 tests failed:
+  - Test 5: Simple Array: Output mismatch for test 'Test 5: Simple Array'
+
+Expected:
+[1, 2, 3]
+[2, 4, 6]
+[3, 6, 9]
+
+Got:
+[1, 2, 3][[1, 2, 3], <invalid_str_idx:13>, <invalid_str_idx:20>][[, , , [1, 2, 3]]
+
+  - Test 6: Array with Fields: Output mismatch for test 'Test 6: Array with Fields'
+
+Expected:
+{
+A: 10
+B: 20
+}
+
+Got:
+{    0: 0    0: 0}
+
+  - Test 8: Array Iteration: Output mismatch for test 'Test 8: Array Iteration'
+
+Expected:
+Index 0: 10
+Index 1: 20
+Index 2: 30
+
+Got:
+Index 0: 10Index 1: Index 0: 10Index Index 0: 10Index 1: Index 0: 10: Index
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test tests::test_autogen_markdown_tests ... FAILED
+
+failures:
+
+failures:
+    tests::test_autogen_markdown_tests
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p auto-gen --lib`

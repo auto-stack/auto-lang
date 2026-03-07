@@ -110,7 +110,8 @@
       "Bash(awk:*)",
       "Bash(./auto/target/debug/auto.exe:*)",
       "Bash(rtk cargo build -p auto-lang)",
-      "Bash(rtk cargo test -p auto-lang -- ffi)"
+      "Bash(rtk cargo test -p auto-lang -- ffi)",
+      "mcp__web-reader__webReader"
     ]
   }
 }

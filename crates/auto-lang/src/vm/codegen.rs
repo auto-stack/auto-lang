@@ -130,6 +130,14 @@ pub struct Codegen {
     /// When FN_PROLOG (3 bytes) is inserted, all subsequent code shifts
     /// and all jump_over placeholders after the insertion point need their indices updated
     pub jump_placeholders: Vec<usize>,
+
+    /// Plan 089: Maximum number of locals across all nested scopes
+    /// Used to emit RESERVE_STACK with correct total size
+    pub max_locals: usize,
+
+    /// Plan 089: Whether to pop the result of an expression statement
+    /// Used to ensure stack cleanliness for script evaluation
+    pub should_pop_expr_result: bool,
 }
 
 impl Codegen {
@@ -172,6 +180,8 @@ impl Codegen {
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
             type_store: Arc::new(types::TypeStore::new()), // Plan 084 Phase 3: Unified TypeStore
             jump_placeholders: Vec::new(), // Plan 088 Phase 4: Initialize empty jump placeholder tracking
+            max_locals: 0,
+            should_pop_expr_result: false,
         }
     }
 
@@ -216,6 +226,8 @@ impl Codegen {
             infer_ctx: InferenceContext::new(),
             type_store, // Plan 084 Phase 3: Use provided TypeStore
             jump_placeholders: Vec::new(),
+            max_locals: 0,
+            should_pop_expr_result: false,
         }
     }
 
@@ -296,17 +308,24 @@ impl Codegen {
         match stmt {
             Stmt::Expr(expr) => {
                 self.compile_expr(expr)?;
-                // Statement referencing an expression usually pops the result?
-                // In stack machine, if expr pushes value, we might want to pop it if it's a stmt?
-                // For now, let's assume expressions are side-effect only or return value is ignored.
-                // But wait, `if` stmt logic might depend on this.
-                // Standard: ExprStmt usually implies "Evaluate and Discard result".
-                // We'll add POP if needed later. For now, just compile.
+                // Plan 089: Evaluate and discard result if this is not the last expression
+                // of a block or script. This keeps the stack clean for subsequent ops.
+                if self.should_pop_expr_result {
+                    self.emit(OpCode::POP);
+                }
             }
             Stmt::Block(body) => {
-                // Enter new scope? (Locals not implemented yet in this phase)
-                for s in &body.stmts {
+                let n = body.stmts.len();
+                for (i, s) in body.stmts.iter().enumerate() {
+                    let is_last = i == n - 1;
+                    let old_pop = self.should_pop_expr_result;
+                    // If not the last statement in block, we should pop expression results
+                    // to prevent stack growing indefinitely.
+                    if !is_last {
+                        self.should_pop_expr_result = true;
+                    }
                     self.compile_stmt(s)?;
+                    self.should_pop_expr_result = old_pop;
                 }
             }
             Stmt::If(if_stmt) => {
@@ -381,6 +400,10 @@ impl Codegen {
                 // Plan 087 Phase 3: Set current function parameter count
                 self.current_fn_n_args = fn_decl.params.len();
 
+                // Save and reset max_locals for this function
+                let old_max_locals = self.max_locals;
+                self.max_locals = 0;
+
                 // Add parameters to scope
                 // Plan 087 Phase 3: Record self parameter type for field access
                 for param in &fn_decl.params {
@@ -418,8 +441,12 @@ impl Codegen {
 
                 // 6. Get number of locals and INSERT stack reservation at function entry
                 let n_args = fn_decl.params.len();
-                let total_vars = self.scope_stack.last().unwrap().len();
-                let n_locals = total_vars - n_args; // Pure local vars (excluding parameters)
+                // Use max_locals to account for nested scopes correctly
+                let n_locals = if self.max_locals > n_args {
+                    self.max_locals - n_args
+                } else {
+                    0
+                };
 
                 // Plan 088 Phase 4: Always emit FN_PROLOG at function entry
                 // This provides function metadata for dynamic parameter counting
@@ -479,6 +506,9 @@ impl Codegen {
                         .insert(entry_point as usize + 3, OpCode::RESERVE_STACK as u8);
                     self.code.insert(entry_point as usize + 4, n_locals as u8);
                 }
+
+                // Restore max_locals
+                self.max_locals = old_max_locals;
 
                 // 7. Emit RET at end of body
                 let n_args = fn_decl.params.len() as u8;
@@ -736,8 +766,40 @@ impl Codegen {
                     }
                 }
 
-                // Add variable to symbol table and get its index
-                let var_index = self.add_var(&store.name);
+                // Add variable to symbol table and get its index.
+                //
+                // Key insight: StoreKind::Var is used for BOTH `var x = 5` (new declaration)
+                // and `x = 5` (reassignment). There is no separate Assign kind.
+                //
+                // Look up the variable across ALL scopes first:
+                //   - If found: this is a reassignment or same-name re-declaration.
+                //     For StoreKind::Let, always shadow (create new slot at inner scope).
+                //     For StoreKind::Var/CVar, reuse the existing slot (don't shadow outer scope).
+                //   - If not found: always create a new slot via add_var.
+                //
+                // This fixes the bug where `__out__ = __out__ + ...` inside a for-loop body
+                // would create a new `__out__` slot in the inner scope instead of updating
+                // the outer scope's slot.
+                let var_index = if let Some(existing_index) = self.lookup_var(&name_str) {
+                    match store.kind {
+                        crate::ast::StoreKind::Let => {
+                            // `let x = ...` always creates a new slot, even if x exists in outer scope
+                            self.add_var(&store.name)
+                        }
+                        crate::ast::StoreKind::Var | crate::ast::StoreKind::CVar => {
+                            // `var x = ...` or `x = ...` (reassignment) reuses the existing slot
+                            // from any scope to avoid accidental inner-scope shadowing
+                            existing_index
+                        }
+                        crate::ast::StoreKind::Field => {
+                            // Struct field: create new slot
+                            self.add_var(&store.name)
+                        }
+                    }
+                } else {
+                    // Variable not found anywhere: always create new slot
+                    self.add_var(&store.name)
+                };
 
                 // Store the value into the local variable
                 self.emit_store_loc(var_index);
@@ -824,11 +886,7 @@ impl Codegen {
                             eprintln!("DEBUG FOR: Loop var = {}", var_str);
                             self.push_scope(); // New scope for loop variable
                                                // Calculate total index across all scopes
-                            let var_index: usize = self.scope_stack.iter().map(|s| s.len()).sum();
-                            self.scope_stack
-                                .last_mut()
-                                .unwrap()
-                                .insert(var_str.clone(), var_index);
+                            let var_index = self.add_var(&var_str);
                             eprintln!("DEBUG FOR: var_index = {}", var_index);
                             self.emit_store_loc(var_index);
                             eprintln!("DEBUG FOR: After store_loc, code len = {}", self.code.len());
@@ -891,11 +949,7 @@ impl Codegen {
 
                             // Store iterator in a local variable
                             self.push_scope(); // New scope for loop variable and iterator
-                            let iter_index = self.scope_stack.last_mut().unwrap().len();
-                            self.scope_stack
-                                .last_mut()
-                                .unwrap()
-                                .insert("_iterator".to_string(), iter_index);
+                            let iter_index = self.add_var("_iterator");
                             self.emit_store_loc(iter_index);
 
                             // Loop start label
@@ -929,11 +983,7 @@ impl Codegen {
 
                             // Store the element to the loop variable
                             let var_str = var_name.to_string();
-                            let var_index = self.scope_stack.last_mut().unwrap().len();
-                            self.scope_stack
-                                .last_mut()
-                                .unwrap()
-                                .insert(var_str.clone(), var_index);
+                            let var_index = self.add_var(&var_str);
                             self.emit_store_loc(var_index);
 
                             // Compile loop body
@@ -959,10 +1009,103 @@ impl Codegen {
                             for exit_placeholder in exits {
                                 self.patch_jump(exit_placeholder);
                             }
+                        } else if let Expr::Ident(_) = &for_stmt.range {
+                            // Plan 089: Array-based for loop: for x in array_var { ... }
+                            // Load the array variable
+                            self.compile_expr(&for_stmt.range)?;
+
+                            // DUP to keep array reference for GET_ELEM later
+                            self.emit(OpCode::DUP);
+
+                            // Get array length (consumes the duped array_id)
+                            self.emit(OpCode::ARRAY_LEN);
+
+                            // Initialize loop counter to 0
+                            // Stack now: [array_id, length]
+                            self.emit(OpCode::CONST_0);
+                            // Stack now: [array_id, length, 0]
+
+                            // Store to loop variable
+                            let var_str = var_name.to_string();
+                            self.push_scope(); // New scope for loop variable
+
+                            // Store counter (0) - stack top
+                            let counter_index = self.add_var("_counter");
+                            self.emit_store_loc(counter_index);
+                            // Stack now: [array_id, length]
+
+                            // Store length
+                            let len_index = self.add_var("_array_len");
+                            self.emit_store_loc(len_index);
+                            // Stack now: [array_id]
+
+                            // Store array reference for GET_ELEM
+                            let array_ref_index = self.add_var("_array_ref");
+                            self.emit_store_loc(array_ref_index);
+                            // Stack now: []
+
+                            // Create the actual loop variable slot (will be overwritten each iteration)
+                            let var_index = self.add_var(&var_str);
+
+                            // Loop start label
+                            let loop_start = self.code.len() as i16;
+
+                            // Load counter for comparison
+                            self.emit_load_loc(counter_index);
+
+                            // Compare with length
+                            self.emit_load_loc(len_index);
+                            self.emit(OpCode::LT);
+
+                            // JMP_IF_Z to end (exit loop if counter >= length)
+                            self.emit(OpCode::JMP_IF_Z);
+                            let jump_to_end = self.emit_placeholder_i16();
+
+                            // Load array reference
+                            self.emit_load_loc(array_ref_index);
+
+                            // Load current counter as index
+                            self.emit_load_loc(counter_index);
+
+                            // Get element at index (GET_ELEM: array_id, index -> value)
+                            self.emit(OpCode::GET_ELEM);
+
+                            // Store element to loop variable
+                            self.emit_store_loc(var_index);
+
+                            // Compile loop body
+                            self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+
+                            // Increment counter
+                            self.emit_load_loc(counter_index);
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(1);
+                            self.emit(OpCode::ADD);
+                            self.emit_store_loc(counter_index);
+
+                            // JMP back to loop start
+                            self.emit(OpCode::JMP);
+                            let current_pos = self.code.len() as i16;
+                            self.emit_i16(loop_start - current_pos - 2);
+
+                            // This is the loop exit point - patch all break jumps here
+                            let _loop_exit = self.code.len();
+
+                            // Patch exit jump (for loop condition)
+                            self.patch_jump(jump_to_end);
+
+                            // Pop loop scope
+                            self.pop_scope();
+
+                            // Patch all break statements
+                            let exits = self.loop_exits.pop().unwrap();
+                            for exit_placeholder in exits {
+                                self.patch_jump(exit_placeholder);
+                            }
                         } else {
-                            // For now, only support range and iterator expressions
+                            // For now, only support range, iterator, and array identifier expressions
                             self.loop_exits.pop();
-                            return Err(AutoError::Msg("For loops with non-range/non-iterator expressions not supported yet".to_string()));
+                            return Err(AutoError::Msg("For loops with non-range/non-iterator/non-array expressions not supported yet".to_string()));
                         }
                     }
                     Iter::Indexed(index_name, iter_name) => {
@@ -978,19 +1121,11 @@ impl Codegen {
                             self.push_scope(); // New scope for loop variables
 
                             // Store to index variable
-                            let index_index = self.scope_stack.last_mut().unwrap().len();
-                            self.scope_stack
-                                .last_mut()
-                                .unwrap()
-                                .insert(index_str.clone(), index_index);
+                            let index_index = self.add_var(&index_str);
                             self.emit_store_loc(index_index);
 
                             // Store same value to iter variable
-                            let iter_index = self.scope_stack.last_mut().unwrap().len();
-                            self.scope_stack
-                                .last_mut()
-                                .unwrap()
-                                .insert(iter_str.clone(), iter_index);
+                            let iter_index = self.add_var(&iter_str);
                             self.emit_store_loc(iter_index);
 
                             // Loop start label
@@ -1047,11 +1182,113 @@ impl Codegen {
                             for exit_placeholder in exits {
                                 self.patch_jump(exit_placeholder);
                             }
+                        } else if let Expr::Ident(_) = &for_stmt.range {
+                            // Plan 089: Indexed array iteration: for i, x in array_var { ... }
+                            let index_str = index_name.to_string();
+                            let iter_str = iter_name.to_string();
+                            self.push_scope(); // New scope for loop variables
+
+                            // Load the array variable
+                            self.compile_expr(&for_stmt.range)?;
+                            // Stack: [array_id]
+
+                            // DUP to keep array reference
+                            self.emit(OpCode::DUP);
+                            // Stack: [array_id, array_id]
+
+                            // Get array length (consumes one array_id)
+                            self.emit(OpCode::ARRAY_LEN);
+                            // Stack: [array_id, length]
+
+                            // Initialize loop counter to 0
+                            self.emit(OpCode::CONST_0);
+                            // Stack: [array_id, length, 0]
+
+                            // Store counter (0)
+                            let counter_index = self.add_var("_counter");
+                            self.emit_store_loc(counter_index);
+                            // Stack: [array_id, length]
+
+                            // Store length
+                            let len_index = self.add_var("_array_len");
+                            self.emit_store_loc(len_index);
+                            // Stack: [array_id]
+
+                            // Store array reference
+                            let array_ref_index = self.add_var("_array_ref");
+                            self.emit_store_loc(array_ref_index);
+                            // Stack: []
+
+                            // Store index variable
+                            let index_var_index = self.add_var(&index_str);
+
+                            // Store iter variable
+                            let iter_var_index = self.add_var(&iter_str);
+
+                            // Loop start label
+                            let loop_start = self.code.len() as i16;
+
+                            // Load counter
+                            self.emit_load_loc(counter_index);
+
+                            // Compare with length
+                            self.emit_load_loc(len_index);
+                            self.emit(OpCode::LT);
+
+                            // JMP_IF_Z to end (exit loop if counter >= length)
+                            self.emit(OpCode::JMP_IF_Z);
+                            let jump_to_end = self.emit_placeholder_i16();
+
+                            // Store current index to index variable
+                            self.emit_load_loc(counter_index);
+                            self.emit_store_loc(index_var_index);
+
+                            // Load array reference
+                            self.emit_load_loc(array_ref_index);
+
+                            // Load current index
+                            self.emit_load_loc(counter_index);
+
+                            // Get element at index (GET_ELEM: array_id, index -> value)
+                            self.emit(OpCode::GET_ELEM);
+
+                            // Store to iter variable
+                            self.emit_store_loc(iter_var_index);
+
+                            // Compile loop body
+                            self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+
+                            // Increment counter
+                            self.emit_load_loc(counter_index);
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(1);
+                            self.emit(OpCode::ADD);
+                            self.emit_store_loc(counter_index);
+
+                            // JMP back to loop start
+                            self.emit(OpCode::JMP);
+                            let current_pos = self.code.len() as i16;
+                            self.emit_i16(loop_start - current_pos - 2);
+
+                            // This is the loop exit point - patch all break jumps here
+                            let _loop_exit = self.code.len();
+
+                            // Patch exit jump (for loop condition)
+                            self.patch_jump(jump_to_end);
+
+                            // Pop loop scope
+                            self.pop_scope();
+
+                            // Patch all break statements
+                            let exits = self.loop_exits.pop().unwrap();
+                            for exit_placeholder in exits {
+                                self.patch_jump(exit_placeholder);
+                            }
                         } else {
-                            // For now, only support range expressions
+                            // For now, only support range and array identifier expressions
                             self.loop_exits.pop();
                             return Err(AutoError::Msg(
-                                "Indexed for loops with non-range expressions not supported yet"
+                                "Indexed for loops with non-range/non-array expressions not supported yet"
                                     .to_string(),
                             ));
                         }
@@ -1116,11 +1353,7 @@ impl Codegen {
 
                         // Store iterator in a local variable
                         self.push_scope(); // New scope for loop variable and iterator
-                        let iter_index = self.scope_stack.last_mut().unwrap().len();
-                        self.scope_stack
-                            .last_mut()
-                            .unwrap()
-                            .insert("_iterator".to_string(), iter_index);
+                        let iter_index = self.add_var("_iterator");
                         self.emit_store_loc(iter_index);
 
                         // Loop start label
@@ -1157,11 +1390,7 @@ impl Codegen {
                         // Store the element to the loop variable
                         // Get variable name from context - for now, use "x" as default
                         let var_str = "x"; // TODO: Extract actual variable name from AST
-                        let var_index = self.scope_stack.last_mut().unwrap().len();
-                        self.scope_stack
-                            .last_mut()
-                            .unwrap()
-                            .insert(var_str.to_string(), var_index);
+                        let var_index = self.add_var(var_str);
                         self.emit_store_loc(var_index);
 
                         // Compile loop body
@@ -1865,6 +2094,9 @@ impl Codegen {
                                 _ => OpCode::NOP,
                             });
 
+                            // Plan 080: Duplicate value on stack because THIS IS AN EXPRESSION
+                            // The parent (Stmt::Expr) or outer expression expects 1 value result!
+                            self.emit(OpCode::DUP);
                             // Store result back to variable
                             self.emit_store_loc(var_index);
                         } else {
@@ -1891,14 +2123,17 @@ impl Codegen {
                         // Check if this is a captured variable (Plan 071)
                         if self.current_captured_vars().contains_key(&name_str) {
                             // Variable is captured - emit STORE_CAPTURED
+                            self.emit(OpCode::DUP); // Keep value for expression result
                             self.emit_store_captured(&name_str);
                         } else if let Some(var_index) = self.lookup_var(&name_str) {
                             // Variable found in local scope - store value to it
+                            self.emit(OpCode::DUP); // Keep value for expression result
                             self.emit_store_loc(var_index);
                         } else {
                             // Variable not found - this is an error
                             // For now, emit STORE_LOC_0 as a fallback
                             // TODO: Proper error handling for undefined variables
+                            self.emit(OpCode::DUP); // Keep value for expression result
                             self.emit(OpCode::STORE_LOC_0);
                         }
                     } else if let Expr::Index(array, index) = lhs.as_ref() {
@@ -2995,6 +3230,10 @@ impl Codegen {
     fn add_var(&mut self, name: &str) -> usize {
         // Calculate total index across all scopes
         let total_len: usize = self.scope_stack.iter().map(|s| s.len()).sum();
+
+        // Update max_locals to reflect the high-water mark of variables (including parameters)
+        self.max_locals = self.max_locals.max(total_len + 1);
+
         let scope = self
             .scope_stack
             .last_mut()

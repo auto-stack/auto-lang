@@ -35,8 +35,16 @@ impl VmInterpreter {
         let mut codegen = Codegen::new();
 
         // Compile each statement
-        for stmt in &ast.stmts {
+        let n = ast.stmts.len();
+        for (i, stmt) in ast.stmts.iter().enumerate() {
+            let is_last = i == n - 1;
+            let old_pop = codegen.should_pop_expr_result;
+            // Pop all but the last expression statement to get a result from the script
+            if !is_last {
+                codegen.should_pop_expr_result = true;
+            }
             codegen.compile_stmt(stmt)?;
+            codegen.should_pop_expr_result = old_pop;
         }
 
         // Add HALT instruction
@@ -45,7 +53,7 @@ impl VmInterpreter {
 
         // 2b. Insert RESERVE_STACK for main task locals
         // Without this, temporary stack pushes overwrite local variable slots (BP+1, BP+2, etc.)
-        let n_locals = codegen.scope_stack.first().map(|s| s.len()).unwrap_or(0);
+        let n_locals = codegen.max_locals;
         if n_locals > 0 {
             // Insert RESERVE_STACK at position 0 (2 bytes: opcode + count)
             codegen.code.insert(0, OpCode::RESERVE_STACK as u8);

@@ -32,6 +32,7 @@ pub enum OpCode {
     GET_FIELD = 0x2D,     // Plan 073: Get field from object (obj_id, field_str_idx) -> value
     CREATE_OBJ = 0x2E,    // Plan 073: Create object from field_count -> object_id
     CREATE_ARRAY = 0x2F,   // Plan 073: Create array from elem_count -> array_id
+    ARRAY_LEN = 0x48,      // Plan 089: Get array length (array_id) -> length
     CREATE_RANGE = 0x75,  // Plan 073: Create exclusive range (0..10) from (start, end) -> range_value
     CREATE_RANGE_EQ = 0x76, // Plan 073: Create inclusive range (0..=10) from (start, end) -> range_value
     BUILD_FSTR = 0x77,    // Plan 073: Build f-string from part_count -> string

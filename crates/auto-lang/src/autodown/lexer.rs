@@ -578,8 +578,8 @@ impl<'a> AdocLexer<'a> {
                 }
                 // If brace level is 0, we might be exiting code mode
                 if self.brace_level == 0 {
-                    // Check if this is the end of interpolation
-                    // The parser will handle mode switching
+                    // Exiting interpolation, switch back to text mode
+                    self.mode = LexerMode::Text;
                 }
                 Ok(AdToken::simple(AdTokenKind::RBrace, line, column))
             }

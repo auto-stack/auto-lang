@@ -131,7 +131,7 @@ impl AutoInterpreter {
                 // Text line: wrap in F-string backticks
                 // Note: we need to escape existing backticks in the text to be safe
                 let escaped_line = line.replace("`", "\\`");
-                flipped_code.push_str(&format!("__out__ = __out__ + `{}`\n", escaped_line));
+                flipped_code.push_str(&format!("__out__ = __out__ + `{}\n`\n", escaped_line));
             }
         }
 
