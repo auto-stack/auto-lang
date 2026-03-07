@@ -123,3 +123,5 @@ mod tests {
         assert!(!AUTOMAN_VERSION.is_empty());
     }
 }
+
+pub mod exporter;

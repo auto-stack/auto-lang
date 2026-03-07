@@ -1,5 +1,5 @@
 #![allow(deprecated)]
-use super::Builder;
+use super::Exporter;
 use crate::asset::GHSTemplate;
 use crate::target::{Target, TargetKind};
 use crate::Pac; // Changed from crate::pac::Pac (pac.rs not migrated yet)
@@ -9,14 +9,14 @@ use auto_lang::Atom;
 use auto_val::{AutoPath, AutoStr};
 use log::*;
 
-pub struct GHSBuilder {
+pub struct GHSExporter {
     pub gen: AutoGen,
     pub apps: Vec<OneGen>,
     pub subprojects: Vec<OneGen>,
     pub path: AutoPath,
 }
 
-impl GHSBuilder {
+impl GHSExporter {
     pub fn new(path: AutoPath) -> Self {
         let gen = AutoGen::new().out(path.clone()).note('$');
         Self {
@@ -46,7 +46,7 @@ impl GHSBuilder {
     }
 }
 
-impl GHSBuilder {
+impl GHSExporter {
     fn setup_dir(&mut self, ghs_loc: AutoStr, dir: &Dir) -> AutoResult<()> {
         // let rel: AutoStr = format!("../{}", rel).into();
         // Implement directory setup logic here
@@ -76,12 +76,7 @@ impl GHSBuilder {
     }
 }
 
-impl Builder for GHSBuilder {
-    fn build(&mut self, pac: &mut Pac) -> AutoResult<()> {
-        self.setup(pac)?;
-        self.finish(pac)
-    }
-
+impl GHSExporter {
     fn setup(&mut self, pac: &mut Pac) -> AutoResult<()> {
         // check devices
         self.check_devices(pac)?;
@@ -218,33 +213,19 @@ impl Builder for GHSBuilder {
         }
         Ok(())
     }
+}
 
-    fn target(&mut self, _t: &Target, _pac: &Pac) -> AutoResult<()> {
-        Ok(())
-    }
-
-    fn clean(&mut self) -> AutoResult<()> {
-        if self.path.is_dir() {
-            info!("deleting directory {}", self.path);
-            self.path.clean_with_parents()?;
-            // std::fs::remove_dir_all(self.path.path())?;
-        } else {
-            info!("build directory {} does not exist, skipping ...", self.path);
-        }
-        Ok(())
-    }
-
-    fn run(&mut self, _pac: &Pac, _args: Vec<String>) -> AutoResult<()> {
-        Ok(())
+impl Exporter for GHSExporter {
+    fn export(&mut self, pac: &mut Pac) -> AutoResult<()> {
+        self.setup(pac)?;
+        self.finish(pac)
     }
 
     fn enable_memory_output(&mut self) -> AutoResult<()> {
-        // TODO: Implement GHS memory output in Phase 3
         Err("GHS memory output not yet implemented".into())
     }
 
     fn get_memory_output(&self) -> std::collections::HashMap<String, Vec<u8>> {
-        // TODO: Implement GHS memory output in Phase 3
         std::collections::HashMap::new()
     }
 }

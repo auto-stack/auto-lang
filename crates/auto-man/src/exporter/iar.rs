@@ -1,5 +1,5 @@
 #![allow(deprecated)]
-use super::Builder;
+use super::Exporter;
 use crate::asset::IARTemplate;
 use crate::target::{Target, TargetKind};
 use crate::AutoResult;
@@ -8,13 +8,13 @@ use auto_gen::*;
 use auto_val::AutoPath;
 use log::*;
 
-pub struct IARBuilder {
+pub struct IARExporter {
     pub gen: AutoGen,
     pub app_gens: Vec<AutoGen>,
     pub path: AutoPath,
 }
 
-impl IARBuilder {
+impl IARExporter {
     pub fn new(path: AutoPath) -> Self {
         let gen = Self::new_gen(&path);
         Self {
@@ -47,12 +47,7 @@ impl IARBuilder {
     }
 }
 
-impl Builder for IARBuilder {
-    fn build(&mut self, pac: &mut Pac) -> AutoResult<()> {
-        self.setup(pac)?;
-        self.finish(pac)
-    }
-
+impl IARExporter {
     fn setup(&mut self, pac: &mut Pac) -> AutoResult<()> {
         // check devices
         self.check_devices(pac)?;
@@ -112,34 +107,19 @@ impl Builder for IARBuilder {
         }
         Ok(())
     }
+}
 
-    fn target(&mut self, _t: &Target, _pac: &Pac) -> AutoResult<()> {
-        Ok(())
-    }
-
-    fn clean(&mut self) -> AutoResult<()> {
-        if self.path.is_dir() {
-            info!("deleting directory {}", self.path);
-            self.path.clean_with_parents()?;
-            // std::fs::remove_dir_all(self.path.path())?;
-        } else {
-            info!("build directory {} does not exist, skipping ...", self.path);
-        }
-
-        Ok(())
-    }
-
-    fn run(&mut self, _pac: &Pac, _args: Vec<String>) -> AutoResult<()> {
-        Ok(())
+impl Exporter for IARExporter {
+    fn export(&mut self, pac: &mut Pac) -> AutoResult<()> {
+        self.setup(pac)?;
+        self.finish(pac)
     }
 
     fn enable_memory_output(&mut self) -> AutoResult<()> {
-        // TODO: Implement IAR memory output in Phase 3
         Err("IAR memory output not yet implemented".into())
     }
 
     fn get_memory_output(&self) -> std::collections::HashMap<String, Vec<u8>> {
-        // TODO: Implement IAR memory output in Phase 3
         std::collections::HashMap::new()
     }
 }

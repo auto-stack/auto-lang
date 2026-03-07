@@ -188,9 +188,13 @@ enum Commands {
     Build {
         #[arg(short, long)]
         dir: Option<String>,
+        #[arg(short, long)]
+        port: Option<String>,
     },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
     Run {
+        #[arg(short, long)]
+        port: Option<String>,
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -213,6 +217,13 @@ enum Commands {
     Device {
         #[command(subcommand)]
         action: DeviceAction,
+    },
+    #[command(about = "Export the project to a specific format (cmake, iar, ghs)")]
+    Export {
+        #[arg(short, long, help = "Name of the port to export")]
+        port: String,
+        #[arg(short, long, help = "Format to export to (cmake, iar, ghs)")]
+        format: String,
     },
 
     // ========== Project Utils ==========
@@ -316,20 +327,26 @@ fn main() -> Result<()> {
         }
 
         // ========== Build & Run ==========
-        Some(Commands::Build { dir }) => {
+        Some(Commands::Build { dir, port }) => {
             init_logger();
             println_logo();
             let dir = dir.unwrap_or_else(|| ".".to_string());
             let config = load_am_config().unwrap_or_default();
             let mut am = auto_man::Automan::new(&dir, config).map_err(|e| miette::miette!("{}", e))?;
+            if let Some(p) = port {
+                am.set_port(p.into()).map_err(|e| miette::miette!("{}", e))?;
+            }
             am.scan().map_err(|e| miette::miette!("{}", e))?;
             am.build().map_err(|e| miette::miette!("{}", e))?;
         }
-        Some(Commands::Run { args }) => {
+        Some(Commands::Run { port, args }) => {
             init_logger();
             println_logo();
             let config = load_am_config().unwrap_or_default();
             let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
+            if let Some(p) = port {
+                am.set_port(p.into()).map_err(|e| miette::miette!("{}", e))?;
+            }
             info!("Running project ...");
             println!();
             println!("------------ output ------------");
@@ -384,6 +401,13 @@ fn main() -> Result<()> {
                     info!("Port updated successfully");
                 }
             }
+        }
+        Some(Commands::Export { port, format }) => {
+            init_logger();
+            println_logo();
+            let config = load_am_config().unwrap_or_default();
+            let mut am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
+            am.export(port, format).map_err(|e| miette::miette!("{}", e))?;
         }
 
         // ========== Project Utils ==========

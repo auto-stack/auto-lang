@@ -327,6 +327,33 @@ impl Automan {
         Ok(())
     }
 
+    pub fn export(&mut self, port_name: String, format: String) -> AutoResult<()> {
+        // 1. Set the port if different from current
+        if self.pac.port.name.as_str() != port_name {
+            info!("Switching to port: {}", port_name);
+            self.set_port(port_name.into())?;
+        }
+
+        // 2. Transpile auto code
+        // For now, exporters (CMake/IAR/GHS) are primarily for C backend
+        println!("Transpiling auto code for export");
+        self.transpile_auto()?;
+
+        // 3. Resolve targets
+        self.pac.resolve()?;
+
+        // 4. Create exporter and export
+        let build_path = AutoPath::new(&self.pac.build_location);
+        if let Some(mut exporter) = crate::exporter::make_exporter(&format, build_path) {
+            println!("Exporting project to {} format...", format);
+            exporter.export(&mut self.pac)?;
+            println!("Export completed successfully at {}", self.pac.build_location);
+            Ok(())
+        } else {
+            Err(format!("Unknown export format: {}", format).into())
+        }
+    }
+
     pub fn transpile_auto(&mut self) -> AutoResult<()> {
         self.pac.transpile_autot()?;
         Ok(())

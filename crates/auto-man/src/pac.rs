@@ -586,9 +586,31 @@ impl Pac {
         }
         let mut port = Port::default();
         port.name = port_node.main_arg().to_astr();
-        port.builder = port_node.get_prop("builder").to_astr();
+        
+        // Use "ninja" as default builder if not specified
+        let builder_val = port_node.get_prop("builder").to_astr();
+        port.builder = if builder_val.is_empty() { "ninja".into() } else { builder_val };
+        
         port.platform = port_node.get_prop("platform").to_astr();
         port.at = port_node.get_prop("at").to_astr();
+
+        // BPBE Architecture Fields
+        if port_node.has_prop("os") {
+            port.os = Some(port_node.get_prop("os").to_astr());
+        }
+        if port_node.has_prop("arch") {
+            port.arch = Some(port_node.get_prop("arch").to_astr());
+        }
+        if port_node.has_prop("toolchain") {
+            port.toolchain = Some(port_node.get_prop("toolchain").to_astr());
+        }
+        
+        let exports_val = port_node.get_prop_of("exports");
+        if let auto_val::Value::Array(arr) = exports_val {
+            port.exports = arr.values.iter().map(|v| v.to_astr()).collect();
+        }
+        
+        port.sdks = port_node.get_nodes("sdk");
 
         // 解析完整的编译器配置
         use crate::builder::ninja::config::{
@@ -1053,7 +1075,7 @@ impl Pac {
             builder.run(self, args)?;
             self.builder = Some(builder);
         } else {
-            let mut builder = new_builder(BuilderKind::CMake("CMakeLists.txt".to_string()));
+            let mut builder = crate::builder::new_builder(crate::builder::BuilderKind::Ninja("build".into()));
             builder.run(self, args)?;
         }
         Ok(())
