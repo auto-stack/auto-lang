@@ -172,6 +172,92 @@ impl FormGenerator {
 
         Ok(format!("OutlinedTextField(\n        {}\n    )", parts.join(",\n        ")))
     }
+
+    /// Generate Checkbox component
+    pub fn generate_checkbox(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+        self.add_import("androidx.compose.material3.Checkbox");
+        self.add_import("androidx.compose.material3.Text");
+        self.add_import("androidx.compose.foundation.layout.Row");
+        self.add_import("androidx.compose.foundation.layout.Spacer");
+        self.add_import("androidx.compose.foundation.layout.width");
+        self.add_import("androidx.compose.ui.Alignment");
+        self.add_import("androidx.compose.ui.Modifier");
+        self.add_import("androidx.compose.ui.unit.dp");
+
+        let state_ref = Self::extract_state_ref(props, "checked").unwrap_or_else(|| "checked".to_string());
+        let label = Self::extract_string(props, "label");
+        let disabled = Self::extract_bool(props, "disabled");
+
+        let mut checkbox_parts = vec![
+            format!("checked = {}", state_ref),
+            format!("onCheckedChange = {{ {} = it }}", state_ref),
+        ];
+        if disabled {
+            checkbox_parts.push("enabled = false".to_string());
+        }
+
+        // If there's a label, wrap in a Row
+        if let Some(label_text) = label {
+            Ok(format!(
+r#"Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {{
+        Checkbox(
+            {}
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("{}")
+    }}"#,
+                checkbox_parts.join(",\n            "),
+                label_text
+            ))
+        } else {
+            Ok(format!("Checkbox(\n        {}\n    )", checkbox_parts.join(",\n        ")))
+        }
+    }
+
+    /// Generate Switch component
+    pub fn generate_switch(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+        self.add_import("androidx.compose.material3.Switch");
+        self.add_import("androidx.compose.material3.Text");
+        self.add_import("androidx.compose.foundation.layout.Row");
+        self.add_import("androidx.compose.foundation.layout.Arrangement");
+        self.add_import("androidx.compose.ui.Alignment");
+        self.add_import("androidx.compose.ui.Modifier");
+
+        let state_ref = Self::extract_state_ref(props, "checked").unwrap_or_else(|| "checked".to_string());
+        let label = Self::extract_string(props, "label");
+        let disabled = Self::extract_bool(props, "disabled");
+
+        let mut switch_parts = vec![
+            format!("checked = {}", state_ref),
+            format!("onCheckedChange = {{ {} = it }}", state_ref),
+        ];
+        if disabled {
+            switch_parts.push("enabled = false".to_string());
+        }
+
+        // If there's a label, wrap in a Row with space between
+        if let Some(label_text) = label {
+            Ok(format!(
+r#"Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth()
+    ) {{
+        Text("{}")
+        Switch(
+            {}
+        )
+    }}"#,
+                label_text,
+                switch_parts.join(",\n            ")
+            ))
+        } else {
+            Ok(format!("Switch(\n        {}\n    )", switch_parts.join(",\n        ")))
+        }
+    }
 }
 
 impl Default for FormGenerator {
@@ -269,5 +355,67 @@ mod tests {
         assert!(result.is_ok());
         let code = result.unwrap();
         assert!(code.contains("maxLines = 5"));
+    }
+
+    #[test]
+    fn test_generate_checkbox_basic() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("done".to_string())));
+
+        let result = gen.generate_checkbox(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("Checkbox"));
+        assert!(code.contains("checked = done"));
+        assert!(code.contains("onCheckedChange = { done = it }"));
+    }
+
+    #[test]
+    fn test_generate_checkbox_with_label() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("agree".to_string())));
+        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("I agree".to_string())));
+
+        let result = gen.generate_checkbox(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("Row"));
+        assert!(code.contains("Checkbox"));
+        assert!(code.contains("Text(\"I agree\")"));
+    }
+
+    #[test]
+    fn test_generate_switch_basic() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("enabled".to_string())));
+
+        let result = gen.generate_switch(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("Switch"));
+        assert!(code.contains("checked = enabled"));
+        assert!(code.contains("onCheckedChange = { enabled = it }"));
+    }
+
+    #[test]
+    fn test_generate_switch_with_label() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("notifications".to_string())));
+        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Enable notifications".to_string())));
+
+        let result = gen.generate_switch(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("Row"));
+        assert!(code.contains("Text(\"Enable notifications\")"));
+        assert!(code.contains("Switch"));
     }
 }
