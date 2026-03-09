@@ -4,6 +4,7 @@
 name: "component-gallery"
 version: "1.0.0"
 description: "AutoUI Component Gallery - Interactive component documentation"
+backend: "vue"
 
 // Workspace structure
 workspace: {

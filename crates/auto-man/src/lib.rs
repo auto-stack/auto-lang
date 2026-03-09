@@ -37,6 +37,9 @@ pub mod target;
 pub mod automan;
 pub mod pac;
 
+// Phase 5: Vue project support
+pub mod vue;
+
 // NOTE: stubs.rs removed in Phase 6 - all types migrated
 
 // Re-exports (Plan 078 + Phase 1)
@@ -68,6 +71,9 @@ pub use builder::ninja::config::CompilerConfig;
 // Re-exports (Phase 2B)
 pub use automan::*;
 pub use pac::*;
+
+// Re-exports (Phase 5: Vue)
+pub use vue::*;
 
 // NOTE: All types migrated in Phases 1-5
 // NOTE: stubs.rs removed in Phase 6 (cleanup)
