@@ -497,4 +497,207 @@ mod tests {
         // For range 0-10 with step 1, steps = (10-0)/1 - 1 = 9
         assert!(code.contains("steps = 9"));
     }
+
+    // =========================================================================
+    // Edge Case Tests (Task 6)
+    // =========================================================================
+
+    #[test]
+    fn test_input_without_value() {
+        // Input without value binding should still generate
+        let mut gen = FormGenerator::new();
+        let props = HashMap::new();
+
+        let result = gen.generate_input(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("OutlinedTextField"));
+        assert!(code.contains("value = \"\""));
+    }
+
+    #[test]
+    fn test_checkbox_disabled() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("done".to_string())));
+        props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+
+        let result = gen.generate_checkbox(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("enabled = false"));
+    }
+
+    #[test]
+    fn test_switch_disabled() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("enabled".to_string())));
+        props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+
+        let result = gen.generate_switch(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("enabled = false"));
+    }
+
+    #[test]
+    fn test_slider_default_range() {
+        // Slider without min/max should use 0..100
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("value".to_string())));
+
+        let result = gen.generate_slider(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("valueRange = 0f..100f"));
+    }
+
+    #[test]
+    fn test_import_collection() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("text".to_string())));
+        props.insert("type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("password".to_string())));
+
+        let _ = gen.generate_input(&props);
+
+        let imports = gen.get_imports();
+        assert!(imports.iter().any(|i| i.contains("PasswordVisualTransformation")));
+    }
+
+    #[test]
+    fn test_textarea_without_value() {
+        // Textarea without value should still generate
+        let mut gen = FormGenerator::new();
+        let props = HashMap::new();
+
+        let result = gen.generate_textarea(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("OutlinedTextField"));
+        assert!(code.contains("value = \"\""));
+    }
+
+    #[test]
+    fn test_checkbox_without_state_ref() {
+        // Checkbox without state ref should use default
+        let mut gen = FormGenerator::new();
+        let props = HashMap::new();
+
+        let result = gen.generate_checkbox(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("checked = checked"));
+    }
+
+    #[test]
+    fn test_switch_without_state_ref() {
+        // Switch without state ref should use default
+        let mut gen = FormGenerator::new();
+        let props = HashMap::new();
+
+        let result = gen.generate_switch(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("checked = checked"));
+    }
+
+    #[test]
+    fn test_slider_without_state_ref() {
+        // Slider without state ref should use default
+        let mut gen = FormGenerator::new();
+        let props = HashMap::new();
+
+        let result = gen.generate_slider(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("value = value"));
+    }
+
+    #[test]
+    fn test_input_email_type() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("email".to_string())));
+        props.insert("type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("email".to_string())));
+
+        let result = gen.generate_input(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("KeyboardType.Email"));
+
+        // Verify import is collected
+        let imports = gen.get_imports();
+        assert!(imports.iter().any(|i| i.contains("KeyboardOptions")));
+    }
+
+    #[test]
+    fn test_input_number_type() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("age".to_string())));
+        props.insert("type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("number".to_string())));
+
+        let result = gen.generate_input(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("KeyboardType.Number"));
+
+        // Verify import is collected
+        let imports = gen.get_imports();
+        assert!(imports.iter().any(|i| i.contains("KeyboardType")));
+    }
+
+    #[test]
+    fn test_textarea_disabled() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("content".to_string())));
+        props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+
+        let result = gen.generate_textarea(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("enabled = false"));
+    }
+
+    #[test]
+    fn test_import_deduplication() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("text".to_string())));
+
+        // Generate multiple inputs
+        let _ = gen.generate_input(&props);
+        let _ = gen.generate_input(&props);
+
+        // Verify no duplicate imports
+        let imports = gen.get_imports();
+        let outlined_count = imports.iter().filter(|i| i.contains("OutlinedTextField")).count();
+        assert_eq!(outlined_count, 1);
+    }
+
+    #[test]
+    fn test_clear_imports() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("text".to_string())));
+
+        let _ = gen.generate_input(&props);
+        assert!(!gen.get_imports().is_empty());
+
+        gen.clear_imports();
+        assert!(gen.get_imports().is_empty());
+    }
 }

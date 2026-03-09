@@ -32,11 +32,12 @@
 //! ```
 
 use super::components::Material3Registry;
+use super::form::FormGenerator;
 use super::modifier::ModifierDsl;
 use super::state::StateConverter;
-use crate::aura::AuraWidget;
+use crate::aura::{AuraPropValue, AuraWidget};
 use crate::ui_gen::{BackendGenerator, GenError, GenResult};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Jetpack Compose code generator
 pub struct JetGenerator {
@@ -60,6 +61,9 @@ pub struct JetGenerator {
     /// State converter
     state_converter: StateConverter,
 
+    /// Form component generator
+    form_generator: FormGenerator,
+
     /// Components used in current widget
     #[allow(dead_code)]
     components_used: HashSet<String>,
@@ -75,6 +79,7 @@ impl JetGenerator {
             registry: Material3Registry::new(),
             modifier_dsl: ModifierDsl::new(),
             state_converter: StateConverter::new(),
+            form_generator: FormGenerator::new(),
             components_used: HashSet::new(),
         }
     }
@@ -201,6 +206,27 @@ fun {}Preview() {{
     fn generate_handlers(&self, _widget: &AuraWidget) -> String {
         // TODO: Implement handler generation from widget.handlers
         String::new()
+    }
+
+    /// Generate form element code based on tag type
+    pub fn generate_form_element(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> GenResult<String> {
+        match tag {
+            "input" => self.form_generator.generate_input(props),
+            "textarea" => self.form_generator.generate_textarea(props),
+            "checkbox" => self.form_generator.generate_checkbox(props),
+            "switch" | "toggle" => self.form_generator.generate_switch(props),
+            "slider" => self.form_generator.generate_slider(props),
+            _ => Err(GenError::UnsupportedExpr(format!("Unknown form element: {}", tag))),
+        }
+    }
+
+    /// Get form-specific imports
+    pub fn get_form_imports(&self) -> &[String] {
+        self.form_generator.get_imports()
     }
 }
 
@@ -624,5 +650,111 @@ mod tests {
 
         // Test extension method
         assert_eq!(gen.extension(), "kt");
+    }
+
+    #[test]
+    fn test_jet_generator_form_integration() {
+        use crate::aura::{AuraExpr, AuraPropValue};
+
+        let mut gen = JetGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("email".to_string())));
+        props.insert("placeholder".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Enter email".to_string())));
+        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Email".to_string())));
+
+        let result = gen.generate_form_element("input", &props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("OutlinedTextField"));
+        assert!(code.contains("value = email"));
+        assert!(code.contains("placeholder"));
+        assert!(code.contains("label"));
+
+        // Verify imports are collected
+        let imports = gen.get_form_imports();
+        assert!(!imports.is_empty());
+        assert!(imports.iter().any(|i| i.contains("OutlinedTextField")));
+    }
+
+    #[test]
+    fn test_jet_generator_checkbox_integration() {
+        use crate::aura::{AuraExpr, AuraPropValue};
+
+        let mut gen = JetGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("agree".to_string())));
+        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("I agree".to_string())));
+
+        let result = gen.generate_form_element("checkbox", &props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("Checkbox"));
+        assert!(code.contains("Row"));
+        assert!(code.contains("Text(\"I agree\")"));
+    }
+
+    #[test]
+    fn test_jet_generator_switch_integration() {
+        use crate::aura::{AuraExpr, AuraPropValue};
+
+        let mut gen = JetGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("enabled".to_string())));
+        props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Enable feature".to_string())));
+
+        let result = gen.generate_form_element("switch", &props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("Switch"));
+        assert!(code.contains("Row"));
+        assert!(code.contains("Text(\"Enable feature\")"));
+    }
+
+    #[test]
+    fn test_jet_generator_slider_integration() {
+        use crate::aura::{AuraExpr, AuraPropValue};
+
+        let mut gen = JetGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("volume".to_string())));
+        props.insert("min".to_string(), AuraPropValue::Expr(AuraExpr::Int(0)));
+        props.insert("max".to_string(), AuraPropValue::Expr(AuraExpr::Int(100)));
+
+        let result = gen.generate_form_element("slider", &props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("Slider"));
+        assert!(code.contains("valueRange = 0f..100f"));
+    }
+
+    #[test]
+    fn test_jet_generator_toggle_alias() {
+        use crate::aura::{AuraExpr, AuraPropValue};
+
+        let mut gen = JetGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("checked".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("toggle".to_string())));
+
+        // Test that "toggle" is an alias for "switch"
+        let result = gen.generate_form_element("toggle", &props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("Switch"));
+    }
+
+    #[test]
+    fn test_jet_generator_unknown_form_element() {
+        let mut gen = JetGenerator::new();
+        let props = HashMap::new();
+
+        let result = gen.generate_form_element("unknown_element", &props);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Unknown form element"));
     }
 }
