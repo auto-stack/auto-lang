@@ -13,12 +13,14 @@
 pub mod vue;
 pub mod rust;
 pub mod style;
+pub mod jet;
 
 // Re-export main types
 pub use vue::VueGenerator;
 pub use vue::VueMode;
 pub use rust::RustGenerator;
 pub use style::StyleGenerator;
+pub use jet::JetGenerator;
 
 use crate::aura::AuraWidget;
 
