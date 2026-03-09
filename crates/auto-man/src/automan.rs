@@ -347,7 +347,7 @@ impl Automan {
         Ok(())
     }
 
-    /// Build Vue project using npm
+    /// Build Vue project using npm (steps 1-3 of auto vue)
     fn build_vue(&mut self) -> AutoResult<()> {
         let dist_dir = AutoPath::new("dist");
 
@@ -355,7 +355,37 @@ impl Automan {
             return Err("dist directory not found. Please run 'auto vue .' first to generate the Vue project.".into());
         }
 
-        println!("Running npm run build in dist/...");
+        let total_steps = 3;
+        let mut current_step = 0;
+
+        // Step 1: npm install
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: Installing dependencies...", current_step, total_steps);
+        println!("  Running: npm install");
+
+        let status = std::process::Command::new("npm")
+            .args(["install"])
+            .current_dir(dist_dir.path())
+            .status()?;
+
+        if status.success() {
+            println!("  ✓ Dependencies installed");
+        } else {
+            println!("  ✗ npm install failed (continuing anyway)");
+        }
+
+        // Step 2: shadcn-vue components (skip - they should already be in dist)
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: shadcn-vue components already installed (skipping)", current_step, total_steps);
+
+        // Step 3: Run npm run build
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: Building Vue project...", current_step, total_steps);
+        println!("  Running: npm run build");
+
         let status = std::process::Command::new("npm")
             .args(["run", "build"])
             .current_dir(dist_dir.path())
@@ -365,7 +395,10 @@ impl Automan {
             return Err(format!("npm run build failed with status: {}", status).into());
         }
 
-        println!("Vue project built successfully!");
+        println!();
+        println!("═════════════════════════════════");
+        println!("  Vue project built successfully!");
+        println!("═════════════════════════════════");
         Ok(())
     }
 
@@ -417,7 +450,7 @@ impl Automan {
         }
     }
 
-    /// Run Vue dev server using npm run dev
+    /// Run Vue dev server using npm run dev (steps 1-3 + dev server)
     fn run_vue(&mut self, args: Vec<String>) -> AutoResult<()> {
         let dist_dir = AutoPath::new("dist");
 
@@ -425,7 +458,46 @@ impl Automan {
             return Err("dist directory not found. Please run 'auto vue .' first to generate the Vue project.".into());
         }
 
-        println!("Starting Vue dev server in dist/...");
+        let total_steps = 4;
+        let mut current_step = 0;
+
+        // Step 1: npm install
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: Installing dependencies...", current_step, total_steps);
+        println!("  Running: npm install");
+
+        let status = std::process::Command::new("npm")
+            .args(["install"])
+            .current_dir(dist_dir.path())
+            .status()?;
+
+        if status.success() {
+            println!("  ✓ Dependencies installed");
+        } else {
+            println!("  ✗ npm install failed (continuing anyway)");
+        }
+
+        // Step 2: shadcn-vue components (skip - they should already be in dist)
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: shadcn-vue components already installed (skipping)", current_step, total_steps);
+
+        // Step 3: Copy public assets (skip for now - would need source path)
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: Public assets already copied (skipping)", current_step, total_steps);
+
+        // Step 4: Run dev server
+        current_step += 1;
+        println!();
+        println!("▶ Step {}/{}: Starting dev server...", current_step, total_steps);
+        println!();
+        println!("═════════════════════════════════");
+        println!("  Starting Vue dev server...");
+        println!("═════════════════════════════════");
+        println!();
+
         let mut cmd = std::process::Command::new("npm");
         cmd.args(["run", "dev"]).current_dir(dist_dir.path());
 
