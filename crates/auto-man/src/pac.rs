@@ -752,6 +752,9 @@ impl Pac {
                         crate::builder::ninja::config::CompilerKind::Hightec => {
                             FlagMappings::hightec_default()
                         }
+                        crate::builder::ninja::config::CompilerKind::TICLang => {
+                            FlagMappings::ticlang_default()
+                        }
                     }
                 };
 

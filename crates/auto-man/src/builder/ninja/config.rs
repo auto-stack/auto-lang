@@ -12,6 +12,7 @@ pub enum CompilerKind {
     IAR,
     Targeting,
     Hightec,
+    TICLang,
 }
 
 impl CompilerKind {
@@ -24,6 +25,7 @@ impl CompilerKind {
             "iar" => Some(CompilerKind::IAR),
             "targeting" => Some(CompilerKind::Targeting),
             "hightec" => Some(CompilerKind::Hightec),
+            "ticlang" => Some(CompilerKind::TICLang),
             _ => None,
         }
     }
@@ -37,6 +39,7 @@ impl CompilerKind {
             CompilerKind::IAR => "iar",
             CompilerKind::Targeting => "targeting",
             CompilerKind::Hightec => "hightec",
+            CompilerKind::TICLang => "ticlang",
         }
     }
 }
@@ -188,6 +191,18 @@ impl FlagMappings {
 
     /// 为 Hightec 创建默认标志映射
     pub fn hightec_default() -> Self {
+        FlagMappings {
+            include: FlagFormat::Prefix("-I{}".to_string()),
+            define: FlagFormat::Prefix("-D{}".to_string()),
+            library: FlagFormat::Prefix("-l{}".to_string()),
+            library_path: FlagFormat::Prefix("-L{}".to_string()),
+            output: FlagFormat::Prefix("-o{}".to_string()),
+            compile_only: FlagFormat::Prefix("-c".to_string()),
+        }
+    }
+
+    /// 为 TICLang 创建默认标志映射
+    pub fn ticlang_default() -> Self {
         FlagMappings {
             include: FlagFormat::Prefix("-I{}".to_string()),
             define: FlagFormat::Prefix("-D{}".to_string()),
@@ -379,6 +394,24 @@ impl CompilerConfig {
         }
     }
 
+    /// 为 TICLang 创建默认配置
+    pub fn ticlang_default() -> Self {
+        let mut executables = HashMap::new();
+        executables.insert(ExecutableType::Compiler, AutoPath::new("tiarmclang.exe"));
+        executables.insert(ExecutableType::Linker, AutoPath::new("tiarmclang.exe"));
+        executables.insert(ExecutableType::Archiver, AutoPath::new("tiarmar.exe"));
+        executables.insert(ExecutableType::Assembler, AutoPath::new("tiarmclang.exe"));
+
+        Self {
+            kind: CompilerKind::TICLang,
+            name: "ticlang".into(),
+            executables,
+            flags: FlagMappings::ticlang_default(),
+            location: CompilerLocation::Env,
+            default_cflags: vec!["-Oz".into(), "-Wall".into()],
+        }
+    }
+
     /// 获取可执行文件名称
     pub fn get_executable(&self, exec_type: ExecutableType) -> Option<&AutoPath> {
         self.executables.get(&exec_type)
@@ -531,6 +564,17 @@ mod tests {
         assert_eq!(
             config.get_executable(ExecutableType::Compiler),
             Some(&"gcc.exe".into())
+        );
+    }
+
+    #[test]
+    fn test_compiler_config_ticlang() {
+        let config = CompilerConfig::ticlang_default();
+        assert_eq!(config.kind, CompilerKind::TICLang);
+        assert_eq!(config.get_object_extension(), ".o");
+        assert_eq!(
+            config.get_executable(ExecutableType::Compiler),
+            Some(&"tiarmclang.exe".into())
         );
     }
 

@@ -22,6 +22,7 @@ impl CommandTemplates {
             CompilerKind::GHS => Self::ghs_templates(),
             CompilerKind::Targeting => Self::targeting_templates(),
             CompilerKind::Hightec => Self::hightec_templates(),
+            CompilerKind::TICLang => Self::clang_templates(),
         }
     }
 

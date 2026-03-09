@@ -105,6 +105,12 @@ impl CompilerResolver {
             (CompilerKind::Hightec, ExecutableType::Linker) => AutoPath::new("gcc.exe"),
             (CompilerKind::Hightec, ExecutableType::Archiver) => AutoPath::new("ar.exe"),
             (CompilerKind::Hightec, ExecutableType::Assembler) => AutoPath::new("as.exe"),
+
+            // TICLang
+            (CompilerKind::TICLang, ExecutableType::Compiler) => AutoPath::new("tiarmclang.exe"),
+            (CompilerKind::TICLang, ExecutableType::Linker) => AutoPath::new("tiarmclang.exe"),
+            (CompilerKind::TICLang, ExecutableType::Archiver) => AutoPath::new("tiarmar.exe"),
+            (CompilerKind::TICLang, ExecutableType::Assembler) => AutoPath::new("tiarmclang.exe"),
         }
     }
 
@@ -122,6 +128,7 @@ impl CompilerResolver {
             CompilerKind::IAR => ("iccarm", "--version"),
             CompilerKind::Targeting => ("tcpp", "--version"),
             CompilerKind::Hightec => ("gcc", "--version"),
+            CompilerKind::TICLang => ("tiarmclang", "--version"),
         };
 
         let result = std::process::Command::new(compiler)
@@ -149,6 +156,7 @@ impl CompilerResolver {
             CompilerKind::IAR => ("iccarm", "--version"),
             CompilerKind::Targeting => ("tcpp", "--version"),
             CompilerKind::Hightec => ("gcc", "--version"),
+            CompilerKind::TICLang => ("tiarmclang", "--version"),
         };
 
         let result = std::process::Command::new(compiler)
@@ -184,6 +192,7 @@ impl CompilerResolver {
             CompilerKind::IAR,
             CompilerKind::Targeting,
             CompilerKind::Hightec,
+            CompilerKind::TICLang,
         ];
 
         all_kinds
