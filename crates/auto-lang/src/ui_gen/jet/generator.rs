@@ -359,4 +359,270 @@ mod tests {
         // androidx.compose.foundation should come before androidx.compose.material
         assert!(lines[0].contains("foundation"));
     }
+
+    // =========================================================================
+    // Integration Tests
+    // =========================================================================
+
+    #[test]
+    fn test_full_generation_workflow() {
+        use crate::aura::{AuraWidget, AuraStateDef, AuraNode};
+        use crate::ast::Type;
+
+        // Create a simple Counter widget
+        let widget = AuraWidget {
+            name: "Counter".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: crate::aura::AuraExpr::Int(0),
+            }],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = JetGenerator::new();
+        let result = gen.generate(&widget);
+
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("package com.example.widgets"));
+        assert!(code.contains("@Composable"));
+        assert!(code.contains("fun Counter"));
+        assert!(code.contains("var count by remember"));
+        assert!(code.contains("mutableStateOf(0)"));
+        assert!(code.contains("@Preview"));
+    }
+
+    #[test]
+    fn test_full_generation_with_multiple_states() {
+        use crate::aura::{AuraWidget, AuraStateDef, AuraNode};
+        use crate::ast::Type;
+
+        // Create a widget with multiple state variables
+        let widget = AuraWidget {
+            name: "UserProfile".to_string(),
+            state_vars: vec![
+                AuraStateDef {
+                    name: "name".to_string(),
+                    type_info: Type::Str(0),
+                    initial: crate::aura::AuraExpr::Literal("Guest".to_string()),
+                },
+                AuraStateDef {
+                    name: "age".to_string(),
+                    type_info: Type::Int,
+                    initial: crate::aura::AuraExpr::Int(25),
+                },
+                AuraStateDef {
+                    name: "enabled".to_string(),
+                    type_info: Type::Bool,
+                    initial: crate::aura::AuraExpr::Bool(true),
+                },
+            ],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = JetGenerator::new();
+        let result = gen.generate(&widget);
+
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("var name by remember"));
+        assert!(code.contains("mutableStateOf(\"Guest\")"));
+        assert!(code.contains("var age by remember"));
+        assert!(code.contains("mutableStateOf(25)"));
+        assert!(code.contains("var enabled by remember"));
+        assert!(code.contains("mutableStateOf(true)"));
+    }
+
+    #[test]
+    fn test_full_generation_no_state() {
+        use crate::aura::{AuraWidget, AuraNode};
+
+        // Create a stateless widget
+        let widget = AuraWidget {
+            name: "StaticHeader".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = JetGenerator::new();
+        let result = gen.generate(&widget);
+
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("fun StaticHeader"));
+        // Should not contain state declarations
+        assert!(!code.contains("var "));
+    }
+
+    #[test]
+    fn test_component_registry_integration() {
+        let gen = JetGenerator::new();
+
+        // Verify registry is properly initialized with common components
+        assert!(gen.registry.is_supported("button"));
+        assert!(gen.registry.is_supported("text"));
+        assert!(gen.registry.is_supported("col"));
+        assert!(gen.registry.is_supported("row"));
+        assert!(gen.registry.is_supported("input"));
+        assert!(gen.registry.is_supported("checkbox"));
+        assert!(gen.registry.is_supported("card"));
+
+        // Verify unsupported element
+        assert!(!gen.registry.is_supported("nonexistent_element"));
+    }
+
+    #[test]
+    fn test_component_primary_components() {
+        let gen = JetGenerator::new();
+
+        // Test primary component mappings
+        assert_eq!(gen.registry.primary_component("button"), Some("Button"));
+        assert_eq!(gen.registry.primary_component("text"), Some("Text"));
+        assert_eq!(gen.registry.primary_component("col"), Some("Column"));
+        assert_eq!(gen.registry.primary_component("row"), Some("Row"));
+        assert_eq!(gen.registry.primary_component("input"), Some("TextField"));
+    }
+
+    #[test]
+    fn test_modifier_dsl_integration() {
+        let gen = JetGenerator::new();
+
+        // Test modifier conversion
+        let result = gen.modifier_dsl.convert_class("px-4 py-2 gap-2");
+        assert!(!result.modifiers.is_empty());
+        assert!(result.arrangement.is_some());
+
+        // Test that modifiers are properly formatted
+        let chain = gen.modifier_dsl.generate_modifier_chain("px-4 rounded-lg");
+        assert!(chain.starts_with("Modifier."));
+    }
+
+    #[test]
+    fn test_state_converter_integration() {
+        let gen = JetGenerator::new();
+
+        // Test int state
+        let int_state = gen.state_converter.convert_model("count", "int", "0");
+        assert!(int_state.contains("var count by remember"));
+        assert!(int_state.contains("mutableStateOf(0)"));
+
+        // Test string state
+        let str_state = gen.state_converter.convert_model("name", "str", "\"Hello\"");
+        assert!(str_state.contains("var name by remember"));
+        assert!(str_state.contains("mutableStateOf(\"Hello\")"));
+
+        // Test bool state
+        let bool_state = gen.state_converter.convert_model("enabled", "bool", "true");
+        assert!(bool_state.contains("var enabled by remember"));
+        assert!(bool_state.contains("mutableStateOf(true)"));
+
+        // Test float state
+        let float_state = gen.state_converter.convert_model("price", "float", "9.99");
+        assert!(float_state.contains("var price by remember"));
+        assert!(float_state.contains("mutableStateOf(9.99)"));
+    }
+
+    #[test]
+    fn test_package_customization() {
+        let gen = JetGenerator::new().with_package("com.myapp.ui.components");
+        assert_eq!(gen.package_name(), "com.myapp.ui.components");
+
+        let package_decl = gen.generate_package();
+        assert!(package_decl.contains("com.myapp.ui.components"));
+    }
+
+    #[test]
+    fn test_standard_imports() {
+        use crate::aura::{AuraWidget, AuraNode};
+
+        let widget = AuraWidget {
+            name: "TestWidget".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = JetGenerator::new();
+        let result = gen.generate(&widget).unwrap();
+
+        // Verify standard Compose imports are included
+        assert!(result.contains("import androidx.compose.foundation.layout.*"));
+        assert!(result.contains("import androidx.compose.material3.*"));
+        assert!(result.contains("import androidx.compose.runtime.*"));
+        assert!(result.contains("import androidx.compose.ui.Modifier"));
+        assert!(result.contains("import androidx.compose.ui.unit.dp"));
+        assert!(result.contains("import androidx.compose.ui.tooling.preview.Preview"));
+    }
+
+    #[test]
+    fn test_type_to_string_conversion() {
+        use crate::ast::Type;
+
+        // Test type conversion via the generator
+        assert_eq!(JetGenerator::type_to_string(&Type::Int), "int");
+        assert_eq!(JetGenerator::type_to_string(&Type::Float), "float");
+        assert_eq!(JetGenerator::type_to_string(&Type::Bool), "bool");
+        assert_eq!(JetGenerator::type_to_string(&Type::Str(0)), "str");
+        assert_eq!(JetGenerator::type_to_string(&Type::Uint), "uint");
+        assert_eq!(JetGenerator::type_to_string(&Type::Byte), "byte");
+    }
+
+    #[test]
+    fn test_expr_to_default_conversion() {
+        use crate::aura::AuraExpr;
+
+        // Test expression conversion
+        assert_eq!(JetGenerator::expr_to_default(&AuraExpr::Int(42)), "42");
+        assert_eq!(JetGenerator::expr_to_default(&AuraExpr::Bool(true)), "true");
+        assert_eq!(JetGenerator::expr_to_default(&AuraExpr::Bool(false)), "false");
+        assert_eq!(JetGenerator::expr_to_default(&AuraExpr::Literal("hello".to_string())), "\"hello\"");
+        assert_eq!(JetGenerator::expr_to_default(&AuraExpr::Float(3.14)), "3.14");
+        assert_eq!(JetGenerator::expr_to_default(&AuraExpr::Float(5.0)), "5.0");
+    }
+
+    #[test]
+    fn test_backend_generator_trait() {
+        use crate::ui_gen::BackendGenerator;
+        use crate::aura::{AuraWidget, AuraNode};
+
+        let widget = AuraWidget {
+            name: "TraitTest".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::HashMap::new(),
+            props: vec![],
+            routes: None,
+        };
+
+        let mut gen = JetGenerator::new();
+
+        // Test BackendGenerator trait implementation
+        let result = gen.generate(&widget);
+        assert!(result.is_ok());
+
+        // Test extension method
+        assert_eq!(gen.extension(), "kt");
+    }
 }
