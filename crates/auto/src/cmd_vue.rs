@@ -1041,7 +1041,10 @@ fn generate_package_json(name: &str, has_routes: bool) -> String {
     "tailwind-merge": "^2.2.0",
     "lucide-vue-next": "^0.312.0",
     "prismjs": "^1.29.0",
-    "embla-carousel-vue": "^8.5.1"
+    "embla-carousel-vue": "^8.5.1",
+    "vee-validate": "^4.15.1",
+    "@vee-validate/zod": "^4.15.1",
+    "zod": "^3.25.76"
   }},
   "devDependencies": {{
     "@vitejs/plugin-vue": "^5.0.0",
