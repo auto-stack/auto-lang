@@ -182,6 +182,184 @@ impl ModifierDsl {
             }
         }
 
+        // Min/Max width
+        if let Some(rest) = class.strip_prefix("min-w-") {
+            if let Ok(n) = rest.parse::<u32>() {
+                return Some(format!("width(IntrinsicSize.Min).width({})", self.to_dp(n)));
+            }
+            if rest == "full" {
+                return Some("width(IntrinsicSize.Min).fillMaxWidth()".to_string());
+            }
+        }
+        if let Some(rest) = class.strip_prefix("max-w-") {
+            if let Ok(n) = rest.parse::<u32>() {
+                return Some(format!("width(IntrinsicSize.Max).width({})", self.to_dp(n)));
+            }
+            if rest == "full" {
+                return Some("width(IntrinsicSize.Max).fillMaxWidth()".to_string());
+            }
+        }
+
+        // Min/Max height
+        if let Some(rest) = class.strip_prefix("min-h-") {
+            if let Ok(n) = rest.parse::<u32>() {
+                return Some(format!("height(IntrinsicSize.Min).height({})", self.to_dp(n)));
+            }
+            if rest == "full" {
+                return Some("height(IntrinsicSize.Min).fillMaxHeight()".to_string());
+            }
+        }
+        if let Some(rest) = class.strip_prefix("max-h-") {
+            if let Ok(n) = rest.parse::<u32>() {
+                return Some(format!("height(IntrinsicSize.Max).height({})", self.to_dp(n)));
+            }
+            if rest == "full" {
+                return Some("height(IntrinsicSize.Max).fillMaxHeight()".to_string());
+            }
+        }
+
+        // Flexbox: direction
+        if class == "flex" || class == "flex-row" {
+            // In Compose, this is handled by Row/Column choice, not modifier
+            return None;
+        }
+        if class == "flex-col" {
+            // In Compose, this is handled by Row/Column choice, not modifier
+            return None;
+        }
+        if class == "flex-wrap" {
+            // Not directly supported in Compose modifiers
+            return None;
+        }
+        if class == "flex-1" {
+            return Some("weight(1f)".to_string());
+        }
+
+        // Opacity (0-100)
+        if let Some(rest) = class.strip_prefix("opacity-") {
+            if let Ok(n) = rest.parse::<u32>() {
+                let alpha = (n as f32 / 100.0).min(1.0);
+                return Some(format!("alpha({:.2}f)", alpha));
+            }
+        }
+
+        // Font size
+        if class == "text-xs" {
+            return Some("fontSize(12.sp)".to_string());
+        }
+        if class == "text-sm" {
+            return Some("fontSize(14.sp)".to_string());
+        }
+        if class == "text-base" {
+            return Some("fontSize(16.sp)".to_string());
+        }
+        if class == "text-lg" {
+            return Some("fontSize(18.sp)".to_string());
+        }
+        if class == "text-xl" {
+            return Some("fontSize(20.sp)".to_string());
+        }
+        if class == "text-2xl" {
+            return Some("fontSize(24.sp)".to_string());
+        }
+        if class == "text-3xl" {
+            return Some("fontSize(30.sp)".to_string());
+        }
+        if class == "text-4xl" {
+            return Some("fontSize(36.sp)".to_string());
+        }
+        // Custom font size: text-{n}
+        if let Some(rest) = class.strip_prefix("text-size-") {
+            if let Ok(n) = rest.parse::<u32>() {
+                return Some(format!("fontSize({}.sp)", n));
+            }
+        }
+
+        // Font weight
+        if class == "font-thin" {
+            return Some("fontWeight(FontWeight.Thin)".to_string());
+        }
+        if class == "font-light" {
+            return Some("fontWeight(FontWeight.Light)".to_string());
+        }
+        if class == "font-normal" {
+            return Some("fontWeight(FontWeight.Normal)".to_string());
+        }
+        if class == "font-medium" {
+            return Some("fontWeight(FontWeight.Medium)".to_string());
+        }
+        if class == "font-semibold" {
+            return Some("fontWeight(FontWeight.SemiBold)".to_string());
+        }
+        if class == "font-bold" {
+            return Some("fontWeight(FontWeight.Bold)".to_string());
+        }
+        if class == "font-extrabold" {
+            return Some("fontWeight(FontWeight.ExtraBold)".to_string());
+        }
+
+        // Text alignment
+        if class == "text-left" {
+            return Some("textAlign(TextAlign.Start)".to_string());
+        }
+        if class == "text-center" {
+            return Some("textAlign(TextAlign.Center)".to_string());
+        }
+        if class == "text-right" {
+            return Some("textAlign(TextAlign.End)".to_string());
+        }
+        if class == "text-justify" {
+            return Some("textAlign(TextAlign.Justify)".to_string());
+        }
+
+        // Elevation (z-index equivalent)
+        if class == "z-0" {
+            return None; // default
+        }
+        if let Some(rest) = class.strip_prefix("z-") {
+            if let Ok(n) = rest.parse::<u32>() {
+                return Some(format!("zIndex({}f)", n));
+            }
+        }
+
+        // Clip/Circle
+        if class == "rounded-full" {
+            return Some("clip(RoundedCornerShape(percent = 50))".to_string());
+        }
+        if class == "circle" {
+            return Some("clip(CircleShape)".to_string());
+        }
+
+        // Aspect ratio
+        if let Some(rest) = class.strip_prefix("aspect-") {
+            if rest == "square" {
+                return Some("aspectRatio(1f)".to_string());
+            }
+            if rest == "video" {
+                return Some("aspectRatio(16f/9f)".to_string());
+            }
+            // Parse ratio like "aspect-4-3" or "aspect-16-9"
+            let parts: Vec<&str> = rest.split('-').collect();
+            if parts.len() == 2 {
+                if let (Ok(w), Ok(h)) = (parts[0].parse::<f32>(), parts[1].parse::<f32>()) {
+                    return Some(format!("aspectRatio({}f/{}f)", w, h));
+                }
+            }
+        }
+
+        // Clickable
+        if class == "cursor-pointer" || class == "clickable" {
+            return Some("clickable { }".to_string());
+        }
+
+        // Scroll
+        if class == "overflow-auto" || class == "overflow-scroll" {
+            return Some("verticalScroll(rememberScrollState())".to_string());
+        }
+        if class == "overflow-x-auto" || class == "overflow-x-scroll" {
+            return Some("horizontalScroll(rememberScrollState())".to_string());
+        }
+
         None
     }
 
@@ -323,5 +501,215 @@ mod tests {
         assert!(chain.starts_with("Modifier."));
         assert!(chain.contains("padding"));
         assert!(chain.contains("rounded"));
+    }
+
+    // =========================================================================
+    // Phase 3: Enhanced Modifier Tests
+    // =========================================================================
+
+    #[test]
+    fn test_opacity_modifier() {
+        let dsl = ModifierDsl::new();
+
+        // Test opacity-50
+        let result = dsl.convert_single("opacity-50");
+        assert!(result.is_some());
+        let modifier = result.unwrap();
+        assert!(modifier.contains("alpha"));
+        assert!(modifier.contains("0.50"));
+
+        // Test opacity-100
+        let result = dsl.convert_single("opacity-100");
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("1.00"));
+
+        // Test opacity-0
+        let result = dsl.convert_single("opacity-0");
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("0.00"));
+    }
+
+    #[test]
+    fn test_font_size_modifiers() {
+        let dsl = ModifierDsl::new();
+
+        // Test standard sizes
+        assert!(dsl.convert_single("text-xs").unwrap().contains("12.sp"));
+        assert!(dsl.convert_single("text-sm").unwrap().contains("14.sp"));
+        assert!(dsl.convert_single("text-base").unwrap().contains("16.sp"));
+        assert!(dsl.convert_single("text-lg").unwrap().contains("18.sp"));
+        assert!(dsl.convert_single("text-xl").unwrap().contains("20.sp"));
+        assert!(dsl.convert_single("text-2xl").unwrap().contains("24.sp"));
+        assert!(dsl.convert_single("text-3xl").unwrap().contains("30.sp"));
+        assert!(dsl.convert_single("text-4xl").unwrap().contains("36.sp"));
+
+        // Test custom size
+        assert!(dsl.convert_single("text-size-48").unwrap().contains("48.sp"));
+    }
+
+    #[test]
+    fn test_font_weight_modifiers() {
+        let dsl = ModifierDsl::new();
+
+        assert!(dsl.convert_single("font-thin").unwrap().contains("FontWeight.Thin"));
+        assert!(dsl.convert_single("font-light").unwrap().contains("FontWeight.Light"));
+        assert!(dsl.convert_single("font-normal").unwrap().contains("FontWeight.Normal"));
+        assert!(dsl.convert_single("font-medium").unwrap().contains("FontWeight.Medium"));
+        assert!(dsl.convert_single("font-semibold").unwrap().contains("FontWeight.SemiBold"));
+        assert!(dsl.convert_single("font-bold").unwrap().contains("FontWeight.Bold"));
+        assert!(dsl.convert_single("font-extrabold").unwrap().contains("FontWeight.ExtraBold"));
+    }
+
+    #[test]
+    fn test_text_alignment_modifiers() {
+        let dsl = ModifierDsl::new();
+
+        assert!(dsl.convert_single("text-left").unwrap().contains("TextAlign.Start"));
+        assert!(dsl.convert_single("text-center").unwrap().contains("TextAlign.Center"));
+        assert!(dsl.convert_single("text-right").unwrap().contains("TextAlign.End"));
+        assert!(dsl.convert_single("text-justify").unwrap().contains("TextAlign.Justify"));
+    }
+
+    #[test]
+    fn test_z_index_modifier() {
+        let dsl = ModifierDsl::new();
+
+        let result = dsl.convert_single("z-10");
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("zIndex(10f)"));
+
+        let result = dsl.convert_single("z-0");
+        // z-0 should return None (default, no modifier needed)
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_aspect_ratio_modifiers() {
+        let dsl = ModifierDsl::new();
+
+        // Test square
+        assert!(dsl.convert_single("aspect-square").unwrap().contains("aspectRatio(1f)"));
+
+        // Test video (16:9)
+        assert!(dsl.convert_single("aspect-video").unwrap().contains("aspectRatio(16f/9f)"));
+
+        // Test custom ratio (4:3)
+        assert!(dsl.convert_single("aspect-4-3").unwrap().contains("aspectRatio(4f/3f)"));
+    }
+
+    #[test]
+    fn test_min_max_width_modifiers() {
+        let dsl = ModifierDsl::new();
+
+        // Min width
+        let result = dsl.convert_single("min-w-100");
+        assert!(result.is_some());
+        let modifier = result.unwrap();
+        assert!(modifier.contains("IntrinsicSize.Min"));
+        assert!(modifier.contains("400.dp"));
+
+        // Max width
+        let result = dsl.convert_single("max-w-200");
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("IntrinsicSize.Max"));
+    }
+
+    #[test]
+    fn test_min_max_height_modifiers() {
+        let dsl = ModifierDsl::new();
+
+        // Min height
+        let result = dsl.convert_single("min-h-50");
+        assert!(result.is_some());
+        let modifier = result.unwrap();
+        assert!(modifier.contains("IntrinsicSize.Min"));
+        assert!(modifier.contains("200.dp"));
+
+        // Max height
+        let result = dsl.convert_single("max-h-100");
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("IntrinsicSize.Max"));
+    }
+
+    #[test]
+    fn test_circle_modifier() {
+        let dsl = ModifierDsl::new();
+
+        assert!(dsl.convert_single("circle").unwrap().contains("CircleShape"));
+    }
+
+    #[test]
+    fn test_clickable_modifier() {
+        let dsl = ModifierDsl::new();
+
+        assert!(dsl.convert_single("clickable").unwrap().contains("clickable"));
+        assert!(dsl.convert_single("cursor-pointer").unwrap().contains("clickable"));
+    }
+
+    #[test]
+    fn test_scroll_modifiers() {
+        let dsl = ModifierDsl::new();
+
+        // Vertical scroll
+        let result = dsl.convert_single("overflow-auto");
+        assert!(result.unwrap().contains("verticalScroll"));
+
+        let result = dsl.convert_single("overflow-scroll");
+        assert!(result.unwrap().contains("verticalScroll"));
+
+        // Horizontal scroll
+        let result = dsl.convert_single("overflow-x-auto");
+        assert!(result.unwrap().contains("horizontalScroll"));
+    }
+
+    #[test]
+    fn test_border_width_modifiers() {
+        let dsl = ModifierDsl::new();
+
+        // Border uses Tailwind to Dp multiplier (value * 4)
+        assert!(dsl.convert_single("border-0").unwrap().contains("0.dp"));
+        assert!(dsl.convert_single("border-2").unwrap().contains("8.dp")); // 2 * 4 = 8
+        assert!(dsl.convert_single("border-4").unwrap().contains("16.dp")); // 4 * 4 = 16
+        assert!(dsl.convert_single("border-8").unwrap().contains("32.dp")); // 8 * 4 = 32
+    }
+
+    #[test]
+    fn test_flex_modifiers() {
+        let dsl = ModifierDsl::new();
+
+        // flex-1 should generate weight modifier
+        assert!(dsl.convert_single("flex-1").unwrap().contains("weight(1f)"));
+
+        // flex-row and flex-col return None (handled by component choice)
+        assert!(dsl.convert_single("flex-row").is_none());
+        assert!(dsl.convert_single("flex-col").is_none());
+        assert!(dsl.convert_single("flex").is_none());
+    }
+
+    #[test]
+    fn test_combined_modifiers() {
+        let dsl = ModifierDsl::new();
+
+        // Test combining multiple modifiers
+        let result = dsl.convert_class("px-4 py-2 rounded-lg bg-blue-500 text-white opacity-90");
+        assert!(result.modifiers.iter().any(|m| m.contains("padding(horizontal")));
+        assert!(result.modifiers.iter().any(|m| m.contains("padding(vertical")));
+        assert!(result.modifiers.iter().any(|m| m.contains("rounded")));
+        assert!(result.modifiers.iter().any(|m| m.contains("background")));
+        assert!(result.modifiers.iter().any(|m| m.contains("color")));
+        assert!(result.modifiers.iter().any(|m| m.contains("alpha")));
+
+        // Generate chain
+        let chain = dsl.generate_modifier_chain("px-4 rounded-lg opacity-80 text-bold");
+        assert!(chain.starts_with("Modifier."));
+    }
+
+    #[test]
+    fn test_unknown_modifier() {
+        let dsl = ModifierDsl::new();
+
+        // Unknown class should return None
+        assert!(dsl.convert_single("unknown-class").is_none());
+        assert!(dsl.convert_single("random-value").is_none());
     }
 }
