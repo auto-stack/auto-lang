@@ -43,6 +43,7 @@
 
 mod generator;
 mod components;
+mod form;
 mod modifier;
 mod state;
 mod theme;
@@ -50,6 +51,7 @@ mod theme;
 // Re-export main types
 pub use generator::JetGenerator;
 pub use components::Material3Registry;
+pub use form::FormGenerator;
 pub use modifier::{ModifierDsl, ModifierResult};
 pub use state::StateConverter;
 // pub use theme::ThemeConfig; // TODO: implement in future phase
