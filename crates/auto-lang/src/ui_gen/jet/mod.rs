@@ -2,6 +2,16 @@
 //!
 //! Generates Jetpack Compose Kotlin code from AURA widgets.
 //!
+//! ## Architecture
+//!
+//! ```text
+//! AuraWidget → JetGenerator → Kotlin/Compose Code
+//!                 │
+//!                 ├── Material3Registry (component mappings)
+//!                 ├── ModifierDsl (Tailwind → Compose)
+//!                 └── StateConverter (state management)
+//! ```
+//!
 //! ## Output Format
 //!
 //! ```kotlin
@@ -37,4 +47,9 @@ mod modifier;
 mod state;
 mod theme;
 
+// Re-export main types
 pub use generator::JetGenerator;
+pub use components::Material3Registry;
+pub use modifier::{ModifierDsl, ModifierResult};
+pub use state::StateConverter;
+// pub use theme::ThemeConfig; // TODO: implement in future phase
