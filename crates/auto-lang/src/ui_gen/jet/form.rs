@@ -258,6 +258,38 @@ r#"Row(
             Ok(format!("Switch(\n        {}\n    )", switch_parts.join(",\n        ")))
         }
     }
+
+    /// Generate Slider component
+    pub fn generate_slider(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+        self.add_import("androidx.compose.material3.Slider");
+        self.add_import("androidx.compose.ui.Modifier");
+
+        let state_ref = Self::extract_state_ref(props, "value").unwrap_or_else(|| "value".to_string());
+
+        let min = Self::extract_int(props, "min").unwrap_or(0) as f32;
+        let max = Self::extract_int(props, "max").unwrap_or(100) as f32;
+        let step = Self::extract_int(props, "step");
+
+        let mut parts = vec![
+            format!("value = {}", state_ref),
+            format!("onValueChange = {{ {} = it }}", state_ref),
+            format!("valueRange = {}f..{}f", min, max),
+        ];
+
+        // If step is provided, add steps (steps = discrete points - 1)
+        if let Some(step_val) = step {
+            if step_val > 0 {
+                let steps = ((max - min) / step_val as f32) as i64 - 1;
+                if steps > 0 {
+                    parts.push(format!("steps = {}", steps));
+                }
+            }
+        }
+
+        parts.push("modifier = Modifier.fillMaxWidth()".to_string());
+
+        Ok(format!("Slider(\n        {}\n    )", parts.join(",\n        ")))
+    }
 }
 
 impl Default for FormGenerator {
@@ -417,5 +449,52 @@ mod tests {
         assert!(code.contains("Row"));
         assert!(code.contains("Text(\"Enable notifications\")"));
         assert!(code.contains("Switch"));
+    }
+
+    #[test]
+    fn test_generate_slider_basic() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("volume".to_string())));
+
+        let result = gen.generate_slider(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("Slider"));
+        assert!(code.contains("value = volume"));
+        assert!(code.contains("onValueChange = { volume = it }"));
+    }
+
+    #[test]
+    fn test_generate_slider_with_range() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("progress".to_string())));
+        props.insert("min".to_string(), AuraPropValue::Expr(AuraExpr::Int(0)));
+        props.insert("max".to_string(), AuraPropValue::Expr(AuraExpr::Int(100)));
+
+        let result = gen.generate_slider(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("valueRange = 0f..100f"));
+    }
+
+    #[test]
+    fn test_generate_slider_with_step() {
+        let mut gen = FormGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("rating".to_string())));
+        props.insert("min".to_string(), AuraPropValue::Expr(AuraExpr::Int(0)));
+        props.insert("max".to_string(), AuraPropValue::Expr(AuraExpr::Int(10)));
+        props.insert("step".to_string(), AuraPropValue::Expr(AuraExpr::Int(1)));
+
+        let result = gen.generate_slider(&props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        // For range 0-10 with step 1, steps = (10-0)/1 - 1 = 9
+        assert!(code.contains("steps = 9"));
     }
 }
