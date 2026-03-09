@@ -6,6 +6,7 @@
 //! - NavHost with composable routes
 //! - Navigation controller setup
 //! - Navigate actions
+//! - Support for merged routes (Plan 114: Hybrid Routing)
 //!
 //! ## Example
 //!
@@ -26,6 +27,7 @@
 //! }
 //! ```
 
+use crate::route::RouteDef;
 use crate::ui_gen::GenResult;
 use std::collections::HashMap;
 
@@ -90,6 +92,45 @@ impl NavigationGenerator {
             screen: screen.to_string(),
             params,
         });
+    }
+
+    /// Add a route from a merged RouteDef (Plan 114: Hybrid Routing)
+    ///
+    /// Converts the RouteDef to NavRoute format and adds it.
+    pub fn add_route_from_def(&mut self, route: &RouteDef) {
+        // Convert path to screen name: /user/:id -> UserScreen
+        let screen = path_to_screen_name(&route.path);
+
+        self.routes.push(NavRoute {
+            name: route.path.clone(),
+            screen,
+            params: route.params.clone(),
+        });
+    }
+
+    /// Add multiple routes from merged RouteDefs (Plan 114: Hybrid Routing)
+    pub fn add_routes_from_defs(&mut self, routes: &[RouteDef]) {
+        for route in routes {
+            self.add_route_from_def(route);
+        }
+    }
+
+    /// Add a route from an AuraRoute
+    pub fn add_route_from_aura(&mut self, route: &crate::aura::AuraRoute) {
+        let screen = path_to_screen_name(&route.path);
+
+        self.routes.push(NavRoute {
+            name: route.path.clone(),
+            screen,
+            params: route.params.clone(),
+        });
+    }
+
+    /// Add multiple routes from AuraRoutes
+    pub fn add_routes_from_aura(&mut self, routes: &[crate::aura::AuraRoute]) {
+        for route in routes {
+            self.add_route_from_aura(route);
+        }
     }
 
     /// Clear all routes
@@ -223,6 +264,41 @@ impl Default for NavigationGenerator {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// =========================================================================
+// Helper Functions
+// =========================================================================
+
+/// Convert a route path to a screen name
+///
+/// # Examples
+/// - `/` -> `HomeScreen`
+/// - `/about` -> `AboutScreen`
+/// - `/user/:id` -> `UserScreen`
+/// - `/admin/settings` -> `AdminSettingsScreen`
+fn path_to_screen_name(path: &str) -> String {
+    let segments: Vec<&str> = path
+        .split('/')
+        .filter(|s| !s.is_empty() && !s.starts_with(':'))
+        .collect();
+
+    if segments.is_empty() {
+        return "HomeScreen".to_string();
+    }
+
+    let name: String = segments
+        .iter()
+        .map(|s| {
+            let mut chars = s.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        })
+        .collect();
+
+    format!("{}Screen", name)
 }
 
 #[cfg(test)]

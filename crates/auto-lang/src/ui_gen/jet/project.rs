@@ -53,6 +53,9 @@
 //! ```
 
 use std::collections::HashMap;
+use std::path::PathBuf;
+
+use crate::route::{RouteDef, RouteDiscovery, RouteMerger, RouteSource};
 
 /// Android project configuration
 ///
@@ -303,6 +306,12 @@ pub struct ProjectGenerator {
 
     /// Generated files (path -> content)
     files: HashMap<String, String>,
+
+    /// Merged routes (Plan 114: Hybrid Routing)
+    routes: Vec<crate::route::RouteDef>,
+
+    /// Routes directory path (for discovery)
+    routes_dir: Option<std::path::PathBuf>,
 }
 
 impl ProjectGenerator {
@@ -316,6 +325,8 @@ impl ProjectGenerator {
         Self {
             config: JetProjectConfig::default(),
             files: HashMap::new(),
+            routes: Vec::new(),
+            routes_dir: None,
         }
     }
 
@@ -324,6 +335,8 @@ impl ProjectGenerator {
         Self {
             config,
             files: HashMap::new(),
+            routes: Vec::new(),
+            routes_dir: None,
         }
     }
 
@@ -346,6 +359,7 @@ impl ProjectGenerator {
         self.generate_settings_gradle();
         self.generate_gradle_properties();
         self.generate_libs_versions_toml();
+        self.generate_pac_at();
 
         // Generate app level files
         self.generate_app_build_gradle();
@@ -456,6 +470,30 @@ kotlin-android = {{ id = "org.jetbrains.kotlin.android", version.ref = "kotlin" 
             self.config.activity_compose_version,
         );
         self.add_file("gradle/libs.versions.toml", &content);
+    }
+
+    /// Generate pac.at (AutoLang project configuration)
+    fn generate_pac_at(&mut self) {
+        let name = &self.config.name;
+        let version = &self.config.version;
+        let application_id = &self.config.application_id;
+
+        let content = format!(
+            r#"name: "{name}"
+version: "{version}"
+backend: "jet"
+
+app("{name}") {{
+    // Jetpack Compose Android project
+    // Package: {application_id}
+
+    // To build: ./gradlew assembleDebug
+    // To run: ./gradlew installDebug
+    // Or open in Android Studio: auto open
+}}
+"#,
+        );
+        self.add_file("pac.at", &content);
     }
 
     // =========================================================================
@@ -851,6 +889,138 @@ fun {theme_name}(
             &content,
         );
     }
+
+    // =========================================================================
+    // Plan 114: Hybrid Routing Support
+    // =========================================================================
+
+    /// Set the routes directory for convention-based route discovery
+    pub fn with_routes_dir(mut self, routes_dir: std::path::PathBuf) -> Self {
+        self.routes_dir = Some(routes_dir);
+        self
+    }
+
+    /// Add routes from config (routes {} block)
+    pub fn add_config_routes(&mut self, routes: Vec<crate::aura::AuraRoute>) {
+        for route in routes {
+            self.routes.push(crate::route::RouteDef::new(&route.path, &route.module)
+                .with_source(RouteSource::Config));
+        }
+    }
+
+    /// Discover routes from routes/ folder (convention-based)
+    ///
+    /// Returns the discovered routes or an empty vec if no routes directory
+    pub fn discover_routes(&mut self) -> Vec<RouteDef> {
+        if let Some(ref routes_dir) = &self.routes_dir {
+            if routes_dir.exists() {
+                let discovery = RouteDiscovery::new(routes_dir.clone());
+                match discovery.discover() {
+                    Ok(routes) => {
+                        log::info!("Discovered {} routes from routes/ folder", routes.len());
+                        return routes;
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to discover routes: {}", e);
+                    }
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    /// Merge discovered routes with config routes
+    ///
+    /// Config routes take precedence over convention routes when paths match
+    pub fn merge_routes(&mut self) {
+        let discovered = self.discover_routes();
+        if discovered.is_empty() && self.routes.is_empty() {
+            return;
+        }
+
+        // Extract config routes from current routes
+        let config_routes: Vec<RouteDef> = self.routes.drain(..).collect();
+
+        // Merge (config overrides convention)
+        self.routes = RouteMerger::merge(discovered, config_routes);
+    }
+
+    /// Get merged routes
+    pub fn get_routes(&self) -> &[RouteDef] {
+        &self.routes
+    }
+
+    /// Check if there are any routes defined
+    pub fn has_routes(&self) -> bool {
+        !self.routes.is_empty()
+    }
+
+    /// Generate navigation screen from merged routes
+    ///
+    /// This creates a Navigation.kt file with NavHost containing all routes
+    pub fn generate_navigation_file(&mut self) -> Option<String> {
+        if self.routes.is_empty() {
+            return None;
+        }
+
+        let package = &self.config.application_id;
+        let mut nav_gen = super::NavigationGenerator::new();
+
+        // Add all routes
+        for route in &self.routes {
+            // Convert path to screen name: /user/:id -> UserScreen
+            let screen_name = path_to_screen_name(&route.path);
+            nav_gen.add_route(&route.path, &screen_name);
+        }
+
+        // Generate NavHost
+        let start_dest = self.routes.first()
+            .map(|r| r.path.as_str())
+            .unwrap_or("/");
+
+        match nav_gen.generate_nav_host(start_dest) {
+            Ok(code) => {
+                let full_code = format!(
+                    "package {package}\n\n{}\n\n{}",
+                    nav_gen.generate_nav_imports(),
+                    code
+                );
+                Some(full_code)
+            }
+            Err(_) => None,
+        }
+    }
+}
+
+/// Convert a route path to a screen name
+///
+/// # Examples
+/// - `/` -> `HomeScreen`
+/// - `/about` -> `AboutScreen`
+/// - `/user/:id` -> `UserScreen`
+/// - `/admin/settings` -> `AdminSettingsScreen`
+fn path_to_screen_name(path: &str) -> String {
+    let segments: Vec<&str> = path
+        .split('/')
+        .filter(|s| !s.is_empty() && !s.starts_with(':'))
+        .collect();
+
+    if segments.is_empty() {
+        return "HomeScreen".to_string();
+    }
+
+    let name: String = segments
+        .iter()
+        .map(|s| {
+            let mut chars = s.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        })
+        .collect();
+
+    format!("{}Screen", name)
 }
 
 impl Default for ProjectGenerator {

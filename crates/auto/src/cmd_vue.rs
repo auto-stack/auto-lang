@@ -21,6 +21,7 @@ use std::process::Command;
 use colored::Colorize;
 use auto_lang::aura::AuraRoute;
 use auto_lang::ui_gen::VueGenerator;
+use auto_lang::route::{RouteDiscovery, RouteMerger, RouteDef, RouteSource};
 
 /// Recursively copy a directory and all its contents
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -256,12 +257,57 @@ fn generate_workspace_project(
     let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();
     println!("{} {}", "✓ Detected shadcn-vue components:".bright_green(), shadcn_components.join(", "));
 
-    // Check if any routes were detected
+    // =================================================================
+    // Plan 114: Hybrid Routing - Convention + Config
+    // =================================================================
+
+    // Collect config routes from widgets
+    let config_routes: Vec<RouteDef> = all_routes
+        .iter()
+        .map(|r| RouteDef::new(&r.path, &r.module).with_source(RouteSource::Config))
+        .collect();
+
+    // Discover convention-based routes from routes/ folder
+    let routes_dir = front_dir.join("routes");
+    let discovered_routes = if routes_dir.exists() {
+        let discovery = RouteDiscovery::new(routes_dir.clone());
+        match discovery.discover() {
+            Ok(routes) => {
+                println!("{} {}", "✓ Discovered routes from routes/ folder:".bright_green(), routes.len());
+                for route in &routes {
+                    println!("    {} -> {} ({})", route.path.bright_cyan(), route.module, "file".dimmed());
+                }
+                routes
+            }
+            Err(e) => {
+                println!("{} {}", "  Warning: Failed to discover routes:".bright_yellow(), e);
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
+    // Merge routes (config routes override convention routes)
+    let merged_route_defs = RouteMerger::merge(discovered_routes, config_routes);
+
+    // Convert merged RouteDefs back to AuraRoutes for compatibility
+    let all_routes: Vec<AuraRoute> = merged_route_defs
+        .iter()
+        .map(|r| r.to_aura_route())
+        .collect();
+
+    // Check if any routes were detected (after merge)
     let has_routes = !all_routes.is_empty();
     if has_routes {
-        println!("{} {}", "✓ Detected routes:".bright_green(), all_routes.len());
+        println!("{} {}", "✓ Final routes (after merge):".bright_green(), all_routes.len());
         for route in &all_routes {
-            println!("    {} -> {}", route.path.bright_cyan(), route.module);
+            let source_marker = if merged_route_defs.iter().any(|r| r.path == route.path && r.source == RouteSource::Config) {
+                "(config)"
+            } else {
+                "(file)"
+            };
+            println!("    {} -> {} {}", route.path.bright_cyan(), route.module, source_marker.dimmed());
         }
     }
 

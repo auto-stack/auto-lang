@@ -177,11 +177,14 @@ enum Commands {
     #[command(about = "Create a new Auto project (app, lib, gear, gadget)")]
     New {
         name: String,
-        #[arg(short, long, help = "Project template (e.g. c-app, rs-app, vue-app)")]
+        #[arg(short, long, help = "Project template (app, jet, capp, lib, clib)")]
         template: Option<String>,
     },
     #[command(about = "Initialize an Auto project in the current directory")]
-    Init,
+    Init {
+        #[arg(short, long, help = "Project template (e.g. app, jet)")]
+        template: Option<String>,
+    },
 
     // ========== Build & Run ==========
     #[command(about = "Compile the project based on pac.at backend", alias = "b")]
@@ -318,12 +321,15 @@ fn main() -> Result<()> {
                 auto_man::Automan::create_app(&name).map_err(|e| miette::miette!("{}", e))?;
             }
         }
-        Some(Commands::Init) => {
+        Some(Commands::Init { template }) => {
             init_logger();
             println_logo();
             info!("Initializing Auto project in current directory");
-            // For now, we use a default app template for init
-            auto_man::Automan::create_app(".").map_err(|e| miette::miette!("{}", e))?;
+            if let Some(t) = template {
+                auto_man::Automan::create_by_template(".", &t).map_err(|e| miette::miette!("{}", e))?;
+            } else {
+                auto_man::Automan::create_app(".").map_err(|e| miette::miette!("{}", e))?;
+            }
         }
 
         // ========== Build & Run ==========

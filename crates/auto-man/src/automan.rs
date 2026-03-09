@@ -41,17 +41,61 @@ impl Automan {
         Self::create_by_template(name, "clib")
     }
 
+    /// Create a new Jetpack Compose Android project
+    pub fn create_jet(name: &str) -> AutoResult<()> {
+        use auto_lang::ui_gen::jet::{JetProjectConfig, ProjectGenerator};
+
+        let path = Path::new(name);
+
+        // Check if project already exists
+        if path.is_file() {
+            return Err(format!("A file named with {} already exists", name).into());
+        }
+        if path.is_dir() && path.read_dir().map(|mut d| d.next().is_some()).unwrap_or(false) {
+            return Err(format!("A non-empty directory named with {} already exists", name).into());
+        }
+
+        // Get project name from path
+        let pac_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("MyApp");
+
+        // Generate project with JetProjectConfig
+        let config = JetProjectConfig::new(pac_name);
+        let mut generator = ProjectGenerator::with_config(config);
+        let files = generator.generate();
+
+        // Create all files
+        std::fs::create_dir_all(path)?;
+        for (file_path, content) in files {
+            let full_path = path.join(&file_path);
+            if let Some(parent) = full_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&full_path, content)?;
+            info!("Created {}", file_path);
+        }
+
+        println!("Jetpack Compose project '{}' created successfully!", pac_name);
+        println!("Open with: auto open");
+        Ok(())
+    }
+
     pub fn create_by_template(name: &str, template: &str) -> AutoResult<()> {
-        // 1. Check if project already exists
+        // Special handling for jet template (dynamic generation)
+        if template == "jet" {
+            return Self::create_jet(name);
+        }
+
+        // Default: copy from static templates
         let path = Path::new(name);
         if path.is_file() {
             return Err(format!("A file named with {} already exists", name).into());
         }
         if path.is_dir() {
-            // TODO: Let the user choose to replace the directory
             return Err(format!("A directory named with {} already exists", name).into());
         }
-        // 2. Copy template to destination
         Templates::copy(template, name)?;
         Ok(())
     }
@@ -240,6 +284,15 @@ impl Automan {
     pub fn open_ide(&mut self) -> AutoResult<()> {
         println!("build dir: {}", self.pac.build_location);
         println!("port: {}", self.pac.port.name);
+
+        // Check backend first for project-type-specific IDEs
+        let backend = self.pac.backend.as_str();
+        if backend == "jet" {
+            // Open Jetpack Compose project with Android Studio
+            return self.open_jet_project();
+        }
+
+        // Fall back to port builder for embedded IDEs
         match self.pac.port.builder.as_str() {
             "iar" => {
                 // open iar ide in the build_location
@@ -280,6 +333,120 @@ impl Automan {
             }
         }
         Ok(())
+    }
+
+    /// Open Jetpack Compose project with Android Studio
+    fn open_jet_project(&self) -> AutoResult<()> {
+        let project_dir = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+        println!("Opening Jetpack Compose project with Android Studio...");
+        println!("Project: {}", project_dir.display());
+
+        // Try to find Android Studio installation
+        let studio_path = self.find_android_studio();
+
+        if let Some(studio) = studio_path {
+            println!("Android Studio: {}", studio);
+            std::process::Command::new(&studio)
+                .arg(&project_dir)
+                .spawn()
+                .map_err(|e| format!("Failed to launch Android Studio: {}", e))?;
+        } else {
+            // Fallback: open with system default handler
+            println!("Android Studio not found in default locations.");
+            println!("Opening project folder with system default...");
+
+            #[cfg(target_os = "windows")]
+            {
+                let path_str = project_dir.to_string_lossy().replace("/", "\\");
+                std::process::Command::new("explorer.exe")
+                    .arg(&path_str)
+                    .output()
+                    .map_err(|e| format!("Failed to open folder: {}", e))?;
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                std::process::Command::new("open")
+                    .arg(&project_dir)
+                    .output()
+                    .map_err(|e| format!("Failed to open folder: {}", e))?;
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                std::process::Command::new("xdg-open")
+                    .arg(&project_dir)
+                    .output()
+                    .map_err(|e| format!("Failed to open folder: {}", e))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Find Android Studio installation path
+    fn find_android_studio(&self) -> Option<String> {
+        #[cfg(target_os = "windows")]
+        {
+            // Common Android Studio installation paths on Windows
+            let candidates = vec![
+                // User-specific installation
+                format!(
+                    "{}\\AppData\\Local\\Programs\\Android Studio\\bin\\studio64.exe",
+                    std::env::var("USERPROFILE").unwrap_or_default()
+                ),
+                // Program Files
+                "C:\\Program Files\\Android\\Android Studio\\bin\\studio64.exe".to_string(),
+                "C:\\Program Files (x86)\\Android\\Android Studio\\bin\\studio64.exe".to_string(),
+                // Check PATH for studio64.exe
+                "studio64.exe".to_string(),
+            ];
+
+            for path in candidates {
+                if std::path::Path::new(&path).exists() || path == "studio64.exe" {
+                    // For "studio64.exe", check if it's in PATH
+                    if path == "studio64.exe" {
+                        if std::process::Command::new(&path)
+                            .arg("--version")
+                            .output()
+                            .is_ok()
+                        {
+                            return Some(path);
+                        }
+                    } else {
+                        return Some(path);
+                    }
+                }
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let app_path = "/Applications/Android Studio.app";
+            if std::path::Path::new(app_path).exists() {
+                return Some(app_path.to_string());
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            // Check common snap and flatpak installations
+            let candidates = vec![
+                "/snap/bin/android-studio",
+                "/usr/local/android-studio/bin/studio.sh",
+                "android-studio", // In PATH
+            ];
+
+            for path in candidates {
+                if std::path::Path::new(path).exists() || path == "android-studio" {
+                    return Some(path.to_string());
+                }
+            }
+        }
+
+        None
     }
 
     pub fn scan(&mut self) -> AutoResult<()> {
