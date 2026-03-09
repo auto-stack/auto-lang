@@ -4,6 +4,8 @@ mod tool;
 pub use tool::*;
 mod cargo;
 pub use cargo::*;
+mod vue;
+pub use vue::*;
 
 use crate::AutoResult;
 use crate::{Pac, Target};
@@ -28,6 +30,7 @@ pub trait Builder {
 pub enum BuilderKind {
     Ninja(AutoPath), // Ninja with path to build folder
     Cargo(AutoPath), // Cargo with path to Cargo.toml directory
+    Vue(AutoPath),   // Vue with path to project directory (containing package.json)
 }
 
 impl BuilderKind {
@@ -42,6 +45,10 @@ impl BuilderKind {
                 let path = path.join("Cargo.toml");
                 Some(BuilderKind::Cargo(path))
             }
+            "vue" => {
+                // Vue project: path is the dist directory (where package.json is)
+                Some(BuilderKind::Vue(path))
+            }
             _ => None,
         }
     }
@@ -51,6 +58,7 @@ impl BuilderKind {
         match self {
             BuilderKind::Ninja(path) => Box::new(NinjaBuilder::new(path.clone())),
             BuilderKind::Cargo(path) => Box::new(CargoBuilder::new(path.clone())),
+            BuilderKind::Vue(path) => Box::new(VueBuilder::new(path.clone())),
         }
     }
 }

@@ -308,22 +308,64 @@ impl Automan {
     }
 
     pub fn build(&mut self) -> AutoResult<()> {
-        // 1. Transpile auto code to c code
-        println!("Transpiling auto code to c code");
-        self.transpile_auto()?;
+        let backend = self.pac.backend.as_str();
 
-        // 2. Build the project with a specific builder
-        self.pac.build()?;
+        match backend {
+            "vue" => {
+                // Vue backend: run npm run build in dist directory
+                println!("Building Vue project (backend: vue)");
+                self.build_vue()?;
 
-        // 3. Run garbage collection if needed (Plan 082: AutoCache)
-        if let Some(ref cache) = self.cache {
-            if cache.should_gc() {
-                println!("Running cache garbage collection...");
-                let freed_mb = cache.run_gc()? / (1024 * 1024);
-                println!("Cache GC: freed {} MB", freed_mb);
+                // Run garbage collection if needed
+                if let Some(ref cache) = self.cache {
+                    if cache.should_gc() {
+                        println!("Running cache garbage collection...");
+                        let freed_mb = cache.run_gc()? / (1024 * 1024);
+                        println!("Cache GC: freed {} MB", freed_mb);
+                    }
+                }
+            }
+            _ => {
+                // Default C backend
+                println!("Transpiling auto code to c code");
+                self.transpile_auto()?;
+
+                // Build the project with a specific builder
+                self.pac.build()?;
+
+                // Run garbage collection if needed (Plan 082: AutoCache)
+                if let Some(ref cache) = self.cache {
+                    if cache.should_gc() {
+                        println!("Running cache garbage collection...");
+                        let freed_mb = cache.run_gc()? / (1024 * 1024);
+                        println!("Cache GC: freed {} MB", freed_mb);
+                    }
+                }
             }
         }
 
+        Ok(())
+    }
+
+    /// Build Vue project using npm
+    fn build_vue(&mut self) -> AutoResult<()> {
+        let dist_dir = AutoPath::new("dist");
+
+        if !dist_dir.is_dir() {
+            return Err("dist directory not found. Please run 'auto vue .' first to generate the Vue project.".into());
+        }
+
+        println!("Running npm run build in dist/...");
+        let status = std::process::Command::new("npm")
+            .args(["run", "build"])
+            .current_dir(dist_dir.path())
+            .status()?;
+
+        if !status.success() {
+            return Err(format!("npm run build failed with status: {}", status).into());
+        }
+
+        println!("Vue project built successfully!");
         Ok(())
     }
 
@@ -360,7 +402,45 @@ impl Automan {
     }
 
     pub fn run(&mut self, args: Vec<String>) -> AutoResult<()> {
-        self.pac.run(args)
+        let backend = self.pac.backend.as_str();
+
+        match backend {
+            "vue" => {
+                // Vue backend: run npm run dev in dist directory
+                println!("Running Vue dev server (backend: vue)");
+                self.run_vue(args)
+            }
+            _ => {
+                // Default: use pac.run()
+                self.pac.run(args)
+            }
+        }
+    }
+
+    /// Run Vue dev server using npm run dev
+    fn run_vue(&mut self, args: Vec<String>) -> AutoResult<()> {
+        let dist_dir = AutoPath::new("dist");
+
+        if !dist_dir.is_dir() {
+            return Err("dist directory not found. Please run 'auto vue .' first to generate the Vue project.".into());
+        }
+
+        println!("Starting Vue dev server in dist/...");
+        let mut cmd = std::process::Command::new("npm");
+        cmd.args(["run", "dev"]).current_dir(dist_dir.path());
+
+        // Pass any additional args
+        for arg in args {
+            cmd.arg(arg);
+        }
+
+        let status = cmd.status()?;
+
+        if !status.success() {
+            return Err(format!("npm run dev failed with status: {}", status).into());
+        }
+
+        Ok(())
     }
 
     pub fn clean(&mut self) -> AutoResult<()> {
