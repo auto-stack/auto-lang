@@ -34,6 +34,7 @@
 use super::components::Material3Registry;
 use super::form::FormGenerator;
 use super::layout::LayoutGenerator;
+use super::list::ListGenerator;
 use super::modifier::ModifierDsl;
 use super::navigation::NavigationGenerator;
 use super::state::StateConverter;
@@ -69,6 +70,9 @@ pub struct JetGenerator {
     /// Layout component generator
     layout_generator: LayoutGenerator,
 
+    /// List component generator
+    list_generator: ListGenerator,
+
     /// Navigation generator
     navigation_generator: NavigationGenerator,
 
@@ -89,6 +93,7 @@ impl JetGenerator {
             state_converter: StateConverter::new(),
             form_generator: FormGenerator::new(),
             layout_generator: LayoutGenerator::new(),
+            list_generator: ListGenerator::new(),
             navigation_generator: NavigationGenerator::new(),
             components_used: HashSet::new(),
         }
@@ -259,6 +264,28 @@ fun {}Preview() {{
     /// Get layout-specific imports
     pub fn get_layout_imports(&self) -> &[String] {
         self.layout_generator.get_imports()
+    }
+
+    /// Generate list element code based on tag type
+    pub fn generate_list_element(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        item_content: &str,
+    ) -> GenResult<String> {
+        match tag {
+            "list" | "lazy-column" => self.list_generator.generate_lazy_column(props, item_content),
+            "list-row" | "lazy-row" => self.list_generator.generate_lazy_row(props, item_content),
+            "grid" | "lazy-grid" => self.list_generator.generate_lazy_grid(props, item_content),
+            "flow-row" => self.list_generator.generate_flow_row(props, item_content),
+            "flow-col" | "flow-column" => self.list_generator.generate_flow_column(props, item_content),
+            _ => Err(GenError::UnsupportedExpr(format!("Unknown list element: {}", tag))),
+        }
+    }
+
+    /// Get list-specific imports
+    pub fn get_list_imports(&self) -> &[String] {
+        self.list_generator.get_imports()
     }
 
     /// Add a navigation route
