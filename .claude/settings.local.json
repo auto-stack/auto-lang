@@ -111,7 +111,8 @@
       "Bash(./auto/target/debug/auto.exe:*)",
       "Bash(rtk cargo build -p auto-lang)",
       "Bash(rtk cargo test -p auto-lang -- ffi)",
-      "mcp__web-reader__webReader"
+      "mcp__web-reader__webReader",
+      "mcp__web-search-prime__web_search_prime"
     ]
   }
 }

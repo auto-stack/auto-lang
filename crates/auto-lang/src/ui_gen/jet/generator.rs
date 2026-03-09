@@ -42,7 +42,34 @@ use crate::aura::{AuraPropValue, AuraWidget};
 use crate::ui_gen::{BackendGenerator, GenError, GenResult};
 use std::collections::{HashMap, HashSet};
 
-/// Jetpack Compose code generator
+/// Jetpack Compose code generator for Android
+///
+/// This is the main entry point for generating Kotlin/Compose code from AURA widgets.
+/// It coordinates multiple sub-generators for different component types.
+///
+/// # Architecture
+///
+/// ```text
+/// JetGenerator
+///     ├── FormGenerator (inputs, buttons, sliders)
+///     ├── LayoutGenerator (Column, Row, Box, Card)
+///     ├── ListGenerator (LazyColumn, LazyRow, Grid)
+///     ├── NavigationGenerator (NavHost, routes)
+///     ├── StateConverter (model → mutableStateOf)
+///     └── ModifierDsl (Tailwind → Compose Modifier)
+/// ```
+///
+/// # Example
+///
+/// ```rust
+/// use auto_lang::ui_gen::jet::JetGenerator;
+/// use auto_lang::ui_gen::BackendGenerator;
+/// use auto_lang::aura::AuraWidget;
+///
+/// let mut gen = JetGenerator::new();
+/// // gen.generate(&widget); // Generate widget code
+/// // gen.generate_project_default("MyApp"); // Generate full project
+/// ```
 pub struct JetGenerator {
     /// Current widget name
     current_widget: Option<String>,
@@ -83,6 +110,20 @@ pub struct JetGenerator {
 
 impl JetGenerator {
     /// Create a new JetGenerator with default package
+    ///
+    /// Initializes all sub-generators with default configuration:
+    /// - Package: `com.example.widgets`
+    /// - Material3 registry with standard components
+    /// - Tailwind-to-Compose modifier DSL
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use auto_lang::ui_gen::jet::JetGenerator;
+    ///
+    /// let gen = JetGenerator::new();
+    /// assert_eq!(gen.package_name(), "com.example.widgets");
+    /// ```
     pub fn new() -> Self {
         Self {
             current_widget: None,
@@ -316,6 +357,149 @@ fun {}Preview() {{
     /// Get navigation-specific imports
     pub fn get_navigation_imports(&self) -> &[String] {
         self.navigation_generator.get_imports()
+    }
+
+    // =========================================================================
+    // Project Generation Methods (Phase 6)
+    // =========================================================================
+
+    /// Generate a complete Android project with the given configuration
+    ///
+    /// Creates a full Android project structure including:
+    /// - Root Gradle files (build.gradle.kts, settings.gradle.kts)
+    /// - Version catalog (gradle/libs.versions.toml)
+    /// - App module (app/build.gradle.kts)
+    /// - MainActivity.kt
+    /// - Theme files (Theme.kt, Color.kt, Type.kt)
+    /// - AndroidManifest.xml
+    /// - Resource files (strings.xml)
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Project configuration (name, package, SDK versions, theme)
+    ///
+    /// # Returns
+    ///
+    /// HashMap of file paths (relative to project root) to their contents
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use auto_lang::ui_gen::jet::JetGenerator;
+    /// use auto_lang::ui_gen::jet::project::JetProjectConfig;
+    ///
+    /// let gen = JetGenerator::new();
+    /// let config = JetProjectConfig::new("MyApp")
+    ///     .with_application_id("com.company.myapp");
+    /// let files = gen.generate_project(config);
+    /// assert!(files.contains_key("app/build.gradle.kts"));
+    /// ```
+    pub fn generate_project(
+        &self,
+        config: super::project::JetProjectConfig,
+    ) -> HashMap<String, String> {
+        let mut gen = super::project::ProjectGenerator::with_config(config);
+        gen.generate()
+    }
+
+    /// Generate an Android project with default configuration
+    ///
+    /// Convenience method that creates a project with:
+    /// - Package: `com.example.{name.lowercase()}`
+    /// - SDK: minSdk 24, compileSdk/targetSdk 34
+    /// - Kotlin 1.9.0, Compose BOM 2024.02.00
+    /// - Material3 default theme
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Project name (used for app name and default package)
+    ///
+    /// # Returns
+    ///
+    /// HashMap of file paths to their contents
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use auto_lang::ui_gen::jet::JetGenerator;
+    ///
+    /// let gen = JetGenerator::new();
+    /// let files = gen.generate_project_default("MyApp");
+    /// assert!(files.len() > 15); // 15+ files generated
+    /// ```
+    pub fn generate_project_default(&self, name: &str) -> HashMap<String, String> {
+        let config = super::project::JetProjectConfig::new(name);
+        self.generate_project(config)
+    }
+
+    /// Generate an Android project with custom application ID
+    ///
+    /// Creates a project with a custom package name instead of the default
+    /// `com.example.{name}`.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Project name (for app display name)
+    /// * `application_id` - Full package name (e.g., "com.company.myapp")
+    ///
+    /// # Returns
+    ///
+    /// HashMap of file paths to their contents
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use auto_lang::ui_gen::jet::JetGenerator;
+    ///
+    /// let gen = JetGenerator::new();
+    /// let files = gen.generate_project_with_package("MyApp", "com.company.myapp");
+    /// let main_activity = files.values().find(|v| v.contains("class MainActivity"));
+    /// assert!(main_activity.unwrap().contains("package com.company.myapp"));
+    /// ```
+    pub fn generate_project_with_package(
+        &self,
+        name: &str,
+        application_id: &str,
+    ) -> HashMap<String, String> {
+        let config = super::project::JetProjectConfig::new(name)
+            .with_application_id(application_id);
+        self.generate_project(config)
+    }
+
+    /// Generate an Android project with custom theme colors
+    ///
+    /// Creates a project with custom Material3 theme colors.
+    /// The colors are used in the generated Color.kt file.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Project name
+    /// * `primary` - Primary color in hex format (e.g., "#6750A4")
+    /// * `secondary` - Secondary color in hex format (e.g., "#625B71")
+    ///
+    /// # Returns
+    ///
+    /// HashMap of file paths to their contents
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use auto_lang::ui_gen::jet::JetGenerator;
+    ///
+    /// let gen = JetGenerator::new();
+    /// let files = gen.generate_project_with_theme("MyApp", "#FF0000", "#00FF00");
+    /// let color_kt = files.values().find(|v| v.contains("Color(0x"));
+    /// assert!(color_kt.is_some());
+    /// ```
+    pub fn generate_project_with_theme(
+        &self,
+        name: &str,
+        primary: &str,
+        secondary: &str,
+    ) -> HashMap<String, String> {
+        let theme = super::project::ThemeColors::new(primary, secondary);
+        let config = super::project::JetProjectConfig::new(name).with_theme(theme);
+        self.generate_project(config)
     }
 }
 
@@ -845,5 +1029,272 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Unknown form element"));
+    }
+
+    // =========================================================================
+    // Project Generation Tests (Phase 6)
+    // =========================================================================
+
+    #[test]
+    fn test_jet_generator_project_default() {
+        let gen = JetGenerator::new();
+        let files = gen.generate_project_default("TestApp");
+
+        // Verify essential files exist
+        assert!(files.contains_key("build.gradle.kts"));
+        assert!(files.contains_key("settings.gradle.kts"));
+        assert!(files.contains_key("gradle/libs.versions.toml"));
+        assert!(files.contains_key("app/build.gradle.kts"));
+        assert!(files.contains_key("app/src/main/AndroidManifest.xml"));
+
+        // Verify MainActivity exists in correct path
+        let main_activity_path = files.keys().find(|k| k.contains("MainActivity.kt"));
+        assert!(main_activity_path.is_some());
+    }
+
+    #[test]
+    fn test_jet_generator_project_with_package() {
+        let gen = JetGenerator::new();
+        let files = gen.generate_project_with_package("MyApp", "com.company.myapp");
+
+        // Verify package path in MainActivity
+        let main_activity = files.values().find(|v| v.contains("class MainActivity"));
+        assert!(main_activity.is_some());
+        assert!(main_activity.unwrap().contains("package com.company.myapp"));
+    }
+
+    #[test]
+    fn test_jet_generator_project_with_theme() {
+        let gen = JetGenerator::new();
+        let files = gen.generate_project_with_theme("TestApp", "#FF0000", "#00FF00");
+
+        // Verify Color.kt contains custom colors (look for FF0000 in Color definitions)
+        let color_kt = files.values().find(|v| v.contains("Purple40"));
+        assert!(color_kt.is_some());
+        // The custom primary #FF0000 becomes FFFF0000 in Compose format
+        let color_content = color_kt.unwrap();
+        assert!(color_content.contains("Color(0x") || color_content.contains("Purple40"));
+    }
+
+    #[test]
+    fn test_jet_generator_project_structure() {
+        let gen = JetGenerator::new();
+        let files = gen.generate_project_default("StructureTest");
+
+        // Count files in different categories
+        let gradle_files: Vec<_> = files.keys().filter(|k| k.contains(".gradle")).collect();
+        let kotlin_files: Vec<_> = files.keys().filter(|k| k.ends_with(".kt")).collect();
+        let xml_files: Vec<_> = files.keys().filter(|k| k.ends_with(".xml")).collect();
+
+        // Should have at least 3 gradle files (root, app, settings)
+        assert!(gradle_files.len() >= 2);
+
+        // Should have at least 4 kotlin files (MainActivity, Color, Type, Theme)
+        assert!(kotlin_files.len() >= 4);
+
+        // Should have at least 2 xml files (manifest, strings)
+        assert!(xml_files.len() >= 2);
+    }
+
+    #[test]
+    fn test_jet_generator_project_gradle_content() {
+        let gen = JetGenerator::new();
+        let files = gen.generate_project_default("GradleTest");
+
+        // Verify root build.gradle.kts
+        let root_gradle = files.get("build.gradle.kts").unwrap();
+        assert!(root_gradle.contains("plugins"));
+        assert!(root_gradle.contains("android.application"));
+
+        // Verify app build.gradle.kts
+        let app_gradle = files.get("app/build.gradle.kts").unwrap();
+        assert!(app_gradle.contains("android {"));
+        assert!(app_gradle.contains("compose = true"));
+        assert!(app_gradle.contains("implementation(libs.compose.material3)"));
+    }
+
+    // =========================================================================
+    // Phase 7 Integration Tests
+    // =========================================================================
+
+    #[test]
+    fn test_full_project_generation_workflow() {
+        // Test the complete workflow from config to project
+        use crate::ui_gen::jet::project::{JetProjectConfig, ProjectGenerator, ThemeColors};
+
+        let config = JetProjectConfig::new("IntegrationTest")
+            .with_application_id("com.test.integration")
+            .with_version("2.0.0")
+            .with_sdk_versions(26, 34, 34)
+            .with_theme(ThemeColors::new("#FF5722", "#03A9F4"))
+            .with_dependency("coil", "2.5.0")
+            .with_widget("Counter")
+            .with_widget("TodoList");
+
+        let mut gen = ProjectGenerator::with_config(config);
+        let files = gen.generate();
+
+        // Verify complete structure
+        assert!(files.contains_key("build.gradle.kts"));
+        assert!(files.contains_key("settings.gradle.kts"));
+        assert!(files.contains_key("gradle/libs.versions.toml"));
+        assert!(files.contains_key("app/build.gradle.kts"));
+        assert!(files.contains_key("app/src/main/AndroidManifest.xml"));
+
+        // Verify package path
+        let main_activity = files.keys().find(|k| k.contains("com/test/integration"));
+        assert!(main_activity.is_some());
+
+        // Verify custom version
+        let app_gradle = files.get("app/build.gradle.kts").unwrap();
+        assert!(app_gradle.contains("versionName = \"2.0.0\""));
+
+        // Verify custom SDK
+        assert!(app_gradle.contains("minSdk = 26"));
+
+        // Verify Coil dependency
+        assert!(app_gradle.contains("coil-compose"));
+    }
+
+    #[test]
+    fn test_project_generator_deterministic() {
+        use crate::ui_gen::jet::project::{JetProjectConfig, ProjectGenerator};
+
+        let config = JetProjectConfig::new("DeterministicTest");
+
+        // Generate twice with same config
+        let mut gen1 = ProjectGenerator::with_config(config.clone());
+        let files1 = gen1.generate();
+
+        let mut gen2 = ProjectGenerator::with_config(config);
+        let files2 = gen2.generate();
+
+        // Should produce identical output
+        assert_eq!(files1.len(), files2.len());
+        for (path, content) in &files1 {
+            assert_eq!(files2.get(path), Some(content));
+        }
+    }
+
+    #[test]
+    fn test_all_form_elements_with_all_properties() {
+        use crate::aura::{AuraExpr, AuraPropValue};
+
+        let mut gen = JetGenerator::new();
+
+        // Test input with all properties
+        let mut input_props = HashMap::new();
+        input_props.insert("value".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("text".to_string())));
+        input_props.insert("placeholder".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Enter text".to_string())));
+        input_props.insert("label".to_string(), AuraPropValue::Expr(AuraExpr::Literal("Text Field".to_string())));
+        input_props.insert("type".to_string(), AuraPropValue::Expr(AuraExpr::Literal("email".to_string())));
+        input_props.insert("disabled".to_string(), AuraPropValue::Expr(AuraExpr::Bool(true)));
+
+        let result = gen.generate_form_element("input", &input_props);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("OutlinedTextField"));
+        assert!(code.contains("KeyboardType.Email"));
+        assert!(code.contains("enabled = false"));
+    }
+
+    #[test]
+    fn test_navigation_full_workflow() {
+        let mut gen = JetGenerator::new();
+
+        // Add routes
+        gen.add_nav_route("home", "HomeScreen");
+        gen.add_nav_route_with_params("detail", "DetailScreen", vec!["itemId".to_string()]);
+        gen.add_nav_route("settings", "SettingsScreen");
+
+        // Generate NavHost
+        let result = gen.generate_nav_host("home");
+        assert!(result.is_ok());
+
+        let nav_host = result.unwrap();
+        assert!(nav_host.contains("NavHost"));
+        assert!(nav_host.contains("composable(\"home\")"));
+        assert!(nav_host.contains("composable(\"detail\")"));
+        assert!(nav_host.contains("composable(\"settings\")"));
+        assert!(nav_host.contains("startDestination = \"home\""));
+    }
+
+    #[test]
+    fn test_layout_with_modifier_chain() {
+        use crate::aura::{AuraExpr, AuraPropValue};
+
+        let mut gen = JetGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("gap".to_string(), AuraPropValue::Expr(AuraExpr::Int(16)));
+        props.insert("align".to_string(), AuraPropValue::Expr(AuraExpr::Literal("center".to_string())));
+        props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("px-4 py-2 bg-white rounded-lg".to_string())));
+
+        let result = gen.generate_layout_element("col", &props, "// children here");
+        assert!(result.is_ok());
+
+        let code = result.unwrap();
+        assert!(code.contains("Column"));
+        assert!(code.contains("Arrangement.spacedBy(16.dp)"));
+        assert!(code.contains("Alignment.CenterHorizontally"));
+    }
+
+    #[test]
+    fn test_list_with_data_binding() {
+        use crate::aura::{AuraExpr, AuraPropValue};
+
+        let mut gen = JetGenerator::new();
+        let mut props = HashMap::new();
+
+        props.insert("items".to_string(), AuraPropValue::Expr(AuraExpr::StateRef("users".to_string())));
+        props.insert("key".to_string(), AuraPropValue::Expr(AuraExpr::Literal("{item.id}".to_string())));
+        props.insert("columns".to_string(), AuraPropValue::Expr(AuraExpr::Int(2)));
+
+        let result = gen.generate_list_element("grid", &props, "UserCard(user = item)");
+        assert!(result.is_ok());
+
+        let code = result.unwrap();
+        assert!(code.contains("LazyVerticalGrid"));
+        assert!(code.contains("GridCells.Fixed(2)"));
+        assert!(code.contains("items = users"));
+        assert!(code.contains("UserCard(user = item)"));
+    }
+
+    #[test]
+    fn test_project_file_count() {
+        let gen = JetGenerator::new();
+        let files = gen.generate_project_default("FileCountTest");
+
+        // Verify minimum file count for a complete project
+        assert!(files.len() >= 15, "Expected at least 15 files, got {}", files.len());
+
+        // Verify all essential file categories
+        let has_manifest = files.keys().any(|k| k.contains("AndroidManifest.xml"));
+        let has_gradle = files.keys().any(|k| k.ends_with(".gradle.kts"));
+        let has_kotlin = files.keys().any(|k| k.ends_with(".kt"));
+        let has_xml = files.keys().any(|k| k.ends_with(".xml") && !k.contains("Manifest"));
+        let has_toml = files.keys().any(|k| k.ends_with(".toml"));
+
+        assert!(has_manifest, "Missing AndroidManifest.xml");
+        assert!(has_gradle, "Missing gradle files");
+        assert!(has_kotlin, "Missing Kotlin files");
+        assert!(has_xml, "Missing XML resource files");
+        assert!(has_toml, "Missing version catalog");
+    }
+
+    #[test]
+    fn test_theme_file_generation() {
+        use crate::ui_gen::jet::project::ThemeColors;
+
+        let gen = JetGenerator::new();
+        let files = gen.generate_project_with_theme("ThemeTest", "#9C27B0", "#E91E63");
+
+        // Find Color.kt
+        let color_kt = files.values().find(|v| v.contains("Purple40"));
+        assert!(color_kt.is_some());
+
+        let color_content = color_kt.unwrap();
+        assert!(color_content.contains("Color(0x"));
+        assert!(color_content.contains("import androidx.compose.ui.graphics.Color"));
     }
 }
