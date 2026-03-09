@@ -33,7 +33,9 @@
 
 use super::components::Material3Registry;
 use super::form::FormGenerator;
+use super::layout::LayoutGenerator;
 use super::modifier::ModifierDsl;
+use super::navigation::NavigationGenerator;
 use super::state::StateConverter;
 use crate::aura::{AuraPropValue, AuraWidget};
 use crate::ui_gen::{BackendGenerator, GenError, GenResult};
@@ -64,6 +66,12 @@ pub struct JetGenerator {
     /// Form component generator
     form_generator: FormGenerator,
 
+    /// Layout component generator
+    layout_generator: LayoutGenerator,
+
+    /// Navigation generator
+    navigation_generator: NavigationGenerator,
+
     /// Components used in current widget
     #[allow(dead_code)]
     components_used: HashSet<String>,
@@ -80,6 +88,8 @@ impl JetGenerator {
             modifier_dsl: ModifierDsl::new(),
             state_converter: StateConverter::new(),
             form_generator: FormGenerator::new(),
+            layout_generator: LayoutGenerator::new(),
+            navigation_generator: NavigationGenerator::new(),
             components_used: HashSet::new(),
         }
     }
@@ -227,6 +237,58 @@ fun {}Preview() {{
     /// Get form-specific imports
     pub fn get_form_imports(&self) -> &[String] {
         self.form_generator.get_imports()
+    }
+
+    /// Generate layout element code based on tag type
+    pub fn generate_layout_element(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        children: &str,
+    ) -> GenResult<String> {
+        match tag {
+            "col" | "column" => self.layout_generator.generate_column(props, children),
+            "row" => self.layout_generator.generate_row(props, children),
+            "box" | "container" => self.layout_generator.generate_box(props, children),
+            "card" => self.layout_generator.generate_card(props, children),
+            "scroll" => self.layout_generator.generate_scroll(props, children),
+            _ => Err(GenError::UnsupportedExpr(format!("Unknown layout element: {}", tag))),
+        }
+    }
+
+    /// Get layout-specific imports
+    pub fn get_layout_imports(&self) -> &[String] {
+        self.layout_generator.get_imports()
+    }
+
+    /// Add a navigation route
+    pub fn add_nav_route(&mut self, name: &str, screen: &str) {
+        self.navigation_generator.add_route(name, screen);
+    }
+
+    /// Add a navigation route with parameters
+    pub fn add_nav_route_with_params(&mut self, name: &str, screen: &str, params: Vec<String>) {
+        self.navigation_generator.add_route_with_params(name, screen, params);
+    }
+
+    /// Generate navigation host
+    pub fn generate_nav_host(&mut self, start_destination: &str) -> GenResult<String> {
+        self.navigation_generator.generate_nav_host(start_destination)
+    }
+
+    /// Generate app with navigation
+    pub fn generate_app_with_nav(&mut self, start_destination: &str) -> GenResult<String> {
+        self.navigation_generator.generate_app_with_nav(start_destination)
+    }
+
+    /// Generate navigate call
+    pub fn generate_navigate_call(&self, route: &str) -> String {
+        self.navigation_generator.generate_navigate_call(route)
+    }
+
+    /// Get navigation-specific imports
+    pub fn get_navigation_imports(&self) -> &[String] {
+        self.navigation_generator.get_imports()
     }
 }
 
