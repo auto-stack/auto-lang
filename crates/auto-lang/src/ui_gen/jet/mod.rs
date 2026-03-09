@@ -44,6 +44,7 @@
 mod generator;
 mod components;
 mod form;
+mod layout;
 mod modifier;
 mod state;
 mod theme;
@@ -52,6 +53,7 @@ mod theme;
 pub use generator::JetGenerator;
 pub use components::Material3Registry;
 pub use form::FormGenerator;
+pub use layout::LayoutGenerator;
 pub use modifier::{ModifierDsl, ModifierResult};
 pub use state::StateConverter;
 // pub use theme::ThemeConfig; // TODO: implement in future phase
