@@ -5,44 +5,44 @@ widget NavigationmenuPage {
 
     view {
         col {
-            h1 (text: "NavigationMenu") {}
-            text (text: "A collection of navigation links with dropdown support.") {}
+            h1 | NavigationMenu
+            text | A collection of navigation links with dropdown support.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add navigation-menu") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "navigationmenu-basic") {
                 row (gap: "4") {
                     navigation-menu {}
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "text") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Link text") {}
+                        td | text
+                        td | string
+                        td | -
+                        td | -
+                        td | Link text
                     }
                     tr {
-                        td (text: "href") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Link destination") {}
+                        td | href
+                        td | string
+                        td | -
+                        td | -
+                        td | Link destination
                     }
                 }
             }

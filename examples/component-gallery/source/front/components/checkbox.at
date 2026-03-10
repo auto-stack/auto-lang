@@ -48,11 +48,11 @@ widget CheckboxDemo {
         col (gap: "4") {
             row (gap: "2") {
                 Checkbox (checked: .checked1) {}
-                label (text: "Accept terms and conditions") {}
+                label | Accept terms and conditions
             }
             row (gap: "2") {
                 Checkbox (checked: .checked2, disabled: true) {}
-                label (text: "Disabled checkbox") {}
+                label | Disabled checkbox
             }
         }
     }

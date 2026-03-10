@@ -5,36 +5,36 @@ widget CardPage {
 
     view {
         col {
-            h1 (text: "Card") {}
-            text (text: "Displays a card with header, content, and footer.") {}
+            h1 | Card
+            text | Displays a card with header, content, and footer.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add card") {}
 
             // Basic Example
-            h2 (text: "Basic") {}
+            h2 | Basic
             preview-card (id: "card-basic") {
                 card {
                     card-header {
-                        card-title (text: "Card Title") {}
-                        card-description (text: "Card Description") {}
+                        card-title | Card Title
+                        card-description | Card Description
                     }
                     card-content {
-                        text (text: "Card Content") {}
+                        text | Card Content
                     }
                     card-footer {
-                        text (text: "Card Footer") {}
+                        text | Card Footer
                     }
                 }
             }
 
             // Login Form Example
-            h2 (text: "Login Form") {}
+            h2 | Login Form
             preview-card (id: "card-login") {
                 card (class: "w-full max-w-sm") {
                     card-header {
-                        card-title (text: "Login to your account") {}
-                        card-description (text: "Enter your email below to login to your account.") {}
+                        card-title | Login to your account
+                        card-description | Enter your email below to login to your account.
                         card-action {
                             button (text: "Sign Up", variant: "link") {}
                         }
@@ -64,21 +64,21 @@ widget CardPage {
             }
 
             // Create Project Example
-            h2 (text: "Create Project") {}
+            h2 | Create Project
             preview-card (id: "card-project") {
                 card {
                     card-header {
-                        card-title (text: "Create project") {}
-                        card-description (text: "Deploy your new project in one-click.") {}
+                        card-title | Create project
+                        card-description | Deploy your new project in one-click.
                     }
                     card-content {
                         col (gap: "4") {
                             col (gap: "2") {
-                                label (text: "Name") {}
+                                label | Name
                                 input (placeholder: "Name of your project") {}
                             }
                             col (gap: "2") {
-                                label (text: "Framework") {}
+                                label | Framework
                                 select {
                                     select-trigger {
                                         select-value (placeholder: "Select") {}
@@ -95,18 +95,18 @@ widget CardPage {
                     }
                     card-footer (class: "flex justify-between") {
                         button (text: "Cancel", variant: "outline") {}
-                        button (text: "Deploy") {}
+                        button | Deploy
                     }
                 }
             }
 
             // Notifications Example
-            h2 (text: "Notifications") {}
+            h2 | Notifications
             preview-card (id: "card-notifications") {
                 card {
                     card-header {
-                        card-title (text: "Notifications") {}
-                        card-description (text: "You have 3 unread messages.") {}
+                        card-title | Notifications
+                        card-description | You have 3 unread messages.
                     }
                     card-content (class: "grid gap-4") {
                         col (gap: "4") {
@@ -122,7 +122,7 @@ widget CardPage {
                                 row (class: "flex items-start gap-4") {
                                     avatar (size: "sm") {
                                         avatar-image (src: "/avatars/01.png", alt: "Avatar") {}
-                                        avatar-fallback (text: "OM") {}
+                                        avatar-fallback | OM
                                     }
                                     col (gap: "1", class: "grid gap-1") {
                                         text (text: "Your call has been confirmed.", class: "text-sm") {}
@@ -132,7 +132,7 @@ widget CardPage {
                                 row (class: "flex items-start gap-4") {
                                     avatar (size: "sm") {
                                         avatar-image (src: "/avatars/02.png", alt: "Avatar") {}
-                                        avatar-fallback (text: "JD") {}
+                                        avatar-fallback | JD
                                     }
                                     col (gap: "1", class: "grid gap-1") {
                                         text (text: "You have a new message!", class: "text-sm") {}
@@ -142,7 +142,7 @@ widget CardPage {
                                 row (class: "flex items-start gap-4") {
                                     avatar (size: "sm") {
                                         avatar-image (src: "/avatars/03.png", alt: "Avatar") {}
-                                        avatar-fallback (text: "WW") {}
+                                        avatar-fallback | WW
                                     }
                                     col (gap: "1", class: "grid gap-1") {
                                         text (text: "Your subscription is expiring soon!", class: "text-sm") {}
@@ -159,42 +159,42 @@ widget CardPage {
             }
 
             // Components Table
-            h2 (text: "Components") {}
+            h2 | Components
             table {
                 thead {
                     tr {
-                        th (text: "Component") {}
-                        th (text: "Description") {}
+                        th | Component
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "Card") {}
-                        td (text: "Root container component") {}
+                        td | Card
+                        td | Root container component
                     }
                     tr {
-                        td (text: "CardHeader") {}
-                        td (text: "Header section with title, description, and action") {}
+                        td | CardHeader
+                        td | Header section with title, description, and action
                     }
                     tr {
-                        td (text: "CardTitle") {}
-                        td (text: "Card title text") {}
+                        td | CardTitle
+                        td | Card title text
                     }
                     tr {
-                        td (text: "CardDescription") {}
-                        td (text: "Card description text") {}
+                        td | CardDescription
+                        td | Card description text
                     }
                     tr {
-                        td (text: "CardAction") {}
-                        td (text: "Action area in header, like Sign Up button") {}
+                        td | CardAction
+                        td | Action area in header, like Sign Up button
                     }
                     tr {
-                        td (text: "CardContent") {}
-                        td (text: "Main content area") {}
+                        td | CardContent
+                        td | Main content area
                     }
                     tr {
-                        td (text: "CardFooter") {}
-                        td (text: "Footer section for actions") {}
+                        td | CardFooter
+                        td | Footer section for actions
                     }
                 }
             }

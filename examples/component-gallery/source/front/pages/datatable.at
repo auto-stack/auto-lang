@@ -22,27 +22,27 @@ widget DatatablePage {
 
     view {
         col {
-            h1 (text: "Data Table") {}
-            text (text: "Powerful table and datagrids built using TanStack Table.") {}
+            h1 | Data Table
+            text | Powerful table and datagrids built using TanStack Table.
 
-            h2 (text: "Introduction") {}
+            h2 | Introduction
             text (text: "The Data Table is not a single component but a guide on how to build your own data tables using TanStack Table (@tanstack/vue-table) combined with the Table component. This allows for maximum flexibility with sorting, filtering, pagination, and more.", class: "text-muted-foreground") {}
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             text (text: "1. Add the Table component:", class: "font-medium") {}
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add table") {}
             text (text: "2. Add TanStack Table dependency:", class: "font-medium") {}
             codeblock (lang: "bash", code: "npm install @tanstack/vue-table") {}
 
             // Basic Table
-            h2 (text: "Basic Table") {}
+            h2 | Basic Table
             text (text: "Start with a basic table to display your data.", class: "text-muted-foreground") {}
             preview-card (id: "datatable-basic") {
                 table {
                     table-header {
                         table-row {
-                            table-head (text: "Status") {}
-                            table-head (text: "Email") {}
+                            table-head | Status
+                            table-head | Email
                             table-head (text: "Amount", class: "text-right") {}
                         }
                     }
@@ -67,7 +67,7 @@ widget DatatablePage {
             }
 
             // Sorting - Interactive!
-            h2 (text: "Sorting") {}
+            h2 | Sorting
             text (text: "Click column headers to sort ascending or descending. Try clicking on each column!", class: "text-muted-foreground") {}
             preview-card (id: "datatable-sorting") {
                 table {
@@ -75,7 +75,7 @@ widget DatatablePage {
                         table-row {
                             table-head {
                                 button (variant: "ghost", class: "-ml-4", onclick: .ToggleSortStatus) {
-                                    text (text: "Status") {}
+                                    text | Status
                                     if .sortColumn == "status" {
                                         if .sortDirection == "asc" {
                                             icon (name: "arrow-up", class: "ml-2 h-4 w-4") {}
@@ -91,7 +91,7 @@ widget DatatablePage {
                             }
                             table-head {
                                 button (variant: "ghost", class: "-ml-4", onclick: .ToggleSortEmail) {
-                                    text (text: "Email") {}
+                                    text | Email
                                     if .sortColumn == "email" {
                                         if .sortDirection == "asc" {
                                             icon (name: "arrow-up", class: "ml-2 h-4 w-4") {}
@@ -107,7 +107,7 @@ widget DatatablePage {
                             }
                             table-head (class: "text-right") {
                                 button (variant: "ghost", class: "-ml-4", onclick: .ToggleSortAmount) {
-                                    text (text: "Amount") {}
+                                    text | Amount
                                     if .sortColumn == "amount" {
                                         if .sortDirection == "asc" {
                                             icon (name: "arrow-up", class: "ml-2 h-4 w-4") {}
@@ -285,7 +285,7 @@ widget DatatablePage {
             }
 
             // Filtering
-            h2 (text: "Filtering") {}
+            h2 | Filtering
             text (text: "Search and filter data across columns.", class: "text-muted-foreground") {}
             preview-card (id: "datatable-filtering") {
                 col (gap: "4") {
@@ -296,8 +296,8 @@ widget DatatablePage {
                     table {
                         table-header {
                             table-row {
-                                table-head (text: "Status") {}
-                                table-head (text: "Email") {}
+                                table-head | Status
+                                table-head | Email
                                 table-head (text: "Amount", class: "text-right") {}
                             }
                         }
@@ -318,27 +318,27 @@ widget DatatablePage {
             }
 
             // Pagination
-            h2 (text: "Pagination") {}
+            h2 | Pagination
             text (text: "Navigate through large datasets with page controls.", class: "text-muted-foreground") {}
             preview-card (id: "datatable-pagination") {
                 col (gap: "4") {
                     table {
                         table-header {
                             table-row {
-                                table-head (text: "Invoice") {}
-                                table-head (text: "Status") {}
+                                table-head | Invoice
+                                table-head | Status
                                 table-head (text: "Amount", class: "text-right") {}
                             }
                         }
                         table-body {
                             table-row {
                                 table-cell (text: "INV001", class: "font-medium") {}
-                                table-cell (text: "Paid") {}
+                                table-cell | Paid
                                 table-cell (text: "$250.00", class: "text-right") {}
                             }
                             table-row {
                                 table-cell (text: "INV002", class: "font-medium") {}
-                                table-cell (text: "Pending") {}
+                                table-cell | Pending
                                 table-cell (text: "$150.00", class: "text-right") {}
                             }
                         }
@@ -347,7 +347,7 @@ widget DatatablePage {
                         row (class: "flex items-center gap-2") {
                             text (text: "Rows per page", class: "text-sm text-muted-foreground") {}
                             select (class: "w-[70px]") {
-                                select-trigger { select-value (text: "10") {} }
+                                select-trigger { select-value | 10 }
                                 select-content {
                                     select-item (text: "10", value: "10") {}
                                     select-item (text: "20", value: "20") {}
@@ -368,7 +368,7 @@ widget DatatablePage {
             }
 
             // Row Selection
-            h2 (text: "Row Selection") {}
+            h2 | Row Selection
             text (text: "Select rows with checkboxes for bulk operations.", class: "text-muted-foreground") {}
             preview-card (id: "datatable-selection") {
                 col (gap: "4") {
@@ -376,8 +376,8 @@ widget DatatablePage {
                         table-header {
                             table-row {
                                 table-head (class: "w-[50px]") { checkbox {} }
-                                table-head (text: "Status") {}
-                                table-head (text: "Email") {}
+                                table-head | Status
+                                table-head | Email
                                 table-head (text: "Amount", class: "text-right") {}
                             }
                         }
@@ -385,19 +385,19 @@ widget DatatablePage {
                             table-row {
                                 table-cell (class: "w-[50px]") { checkbox {} }
                                 table-cell { badge (text: "Success", variant: "default") {} }
-                                table-cell (text: "ken99@yahoo.com") {}
+                                table-cell | ken99@yahoo.com
                                 table-cell (text: "$316.00", class: "text-right font-medium") {}
                             }
                             table-row {
                                 table-cell (class: "w-[50px]") { checkbox (checked: true) {} }
                                 table-cell { badge (text: "Success", variant: "default") {} }
-                                table-cell (text: "abe45@gmail.com") {}
+                                table-cell | abe45@gmail.com
                                 table-cell (text: "$242.00", class: "text-right font-medium") {}
                             }
                             table-row {
                                 table-cell (class: "w-[50px]") { checkbox {} }
                                 table-cell { badge (text: "Processing", variant: "outline") {} }
-                                table-cell (text: "monserrat44@gmail.com") {}
+                                table-cell | monserrat44@gmail.com
                                 table-cell (text: "$837.00", class: "text-right font-medium") {}
                             }
                         }
@@ -413,14 +413,14 @@ widget DatatablePage {
             }
 
             // Row Actions
-            h2 (text: "Row Actions") {}
+            h2 | Row Actions
             text (text: "Add action menus to each row.", class: "text-muted-foreground") {}
             preview-card (id: "datatable-actions") {
                 table {
                     table-header {
                         table-row {
-                            table-head (text: "Invoice") {}
-                            table-head (text: "Status") {}
+                            table-head | Invoice
+                            table-head | Status
                             table-head (text: "Amount", class: "text-right") {}
                             table-head (text: "", class: "w-[50px]") {}
                         }
@@ -438,8 +438,8 @@ widget DatatablePage {
                                         }
                                     }
                                     dropdown-menu-content {
-                                        dropdown-menu-item (text: "Copy ID") {}
-                                        dropdown-menu-item (text: "View details") {}
+                                        dropdown-menu-item | Copy ID
+                                        dropdown-menu-item | View details
                                         dropdown-menu-separator {}
                                         dropdown-menu-item (text: "Delete", class: "text-destructive") {}
                                     }
@@ -458,8 +458,8 @@ widget DatatablePage {
                                         }
                                     }
                                     dropdown-menu-content {
-                                        dropdown-menu-item (text: "Copy ID") {}
-                                        dropdown-menu-item (text: "View details") {}
+                                        dropdown-menu-item | Copy ID
+                                        dropdown-menu-item | View details
                                     }
                                 }
                             }
@@ -469,7 +469,7 @@ widget DatatablePage {
             }
 
             // Column Visibility
-            h2 (text: "Column Visibility") {}
+            h2 | Column Visibility
             text (text: "Toggle column visibility with a dropdown menu.", class: "text-muted-foreground") {}
             preview-card (id: "datatable-visibility") {
                 col (gap: "4") {
@@ -479,28 +479,28 @@ widget DatatablePage {
                             dropdown-menu-trigger {
                                 button (variant: "outline", size: "sm") {
                                     icon (name: "columns", class: "mr-2 h-4 w-4") {}
-                                    text (text: "Columns") {}
+                                    text | Columns
                                 }
                             }
                             dropdown-menu-content {
-                                dropdown-menu-item (text: "Status") {}
-                                dropdown-menu-item (text: "Email") {}
-                                dropdown-menu-item (text: "Amount") {}
+                                dropdown-menu-item | Status
+                                dropdown-menu-item | Email
+                                dropdown-menu-item | Amount
                             }
                         }
                     }
                     table {
                         table-header {
                             table-row {
-                                table-head (text: "Status") {}
-                                table-head (text: "Email") {}
+                                table-head | Status
+                                table-head | Email
                                 table-head (text: "Amount", class: "text-right") {}
                             }
                         }
                         table-body {
                             table-row {
                                 table-cell { badge (text: "Success", variant: "default") {} }
-                                table-cell (text: "ken99@yahoo.com") {}
+                                table-cell | ken99@yahoo.com
                                 table-cell (text: "$316.00", class: "text-right font-medium") {}
                             }
                         }
@@ -509,7 +509,7 @@ widget DatatablePage {
             }
 
             // Complete Example
-            h2 (text: "Complete Example") {}
+            h2 | Complete Example
             text (text: "A full-featured data table with all features combined.", class: "text-muted-foreground") {}
             preview-card (id: "datatable-complete") {
                 col (gap: "4") {
@@ -520,18 +520,18 @@ widget DatatablePage {
                                 dropdown-menu-trigger {
                                     button (variant: "outline", size: "sm") {
                                         icon (name: "columns", class: "mr-2 h-4 w-4") {}
-                                        text (text: "View") {}
+                                        text | View
                                     }
                                 }
                                 dropdown-menu-content (align: "end") {
-                                    dropdown-menu-item (text: "Status") {}
-                                    dropdown-menu-item (text: "Email") {}
-                                    dropdown-menu-item (text: "Amount") {}
+                                    dropdown-menu-item | Status
+                                    dropdown-menu-item | Email
+                                    dropdown-menu-item | Amount
                                 }
                             }
                             button (variant: "outline", size: "sm") {
                                 icon (name: "plus", class: "mr-2 h-4 w-4") {}
-                                text (text: "Add Payment") {}
+                                text | Add Payment
                             }
                         }
                     }
@@ -541,13 +541,13 @@ widget DatatablePage {
                                 table-head (class: "w-[50px]") { checkbox {} }
                                 table-head {
                                     button (variant: "ghost", class: "-ml-4") {
-                                        text (text: "Status") {}
+                                        text | Status
                                         icon (name: "arrow-up-down", class: "ml-2 h-4 w-4") {}
                                     }
                                 }
                                 table-head {
                                     button (variant: "ghost", class: "-ml-4") {
-                                        text (text: "Email") {}
+                                        text | Email
                                         icon (name: "arrow-up-down", class: "ml-2 h-4 w-4") {}
                                     }
                                 }
@@ -561,28 +561,28 @@ widget DatatablePage {
                                 table-cell { badge (text: "Success", variant: "default") {} }
                                 table-cell (text: "ken99@yahoo.com", class: "lowercase") {}
                                 table-cell (text: "$316.00", class: "text-right font-medium") {}
-                                table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "...") {} } }
+                                table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ... } }
                             }
                             table-row {
                                 table-cell (class: "w-[50px]") { checkbox (checked: true) {} }
                                 table-cell { badge (text: "Success", variant: "default") {} }
                                 table-cell (text: "abe45@gmail.com", class: "lowercase") {}
                                 table-cell (text: "$242.00", class: "text-right font-medium") {}
-                                table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "...") {} } }
+                                table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ... } }
                             }
                             table-row {
                                 table-cell (class: "w-[50px]") { checkbox {} }
                                 table-cell { badge (text: "Processing", variant: "outline") {} }
                                 table-cell (text: "monserrat44@gmail.com", class: "lowercase") {}
                                 table-cell (text: "$837.00", class: "text-right font-medium") {}
-                                table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "...") {} } }
+                                table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ... } }
                             }
                             table-row {
                                 table-cell (class: "w-[50px]") { checkbox {} }
                                 table-cell { badge (text: "Failed", variant: "destructive") {} }
                                 table-cell (text: "carmella@hotmail.com", class: "lowercase") {}
                                 table-cell (text: "$721.00", class: "text-right font-medium") {}
-                                table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "...") {} } }
+                                table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ... } }
                             }
                         }
                     }
@@ -614,7 +614,7 @@ widget DatatablePage {
             }
 
             // Features Overview
-            h2 (text: "Features") {}
+            h2 | Features
             text (text: "The Data Table guide covers:", class: "text-muted-foreground") {}
             col (gap: "2", class: "py-2") {
                 row (gap: "2") {
@@ -630,77 +630,77 @@ widget DatatablePage {
             }
 
             // Table Components
-            h2 (text: "Table Components") {}
+            h2 | Table Components
             table {
                 table-header {
                     table-row {
-                        table-head (text: "Component") {}
-                        table-head (text: "Description") {}
+                        table-head | Component
+                        table-head | Description
                     }
                 }
                 table-body {
                     table-row {
-                        table-cell (text: "Table") {}
-                        table-cell (text: "Main table container") {}
+                        table-cell | Table
+                        table-cell | Main table container
                     }
                     table-row {
-                        table-cell (text: "TableHeader") {}
-                        table-cell (text: "Header section") {}
+                        table-cell | TableHeader
+                        table-cell | Header section
                     }
                     table-row {
-                        table-cell (text: "TableBody") {}
-                        table-cell (text: "Body section") {}
+                        table-cell | TableBody
+                        table-cell | Body section
                     }
                     table-row {
-                        table-cell (text: "TableRow") {}
-                        table-cell (text: "Table row") {}
+                        table-cell | TableRow
+                        table-cell | Table row
                     }
                     table-row {
-                        table-cell (text: "TableHead") {}
-                        table-cell (text: "Header cell") {}
+                        table-cell | TableHead
+                        table-cell | Header cell
                     }
                     table-row {
-                        table-cell (text: "TableCell") {}
-                        table-cell (text: "Data cell") {}
+                        table-cell | TableCell
+                        table-cell | Data cell
                     }
                 }
             }
 
             // TanStack Table API
-            h2 (text: "TanStack Table API") {}
+            h2 | TanStack Table API
             text (text: "Key API methods from @tanstack/vue-table:", class: "text-muted-foreground") {}
             table {
                 table-header {
                     table-row {
-                        table-head (text: "Method") {}
-                        table-head (text: "Description") {}
+                        table-head | Method
+                        table-head | Description
                     }
                 }
                 table-body {
                     table-row {
                         table-cell (text: "useVueTable", class: "font-mono text-sm") {}
-                        table-cell (text: "Main composable to create table instance") {}
+                        table-cell | Main composable to create table instance
                     }
                     table-row {
                         table-cell (text: "getCoreRowModel", class: "font-mono text-sm") {}
-                        table-cell (text: "Returns core row model") {}
+                        table-cell | Returns core row model
                     }
                     table-row {
                         table-cell (text: "getPaginationRowModel", class: "font-mono text-sm") {}
-                        table-cell (text: "Returns pagination row model") {}
+                        table-cell | Returns pagination row model
                     }
                     table-row {
                         table-cell (text: "getSortedRowModel", class: "font-mono text-sm") {}
-                        table-cell (text: "Returns sorted row model") {}
+                        table-cell | Returns sorted row model
                     }
                     table-row {
                         table-cell (text: "getFilteredRowModel", class: "font-mono text-sm") {}
-                        table-cell (text: "Returns filtered row model") {}
+                        table-cell | Returns filtered row model
                     }
                 }
             }
 
-            h2 (text: "Documentation") {}
+            h2 | Documentation
             text (text: "For the complete guide with code examples, see the shadcn-vue Data Table documentation.", class: "text-muted-foreground") {}
         }
     }

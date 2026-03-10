@@ -5,49 +5,49 @@ widget AlertPage {
 
     view {
         col {
-            h1 (text: "Alert") {}
-            text (text: "Displays a callout for user attention.") {}
+            h1 | Alert
+            text | Displays a callout for user attention.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add alert") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "alert-basic") {
                 alert {
-                    text (text: "This is an alert message.") {}
+                    text | This is an alert message.
                 }
             }
 
-            h2 (text: "Variants") {}
+            h2 | Variants
             preview-card (id: "alert-variants") {
                 col (gap: "4") {
                     alert (variant: "default") {
-                        text (text: "Default alert") {}
+                        text | Default alert
                     }
                     alert (variant: "destructive") {
-                        text (text: "Error alert") {}
+                        text | Error alert
                     }
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "variant") {}
-                        td (text: "string") {}
-                        td (text: "default") {}
-                        td (text: "default, destructive") {}
-                        td (text: "Alert style variant") {}
+                        td | variant
+                        td | string
+                        td | default
+                        td | default, destructive
+                        td | Alert style variant
                     }
                 }
             }

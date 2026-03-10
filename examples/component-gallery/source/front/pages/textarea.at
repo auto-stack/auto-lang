@@ -5,23 +5,23 @@ widget TextareaPage {
 
     view {
         col {
-            h1 (text: "Textarea") {}
-            text (text: "Displays a form textarea or a component that looks like a textarea.") {}
+            h1 | Textarea
+            text | Displays a form textarea or a component that looks like a textarea.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add textarea") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "textarea-basic") {
                 textarea (placeholder: "Type your message here.", class: "w-64") {}
             }
 
-            h2 (text: "Disabled") {}
+            h2 | Disabled
             preview-card (id: "textarea-disabled") {
                 textarea (placeholder: "Disabled textarea", class: "w-64", disabled: "true") {}
             }
 
-            h2 (text: "With Label") {}
+            h2 | With Label
             preview-card (id: "textarea-label") {
                 col (gap: "1.5", class: "w-64") {
                     label (text: "Email", for: "email") {}
@@ -29,43 +29,43 @@ widget TextareaPage {
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "placeholder") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Placeholder text") {}
+                        td | placeholder
+                        td | string
+                        td | -
+                        td | -
+                        td | Placeholder text
                     }
                     tr {
-                        td (text: "disabled") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Disables the textarea") {}
+                        td | disabled
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Disables the textarea
                     }
                     tr {
-                        td (text: "id") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "ID for label association") {}
+                        td | id
+                        td | string
+                        td | -
+                        td | ID for label association
                     }
                     tr {
-                        td (text: "rows") {}
-                        td (text: "number") {}
-                        td (text: "-") {}
-                        td (text: "Number of visible text lines") {}
+                        td | rows
+                        td | number
+                        td | -
+                        td | Number of visible text lines
                     }
                 }
             }

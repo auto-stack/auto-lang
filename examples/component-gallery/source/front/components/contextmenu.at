@@ -11,11 +11,11 @@
 /// ```
 /// context-menu {
 ///     context-menu-trigger {
-///         text (text: "Right click me") {}
+///         text | Right click me
 ///     }
 ///     context-menu-content {
-///         context-menu-item (text: "Copy") {}
-///         context-menu-item (text: "Paste") {}
+///         context-menu-item | Copy
+///         context-menu-item | Paste
 ///     }
 /// }
 /// ```
@@ -113,17 +113,17 @@ widget ContextMenuDemo {
         ContextMenu {
             ContextMenuTrigger {
                 div { class: "flex h-[150px] w-[300px] items-center justify-center rounded-md border border-dashed text-sm" } {
-                    text (text: "Right click here") {}
+                    text | Right click here
                 }
             }
             ContextMenuContent {
-                ContextMenuLabel (text: "Actions") {}
+                ContextMenuLabel | Actions
                 ContextMenuSeparator {}
-                ContextMenuItem (text: "Copy") {}
-                ContextMenuItem (text: "Cut") {}
-                ContextMenuItem (text: "Paste") {}
+                ContextMenuItem | Copy
+                ContextMenuItem | Cut
+                ContextMenuItem | Paste
                 ContextMenuSeparator {}
-                ContextMenuItem (text: "Delete") {}
+                ContextMenuItem | Delete
             }
         }
     }

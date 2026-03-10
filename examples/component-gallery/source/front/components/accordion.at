@@ -58,7 +58,7 @@ widget AccordionDemo {
 
     view {
         col {
-            h3 (text: "Single Expand Accordion") {}
+            h3 | Single Expand Accordion
 
             div { class: "accordion" }
         }
@@ -73,7 +73,7 @@ widget AccordionShadcnDemo {
 
     view {
         col {
-            h3 (text: "Product Information Accordion") {}
+            h3 | Product Information Accordion
 
             Accordion (type: "single", defaultValue: "item-1") {
                 AccordionItem (value: "item-1") {

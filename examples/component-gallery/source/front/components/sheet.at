@@ -10,10 +10,10 @@
 /// # Usage
 /// ```
 /// sheet (open: .showSheet) {
-///     sheet-trigger (text: "Open") {}
+///     sheet-trigger | Open
 ///     sheet-content (side: "right") {
 ///         sheet-header {
-///             sheet-title (text: "Title") {}
+///             sheet-title | Title
 ///         }
 ///     }
 /// }
@@ -106,14 +106,14 @@ widget SheetDemo {
     view {
         row (gap: "4") {
             sheet (open: .open) {
-                sheet-trigger (text: "Open Sheet") {}
+                sheet-trigger | Open Sheet
                 sheet-content (side: "right") {
                     sheet-header {
-                        sheet-title (text: "Edit Profile") {}
-                        sheet-description (text: "Make changes to your profile here.") {}
+                        sheet-title | Edit Profile
+                        sheet-description | Make changes to your profile here.
                     }
                     sheet-footer {
-                        button (text: "Save changes") {}
+                        button | Save changes
                     }
                 }
             }

@@ -82,20 +82,20 @@ widget CopyButtonDemo {
 
     view {
         col {
-            h3 (text: "Copy Button") {}
+            h3 | Copy Button
 
             row {
                 CopyButton (text: .sampleCode) {}
             }
 
-            h3 (text: "Copy Icon Button") {}
+            h3 | Copy Icon Button
 
             row {
                 text "Copy this code: "
                 CopyIconButton (text: .sampleCode) {}
             }
 
-            h3 (text: "Combined with Code Block") {}
+            h3 | Combined with Code Block
 
             div { class: "code-with-copy" }
         }

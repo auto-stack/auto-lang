@@ -114,7 +114,7 @@ widget SelectDemo {
                 }
                 SelectContent {
                     SelectGroup {
-                        SelectLabel (text: "Fruits") {}
+                        SelectLabel | Fruits
                         SelectItem (value: "apple", text: "Apple") {}
                         SelectItem (value: "banana", text: "Banana") {}
                         SelectItem (value: "orange", text: "Orange") {}

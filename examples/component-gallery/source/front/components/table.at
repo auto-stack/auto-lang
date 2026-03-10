@@ -12,14 +12,14 @@
 /// table {
 ///     table-header {
 ///         table-row {
-///             table-head (text: "Name") {}
-///             table-head (text: "Email") {}
+///             table-head | Name
+///             table-head | Email
 ///         }
 ///     }
 ///     table-body {
 ///         table-row {
-///             table-cell (text: "John") {}
-///             table-cell (text: "john@example.com") {}
+///             table-cell | John
+///             table-cell | john@example.com
 ///         }
 ///     }
 /// }
@@ -106,24 +106,24 @@ widget TableDemo {
         Table {
             TableHeader {
                 TableRow {
-                    TableHead (text: "Invoice") {}
-                    TableHead (text: "Status") {}
-                    TableHead (text: "Method") {}
-                    TableHead (text: "Amount") {}
+                    TableHead | Invoice
+                    TableHead | Status
+                    TableHead | Method
+                    TableHead | Amount
                 }
             }
             TableBody {
                 TableRow {
-                    TableCell (text: "INV001") {}
-                    TableCell (text: "Paid") {}
-                    TableCell (text: "Credit Card") {}
-                    TableCell (text: "$250.00") {}
+                    TableCell | INV001
+                    TableCell | Paid
+                    TableCell | Credit Card
+                    TableCell | $250.00
                 }
                 TableRow {
-                    TableCell (text: "INV002") {}
-                    TableCell (text: "Pending") {}
-                    TableCell (text: "PayPal") {}
-                    TableCell (text: "$150.00") {}
+                    TableCell | INV002
+                    TableCell | Pending
+                    TableCell | PayPal
+                    TableCell | $150.00
                 }
             }
         }

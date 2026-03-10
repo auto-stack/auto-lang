@@ -5,65 +5,65 @@ widget CommandPage {
 
     view {
         col {
-            h1 (text: "Command") {}
-            text (text: "A command menu for searching and performing actions quickly. Often used with keyboard shortcuts.") {}
+            h1 | Command
+            text | A command menu for searching and performing actions quickly. Often used with keyboard shortcuts.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add command") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "command-basic") {
                 command (class: "rounded-lg border shadow-md") {
                     command-input (placeholder: "Type a command or search...") {}
                     command-list {
-                        command-empty (text: "No results found.") {}
+                        command-empty | No results found.
                         command-group (heading: "Suggestions") {
-                            command-item (text: "Calendar") {}
-                            command-item (text: "Search Emoji") {}
-                            command-item (text: "Calculator") {}
+                            command-item | Calendar
+                            command-item | Search Emoji
+                            command-item | Calculator
                         }
                         command-separator {}
                         command-group (heading: "Settings") {
-                            command-item (text: "Profile") {}
-                            command-item (text: "Billing") {}
-                            command-item (text: "Settings") {}
+                            command-item | Profile
+                            command-item | Billing
+                            command-item | Settings
                         }
                     }
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "filter") {}
-                        td (text: "function") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Custom filter function") {}
+                        td | filter
+                        td | function
+                        td | -
+                        td | -
+                        td | Custom filter function
                     }
                     tr {
-                        td (text: "loop") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Loop through items") {}
+                        td | loop
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Loop through items
                     }
                     tr {
-                        td (text: "v-model") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Search term") {}
+                        td | v-model
+                        td | string
+                        td | -
+                        td | -
+                        td | Search term
                     }
                 }
             }

@@ -10,11 +10,11 @@
 /// # Usage
 /// ```
 /// dialog (open: .showDialog) {
-///     dialog-trigger (text: "Open") {}
+///     dialog-trigger | Open
 ///     dialog-content {
 ///         dialog-header {
-///             dialog-title (text: "Title") {}
-///             dialog-description (text: "Description") {}
+///             dialog-title | Title
+///             dialog-description | Description
 ///         }
 ///     }
 /// }
@@ -99,14 +99,14 @@ widget DialogDemo {
     view {
         row (gap: "4") {
             dialog (open: .open) {
-                dialog-trigger (text: "Open Dialog") {}
+                dialog-trigger | Open Dialog
                 dialog-content {
                     dialog-header {
-                        dialog-title (text: "Edit Profile") {}
-                        dialog-description (text: "Make changes to your profile here. Click save when you're done.") {}
+                        dialog-title | Edit Profile
+                        dialog-description | Make changes to your profile here. Click save when you're done.
                     }
                     dialog-footer {
-                        button (text: "Save changes") {}
+                        button | Save changes
                     }
                 }
             }

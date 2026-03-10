@@ -5,13 +5,13 @@ widget ComboboxPage {
 
     view {
         col {
-            h1 (text: "Combobox") {}
-            text (text: "An autocomplete input with a listbox, combining a text input with a dropdown.") {}
+            h1 | Combobox
+            text | An autocomplete input with a listbox, combining a text input with a dropdown.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add combobox") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "combobox-basic") {
                 popover {
                     popover-trigger {
@@ -20,12 +20,12 @@ widget ComboboxPage {
                     popover-content {
                         command {
                             command-input (placeholder: "Search framework...") {}
-                            command-empty (text: "No framework found.") {}
+                            command-empty | No framework found.
                             command-list {
                                 command-group {
-                                    command-item (text: "Vue") {}
-                                    command-item (text: "React") {}
-                                    command-item (text: "Svelte") {}
+                                    command-item | Vue
+                                    command-item | React
+                                    command-item | Svelte
                                 }
                             }
                         }
@@ -33,31 +33,31 @@ widget ComboboxPage {
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "v-model") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Selected value") {}
+                        td | v-model
+                        td | string
+                        td | -
+                        td | -
+                        td | Selected value
                     }
                     tr {
-                        td (text: "filter") {}
-                        td (text: "function") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Custom filter function") {}
+                        td | filter
+                        td | function
+                        td | -
+                        td | -
+                        td | Custom filter function
                     }
                 }
             }

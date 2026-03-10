@@ -11,10 +11,10 @@
 /// ```
 /// menubar {
 ///     menubar-menu {
-///         menubar-trigger (text: "File") {}
+///         menubar-trigger | File
 ///         menubar-content {
-///             menubar-item (text: "New File") {}
-///             menubar-item (text: "Open") {}
+///             menubar-item | New File
+///             menubar-item | Open
 ///         }
 ///     }
 /// }
@@ -113,24 +113,24 @@ widget MenubarDemo {
     view {
         Menubar {
             MenubarMenu {
-                MenubarTrigger (text: "File") {}
+                MenubarTrigger | File
                 MenubarContent {
-                    MenubarItem (text: "New File") {}
-                    MenubarItem (text: "Open...") {}
+                    MenubarItem | New File
+                    MenubarItem | Open...
                     MenubarSeparator {}
-                    MenubarItem (text: "Save") {}
-                    MenubarItem (text: "Save As...") {}
+                    MenubarItem | Save
+                    MenubarItem | Save As...
                 }
             }
             MenubarMenu {
-                MenubarTrigger (text: "Edit") {}
+                MenubarTrigger | Edit
                 MenubarContent {
-                    MenubarItem (text: "Undo") {}
-                    MenubarItem (text: "Redo") {}
+                    MenubarItem | Undo
+                    MenubarItem | Redo
                     MenubarSeparator {}
-                    MenubarItem (text: "Cut") {}
-                    MenubarItem (text: "Copy") {}
-                    MenubarItem (text: "Paste") {}
+                    MenubarItem | Cut
+                    MenubarItem | Copy
+                    MenubarItem | Paste
                 }
             }
         }

@@ -10,10 +10,10 @@
 /// # Usage
 /// ```
 /// drawer (open: .showDrawer) {
-///     drawer-trigger (text: "Open") {}
+///     drawer-trigger | Open
 ///     drawer-content {
 ///         drawer-header {
-///             drawer-title (text: "Title") {}
+///             drawer-title | Title
 ///         }
 ///     }
 /// }
@@ -110,15 +110,15 @@ widget DrawerDemo {
 
     view {
         drawer (open: .open) {
-            drawer-trigger (text: "Open Drawer") {}
+            drawer-trigger | Open Drawer
             drawer-content {
                 drawer-header {
-                    drawer-title (text: "Menu") {}
-                    drawer-description (text: "Choose an option from the menu.") {}
+                    drawer-title | Menu
+                    drawer-description | Choose an option from the menu.
                 }
                 drawer-footer {
-                    drawer-close (text: "Cancel") {}
-                    button (text: "Submit") {}
+                    drawer-close | Cancel
+                    button | Submit
                 }
             }
         }

@@ -5,48 +5,48 @@ widget SeparatorPage {
 
     view {
         col {
-            h1 (text: "Separator") {}
-            text (text: "Visually or semantically separates content.") {}
+            h1 | Separator
+            text | Visually or semantically separates content.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add separator") {}
 
-            h2 (text: "Horizontal") {}
+            h2 | Horizontal
             preview-card (id: "separator-horizontal") {
                 col (gap: "4") {
-                    text (text: "Content above") {}
+                    text | Content above
                     separator (orientation: "horizontal") {}
-                    text (text: "Content below") {}
+                    text | Content below
                 }
             }
 
-            h2 (text: "Vertical") {}
+            h2 | Vertical
             preview-card (id: "separator-vertical") {
                 row (gap: "4", class: "h-8 items-center") {
-                    text (text: "Left") {}
+                    text | Left
                     separator (orientation: "vertical") {}
-                    text (text: "Right") {}
+                    text | Right
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "orientation") {}
-                        td (text: "string") {}
-                        td (text: "horizontal") {}
-                        td (text: "horizontal, vertical") {}
-                        td (text: "Separator orientation") {}
+                        td | orientation
+                        td | string
+                        td | horizontal
+                        td | horizontal, vertical
+                        td | Separator orientation
                     }
                 }
             }

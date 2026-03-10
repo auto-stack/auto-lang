@@ -13,8 +13,8 @@
 /// # Usage
 /// ```
 /// Alert {
-///     AlertTitle (text: "Success") {}
-///     AlertDescription (text: "Your changes have been saved.") {}
+///     AlertTitle | Success
+///     AlertDescription | Your changes have been saved.
 /// }
 /// ```
 
@@ -63,12 +63,12 @@ widget AlertDemo {
     view {
         col (gap: "4") {
             Alert {
-                AlertTitle (text: "Default Alert") {}
-                AlertDescription (text: "This is a default alert message.") {}
+                AlertTitle | Default Alert
+                AlertDescription | This is a default alert message.
             }
             Alert (variant: "destructive") {
-                AlertTitle (text: "Error") {}
-                AlertDescription (text: "Something went wrong. Please try again.") {}
+                AlertTitle | Error
+                AlertDescription | Something went wrong. Please try again.
             }
         }
     }

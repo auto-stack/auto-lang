@@ -40,14 +40,14 @@ widget Separator {
 widget SeparatorDemo {
     view {
         col (gap: "4") {
-            text (text: "Above separator") {}
+            text | Above separator
             Separator {}
-            text (text: "Below separator") {}
+            text | Below separator
 
             row (gap: "4") {
-                text (text: "Left") {}
+                text | Left
                 Separator (orientation: "vertical", decorative: true) {}
-                text (text: "Right") {}
+                text | Right
             }
         }
     }

@@ -52,7 +52,7 @@ widget CardDemo {
 
     view {
         col {
-            h3 (text: "Card Variants") {}
+            h3 | Card Variants
 
             row {
                 Card (title: "Default Card", variant: "default") {
@@ -68,7 +68,7 @@ widget CardDemo {
                 }
             }
 
-            h3 (text: "Interactive Card") {}
+            h3 | Interactive Card
 
             row {
                 Card (title: "Click me!") {
@@ -80,7 +80,7 @@ widget CardDemo {
                 }
             }
 
-            h3 (text: "Card with Content Sections") {}
+            h3 | Card with Content Sections
 
             CardSection (variant: "default") {
                 div { class: "card-header", text: "Product Card" }

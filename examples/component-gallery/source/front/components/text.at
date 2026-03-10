@@ -66,20 +66,20 @@ widget TextDemo {
 
     view {
         col {
-            h3 (text: "Text Styles") {}
+            h3 | Text Styles
 
             H1 (content: "Heading 1") {}
             H2 (content: "Heading 2") {}
             H3 (content: "Heading 3") {}
             Paragraph (content: "This is a paragraph of text. It can contain multiple sentences and will wrap automatically.") {}
 
-            h3 (text: "Interpolated Text") {}
+            h3 | Interpolated Text
 
             text f"Welcome to ${.name} v${.version}!"
             text f"2 + 2 = ${2 + 2}"
             text f"Current time: ${.now()}"
 
-            h3 (text: "Truncated Text") {}
+            h3 | Truncated Text
 
             Text {
                 content: "This is a very long text that will be truncated when it exceeds the maximum length."
@@ -87,7 +87,7 @@ widget TextDemo {
                 maxLength: 30
             }
 
-            h3 (text: "Muted Text") {}
+            h3 | Muted Text
 
             Text {
                 content: "This is muted text, typically used for secondary information."

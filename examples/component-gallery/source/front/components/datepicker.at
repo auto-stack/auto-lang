@@ -86,7 +86,7 @@ widget DateRangePicker {
             popover-trigger {
                 row (gap: "2") {
                     DatePickerTrigger (value: if .start != "" { .start } else { "Start date" }) {}
-                    text (text: "-") {}
+                    text | -
                     DatePickerTrigger (value: if .end != "" { .end } else { "End date" }) {}
                 }
             }

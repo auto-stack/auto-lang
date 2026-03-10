@@ -10,11 +10,11 @@
 /// # Usage
 /// ```
 /// dropdown-menu {
-///     dropdown-menu-trigger (text: "Open") {}
+///     dropdown-menu-trigger | Open
 ///     dropdown-menu-content {
-///         dropdown-menu-item (text: "Profile") {}
+///         dropdown-menu-item | Profile
 ///         dropdown-menu-separator {}
-///         dropdown-menu-item (text: "Logout") {}
+///         dropdown-menu-item | Logout
 ///     }
 /// }
 /// ```
@@ -98,15 +98,15 @@ widget DropdownMenuLabel {
 widget DropdownMenuDemo {
     view {
         DropdownMenu {
-            DropdownMenuTrigger (text: "Open Menu") {}
+            DropdownMenuTrigger | Open Menu
             DropdownMenuContent {
-                DropdownMenuLabel (text: "My Account") {}
+                DropdownMenuLabel | My Account
                 DropdownMenuSeparator {}
-                DropdownMenuItem (text: "Profile") {}
-                DropdownMenuItem (text: "Billing") {}
-                DropdownMenuItem (text: "Settings") {}
+                DropdownMenuItem | Profile
+                DropdownMenuItem | Billing
+                DropdownMenuItem | Settings
                 DropdownMenuSeparator {}
-                DropdownMenuItem (text: "Logout") {}
+                DropdownMenuItem | Logout
             }
         }
     }

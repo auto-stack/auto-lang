@@ -102,7 +102,7 @@ widget ComboboxDemo {
         Combobox (value: .selected, open: .open) {
             ComboboxInput (placeholder: "Select framework...") {}
             ComboboxList {
-                ComboboxEmpty (text: "No framework found.") {}
+                ComboboxEmpty | No framework found.
                 ComboboxGroup {
                     ComboboxItem (value: "next", text: "Next.js") {}
                     ComboboxItem (value: "sveltekit", text: "SvelteKit") {}

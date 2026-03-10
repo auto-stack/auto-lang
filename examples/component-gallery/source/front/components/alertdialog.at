@@ -10,14 +10,14 @@
 /// # Usage
 /// ```
 /// alert-dialog (open: .showAlert) {
-///     alert-dialog-trigger (text: "Delete") {}
+///     alert-dialog-trigger | Delete
 ///     alert-dialog-content {
 ///         alert-dialog-header {
-///             alert-dialog-title (text: "Are you sure?") {}
+///             alert-dialog-title | Are you sure?
 ///         }
 ///         alert-dialog-footer {
-///             alert-dialog-cancel (text: "Cancel") {}
-///             alert-dialog-action (text: "Continue") {}
+///             alert-dialog-cancel | Cancel
+///             alert-dialog-action | Continue
 ///         }
 ///     }
 /// }
@@ -127,15 +127,15 @@ widget AlertDialogDemo {
 
     view {
         alert-dialog (open: .open) {
-            alert-dialog-trigger (text: "Delete Account") {}
+            alert-dialog-trigger | Delete Account
             alert-dialog-content {
                 alert-dialog-header {
-                    alert-dialog-title (text: "Are you absolutely sure?") {}
-                    alert-dialog-description (text: "This action cannot be undone. This will permanently delete your account and remove your data from our servers.") {}
+                    alert-dialog-title | Are you absolutely sure?
+                    alert-dialog-description | This action cannot be undone. This will permanently delete your account and remove your data from our servers.
                 }
                 alert-dialog-footer {
-                    alert-dialog-cancel (text: "Cancel") {}
-                    alert-dialog-action (text: "Continue") {}
+                    alert-dialog-cancel | Cancel
+                    alert-dialog-action | Continue
                 }
             }
         }

@@ -13,10 +13,10 @@
 /// command-dialog {
 ///     command-input (placeholder: "Search...") {}
 ///     command-list {
-///         command-empty (text: "No results") {}
+///         command-empty | No results
 ///         command-group (heading: "Suggestions") {
-///             command-item (text: "Calendar") {}
-///             command-item (text: "Settings") {}
+///             command-item | Calendar
+///             command-item | Settings
 ///         }
 ///     }
 /// }
@@ -127,7 +127,7 @@ widget CommandDemo {
         Command {
             CommandInput (placeholder: "Search commands...") {}
             CommandList {
-                CommandEmpty (text: "No commands found.") {}
+                CommandEmpty | No commands found.
                 CommandGroup (heading: "Suggestions") {
                     CommandItem (text: "Calendar", shortcut: "⌘C") {}
                     CommandItem (text: "Search Emoji", shortcut: "⌘E") {}
@@ -135,9 +135,9 @@ widget CommandDemo {
                 }
                 CommandSeparator {}
                 CommandGroup (heading: "Settings") {
-                    CommandItem (text: "Profile") {}
-                    CommandItem (text: "Billing") {}
-                    CommandItem (text: "Settings") {}
+                    CommandItem | Profile
+                    CommandItem | Billing
+                    CommandItem | Settings
                 }
             }
         }

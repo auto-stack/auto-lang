@@ -10,9 +10,9 @@
 /// # Usage
 /// ```
 /// popover {
-///     popover-trigger (text: "Open") {}
+///     popover-trigger | Open
 ///     popover-content {
-///         text (text: "Popover content") {}
+///         text | Popover content
 ///     }
 /// }
 /// ```
@@ -56,11 +56,11 @@ widget PopoverContent {
 widget PopoverDemo {
     view {
         popover {
-            popover-trigger (text: "Open Popover") {}
+            popover-trigger | Open Popover
             popover-content {
                 col (class: "gap-4") {
-                    h4 (text: "Dimensions") {}
-                    text (text: "Set the dimensions for the layer.") {}
+                    h4 | Dimensions
+                    text | Set the dimensions for the layer.
                     row (gap: "2") {
                         input (placeholder: "Width") {}
                         input (placeholder: "Height") {}

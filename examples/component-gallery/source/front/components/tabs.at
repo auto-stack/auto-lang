@@ -77,7 +77,7 @@ widget TabsDemo {
 
     view {
         col {
-            h3 (text: "Basic Tabs") {}
+            h3 | Basic Tabs
 
             Tabs (activeTab: .activeTab, onchange: .TabChange) {
                 TabTrigger (id: "preview", label: "Preview", active: .activeTab == "preview") {}

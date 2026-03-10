@@ -64,10 +64,10 @@ widget LabelDemo {
 
     view {
         col {
-            h3 (text: "Label Variants") {}
+            h3 | Label Variants
 
             col {
-                Label (text: "Standard Label") {}
+                Label | Standard Label
                 Input (placeholder: "Standard input") {}
             }
 
@@ -87,7 +87,7 @@ widget LabelDemo {
                 text { class: "error-text", content: "This field has an error" }
             }
 
-            h3 (text: "Form Example") {}
+            h3 | Form Example
 
             div { class: "form" }
         }

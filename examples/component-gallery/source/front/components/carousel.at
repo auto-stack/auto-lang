@@ -12,8 +12,8 @@
 /// ```
 /// carousel {
 ///     carousel-content {
-///         carousel-item { text (text: "Slide 1") {} }
-///         carousel-item { text (text: "Slide 2") {} }
+///         carousel-item { text | Slide 1 }
+///         carousel-item { text | Slide 2 }
 ///     }
 ///     carousel-previous {}
 ///     carousel-next {}
@@ -80,21 +80,21 @@ widget CarouselDemo {
                 carousel-item {
                     card {
                         card-content {
-                            text (text: "Slide 1") {}
+                            text | Slide 1
                         }
                     }
                 }
                 carousel-item {
                     card {
                         card-content {
-                            text (text: "Slide 2") {}
+                            text | Slide 2
                         }
                     }
                 }
                 carousel-item {
                     card {
                         card-content {
-                            text (text: "Slide 3") {}
+                            text | Slide 3
                         }
                     }
                 }

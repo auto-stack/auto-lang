@@ -56,19 +56,19 @@ widget ScrollAreaThumb {
 widget ScrollAreaDemo {
     view {
         col (gap: "4") {
-            h3 (text: "Vertical Scroll") {}
+            h3 | Vertical Scroll
             ScrollArea (class: "h-32 w-48 rounded-md border") {
                 col (gap: "2") {
-                    text (text: "Item 1") {}
-                    text (text: "Item 2") {}
-                    text (text: "Item 3") {}
-                    text (text: "Item 4") {}
-                    text (text: "Item 5") {}
-                    text (text: "Item 6") {}
-                    text (text: "Item 7") {}
-                    text (text: "Item 8") {}
-                    text (text: "Item 9") {}
-                    text (text: "Item 10") {}
+                    text | Item 1
+                    text | Item 2
+                    text | Item 3
+                    text | Item 4
+                    text | Item 5
+                    text | Item 6
+                    text | Item 7
+                    text | Item 8
+                    text | Item 9
+                    text | Item 10
                 }
             }
         }

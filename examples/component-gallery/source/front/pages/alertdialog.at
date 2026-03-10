@@ -5,13 +5,13 @@ widget AlertdialogPage {
 
     view {
         col {
-            h1 (text: "AlertDialog") {}
-            text (text: "A modal dialog that interrupts the user with important content and requires confirmation.") {}
+            h1 | AlertDialog
+            text | A modal dialog that interrupts the user with important content and requires confirmation.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add alert-dialog") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "alertdialog-basic") {
                 alert-dialog {
                     alert-dialog-trigger {
@@ -19,42 +19,42 @@ widget AlertdialogPage {
                     }
                     alert-dialog-content {
                         alert-dialog-header {
-                            alert-dialog-title (text: "Are you absolutely sure?") {}
-                            alert-dialog-description (text: "This action cannot be undone. This will permanently delete your account and remove your data from our servers.") {}
+                            alert-dialog-title | Are you absolutely sure?
+                            alert-dialog-description | This action cannot be undone. This will permanently delete your account and remove your data from our servers.
                         }
                         alert-dialog-footer {
-                            alert-dialog-cancel (text: "Cancel") {}
-                            alert-dialog-action (text: "Continue") {}
+                            alert-dialog-cancel | Cancel
+                            alert-dialog-action | Continue
                         }
                     }
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "open") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Controls dialog visibility") {}
+                        td | open
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Controls dialog visibility
                     }
                     tr {
-                        td (text: "text") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Button/Title/Description text") {}
+                        td | text
+                        td | string
+                        td | -
+                        td | -
+                        td | Button/Title/Description text
                     }
                 }
             }

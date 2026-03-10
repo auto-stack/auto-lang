@@ -5,49 +5,49 @@ widget DialogPage {
 
     view {
         col {
-            h1 (text: "Dialog") {}
-            text (text: "A modal dialog that displays content on top of the page.") {}
-            h2 (text: "Installation") {}
+            h1 | Dialog
+            text | A modal dialog that displays content on top of the page.
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add dialog") {}
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "dialog-basic") {
                 row (gap: "4") {
                     dialog {}
-                    dialog-trigger (text: "Open Dialog") {}
+                    dialog-trigger | Open Dialog
                 }
             }
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "open") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Controls dialog visibility") {}
+                        td | open
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Controls dialog visibility
                     }
                     tr {
-                        td (text: "title") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Dialog title") {}
+                        td | title
+                        td | string
+                        td | -
+                        td | -
+                        td | Dialog title
                     }
                     tr {
-                        td (text: "description") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Dialog description") {}
+                        td | description
+                        td | string
+                        td | -
+                        td | -
+                        td | Dialog description
                     }
                 }
             }

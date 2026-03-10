@@ -5,14 +5,14 @@ widget CarouselPage {
 
     view {
         col {
-            h1 (text: "Carousel") {}
-            text (text: "A carousel with motion and gestures built in using Embla Carousel.") {}
+            h1 | Carousel
+            text | A carousel with motion and gestures built in using Embla Carousel.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add carousel") {}
 
             // Basic Example
-            h2 (text: "Basic") {}
+            h2 | Basic
             preview-card (id: "carousel-basic") {
                 carousel (class: "w-full max-w-xs") {
                     carousel-content {
@@ -44,7 +44,7 @@ widget CarouselPage {
             }
 
             // Sizes Example
-            h2 (text: "Sizes") {}
+            h2 | Sizes
             text (text: "Use the basis utility class on CarouselItem to set the size.", class: "text-muted-foreground") {}
             preview-card (id: "carousel-sizes") {
                 carousel (class: "w-full max-w-sm") {
@@ -98,7 +98,7 @@ widget CarouselPage {
             }
 
             // Spacing Example
-            h2 (text: "Spacing") {}
+            h2 | Spacing
             text (text: "Use pl-4 on CarouselItem and -ml-4 on CarouselContent for spacing.", class: "text-muted-foreground") {}
             preview-card (id: "carousel-spacing") {
                 carousel (class: "w-full max-w-sm") {
@@ -138,7 +138,7 @@ widget CarouselPage {
             }
 
             // Orientation Example
-            h2 (text: "Orientation") {}
+            h2 | Orientation
             text (text: "Use the orientation prop to set vertical or horizontal direction.", class: "text-muted-foreground") {}
             preview-card (id: "carousel-orientation") {
                 div (class: "py-12 flex justify-center") {
@@ -180,7 +180,7 @@ widget CarouselPage {
             }
 
             // Options Example
-            h2 (text: "Options") {}
+            h2 | Options
             text (text: "Pass Embla options using the opts prop.", class: "text-muted-foreground") {}
             preview-card (id: "carousel-options") {
                 carousel (align: "start", loop: "true", class: "w-full max-w-sm") {
@@ -227,52 +227,52 @@ widget CarouselPage {
             }
 
             // Properties Table
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "opts") {}
-                        td (text: "object") {}
-                        td (text: "{}") {}
-                        td (text: "-") {}
-                        td (text: "Embla carousel options") {}
+                        td | opts
+                        td | object
+                        td | {}
+                        td | -
+                        td | Embla carousel options
                     }
                     tr {
-                        td (text: "orientation") {}
-                        td (text: "string") {}
+                        td | orientation
+                        td | string
                         td (text: "\"horizontal\"") {}
                         td (text: "\"horizontal\", \"vertical\"") {}
-                        td (text: "Carousel direction") {}
+                        td | Carousel direction
                     }
                     tr {
-                        td (text: "align") {}
-                        td (text: "string") {}
+                        td | align
+                        td | string
                         td (text: "\"center\"") {}
                         td (text: "\"start\", \"center\", \"end\"") {}
-                        td (text: "Alignment of slides") {}
+                        td | Alignment of slides
                     }
                     tr {
-                        td (text: "loop") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Enable infinite loop") {}
+                        td | loop
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Enable infinite loop
                     }
                     tr {
-                        td (text: "class") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Additional CSS classes") {}
+                        td | class
+                        td | string
+                        td | -
+                        td | -
+                        td | Additional CSS classes
                     }
                 }
             }

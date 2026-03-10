@@ -11,10 +11,10 @@
 /// ```
 /// form (onsubmit: .Submit) {
 ///     form-item {
-///         form-label (text: "Email") {}
+///         form-label | Email
 ///         input (type: "email") {}
-///         form-description (text: "Enter your email") {}
-///         form-message (text: "Invalid email") {}
+///         form-description | Enter your email
+///         form-message | Invalid email
 ///     }
 /// }
 /// ```
@@ -100,12 +100,12 @@ widget FormDemo {
     view {
         Form {
             FormItem {
-                FormLabel (text: "Email") {}
+                FormLabel | Email
                 input (type: "email", placeholder: "email@example.com") {}
-                FormDescription (text: "We'll never share your email.") {}
+                FormDescription | We'll never share your email.
             }
             FormItem {
-                FormLabel (text: "Password") {}
+                FormLabel | Password
                 input (type: "password", placeholder: "••••••••") {}
             }
             button (text: "Submit", type: "submit") {}

@@ -71,7 +71,7 @@ widget ToggleGroupDemo {
         col (gap: "4") {
             // Single selection
             col (gap: "2") {
-                label (text: "Alignment") {}
+                label | Alignment
                 ToggleGroup (type: "single", value: .alignment) {
                     ToggleItem (value: "left", text: "Left", pressed: .alignment == "left") {}
                     ToggleItem (value: "center", text: "Center", pressed: .alignment == "center") {}
@@ -81,7 +81,7 @@ widget ToggleGroupDemo {
 
             // Multiple selection (simulated)
             col (gap: "2") {
-                label (text: "Style") {}
+                label | Style
                 ToggleGroup (type: "multiple", orientation: "horizontal") {
                     ToggleItem (value: "bold", text: "B") {}
                     ToggleItem (value: "italic", text: "I") {}

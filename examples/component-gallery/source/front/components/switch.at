@@ -56,7 +56,7 @@ widget SwitchDemo {
         col (gap: "4") {
             row (gap: "2") {
                 Switch (checked: .enabled) {}
-                label (text: "Enable notifications") {}
+                label | Enable notifications
             }
             text (text: f"Status: ${if .enabled { \"On\" } else { \"Off\" }}") {}
         }

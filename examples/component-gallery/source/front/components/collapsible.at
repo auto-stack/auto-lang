@@ -11,10 +11,10 @@
 /// ```
 /// collapsible (open: .expanded) {
 ///     collapsible-trigger {
-///         button (text: "Toggle") {}
+///         button | Toggle
 ///     }
 ///     collapsible-content {
-///         text (text: "Hidden content") {}
+///         text | Hidden content
 ///     }
 /// }
 /// ```
@@ -81,8 +81,8 @@ widget CollapsibleDemo {
                 }
                 collapsible-content {
                     div { class: "rounded-md border px-4 py-2 font-mono text-sm" } {
-                        text (text: "@radix-ui/colors") {}
-                        text (text: "@radix-ui/react-collapsible") {}
+                        text | @radix-ui/colors
+                        text | @radix-ui/react-collapsible
                     }
                 }
             }

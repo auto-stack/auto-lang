@@ -5,18 +5,18 @@ widget LabelPage {
 
     view {
         col {
-            h1 (text: "Label") {}
-            text (text: "Renders an accessible label associated with controls.") {}
+            h1 | Label
+            text | Renders an accessible label associated with controls.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add label") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "label-basic") {
-                label (text: "Email") {}
+                label | Email
             }
 
-            h2 (text: "With Input") {}
+            h2 | With Input
             preview-card (id: "label-input") {
                 col (gap: "1.5", class: "w-64") {
                     label (text: "Email", for: "email") {}
@@ -24,31 +24,31 @@ widget LabelPage {
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "text") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Label text content (slot)") {}
+                        td | text
+                        td | string
+                        td | -
+                        td | -
+                        td | Label text content (slot)
                     }
                     tr {
-                        td (text: "for") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "ID of the associated form control") {}
+                        td | for
+                        td | string
+                        td | -
+                        td | -
+                        td | ID of the associated form control
                     }
                 }
             }

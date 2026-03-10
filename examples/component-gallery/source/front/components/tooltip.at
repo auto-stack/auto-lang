@@ -12,9 +12,9 @@
 /// tooltip-provider {
 ///     tooltip {
 ///         tooltip-trigger {
-///             button (text: "Hover me") {}
+///             button | Hover me
 ///         }
-///         tooltip-content (text: "Tooltip text") {}
+///         tooltip-content | Tooltip text
 ///     }
 /// }
 /// ```

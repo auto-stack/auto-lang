@@ -5,61 +5,61 @@ widget AccordionPage {
 
     view {
         col {
-            h1 (text: "Accordion") {}
-            text (text: "A vertically stacked set of interactive headings that each reveal a section of content.") {}
+            h1 | Accordion
+            text | A vertically stacked set of interactive headings that each reveal a section of content.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add accordion") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "accordion-basic") {
                 accordion (type: "single", collapsible: "true", class: "w-full") {
                     accordion-item (value: "item-1") {
-                        accordion-trigger (text: "Is it accessible?") {}
+                        accordion-trigger | Is it accessible?
                         accordion-content {
-                            text (text: "Yes. It adheres to the WAI-ARIA design pattern.") {}
+                            text | Yes. It adheres to the WAI-ARIA design pattern.
                         }
                     }
                     accordion-item (value: "item-2") {
-                        accordion-trigger (text: "Is it styled?") {}
+                        accordion-trigger | Is it styled?
                         accordion-content {
-                            text (text: "Yes. It comes with default styles that match the other components.") {}
+                            text | Yes. It comes with default styles that match the other components.
                         }
                     }
                     accordion-item (value: "item-3") {
-                        accordion-trigger (text: "Is it animated?") {}
+                        accordion-trigger | Is it animated?
                         accordion-content {
-                            text (text: "Yes. It's animated by default, but you can disable it if you prefer.") {}
+                            text | Yes. It's animated by default, but you can disable it if you prefer.
                         }
                     }
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "type") {}
-                        td (text: "string") {}
-                        td (text: "single") {}
-                        td (text: "single, multiple") {}
-                        td (text: "Single or multiple items open") {}
+                        td | type
+                        td | string
+                        td | single
+                        td | single, multiple
+                        td | Single or multiple items open
                     }
                     tr {
-                        td (text: "collapsible") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Allow all items to be collapsed") {}
+                        td | collapsible
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Allow all items to be collapsed
                     }
                 }
             }

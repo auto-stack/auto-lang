@@ -5,18 +5,18 @@ widget SkeletonPage {
 
     view {
         col {
-            h1 (text: "Skeleton") {}
-            text (text: "Use to show a placeholder while content is loading.") {}
+            h1 | Skeleton
+            text | Use to show a placeholder while content is loading.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add skeleton") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "skeleton-basic") {
                 skeleton (class: "w-48 h-4") {}
             }
 
-            h2 (text: "Card Skeleton") {}
+            h2 | Card Skeleton
             preview-card (id: "skeleton-card") {
                 col (gap: "4", class: "w-64") {
                     skeleton (class: "h-12 w-12 rounded-full") {}
@@ -27,24 +27,24 @@ widget SkeletonPage {
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "class") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Tailwind classes for sizing") {}
+                        td | class
+                        td | string
+                        td | -
+                        td | -
+                        td | Tailwind classes for sizing
                     }
                 }
             }

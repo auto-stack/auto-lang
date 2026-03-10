@@ -10,7 +10,7 @@
 /// # Usage
 /// ```
 /// toggle (pressed: .isPressed, onchange: .Toggle) {
-///     text (text: "B") {}
+///     text | B
 /// }
 /// ```
 

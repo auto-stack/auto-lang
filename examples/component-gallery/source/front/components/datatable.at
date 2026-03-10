@@ -17,8 +17,8 @@ widget DataTableBasic {
         table {
             table-header {
                 table-row {
-                    table-head (text: "Status") {}
-                    table-head (text: "Email") {}
+                    table-head | Status
+                    table-head | Email
                     table-head (text: "Amount", class: "text-right") {}
                 }
             }
@@ -67,19 +67,19 @@ widget DataTableSorting {
                 table-row {
                     table-head {
                         button (variant: "ghost", class: "-ml-4", onclick: .ToggleSortStatus) {
-                            text (text: "Status") {}
+                            text | Status
                             icon (name: "arrow-up-down", class: "ml-2 h-4 w-4") {}
                         }
                     }
                     table-head {
                         button (variant: "ghost", class: "-ml-4", onclick: .ToggleSortEmail) {
-                            text (text: "Email") {}
+                            text | Email
                             icon (name: "arrow-up-down", class: "ml-2 h-4 w-4") {}
                         }
                     }
                     table-head (class: "text-right") {
                         button (variant: "ghost", class: "-ml-4", onclick: .ToggleSortAmount) {
-                            text (text: "Amount") {}
+                            text | Amount
                             icon (name: "arrow-up", class: "ml-2 h-4 w-4") {}
                         }
                     }
@@ -130,8 +130,8 @@ widget DataTableFiltering {
             table {
                 table-header {
                     table-row {
-                        table-head (text: "Status") {}
-                        table-head (text: "Email") {}
+                        table-head | Status
+                        table-head | Email
                         table-head (text: "Amount", class: "text-right") {}
                     }
                 }
@@ -180,29 +180,29 @@ widget DataTablePagination {
             table {
                 table-header {
                     table-row {
-                        table-head (text: "Invoice") {}
-                        table-head (text: "Status") {}
-                        table-head (text: "Method") {}
+                        table-head | Invoice
+                        table-head | Status
+                        table-head | Method
                         table-head (text: "Amount", class: "text-right") {}
                     }
                 }
                 table-body {
                     table-row {
                         table-cell (text: "INV001", class: "font-medium") {}
-                        table-cell (text: "Paid") {}
-                        table-cell (text: "Credit Card") {}
+                        table-cell | Paid
+                        table-cell | Credit Card
                         table-cell (text: "$250.00", class: "text-right") {}
                     }
                     table-row {
                         table-cell (text: "INV002", class: "font-medium") {}
-                        table-cell (text: "Pending") {}
-                        table-cell (text: "PayPal") {}
+                        table-cell | Pending
+                        table-cell | PayPal
                         table-cell (text: "$150.00", class: "text-right") {}
                     }
                     table-row {
                         table-cell (text: "INV003", class: "font-medium") {}
-                        table-cell (text: "Unpaid") {}
-                        table-cell (text: "Bank Transfer") {}
+                        table-cell | Unpaid
+                        table-cell | Bank Transfer
                         table-cell (text: "$350.00", class: "text-right") {}
                     }
                 }
@@ -211,7 +211,7 @@ widget DataTablePagination {
                 row (class: "flex items-center gap-2") {
                     text (text: "Rows per page", class: "text-sm text-muted-foreground") {}
                     select (class: "w-[70px]") {
-                        select-trigger { select-value (text: "5") {} }
+                        select-trigger { select-value | 5 }
                         select-content {
                             select-item (text: "5", value: "5") {}
                             select-item (text: "10", value: "10") {}
@@ -257,8 +257,8 @@ widget DataTableSelection {
                 table-header {
                     table-row {
                         table-head (class: "w-[50px]") { checkbox {} }
-                        table-head (text: "Status") {}
-                        table-head (text: "Email") {}
+                        table-head | Status
+                        table-head | Email
                         table-head (text: "Amount", class: "text-right") {}
                         table-head (text: "", class: "w-[50px]") {}
                     }
@@ -266,38 +266,38 @@ widget DataTableSelection {
                 table-body {
                     table-row {
                         table-cell (class: "w-[50px]") { checkbox {} }
-                        table-cell (text: "success") {}
-                        table-cell (text: "ken99@yahoo.com") {}
+                        table-cell | success
+                        table-cell | ken99@yahoo.com
                         table-cell (text: "$316.00", class: "text-right font-medium") {}
-                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "⋯") {} } }
+                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ⋯ } }
                     }
                     table-row {
                         table-cell (class: "w-[50px]") { checkbox (checked: true) {} }
-                        table-cell (text: "success") {}
-                        table-cell (text: "abe45@gmail.com") {}
+                        table-cell | success
+                        table-cell | abe45@gmail.com
                         table-cell (text: "$242.00", class: "text-right font-medium") {}
-                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "⋯") {} } }
+                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ⋯ } }
                     }
                     table-row {
                         table-cell (class: "w-[50px]") { checkbox (checked: true) {} }
-                        table-cell (text: "processing") {}
-                        table-cell (text: "monserrat44@gmail.com") {}
+                        table-cell | processing
+                        table-cell | monserrat44@gmail.com
                         table-cell (text: "$837.00", class: "text-right font-medium") {}
-                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "⋯") {} } }
+                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ⋯ } }
                     }
                     table-row {
                         table-cell (class: "w-[50px]") { checkbox {} }
-                        table-cell (text: "success") {}
-                        table-cell (text: "silas@gmail.com") {}
+                        table-cell | success
+                        table-cell | silas@gmail.com
                         table-cell (text: "$874.00", class: "text-right font-medium") {}
-                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "⋯") {} } }
+                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ⋯ } }
                     }
                     table-row {
                         table-cell (class: "w-[50px]") { checkbox {} }
-                        table-cell (text: "failed") {}
-                        table-cell (text: "carmella@hotmail.com") {}
+                        table-cell | failed
+                        table-cell | carmella@hotmail.com
                         table-cell (text: "$721.00", class: "text-right font-medium") {}
-                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "⋯") {} } }
+                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ⋯ } }
                     }
                 }
             }
@@ -320,8 +320,8 @@ widget DataTableActions {
         table {
             table-header {
                 table-row {
-                    table-head (text: "Invoice") {}
-                    table-head (text: "Status") {}
+                    table-head | Invoice
+                    table-head | Status
                     table-head (text: "Amount", class: "text-right") {}
                     table-head (text: "", class: "w-[50px]") {}
                 }
@@ -339,8 +339,8 @@ widget DataTableActions {
                                 }
                             }
                             dropdown-menu-content {
-                                dropdown-menu-item (text: "Copy ID") {}
-                                dropdown-menu-item (text: "View details") {}
+                                dropdown-menu-item | Copy ID
+                                dropdown-menu-item | View details
                                 dropdown-menu-separator {}
                                 dropdown-menu-item (text: "Delete", class: "text-destructive") {}
                             }
@@ -359,8 +359,8 @@ widget DataTableActions {
                                 }
                             }
                             dropdown-menu-content {
-                                dropdown-menu-item (text: "Copy ID") {}
-                                dropdown-menu-item (text: "View details") {}
+                                dropdown-menu-item | Copy ID
+                                dropdown-menu-item | View details
                             }
                         }
                     }
@@ -391,35 +391,35 @@ widget DataTableVisibility {
                     dropdown-menu-trigger {
                         button (variant: "outline", size: "sm") {
                             icon (name: "columns", class: "mr-2 h-4 w-4") {}
-                            text (text: "Columns") {}
+                            text | Columns
                             icon (name: "chevron-down", class: "ml-2 h-4 w-4") {}
                         }
                     }
                     dropdown-menu-content {
-                        dropdown-menu-item (text: "Status") {}
-                        dropdown-menu-item (text: "Email") {}
-                        dropdown-menu-item (text: "Amount") {}
-                        dropdown-menu-item (text: "Date") {}
+                        dropdown-menu-item | Status
+                        dropdown-menu-item | Email
+                        dropdown-menu-item | Amount
+                        dropdown-menu-item | Date
                     }
                 }
             }
             table {
                 table-header {
                     table-row {
-                        table-head (text: "Status") {}
-                        table-head (text: "Email") {}
+                        table-head | Status
+                        table-head | Email
                         table-head (text: "Amount", class: "text-right") {}
                     }
                 }
                 table-body {
                     table-row {
                         table-cell { badge (text: "Success", variant: "default") {} }
-                        table-cell (text: "ken99@yahoo.com") {}
+                        table-cell | ken99@yahoo.com
                         table-cell (text: "$316.00", class: "text-right font-medium") {}
                     }
                     table-row {
                         table-cell { badge (text: "Pending", variant: "secondary") {} }
-                        table-cell (text: "abe45@gmail.com") {}
+                        table-cell | abe45@gmail.com
                         table-cell (text: "$242.00", class: "text-right font-medium") {}
                     }
                 }
@@ -459,18 +459,18 @@ widget DataTableFull {
                         dropdown-menu-trigger {
                             button (variant: "outline", size: "sm") {
                                 icon (name: "columns", class: "mr-2 h-4 w-4") {}
-                                text (text: "View") {}
+                                text | View
                             }
                         }
                         dropdown-menu-content (align: "end") {
-                            dropdown-menu-item (text: "Status") {}
-                            dropdown-menu-item (text: "Email") {}
-                            dropdown-menu-item (text: "Amount") {}
+                            dropdown-menu-item | Status
+                            dropdown-menu-item | Email
+                            dropdown-menu-item | Amount
                         }
                     }
                     button (variant: "outline", size: "sm") {
                         icon (name: "plus", class: "mr-2 h-4 w-4") {}
-                        text (text: "Add Payment") {}
+                        text | Add Payment
                     }
                 }
             }
@@ -481,13 +481,13 @@ widget DataTableFull {
                         table-head (class: "w-[50px]") { checkbox {} }
                         table-head {
                             button (variant: "ghost", class: "-ml-4", onclick: .ToggleSortStatus) {
-                                text (text: "Status") {}
+                                text | Status
                                 icon (name: "arrow-up-down", class: "ml-2 h-4 w-4") {}
                             }
                         }
                         table-head {
                             button (variant: "ghost", class: "-ml-4", onclick: .ToggleSortEmail) {
-                                text (text: "Email") {}
+                                text | Email
                                 icon (name: "arrow-up-down", class: "ml-2 h-4 w-4") {}
                             }
                         }
@@ -501,35 +501,35 @@ widget DataTableFull {
                         table-cell { badge (text: "Success", variant: "default") {} }
                         table-cell (text: "ken99@yahoo.com", class: "lowercase") {}
                         table-cell (text: "$316.00", class: "text-right font-medium") {}
-                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "⋯") {} } }
+                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ⋯ } }
                     }
                     table-row {
                         table-cell (class: "w-[50px]") { checkbox (checked: true) {} }
                         table-cell { badge (text: "Success", variant: "default") {} }
                         table-cell (text: "abe45@gmail.com", class: "lowercase") {}
                         table-cell (text: "$242.00", class: "text-right font-medium") {}
-                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "⋯") {} } }
+                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ⋯ } }
                     }
                     table-row {
                         table-cell (class: "w-[50px]") { checkbox {} }
                         table-cell { badge (text: "Processing", variant: "outline") {} }
                         table-cell (text: "monserrat44@gmail.com", class: "lowercase") {}
                         table-cell (text: "$837.00", class: "text-right font-medium") {}
-                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "⋯") {} } }
+                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ⋯ } }
                     }
                     table-row {
                         table-cell (class: "w-[50px]") { checkbox {} }
                         table-cell { badge (text: "Success", variant: "default") {} }
                         table-cell (text: "silas@gmail.com", class: "lowercase") {}
                         table-cell (text: "$874.00", class: "text-right font-medium") {}
-                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "⋯") {} } }
+                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ⋯ } }
                     }
                     table-row {
                         table-cell (class: "w-[50px]") { checkbox {} }
                         table-cell { badge (text: "Failed", variant: "destructive") {} }
                         table-cell (text: "carmella@hotmail.com", class: "lowercase") {}
                         table-cell (text: "$721.00", class: "text-right font-medium") {}
-                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text (text: "⋯") {} } }
+                        table-cell (class: "w-[50px]") { button (variant: "ghost", size: "icon") { text | ⋯ } }
                     }
                 }
             }

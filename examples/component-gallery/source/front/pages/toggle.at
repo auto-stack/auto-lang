@@ -5,66 +5,66 @@ widget TogglePage {
 
     view {
         col {
-            h1 (text: "Toggle") {}
-            text (text: "A two-state button that can be toggled on or off, useful for formatting controls.") {}
+            h1 | Toggle
+            text | A two-state button that can be toggled on or off, useful for formatting controls.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add toggle") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "toggle-basic") {
                 row (gap: "4") {
                     toggle (variant: "outline", aria-label: "Toggle bold") {
-                        text (text: "B") {}
+                        text | B
                     }
                     toggle (variant: "outline", aria-label: "Toggle italic") {
-                        text (text: "I") {}
+                        text | I
                     }
                     toggle (variant: "outline", aria-label: "Toggle underline") {
-                        text (text: "U") {}
+                        text | U
                     }
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "variant") {}
-                        td (text: "string") {}
+                        td | variant
+                        td | string
                         td (text: "\"default\"") {}
                         td (text: "\"default\", \"outline\"") {}
-                        td (text: "Toggle style variant") {}
+                        td | Toggle style variant
                     }
                     tr {
-                        td (text: "size") {}
-                        td (text: "string") {}
+                        td | size
+                        td | string
                         td (text: "\"default\"") {}
                         td (text: "\"default\", \"sm\", \"lg\"") {}
-                        td (text: "Toggle size") {}
+                        td | Toggle size
                     }
                     tr {
-                        td (text: "pressed") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Pressed state") {}
+                        td | pressed
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Pressed state
                     }
                     tr {
-                        td (text: "disabled") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Disables the toggle") {}
+                        td | disabled
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Disables the toggle
                     }
                 }
             }

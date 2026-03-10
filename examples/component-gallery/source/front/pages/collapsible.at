@@ -8,57 +8,57 @@ widget CollapsiblePage {
 
     view {
         col {
-            h1 (text: "Collapsible") {}
-            text (text: "An interactive component which expands or collapses a content panel.") {}
+            h1 | Collapsible
+            text | An interactive component which expands or collapses a content panel.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add collapsible") {}
 
-            h2 (text: "Example") {}
+            h2 | Example
             preview-card (id: "collapsible-basic") {
                 collapsible (open: .isOpen) {
                     collapsible-trigger (class: "flex items-center justify-between w-full py-4 font-medium [&[data-state=open]>span:last-child]:rotate-180") {
-                        text (text: "Can I use this in my project?") {}
+                        text | Can I use this in my project?
                         text (text: "▸", class: "transition-transform duration-200") {}
                     }
                     collapsible-content (class: "pb-4") {
-                        text (text: "Yes. Free to use for personal and commercial projects. No attribution required.") {}
+                        text | Yes. Free to use for personal and commercial projects. No attribution required.
                     }
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "open") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Controls open state") {}
+                        td | open
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Controls open state
                     }
                     tr {
-                        td (text: "disabled") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Disables the collapsible") {}
+                        td | disabled
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Disables the collapsible
                     }
                     tr {
-                        td (text: "class") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Additional CSS classes") {}
+                        td | class
+                        td | string
+                        td | -
+                        td | -
+                        td | Additional CSS classes
                     }
                 }
             }

@@ -16,7 +16,7 @@
 ///         }
 ///         breadcrumb-separator {}
 ///         breadcrumb-item {
-///             breadcrumb-page (text: "Settings") {}
+///             breadcrumb-page | Settings
 ///         }
 ///     }
 /// }
@@ -73,7 +73,7 @@ widget BreadcrumbPage {
 widget BreadcrumbSeparator {
     view {
         li { class: "[&>svg]:px-2", role: "presentation", "aria-hidden": true } {
-            text (text: "/") {}
+            text | /
         }
     }
 }
@@ -92,7 +92,7 @@ widget BreadcrumbDemo {
                 }
                 BreadcrumbSeparator {}
                 BreadcrumbItem {
-                    BreadcrumbPage (text: "Breadcrumb") {}
+                    BreadcrumbPage | Breadcrumb
                 }
             }
         }

@@ -56,7 +56,7 @@ widget PaginationFirst {
 
     view {
         button { class: "pagination-first", variant: "ghost", size: "icon" } {
-            text (text: "<<") {}
+            text | <<
         }
     }
 }
@@ -67,7 +67,7 @@ widget PaginationPrevious {
 
     view {
         button { class: "pagination-previous", variant: "ghost", size: "icon" } {
-            text (text: "<") {}
+            text | <
         }
     }
 }
@@ -78,7 +78,7 @@ widget PaginationNext {
 
     view {
         button { class: "pagination-next", variant: "ghost", size: "icon" } {
-            text (text: ">") {}
+            text | >
         }
     }
 }
@@ -89,7 +89,7 @@ widget PaginationLast {
 
     view {
         button { class: "pagination-last", variant: "ghost", size: "icon" } {
-            text (text: ">>") {}
+            text | >>
         }
     }
 }

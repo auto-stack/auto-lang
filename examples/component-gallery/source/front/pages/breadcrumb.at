@@ -5,13 +5,13 @@ widget BreadcrumbPage {
 
     view {
         col {
-            h1 (text: "Breadcrumb") {}
-            text (text: "Shows the user's current location within a navigational hierarchy.") {}
+            h1 | Breadcrumb
+            text | Shows the user's current location within a navigational hierarchy.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add breadcrumb") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "breadcrumb-basic") {
                 breadcrumb {
                     breadcrumb-list {
@@ -24,37 +24,37 @@ widget BreadcrumbPage {
                         }
                         breadcrumb-separator {}
                         breadcrumb-item {
-                            breadcrumb-page (text: "Breadcrumb") {}
+                            breadcrumb-page | Breadcrumb
                         }
                     }
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "text") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Item text content") {}
+                        td | text
+                        td | string
+                        td | -
+                        td | -
+                        td | Item text content
                     }
                     tr {
-                        td (text: "href") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Link destination") {}
+                        td | href
+                        td | string
+                        td | -
+                        td | -
+                        td | Link destination
                     }
                 }
             }

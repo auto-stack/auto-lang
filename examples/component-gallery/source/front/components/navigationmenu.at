@@ -15,9 +15,9 @@
 ///             navigation-menu-link (text: "Home", href: "/") {}
 ///         }
 ///         navigation-menu-item {
-///             navigation-menu-trigger (text: "Products") {}
+///             navigation-menu-trigger | Products
 ///             navigation-menu-content {
-///                 navigation-menu-link (text: "Item 1") {}
+///                 navigation-menu-link | Item 1
 ///             }
 ///         }
 ///     }
@@ -104,7 +104,7 @@ widget NavigationMenuDemo {
                     NavigationMenuLink (text: "Home", href: "/", active: true) {}
                 }
                 NavigationMenuItem {
-                    NavigationMenuTrigger (text: "Products") {}
+                    NavigationMenuTrigger | Products
                     NavigationMenuContent {
                         col (gap: "2") {
                             NavigationMenuLink (text: "Product 1", href: "/products/1") {}

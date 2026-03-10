@@ -5,13 +5,13 @@ widget TabsPage {
 
     view {
         col {
-            h1 (text: "Tabs") {}
-            text (text: "A set of layered sections of content, known as tab panels, that display one panel of content at a time.") {}
+            h1 | Tabs
+            text | A set of layered sections of content, known as tab panels, that display one panel of content at a time.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add tabs") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "tabs-basic") {
                 tabs (default: "account", class: "w-64") {
                     tabs-list {
@@ -19,39 +19,39 @@ widget TabsPage {
                         tabs-trigger (text: "Password", value: "password") {}
                     }
                     tabs-content (value: "account") {
-                        text (text: "Make changes to your account here.") {}
+                        text | Make changes to your account here.
                     }
                     tabs-content (value: "password") {
-                        text (text: "Change your password here.") {}
+                        text | Change your password here.
                     }
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "default") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Default active tab value") {}
+                        td | default
+                        td | string
+                        td | -
+                        td | -
+                        td | Default active tab value
                     }
                     tr {
-                        td (text: "value") {}
-                        td (text: "string") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Tab trigger/content value") {}
+                        td | value
+                        td | string
+                        td | -
+                        td | -
+                        td | Tab trigger/content value
                     }
                 }
             }

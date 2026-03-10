@@ -63,7 +63,7 @@ widget CodeBlockDemo {
 
     view {
         col {
-            h3 (text: "Code Block with Syntax Highlighting") {}
+            h3 | Code Block with Syntax Highlighting
 
             CodeBlock {
                 code: .autoCode
@@ -72,7 +72,7 @@ widget CodeBlockDemo {
                 showLineNumbers: true
             }
 
-            h3 (text: "Inline Code") {}
+            h3 | Inline Code
 
             row {
                 text "Use "
@@ -80,7 +80,7 @@ widget CodeBlockDemo {
                 text " keyword to define a component."
             }
 
-            h3 (text: "Multi-language Support") {}
+            h3 | Multi-language Support
 
             Tabs (activeTab: "auto") {
                 TabTrigger (id: "auto", label: "Auto") {}

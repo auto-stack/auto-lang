@@ -61,7 +61,7 @@ widget ButtonDemo {
 
     view {
         col {
-            h3 (text: "Button Variants") {}
+            h3 | Button Variants
 
             row {
                 Button (text: "Default", variant: "default", onclick: .Click) {}
@@ -70,7 +70,7 @@ widget ButtonDemo {
                 Button (text: "Destructive", variant: "destructive", onclick: .Click) {}
             }
 
-            h3 (text: "Button Sizes") {}
+            h3 | Button Sizes
 
             row {
                 Button (text: "Small", size: "sm", onclick: .Click) {}
@@ -78,7 +78,7 @@ widget ButtonDemo {
                 Button (text: "Large", size: "lg", onclick: .Click) {}
             }
 
-            h3 (text: "States") {}
+            h3 | States
 
             row {
                 Button (text: "Normal", onclick: .Click) {}

@@ -92,7 +92,7 @@ widget ToastAction {
 widget ToastClose {
     view {
         button { class: "toast-close", variant: "ghost", size: "icon" } {
-            text (text: "✕") {}
+            text | ✕
         }
     }
 }
@@ -102,7 +102,7 @@ widget ToastDemo {
     view {
         col (gap: "4") {
             Toast (title: "Scheduled: Catch up", description: "Friday, February 10, 2023 at 5:57 PM") {
-                ToastAction (text: "Snooze") {}
+                ToastAction | Snooze
             }
             Toast (title: "Success!", description: "Your changes have been saved.", variant: "success") {}
             Toast (title: "Error!", description: "Something went wrong.", variant: "error") {}

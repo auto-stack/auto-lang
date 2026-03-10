@@ -5,68 +5,68 @@ widget TogglegroupPage {
 
     view {
         col {
-            h1 (text: "ToggleGroup") {}
-            text (text: "A group of toggle buttons that can be configured for single or multiple selection.") {}
+            h1 | ToggleGroup
+            text | A group of toggle buttons that can be configured for single or multiple selection.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add toggle-group") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "togglegroup-basic") {
                 row (gap: "4") {
                     togglegroup (type: "multiple", variant: "outline") {
                         togglegroup-item (value: "bold", aria-label: "Toggle bold") {
-                            text (text: "B") {}
+                            text | B
                         }
                         togglegroup-item (value: "italic", aria-label: "Toggle italic") {
-                            text (text: "I") {}
+                            text | I
                         }
                         togglegroup-item (value: "underline", aria-label: "Toggle underline") {
-                            text (text: "U") {}
+                            text | U
                         }
                     }
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "type") {}
-                        td (text: "string") {}
+                        td | type
+                        td | string
                         td (text: "\"single\"") {}
                         td (text: "\"single\", \"multiple\"") {}
-                        td (text: "Selection type") {}
+                        td | Selection type
                     }
                     tr {
-                        td (text: "variant") {}
-                        td (text: "string") {}
+                        td | variant
+                        td | string
                         td (text: "\"default\"") {}
                         td (text: "\"default\", \"outline\"") {}
-                        td (text: "Toggle style variant") {}
+                        td | Toggle style variant
                     }
                     tr {
-                        td (text: "size") {}
-                        td (text: "string") {}
+                        td | size
+                        td | string
                         td (text: "\"default\"") {}
                         td (text: "\"default\", \"sm\", \"lg\"") {}
-                        td (text: "Toggle size") {}
+                        td | Toggle size
                     }
                     tr {
-                        td (text: "disabled") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Disables the group") {}
+                        td | disabled
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Disables the group
                     }
                 }
             }

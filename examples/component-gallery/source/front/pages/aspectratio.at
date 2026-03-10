@@ -5,13 +5,13 @@ widget AspectratioPage {
 
     view {
         col {
-            h1 (text: "AspectRatio") {}
-            text (text: "Displays content within a desired ratio.") {}
+            h1 | AspectRatio
+            text | Displays content within a desired ratio.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add aspect-ratio") {}
 
-            h2 (text: "Example") {}
+            h2 | Example
             preview-card (id: "aspectratio-basic") {
                 div (class: "w-[450px] bg-muted rounded-md overflow-hidden border") {
                     aspect-ratio (ratio: 1.777) {
@@ -20,14 +20,14 @@ widget AspectratioPage {
                 }
             }
 
-            h2 (text: "Common Ratios") {}
+            h2 | Common Ratios
             preview-card (id: "aspectratio-ratios") {
                 row (gap: "4", class: "flex-wrap") {
                     col (gap: "2", class: "w-[150px]") {
                         div (class: "bg-muted rounded-md overflow-hidden") {
                             aspect-ratio (ratio: 1.0) {
                                 div (class: "flex items-center justify-center w-full h-full bg-primary/10") {
-                                    text (text: "1:1") {}
+                                    text | 1:1
                                 }
                             }
                         }
@@ -37,7 +37,7 @@ widget AspectratioPage {
                         div (class: "bg-muted rounded-md overflow-hidden") {
                             aspect-ratio (ratio: 1.777) {
                                 div (class: "flex items-center justify-center w-full h-full bg-primary/10") {
-                                    text (text: "16:9") {}
+                                    text | 16:9
                                 }
                             }
                         }
@@ -47,7 +47,7 @@ widget AspectratioPage {
                         div (class: "bg-muted rounded-md overflow-hidden") {
                             aspect-ratio (ratio: 0.5625) {
                                 div (class: "flex items-center justify-center w-full h-full bg-primary/10") {
-                                    text (text: "9:16") {}
+                                    text | 9:16
                                 }
                             }
                         }
@@ -57,7 +57,7 @@ widget AspectratioPage {
                         div (class: "bg-muted rounded-md overflow-hidden") {
                             aspect-ratio (ratio: 1.333) {
                                 div (class: "flex items-center justify-center w-full h-full bg-primary/10") {
-                                    text (text: "4:3") {}
+                                    text | 4:3
                                 }
                             }
                         }
@@ -66,24 +66,24 @@ widget AspectratioPage {
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "ratio") {}
-                        td (text: "number") {}
-                        td (text: "1") {}
-                        td (text: "-") {}
-                        td (text: "The aspect ratio (width/height)") {}
+                        td | ratio
+                        td | number
+                        td | 1
+                        td | -
+                        td | The aspect ratio (width/height)
                     }
                 }
             }

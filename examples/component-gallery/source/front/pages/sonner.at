@@ -5,13 +5,13 @@ widget SonnerPage {
 
     view {
         col {
-            h1 (text: "Sonner") {}
-            text (text: "An opinionated toast component built on top of Sonner library.") {}
+            h1 | Sonner
+            text | An opinionated toast component built on top of Sonner library.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add sonner") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "sonner-basic") {
                 col (gap: "4") {
                     row (gap: "2") {
@@ -22,41 +22,41 @@ widget SonnerPage {
                 }
             }
 
-            h2 (text: "Usage") {}
+            h2 | Usage
             codeblock (lang: "typescript", code: "import { toast } from 'vue-sonner'\ntoast('Event has been created')\ntoast.success('Event created successfully')\ntoast.error('Failed to create event')") {}
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "position") {}
-                        td (text: "string") {}
+                        td | position
+                        td | string
                         td (text: "\"bottom-right\"") {}
                         td (text: "\"top-left\", \"top-center\", \"top-right\", \"bottom-left\", \"bottom-center\", \"bottom-right\"") {}
-                        td (text: "Toast position") {}
+                        td | Toast position
                     }
                     tr {
-                        td (text: "richColors") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Enable rich colors") {}
+                        td | richColors
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Enable rich colors
                     }
                     tr {
-                        td (text: "expand") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Expand toasts on hover") {}
+                        td | expand
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Expand toasts on hover
                     }
                 }
             }

@@ -37,7 +37,7 @@ widget BadgeDemo {
 
     view {
         col {
-            h3 (text: "Badge Variants") {}
+            h3 | Badge Variants
 
             row {
                 Badge (text: "Default", variant: "default") {}
@@ -46,7 +46,7 @@ widget BadgeDemo {
                 Badge (text: "Outline", variant: "outline") {}
             }
 
-            h3 (text: "Badge Sizes") {}
+            h3 | Badge Sizes
 
             row {
                 Badge (text: "Small", size: "sm") {}
@@ -54,7 +54,7 @@ widget BadgeDemo {
                 Badge (text: "Large", size: "lg") {}
             }
 
-            h3 (text: "Use Cases") {}
+            h3 | Use Cases
 
             row {
                 text "Notifications: "
@@ -75,7 +75,7 @@ widget BadgeDemo {
                 Badge (text: "Svelte", variant: "outline") {}
             }
 
-            h3 (text: "Dynamic Badge") {}
+            h3 | Dynamic Badge
 
             row {
                 Button (text: "Increment", onclick: .Increment) {}

@@ -5,13 +5,13 @@ widget DatepickerPage {
 
     view {
         col {
-            h1 (text: "DatePicker") {}
-            text (text: "A date picker component with a calendar popover for selecting dates.") {}
+            h1 | DatePicker
+            text | A date picker component with a calendar popover for selecting dates.
 
-            h2 (text: "Installation") {}
+            h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add date-picker") {}
 
-            h2 (text: "Simple") {}
+            h2 | Simple
             preview-card (id: "datepicker-basic") {
                 popover {
                     popover-trigger {
@@ -23,45 +23,45 @@ widget DatepickerPage {
                 }
             }
 
-            h2 (text: "Properties") {}
+            h2 | Properties
             table {
                 thead {
                     tr {
-                        th (text: "Property") {}
-                        th (text: "Type") {}
-                        th (text: "Default") {}
-                        th (text: "Values") {}
-                        th (text: "Description") {}
+                        th | Property
+                        th | Type
+                        th | Default
+                        th | Values
+                        th | Description
                     }
                 }
                 tbody {
                     tr {
-                        td (text: "v-model") {}
-                        td (text: "Date") {}
-                        td (text: "-") {}
-                        td (text: "-") {}
-                        td (text: "Selected date value") {}
+                        td | v-model
+                        td | Date
+                        td | -
+                        td | -
+                        td | Selected date value
                     }
                     tr {
-                        td (text: "format") {}
-                        td (text: "string") {}
+                        td | format
+                        td | string
                         td (text: "\"PPP\"") {}
-                        td (text: "-") {}
-                        td (text: "Date display format") {}
+                        td | -
+                        td | Date display format
                     }
                     tr {
-                        td (text: "placeholder") {}
-                        td (text: "string") {}
+                        td | placeholder
+                        td | string
                         td (text: "\"Pick a date\"") {}
-                        td (text: "-") {}
-                        td (text: "Placeholder text") {}
+                        td | -
+                        td | Placeholder text
                     }
                     tr {
-                        td (text: "disabled") {}
-                        td (text: "boolean") {}
-                        td (text: "false") {}
-                        td (text: "true, false") {}
-                        td (text: "Disables the picker") {}
+                        td | disabled
+                        td | boolean
+                        td | false
+                        td | true, false
+                        td | Disables the picker
                     }
                 }
             }
