@@ -7765,7 +7765,7 @@ impl<'a> Parser<'a> {
         while !self.is_kind(TokenKind::LBrace)
             && !self.is_kind(TokenKind::RBrace)
             && !self.is_kind(TokenKind::EOF)
-            && self.cur.text.as_str() != "\n"
+            && !self.is_kind(TokenKind::Newline)
         {
             text_parts.push(self.cur.text.to_string());
             self.next();
