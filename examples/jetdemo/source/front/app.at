@@ -1,0 +1,25 @@
+// jetdemo - Main Application Widget
+//
+// This file is the entry point for AURA code generation.
+// Run `auto gen` to generate Kotlin code from this file.
+
+widget jetdemoApp {
+    view {
+        col(padding: 16, align: "center", arrange: "center") {
+            text(
+                text: "Hello from Auto!",
+                style: typography.headlineLarge
+            )
+            spacer(height: 16)
+            button(text: "Click Me")
+            text(
+                text: "Count: ${count}",
+                style: typography.bodyLarge
+            )
+        }
+    }
+
+    model {
+        count int = 0
+    }
+}

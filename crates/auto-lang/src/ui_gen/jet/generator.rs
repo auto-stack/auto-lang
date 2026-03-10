@@ -1226,7 +1226,8 @@ mod tests {
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("gap".to_string(), AuraPropValue::Expr(AuraExpr::Int(16)));
+        // gap: 4 means 4 Tailwind units = 16dp (4 * 4 = 16)
+        props.insert("gap".to_string(), AuraPropValue::Expr(AuraExpr::Int(4)));
         props.insert("align".to_string(), AuraPropValue::Expr(AuraExpr::Literal("center".to_string())));
         props.insert("class".to_string(), AuraPropValue::Expr(AuraExpr::Literal("px-4 py-2 bg-white rounded-lg".to_string())));
 

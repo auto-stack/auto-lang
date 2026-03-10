@@ -100,19 +100,19 @@ pub struct JetProjectConfig {
     /// Minimum SDK version (default: 24)
     pub min_sdk: u32,
 
-    /// Compile SDK version (default: 34)
+    /// Compile SDK version (default: 35)
     pub compile_sdk: u32,
 
-    /// Target SDK version (default: 34)
+    /// Target SDK version (default: 35)
     pub target_sdk: u32,
 
-    /// Kotlin version (default: "1.9.0")
+    /// Kotlin version (default: "2.2.10")
     pub kotlin_version: String,
 
     /// Compose Compiler version (default: "1.5.0")
     pub compose_compiler_version: String,
 
-    /// Compose BOM version (default: "2024.02.00")
+    /// Compose BOM version (default: "2025.12.00")
     pub compose_bom_version: String,
 
     /// Material3 version (default: "1.2.0")
@@ -121,7 +121,7 @@ pub struct JetProjectConfig {
     /// Activity Compose version (default: "1.8.2")
     pub activity_compose_version: String,
 
-    /// Android Gradle Plugin version (default: "8.2.2")
+    /// Android Gradle Plugin version (default: "9.1.0")
     pub agp_version: String,
 
     /// Theme colors (optional)
@@ -141,14 +141,14 @@ impl Default for JetProjectConfig {
             version: "1.0.0".to_string(),
             application_id: "com.example.myapp".to_string(),
             min_sdk: 24,
-            compile_sdk: 34,
-            target_sdk: 34,
-            kotlin_version: "1.9.0".to_string(),
+            compile_sdk: 35,
+            target_sdk: 35,
+            kotlin_version: "2.2.10".to_string(),
             compose_compiler_version: "1.5.0".to_string(),
-            compose_bom_version: "2024.02.00".to_string(),
+            compose_bom_version: "2025.12.00".to_string(),
             material3_version: "1.2.0".to_string(),
             activity_compose_version: "1.8.2".to_string(),
-            agp_version: "8.2.2".to_string(),
+            agp_version: "9.1.0".to_string(),
             theme: None,
             dependencies: HashMap::new(),
             widgets: Vec::new(),
@@ -160,9 +160,11 @@ impl JetProjectConfig {
     /// Create a new config with the given project name
     pub fn new(name: &str) -> Self {
         let application_id = format!("com.example.{}", name.to_lowercase().replace('-', "_"));
+        let widget_name = format!("{}App", name);
         Self {
             name: name.to_string(),
             application_id,
+            widgets: vec![widget_name],
             ..Default::default()
         }
     }
@@ -358,19 +360,29 @@ impl ProjectGenerator {
         self.generate_root_build_gradle();
         self.generate_settings_gradle();
         self.generate_gradle_properties();
+        self.generate_gradle_daemon_jvm_properties();
         self.generate_libs_versions_toml();
         self.generate_pac_at();
+        self.generate_gradle_wrapper();
+
+        // Generate AURA source files
+        self.generate_app_at();
 
         // Generate app level files
         self.generate_app_build_gradle();
         self.generate_android_manifest();
         self.generate_main_activity();
         self.generate_strings_xml();
+        self.generate_themes_xml();
+        self.generate_launcher_icon();
 
         // Generate theme files
         self.generate_color_kt();
         self.generate_type_kt();
         self.generate_theme_kt();
+
+        // Generate widget Kotlin files
+        self.generate_widget_files();
 
         self.files.clone()
     }
@@ -391,25 +403,33 @@ impl ProjectGenerator {
 
     /// Generate root build.gradle.kts
     fn generate_root_build_gradle(&mut self) {
-        let content = format!(
-            r#"// Top-level build file where you can add configuration options common to all sub-projects/modules.
-plugins {{
+        let content = r#"// Top-level build file where you can add configuration options common to all sub-projects/modules.
+plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.android) apply false
-}}
-"#,
-        );
-        self.add_file("build.gradle.kts", &content);
+    alias(libs.plugins.kotlin.compose) apply false
+}
+"#;
+        self.add_file("build.gradle.kts", content);
     }
 
     /// Generate settings.gradle.kts
     fn generate_settings_gradle(&mut self) {
         let content = r#"pluginManagement {
     repositories {
-        google()
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
         mavenCentral()
         gradlePluginPortal()
     }
+}
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
 dependencyResolutionManagement {
@@ -437,6 +457,37 @@ android.nonTransitiveRClass=true
         self.add_file("gradle.properties", content);
     }
 
+    /// Generate gradle/gradle-daemon-jvm.properties for JDK toolchain
+    fn generate_gradle_daemon_jvm_properties(&mut self) {
+        let content = r#"#This file is generated by updateDaemonJvm
+toolchainUrl.FREE_BSD.AARCH64=https\://api.foojay.io/disco/v3.0/ids/ec7520a1e057cd116f9544c42142a16b/redirect
+toolchainUrl.FREE_BSD.X86_64=https\://api.foojay.io/disco/v3.0/ids/4c4f879899012ff0a8b2e2117df03b0e/redirect
+toolchainUrl.LINUX.AARCH64=https\://api.foojay.io/disco/v3.0/ids/ec7520a1e057cd116f9544c42142a16b/redirect
+toolchainUrl.LINUX.X86_64=https\://api.foojay.io/disco/v3.0/ids/4c4f879899012ff0a8b2e2117df03b0e/redirect
+toolchainUrl.MAC_OS.AARCH64=https\://api.foojay.io/disco/v3.0/ids/73bcfb608d1fde9fb62e462f834a3299/redirect
+toolchainUrl.MAC_OS.X86_64=https\://api.foojay.io/disco/v3.0/ids/846ee0d876d26a26f37aa1ce8de73224/redirect
+toolchainUrl.UNIX.AARCH64=https\://api.foojay.io/disco/v3.0/ids/ec7520a1e057cd116f9544c42142a16b/redirect
+toolchainUrl.UNIX.X86_64=https\://api.foojay.io/disco/v3.0/ids/4c4f879899012ff0a8b2e2117df03b0e/redirect
+toolchainUrl.WINDOWS.AARCH64=https\://api.foojay.io/disco/v3.0/ids/9482ddec596298c84656d31d16652665/redirect
+toolchainUrl.WINDOWS.X86_64=https\://api.foojay.io/disco/v3.0/ids/39701d92e1756bb2f141eb67cd4c660e/redirect
+toolchainVersion=21
+"#;
+        self.add_file("gradle/gradle-daemon-jvm.properties", content);
+    }
+
+    /// Generate gradle/wrapper/gradle-wrapper.properties
+    fn generate_gradle_wrapper(&mut self) {
+        let content = r#"distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+networkTimeout=10000
+validateDistributionUrl=true
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+"#;
+        self.add_file("gradle/wrapper/gradle-wrapper.properties", content);
+    }
+
     /// Generate gradle/libs.versions.toml
     fn generate_libs_versions_toml(&mut self) {
         let content = format!(
@@ -454,7 +505,7 @@ compose-ui-graphics = {{ group = "androidx.compose.ui", name = "ui-graphics" }}
 compose-ui-tooling = {{ group = "androidx.compose.ui", name = "ui-tooling" }}
 compose-ui-tooling-preview = {{ group = "androidx.compose.ui", name = "ui-tooling-preview" }}
 compose-ui-test-manifest = {{ group = "androidx.compose.ui", name = "ui-test-manifest" }}
-compose-material3 = {{ group = "androidx.compose.material3", name = "material3", version.ref = "material3" }}
+compose-material3 = {{ group = "androidx.compose.material3", name = "material3" }}
 activity-compose = {{ group = "androidx.activity", name = "activity-compose", version.ref = "activity-compose" }}
 core-ktx = {{ group = "androidx.core", name = "core-ktx", version = "1.12.0" }}
 lifecycle-runtime = {{ group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version = "2.7.0" }}
@@ -462,6 +513,7 @@ lifecycle-runtime = {{ group = "androidx.lifecycle", name = "lifecycle-runtime-k
 [plugins]
 android-application = {{ id = "com.android.application", version.ref = "agp" }}
 kotlin-android = {{ id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }}
+kotlin-compose = {{ id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }}
 "#,
             self.config.agp_version,
             self.config.kotlin_version,
@@ -496,6 +548,44 @@ app("{name}") {{
         self.add_file("pac.at", &content);
     }
 
+    /// Generate source/front/app.at (AURA entry point for auto gen)
+    fn generate_app_at(&mut self) {
+        let name = &self.config.name;
+
+        let content = format!(
+            r#"// {name} - Main Application Widget
+//
+// This file is the entry point for AURA code generation.
+// Run `auto gen` to generate Kotlin code from this file.
+
+widget {name}App {{
+    view {{
+        col(padding: 16, align: "center", arrange: "center") {{
+            text(
+                text: "Hello from Auto!",
+                style: typography.headlineLarge
+            )
+            spacer(height: 16)
+            button(
+                text: "Click Me",
+                onClick: {{ count++ }}
+            )
+            text(
+                text: "Count: ${{count}}",
+                style: typography.bodyLarge
+            )
+        }}
+    }}
+
+    model {{
+        count int = 0
+    }}
+}}
+"#,
+        );
+        self.add_file("source/front/app.at", &content);
+    }
+
     // =========================================================================
     // App Level Files
     // =========================================================================
@@ -508,7 +598,6 @@ app("{name}") {{
         let compile_sdk = self.config.compile_sdk;
         let target_sdk = self.config.target_sdk;
         let version_name = &self.config.version;
-        let compose_compiler = &self.config.compose_compiler_version;
 
         // Generate additional dependencies
         let mut extra_deps = String::new();
@@ -530,7 +619,7 @@ app("{name}") {{
         let content = format!(
             r#"plugins {{
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
 }}
 
 android {{
@@ -565,16 +654,8 @@ android {{
         targetCompatibility = JavaVersion.VERSION_17
     }}
 
-    kotlinOptions {{
-        jvmTarget = "17"
-    }}
-
     buildFeatures {{
         compose = true
-    }}
-
-    composeOptions {{
-        kotlinCompilerExtensionVersion = "{}"
     }}
 
     packaging {{
@@ -604,7 +685,6 @@ dependencies {{
             min_sdk,
             target_sdk,
             version_name,
-            compose_compiler,
             extra_deps,
         );
         self.add_file("app/build.gradle.kts", &content);
@@ -665,7 +745,16 @@ dependencies {{
             .map(|w| format!("                {w}()"))
             .collect();
         let widget_calls_str = if widget_calls.is_empty() {
-            "                // Add your widgets here".to_string()
+            r#"                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) {
+                    androidx.compose.material3.Text(
+                        text = "Hello Auto!",
+                        style = MaterialTheme.typography.headlineLarge
+                    )
+                }"#
+            .to_string()
         } else {
             widget_calls.join("\n")
         };
@@ -677,9 +766,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import {package}.ui.theme.{theme_name}
 {widget_imports_str}
@@ -719,6 +811,137 @@ class MainActivity : ComponentActivity() {{
 "#,
         );
         self.add_file("app/src/main/res/values/strings.xml", &content);
+    }
+
+    /// Generate themes.xml for Android
+    fn generate_themes_xml(&mut self) {
+        let theme_name = &self.config.name;
+
+        let content = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.{theme_name}" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
+"#,
+        );
+        self.add_file("app/src/main/res/values/themes.xml", &content);
+    }
+
+    /// Generate launcher icon (adaptive icon)
+    fn generate_launcher_icon(&mut self) {
+        // Generate adaptive icon XML
+        let content = r#"<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>
+"#;
+        self.add_file("app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml", content);
+        self.add_file("app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml", content);
+
+        // Generate launcher background (simple colored background)
+        let background = r##"<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#3DDC84"
+        android:pathData="M0,0h108v108h-108z" />
+</vector>
+"##;
+        self.add_file("app/src/main/res/drawable/ic_launcher_background.xml", background);
+
+        // Generate launcher foreground (simple icon)
+        let foreground = r##"<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:scaleX="0.92"
+        android:scaleY="0.92"
+        android:translateX="4.5"
+        android:translateY="4.5">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M54,27C39.1,27 27,39.1 27,54s12.1,27 27,27s27,-12.1 27,-27S68.9,27 54,27zM54,72c-9.9,0 -18,-8.1 -18,-18s8.1,-18 18,-18s18,8.1 18,18S63.9,72 54,72z" />
+    </group>
+</vector>
+"##;
+        self.add_file("app/src/main/res/drawable/ic_launcher_foreground.xml", foreground);
+    }
+
+    // =========================================================================
+    // Widget Files
+    // =========================================================================
+
+    /// Generate widget Kotlin files for all registered widgets
+    fn generate_widget_files(&mut self) {
+        let package = self.config.application_id.clone();
+        let package_path = self.config.package_path();
+        let widgets = self.config.widgets.clone();
+
+        for widget_name in &widgets {
+            let content = format!(
+                r#"package {package}.ui.widgets
+// Auto-generated by a2jet
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+
+@Composable
+fun {widget_name}(
+    modifier: Modifier = Modifier
+) {{
+    var count by remember {{ mutableStateOf(0) }}
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {{
+        Text(
+            text = "Hello from Auto!",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = {{ count++ }}) {{
+            Text("Click Me")
+        }}
+
+        Text(
+            text = "Count: $count",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+    }}
+}}
+
+@Preview(showBackground = true)
+@Composable
+fun {widget_name}Preview() {{
+    {widget_name}()
+}}
+"#,
+            );
+            self.add_file(
+                &format!("app/src/main/java/{}/ui/widgets/{}.kt", package_path, widget_name),
+                &content,
+            );
+        }
     }
 
     // =========================================================================
@@ -1081,8 +1304,10 @@ mod tests {
         assert_eq!(config.version, "1.0.0");
         assert_eq!(config.application_id, "com.example.myapp");
         assert_eq!(config.min_sdk, 24);
-        assert_eq!(config.compile_sdk, 34);
-        assert_eq!(config.target_sdk, 34);
+        assert_eq!(config.compile_sdk, 35);
+        assert_eq!(config.target_sdk, 35);
+        // Default config has no widgets
+        assert!(config.widgets.is_empty());
     }
 
     #[test]

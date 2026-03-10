@@ -23,10 +23,12 @@ pub struct LayoutGenerator {
 pub struct LayoutProps {
     /// Gap between children (in Tailwind units)
     pub gap: Option<u32>,
-    /// Vertical alignment
+    /// Vertical alignment (for Row) or horizontal alignment (for Column)
     pub vertical_align: Option<String>,
-    /// Horizontal arrangement
+    /// Horizontal arrangement (for Row)
     pub horizontal_arrange: Option<String>,
+    /// Vertical arrangement (for Column) - top/center/bottom/between/around/evenly
+    pub vertical_arrange: Option<String>,
     /// Tailwind CSS classes
     pub class: Option<String>,
     /// Modifier chain
@@ -82,12 +84,15 @@ impl LayoutGenerator {
             .or_else(|| Self::extract_string(props, "vertical_align"));
         let horizontal_arrange = Self::extract_string(props, "justify")
             .or_else(|| Self::extract_string(props, "horizontal_arrange"));
+        let vertical_arrange = Self::extract_string(props, "arrange")
+            .or_else(|| Self::extract_string(props, "vertical_arrange"));
         let class = Self::extract_string(props, "class");
 
         LayoutProps {
             gap,
             vertical_align,
             horizontal_arrange,
+            vertical_arrange,
             class,
             modifier: None,
         }
@@ -111,10 +116,32 @@ impl LayoutGenerator {
             params.push("modifier = Modifier".to_string());
         }
 
-        // Vertical arrangement (gap)
-        if let Some(gap) = layout_props.gap {
+        // Vertical arrangement (gap + arrange)
+        let arrangement = if let Some(gap) = layout_props.gap {
             let dp = gap * 4; // Tailwind to Dp multiplier
-            params.push(format!("verticalArrangement = Arrangement.spacedBy({}.dp)", dp));
+            match layout_props.vertical_arrange.as_deref() {
+                Some("center") => format!("Arrangement.spacedBy({}.dp, Alignment.CenterVertically)", dp),
+                Some("bottom" | "end") => format!("Arrangement.spacedBy({}.dp, Alignment.Bottom)", dp),
+                Some("between") => format!("Arrangement.spacedBy({}.dp, Alignment.SpaceBetween)", dp),
+                Some("around") => format!("Arrangement.spacedBy({}.dp, Alignment.SpaceAround)", dp),
+                Some("evenly") => format!("Arrangement.spacedBy({}.dp, Alignment.SpaceEvenly)", dp),
+                _ => format!("Arrangement.spacedBy({}.dp)", dp),
+            }
+        } else if let Some(arrange) = &layout_props.vertical_arrange {
+            match arrange.as_str() {
+                "center" => "Arrangement.Center".to_string(),
+                "bottom" | "end" => "Arrangement.Bottom".to_string(),
+                "between" => "Arrangement.SpaceBetween".to_string(),
+                "around" => "Arrangement.SpaceAround".to_string(),
+                "evenly" => "Arrangement.SpaceEvenly".to_string(),
+                _ => "Arrangement.Top".to_string(),
+            }
+        } else {
+            String::new()
+        };
+
+        if !arrangement.is_empty() {
+            params.push(format!("verticalArrangement = {}", arrangement));
         }
 
         // Horizontal alignment
