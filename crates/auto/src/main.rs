@@ -247,6 +247,15 @@ enum Commands {
         action: EnvAction,
     },
 
+    // ========== Code Generation ==========
+    #[command(about = "Generate code from .at files (kotlin for jet backend)")]
+    Gen {
+        #[arg(short, long, help = "Output directory (default: dist for vue, current dir for jet)")]
+        output: Option<String>,
+        #[arg(short, long, help = "Generate full project structure")]
+        project: bool,
+    },
+
     // ========== Legacy / Dev Tools ==========
     #[command(about = "AutoLang REPL (deprecated - uses TreeWalker Interpreter)", hide = true)]
     OldRepl,
@@ -461,6 +470,15 @@ fn main() -> Result<()> {
                     }
                 }
             }
+        }
+
+        // ========== Code Generation ==========
+        Some(Commands::Gen { output, project }) => {
+            init_logger();
+            println_logo();
+            let config = load_am_config().unwrap_or_default();
+            let am = auto_man::Automan::new(".", config).map_err(|e| miette::miette!("{}", e))?;
+            am.gen(output, project).map_err(|e| miette::miette!("{}", e))?;
         }
 
         // ========== Legacy / Dev Tools ==========

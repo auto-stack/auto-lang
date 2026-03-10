@@ -40,6 +40,9 @@ pub mod pac;
 // Phase 5: Vue project support
 pub mod vue;
 
+// Phase 7: Jetpack Compose project support
+pub mod jet;
+
 // NOTE: stubs.rs removed in Phase 6 - all types migrated
 
 // Re-exports (Plan 078 + Phase 1)
@@ -74,6 +77,9 @@ pub use pac::*;
 
 // Re-exports (Phase 5: Vue)
 pub use vue::*;
+
+// Re-exports (Phase 7: Jet)
+pub use jet::*;
 
 // NOTE: All types migrated in Phases 1-5
 // NOTE: stubs.rs removed in Phase 6 (cleanup)

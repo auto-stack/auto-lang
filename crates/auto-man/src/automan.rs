@@ -392,6 +392,8 @@ impl Automan {
         {
             // Common Android Studio installation paths on Windows
             let candidates = vec![
+                // Custom installations
+                "D:\\soft\\Android Studio\\bin\\studio64.exe".to_string(),
                 // User-specific installation
                 format!(
                     "{}\\AppData\\Local\\Programs\\Android Studio\\bin\\studio64.exe",
@@ -550,6 +552,54 @@ impl Automan {
 
     pub fn transpile_auto(&mut self) -> AutoResult<()> {
         self.pac.transpile_autot()?;
+        Ok(())
+    }
+
+    /// Generate code from .at files based on backend
+    ///
+    /// For jet backend: generates Kotlin code for Jetpack Compose
+    /// For vue backend: generates Vue components
+    pub fn gen(&self, output: Option<String>, project: bool) -> AutoResult<()> {
+        let backend = self.pac.backend.as_str();
+
+        match backend {
+            "jet" => {
+                // Jet backend: generate Kotlin code for Jetpack Compose
+                println!("Generating Kotlin code (backend: jet)");
+                let root_dir = std::env::current_dir()
+                    .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+                let output_path = output.as_ref()
+                    .map(|o| std::path::PathBuf::from(o));
+
+                if let Some(ref out) = output_path {
+                    crate::jet::generate_jet_project(&root_dir, Some(out.as_path()), project)?;
+                } else {
+                    crate::jet::generate_jet_project(&root_dir, None, project)?;
+                }
+            }
+            "vue" => {
+                // Vue backend: generate Vue components
+                println!("Generating Vue components (backend: vue)");
+                let root_dir = std::env::current_dir()
+                    .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+                let project_ctx = crate::vue::VueProject::from_workspace(&root_dir)?;
+
+                if project || !project_ctx.exists() {
+                    // Generate full project structure
+                    project_ctx.generate()?;
+                } else {
+                    // Just generate Vue components (no npm install)
+                    // For now, we still generate the full project but skip npm steps
+                    project_ctx.generate()?;
+                }
+            }
+            _ => {
+                return Err(format!("'gen' command is not supported for backend '{}'", backend).into());
+            }
+        }
+
         Ok(())
     }
 
