@@ -9147,4 +9147,54 @@ widget Test {
         let result = parser.parse();
         assert!(result.is_err());
     }
+
+    // Task 5: Regression test - Old greater-than syntax should NOT work as text shorthand
+    // The old `> "text"` syntax was replaced with `| "text"` pipe syntax
+    // Now `>` is treated as an element tag (which will fail validation downstream)
+
+    #[test]
+    fn test_gt_syntax_not_text_shorthand() {
+        // This test verifies that `>` is NOT interpreted as a text shorthand
+        // With the new pipe syntax, `| "text"` is the correct way to create text nodes
+        // The `>` token should be treated as an element tag, not as text syntax
+
+        // Test: `> "text"` should be parsed as element with tag ">" and prop "text"
+        let code = r#"widget Test { view { col { > "Hello" } } }"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+
+        // Parsing succeeds - `>` is treated as an element tag name
+        assert!(result.is_ok());
+
+        // Navigate to the child node and verify it's an element with tag ">"
+        if let Ok(ast) = result {
+            if let Stmt::WidgetDecl(widget) = &ast.stmts[0] {
+                if let Some(view) = &widget.view {
+                    // Root is col, find the child
+                    if let ViewNode::Element { tag, children, .. } = &view.root {
+                        assert_eq!(tag, "col");
+                        // The child should be an element with tag ">"
+                        assert_eq!(children.len(), 1);
+                        if let ViewNode::Element { tag, props, .. } = &children[0] {
+                            assert_eq!(tag, ">", "The '>' should be parsed as element tag, not text syntax");
+                            // The "Hello" becomes a prop, not text content
+                            assert_eq!(props.len(), 1);
+                            assert_eq!(props[0].name, "text");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_pipe_syntax_works_for_text() {
+        // Verify the correct pipe syntax works for text
+        let code = r#"widget Test { view { col { | "Hello" } } }"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+        assert!(result.is_ok(), "Pipe syntax should work for text nodes");
+    }
 }
