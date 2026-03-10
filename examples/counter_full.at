@@ -8,7 +8,7 @@ widget Counter {
 
     view {
         col {
-            > f"Count: ${.count}"
+            | f"Count: ${.count}"
             row {
                 button (text: "-", onclick: .Dec) {}
                 button (text: "+", onclick: .Inc) {}
