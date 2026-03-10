@@ -7345,6 +7345,113 @@ impl<'a> Parser<'a> {
         let tag = self.cur.text.to_string();
         self.next();
 
+        // Check for pipe text shorthand: tag | text (one-liner only, no children)
+        if self.is_kind(TokenKind::VBar) {
+            self.next();
+            self.skip_empty_lines();
+
+            // Check if it's an f-string - parse and return with FStr expr
+            if self.is_kind(TokenKind::FStrStart) {
+                let fstr_expr = self.fstr()?;
+
+                // Error if braces follow (should use tag "text" { ... } syntax)
+                if self.is_kind(TokenKind::LBrace) {
+                    let span = crate::error::pos_to_span(self.cur.pos);
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Use `{} f\"...\" {{ ... }}` syntax for element with props/children",
+                            tag
+                        ),
+                        span,
+                    }.into());
+                }
+
+                // Return element with f-string text property
+                return Ok(ViewNode::Element {
+                    tag,
+                    props: vec![ViewProp {
+                        name: "text".to_string(),
+                        value: ViewPropValue::Expr(fstr_expr),
+                    }],
+                    events: Vec::new(),
+                    children: Vec::new(),
+                });
+            }
+
+            // Check for quoted string
+            if self.is_kind(TokenKind::Str) {
+                let text = self.cur.text.clone();
+                self.next();
+
+                // Error if braces follow (should use tag "text" { ... } syntax)
+                if self.is_kind(TokenKind::LBrace) {
+                    let span = crate::error::pos_to_span(self.cur.pos);
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Use `{} \"{}\" {{ ... }}` syntax for element with props/children",
+                            tag, text
+                        ),
+                        span,
+                    }.into());
+                }
+
+                // Return element with text property
+                return Ok(ViewNode::Element {
+                    tag,
+                    props: vec![ViewProp {
+                        name: "text".to_string(),
+                        value: ViewPropValue::Expr(Expr::Str(text)),
+                    }],
+                    events: Vec::new(),
+                    children: Vec::new(),
+                });
+            }
+
+            // Unquoted text: consume until EOL or '{'
+            let mut text_parts = Vec::new();
+            while !self.is_kind(TokenKind::LBrace)
+                && !self.is_kind(TokenKind::RBrace)
+                && !self.is_kind(TokenKind::EOF)
+                && !self.is_kind(TokenKind::Newline)
+            {
+                text_parts.push(self.cur.text.to_string());
+                self.next();
+            }
+
+            let text_content = text_parts.join(" ").trim().to_string();
+
+            if text_content.is_empty() {
+                let span = crate::error::pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic {
+                    message: "Expected text after '|'".to_string(),
+                    span,
+                }.into());
+            }
+
+            // Error if braces follow (should use tag "text" { ... } syntax)
+            if self.is_kind(TokenKind::LBrace) {
+                let span = crate::error::pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Use `{} \"{}\" {{ ... }}` syntax for element with props/children",
+                        tag, text_content
+                    ),
+                    span,
+                }.into());
+            }
+
+            // Return element with text property
+            return Ok(ViewNode::Element {
+                tag,
+                props: vec![ViewProp {
+                    name: "text".to_string(),
+                    value: ViewPropValue::Expr(Expr::Str(AutoStr::from(&text_content))),
+                }],
+                events: Vec::new(),
+                children: Vec::new(),
+            });
+        }
+
         let mut props = Vec::new();
         let mut events = Vec::new();
         let mut children = Vec::new();
