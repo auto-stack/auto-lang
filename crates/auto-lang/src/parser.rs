@@ -8967,4 +8967,47 @@ widget Test {
         let result = parser.parse();
         assert!(result.is_ok());
     }
+
+    // Task 2: Element + Pipe Text Tests
+    // Tests for element + pipe syntax: h1 | Title
+
+    #[test]
+    fn test_element_pipe_unquoted() {
+        // Test element + pipe with unquoted text (Task 2 - pipe text shorthand)
+        let code = r#"widget Test { view { col { h1 | Input } } }"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_element_pipe_multiword() {
+        // Test element + pipe with multi-word text (Task 2 - pipe text shorthand)
+        let code = r#"widget Test { view { col { h1 | Hello World } } }"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_element_pipe_fstr() {
+        // Test element + pipe with f-string (Task 2 - pipe text shorthand)
+        let code = r#"widget Test { model { count int = 0 } view { col { h1 | f"Count: ${.count}" } } }"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_element_pipe_with_braces_error() {
+        // Should use button "-" { ... } syntax instead (Task 2 - pipe text shorthand)
+        let code = r#"widget Test { view { col { h1 | Title { onclick: .Test } } } }"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+        assert!(result.is_err());
+    }
 }
