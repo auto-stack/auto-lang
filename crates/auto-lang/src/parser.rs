@@ -7333,23 +7333,12 @@ impl<'a> Parser<'a> {
             return self.parse_view_link();
         }
 
-        // Check for text with '>' prefix: > "text" or > f"text ${.state}"
-        if self.is_kind(TokenKind::Gt) {
+        // Check for text with '|' prefix: | text or | f"text ${.state}"
+        if self.is_kind(TokenKind::VBar) {
             self.next();
             self.skip_empty_lines();
 
-            // Check if it's an f-string
-            if self.is_kind(TokenKind::FStrStart) {
-                let fstr_expr = self.fstr()?;
-                // Extract template and bindings from f-string
-                let (template, bindings) = self.extract_fstr_template_and_bindings(&fstr_expr);
-                return Ok(ViewNode::Text(ViewText::Interpolated { template, bindings }));
-            } else {
-                // Plain string
-                let text = self.cur.text.to_string();
-                self.next();
-                return Ok(ViewNode::text(text));
-            }
+            return self.parse_pipe_text_content();
         }
 
         // Parse element tag
@@ -7752,6 +7741,47 @@ impl<'a> Parser<'a> {
         }
 
         Ok(ViewNode::Link { to, text, href, children })
+    }
+
+    /// Parse text content after '|' operator
+    /// Supports: | text, | "quoted", | f"interpolated ${.state}"
+    fn parse_pipe_text_content(&mut self) -> AutoResult<ViewNode> {
+        // Check if it's an f-string
+        if self.is_kind(TokenKind::FStrStart) {
+            let fstr_expr = self.fstr()?;
+            let (template, bindings) = self.extract_fstr_template_and_bindings(&fstr_expr);
+            return Ok(ViewNode::Text(ViewText::Interpolated { template, bindings }));
+        }
+
+        // Check for quoted string
+        if self.is_kind(TokenKind::Str) {
+            let text = self.cur.text.to_string();
+            self.next();
+            return Ok(ViewNode::text(text));
+        }
+
+        // Unquoted text: consume until EOL or '{'
+        let mut text_parts = Vec::new();
+        while !self.is_kind(TokenKind::LBrace)
+            && !self.is_kind(TokenKind::RBrace)
+            && !self.is_kind(TokenKind::EOF)
+            && self.cur.text.as_str() != "\n"
+        {
+            text_parts.push(self.cur.text.to_string());
+            self.next();
+        }
+
+        let text = text_parts.join(" ").trim().to_string();
+
+        if text.is_empty() {
+            let span = crate::error::pos_to_span(self.cur.pos);
+            return Err(SyntaxError::Generic {
+                message: "Expected text after '|'".to_string(),
+                span,
+            }.into());
+        }
+
+        Ok(ViewNode::text(text))
     }
 
     /// Parse condition expression (until '{')
