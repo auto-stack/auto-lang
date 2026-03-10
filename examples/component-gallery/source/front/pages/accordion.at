@@ -29,7 +29,7 @@ widget AccordionPage {
                     accordion-item (value: "item-3") {
                         accordion-trigger | Is it animated?
                         accordion-content {
-                            text | Yes. It's animated by default, but you can disable it if you prefer.
+                            text | "Yes. It's animated by default, but you can disable it if you prefer."
                         }
                     }
                 }

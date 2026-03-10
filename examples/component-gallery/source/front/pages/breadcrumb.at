@@ -6,7 +6,7 @@ widget BreadcrumbPage {
     view {
         col {
             h1 | Breadcrumb
-            text | Shows the user's current location within a navigational hierarchy.
+            text | "Shows the user's current location within a navigational hierarchy."
 
             h2 | Installation
             codeblock (lang: "bash", code: "npx shadcn-vue@latest add breadcrumb") {}

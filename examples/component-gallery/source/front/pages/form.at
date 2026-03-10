@@ -53,7 +53,7 @@ widget FormPage {
                     tr {
                         td | initial-values
                         td | object
-                        td | {}
+                        td | "{}"
                         td | -
                         td | Initial form values
                     }

@@ -242,7 +242,7 @@ widget CarouselPage {
                     tr {
                         td | opts
                         td | object
-                        td | {}
+                        td | "{}"
                         td | -
                         td | Embla carousel options
                     }
